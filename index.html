@@ -2548,7 +2548,7 @@ function fetchWLPrice(sym){
         const meta=JSON.parse(text)?.chart?.result?.[0]?.meta;
         const ltp=(meta?.regularMarketPrice||meta?.previousClose)||0;
         const prev=(meta?.previousClose||ltp)||0;
-        if(ltp>0){
+        if(ltp>0&&ltp<1000000){// sanity: ignore bad data
           const idx=watchlist.findIndex(w=>w.symbol===sym);
           if(idx>=0){
             watchlist[idx].ltp=Math.round(ltp*100)/100;
@@ -4027,7 +4027,20 @@ function fetchYahooPrices(){
     }
 
     var s=stocks[i];
-    var yfUrl='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(s.symbol+'.NS')+'?interval=1d&range=1d';
+    // Yahoo Finance symbol overrides — NSE symbol → Yahoo symbol
+    var YF_OVERRIDES={
+      'MCDOWELL-N':'MCDOWELL-N.NS','BAJAJ_AUTO':'BAJAJ-AUTO.NS','M_M':'M&M.NS',
+      'AMARAJAB':'AMARAJABAT.NS','ASHOKA':'ASHOKABU.NS','ASSALCOHOL':'ASSALCOHOL.NS',
+      'AVANTIFEED':'AVANTIFEED.NS','AZADINDIA':'AZADINDIA.NS','BDL':'BDL.NS',
+      'CAPNUM':'CAPNUM.NS','COCHINSHIP':'COCHINSHIP.NS','COFORGE':'COFORGE.NS',
+      'GRAUERWEIL':'GRAUERWEIL.NS','HBLPOWER':'HBLPOWER.NS','HDFCLIFE':'HDFCLIFE.NS',
+      'HIGHENERGYB':'HIGHENRGB.NS','HINDRECTIF':'HINDRECTIF.NS','HINDZINC':'HINDZINC.NS',
+      'INDOTECHTR':'INDOTECHTR.NS','IGI':'IGPL.NS','JYOTHYLAB':'JYOTHYLAB.NS',
+      'KPENERGI':'KPENERGI.NS','KWALYPH':'KWALYPH.NS','MBENGINEERING':'MBAPL.NS',
+      'CIGNITI':'CIGNITI.NS'
+    };
+    var yfSym=YF_OVERRIDES[s.symbol]||(s.symbol+'.NS');
+    var yfUrl='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(yfSym)+'?interval=1d&range=1d';
     // Try multiple CORS proxies in order
     var proxies=[
       'https://api.allorigins.win/raw?url='+encodeURIComponent(yfUrl),
@@ -4061,13 +4074,13 @@ function fetchYahooPrices(){
             var meta=parsed&&parsed.chart&&parsed.chart.result&&parsed.chart.result[0]&&parsed.chart.result[0].meta;
             var ltp=(meta&&(meta.regularMarketPrice||meta.previousClose))||0;
             var prev=(meta&&(meta.previousClose||meta.chartPreviousClose))||ltp;
-            if(ltp>0){
+            if(ltp>0&&ltp<1000000){// sanity: ignore bad data
               s.ltp=Math.round(ltp*100)/100;s.prev=Math.round(prev*100)/100;
               s.change=prev>0?parseFloat(((ltp-prev)/prev*100).toFixed(2)):0;
               updated++;tdLog('✅ '+s.symbol+' ₹'+ltp.toFixed(2));
               done++;if(progBar)progBar.style.width=Math.round(done/total*100)+'%';
               if(progCount)progCount.textContent=done+' / '+total;
-              setTimeout(function(){fetchOne(i+1);},700);
+              setTimeout(function(){fetchOne(i+1);},150);
             } else {proxyIdx++;tryProxy();}
           }).catch(function(){proxyIdx++;tryProxy();});
         } else {proxyIdx++;tryProxy();}
@@ -4086,7 +4099,7 @@ function fetchYahooPrices(){
           var meta=parsed&&parsed.chart&&parsed.chart.result&&parsed.chart.result[0]&&parsed.chart.result[0].meta;
           var ltp=(meta&&(meta.regularMarketPrice||meta.previousClose))||0;
           var prev=(meta&&(meta.previousClose||meta.chartPreviousClose))||ltp;
-          if(ltp>0){
+          if(ltp>0&&ltp<1000000){// sanity: ignore bad data
             s.ltp=Math.round(ltp*100)/100;
             s.prev=Math.round(prev*100)/100;
             s.change=prev>0?parseFloat(((ltp-prev)/prev*100).toFixed(2)):0;
@@ -4095,7 +4108,7 @@ function fetchYahooPrices(){
             done++;
             if(progBar)progBar.style.width=Math.round(done/total*100)+'%';
             if(progCount)progCount.textContent=done+' / '+total;
-            setTimeout(function(){fetchOne(i+1);},700);
+            setTimeout(function(){fetchOne(i+1);},150);
           } else {
             // No price — try next proxy
             proxyIdx++;tryProxy();
