@@ -1,51 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BharatMarkets Pro</title>
 
 <style>
 body{
-font-family:-apple-system,BlinkMacSystemFont,system-ui;
+font-family:system-ui;
 background:#0f172a;
 color:white;
-margin:0;
 padding:16px;
 }
 
-h1{
-margin:0 0 12px 0;
-font-size:22px;
-}
+h1{font-size:22px;margin-bottom:10px;}
 
-.controls{
-display:flex;
-gap:10px;
-margin-bottom:10px;
-}
+.controls{display:flex;gap:10px;margin-bottom:12px;}
 
 input{
+flex:1;
 padding:8px;
 border-radius:6px;
 border:none;
-flex:1;
 }
 
 button{
-padding:8px 14px;
-border:none;
 background:#2563eb;
 color:white;
+border:none;
+padding:8px 14px;
 border-radius:6px;
-cursor:pointer;
 }
 
-table{
-width:100%;
-border-collapse:collapse;
-font-size:14px;
-}
+table{width:100%;border-collapse:collapse;}
 
 th,td{
 padding:8px;
@@ -54,7 +40,7 @@ border-bottom:1px solid #333;
 
 .green{color:#22c55e;}
 .red{color:#ef4444;}
-.small{color:#9ca3af;font-size:12px;}
+.small{font-size:12px;color:#9ca3af;}
 </style>
 </head>
 
@@ -64,10 +50,10 @@ border-bottom:1px solid #333;
 
 <div class="controls">
 <input id="search" placeholder="Search stock">
-<button onclick="loadPrices()">Refresh</button>
+<button onclick="load()">Refresh</button>
 </div>
 
-<div class="small" id="time"></div>
+<div id="time" class="small"></div>
 
 <table>
 <thead>
@@ -83,79 +69,62 @@ border-bottom:1px solid #333;
 <script>
 
 const STOCKS=[
-"RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
-"SBIN.NS","LT.NS","ITC.NS","BHARTIARTL.NS","HINDUNILVR.NS",
-"AXISBANK.NS","KOTAKBANK.NS","BAJFINANCE.NS","BAJAJFINSV.NS",
-"MARUTI.NS","TITAN.NS","ULTRACEMCO.NS","ASIANPAINT.NS",
-"SUNPHARMA.NS","HCLTECH.NS","WIPRO.NS"
-]
+"RELIANCE","TCS","INFY","HDFCBANK","ICICIBANK",
+"SBIN","LT","ITC","BHARTIARTL","HINDUNILVR",
+"AXISBANK","KOTAKBANK","BAJFINANCE","BAJAJFINSV",
+"MARUTI","TITAN","ULTRACEMCO","ASIANPAINT",
+"SUNPHARMA","HCLTECH","WIPRO"
+];
 
-function renderRow(sym,price,chg){
+async function load(){
 
-let cls = chg>=0 ? "green":"red"
+let table=document.getElementById("table");
+table.innerHTML="Loading...";
 
-return `
-<tr>
-<td>${sym.replace(".NS","")}</td>
-<td>₹${price.toFixed(2)}</td>
-<td class="${cls}">${chg.toFixed(2)}%</td>
-</tr>
-`
-}
+let search=document.getElementById("search").value.toUpperCase();
+let html="";
 
-async function loadPrices(){
-
-let table=document.getElementById("table")
-table.innerHTML="Loading..."
+for(let sym of STOCKS){
 
 try{
 
-let symbols=STOCKS.join(",")
+let url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}.NS?interval=1d&range=1d`;
 
-let api="https://query1.finance.yahoo.com/v7/finance/quote?symbols="+symbols
+let r=await fetch("https://corsproxy.io/?"+url);
+let j=await r.json();
 
-let proxy="https://api.allorigins.win/raw?url="+encodeURIComponent(api)
+let meta=j.chart.result[0].meta;
 
-let r=await fetch(proxy)
-let data=await r.json()
+let price=meta.regularMarketPrice;
+let prev=meta.previousClose;
 
-let rows=data.quoteResponse.result
+let chg=((price-prev)/prev)*100;
 
-rows.sort((a,b)=>b.regularMarketChangePercent-a.regularMarketChangePercent)
+let cls=chg>=0?"green":"red";
 
-let html=""
-let search=document.getElementById("search").value.toUpperCase()
+if(search && !sym.includes(search)) continue;
 
-for(let s of rows){
+html+=`
+<tr>
+<td>${sym}</td>
+<td>₹${price.toFixed(2)}</td>
+<td class="${cls}">${chg.toFixed(2)}%</td>
+</tr>
+`;
 
-let sym=s.symbol.replace(".NS","")
-
-if(search && !sym.includes(search)) continue
-
-html+=renderRow(
-s.symbol,
-s.regularMarketPrice,
-s.regularMarketChangePercent
-)
+}catch(e){}
 
 }
 
-table.innerHTML=html
+table.innerHTML=html;
 
 document.getElementById("time").innerText=
-"Updated "+new Date().toLocaleString()
-
-}catch(e){
-
-table.innerHTML="Error loading prices"
+"Updated "+new Date().toLocaleString();
 
 }
 
-}
-
-loadPrices()
-
-setInterval(loadPrices,60000)
+load();
+setInterval(load,60000);
 
 </script>
 
