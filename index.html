@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BharatMarkets Pro v2</title>
+
+<style>
+body{
+font-family:-apple-system,BlinkMacSystemFont,system-ui;
+background:#0f172a;
+color:white;
+margin:0;
+padding:16px;
+}
+
+h1{
+margin:0 0 12px 0;
+font-size:22px;
+}
+
+.controls{
+display:flex;
+gap:10px;
+margin-bottom:10px;
+}
+
+input{
+padding:8px;
+border-radius:6px;
+border:none;
+flex:1;
+}
+
+button{
+padding:8px 14px;
+border:none;
+background:#2563eb;
+color:white;
+border-radius:6px;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+font-size:14px;
+}
+
+th,td{
+padding:8px;
+border-bottom:1px solid #333;
+}
+
+.green{color:#22c55e;}
+.red{color:#ef4444;}
+.small{color:#9ca3af;font-size:12px;}
+</style>
+</head>
+
+<body>
+
+<h1>BharatMarkets Pro</h1>
+
+<div class="controls">
+<input id="search" placeholder="Search stock">
+<button onclick="loadPrices()">Refresh</button>
+</div>
+
+<div class="small" id="time"></div>
+
+<table>
+<thead>
+<tr>
+<th>Stock</th>
+<th>LTP</th>
+<th>%</th>
+</tr>
+</thead>
+<tbody id="table"></tbody>
+</table>
+
+<script>
+
+const STOCKS=[
+"RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
+"SBIN.NS","LT.NS","ITC.NS","BHARTIARTL.NS","HINDUNILVR.NS",
+"AXISBANK.NS","KOTAKBANK.NS","BAJFINANCE.NS","BAJAJFINSV.NS",
+"MARUTI.NS","TITAN.NS","ULTRACEMCO.NS","ASIANPAINT.NS",
+"SUNPHARMA.NS","HCLTECH.NS","WIPRO.NS"
+]
+
+function row(sym,price,chg){
+
+let cls = chg>=0 ? "green":"red"
+
+return `
+<tr>
+<td>${sym.replace(".NS","")}</td>
+<td>₹${price.toFixed(2)}</td>
+<td class="${cls}">${chg.toFixed(2)}%</td>
+</tr>
+`
+}
+
+async function loadPrices(){
+
+let table=document.getElementById("table")
+table.innerHTML="Loading..."
+
+let symbols=STOCKS.join(",")
+
+try{
+
+let url="https://query1.finance.yahoo.com/v7/finance/quote?symbols="+symbols
+
+let r=await fetch(url)
+let j=await r.json()
+
+let rows=j.quoteResponse.result
+
+rows.sort((a,b)=>b.regularMarketChangePercent-a.regularMarketChangePercent)
+
+let html=""
+let search=document.getElementById("search").value.toUpperCase()
+
+for(let s of rows){
+
+let sym=s.symbol.replace(".NS","")
+
+if(search && !sym.includes(search)) continue
+
+html+=row(
+s.symbol,
+s.regularMarketPrice,
+s.regularMarketChangePercent
+)
+
+}
+
+table.innerHTML=html
+
+document.getElementById("time").innerText=
+"Updated "+new Date().toLocaleString()
+
+}catch(e){
+
+table.innerHTML="Unable to load prices"
+
+}
+
+}
+
+loadPrices()
+
+setInterval(loadPrices,60000)
+
+</script>
+
+</body>
+</html>
