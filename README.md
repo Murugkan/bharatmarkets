@@ -1,2 +1,0 @@
-# bharatmarkets
-bharatmarkets
