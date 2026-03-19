@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Bharat">
+<title>Bharat · Markets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   DESIGN TOKENS  —  HIGH-CONTRAST LIGHT THEME
+   All text is dark on light backgrounds.
+   Top bars use dark navy for contrast.
+═══════════════════════════════════════════ */
+:root {
+  --bg:       #f0f4f8;
+  --bg2:      #e4eaf2;
+  --card:     #ffffff;
+  --card2:    #f7f9fc;
+  --bar:      #1a2332;
+  --bar2:     #243040;
+
+  --line:     #d0dae8;
+  --line2:    #b4c4d4;
+
+  --tx:       #0d1520;
+  --tx2:      #2e4a62;
+  --tx3:      #6a88a0;
+  --tx-inv:   #e8f0f8;
+  --tx-inv2:  #7a9db8;
+
+  --green:    #137a42;
+  --green-bg: #e4f5ec;
+  --green-bd: #90d0b0;
+  --red:      #b82020;
+  --red-bg:   #fce8e8;
+  --red-bd:   #e0a0a0;
+  --amber:    #9a6000;
+  --amber-bg: #fff4d0;
+  --amber-bd: #e8c870;
+  --sky:      #1558a8;
+  --sky-bg:   #e4eef8;
+  --sky-bd:   #90b4e0;
+
+  --mono: 'DM Mono', monospace;
+  --sans: 'Sora', sans-serif;
+  --r:    14px;
+  --rs:   10px;
+  --safe-t: env(safe-area-inset-top,    0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--tx);
+  font-family: var(--sans); font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none; overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex; flex-direction: column;
+  height: 100dvh; padding-top: var(--safe-t);
+  position: relative; overflow: hidden;
+}
+
+/* SCREENS */
+.screen {
+  position: absolute; inset: 0; top: var(--safe-t);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.34s cubic-bezier(0.32,0,0.22,1);
+  will-change: transform; background: var(--bg); overflow: hidden;
+}
+.screen.active { transform: translateX(0); }
+.screen.behind { transform: translateX(-26%); }
+
+/* TOP BAR — dark navy, always legible */
+.top-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 16px 11px; flex-shrink: 0;
+  background: var(--bar); border-bottom: 2px solid #0d1520;
+}
+.logo-title {
+  font-family: var(--sans); font-size: 20px; font-weight: 700;
+  color: #ffffff; letter-spacing: -0.5px;
+}
+.logo-title em { font-style: normal; color: #4cc87a; }
+.top-sub {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--tx-inv2); letter-spacing: 0.6px;
+  text-transform: uppercase; margin-top: 2px;
+}
+.icon-btn {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 9px; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--tx-inv2); flex-shrink: 0;
+  transition: background 0.15s;
+}
+.icon-btn:active { background: rgba(255,255,255,0.18); }
+.back-btn {
+  display: flex; align-items: center; gap: 5px;
+  background: none; border: none; font-family: var(--mono); font-size: 12px;
+  color: #6cc4f4; cursor: pointer; padding: 4px 0;
+}
+.back-btn:active { opacity: 0.6; }
+
+/* SCROLL BODY */
+.scroll-body {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-bottom: calc(24px + var(--safe-b));
+}
+.scroll-body::-webkit-scrollbar { display: none; }
+
+/* TICKER */
+.ticker-strip {
+  overflow: hidden; background: #0d1520;
+  height: 30px; display: flex; align-items: center; flex-shrink: 0;
+}
+.ticker-track {
+  display: flex; white-space: nowrap;
+  animation: ticker 34s linear infinite;
+}
+@keyframes ticker { to { transform: translateX(-50%); } }
+.ticker-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 16px; font-family: var(--mono); font-size: 11px;
+  border-right: 1px solid rgba(255,255,255,0.07);
+}
+.t-sym   { color: rgba(255,255,255,0.45); }
+.t-price { color: #ffffff; }
+.up  { color: #3cc870; }
+.dn  { color: #f07070; }
+.neu { color: #e0b840; }
+
+/* FRESHNESS BAR */
+#freshness-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 14px; background: var(--card2);
+  border-bottom: 1px solid var(--line);
+}
+#fresh-label {
+  font-family: var(--mono); font-size: 11px; color: var(--tx2);
+  display: flex; align-items: center; gap: 5px;
+}
+.fdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.fdot.ok   { background: var(--green); }
+.fdot.warn { background: var(--amber); }
+.fdot.old  { background: var(--red); }
+#prices-age { font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+
+/* OFFLINE BANNER */
+#offline-banner {
+  background: var(--amber-bg); border-bottom: 1px solid var(--amber-bd);
+  padding: 7px 14px; font-family: var(--mono); font-size: 11px;
+  color: var(--amber); display: none; text-align: center;
+}
+#offline-banner.show { display: block; }
+
+/* SEARCH */
+.search-wrap {
+  padding: 12px 14px 10px;
+  background: var(--card2);
+  border-bottom: 1px solid var(--line);
+}
+.search-box {
+  display: flex; align-items: center; gap: 9px;
+  background: var(--card); border: 1.5px solid var(--line2);
+  border-radius: 12px; padding: 0 13px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.search-box:focus-within {
+  border-color: var(--sky);
+  box-shadow: 0 0 0 3px rgba(21,88,168,0.1);
+}
+.search-icon { color: var(--tx3); flex-shrink: 0; }
+#search-input {
+  flex: 1; background: none; border: none; outline: none;
+  font-family: var(--sans); font-size: 14px; color: var(--tx);
+  padding: 11px 0; -webkit-appearance: none;
+}
+#search-input::placeholder { color: var(--tx3); font-size: 13px; }
+#search-clear {
+  background: none; border: none; color: var(--tx3);
+  font-size: 18px; cursor: pointer; padding: 2px; display: none;
+}
+
+/* SUGGESTIONS */
+#suggestions {
+  display: none; background: var(--card);
+  border: 1.5px solid var(--line2); border-radius: 12px;
+  margin: 8px 14px 0; overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+.sug-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 14px; cursor: pointer;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.12s;
+}
+.sug-row:last-child { border-bottom: none; }
+.sug-row:active { background: var(--bg); }
+.sug-sym  { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--tx); }
+.sug-name { font-size: 12px; color: var(--tx2); margin-top: 2px; }
+.sug-pill {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  padding: 3px 9px; border-radius: 20px; flex-shrink: 0;
+  background: var(--sky); color: #fff;
+}
+.sug-row.any-sym { background: var(--sky-bg); }
+.sug-row.any-sym .sug-sym { color: var(--sky); }
+
+/* SECTION HEADER */
+.sec-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 14px 6px;
+}
+.sec-title { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--tx3); }
+.sec-count { font-family: var(--mono); font-size: 10px; color: var(--tx3); }
+
+/* WATCHLIST ROWS */
+.wl-row {
+  display: flex; align-items: center; padding: 13px 14px;
+  background: var(--card); border-bottom: 1px solid var(--line);
+  cursor: pointer; -webkit-user-select: none; transition: background 0.12s;
+}
+.wl-row:active { background: var(--bg); }
+.wl-left  { flex: 1; min-width: 0; }
+.wl-sym   { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--tx); }
+.wl-name  { font-size: 12px; color: var(--tx2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wl-right { text-align: right; flex-shrink: 0; margin-left: 12px; }
+.wl-price { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--tx); }
+.wl-chg   { font-family: var(--mono); font-size: 11px; margin-top: 3px; color: var(--tx3); }
+.wl-price.up { color: var(--green); }
+.wl-price.dn { color: var(--red); }
+.wl-chg.up   { color: var(--green); }
+.wl-chg.dn   { color: var(--red); }
+.del-btn {
+  background: none; border: none; color: var(--line2);
+  font-size: 22px; cursor: pointer; padding: 2px 6px;
+  line-height: 1; flex-shrink: 0; transition: color 0.15s;
+}
+.del-btn:active { color: var(--red); }
+
+/* MARKET STATUS DOT */
+.mkt-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tx-inv2); }
+.mkt-dot.live   { background: #4cc87a; animation: blink 2s infinite; }
+.mkt-dot.closed { background: #f07070; }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:.35} }
+
+/* MARKET NEWS CHIPS */
+.mkt-news-banner { background: var(--card); border-bottom: 1px solid var(--line); padding: 10px 14px; display: none; }
+.mkt-news-hdr { font-family: var(--mono); font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.live-pill { background: var(--red); color: #fff; font-family: var(--mono); font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.5px; }
+.chip-scroll { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+.chip-scroll::-webkit-scrollbar { display: none; }
+.news-chip {
+  flex-shrink: 0; background: var(--bg); border: 1px solid var(--line2);
+  border-radius: 10px; padding: 8px 11px; max-width: 210px; cursor: default;
+}
+.chip-tag   { font-family: var(--mono); font-size: 9px; color: var(--tx3); text-transform: uppercase; margin-bottom: 3px; }
+.chip-title { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--tx); line-height: 1.35; }
+.imp-badge {
+  display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 600;
+  padding: 1px 5px; border-radius: 3px; margin-left: 5px; vertical-align: middle;
+}
+.imp-H { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red-bd); }
+.imp-M { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-bd); }
+.imp-L { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bd); }
+
+/* EMPTY STATE */
+.empty { text-align: center; padding: 64px 28px; }
+.empty-icon  { font-size: 44px; margin-bottom: 14px; }
+.empty-title { font-size: 17px; font-weight: 700; color: var(--tx); margin-bottom: 7px; }
+.empty-sub   { font-family: var(--mono); font-size: 12px; color: var(--tx3); line-height: 1.6; }
+
+/* ═══════════════════════════════════════════
+   DETAIL SCREEN
+═══════════════════════════════════════════ */
+.price-hero {
+  padding: 16px; background: var(--bar);
+  border-bottom: 1px solid #0d1520;
+}
+.p-sym  { font-family: var(--mono); font-size: 11px; color: var(--tx-inv2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px; }
+.p-name { font-family: var(--sans); font-size: 13px; color: rgba(255,255,255,0.55); margin-bottom: 10px; }
+.p-ltp  { font-family: var(--mono); font-size: 36px; font-weight: 500; color: #ffffff; letter-spacing: -1px; line-height: 1; }
+.p-ltp.up { color: #4cc87a; }
+.p-ltp.dn { color: #f07070; }
+.p-chg-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.p-chg  { font-family: var(--mono); font-size: 14px; }
+.p-chg.up { color: #4cc87a; } .p-chg.dn { color: #f07070; }
+.p-badge {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 3px 9px; border-radius: 20px;
+}
+.p-badge.up  { background: rgba(76,200,122,.22); color: #4cc87a; border: 1px solid rgba(76,200,122,.35); }
+.p-badge.dn  { background: rgba(240,112,112,.22); color: #f07070; border: 1px solid rgba(240,112,112,.35); }
+.p-badge.neu { background: rgba(224,184,64,.22);  color: #e0b840; border: 1px solid rgba(224,184,64,.35); }
+
+.ohlc-strip { display: flex; background: var(--card2); border-bottom: 1px solid var(--line); }
+.ohlc-cell  { flex: 1; padding: 9px 0; text-align: center; border-right: 1px solid var(--line); }
+.ohlc-cell:last-child { border-right: none; }
+.ohlc-l { font-family: var(--mono); font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px; }
+.ohlc-v { font-family: var(--mono); font-size: 12px; color: var(--tx); font-weight: 500; }
+
+.range-wrap { padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+.range-lbl  { font-family: var(--mono); font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+.range-bar  { position: relative; height: 5px; background: var(--line); border-radius: 4px; }
+.range-fill { position: absolute; top: 0; height: 100%; border-radius: 4px; background: linear-gradient(90deg,var(--green-bg),var(--green)); }
+.range-dot  { position: absolute; top: 50%; transform: translate(-50%,-50%); width: 12px; height: 12px; border-radius: 50%; background: var(--sky); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.range-lbls { display: flex; justify-content: space-between; margin-top: 6px; font-family: var(--mono); font-size: 10px; color: var(--tx3); }
+
+/* TABS */
+.dtabs { display: flex; background: var(--card); border-bottom: 2px solid var(--line); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.dtabs::-webkit-scrollbar { display: none; }
+.dtab { flex-shrink: 0; padding: 12px 20px; font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--tx3); background: none; border: none; cursor: pointer; position: relative; transition: color .15s; }
+.dtab.active { color: var(--sky); }
+.dtab.active::after { content:''; position:absolute; bottom:-2px; left:0; right:0; height:2px; background:var(--sky); border-radius:1px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* FUND GRID */
+.fund-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px; }
+.fund-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--rs); padding: 13px; }
+.f-lbl { font-family: var(--mono); font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+.f-val { font-family: var(--mono); font-size: 18px; font-weight: 500; color: var(--tx); }
+.f-sub { font-family: var(--mono); font-size: 10px; color: var(--tx2); margin-top: 3px; }
+
+/* AI BLOCK */
+.ai-block {
+  margin: 0 14px 14px; background: var(--card);
+  border: 1px solid var(--line); border-left: 3px solid var(--sky);
+  border-radius: var(--r); padding: 15px;
+}
+.ai-lbl { font-family: var(--mono); font-size: 9px; color: var(--sky); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+.ai-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--sky); animation: blink 1.8s infinite; }
+.ai-text { font-family: var(--sans); font-size: 13px; color: var(--tx); line-height: 1.65; }
+.ai-text p { margin-bottom: 8px; }
+.ai-text p:last-child { margin-bottom: 0; }
+.skel { display: flex; flex-direction: column; gap: 7px; }
+.skel-line { height: 11px; border-radius: 4px; background: linear-gradient(90deg,var(--bg2) 0%,var(--line) 50%,var(--bg2) 100%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* SIGNAL */
+.sig-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; margin-bottom: 10px; }
+.sig-hdr  { font-family: var(--mono); font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: .7px; margin-bottom: 10px; }
+.sig-bar  { display: flex; gap: 3px; margin-bottom: 10px; }
+.sseg { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+.sseg.b { background: var(--green); }
+.sseg.s { background: var(--red); }
+.sig-v { font-family: var(--sans); font-size: 16px; font-weight: 700; }
+.sig-v.up { color: var(--green); } .sig-v.dn { color: var(--red); } .sig-v.neu { color: var(--amber); }
+
+.tech-sec { padding: 0 14px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
+.tech-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.tech-row:last-child { border-bottom: none; }
+.tech-l { font-family: var(--sans); font-size: 13px; color: var(--tx2); }
+.tech-v { font-family: var(--mono); font-size: 13px; color: var(--tx); font-weight: 500; }
+.tech-v.up { color: var(--green); } .tech-v.dn { color: var(--red); }
+
+/* NEWS */
+.news-loading { padding: 24px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--tx3); }
+.news-item { padding: 14px; background: var(--card); border-bottom: 1px solid var(--line); }
+.n-src   { font-family: var(--mono); font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px; }
+.n-title { font-family: var(--sans); font-size: 14px; font-weight: 700; color: var(--tx); line-height: 1.4; margin-bottom: 5px; }
+.n-body  { font-family: var(--sans); font-size: 13px; color: var(--tx2); line-height: 1.55; margin-bottom: 6px; }
+.n-meta  { font-family: var(--mono); font-size: 10px; color: var(--tx3); }
+
+/* ═══════════════════════════════════════════
+   SETUP SCREEN
+═══════════════════════════════════════════ */
+.setup-wrap { padding: 14px; }
+.setup-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; margin-bottom: 12px; }
+.setup-hdr  { padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--card2); }
+.setup-ttl  { font-family: var(--mono); font-size: 10px; color: var(--sky); text-transform: uppercase; letter-spacing: .8px; }
+.setup-body { padding: 14px; }
+.s-step { display: flex; gap: 12px; margin-bottom: 14px; }
+.s-step:last-child { margin-bottom: 0; }
+.s-num { flex-shrink:0; width:22px;height:22px;border-radius:50%;background:var(--sky);color:#fff;font-family:var(--mono);font-size:11px;display:flex;align-items:center;justify-content:center; }
+.s-title { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--tx); margin-bottom: 3px; }
+.s-desc  { font-family: var(--sans); font-size: 12px; color: var(--tx2); line-height: 1.55; }
+.s-desc code { font-family: var(--mono); font-size: 11px; background: var(--bg2); padding: 1px 5px; border-radius: 4px; color: var(--sky); }
+.code-block { background: #1a2332; border-radius: 9px; padding: 13px; margin-top: 10px; font-family: var(--mono); font-size: 10px; color: #c8d8e8; line-height: 1.7; overflow-x: auto; white-space: pre; -webkit-overflow-scrolling: touch; }
+.code-block .k { color: #6bc4f0; } .code-block .s { color: #f0d080; } .code-block .c { color: #4a6070; }
+
+.ds-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.ds-row:last-child { border-bottom: none; }
+.ds-l { font-family: var(--sans); font-size: 13px; color: var(--tx2); }
+.ds-v { font-family: var(--mono); font-size: 11px; color: var(--sky); font-weight: 500; }
+.badge { display:inline-block;font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:600;letter-spacing:.3px;margin-left:6px; }
+.b-live { background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd); }
+.b-off  { background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-bd); }
+.danger-btn { width:100%;background:var(--red-bg);border:1px solid var(--red-bd);border-radius:var(--rs);padding:12px;font-family:var(--sans);font-size:13px;font-weight:700;color:var(--red);cursor:pointer;margin-top:6px; }
+.danger-btn:active { opacity:.8; }
+
+/* TOAST */
+#toast {
+  position: fixed; bottom: calc(28px + var(--safe-b)); left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--tx); color: #fff; border-radius: 20px;
+  padding: 9px 20px; font-family: var(--mono); font-size: 12px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .22s, transform .22s; z-index: 10000; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
+.fade-up { animation: fadeUp .25s ease both; }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══════════════════════════════════════
+     SCREEN 1 — WATCHLIST
+══════════════════════════════════════ -->
+<div class="screen active" id="screen-main">
+  <div class="top-bar">
+    <div>
+      <div class="logo-title">Bharat<em>·</em>Markets</div>
+      <div class="top-sub">
+        <span style="display:flex;align-items:center;gap:5px;">
+          <span class="mkt-dot" id="mkt-dot"></span>
+          <span id="mkt-txt">NSE</span>
+        </span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="icon-btn" id="rfbtn" onclick="refreshPrices()" title="Refresh prices">
+        <svg id="rfsvg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+      <button class="icon-btn" onclick="showScreen('screen-setup')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="offline-banner">⚡ Offline — showing cached prices</div>
+  <div class="ticker-strip"><div class="ticker-track" id="ticker-track"></div></div>
+
+  <div id="freshness-bar">
+    <span id="fresh-label"><span class="fdot" id="fdot"></span>&nbsp;—</span>
+    <span id="prices-age"></span>
+  </div>
+
+  <div class="scroll-body">
+    <!-- SEARCH — any symbol -->
+    <div class="search-wrap">
+      <div class="search-box">
+        <span class="search-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </span>
+        <input id="search-input"
+               placeholder="Any NSE symbol — ZOMATO, DIXON, IRFC…"
+               autocomplete="off" autocapitalize="characters" spellcheck="false"
+               oninput="handleSearch(this.value)">
+        <button id="search-clear" onclick="clearSearch()">×</button>
+      </div>
+    </div>
+    <div id="suggestions"></div>
+
+    <!-- LIVE MARKET NEWS CHIPS -->
+    <div class="mkt-news-banner" id="mkt-news-banner">
+      <div class="mkt-news-hdr">Market Moving News <span class="live-pill">LIVE</span></div>
+      <div class="chip-scroll" id="mkt-chips"></div>
+    </div>
+
+    <div class="sec-hdr">
+      <div class="sec-title">My Watchlist</div>
+      <div class="sec-count" id="wl-count"></div>
+    </div>
+    <div id="wl-list"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 2 — DETAIL
+══════════════════════════════════════ -->
+<div class="screen" id="screen-detail">
+  <div class="top-bar">
+    <button class="back-btn" onclick="goBack()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Watchlist
+    </button>
+  </div>
+  <div class="scroll-body">
+    <div id="price-hero" class="price-hero"></div>
+    <div id="ohlc-strip" class="ohlc-strip"></div>
+    <div id="range-wrap" class="range-wrap"></div>
+    <div class="dtabs">
+      <button class="dtab active" data-panel="panel-fund" onclick="switchTab(this)">Fundamentals</button>
+      <button class="dtab" data-panel="panel-tech" onclick="switchTab(this)">Technicals</button>
+      <button class="dtab" data-panel="panel-news" onclick="switchTab(this)">News &amp; Impact</button>
+    </div>
+    <div class="tab-panel active" id="panel-fund">
+      <div class="fund-grid" id="fund-grid"></div>
+      <div class="ai-block">
+        <div class="ai-lbl"><span class="ai-dot"></span>AI Fundamental Analysis</div>
+        <div class="ai-text" id="ai-fund"></div>
+      </div>
+    </div>
+    <div class="tab-panel" id="panel-tech">
+      <div style="padding:14px 14px 0">
+        <div class="sig-card" id="sig-card"></div>
+      </div>
+      <div class="tech-sec" id="tech-grid"></div>
+      <div class="ai-block" style="margin-top:14px">
+        <div class="ai-lbl"><span class="ai-dot"></span>AI Technical View</div>
+        <div class="ai-text" id="ai-tech"></div>
+      </div>
+    </div>
+    <div class="tab-panel" id="panel-news">
+      <div id="news-list"></div>
+      <div class="ai-block" style="margin:14px 14px 0">
+        <div class="ai-lbl"><span class="ai-dot"></span>AI News Summary</div>
+        <div class="ai-text" id="ai-news"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 3 — SETUP
+══════════════════════════════════════ -->
+<div class="screen" id="screen-setup">
+  <div class="top-bar">
+    <button class="back-btn" onclick="goBack()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
+    <div style="font-family:var(--sans);font-size:16px;font-weight:700;color:#fff">Setup</div>
+    <div style="width:36px"></div>
+  </div>
+  <div class="scroll-body">
+    <div class="setup-wrap">
+
+      <!-- API KEY CARD — required for AI features -->
+      <div class="setup-card" style="border-left:3px solid var(--sky)">
+        <div class="setup-hdr"><div class="setup-ttl">🔑 Anthropic API Key <span class="badge" id="key-badge">NOT SET</span></div></div>
+        <div class="setup-body">
+          <div class="s-desc" style="margin-bottom:10px">
+            Required for AI analysis and live news. Get a free key at
+            <strong style="color:var(--sky)">console.anthropic.com</strong>.
+            Stored only on your device — never sent anywhere except Anthropic.
+          </div>
+          <input id="api-key-input" type="password"
+            style="width:100%;background:var(--bg2);border:1.5px solid var(--line2);border-radius:10px;padding:11px 13px;font-family:var(--mono);font-size:13px;color:var(--tx);outline:none;-webkit-appearance:none;margin-bottom:10px"
+            placeholder="sk-ant-api03-…"
+            autocomplete="off" spellcheck="false">
+          <button onclick="saveApiKeyFromInput()"
+            style="width:100%;background:var(--sky);color:#fff;border:none;border-radius:10px;padding:12px;font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer">
+            Save API Key
+          </button>
+        </div>
+      </div>
+
+      <div class="setup-card">
+        <div class="setup-hdr"><div class="setup-ttl">Data Status <span class="badge" id="st-badge">—</span></div></div>
+        <div class="ds-row"><span class="ds-l">prices.json</span><span class="ds-v" id="ds-p">—</span></div>
+        <div class="ds-row"><span class="ds-l">Last fetched</span><span class="ds-v" id="ds-t">—</span></div>
+        <div class="ds-row"><span class="ds-l">Symbols</span><span class="ds-v" id="ds-n">—</span></div>
+        <div style="padding:12px 14px">
+          <button class="danger-btn" onclick="clearData()">Clear All Data</button>
+        </div>
+      </div>
+
+      <div class="setup-card">
+        <div class="setup-hdr"><div class="setup-ttl">How It Works</div></div>
+        <div class="setup-body">
+          <div class="s-step"><div class="s-num">1</div>
+            <div><div class="s-title">GitHub Actions fetches prices</div>
+            <div class="s-desc">Runs every 15 min, Mon–Fri. Python fetches Yahoo Finance server-side, writes <code>prices.json</code> to your repo.</div></div>
+          </div>
+          <div class="s-step"><div class="s-num">2</div>
+            <div><div class="s-title">App fetches same-origin JSON</div>
+            <div class="s-desc">Your app at <code>murugkan.github.io/bharat-markets</code> fetches <code>./prices.json</code> — same domain, zero CORS on Safari.</div></div>
+          </div>
+          <div class="s-step"><div class="s-num">3</div>
+            <div><div class="s-title">Add any NSE symbol</div>
+            <div class="s-desc">Type any NSE symbol in search — not just the preset list. Also add it to <code>watchlist.txt</code> in your repo so the Action fetches it.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-card">
+        <div class="setup-hdr"><div class="setup-ttl">.github/workflows/fetch-prices.yml</div></div>
+        <div class="setup-body">
+          <div class="code-block"><span class="k">name:</span> <span class="s">Fetch NSE Prices</span>
+<span class="k">on:</span>
+  <span class="k">schedule:</span>
+    - <span class="k">cron:</span> <span class="s">'*/15 3-10 * * 1-5'</span>
+  <span class="k">workflow_dispatch:</span>
+<span class="k">jobs:</span>
+  <span class="k">fetch:</span>
+    <span class="k">runs-on:</span> ubuntu-latest
+    <span class="k">permissions:</span>
+      <span class="k">contents:</span> write
+    <span class="k">steps:</span>
+      - <span class="k">uses:</span> actions/checkout@v4
+      - <span class="k">uses:</span> actions/setup-python@v5
+        <span class="k">with:</span>
+          <span class="k">python-version:</span> <span class="s">'3.12'</span>
+      - <span class="k">run:</span> pip install yfinance
+      - <span class="k">run:</span> python fetch_prices.py
+      - <span class="k">run:</span> |
+          git config user.name <span class="s">"github-actions[bot]"</span>
+          git config user.email <span class="s">"github-actions[bot]@users.noreply.github.com"</span>
+          git add prices.json
+          git diff --staged --quiet || git commit -m <span class="s">"chore: update prices"</span>
+          git push</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:16px 0 8px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--tx3)">Bharat·Markets · murugkan.github.io</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   NSE DB — hints for autocomplete.
+   User can ALWAYS add ANY symbol not in this list.
+═══════════════════════════════════════════════════ */
+const NSE_DB = [
+  ['RELIANCE','Reliance Industries'],['TCS','Tata Consultancy Services'],
+  ['HDFCBANK','HDFC Bank'],['ICICIBANK','ICICI Bank'],['INFY','Infosys'],
+  ['HINDUNILVR','Hindustan Unilever'],['ITC','ITC Limited'],
+  ['SBIN','State Bank of India'],['BHARTIARTL','Bharti Airtel'],
+  ['KOTAKBANK','Kotak Mahindra Bank'],['LT','Larsen & Toubro'],
+  ['AXISBANK','Axis Bank'],['ASIANPAINT','Asian Paints'],
+  ['MARUTI','Maruti Suzuki'],['TITAN','Titan Company'],
+  ['SUNPHARMA','Sun Pharmaceutical'],['ULTRACEMCO','UltraTech Cement'],
+  ['WIPRO','Wipro'],['HCLTECH','HCL Technologies'],
+  ['ADANIENT','Adani Enterprises'],['BAJFINANCE','Bajaj Finance'],
+  ['NESTLEIND','Nestle India'],['POWERGRID','Power Grid Corp'],
+  ['NTPC','NTPC'],['ONGC','ONGC'],['JSWSTEEL','JSW Steel'],
+  ['TATASTEEL','Tata Steel'],['ADANIPORTS','Adani Ports'],
+  ['TATAMOTORS','Tata Motors'],['M&M','Mahindra & Mahindra'],
+  ['CIPLA','Cipla'],['DRREDDY',"Dr. Reddy's"],['DIVISLAB',"Divi's Labs"],
+  ['APOLLOHOSP','Apollo Hospitals'],['BAJAJFINSV','Bajaj Finserv'],
+  ['COALINDIA','Coal India'],['BPCL','BPCL'],['IOC','Indian Oil'],
+  ['EICHERMOT','Eicher Motors'],['HEROMOTOCO','Hero MotoCorp'],
+  ['GRASIM','Grasim'],['SHREECEM','Shree Cement'],
+  ['TECHM','Tech Mahindra'],['INDUSINDBK','IndusInd Bank'],
+  ['BRITANNIA','Britannia Industries'],['HINDALCO','Hindalco'],
+  ['TATACONSUM','Tata Consumer'],['PIDILITIND','Pidilite Industries'],
+  ['DABUR','Dabur India'],['MARICO','Marico'],['COLPAL','Colgate-Palmolive'],
+  ['MUTHOOTFIN','Muthoot Finance'],['BAJAJ-AUTO','Bajaj Auto'],
+  ['TVSMOTOR','TVS Motor'],['INDIGO','IndiGo'],['ZOMATO','Zomato'],
+  ['DMART','Avenue Supermarts'],['IRCTC','IRCTC'],['HDFCAMC','HDFC AMC'],
+  ['TRENT','Trent'],['DIXON','Dixon Technologies'],['IRFC','IRFC'],
+  ['MPHASIS','Mphasis'],['COFORGE','Coforge'],
+  ['PERSISTENT','Persistent Systems'],['LTIM','LTIMindtree'],
+  ['KPIT','KPIT Technologies'],['TATAELXSI','Tata Elxsi'],
+  ['ZYDUSLIFE','Zydus Lifesciences'],['BIOCON','Biocon'],['LUPIN','Lupin'],
+  ['TORNTPHARM','Torrent Pharma'],['AUROPHARMA','Aurobindo Pharma'],
+  ['FEDERALBNK','Federal Bank'],['IDFCFIRSTB','IDFC First Bank'],
+  ['AUBANK','AU Small Finance Bank'],['PNB','Punjab National Bank'],
+  ['BANKBARODA','Bank of Baroda'],['CANBK','Canara Bank'],['YESBANK','Yes Bank'],
+  ['GAIL','GAIL India'],['TATAPOWER','Tata Power'],
+  ['ADANIGREEN','Adani Green Energy'],['DLF','DLF'],
+  ['GODREJPROP','Godrej Properties'],['VEDL','Vedanta'],
+  ['NMDC','NMDC'],['SAIL','SAIL'],['BHEL','BHEL'],
+  ['NYKAA','Nykaa'],['PAYTM','Paytm'],['POLICYBZR','PolicyBazaar'],
+  ['DELHIVERY','Delhivery'],['ANGELONE','Angel One'],
+  ['CDSL','CDSL'],['MCX','MCX'],['BSE','BSE Limited'],
+  ['NAUKRI','Info Edge (Naukri)'],['MAPMYINDIA','MapMyIndia'],
+  ['ASTRAL','Astral'],['SUPREMEIND','Supreme Industries'],
+  ['PIIND','PI Industries'],['GODREJCP','Godrej Consumer'],
+  ['UPL','UPL'],['TATACHEM','Tata Chemicals'],
+  ['JKCEMENT','JK Cement'],['RAMCOCEM','Ramco Cements'],
+  ['KAJARIACER','Kajaria Ceramics'],['BERGEPAINT','Berger Paints'],
+  ['LALPATHLAB','Dr. Lal PathLabs'],['METROPOLIS','Metropolis Healthcare'],
+  ['ABSLAMC','Aditya Birla Sun Life AMC'],['MFSL','Max Financial'],
+  ['SBILIFE','SBI Life Insurance'],['HDFCLIFE','HDFC Life'],
+  ['ICICIGI','ICICI Lombard'],['ICICIPRULI','ICICI Prudential Life'],
+  ['CHOLAFIN','Cholamandalam Finance'],['MUTHOOTFIN','Muthootfin'],
+  ['BAJAJHLDNG','Bajaj Holdings'],['NAVINFLUOR','Navin Fluorine'],
+  ['DEEPAKNTR','Deepak Nitrite'],['FLUOROCHEM','Gujarat Fluorochemicals'],
+  ['ALKYLAMINE','Alkyl Amines'],['FINEORG','Fine Organic'],
+].map(([sym,name]) => ({sym,name}));
+
+/* ═══════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════ */
+const K = { WL:'bm_wl_v6', CACHE:'bm_cache_v6' };
+const PRICES_URL = './prices.json';
+
+let S = { watchlist:[], prices:{}, pricesTs:null, sym:null };
+const stack = ['screen-main'];
+
+/* ═══════════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════════ */
+function boot() {
+  try { S.watchlist = JSON.parse(localStorage.getItem(K.WL))||[]; } catch(_){}
+  try {
+    const c = JSON.parse(localStorage.getItem(K.CACHE));
+    if (c) { S.prices=c.prices||{}; S.pricesTs=c.ts||null; }
+  } catch(_){}
+
+  updateMkt(); renderWL(); buildTicker(); updateFresh();
+  setInterval(updateMkt, 60000);
+  window.addEventListener('offline', ()=>document.getElementById('offline-banner').classList.add('show'));
+  window.addEventListener('online',  ()=>document.getElementById('offline-banner').classList.remove('show'));
+  if (!navigator.onLine) document.getElementById('offline-banner').classList.add('show');
+  fetchPrices(true);
+  loadMktNews();
+}
+
+/* ═══════════════════════════════════════════════════
+   FETCH prices.json  (same-origin, zero CORS)
+═══════════════════════════════════════════════════ */
+async function fetchPrices(silent) {
+  const btn = document.getElementById('rfbtn');
+  const svg = document.getElementById('rfsvg');
+  btn.disabled = true;
+  svg.style.animation = 'spin .7s linear infinite';
+  try {
+    const res = await fetch(PRICES_URL+'?t='+Date.now(), {cache:'no-store', signal:AbortSignal.timeout(12000)});
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const d = await res.json();
+    if (d.quotes) { Object.assign(S.prices, d.quotes); S.pricesTs = d.updated||new Date().toISOString(); }
+    else { Object.assign(S.prices, d); S.pricesTs = new Date().toISOString(); }
+    localStorage.setItem(K.CACHE, JSON.stringify({prices:S.prices, ts:S.pricesTs}));
+    S.watchlist.forEach(w => { const p=S.prices[w.sym]; if (p?.name) w.name=p.name; });
+    saveWL(); renderWL(); buildTicker(); updateFresh(); updateSetupStatus();
+    if (!silent) toast('Prices refreshed ✓');
+  } catch(e) {
+    if (!silent) toast('prices.json not found — run GitHub Action first');
+  }
+  svg.style.animation = '';
+  btn.disabled = false;
+}
+function refreshPrices() { fetchPrices(false); }
+
+/* ═══════════════════════════════════════════════════
+   MARKET NEWS — real, via Claude + web_search
+═══════════════════════════════════════════════════ */
+async function loadMktNews() {
+  if (!getApiKey()) return; // silently skip if no key yet
+  try {
+    const today = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: anthropicHeaders(),
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 800,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: `Today is ${today}. Search for the top 5 most important NSE/BSE Indian stock market news right now. Respond ONLY with a JSON array (no markdown). Each item: {title: string (max 8 words), tag: string (e.g. BANKING/RESULTS/FII/POLICY/MACRO), impact: "HIGH"|"MEDIUM"|"LOW"}. No explanation, just the JSON array.` }]
+      })
+    });
+    const d = await res.json();
+    const txt = d?.content?.filter(b=>b.type==='text').pop()?.text || '';
+    const arr = JSON.parse(txt.replace(/```json|```/g,'').trim());
+    if (!Array.isArray(arr)||!arr.length) return;
+    const banner = document.getElementById('mkt-news-banner');
+    const chips  = document.getElementById('mkt-chips');
+    banner.style.display = 'block';
+    chips.innerHTML = arr.map(n=>{
+      const c = n.impact==='HIGH'?'imp-H':n.impact==='MEDIUM'?'imp-M':'imp-L';
+      return `<div class="news-chip"><div class="chip-tag">${n.tag||'NEWS'} <span class="imp-badge ${c}">${n.impact}</span></div><div class="chip-title">${n.title}</div></div>`;
+    }).join('');
+  } catch(e) { /* silent fail */ }
+}
+
+/* ═══════════════════════════════════════════════════
+   FRESHNESS
+═══════════════════════════════════════════════════ */
+function updateFresh() {
+  const lbl = document.getElementById('fresh-label');
+  const age = document.getElementById('prices-age');
+  const dot = document.getElementById('fdot');
+  if (!S.pricesTs) {
+    dot.className='fdot old'; lbl.innerHTML='<span class="fdot old"></span>&nbsp;No data';
+    age.textContent='Run GitHub Action first'; return;
+  }
+  const diff = Math.floor((Date.now()-new Date(S.pricesTs))/60000);
+  const cls  = diff<30?'ok':diff<120?'warn':'old';
+  const word = diff<30?'Live':diff<120?'Stale':'Old';
+  const ts   = new Date(S.pricesTs).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  lbl.innerHTML = `<span class="fdot ${cls}"></span>&nbsp;${word}`;
+  age.textContent = `Updated ${ts}`;
+}
+
+/* ═══════════════════════════════════════════════════
+   MARKET STATUS
+═══════════════════════════════════════════════════ */
+function updateMkt() {
+  const ist  = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+  const day  = ist.getDay(), mins = ist.getHours()*60+ist.getMinutes();
+  const open = day>=1&&day<=5&&mins>=555&&mins<930;
+  document.getElementById('mkt-dot').className = 'mkt-dot '+(open?'live':'closed');
+  document.getElementById('mkt-txt').textContent = open?'LIVE':'CLOSED';
+}
+
+/* ═══════════════════════════════════════════════════
+   SCREEN NAV
+═══════════════════════════════════════════════════ */
+function showScreen(id) {
+  const prev = stack[stack.length-1];
+  if (prev===id) return;
+  document.getElementById(prev)?.classList.add('behind');
+  document.getElementById(prev)?.classList.remove('active');
+  document.getElementById(id)?.classList.add('active');
+  document.getElementById(id)?.classList.remove('behind');
+  stack.push(id);
+  if (id==='screen-detail') document.querySelector('#screen-detail .scroll-body').scrollTop=0;
+  if (id==='screen-setup')  updateSetupStatus();
+}
+function goBack() {
+  if (stack.length<2) return;
+  const cur=stack.pop(), prev=stack[stack.length-1];
+  document.getElementById(cur)?.classList.remove('active');
+  document.getElementById(prev)?.classList.remove('behind');
+  document.getElementById(prev)?.classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════
+   SEARCH — open-ended: DB hints + add any symbol
+═══════════════════════════════════════════════════ */
+function handleSearch(val) {
+  const v = val.trim().toUpperCase();
+  document.getElementById('search-clear').style.display = v?'block':'none';
+  const el = document.getElementById('suggestions');
+  if (!v) { el.style.display='none'; return; }
+
+  const hits = NSE_DB.filter(s=>s.sym.startsWith(v)||s.name.toUpperCase().includes(v)).slice(0,5);
+  const rows = hits.map(h=>`
+    <div class="sug-row" onclick="addStock('${h.sym}','${h.name.replace(/'/g,"\\'")}')">
+      <div><div class="sug-sym">${h.sym}</div><div class="sug-name">${h.name}</div></div>
+      <span class="sug-pill">+ Add</span>
+    </div>`);
+
+  // Always show "add any symbol" row for typed input if no exact match
+  if (!hits.find(h=>h.sym===v)) {
+    rows.push(`
+      <div class="sug-row any-sym" onclick="addStock('${v}','${v}')">
+        <div>
+          <div class="sug-sym">${v}</div>
+          <div class="sug-name">Add "${v}" — any valid NSE symbol</div>
+        </div>
+        <span class="sug-pill" style="background:var(--sky)">+ NSE</span>
+      </div>`);
+  }
+
+  el.style.display = rows.length?'block':'none';
+  el.innerHTML = rows.join('');
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value='';
+  document.getElementById('search-clear').style.display='none';
+  document.getElementById('suggestions').style.display='none';
+}
+
+/* ═══════════════════════════════════════════════════
+   WATCHLIST
+═══════════════════════════════════════════════════ */
+function addStock(sym, name) {
+  clearSearch();
+  sym = sym.toUpperCase().replace(/\.NS$/,'');
+  if (S.watchlist.find(w=>w.sym===sym)) { toast(sym+' already in watchlist'); return; }
+  S.watchlist.push({sym, name});
+  saveWL(); renderWL(); buildTicker();
+  toast('Added '+sym+' — also add to watchlist.txt in your repo');
+}
+function removeStock(sym) {
+  S.watchlist=S.watchlist.filter(w=>w.sym!==sym);
+  saveWL(); renderWL(); buildTicker();
+}
+function saveWL() { localStorage.setItem(K.WL, JSON.stringify(S.watchlist)); }
+
+function renderWL() {
+  const el=document.getElementById('wl-list');
+  document.getElementById('wl-count').textContent=S.watchlist.length||'';
+  if (!S.watchlist.length) {
+    el.innerHTML=`<div class="empty fade-up">
+      <div class="empty-icon">📈</div>
+      <div class="empty-title">Your watchlist is empty</div>
+      <div class="empty-sub">Search any NSE symbol above<br>RELIANCE, ZOMATO, IRFC — any!</div>
+    </div>`; return;
+  }
+  el.innerHTML=S.watchlist.map((w,i)=>{
+    const p=S.prices[w.sym], ltp=p?.ltp, chg=p?.change, pct=p?.changePct;
+    const dir=!p?'':chg>=0?'up':'dn';
+    return `<div class="wl-row fade-up" style="animation-delay:${i*18}ms" onclick="openDetail('${w.sym}')">
+      <div class="wl-left">
+        <div class="wl-sym">${w.sym}</div>
+        <div class="wl-name">${trunc(p?.name||w.name,34)}</div>
+      </div>
+      <div class="wl-right">
+        <div class="wl-price ${dir}">${ltp?'₹'+fmt(ltp):'—'}</div>
+        <div class="wl-chg ${dir}">${chg!=null?(chg>=0?'+':'')+fmt(chg)+' ('+pct.toFixed(2)+'%)':'Tap ↻ to refresh'}</div>
+      </div>
+      <button class="del-btn" onclick="event.stopPropagation();removeStock('${w.sym}')">×</button>
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════
+   TICKER
+═══════════════════════════════════════════════════ */
+function buildTicker() {
+  const items=S.watchlist.map(w=>{
+    const p=S.prices[w.sym], ltp=p?.ltp, pct=p?.changePct;
+    const dir=!p?'neu':p.change>=0?'up':'dn';
+    return `<div class="ticker-item">
+      <span class="t-sym">${w.sym}</span>
+      <span class="t-price">${ltp?'₹'+fmt(ltp):'—'}</span>
+      <span class="${dir}">${pct!=null?(pct>=0?'▲':'▼')+Math.abs(pct).toFixed(2)+'%':''}</span>
+    </div>`;
+  });
+  const html=items.length?items.join('')+items.join(''):'';
+  document.getElementById('ticker-track').innerHTML=html;
+}
+
+/* ═══════════════════════════════════════════════════
+   DETAIL
+═══════════════════════════════════════════════════ */
+function openDetail(sym) {
+  S.sym=sym; populateDetail(sym); showScreen('screen-detail');
+  document.querySelectorAll('.dtab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(t=>t.classList.remove('active'));
+  document.querySelector('[data-panel="panel-fund"]').classList.add('active');
+  document.getElementById('panel-fund').classList.add('active');
+  setSkel('ai-fund'); setSkel('ai-tech'); setSkel('ai-news');
+  document.getElementById('news-list').innerHTML=`<div class="news-loading">Loading live news…</div>`;
+  setTimeout(()=>loadAI(sym),150);
+}
+
+function populateDetail(sym) {
+  const w=S.watchlist.find(x=>x.sym===sym)||{sym,name:sym};
+  const p=S.prices[sym], ltp=p?.ltp;
+  const dir=!p?'neu':p.change>=0?'up':'dn';
+
+  // Hero
+  document.getElementById('price-hero').innerHTML=`
+    <div class="p-sym">${sym} · NSE</div>
+    <div class="p-name">${trunc(p?.name||w.name,44)}</div>
+    <div class="p-ltp ${dir==='up'?'up':dir==='dn'?'dn':''}">${ltp?'₹'+fmt(ltp):'—'}</div>
+    <div class="p-chg-row">
+      <span class="p-chg ${dir}">${p?.change!=null?(p.change>=0?'+':'')+fmt(p.change):''}</span>
+      <span class="p-badge ${dir}">${p?.changePct!=null?(p.changePct>=0?'+':'')+p.changePct.toFixed(2)+'%':'No data yet'}</span>
+    </div>`;
+
+  // OHLC
+  document.getElementById('ohlc-strip').innerHTML=
+    [['O',p?.open],['H',p?.high],['L',p?.low],['C',p?.prev]].map(([l,v])=>
+      `<div class="ohlc-cell"><div class="ohlc-l">${l}</div><div class="ohlc-v">${v?'₹'+fmt(v):'—'}</div></div>`
+    ).join('');
+
+  // Range
+  const rw=document.getElementById('range-wrap');
+  if (p?.w52h&&p?.w52l&&ltp) {
+    const pct=Math.min(100,Math.max(0,(ltp-p.w52l)/(p.w52h-p.w52l)*100)).toFixed(1);
+    rw.innerHTML=`<div class="range-lbl">52-Week Range</div>
+      <div class="range-bar"><div class="range-fill" style="width:${pct}%"></div><div class="range-dot" style="left:${pct}%"></div></div>
+      <div class="range-lbls"><span>₹${fmt(p.w52l)}</span><span>Current ↑</span><span>₹${fmt(p.w52h)}</span></div>`;
+  } else {
+    rw.innerHTML=`<div class="range-lbl">52-Week Range</div><div style="font-family:var(--mono);font-size:11px;color:var(--tx3);padding-top:6px">Refresh prices to load range</div>`;
+  }
+
+  // Fundamentals
+  document.getElementById('fund-grid').innerHTML=[
+    ['Market Cap',  p?.mktCap   ?fmtCr(p.mktCap)              :'—',''],
+    ['P/E (TTM)',   p?.pe       ?p.pe.toFixed(1)               :'—','Trailing'],
+    ['Fwd P/E',     p?.fwdPe   ?p.fwdPe.toFixed(1)            :'—','Forward'],
+    ['P/B Ratio',   p?.pb       ?p.pb.toFixed(2)               :'—','Price/Book'],
+    ['EPS (TTM)',   p?.eps      ?'₹'+p.eps.toFixed(2)          :'—','Per Share'],
+    ['Book Value',  p?.bv       ?'₹'+fmt(p.bv)                :'—','Per Share'],
+    ['Div Yield',   p?.divYield ?(p.divYield*100).toFixed(2)+'%':'—','Annual'],
+    ['Volume',      p?.vol      ?fmtVol(p.vol)                 :'—',p?.avgVol?'Avg '+fmtVol(p.avgVol):''],
+  ].map(([l,v,s])=>
+    `<div class="fund-card"><div class="f-lbl">${l}</div><div class="f-val">${v}</div><div class="f-sub">${s}</div></div>`
+  ).join('');
+
+  // Signals
+  const {buy,sell}=computeSignals(p);
+  const net=buy-sell, total=5;
+  const verdict=net>1?'Bullish':net<-1?'Bearish':'Neutral';
+  const vcls=net>1?'up':net<-1?'dn':'neu';
+  document.getElementById('sig-card').innerHTML=`
+    <div class="sig-hdr">Signal Score — ${buy} Buy · ${sell} Sell of ${total}</div>
+    <div class="sig-bar">${Array.from({length:total},(_,i)=>`<div class="sseg ${i<buy?'b':i>=total-sell?'s':''}"></div>`).join('')}</div>
+    <div class="sig-v ${vcls}">${verdict}</div>`;
+
+  // Tech rows
+  document.getElementById('tech-grid').innerHTML=[
+    ['50-Day MA',  p?.ma50  ?'₹'+fmt(p.ma50) :'—', ltp&&p?.ma50  ?(ltp>p.ma50 ?'up':'dn'):''],
+    ['200-Day MA', p?.ma200 ?'₹'+fmt(p.ma200):'—', ltp&&p?.ma200 ?(ltp>p.ma200?'up':'dn'):''],
+    ['52W High',   p?.w52h  ?'₹'+fmt(p.w52h) :'—', ''],
+    ['52W Low',    p?.w52l  ?'₹'+fmt(p.w52l) :'—', ''],
+    ['Avg Volume', p?.avgVol?fmtVol(p.avgVol):'—', ''],
+    ['Vol vs Avg', (p?.vol&&p?.avgVol)?(p.vol/p.avgVol*100).toFixed(0)+'%':'—',
+                   (p?.vol&&p?.avgVol)?(p.vol>p.avgVol?'up':'dn'):''],
+  ].map(([l,v,d])=>
+    `<div class="tech-row"><span class="tech-l">${l}</span><span class="tech-v ${d}">${v}</span></div>`
+  ).join('');
+}
+
+function computeSignals(p) {
+  if (!p) return {buy:0,sell:0};
+  let buy=0,sell=0,ltp=p.ltp;
+  if (ltp&&p.ma50)  { ltp>p.ma50 ?buy++:sell++; }
+  if (ltp&&p.ma200) { ltp>p.ma200?buy++:sell++; }
+  if (p.changePct!=null){ p.changePct>0?buy++:sell++; }
+  if (p.vol&&p.avgVol)  { p.vol>p.avgVol?buy++:sell++; }
+  if (p.pe) { p.pe<25?buy++:sell++; }
+  return {buy,sell};
+}
+
+function switchTab(btn) {
+  document.querySelectorAll('.dtab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(btn.dataset.panel).classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════
+   API KEY  — stored in localStorage, entered in Settings
+═══════════════════════════════════════════════════ */
+const API_KEY_STORE = 'bm_apikey_v1';
+function getApiKey() { return localStorage.getItem(API_KEY_STORE) || ''; }
+function saveApiKey(k) { localStorage.setItem(API_KEY_STORE, k.trim()); }
+
+// Required headers for direct browser → Anthropic API calls
+function anthropicHeaders() {
+  const key = getApiKey();
+  return {
+    'Content-Type':                          'application/json',
+    'anthropic-version':                     '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+    ...(key ? { 'x-api-key': key } : {}),
+  };
+}
+
+/* ═══════════════════════════════════════════════════
+   AI — Fund + Tech (no search) + News (with web search)
+═══════════════════════════════════════════════════ */
+async function loadAI(sym) {
+  const key = getApiKey();
+  if (!key) {
+    ['ai-fund','ai-tech','ai-news'].forEach(id =>
+      document.getElementById(id).innerHTML =
+        `<span style="font-size:12px;color:var(--red)">⚠ Add your Anthropic API key in Settings to enable AI analysis.</span>`
+    );
+    document.getElementById('news-list').innerHTML =
+      `<div class="news-loading" style="color:var(--red)">⚠ API key required — go to Settings</div>`;
+    return;
+  }
+
+  const p=S.prices[sym], w=S.watchlist.find(x=>x.sym===sym);
+  const name=p?.name||w?.name||sym;
+  const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const ctx=p
+    ?`${sym} (NSE) | ${name}\nLTP:₹${fmt(p.ltp)} | Chg:${p.changePct?.toFixed(2)}% | 52W:₹${fmt(p.w52h)}/₹${fmt(p.w52l)}\nP/E:${p.pe?.toFixed(1)||'N/A'} P/B:${p.pb?.toFixed(2)||'N/A'} EPS:₹${p.eps?.toFixed(2)||'N/A'}\nMktCap:${fmtCr(p.mktCap)} Yield:${p.divYield?(p.divYield*100).toFixed(2)+'%':'N/A'}\nMA50:₹${fmt(p.ma50)} MA200:₹${fmt(p.ma200)} Vol:${fmtVol(p.vol)}`
+    :`${sym} (NSE) | ${name} — no price data, use general knowledge.`;
+
+  await Promise.all([
+    aiCall(`You are a concise Indian equity analyst. Give a 2-3 sentence fundamental analysis of ${sym}. Mention valuation vs peers and if it looks attractive.\n\n${ctx}`, 'ai-fund'),
+    aiCall(`You are a technical analyst. Give a 2-3 sentence technical view of ${sym}. Mention MA trend, volume, and near-term bias.\n\n${ctx}`, 'ai-tech'),
+    loadStockNews(sym, name, ctx, today),
+  ]);
+}
+
+async function loadStockNews(sym, name, ctx, today) {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: anthropicHeaders(),
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1200,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content:
+          `Today is ${today}. Search for the latest news about ${sym} (${name}), an NSE-listed Indian stock. Find 3-4 real recent news items. Respond ONLY with valid JSON — no markdown, no explanation:\n{"items":[{"title":"headline","body":"1-2 sentences on market impact","source":"publication name","impact":"HIGH|MEDIUM|LOW","tag":"RESULTS|MGMT|SECTOR|MACRO|TECHNICAL"}],"summary":"2-3 sentence overall assessment of what these news mean for the stock"}`
+        }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err?.error?.message || 'HTTP '+res.status);
+    }
+
+    const d   = await res.json();
+    const txt = d?.content?.filter(b => b.type === 'text').pop()?.text || '';
+    const parsed = JSON.parse(txt.replace(/```json|```/g, '').trim());
+
+    if (parsed.items?.length) {
+      document.getElementById('news-list').innerHTML = parsed.items.map(n => {
+        const c = n.impact==='HIGH' ? 'imp-H' : n.impact==='MEDIUM' ? 'imp-M' : 'imp-L';
+        return `<div class="news-item">
+          <div class="n-src">${n.source||'Market News'} <span class="imp-badge ${c}">${n.impact}</span></div>
+          <div class="n-title">${n.title}</div>
+          <div class="n-body">${n.body}</div>
+          <div class="n-meta">${n.tag||''}</div>
+        </div>`;
+      }).join('');
+    }
+    if (parsed.summary) {
+      document.getElementById('ai-news').innerHTML = `<p>${parsed.summary}</p>`;
+    }
+  } catch(e) {
+    console.error('News error:', e.message);
+    const msg = e.message?.includes('invalid x-api-key') || e.message?.includes('401')
+      ? 'Invalid API key — check Settings'
+      : 'Live news unavailable: ' + (e.message || 'unknown error');
+    document.getElementById('news-list').innerHTML =
+      `<div class="news-loading" style="color:var(--red)">⚠ ${msg}</div>`;
+    document.getElementById('ai-news').innerHTML =
+      `<span style="font-size:12px;color:var(--tx3)">${msg}</span>`;
+  }
+}
+
+async function aiCall(prompt, id) {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: anthropicHeaders(),
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }],
+      })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d   = await res.json();
+    const txt = d?.content?.filter(b => b.type === 'text').pop()?.text || 'Analysis unavailable.';
+    document.getElementById(id).innerHTML =
+      txt.split('\n').filter(Boolean).map(l => `<p>${l}</p>`).join('');
+  } catch(e) {
+    document.getElementById(id).innerHTML =
+      `<span style="font-size:12px;color:var(--tx3)">AI unavailable: ${e.message}</span>`;
+  }
+}
+
+function setSkel(id) {
+  document.getElementById(id).innerHTML=`<div class="skel">
+    <div class="skel-line" style="width:${82+Math.random()*12|0}%"></div>
+    <div class="skel-line" style="width:${64+Math.random()*18|0}%"></div>
+    <div class="skel-line" style="width:${70+Math.random()*14|0}%"></div>
+  </div>`;
+}
+
+/* ═══════════════════════════════════════════════════
+   SETUP STATUS
+═══════════════════════════════════════════════════ */
+function updateSetupStatus() {
+  const has = S.pricesTs && Object.keys(S.prices).length > 0;
+  const badge = document.getElementById('st-badge');
+  badge.textContent = has ? 'LIVE' : 'NOT SET UP';
+  badge.className = 'badge ' + (has ? 'b-live' : 'b-off');
+  document.getElementById('ds-p').textContent = has ? '✓ Loaded' : 'Not found';
+  document.getElementById('ds-t').textContent = S.pricesTs
+    ? new Date(S.pricesTs).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+  document.getElementById('ds-n').textContent = has ? Object.keys(S.prices).length + ' symbols' : '—';
+
+  // populate API key field and badge
+  const key = getApiKey();
+  const keyInput = document.getElementById('api-key-input');
+  const keyBadge = document.getElementById('key-badge');
+  if (keyInput) keyInput.value = key ? key : '';
+  if (keyBadge) {
+    keyBadge.textContent = key ? 'SET ✓' : 'NOT SET';
+    keyBadge.className   = 'badge ' + (key ? 'b-live' : 'b-off');
+  }
+}
+
+function saveApiKeyFromInput() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val.startsWith('sk-ant-')) {
+    toast('Key should start with sk-ant-…'); return;
+  }
+  saveApiKey(val);
+  updateSetupStatus();
+  toast('API key saved ✓ — AI features enabled');
+  // reload market news now that key is set
+  loadMktNews();
+}
+function clearData() {
+  if (!confirm('Clear all data?')) return;
+  S.watchlist=[];S.prices={};S.pricesTs=null;
+  saveWL();localStorage.removeItem(K.CACHE);
+  renderWL();buildTicker();updateFresh();updateSetupStatus();
+  toast('Data cleared');
+}
+
+/* ═══════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════ */
+function fmt(n) {
+  if (n==null) return '—';
+  return Number(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtCr(n) {
+  if (!n) return '—';
+  if (n>=1e12) return (n/1e12).toFixed(2)+'L Cr';
+  if (n>=1e7)  return (n/1e7).toFixed(2)+' Cr';
+  if (n>=1e5)  return (n/1e5).toFixed(2)+'L';
+  return fmt(n);
+}
+function fmtVol(n) {
+  if (!n) return '—';
+  if (n>=1e7) return (n/1e7).toFixed(2)+'Cr';
+  if (n>=1e5) return (n/1e5).toFixed(2)+'L';
+  if (n>=1e3) return (n/1e3).toFixed(0)+'K';
+  return n.toString();
+}
+function trunc(s,n){ return s&&s.length>n?s.slice(0,n)+'…':(s||''); }
+function toast(msg) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+boot();
+</script>
+</body>
+</html>
