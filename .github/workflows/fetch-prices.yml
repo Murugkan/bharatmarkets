@@ -1,9 +1,6 @@
 name: BharatMarkets Data Fetch
 
 on:
-  push:
-    paths:
-      - 'watchlist.txt'        # auto-trigger when watchlist updated from app
   schedule:
     - cron: '*/15 3-10 * * 1-5'
     - cron: '30 12 * * 1-5'
@@ -18,6 +15,11 @@ on:
           - all
           - prices_only
           - fundamentals_only
+          - new_symbol        # triggered by app when watchlist stock added
+      symbol:
+        description: 'Single symbol to fetch (used with new_symbol)'
+        required: false
+        default: ''
 
 jobs:
   fetch-prices:
@@ -25,10 +27,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SINGLE_SYMBOL: ${{ github.event.inputs.symbol }}
     if: >
-      (github.event_name == 'push') ||
       (github.event_name == 'schedule' && github.event.schedule == '*/15 3-10 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.fetch_type == 'all' || github.event.inputs.fetch_type == 'prices_only'))
+      (github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'prices_only' ||
+        github.event.inputs.fetch_type == 'new_symbol'
+      ))
     permissions:
       contents: write
     steps:
@@ -43,6 +49,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add prices.json symbols.json charts/ || true
           git diff --staged --quiet || git commit -m "data: prices $(date -u +'%H:%M UTC')"
+          git pull --rebase origin main
           git push
 
   fetch-fundamentals:
@@ -50,10 +57,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SINGLE_SYMBOL: ${{ github.event.inputs.symbol }}
     if: >
-      (github.event_name == 'push') ||
       (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.fetch_type == 'all' || github.event.inputs.fetch_type == 'fundamentals_only'))
+      (github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'fundamentals_only' ||
+        github.event.inputs.fetch_type == 'new_symbol'
+      ))
     permissions:
       contents: write
     steps:
@@ -68,4 +79,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add fundamentals.json || true
           git diff --staged --quiet || git commit -m "data: fundamentals $(date -u +'%H:%M UTC')"
+          git pull --rebase origin main
           git push
