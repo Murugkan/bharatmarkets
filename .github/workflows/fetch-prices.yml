@@ -15,7 +15,6 @@ on:
           - all
           - prices_only
           - fundamentals_only
-          - pledge_only
 
 jobs:
   fetch-prices:
@@ -43,7 +42,7 @@ jobs:
           git push
 
   fetch-fundamentals:
-    name: Fetch Fundamentals (Yahoo + NSE + Screener)
+    name: Fetch Fundamentals (Yahoo + Screener)
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -64,34 +63,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add fundamentals.json || true
           git diff --staged --quiet || git commit -m "data: fundamentals $(date -u +'%H:%M UTC')"
-          git push
-
-  fetch-pledge:
-    name: Fetch Pledge% (Playwright headless browser)
-    runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    # Run quarterly (1st weekday of Jan/Apr/Jul/Oct at 06:30 UTC) + manual trigger
-    # Quarterly because shareholding pattern filings are quarterly
-    if: >
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.fetch_type == 'all' || github.event.inputs.fetch_type == 'pledge_only'))
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Playwright
-        run: |
-          pip install playwright
-          playwright install chromium --with-deps
-      - name: Fetch pledge data
-        run: python fetch_pledge.py
-      - name: Commit pledge.json
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pledge.json || true
-          git diff --staged --quiet || git commit -m "data: pledge% $(date -u +'%Y-%m-%d')"
           git push
