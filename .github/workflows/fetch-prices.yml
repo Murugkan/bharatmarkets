@@ -1,6 +1,9 @@
 name: BharatMarkets Data Fetch
 
 on:
+  push:
+    paths:
+      - 'watchlist.txt'        # auto-trigger when watchlist updated from app
   schedule:
     - cron: '*/15 3-10 * * 1-5'
     - cron: '30 12 * * 1-5'
@@ -23,6 +26,7 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     if: >
+      (github.event_name == 'push') ||
       (github.event_name == 'schedule' && github.event.schedule == '*/15 3-10 * * 1-5') ||
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.fetch_type == 'all' || github.event.inputs.fetch_type == 'prices_only'))
     permissions:
@@ -47,6 +51,7 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     if: >
+      (github.event_name == 'push') ||
       (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.fetch_type == 'all' || github.event.inputs.fetch_type == 'fundamentals_only'))
     permissions:
