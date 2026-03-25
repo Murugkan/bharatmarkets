@@ -1,0 +1,98 @@
+name: BharatMarkets Data Fetch
+
+on:
+  schedule:
+    - cron: '*/15 3-10 * * 1-5'
+    - cron: '30 12 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      fetch_type:
+        description: 'What to fetch'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - prices_only
+          - fundamentals_only
+          - new_symbol
+      symbol:
+        description: 'Single symbol (for new_symbol only)'
+        required: false
+        default: ''
+
+jobs:
+  fetch-prices:
+    name: Fetch Live Prices
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SINGLE_SYMBOL: ${{ github.event.inputs.symbol }}
+    if: >
+      (github.event_name == 'schedule' && github.event.schedule == '*/15 3-10 * * 1-5') ||
+      (github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'prices_only' ||
+        github.event.inputs.fetch_type == 'new_symbol'
+      ))
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install yfinance
+      - run: python fetch_prices.py
+      - name: Commit and push prices
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prices.json symbols.json charts/ || true
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "data: prices $(date -u +'%H:%M UTC') [skip pages]"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push attempt $i failed, retrying…"
+            sleep 5
+          done
+
+  fetch-fundamentals:
+    name: Fetch Fundamentals
+    runs-on: ubuntu-latest
+    needs: [fetch-prices]
+    if: >
+      always() && (
+        (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
+        (github.event_name == 'workflow_dispatch' && (
+          github.event.inputs.fetch_type == 'all' ||
+          github.event.inputs.fetch_type == 'fundamentals_only' ||
+          github.event.inputs.fetch_type == 'new_symbol'
+        ))
+      )
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SINGLE_SYMBOL: ${{ github.event.inputs.symbol }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install yfinance requests beautifulsoup4 lxml
+      - run: python fetch_fundamentals.py
+      - name: Commit and push fundamentals
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add fundamentals.json || true
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "data: fundamentals $(date -u +'%H:%M UTC') [skip pages]"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push attempt $i failed, retrying…"
+            sleep 5
+          done
