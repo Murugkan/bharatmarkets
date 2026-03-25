@@ -44,7 +44,7 @@ if p.exists():
             syms.append(s)
 
 if not syms:
-    print("⚠ portfolio_symbols.txt not found or empty")
+    print("! portfolio_symbols.txt not found or empty")
     return []
 
 # Cross-check: only keep symbols that exist in fundamentals.json
@@ -54,16 +54,16 @@ try:
     fund = json.loads(Path("fundamentals.json").read_text())
     active = set(fund.keys())
 except:
-    print("⚠ fundamentals.json not found -- using all portfolio symbols")
+    print("! fundamentals.json not found -- using all portfolio symbols")
     return syms
 
 valid   = [s for s in syms if s in active]
 skipped = [s for s in syms if s not in active]
 
 if skipped:
-    print(f"⚠ Skipping {len(skipped)} symbols not in fundamentals.json: {', '.join(skipped)}")
+    print(f"! Skipping {len(skipped)} symbols not in fundamentals.json: {', '.join(skipped)}")
 
-print(f"✓ {len(valid)} active portfolio symbols: {', '.join(valid)}")
+print(f"OK {len(valid)} active portfolio symbols: {', '.join(valid)}")
 return valid
 ```
 
@@ -96,7 +96,7 @@ try:
                 "pub":   pub,
             })
 except Exception as e:
-    print(f"  ⚠ News fetch failed for {sym}: {e}")
+    print(f"  ! News fetch failed for {sym}: {e}")
 return articles
 ```
 
@@ -104,7 +104,7 @@ def call_claude(sym, name, articles):
 “”“Call Claude API to extract forward guidance from news”””
 api_key = os.environ.get(“ANTHROPIC_API_KEY”,””).strip()
 if not api_key:
-print(f”  ⚠ ANTHROPIC_API_KEY not set – skipping Claude call”)
+print(f”  ! ANTHROPIC_API_KEY not set – skipping Claude call”)
 return None
 
 ```
@@ -169,15 +169,15 @@ try:
     result["sym"]     = sym
     return result
 except Exception as e:
-    print(f"  ⚠ Claude API error for {sym}: {e}")
+    print(f"  ! Claude API error for {sym}: {e}")
     return None
 ```
 
 def main():
 syms = load_symbols()
-print(f”📋 BharatMarkets Guidance Fetch”)
-print(f”🕐 {now_utc().strftime(’%Y-%m-%d %H:%M UTC’)}”)
-print(f”📊 {len(syms)} portfolio symbols\n”)
+print(f” BharatMarkets Guidance Fetch”)
+print(f”? {now_utc().strftime(’%Y-%m-%d %H:%M UTC’)}”)
+print(f” {len(syms)} portfolio symbols\n”)
 
 ```
 if not syms:
@@ -194,7 +194,7 @@ except:
 # Remove stale entries -- symbols no longer in portfolio
 stale = [k for k in existing if k not in syms]
 if stale:
-    print(f"🧹 Removing {len(stale)} stale guidance entries: {', '.join(stale)}")
+    print(f" Removing {len(stale)} stale guidance entries: {', '.join(stale)}")
     for k in stale:
         del existing[k]
 
@@ -202,7 +202,7 @@ results = dict(existing)
 success, skipped = 0, 0
 
 for sym in syms:
-    print(f"  → {sym}")
+    print(f"  -> {sym}")
 
     # Skip if updated within last 60 days (don't re-fetch mid-quarter)
     if sym in existing:
@@ -210,7 +210,7 @@ for sym in syms:
         try:
             age_days = (now_utc() - datetime.fromisoformat(upd)).days
             if age_days < 60:
-                print(f"    ↳ Skipped (updated {age_days}d ago)")
+                print(f"    -> Skipped (updated {age_days}d ago)")
                 skipped += 1
                 continue
         except:
@@ -226,7 +226,7 @@ for sym in syms:
 
     # Fetch news
     articles = fetch_news_for_stock(sym, name)
-    print(f"    ↳ {len(articles)} articles found")
+    print(f"    -> {len(articles)} articles found")
     if not articles:
         skipped += 1
         continue
@@ -252,7 +252,7 @@ for sym in syms:
         results[sym] = guidance
         tone = guidance.get("tone","?")
         conf = guidance.get("confidence","?")
-        print(f"    ✓ Tone:{tone} Confidence:{conf}")
+        print(f"    OK Tone:{tone} Confidence:{conf}")
         success += 1
     else:
         skipped += 1
@@ -263,8 +263,8 @@ for sym in syms:
 Path(GUIDANCE_FILE).write_text(
     json.dumps(results, indent=2, ensure_ascii=False)
 )
-print(f"\n✅ Done -- {success} updated, {skipped} skipped")
-print(f"📁 guidance.json → {len(results)} stocks")
+print(f"\nOK Done -- {success} updated, {skipped} skipped")
+print(f" guidance.json -> {len(results)} stocks")
 ```
 
 if **name** == “**main**”:
