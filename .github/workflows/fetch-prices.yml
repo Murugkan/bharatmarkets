@@ -2,7 +2,7 @@ name: BharatMarkets Data Fetch
 
 on:
   schedule:
-    - cron: '*/15 3-10 * * 1-5'
+    - cron: '*/15 3-11 * * 1-5'
     - cron: '30 12 * * 1-5'
   workflow_dispatch:
     inputs:
@@ -25,34 +25,30 @@ jobs:
   fetch-prices:
     name: Fetch Live Prices
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      SINGLE_SYMBOL: ${{ github.event.inputs.symbol }}
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '*/15 3-10 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && (
-        github.event.inputs.fetch_type == 'all' ||
-        github.event.inputs.fetch_type == 'prices_only' ||
-        github.event.inputs.fetch_type == 'new_symbol'
-      ))
     permissions:
       contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SINGLE_SYMBOL: ${{ github.event.inputs.symbol || '' }}
+    if: ${{ (github.event_name == 'schedule' && github.event.schedule == '*/15 3-11 * * 1-5') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.fetch_type == 'all' || github.event.inputs.fetch_type == 'prices_only' || github.event.inputs.fetch_type == 'new_symbol')) }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          ref: main          # always get latest including watchlist.txt
-      - uses: actions/setup-python@v5
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install yfinance
-      - name: Debug symbol info
-        if: ${{ github.event.inputs.symbol != '' }}
-        run: |
-          echo "🎯 Fetching single symbol: $SINGLE_SYMBOL"
-          echo "📋 Current watchlist.txt:"
-          cat watchlist.txt || echo "(not found)"
-      - run: python fetch_prices.py
-      - name: Commit and push prices
+
+      - name: Install dependencies
+        run: pip install yfinance
+
+      - name: Fetch prices
+        run: python fetch_prices.py
+
+      - name: Commit and push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -61,42 +57,36 @@ jobs:
           git commit -m "data: prices $(date -u +'%H:%M UTC') [skip pages]"
           for i in 1 2 3; do
             git pull --rebase origin main && git push && break
-            echo "Push attempt $i failed, retrying…"
             sleep 5
           done
 
   fetch-fundamentals:
     name: Fetch Fundamentals
     runs-on: ubuntu-latest
-    # Run independently — don't depend on prices job so one failure doesn't block the other
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && (
-        github.event.inputs.fetch_type == 'all' ||
-        github.event.inputs.fetch_type == 'fundamentals_only' ||
-        github.event.inputs.fetch_type == 'new_symbol'
-      ))
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      SINGLE_SYMBOL: ${{ github.event.inputs.symbol }}
     permissions:
       contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SINGLE_SYMBOL: ${{ github.event.inputs.symbol || '' }}
+    if: ${{ (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.fetch_type == 'all' || github.event.inputs.fetch_type == 'fundamentals_only' || github.event.inputs.fetch_type == 'new_symbol')) }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          ref: main          # always get latest including watchlist.txt
-      - uses: actions/setup-python@v5
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install yfinance requests beautifulsoup4 lxml
-      - name: Debug symbol info
-        if: ${{ github.event.inputs.symbol != '' }}
-        run: |
-          echo "🎯 Fetching fundamentals for: $SINGLE_SYMBOL"
-          echo "📋 Current watchlist.txt:"
-          cat watchlist.txt || echo "(not found)"
-      - run: python fetch_fundamentals.py
-      - name: Commit and push fundamentals
+
+      - name: Install dependencies
+        run: pip install yfinance requests beautifulsoup4 lxml
+
+      - name: Fetch fundamentals
+        run: python fetch_fundamentals.py
+
+      - name: Commit and push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -105,6 +95,5 @@ jobs:
           git commit -m "data: fundamentals $(date -u +'%H:%M UTC') [skip pages]"
           for i in 1 2 3; do
             git pull --rebase origin main && git push && break
-            echo "Push attempt $i failed, retrying…"
             sleep 5
           done
