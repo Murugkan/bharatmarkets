@@ -1,7 +1,7 @@
-“””
+## “””
 fetch_guidance.py
-─────────────────
-Quarterly run — for each portfolio stock:
+
+Quarterly run – for each portfolio stock:
 
 1. Fetches last 30 days of Google News via RSS
 1. Sends headlines + snippets to Claude API
@@ -24,7 +24,7 @@ def now_utc():
 return datetime.now(timezone.utc)
 
 def load_symbols():
-“”“Load ONLY active portfolio symbols — not watchlist, not stale.”””
+“”“Load ONLY active portfolio symbols – not watchlist, not stale.”””
 single = os.environ.get(“SINGLE_SYMBOL”,””).strip().upper()
 if single:
 return [single]
@@ -32,7 +32,7 @@ return [single]
 ```
 syms = []
 
-# Only portfolio_symbols.txt — not watchlist (watchlist is research, not holdings)
+# Only portfolio_symbols.txt -- not watchlist (watchlist is research, not holdings)
 p = Path("portfolio_symbols.txt")
 if p.exists():
     for line in p.read_text().splitlines():
@@ -54,7 +54,7 @@ try:
     fund = json.loads(Path("fundamentals.json").read_text())
     active = set(fund.keys())
 except:
-    print("⚠ fundamentals.json not found — using all portfolio symbols")
+    print("⚠ fundamentals.json not found -- using all portfolio symbols")
     return syms
 
 valid   = [s for s in syms if s in active]
@@ -104,7 +104,7 @@ def call_claude(sym, name, articles):
 “”“Call Claude API to extract forward guidance from news”””
 api_key = os.environ.get(“ANTHROPIC_API_KEY”,””).strip()
 if not api_key:
-print(f”  ⚠ ANTHROPIC_API_KEY not set — skipping Claude call”)
+print(f”  ⚠ ANTHROPIC_API_KEY not set – skipping Claude call”)
 return None
 
 ```
@@ -116,7 +116,7 @@ news_text = "\n".join([
 prompt = f"""You are a financial analyst. Analyze this news coverage for {name} ({sym}) listed on NSE India.
 ```
 
-Extract ONLY forward-looking information — management guidance, commitments, projections, and analyst estimates mentioned in recent earnings coverage.
+Extract ONLY forward-looking information – management guidance, commitments, projections, and analyst estimates mentioned in recent earnings coverage.
 
 News articles:
 {news_text}
@@ -191,7 +191,7 @@ try:
 except:
     pass
 
-# Remove stale entries — symbols no longer in portfolio
+# Remove stale entries -- symbols no longer in portfolio
 stale = [k for k in existing if k not in syms]
 if stale:
     print(f"🧹 Removing {len(stale)} stale guidance entries: {', '.join(stale)}")
@@ -263,7 +263,7 @@ for sym in syms:
 Path(GUIDANCE_FILE).write_text(
     json.dumps(results, indent=2, ensure_ascii=False)
 )
-print(f"\n✅ Done — {success} updated, {skipped} skipped")
+print(f"\n✅ Done -- {success} updated, {skipped} skipped")
 print(f"📁 guidance.json → {len(results)} stocks")
 ```
 
