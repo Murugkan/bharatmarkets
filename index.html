@@ -1,14 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
-<!-- BUILD: 2026-03-22-v8 -->
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black"/>
-<meta name="theme-color" content="#04060d"/>
+<html lang="en"><!-- BUILD: 2026-03-22-v8 --><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#04060d">
 <title>BharatMarkets Pro</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&amp;family=Syne:wght@600;700;800&amp;family=DM+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════
    FIX #1: HIGH CONTRAST DARK THEME
@@ -509,22 +507,184 @@ canvas{display:block;width:100%;}
   </div>
   <div style="text-align:right">
     <div class="live-row"><span class="ldot"></span><span class="llbl">LIVE</span></div>
-    <div class="clktxt" id="clk">NSE · 09:15 IST</div>
+    <div class="clktxt" id="clk">NSE · 10:56 PM IST · v8</div>
   </div>
 </div>
 
 <!-- TICKER -->
-<div id="tkwrap"><div id="tkinner"></div></div>
+<div id="tkwrap"><div id="tkinner"><div class="ti">
+      <span class="ti-n">NIFTY 50</span>
+      <div class="ti-r">
+        <span class="ti-v">—</span>
+        <span class="ti-c" style="color:var(--gr2)">▲ 0.00%</span>
+      </div>
+    </div><div class="ti">
+      <span class="ti-n">Bank Nifty</span>
+      <div class="ti-r">
+        <span class="ti-v">—</span>
+        <span class="ti-c" style="color:var(--gr2)">▲ 0.00%</span>
+      </div>
+    </div><div class="ti">
+      <span class="ti-n">NIFTY 50</span>
+      <div class="ti-r">
+        <span class="ti-v">—</span>
+        <span class="ti-c" style="color:var(--gr2)">▲ 0.00%</span>
+      </div>
+    </div><div class="ti">
+      <span class="ti-n">Bank Nifty</span>
+      <div class="ti-r">
+        <span class="ti-v">—</span>
+        <span class="ti-c" style="color:var(--gr2)">▲ 0.00%</span>
+      </div>
+    </div></div></div>
 
 <!-- CONTENT -->
-<div id="content"></div>
+<div id="content"><div class="fin">
+  <!-- Search -->
+  <div style="padding:10px 13px 0">
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:10px;padding:12px 13px;margin-bottom:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--label);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">➕ Add Any NSE Stock</div>
+      <div class="search-box" style="margin:0">
+        <span class="srch-ico">🔍</span>
+        <input class="srch-inp" id="wl-add-inp" type="text" placeholder="Type symbol or company name — ARROWGREEN, KIOCL, IRFC…" autocapitalize="characters" autocomplete="off" spellcheck="false" oninput="wlSearch(this.value)" value="">
+      </div>
+      <div id="wl-results" style="margin-top:0"></div>
+      <div style="font-size:10px;color:var(--mu);margin-top:8px">
+        Searches 341+ NSE symbols by name or ticker
+      </div>
+    </div>
+
+    <!-- GitHub Sync Settings -->
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:10px;padding:12px 13px;margin:0 13px 10px">
+      <div style="font-size:10px;font-weight:700;color:var(--label);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
+        ⚙ GitHub Sync
+        <span style="font-weight:400;color:var(--mu);text-transform:none;letter-spacing:0"> — auto-fetch data when you add stocks</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div>
+          <div style="font-size:9px;color:var(--tx3);margin-bottom:3px">Anthropic API Key
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--ac);text-decoration:none;margin-left:4px">Get key ↗</a>
+            <span style="color:var(--mu);margin-left:4px">— for AI Guidance in stock drilldown</span>
+          </div>
+          <input id="ai-key-inp" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" value="ghpa_DaIzGQawykRNEZLNpwl3I4ZkozCZdi0nSPIB" placeholder="sk-ant-xxxxxxxxxxxx" oninput="S.settings.aiKey=this.value.trim();saveSettings()" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b1);border-radius:7px;padding:7px 10px;color:var(--tx1);font-size:11px;font-family:var(--mono);outline:none">
+          <div style="font-size:8px;color:var(--mu);margin-top:3px">Stored locally only — never sent to any server except api.anthropic.com</div>
+        </div>
+        <div style="border-top:1px solid var(--b1);padding-top:7px">
+          <div style="font-size:9px;color:var(--tx3);margin-bottom:3px">Repository (owner/repo)</div>
+          <input id="gh-repo-inp" value="Murugkan/bharatmarkets" placeholder="e.g. Murugkan/bharatmarkets" oninput="S.settings.ghRepo=this.value;saveSettings()" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b1);border-radius:7px;padding:7px 10px;color:var(--tx1);font-size:11px;font-family:var(--mono);outline:none">
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--tx3);margin-bottom:3px">GitHub PAT
+            <a href="https://github.com/settings/tokens/new?scopes=repo&amp;description=BharatMarkets" target="_blank" style="color:var(--ac);text-decoration:none;margin-left:4px">Generate ↗</a>
+          </div>
+          <input id="gh-token-inp" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" value="ghpa_DaIzGQawykRNEZLNpwl3I4ZkozCZdi0nSPIB" placeholder="ghp_xxxxxxxxxxxx" oninput="S.settings.ghToken=this.value.trim();saveSettings()" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b1);border-radius:7px;padding:7px 10px;color:var(--tx1);font-size:11px;font-family:var(--mono);outline:none">
+        </div>
+        <button onclick="testGitHubConnection()" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);border-radius:7px;padding:7px 14px;color:#818cf8;font-size:11px;font-weight:600;cursor:pointer;text-align:left">
+          🔌 Test Connection
+        </button>
+      </div>
+      <div id="gh-status" style="font-size: 9px; color: rgb(0, 232, 150); margin-top: 7px;">✅ Connected to Murugkan/bharatmarkets — ready</div>
+
+      <!-- Push index.html button -->
+      
+      <button id="push-btn" onclick="pushIndexToGitHub()" style="margin-top:10px;width:100%;padding:11px;
+        background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.4);
+        border-radius:8px;color:#818cf8;font-size:12px;font-weight:800;
+        cursor:pointer;font-family:'Syne',sans-serif;letter-spacing:.3px">
+        ⬆ Push index.html to GitHub
+      </button>
+      <div style="font-size:8px;color:var(--tx3);margin-top:5px;text-align:center">
+        Saves the latest app to your repo — access from any device
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Stats -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;padding:0 13px 10px">
+    <div class="card" style="text-align:center;border-top:2px solid var(--ac)">
+      <div style="font-size:8px;color:var(--label);text-transform:uppercase;font-weight:700;letter-spacing:.8px">Watching</div>
+      <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--ac);margin-top:4px">1</div>
+    </div>
+    <div class="card" style="text-align:center;border-top:2px solid var(--gr)">
+      <div style="font-size:8px;color:var(--label);text-transform:uppercase;font-weight:700;letter-spacing:.8px">Rising</div>
+      <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--gr2);margin-top:4px">0</div>
+    </div>
+    <div class="card" style="text-align:center;border-top:2px solid var(--yw)">
+      <div style="font-size:8px;color:var(--label);text-transform:uppercase;font-weight:700;letter-spacing:.8px">Avg Score</div>
+      <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--yw);margin-top:4px">65</div>
+    </div>
+  </div>
+  <!-- Holdings -->
+  <div style="padding:0 13px 14px">
+    <div class="srow bull" style="padding-left:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div style="flex:1;min-width:0;cursor:pointer" onclick="openStock({&quot;symbol&quot;:&quot;WAAREEENER&quot;,&quot;name&quot;:&quot;Waaree Energies&quot;,&quot;sector&quot;:&quot;Renewable&quot;,&quot;ltp&quot;:0,&quot;change&quot;:0,&quot;pe&quot;:null,&quot;pb&quot;:null,&quot;roe&quot;:null,&quot;roce&quot;:null,&quot;opm&quot;:null,&quot;week52H&quot;:null,&quot;week52L&quot;:null,&quot;mcap&quot;:null,&quot;eps&quot;:null,&quot;beta&quot;:null,&quot;div&quot;:null,&quot;debt_eq&quot;:null,&quot;score&quot;:65})">
+            <div class="srow-sym">WAAREEENER</div>
+            <div class="srow-name">Waaree Energies</div>
+            <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+              <span class="pill pill-bl">Renewable</span>
+              <span class="pill pill-gr">Rising</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <div style="text-align:right;cursor:pointer" onclick="openStock({&quot;symbol&quot;:&quot;WAAREEENER&quot;,&quot;name&quot;:&quot;Waaree Energies&quot;,&quot;sector&quot;:&quot;Renewable&quot;,&quot;ltp&quot;:0,&quot;change&quot;:0,&quot;pe&quot;:null,&quot;pb&quot;:null,&quot;roe&quot;:null,&quot;roce&quot;:null,&quot;opm&quot;:null,&quot;week52H&quot;:null,&quot;week52L&quot;:null,&quot;mcap&quot;:null,&quot;eps&quot;:null,&quot;beta&quot;:null,&quot;div&quot;:null,&quot;debt_eq&quot;:null,&quot;score&quot;:65})">
+              <div class="srow-price">₹—</div>
+              <div class="srow-chg" style="color:var(--gr2)">▲ 0%</div>
+            </div>
+            <button onclick="removeFromWL('WAAREEENER')" style="background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);border-radius:7px;padding:6px 9px;color:var(--rd2);font-size:12px;cursor:pointer;flex-shrink:0">×</button>
+          </div>
+        </div>
+        <!-- Metrics grid -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;border-top:1px solid var(--b1);padding-top:7px;margin-bottom:6px">
+          
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">P/E</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">ROE</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">OPM</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">P/B</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">52W H</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">52W L</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">MCap</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+            <div>
+              <div style="font-size:7px;color:var(--label);text-transform:uppercase;letter-spacing:.4px;font-weight:600">D/E</div>
+              <div style="font-size:10px;font-weight:600;color:var(--tx2);margin-top:1px;font-family:var(--mono)">—</div>
+            </div>
+        </div>
+        <!-- External links -->
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <a href="https://www.nseindia.com/get-quotes/equity?symbol=WAAREEENER" target="_blank" rel="noopener" style="font-size:9px;font-weight:700;font-family:var(--mono);padding:2px 8px;border-radius:4px;border:1px solid #2196f340;background:#2196f315;color:#2196f3;text-decoration:none">NSE ↗</a><a href="https://www.screener.in/company/WAAREEENER/" target="_blank" rel="noopener" style="font-size:9px;font-weight:700;font-family:var(--mono);padding:2px 8px;border-radius:4px;border:1px solid #a855f740;background:#a855f715;color:#a855f7;text-decoration:none">Screener ↗</a><a href="https://www.moneycontrol.com/india/stockpricequote/miscellaneous/WAAREEENER/WAAREEENER/" target="_blank" rel="noopener" style="font-size:9px;font-weight:700;font-family:var(--mono);padding:2px 8px;border-radius:4px;border:1px solid #00d08440;background:#00d08415;color:#00d084;text-decoration:none">MC ↗</a><a href="https://in.tradingview.com/symbols/NSE-WAAREEENER/" target="_blank" rel="noopener" style="font-size:9px;font-weight:700;font-family:var(--mono);padding:2px 8px;border-radius:4px;border:1px solid #64b5f640;background:#64b5f615;color:#64b5f6;text-decoration:none">TradingView ↗</a>
+        </div>
+      </div>
+  </div>
+  </div></div>
 
 <!-- BOTTOM NAV -->
 <div id="nav">
-  <button class="nb active" onclick="showTab('portfolio',this)">
+  <button class="nb" onclick="showTab('portfolio',this)">
     <span class="nb-ico">💼</span>Portfolio
   </button>
-  <button class="nb" onclick="showTab('watchlist',this)">
+  <button class="nb active" onclick="showTab('watchlist',this)">
     <span class="nb-ico">👁</span>Watchlist
   </button>
   <button class="nb" onclick="showTab('macro',this)">
@@ -551,7 +711,7 @@ canvas{display:block;width:100%;}
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" class="show">⬆ Pushing to GitHub…</div>
 
 <script>
 /* ═══════════════════════════════════════════════════════════
@@ -5887,5 +6047,6 @@ function boot(){
 }
 boot();
 </script>
-</body>
-</html>
+
+
+</body></html>
