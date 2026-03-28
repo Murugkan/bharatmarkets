@@ -11,15 +11,11 @@
 ═══════════════════════════════════════════════════════════ */
 
 // ── Storage ──────────────────────────────────────────────
-// ══════════════════════════════════════════════════════════
 // STORAGE KEYS — localStorage keys for persisting app state
-// ══════════════════════════════════════════════════════════
 const SK = { PORT:'bmp_port_v2', WL:'bmp_wl_v2', SETTINGS:'bmp_settings_v2' };
 
 // ── State ─────────────────────────────────────────────────
-// ══════════════════════════════════════════════════════════
 // APP STATE — single source of truth for all UI state
-// ══════════════════════════════════════════════════════════
 let S = {
   portfolio: [],    // [{sym,isin,name,sector,qty,avgBuy,ltp,change}]
   watchlist: [],
@@ -213,7 +209,6 @@ const NSE_DB = [
   {sym:'RVNL',name:'Rail Vikas Nigam',sector:'Infrastructure'},
   {sym:'CONCOR',name:'Container Corporation',sector:'Logistics'},
   {sym:'VRL',name:'VRL Logistics',sector:'Logistics'},
-  {sym:'DELHIVERY',name:'Delhivery',sector:'Logistics'},
   {sym:'BLUEDART',name:'Blue Dart Express',sector:'Logistics'},
   {sym:'HINDCOPPER',name:'Hindustan Copper',sector:'Metals'},
   {sym:'HINDZINC',name:'Hindustan Zinc',sector:'Metals'},
@@ -221,13 +216,11 @@ const NSE_DB = [
   {sym:'MOIL',name:'MOIL Limited',sector:'Metals'},
   {sym:'MAITHANALL',name:'Maithan Alloys',sector:'Ferro Alloys'},
   {sym:'RAIN',name:'Rain Industries',sector:'Chemicals'},
-  {sym:'DEEPAKNTR',name:'Deepak Nitrite',sector:'Chemicals'},
   {sym:'AARTI',name:'Aarti Industries',sector:'Chemicals'},
   {sym:'CLEAN',name:'Clean Science & Technology',sector:'Chemicals'},
   {sym:'FINEORG',name:'Fine Organic Industries',sector:'Chemicals'},
   {sym:'VINATIORGA',name:'Vinati Organics',sector:'Chemicals'},
   {sym:'ARROWGREEN',name:'Arrow Greentech',sector:'Chemicals'},
-  {sym:'PIDILITIND',name:'Pidilite Industries',sector:'Consumer'},
   {sym:'TITANBIOTE',name:'Titan Biotech',sector:'Diagnostics'},
   {sym:'ROSSELLTECH',name:'Rossell Techsys',sector:'Defence'},
   {sym:'SAGILITY',name:'Sagility India',sector:'Healthcare IT'},
@@ -247,7 +240,6 @@ const NSE_DB = [
   {sym:'OFSS',name:'Oracle Financial Services',sector:'IT'},
   {sym:'HEXAWARE',name:'Hexaware Technologies',sector:'IT'},
   {sym:'MASTEK',name:'Mastek',sector:'IT'},
-  {sym:'MPHASIS',name:'Mphasis',sector:'IT'},
   {sym:'SONATSOFTW',name:'Sonata Software',sector:'IT'},
   {sym:'ZENSAR',name:'Zensar Technologies',sector:'IT'},
   {sym:'CYIENT',name:'Cyient',sector:'IT'},
@@ -288,14 +280,12 @@ const NSE_DB = [
   {sym:'RAYMOND',name:'Raymond Limited',sector:'Textiles'},
   {sym:'TRIDENT',name:'Trident Limited',sector:'Textiles'},
   {sym:'OLECTRA',name:'Olectra Greentech',sector:'EV'},
-  {sym:'TATAMOTORS',name:'Tata Motors (EV leader)',sector:'Auto'},
   {sym:'IDEAFORGE',name:'ideaForge Technology',sector:'Defence Drones'},
   {sym:'PARAS',name:'Paras Defence',sector:'Defence'},
   {sym:'ASTRALMICRO',name:'Astra Microwave',sector:'Defence'},
   {sym:'MTAR',name:'MTAR Technologies',sector:'Defence'},
   {sym:'SIKAINTERP',name:'Sika Interplant Systems',sector:'Defence'},
   {sym:'HIGHENERGYB',name:'High Energy Batteries',sector:'Defence'},
-  {sym:'ROSSELLTECH',name:'Rossell Techsys',sector:'Defence'},
   {sym:'REPCOHOME',name:'Repco Home Finance',sector:'Housing Finance'},
   {sym:'LICHSGFIN',name:'LIC Housing Finance',sector:'Housing Finance'},
   {sym:'PNBHOUSING',name:'PNB Housing Finance',sector:'Housing Finance'},
@@ -311,7 +301,6 @@ const NSE_DB = [
   {sym:'LXCHEM',name:'Laxmi Organic Industries',sector:'Chemicals'},
   {sym:'ALKYLAMINE',name:'Alkyl Amines Chemicals',sector:'Chemicals'},
   {sym:'NOCIL',name:'NOCIL Limited',sector:'Chemicals'},
-  {sym:'TATACHEM',name:'Tata Chemicals',sector:'Chemicals'},
   {sym:'CHAMBLFERT',name:'Chambal Fertilisers',sector:'Fertilisers'},
   {sym:'RCF',name:'Rashtriya Chemicals',sector:'Fertilisers'},
   {sym:'GNFC',name:'GNFC',sector:'Fertilisers'},
@@ -340,7 +329,6 @@ const NSE_DB = [
   {sym:'AMARAJAB',name:'Amara Raja Energy',sector:'Auto Ancillary'},
   {sym:'BOSCHLTD',name:'Bosch Limited',sector:'Auto Ancillary'},
   {sym:'MOTHERSON',name:'Motherson Sumi Wiring',sector:'Auto Ancillary'},
-  {sym:'AMARAJAB',name:'Amara Raja',sector:'Batteries'},
   {sym:'EXIDEIND',name:'Exide Industries',sector:'Batteries'},
   {sym:'CEATLTD',name:'CEAT Limited',sector:'Tyres'},
   {sym:'MRF',name:'MRF Limited',sector:'Tyres'},
@@ -349,7 +337,6 @@ const NSE_DB = [
   {sym:'KAJARIACER',name:'Kajaria Ceramics',sector:'Tiles'},
   {sym:'BERGEPAINT',name:'Berger Paints',sector:'Paints'},
   {sym:'KANSAINER',name:'Kansai Nerolac',sector:'Paints'},
-  {sym:'INDIGO',name:'IndiGo Airlines',sector:'Aviation'},
   {sym:'SPICEJET',name:'SpiceJet',sector:'Aviation'},
   {sym:'GLOBAL',name:'Global Health (Medanta)',sector:'Healthcare'},
   {sym:'FORTIS',name:'Fortis Healthcare',sector:'Healthcare'},
@@ -362,7 +349,6 @@ const NSE_DB = [
   {sym:'INOXINDIA',name:'INOX India',sector:'Industrial Gases'},
   {sym:'GRAUERWEIL',name:'Grauer & Weil',sector:'Chemicals'},
   {sym:'HINDRECTIF',name:'Hindustan Rectifiers',sector:'Power Electronics'},
-  {sym:'IDEAFORGE',name:'ideaForge Technology',sector:'Drones'},
   {sym:'IGI',name:'International Gemmological Institute',sector:'Gems'},
   {sym:'TRUALT',name:'Truba Chem Industries',sector:'Renewable'},
   {sym:'KWALYPH',name:'Kwality Pharmaceuticals',sector:'Pharma'},
@@ -384,9 +370,7 @@ const NSE_DB = [
   {sym:'SYMMANS',name:'Symmans',sector:'Consumer Electronics'},
   {sym:'WHIRLPOOL',name:'Whirlpool of India',sector:'Consumer Electronics'},
   {sym:'NIELITLTD',name:'NIIT Technologies',sector:'IT'},
-  {sym:'CDSL',name:'CDSL',sector:'Finance'},
   {sym:'BSE',name:'BSE Limited',sector:'Finance'},
-  {sym:'HDFCAMC',name:'HDFC AMC',sector:'Finance'},
   {sym:'NIPPONLIFE',name:'Nippon India Mutual Fund',sector:'Finance'},
   {sym:'UTIAMC',name:'UTI AMC',sector:'Finance'},
   {sym:'KFINTECH',name:'KFin Technologies',sector:'Finance'},
@@ -402,7 +386,7 @@ const NSE_DB = [
   {sym:'SKF',name:'SKF India',sector:'Engineering'},
   {sym:'SCHAEFFLER',name:'Schaeffler India',sector:'Engineering'},
   {sym:'TIINDIA',name:'Tube Investments of India',sector:'Engineering'},
-].filter((v,i,a)=>a.findIndex(t=>t.sym===v.sym)===i); // deduplicate
+];
 
 // ── ISIN → Symbol map for portfolio parsing ───────────
 const ISIN_MAP = {
@@ -438,9 +422,6 @@ const ISIN_MAP = {
   'INE885A01032':'AMARAJABAT','INE902B01017':'SSPOWERSWIT','INE918Z01012':'KAYNES',
   'INE947A01014':'SUNFLAG','INE552U01010':'KWALITYPHARM',
   'INE040A01034':'HDFCBANK','INE090A01021':'ICICIBANK','INE062A01020':'SBIN',
-  'INE154A01025':'ITC','INE191H01014':'PVRINOX','INE467B01029':'ZOMATO',
-  'INE245A01021':'TATAPOWER','INE267A01025':'HINDZINC','INE531E01026':'HINDCOPPER',
-  'INE274J01014':'OIL','INE242A01010':'IOC','INE134E01011':'PFC',
   'INE020B01018':'RECLTD','INE752E01010':'POWERGRID','INE205A01025':'VEDL',
   'INE066F01020':'HAL','INE089A01031':'DRREDDY','INE376G01013':'BIOCON',
   'INE592A01026':'INDUSINDBK','INE121A01024':'BAJFINANCE','INE503A01015':'TITAN',
@@ -451,24 +432,16 @@ const ISIN_MAP = {
   'INE861G01027':'HAL','INE076A01022':'ONGC','INE514E01016':'ADANIGREEN',
   'INE423A01024':'TATAMOTORS','INE467B01029':'ZOMATO',
   'INE622W01025':'ACMESOLAR','INE674K01013':'ABCAPITAL','INE647O01011':'ABFRL',
-  'INE101I01011':'AFCONS','INE885A01032':'AMARAJAB','INE437A01024':'APOLLOHOSP',
   'INE171Z01026':'BDL','INE704P01025':'COCHINSHIP','INE591G01025':'COFORGE',
   'INE365B01017':'DATAMATICS','INE510A01028':'ENGINERSIN','INE235A01022':'FINCABLES',
-  'INE382Z01011':'GRSE','INE266D01021':'GRAUERWEIL','INE292B01021':'HBLPOWER',
   'INE795G01014':'HDFCLIFE','INE783E01023':'HIGHENERGYB','INE835D01023':'HINDRECTIF',
-  'INE736A01011':'CDSL','INE675C01017':'CIGNITI','INE092T01019':'IDFCFIRSTB',
   'INE562A01011':'INDIANB','INE332H01014':'INDOTECHTR','INE121J01017':'INDUSTOWER',
-  'INE616N01034':'INOXINDIA','INE306R01017':'INTELLECT','INE00M901018':'INTERARCH',
   'INE0Q9301021':'IGI','INE668F01031':'JYOTHYLAB','INE127T01021':'KPENERGI',
   'INE918Z01012':'KAYNES','INE878B01027':'KEI','INE08N601015':'MBENGINEERING',
   'INE683C01011':'MAITHANALL','INE750C01026':'MARKSANS','INE868B01028':'NCC',
   'INE0NT901020':'NETWEB','INE134E01011':'PFC','INE855B01025':'RAIN',
   'INE027A01015':'RCF','INE0CLI01024':'RATEGAIN','INE020B01018':'RECLTD',
-  'INE0LXT01019':'REDTAPE','INE612J01015':'REPCOHOME','INE0DAB01012':'REVATHI',
-  'INE0OJW01016':'ROSSELLTECH','INE902B01017':'SSPOWERSWIT','INE0W2G01015':'SAGILITY',
-  'INE024F01011':'SHILCHAR','INE0FMZ01045':'SHREEREFRI','INE438E01032':'SIKAINTERP',
   'INE411D01023':'SKMEPEX','INE947A01014':'SUNFLAG','INE07RO01027':'SUPRIYA',
-  'INE442P01014':'SUYOGTELE','INE040H01021':'SUZLON','INE419M01027':'TDPOWERSYS',
   'INE017A01032':'GESHIP','INE149K01016':'SANDUMA','INE150C01029':'TITANBIOTE',
   'INE0MWH01014':'TRUALT','INE781S01027':'VENTIVE','INE078V01014':'VIKRAMSOLAR',
   'INE540H01012':'VOLTAMP','INE251B01027':'ZENTEC','INE0IX101010':'DATAPATTNS',
@@ -476,10 +449,8 @@ const ISIN_MAP = {
 };
 
 // ── Macro Data ────────────────────────────────────────
-// ══════════════════════════════════════════════════════════
 // MACRO DATA — static India macro indicators shown in Macro tab
 // Updated manually; supplement with live RSS news
-// ══════════════════════════════════════════════════════════
 const MACRO_DATA = [
   {icon:'🏛️',label:'RBI Repo Rate',val:'6.25%',trend:'→ Stable',impact:'Neutral',ic:'#f59e0b',tag:'RBI',
    detail:'RBI held rates steady at 6.25% in Feb 2026. Rate cut expected in Q2FY26 if CPI sustains below 4.5%. Positive for NBFCs and rate-sensitive sectors.'},
@@ -511,9 +482,7 @@ const MACRO_DATA = [
 // GAINERS/LOSERS/INDICES derived live from prices.json — see renderMovers()
 
 // ── Sector colours for allocation chart ───────────────
-// ══════════════════════════════════════════════════════════
 // SECTOR COLOURS — used in portfolio allocation bar + heatmap
-// ══════════════════════════════════════════════════════════
 const SECTOR_COLORS = {
   'Banking':'#2196f3','IT':'#9c27b0','Energy':'#f97316','Pharma':'#00d084','Diversified':'#5878a8',
   'Auto':'#00bcd4','FMCG':'#f5a623','Capital Goods':'#e91e63','Defence':'#4caf50',
@@ -583,9 +552,7 @@ function updClock(){
 setInterval(updClock,10000);updClock();
 
 // ── Storage ───────────────────────────────────────────
-// ══════════════════════════════════════════════════════════
 // PERSISTENCE — load/save portfolio, watchlist, settings
-// ══════════════════════════════════════════════════════════
 function loadState(){
   try{S.portfolio=JSON.parse(localStorage.getItem(SK.PORT))||[];}catch(_){}
   try{S.watchlist=JSON.parse(localStorage.getItem(SK.WL))||[];}catch(_){}
@@ -672,9 +639,7 @@ function saveWL(){localStorage.setItem(SK.WL,JSON.stringify(S.watchlist));}
 function saveSettings(){localStorage.setItem(SK.SETTINGS,JSON.stringify(S.settings));}
 
 // ── Ticker ────────────────────────────────────────────
-// ══════════════════════════════════════════════════════════
 // TICKER BAR — index prices scrolling at top (currently hidden)
-// ══════════════════════════════════════════════════════════
 function buildTicker(){
   // Build from FUND index data if available, else show placeholder
   const indexMap = {
@@ -780,10 +745,8 @@ function closeStock(){S.selStock=null;render();}
 // ── Panel ─────────────────────────────────────────────
 function openPanel(){document.getElementById('ov').classList.add('on');document.getElementById('import-panel').classList.add('on');}
 function closePanel(){document.getElementById('ov').classList.remove('on');document.getElementById('import-panel').classList.remove('on');}
-// ══════════════════════════════════════════════════════════
 // PORTFOLIO IMPORT — CDSL XLS, CSV, or manual entry
 // Parses holdings, saves, then triggers full data refresh
-// ══════════════════════════════════════════════════════════
 function openImport(){
   parsedHoldings = [];   // always start fresh
   document.getElementById('import-panel-body').innerHTML=renderImportPanel();
@@ -886,7 +849,6 @@ function renderImportPanel(){
     onclick="applyImport('append')">+ Append to Existing</button>
   `;
 }
-
 
 function switchImpTab(tab){
   ['file','paste','manual'].forEach(t=>{
@@ -1146,7 +1108,7 @@ function showImportPreview(){
   preEl.classList.add('show');
 }
 
-// FIX #5: Robust multi-format parser
+// Robust multi-format parser
 // Multi-format parser: CDSL XLS export, plain CSV, CDSL PDF text
 // Priority: CDSL export format → Key:Value → numbered list
 function parsePortfolioText(text){
@@ -1406,146 +1368,8 @@ function importStatusHtml(){
 }
 
 // ── Auto-sync portfolio symbols to GitHub after import ────────────
-// ══════════════════════════════════════════════════════════
 // AUTO-SYNC — commits portfolio_symbols.txt to GitHub
 // and triggers fundamentals_only workflow after import
-// ══════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 async function autoSyncPortfolioSymbols(){
   const token = S.settings.ghToken?.trim();
@@ -1628,10 +1452,8 @@ async function autoSyncPortfolioSymbols(){
   }
 }
 
-// ═══════════════════════════════════════════════════════════
 //  PORTFOLIO TAB — Bloomberg Terminal Style Screener Grid
 //  Matches: color-coded rows, dense columns, signal badges
-// ═══════════════════════════════════════════════════════════
 
 // Refresh state
 
@@ -1644,14 +1466,11 @@ function cellColor(val, goodAbove, badBelow) {
   return 'color:var(--yw2)';
 }
 
-
-// ═══════════════════════════════════════════════════════════════
 //  BLOOMBERG-STYLE 37-COLUMN PORTFOLIO SCREENER
 //  Data sources:
 //    prices.json       → LTP, %1D, %5D, P/E, P/B, EPS, MCAP, 52Wk
 //    fundamentals.json → ATH%, Prom%, Pledge%, OPM%, NPM%, ROE,
 //                        Sales, CFO, EBITDA, Signal, Pos, Neg
-// ═══════════════════════════════════════════════════════════════
 
 // App-level fundamentals cache (loaded from ./fundamentals.json)
 let FUND = {};   // { SYM: { roe, pe, opm_pct, ... } }
@@ -1832,10 +1651,51 @@ function fnCr(v){
 }
 
 // ── MAIN RENDER ────────────────────────────────────────
-// ══════════════════════════════════════════════════════════
 // PORTFOLIO TAB — Bloomberg-style 29-column screener
 // Data: portfolio holdings (CDSL import) + fundamentals.json
-// ══════════════════════════════════════════════════════════
+
+function sortRows(rows, skey, sdir) {
+  rows.sort((a,b) => {
+    let av, bv;
+    switch(skey) {
+      case 'sym':    av=a.sym; bv=b.sym; break;
+      case 'sector': av=a.sector||''; bv=b.sector||''; break;
+      case 'pos':    av=a.pos||0; bv=b.pos||0; break;
+      case 'neg':    av=a.neg||0; bv=b.neg||0; break;
+      case 'pledge': av=0; bv=0; break;
+      case 'pub':    av=a.public_pct||0; bv=b.public_pct||0; break;
+      case 'name':   av=a.name||''; bv=b.name||''; break;
+      case 'chg1d':  av=a.chg1d||0; bv=b.chg1d||0; break;
+      case 'chg5d':  av=a.chg5d||0; bv=b.chg5d||0; break;
+      case 'pe':     av=a.pe||999; bv=b.pe||999; break;
+      case 'pb':     av=a.pb||0; bv=b.pb||0; break;
+      case 'eps':    av=a.eps||0; bv=b.eps||0; break;
+      case 'roe':    av=a.roe||0; bv=b.roe||0; break;
+      case 'opm':    av=a.opm_pct||0; bv=b.opm_pct||0; break;
+      case 'npm':    av=a.npm_pct||0; bv=b.npm_pct||0; break;
+      case 'ebi':    av=a.ebitda||0; bv=b.ebitda||0; break;
+      case 'prom':   av=a.prom_pct||0; bv=b.prom_pct||0; break;
+      case 'mcap':   av=a.mcap||0; bv=b.mcap||0; break;
+      case 'sales':  av=a.sales||0; bv=b.sales||0; break;
+      case 'cfo':    av=a.cfo||0; bv=b.cfo||0; break;
+      case 'ltp':    av=a.ltp||0; bv=b.ltp||0; break;
+      case 'qty':    av=a.qty||0; bv=b.qty||0; break;
+      case 'avg':    av=a.avgBuy||0; bv=b.avgBuy||0; break;
+      case 'pnl':    av=a.ltp>0?a.qty*a.ltp-a.qty*a.avgBuy:-Infinity;
+                     bv=b.ltp>0?b.qty*b.ltp-b.qty*b.avgBuy:-Infinity; break;
+      case 'pnlpct': av=a.ltp>0&&a.avgBuy>0?(a.ltp-a.avgBuy)/a.avgBuy*100:-Infinity;
+                     bv=b.ltp>0&&b.avgBuy>0?(b.ltp-b.avgBuy)/b.avgBuy*100:-Infinity; break;
+      case 'wt':     av=a.ltp>0?a.qty*a.ltp:0; bv=b.ltp>0?b.qty*b.ltp:0; break;
+      case 'sig':    av=a.signal||'HOLD'; bv=b.signal||'HOLD'; break;
+      case 'ath':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;
+      case 'w52':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;
+      default:       av=a.qty*(a.ltp||0); bv=b.qty*(b.ltp||0);
+    }
+    if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+    return sdir==='asc'?av-bv:bv-av;
+  });
+}
+
 function renderPortfolio(c){
   if(!S.portfolio.length){
     c.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 24px;text-align:center">
@@ -1927,45 +1787,7 @@ function renderPortfolio(c){
       'Healthcare':'Pharma','Energy':'Energy'};
     return map[raw]||raw;
   }
-  const skey = S.pfSort||'wt';
-  const sdir = S.pfSortDir||'desc';
-  rows.sort((a,b)=>{
-    let av,bv;
-    switch(skey){
-      case 'sym':    av=a.sym; bv=b.sym; break;
-      case 'sector': av=a.sector||''; bv=b.sector||''; break;
-      case 'pos':    av=a.pos||0; bv=b.pos||0; break;
-      case 'neg':    av=a.neg||0; bv=b.neg||0; break;
-      case 'pledge': av=0; bv=0; break;
-      case 'pub':    av=a.public_pct||0; bv=b.public_pct||0; break;
-      case 'name':   av=a.name||''; bv=b.name||''; break;
-      case 'chg1d':  av=a.chg1d||0; bv=b.chg1d||0; break;
-      case 'chg5d':  av=a.chg5d||0; bv=b.chg5d||0; break;
-      case 'pe':     av=a.pe||999; bv=b.pe||999; break;
-      case 'pb':     av=a.pb||0; bv=b.pb||0; break;
-      case 'eps':    av=a.eps||0; bv=b.eps||0; break;
-      case 'roe':    av=a.roe||0; bv=b.roe||0; break;
-      case 'opm':    av=a.opm_pct||0; bv=b.opm_pct||0; break;
-      case 'npm':    av=a.npm_pct||0; bv=b.npm_pct||0; break;
-      case 'ebi':    av=a.ebitda||0; bv=b.ebitda||0; break;
-      case 'prom':   av=a.prom_pct||0; bv=b.prom_pct||0; break;
-      case 'mcap':   av=a.mcap||0; bv=b.mcap||0; break;
-      case 'sales':  av=a.sales||0; bv=b.sales||0; break;
-      case 'cfo':    av=a.cfo||0; bv=b.cfo||0; break;
-      case 'ltp':    av=a.ltp||0; bv=b.ltp||0; break;
-      case 'qty':    av=a.qty||0; bv=b.qty||0; break;
-      case 'avg':    av=a.avgBuy||0; bv=b.avgBuy||0; break;
-      case 'pnl':    av=a.ltp>0?a.qty*a.ltp-a.qty*a.avgBuy:-Infinity;
-                     bv=b.ltp>0?b.qty*b.ltp-b.qty*b.avgBuy:-Infinity; break;
-      case 'pnlpct': av=a.ltp>0&&a.avgBuy>0?(a.ltp-a.avgBuy)/a.avgBuy*100:-Infinity;
-                     bv=b.ltp>0&&b.avgBuy>0?(b.ltp-b.avgBuy)/b.avgBuy*100:-Infinity; break;
-      case 'wt':     av=a.ltp>0?a.qty*a.ltp:0; bv=b.ltp>0?b.qty*b.ltp:0; break;
-      case 'sig':    av=a.signal||'HOLD'; bv=b.signal||'HOLD'; break;
-      default:       av=a.qty*(a.ltp||0); bv=b.qty*(b.ltp||0);
-    }
-    if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
-    return sdir==='asc'?av-bv:bv-av;
-  });
+    sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');
 
   // Inject status strip separately to avoid template literal contamination
   c.innerHTML=`
@@ -2236,7 +2058,6 @@ ${!fundLoaded?`
   </button>
 </div>`:''}
 
-
 </div>`;
 
   // Inject status strip via DOM after render
@@ -2358,42 +2179,7 @@ function togglePfSort(k){
   const totalCur = tc.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
   const invPriced= tc.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*(h.avgBuy||0),0);
 
-  // Apply the same sort logic as renderPortfolio
-  const skey=S.pfSort||'wt', sdir=S.pfSortDir||'desc';
-  rows.sort((a,b)=>{
-    let av,bv;
-    switch(skey){
-      case 'sym':    av=a.sym; bv=b.sym; break;
-      case 'name':   av=a.name||''; bv=b.name||''; break;
-      case 'chg1d':  av=a.chg1d||0; bv=b.chg1d||0; break;
-      case 'chg5d':  av=a.chg5d||0; bv=b.chg5d||0; break;
-      case 'pe':     av=a.pe||999; bv=b.pe||999; break;
-      case 'pb':     av=a.pb||0; bv=b.pb||0; break;
-      case 'eps':    av=a.eps||0; bv=b.eps||0; break;
-      case 'roe':    av=a.roe||0; bv=b.roe||0; break;
-      case 'opm':    av=a.opm_pct||0; bv=b.opm_pct||0; break;
-      case 'npm':    av=a.npm_pct||0; bv=b.npm_pct||0; break;
-      case 'ebi':    av=a.ebitda||0; bv=b.ebitda||0; break;
-      case 'prom':   av=a.prom_pct||0; bv=b.prom_pct||0; break;
-      case 'mcap':   av=a.mcap||0; bv=b.mcap||0; break;
-      case 'sales':  av=a.sales||0; bv=b.sales||0; break;
-      case 'cfo':    av=a.cfo||0; bv=b.cfo||0; break;
-      case 'ltp':    av=a.ltp||0; bv=b.ltp||0; break;
-      case 'qty':    av=a.qty||0; bv=b.qty||0; break;
-      case 'avg':    av=a.avgBuy||0; bv=b.avgBuy||0; break;
-      case 'pnl':    av=a.ltp>0?a.qty*a.ltp-a.qty*a.avgBuy:-Infinity;
-                     bv=b.ltp>0?b.qty*b.ltp-b.qty*b.avgBuy:-Infinity; break;
-      case 'pnlpct': av=a.ltp>0&&a.avgBuy>0?(a.ltp-a.avgBuy)/a.avgBuy*100:-Infinity;
-                     bv=b.ltp>0&&b.avgBuy>0?(b.ltp-b.avgBuy)/b.avgBuy*100:-Infinity; break;
-      case 'wt':     av=a.ltp>0?a.qty*a.ltp:0; bv=b.ltp>0?b.qty*b.ltp:0; break;
-      case 'sig':    av=a.signal||'HOLD'; bv=b.signal||'HOLD'; break;
-      case 'ath':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;
-      case 'w52':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;
-      default:       av=a.qty*(a.ltp||0); bv=b.qty*(b.ltp||0);
-    }
-    if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
-    return sdir==='asc'?av-bv:bv-av;
-  });
+    sortRows(rows, S.pfSort, S.pfSortDir);
 
   // Update header arrows
   document.querySelectorAll('th.sorted').forEach(th=>th.classList.remove('sorted'));
@@ -2424,10 +2210,8 @@ function togglePfSort(k){
 
 // ── Manual Refresh — Yahoo Finance via proxy ────────────
 // ── Refresh: Load prices.json from GitHub first, then Yahoo for live ──
-// ══════════════════════════════════════════════════════════
 // PRICE REFRESH — fetches prices.json from GitHub Pages
 // Runs: on boot, every 5min during market hours, on import
-// ══════════════════════════════════════════════════════════
 async function refreshPortfolioData(){
   if(pfRefreshing||!S.portfolio.length)return;
   pfRefreshing=true;
@@ -2627,16 +2411,12 @@ function genCandles(ltp,n){
   return cs;
 }
 
-// ═══════════════════════════════════════════
 //  WATCHLIST TAB — FIX #8: Real NSE search
-// ═══════════════════════════════════════════
 let wlSearchTimer=null;
 let wlSearchVal='';
 
-// ══════════════════════════════════════════════════════════
 // WATCHLIST TAB — search, track, and manage NSE stocks
 // GitHub sync auto-triggers price fetch on add/remove
-// ══════════════════════════════════════════════════════════
 function renderWatchlist(c){
   // Merge live fundamentals into each watchlist item
   const wl = S.watchlist.map(w=>{
@@ -2777,11 +2557,8 @@ function removeFromWL(sym){
   render();
 }
 
-
 // ── GitHub API: Push index.html to repo ───────────────────
-// ══════════════════════════════════════════════════════════
 // GITHUB API — push index.html, sync watchlist, diagnostics
-// ══════════════════════════════════════════════════════════
 async function pushIndexToGitHub(){
   const token = S.settings.ghToken?.trim();
   const repo  = S.settings.ghRepo?.trim();
@@ -2837,7 +2614,6 @@ async function pushIndexToGitHub(){
     toast('❌ Error: '+e.message);
   }
 }
-
 
 function headerPricesTap(){
   // Spin the ↻ while fetching
@@ -3050,12 +2826,8 @@ async function syncWatchlistToGitHub(newSym){
   }
 }
 
-// ═══════════════════════════════════════════
 //  FIX #2: MACRO TAB — fully populated
-// ═══════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
 // MACRO TAB — India macro indicators + live RSS news
-// ══════════════════════════════════════════════════════════
 function renderMacro(c){
   const filtered = S.macroFilter==='ALL'
     ? MACRO_DATA
@@ -3167,13 +2939,9 @@ async function loadMacroNews(){
   }).join('');
 }
 
-// ═══════════════════════════════════════════
 //  MOVERS TAB
-// ═══════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
 // MOVERS TAB — gainers/losers/sector heatmap from live prices
 // Data: portfolio + watchlist stocks with live LTP
-// ══════════════════════════════════════════════════════════
 function renderMovers(c){
   // Universe = portfolio + watchlist stocks only (not stale/irrelevant symbols)
   const pfSyms = new Set(S.portfolio.map(h=>h.sym));
@@ -3537,14 +3305,8 @@ function drawSectorHeatmap(universe){
   };
 }
 
-
-
-
-// ═══════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
 // STOCK DRILL-DOWN — tabbed detail view for any stock
 // Tabs: Overview · Technical · Fundamentals · News · Insights
-// ══════════════════════════════════════════════════════════
 function renderDrill(c){
   const s=S.selStock;
   if(!s){closeStock();return;}
@@ -3883,7 +3645,6 @@ function saveInsights(sym){
   ta.value='';
   render();
 }
-
 
 // Toggle collapsible overview card open/closed
 function toggleOvCard(cid){
@@ -4241,9 +4002,7 @@ function renderOverview(s){
   </div>`;
 }
 
-// ═══════════════════════════════════════════
 //  FIX #6: PROPER CANDLESTICK CHART
-// ═══════════════════════════════════════════
 // Technical tab: candlestick chart + MA overlays + signal table
 function renderTechnical(s){
   const signals=[
@@ -4326,7 +4085,6 @@ function renderTechnical(s){
         <canvas id="cv-vol" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas>
       </div>`:''}
     </div>
-
 
     <div class="chart-stats" style="border-top:1px solid var(--b1);background:var(--s2)">
       <div class="cstat"><div class="cstat-l">Return</div><div class="cstat-v" id="cstat-ret">—</div></div>
@@ -4712,7 +4470,6 @@ function drawCandlestick(s){
   // ── KPI overlays on price chart ──────────────────────────────────
   const quarterly = s.quarterly || [];
 
-
   const KPI_DEFS = [
     {k:'pe',   label:'P/E',     col:'#f59e0b'},
     {k:'rev',  label:'Rev',     col:'#22d3ee'},
@@ -4771,7 +4528,6 @@ function drawCandlestick(s){
       }
     }
 
-
       // Keep points that fall within or near visible chart area
     // Extend margin so points just outside edges still connect to line
     pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
@@ -4802,7 +4558,6 @@ function drawCandlestick(s){
       if(!pts.length) return;
 
     const drawLine = pts.length >= 2;
-
 
     // Map values to Y using a DEDICATED right-side scale for this KPI
     // This avoids the problem of small PE values (eg 18x) mapping to price range (eg 500-800)
@@ -4982,7 +4737,7 @@ function renderFundamentals(s){
   </div>`;
 }
 
-// FIX #2: News tab with RSS
+// News tab with RSS
 function renderNewsTab(s){
   return `<div>
     <div style="padding:10px 12px 4px">
@@ -5090,20 +4845,16 @@ function loadAndDrawChart(s){
   }));
 }
 
-// ═══════════════════════════════════════════
 //  ANALYSIS TAB
-// ═══════════════════════════════════════════
 let analysisState = {
   selSym:   null,   // currently selected stock
   filing:   null,   // { url, title, date, quarter }
   loading:  false,
 };
 
-// ══════════════════════════════════════════════════════════
 // ANALYSIS TAB — concall paste workflow
 // User: finds filing → copies prompt → pastes in Claude.ai
 //       → pastes response here → saved to GUIDANCE + GitHub
-// ══════════════════════════════════════════════════════════
 function renderAnalysis(c){
   const pf = S.portfolio.map(h=>mergeHolding(h));
 
@@ -5764,15 +5515,12 @@ function parseAnalysisTable(sym, text){
   return g;
 }
 
-
 // ── Boot ──────────────────────────────────────────────
 
 // ── Guidance JSON — strip raw_table to keep file lean ─────────────
-// ══════════════════════════════════════════════════════════
 // GUIDANCE STORAGE — concall analysis + AI insights
 // Persisted to both localStorage AND GitHub (guidance.json)
 // raw_table stripped before GitHub commit to keep file lean
-// ══════════════════════════════════════════════════════════
 function guidanceForStorage(){
   const out = {};
   Object.entries(GUIDANCE).forEach(([sym, g])=>{
@@ -5862,14 +5610,10 @@ function saveGuidanceAll(){
   saveGuidanceToGitHub();  // fire-and-forget
 }
 
-// ══════════════════════════════════════════════════════════
 // BOOT — initialise app on load
 // Order: load state → load fundamentals → load guidance → render
-// ══════════════════════════════════════════════════════════
 
-// ══════════════════════════════════════════════════════════
 // UPLOAD TAB — all data import, sync, and config in one place
-// ══════════════════════════════════════════════════════════
 function renderUpload(c){
   const ghOk    = !!(S.settings.ghToken && S.settings.ghRepo);
   const ghColor = S.settings._ghStatus==='ok'?'#00e896':S.settings._ghStatus==='fail'?'#ff6b85':'#4a6888';
@@ -5899,7 +5643,6 @@ function renderUpload(c){
         </button>
       </div>
     </div>
-
 
     <!-- ── Section: GitHub Config ── -->
     <div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden">
