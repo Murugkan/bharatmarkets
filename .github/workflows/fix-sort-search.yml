@@ -1,0 +1,110 @@
+name: Fix sort and search
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write fix script
+        run: |
+          cat > fix.js << 'ENDOFSCRIPT'
+          const fs = require('fs');
+          let js = fs.readFileSync('app.js', 'utf8');
+
+          // ── FIX 1: Replace togglePfSort sort block with sortRows() call ──
+          // Find togglePfSort function
+          const tfIdx = js.indexOf('function togglePfSort(k){');
+          if (tfIdx === -1) { console.error('togglePfSort not found'); process.exit(1); }
+
+          // Find the sort block inside togglePfSort — starts after invPriced line
+          const invPricedIdx = js.indexOf('const invPriced=', tfIdx);
+          if (invPricedIdx === -1) { console.error('invPriced line not found'); process.exit(1); }
+
+          // Find end of invPriced line
+          const invPricedEnd = js.indexOf('\n', invPricedIdx) + 1;
+
+          // Find end of sort block — look for next significant line after rows.sort(...)
+          // The sort block ends with }); followed by newline then // Update header
+          const updateHeaderIdx = js.indexOf('  // Update header arrows', tfIdx);
+          if (updateHeaderIdx === -1) { console.error('Update header comment not found'); process.exit(1); }
+
+          // Replace everything between invPricedEnd and updateHeaderIdx with sortRows call
+          const before = js.slice(0, invPricedEnd);
+          const after  = js.slice(updateHeaderIdx);
+          js = before + '\n  sortRows(rows, S.pfSort||\'wt\', S.pfSortDir||\'desc\');\n\n  ' + after;
+          console.log('FIX 1 applied: togglePfSort now uses sortRows()');
+
+          // ── FIX 2: Fix search input losing focus on render ──
+          // Replace the search input oninput that calls render() with a smarter version
+          // that only updates tbody without full re-render
+          js = js.replace(
+            `oninput="S.pfSearch=this.value.toUpperCase().slice(0,3);if(S.curTab==='portfolio')render()"`,
+            `oninput="pfSearchInput(this.value)"`
+          );
+
+          // Add pfSearchInput function before renderPortfolio
+          const searchFn = `
+          function pfSearchInput(val){
+            S.pfSearch = val.toUpperCase().trim();
+            // Update tbody only — avoid full re-render which resets input focus
+            const tbody = document.getElementById('bls-tbody');
+            if(!tbody){ render(); return; }
+            const pf = S.portfolio.map(mergeHolding);
+            const totalCur = pf.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
+            const filt = S.pfFilter||'All';
+            const secFilt = S.pfSector||'';
+            let rows = pf
+              .filter(h=> filt==='All' || h.signal===filt)
+              .filter(h=> !secFilt || (h.sector||'').includes(secFilt))
+              .filter(h=> !S.pfSearch || h.sym.startsWith(S.pfSearch));
+            sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');
+            tbody.innerHTML = renderBLSRows(rows, totalCur);
+          }
+          `;
+
+          if (!js.includes('function pfSearchInput(')) {
+            js = js.replace('function renderPortfolio(', searchFn + '\nfunction renderPortfolio(');
+          }
+          console.log('FIX 2 applied: search input no longer triggers full re-render');
+
+          // Also increase maxlength from 3 to 10 for longer symbol searches
+          js = js.replace(
+            `<input id="pf-search" maxlength="3"`,
+            `<input id="pf-search" maxlength="10"`
+          );
+          console.log('FIX 2b applied: search maxlength increased to 10');
+
+          fs.writeFileSync('app.js', js);
+          console.log('app.js written');
+
+          // Verification
+          const checks = [
+            ['togglePfSort uses sortRows',    (js.match(/sortRows\(rows/g)||[]).length >= 2],
+            ['pfSearchInput defined',          js.includes('function pfSearchInput(')],
+            ['search uses pfSearchInput',      js.includes('oninput="pfSearchInput(this.value)"')],
+            ['search maxlength 10',            js.includes('maxlength="10"')],
+            ['renderPortfolio present',        js.includes('function renderPortfolio(')],
+            ['parseCDSLXls present',           js.includes('function parseCDSLXls(')],
+            ['sortRows defined',               js.includes('function sortRows(')],
+          ];
+          console.log('\nVerification:');
+          checks.forEach(([name, pass]) => console.log((pass ? '  PASS' : '  FAIL') + ' ' + name));
+          const failed = checks.filter(([,pass]) => !pass);
+          if (failed.length) { console.error(failed.length + ' checks failed'); process.exit(1); }
+          console.log('\nAll checks passed!');
+          ENDOFSCRIPT
+
+      - name: Run fix script
+        run: node fix.js
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add app.js
+          git diff --staged --quiet || git commit -m "fix: sort all columns + search input focus"
+          git push
