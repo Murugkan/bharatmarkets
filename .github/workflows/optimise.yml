@@ -16,16 +16,16 @@ jobs:
           let js = fs.readFileSync('app.js', 'utf8');
           const before = js.split('\n').length;
 
-          // 1. Remove ══ banner comment lines
+          // 1. Remove banner comment lines
           js = js.replace(/[ \t]*\/\/ ═{3,}[^\n]*\n/g, '');
 
           // 2. Remove FIX #N: prefixes
           js = js.replace(/\/\/ FIX #\d+: /g, '// ');
 
           // 3. Remove NSE_DB runtime dedup filter
-          js = js.replace(/\]\.filter\(\(v,i,a\)=>a\.findIndex\(t=>t\.sym===v\.sym\)===i\); \/\/ deduplicate/, '];');
+          js = js.replace(/\]\.filter\(\(v,i,a\)=>a\.findIndex\(t=>t\.sym===v\.sym\)===i\);[ \t]*\/\/ deduplicate/, '];');
 
-          // 4. Deduplicate ISIN_MAP — remove duplicate keys keeping first occurrence
+          // 4. Deduplicate ISIN_MAP
           js = js.replace(/(const ISIN_MAP = \{)([\s\S]*?)(\};)/, (match, open, body, close) => {
             const seen = new Set();
             const lines = body.split('\n');
@@ -39,7 +39,7 @@ jobs:
             return open + deduped.join('\n') + close;
           });
 
-          // 5. Deduplicate NSE_DB array entries — remove duplicate sym values
+          // 5. Deduplicate NSE_DB
           js = js.replace(/(const NSE_DB = \[)([\s\S]*?)(\];)/, (match, open, body, close) => {
             const seen = new Set();
             const lines = body.split('\n');
@@ -53,93 +53,96 @@ jobs:
             return open + deduped.join('\n') + close;
           });
 
-          // 6. Extract sortRows() shared function and replace both duplicate sort blocks
-          const sortRowsFn = \`
-          function sortRows(rows, skey, sdir) {
-            rows.sort((a,b) => {
-              let av, bv;
-              switch(skey) {
-                case 'sym':    av=a.sym; bv=b.sym; break;
-                case 'sector': av=a.sector||''; bv=b.sector||''; break;
-                case 'pos':    av=a.pos||0; bv=b.pos||0; break;
-                case 'neg':    av=a.neg||0; bv=b.neg||0; break;
-                case 'pledge': av=0; bv=0; break;
-                case 'pub':    av=a.public_pct||0; bv=b.public_pct||0; break;
-                case 'name':   av=a.name||''; bv=b.name||''; break;
-                case 'chg1d':  av=a.chg1d||0; bv=b.chg1d||0; break;
-                case 'chg5d':  av=a.chg5d||0; bv=b.chg5d||0; break;
-                case 'pe':     av=a.pe||999; bv=b.pe||999; break;
-                case 'pb':     av=a.pb||0; bv=b.pb||0; break;
-                case 'eps':    av=a.eps||0; bv=b.eps||0; break;
-                case 'roe':    av=a.roe||0; bv=b.roe||0; break;
-                case 'opm':    av=a.opm_pct||0; bv=b.opm_pct||0; break;
-                case 'npm':    av=a.npm_pct||0; bv=b.npm_pct||0; break;
-                case 'ebi':    av=a.ebitda||0; bv=b.ebitda||0; break;
-                case 'prom':   av=a.prom_pct||0; bv=b.prom_pct||0; break;
-                case 'mcap':   av=a.mcap||0; bv=b.mcap||0; break;
-                case 'sales':  av=a.sales||0; bv=b.sales||0; break;
-                case 'cfo':    av=a.cfo||0; bv=b.cfo||0; break;
-                case 'ltp':    av=a.ltp||0; bv=b.ltp||0; break;
-                case 'qty':    av=a.qty||0; bv=b.qty||0; break;
-                case 'avg':    av=a.avgBuy||0; bv=b.avgBuy||0; break;
-                case 'pnl':    av=a.ltp>0?a.qty*a.ltp-a.qty*a.avgBuy:-Infinity;
-                               bv=b.ltp>0?b.qty*b.ltp-b.qty*b.avgBuy:-Infinity; break;
-                case 'pnlpct': av=a.ltp>0&&a.avgBuy>0?(a.ltp-a.avgBuy)/a.avgBuy*100:-Infinity;
-                               bv=b.ltp>0&&b.avgBuy>0?(b.ltp-b.avgBuy)/b.avgBuy*100:-Infinity; break;
-                case 'wt':     av=a.ltp>0?a.qty*a.ltp:0; bv=b.ltp>0?b.qty*b.ltp:0; break;
-                case 'sig':    av=a.signal||'HOLD'; bv=b.signal||'HOLD'; break;
-                case 'ath':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;
-                case 'w52':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;
-                default:       av=a.qty*(a.ltp||0); bv=b.qty*(b.ltp||0);
-              }
-              if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
-              return sdir==='asc'?av-bv:bv-av;
-            });
-          }
-          \`;
+          // 6. Extract sortRows() and replace both sort blocks
+          const sortFn = [
+            '',
+            'function sortRows(rows, skey, sdir) {',
+            '  rows.sort((a,b) => {',
+            '    let av, bv;',
+            '    switch(skey) {',
+            \"      case 'sym':    av=a.sym; bv=b.sym; break;\",
+            \"      case 'sector': av=a.sector||''; bv=b.sector||''; break;\",
+            \"      case 'pos':    av=a.pos||0; bv=b.pos||0; break;\",
+            \"      case 'neg':    av=a.neg||0; bv=b.neg||0; break;\",
+            \"      case 'pledge': av=0; bv=0; break;\",
+            \"      case 'pub':    av=a.public_pct||0; bv=b.public_pct||0; break;\",
+            \"      case 'name':   av=a.name||''; bv=b.name||''; break;\",
+            \"      case 'chg1d':  av=a.chg1d||0; bv=b.chg1d||0; break;\",
+            \"      case 'chg5d':  av=a.chg5d||0; bv=b.chg5d||0; break;\",
+            \"      case 'pe':     av=a.pe||999; bv=b.pe||999; break;\",
+            \"      case 'pb':     av=a.pb||0; bv=b.pb||0; break;\",
+            \"      case 'eps':    av=a.eps||0; bv=b.eps||0; break;\",
+            \"      case 'roe':    av=a.roe||0; bv=b.roe||0; break;\",
+            \"      case 'opm':    av=a.opm_pct||0; bv=b.opm_pct||0; break;\",
+            \"      case 'npm':    av=a.npm_pct||0; bv=b.npm_pct||0; break;\",
+            \"      case 'ebi':    av=a.ebitda||0; bv=b.ebitda||0; break;\",
+            \"      case 'prom':   av=a.prom_pct||0; bv=b.prom_pct||0; break;\",
+            \"      case 'mcap':   av=a.mcap||0; bv=b.mcap||0; break;\",
+            \"      case 'sales':  av=a.sales||0; bv=b.sales||0; break;\",
+            \"      case 'cfo':    av=a.cfo||0; bv=b.cfo||0; break;\",
+            \"      case 'ltp':    av=a.ltp||0; bv=b.ltp||0; break;\",
+            \"      case 'qty':    av=a.qty||0; bv=b.qty||0; break;\",
+            \"      case 'avg':    av=a.avgBuy||0; bv=b.avgBuy||0; break;\",
+            \"      case 'pnl':    av=a.ltp>0?a.qty*a.ltp-a.qty*a.avgBuy:-Infinity;\",
+            '                     bv=b.ltp>0?b.qty*b.ltp-b.qty*b.avgBuy:-Infinity; break;',
+            \"      case 'pnlpct': av=a.ltp>0&&a.avgBuy>0?(a.ltp-a.avgBuy)/a.avgBuy*100:-Infinity;\",
+            '                     bv=b.ltp>0&&b.avgBuy>0?(b.ltp-b.avgBuy)/b.avgBuy*100:-Infinity; break;',
+            \"      case 'wt':     av=a.ltp>0?a.qty*a.ltp:0; bv=b.ltp>0?b.qty*b.ltp:0; break;\",
+            \"      case 'sig':    av=a.signal||'HOLD'; bv=b.signal||'HOLD'; break;\",
+            \"      case 'ath':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;\",
+            \"      case 'w52':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;\",
+            \"      default:       av=a.qty*(a.ltp||0); bv=b.qty*(b.ltp||0);\",
+            '    }',
+            \"    if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv):bv.localeCompare(av);\",
+            \"    return sdir==='asc'?av-bv:bv-av;\",
+            '  });',
+            '}',
+            '',
+          ].join('\n');
 
           // Insert sortRows before renderPortfolio
           if (!js.includes('function sortRows(')) {
-            js = js.replace('function renderPortfolio(', sortRowsFn + '\nfunction renderPortfolio(');
+            js = js.replace('function renderPortfolio(', sortFn + 'function renderPortfolio(');
           }
 
           // Replace sort block in renderPortfolio
           js = js.replace(
-            /const skey = S\.pfSort\|\|'wt';\n  const sdir = S\.pfSortDir\|\|'desc';\n  rows\.sort\([\s\S]*?\}\);\n/,
-            \`sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');\n\`
+            /const skey = S\.pfSort\|\|'wt';\n  const sdir = S\.pfSortDir\|\|'desc';\n  rows\.sort\([\s\S]*?\}\);\n\n/,
+            \"  sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');\n\n\"
           );
 
-          // Replace sort block in togglePfSort
-js = js.replace(
-  /\/\/ Apply the same sort logic as renderPortfolio\n[\s\S]*?rows\.sort\([\s\S]*?\}\);\n/,
-  \`sortRows(rows, S.pfSort, S.pfSortDir);\n\`
-);
+          // Replace sort block in togglePfSort — find by unique anchor text
+          const toggleStart = js.indexOf('// Apply the same sort logic as renderPortfolio');
+          if (toggleStart !== -1) {
+            const sortEnd = js.indexOf('  });', toggleStart) + 5;
+            const replacement = \"  sortRows(rows, S.pfSort, S.pfSortDir);\";
+            js = js.slice(0, toggleStart) + replacement + js.slice(sortEnd);
+          }
 
-
-          // 7. Compress blank lines — max 1 consecutive
+          // 7. Compress blank lines
           js = js.replace(/\n{3,}/g, '\n\n');
 
           // Write output
           fs.writeFileSync('app.js', js);
           const after = js.split('\n').length;
 
-          // Verification report
+          // Verification
           console.log('Lines: ' + before + ' -> ' + after + ' (saved ' + (before-after) + ' lines)');
           const checks = [
-            ['parseCDSLXls present',       js.includes('function parseCDSLXls(')],
-            ['renderUpload present',        js.includes('function renderUpload(')],
-            ['autoSyncPortfolioSymbols',    js.includes('function autoSyncPortfolioSymbols(')],
-            ['clearStockAnalysis present',  js.includes('function clearStockAnalysis(')],
-            ['renderImportPanel present',   js.includes('function renderImportPanel(')],
-            ['tab CDSL XLS',               js.includes('CDSL XLS')],
-            ['tab CDSL Text',              js.includes('CDSL Text')],
-            ['tab Manual',                 js.includes('Manual')],
-            ['sortRows defined once',      (js.match(/function sortRows\(/g)||[]).length === 1],
+            ['parseCDSLXls present',         js.includes('function parseCDSLXls(')],
+            ['renderUpload present',          js.includes('function renderUpload(')],
+            ['autoSyncPortfolioSymbols',      js.includes('function autoSyncPortfolioSymbols(')],
+            ['clearStockAnalysis present',    js.includes('function clearStockAnalysis(')],
+            ['renderImportPanel present',     js.includes('function renderImportPanel(')],
+            ['tab CDSL XLS',                 js.includes('CDSL XLS')],
+            ['tab CDSL Text',                js.includes('CDSL Text')],
+            ['tab Manual',                   js.includes('Manual')],
+            ['sortRows defined once',        (js.match(/function sortRows\(/g)||[]).length === 1],
             ['renderPortfolio uses sortRows', js.includes(\"sortRows(rows, S.pfSort||\")],
-            ['togglePfSort uses sortRows',  (js.match(/sortRows\(rows/g)||[]).length === 2],
-            ['no banner comments',         !js.includes('// \u2550\u2550\u2550')],
-            ['no FIX #N prefixes',         !js.match(/\/\/ FIX #\d+:/)],
-            ['no NSE_DB filter',           !js.includes('.filter((v,i,a)=>a.findIndex')],
+            ['togglePfSort uses sortRows',   (js.match(/sortRows\(rows/g)||[]).length === 2],
+            ['no banner comments',           !js.includes('// \u2550\u2550\u2550')],
+            ['no FIX prefixes',             !js.match(/\/\/ FIX #\d+:/)],
+            ['no NSE_DB filter',            !js.includes('.filter((v,i,a)=>a.findIndex')],
           ];
           console.log('\nVerification:');
           checks.forEach(([name, pass]) => console.log((pass ? '  PASS' : '  FAIL') + ' ' + name));
