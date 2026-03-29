@@ -1,0 +1,76 @@
+name: Fix Portfolio Sort (Sector, Pos, Neg)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-pf-sort:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Write fix script
+        run: |
+          cat > fix_pf_sort.js << 'FIXSCRIPT'
+          #!/usr/bin/env node
+          const fs = require('fs');
+          const path = require('path');
+
+          const filePath = path.join(__dirname, 'app.js');
+          let src = fs.readFileSync(filePath, 'utf8');
+
+          const OLD1 = `    pos:       f.pos || computePos(h, f),\n    neg:       f.neg || computeNeg(h, f),`;
+          const NEW1 = `    pos:       f.pos != null ? f.pos : computePos(h, f),\n    neg:       f.neg != null ? f.neg : computeNeg(h, f),`;
+
+          if (src.includes(OLD1)) {
+            src = src.replace(OLD1, NEW1);
+            console.log('✅ Fix 1 applied: pos/neg null-check');
+          } else if (src.includes('f.pos != null')) {
+            console.log('ℹ Fix 1 already applied — skipping');
+          } else {
+            console.error('❌ Fix 1 pattern not found');
+            process.exit(1);
+          }
+
+          const OLD2 = `  return map[raw]||raw;\n}`;
+          const NEW2 = `  if(!raw||raw==='—') return 'zzz_unknown';\n  return map[raw]||raw;\n}`;
+
+          if (src.includes(OLD2)) {
+            src = src.replace(OLD2, NEW2);
+            console.log('✅ Fix 2 applied: normSector handles blank/dash sectors');
+          } else if (src.includes('zzz_unknown')) {
+            console.log('ℹ Fix 2 already applied — skipping');
+          } else {
+            console.warn('⚠ Fix 2 pattern not matched — skipping (non-critical)');
+          }
+
+          fs.writeFileSync(filePath, src, 'utf8');
+          console.log('✅ app.js saved');
+          FIXSCRIPT
+
+      - name: Run fix script
+        run: node fix_pf_sort.js
+
+      - name: Verify changes
+        run: |
+          echo "=== Checking pos/neg fix ==="
+          grep -n "pos.*null\|neg.*null" app.js | grep -v "//\|diag\|warn" | head -5
+          echo "=== Checking normSector fix ==="
+          grep -n "zzz_unknown" app.js | head -3
+
+      - name: Commit fixed app.js
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app.js
+          if git diff --cached --quiet; then
+            echo "No changes to commit — fixes already applied"
+          else
+            git commit -m "fix: portfolio sort for Sector, Pos, Neg columns"
+            git push
+            echo "✅ Pushed fix to repo"
+          fi
