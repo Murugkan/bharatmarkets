@@ -1,7 +1,39 @@
 const fs = require('fs');
 let js = fs.readFileSync('app.js', 'utf8');
 
-const normSector = `
+// Fix 1: Replace togglePfSort inline sort block with sortRows() call
+// Find the function and replace the entire sort block
+const tfStart = js.indexOf('function togglePfSort(k){');
+if(tfStart === -1){ console.error('togglePfSort not found'); process.exit(1); }
+
+// Find end of function — look for the tfoot update section after the sort
+const tfEnd = js.indexOf('  // Update header arrows', tfStart);
+if(tfEnd === -1){ console.error('Update header arrows not found'); process.exit(1); }
+
+// Find the line just before "// Update header arrows"
+// Replace everything from start of function to that point
+const oldFn = js.slice(tfStart, tfEnd);
+const newFn = `function togglePfSort(k){
+  if(S.pfSort===k) S.pfSortDir=S.pfSortDir==='desc'?'asc':'desc';
+  else{ S.pfSort=k; S.pfSortDir='desc'; }
+  const tbody=document.getElementById('bls-tbody');
+  if(!tbody){ render(); return; }
+  const tc = S.portfolio.map(mergeHolding);
+  const filt = S.pfFilter||'All';
+  const srch = (S.pfSearch||'').toUpperCase().trim();
+  const secFilt = S.pfSector||'';
+  let rows = filt==='All' ? [...tc] : tc.filter(h=>h.signal===filt);
+  if(srch) rows = rows.filter(h=>h.sym.includes(srch)||(h.name||'').toUpperCase().includes(srch));
+  if(secFilt) rows = rows.filter(h=>(h.sector||'').includes(secFilt));
+  const totalCur = tc.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
+  sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');
+  `;
+
+js = js.slice(0, tfStart) + newFn + js.slice(tfEnd);
+console.log('Fix 1 applied: togglePfSort now uses sortRows()');
+
+// Fix 2: Add normSector function before sortRows
+const normSectorFn = `
 function normSector(raw){
   const map={
     'Auto Ancillaries':'Auto','Automobiles':'Auto',
@@ -12,8 +44,7 @@ function normSector(raw){
     'Telecom Services':'Telecom','Communication Services':'Telecom',
     'Power Generation & Distribution':'Power','Utilities':'Power','POWER':'Power',
     'Capital Goods-Non Electrical Equipment':'Capital Goods',
-    'Capital Goods - Electrical Equipment':'Capital Goods',
-    'Industrials':'Capital Goods',
+    'Capital Goods - Electrical Equipment':'Capital Goods','Industrials':'Capital Goods',
     'Infrastructure Developers & Operators':'Infrastructure',
     'Ship Building':'Defence','Non Ferrous Metals':'Metals','Basic Materials':'Metals',
     'Mining & Mineral products':'Mining',
@@ -29,6 +60,19 @@ function normSector(raw){
 }
 `;
 
+if(!js.includes('function normSector(')){
+  js = js.replace('function sortRows(', normSectorFn + '\nfunction sortRows(');
+  console.log('Fix 2 applied: normSector added');
+}
+
+// Fix 3: Use normSector in sortRows sector case
+js = js.replace(
+  "      case 'sector': av=a.sector||''; bv=b.sector||''; break;",
+  "      case 'sector': av=normSector(a.sector||''); bv=normSector(b.sector||''); break;"
+);
+console.log('Fix 3 applied: sector sort normalised');
+
+// Fix 4: Add computePos/computeNeg before mergeHolding
 const computeFns = `
 function computePos(h, f){
   let pos = 0;
@@ -70,44 +114,40 @@ function computeNeg(h, f){
 }
 `;
 
-if (!js.includes('function normSector(')) {
-  js = js.replace('function sortRows(', normSector + '\nfunction sortRows(');
-}
-
-if (!js.includes('function computePos(')) {
+if(!js.includes('function computePos(')){
   js = js.replace('function mergeHolding(', computeFns + '\nfunction mergeHolding(');
+  console.log('Fix 4 applied: computePos/computeNeg added');
 }
 
-js = js.replace(
-  "      case 'sector': av=a.sector||''; bv=b.sector||''; break;",
-  "      case 'sector': av=normSector(a.sector||''); bv=normSector(b.sector||''); break;"
-);
-
+// Fix 5: Use computePos/computeNeg in mergeHolding
 js = js.replace(
   '    pos:       f.pos||0,',
   '    pos:       f.pos || computePos(h, f),'
 );
-
 js = js.replace(
   '    neg:       f.neg||0,',
   '    neg:       f.neg || computeNeg(h, f),'
 );
+console.log('Fix 5 applied: mergeHolding uses computed pos/neg');
 
 fs.writeFileSync('app.js', js);
 
+// Verification
 const checks = [
-  ['normSector defined',     js.includes('function normSector(')],
-  ['computePos defined',     js.includes('function computePos(')],
-  ['computeNeg defined',     js.includes('function computeNeg(')],
-  ['sector uses normSector', js.includes('normSector(a.sector')],
-  ['pos uses computePos',    js.includes('computePos(h, f)')],
-  ['neg uses computeNeg',    js.includes('computeNeg(h, f)')],
-  ['sortRows present',       js.includes('function sortRows(')],
-  ['mergeHolding present',   js.includes('function mergeHolding(')],
+  ['togglePfSort uses sortRows',   js.includes('sortRows(rows, S.pfSort')],
+  ['normSector defined',           js.includes('function normSector(')],
+  ['sector sort normalised',       js.includes('normSector(a.sector')],
+  ['computePos defined',           js.includes('function computePos(')],
+  ['computeNeg defined',           js.includes('function computeNeg(')],
+  ['pos uses computePos',          js.includes('computePos(h, f)')],
+  ['neg uses computeNeg',          js.includes('computeNeg(h, f)')],
+  ['sortRows defined',             js.includes('function sortRows(')],
+  ['mergeHolding present',         js.includes('function mergeHolding(')],
+  ['renderPortfolio present',      js.includes('function renderPortfolio(')],
 ];
 
 console.log('\nVerification:');
 checks.forEach(([name, pass]) => console.log((pass ? '  PASS' : '  FAIL') + ' ' + name));
 const failed = checks.filter(([,pass]) => !pass);
-if (failed.length) { console.error(failed.length + ' checks failed'); process.exit(1); }
+if(failed.length){ console.error('\n' + failed.length + ' checks failed'); process.exit(1); }
 console.log('\nAll checks passed!');
