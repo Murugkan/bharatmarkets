@@ -149,5 +149,11 @@ const checks = [
 console.log('\nVerification:');
 checks.forEach(([name, pass]) => console.log((pass ? '  PASS' : '  FAIL') + ' ' + name));
 const failed = checks.filter(([,pass]) => !pass);
-if(failed.length){ console.error('\n' + failed.length + ' checks failed'); process.exit(1); }
+if(failed.length){ console.error('\n' + failed.length + ' checks failed'); 
+                  // Debug — show current togglePfSort
+const tfIdx = js.indexOf('function togglePfSort(k){');
+console.log('\nCURRENT togglePfSort:');
+console.log(js.slice(tfIdx, tfIdx + 400));
+
+                  process.exit(1); }
 console.log('\nAll checks passed!');
