@@ -1,0 +1,29 @@
+name: Fix Portfolio Sort v2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run fix script
+        run: node fix_pf_sort_v2.js
+
+      - name: Verify
+        run: |
+          echo "=== Fix 1 ===" && grep -n "f.pos != null" app.js
+          echo "=== Fix 2 ===" && grep -n "zzz_unknown" app.js
+          echo "=== Fix 3-5 ===" && grep -n "pfSort==='sector'\|pfSort==='pos'\|pfSort==='neg'" app.js
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app.js
+          git diff --cached --quiet && echo "Already up to date" || \
+          (git commit -m "fix: portfolio sort v2 — pos/neg null-check + sorted class on Sector/Pos/Neg" && git push)
