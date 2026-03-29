@@ -1,4 +1,4 @@
-name: Fix sort and search
+name: Fix sort values
 
 on:
   workflow_dispatch:
@@ -11,86 +11,136 @@ jobs:
 
       - name: Write fix script
         run: |
-          cat > fix.js << 'ENDOFSCRIPT'
+          cat > fix_sort.js << 'ENDOFSCRIPT'
           const fs = require('fs');
           let js = fs.readFileSync('app.js', 'utf8');
 
-          // ── FIX 1: Replace togglePfSort sort block with sortRows() call ──
-          // Find togglePfSort function
-          const tfIdx = js.indexOf('function togglePfSort(k){');
-          if (tfIdx === -1) { console.error('togglePfSort not found'); process.exit(1); }
-
-          // Find the sort block inside togglePfSort — starts after invPriced line
-          const invPricedIdx = js.indexOf('const invPriced=', tfIdx);
-          if (invPricedIdx === -1) { console.error('invPriced line not found'); process.exit(1); }
-
-          // Find end of invPriced line
-          const invPricedEnd = js.indexOf('\n', invPricedIdx) + 1;
-
-          // Find end of sort block — look for next significant line after rows.sort(...)
-          // The sort block ends with }); followed by newline then // Update header
-          const updateHeaderIdx = js.indexOf('  // Update header arrows', tfIdx);
-          if (updateHeaderIdx === -1) { console.error('Update header comment not found'); process.exit(1); }
-
-          // Replace everything between invPricedEnd and updateHeaderIdx with sortRows call
-          const before = js.slice(0, invPricedEnd);
-          const after  = js.slice(updateHeaderIdx);
-          js = before + '\n  sortRows(rows, S.pfSort||\'wt\', S.pfSortDir||\'desc\');\n\n  ' + after;
-          console.log('FIX 1 applied: togglePfSort now uses sortRows()');
-
-          // ── FIX 2: Fix search input losing focus on render ──
-          // Replace the search input oninput that calls render() with a smarter version
-          // that only updates tbody without full re-render
+          // Fix 1: Sector sort — normalise sector before sorting
+          // Replace sector case in sortRows to use same normalisation as display
           js = js.replace(
-            `oninput="S.pfSearch=this.value.toUpperCase().slice(0,3);if(S.curTab==='portfolio')render()"`,
-            `oninput="pfSearchInput(this.value)"`
+            `      case 'sector': av=a.sector||''; bv=b.sector||''; break;`,
+            `      case 'sector': av=normSector(a.sector||''); bv=normSector(b.sector||''); break;`
           );
 
-          // Add pfSearchInput function before renderPortfolio
-          const searchFn = `
-          function pfSearchInput(val){
-            S.pfSearch = val.toUpperCase().trim();
-            // Update tbody only — avoid full re-render which resets input focus
-            const tbody = document.getElementById('bls-tbody');
-            if(!tbody){ render(); return; }
-            const pf = S.portfolio.map(mergeHolding);
-            const totalCur = pf.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
-            const filt = S.pfFilter||'All';
-            const secFilt = S.pfSector||'';
-            let rows = pf
-              .filter(h=> filt==='All' || h.signal===filt)
-              .filter(h=> !secFilt || (h.sector||'').includes(secFilt))
-              .filter(h=> !S.pfSearch || h.sym.startsWith(S.pfSearch));
-            sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');
-            tbody.innerHTML = renderBLSRows(rows, totalCur);
+          // Add normSector helper before sortRows
+          const normSectorFn = `
+          function normSector(raw){
+            const map={
+              'Auto Ancillaries':'Auto','Automobiles':'Auto','Banks':'Banking','Bank':'Banking',
+              'Pharmaceutical':'Pharma','Pharmaceuticals':'Pharma','IT - Software':'IT',
+              'Information Technology':'IT','Technology':'IT',
+              'Telecomm Equipment & Infra Services':'Telecom','Telecom Services':'Telecom',
+              'Communication Services':'Telecom',
+              'Power Generation & Distribution':'Power','Utilities':'Power','POWER':'Power',
+              'Capital Goods-Non Electrical Equipment':'Capital Goods',
+              'Capital Goods - Electrical Equipment':'Capital Goods',
+              'Industrials':'Capital Goods',
+              'Infrastructure Developers & Operators':'Infrastructure',
+              'Ship Building':'Defence',
+              'Non Ferrous Metals':'Metals','Basic Materials':'Metals',
+              'Mining & Mineral products':'Mining',
+              'Consumer Durables':'Consumer','Consumer Cyclical':'Consumer',
+              'Consumer Defensive':'FMCG','Tobacco Products':'FMCG',
+              'Miscellaneous':'Diversified','Others':'Diversified','Other':'Diversified',
+              'Diversified':'Diversified','Services':'Diversified',
+              'Refineries':'Energy','Crude Oil & Natural Gas':'Energy',
+              'Financial Services':'Finance',
+              'Insurance':'Finance','Health Care':'Pharma','Healthcare':'Pharma',
+              'Shipping':'Infrastructure','Steel':'Metals','Construction':'Infrastructure',
+              'Real Estate':'Real Estate','Trading':'Diversified',
+            };
+            return map[raw]||raw;
           }
           `;
 
-          if (!js.includes('function pfSearchInput(')) {
-            js = js.replace('function renderPortfolio(', searchFn + '\nfunction renderPortfolio(');
+          if (!js.includes('function normSector(')) {
+            js = js.replace('function sortRows(', normSectorFn + '\nfunction sortRows(');
           }
-          console.log('FIX 2 applied: search input no longer triggers full re-render');
 
-          // Also increase maxlength from 3 to 10 for longer symbol searches
+          // Fix 2: Pos/Neg — compute from signal data if f.pos/f.neg missing
+          // Replace pos/neg in mergeHolding to compute locally if 0
           js = js.replace(
-            `<input id="pf-search" maxlength="3"`,
-            `<input id="pf-search" maxlength="10"`
+            `    // Signal
+    signal:    f.signal || calcSignalLocal(h, f),
+    pos:       f.pos||0,
+    neg:       f.neg||0,`,
+            `    // Signal
+    signal:    f.signal || calcSignalLocal(h, f),
+    pos:       f.pos || computePos(h, f),
+    neg:       f.neg || computeNeg(h, f),`
           );
-          console.log('FIX 2b applied: search maxlength increased to 10');
+
+          // Add computePos/computeNeg helpers before mergeHolding
+          const computeFns = `
+          function computePos(h, f){
+            let pos = 0;
+            const roe  = f.roe  || h.roe  || 0;
+            const pe   = f.pe   || h.pe   || 0;
+            const opm  = f.opm_pct || 0;
+            const prom = f.prom_pct || h.promoter || 0;
+            const chg  = f.chg1d || h.change || 0;
+            const ath  = f.ath_pct ?? null;
+            const debt = f.debt_eq ?? null;
+            if(roe > 15)  pos++;
+            if(roe > 20)  pos++;
+            if(pe > 0 && pe < 18) pos++;
+            if(opm > 15)  pos++;
+            if(prom > 50) pos++;
+            if(chg > 1)   pos++;
+            if(ath !== null && ath > -10) pos++;
+            if(debt !== null && debt < 0.5) pos++;
+            return pos;
+          }
+
+          function computeNeg(h, f){
+            let neg = 0;
+            const roe  = f.roe  || h.roe  || 0;
+            const pe   = f.pe   || h.pe   || 0;
+            const opm  = f.opm_pct || 0;
+            const prom = f.prom_pct || h.promoter || 0;
+            const chg  = f.chg1d || h.change || 0;
+            const ath  = f.ath_pct ?? null;
+            const debt = f.debt_eq ?? null;
+            if(roe > 0 && roe < 8)  neg++;
+            if(pe > 35)  neg++;
+            if(opm > 0 && opm < 8)  neg++;
+            if(prom > 0 && prom < 35) neg++;
+            if(chg < -1) neg++;
+            if(ath !== null && ath < -30) neg++;
+            if(debt !== null && debt > 1.5) neg++;
+            return neg;
+          }
+          `;
+
+          if (!js.includes('function computePos(')) {
+            js = js.replace('function mergeHolding(', computeFns + '\nfunction mergeHolding(');
+          }
+
+          // Fix 3: ATH% and 52W% sort — these depend on ath_pct and w52_pct
+          // Make sure null values sort to bottom regardless of direction
+          js = js.replace(
+            `      case 'ath':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;`,
+            `      case 'ath':    av=a.ath_pct??-9999; bv=b.ath_pct??-9999; break;`
+          );
+          js = js.replace(
+            `      case 'w52':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;`,
+            `      case 'w52':    av=a.w52_pct??-9999; bv=b.w52_pct??-9999; break;`
+          );
 
           fs.writeFileSync('app.js', js);
-          console.log('app.js written');
 
-          // Verification
+          // Verify
           const checks = [
-            ['togglePfSort uses sortRows',    (js.match(/sortRows\(rows/g)||[]).length >= 2],
-            ['pfSearchInput defined',          js.includes('function pfSearchInput(')],
-            ['search uses pfSearchInput',      js.includes('oninput="pfSearchInput(this.value)"')],
-            ['search maxlength 10',            js.includes('maxlength="10"')],
-            ['renderPortfolio present',        js.includes('function renderPortfolio(')],
-            ['parseCDSLXls present',           js.includes('function parseCDSLXls(')],
-            ['sortRows defined',               js.includes('function sortRows(')],
+            ['normSector defined',     js.includes('function normSector(')],
+            ['computePos defined',     js.includes('function computePos(')],
+            ['computeNeg defined',     js.includes('function computeNeg(')],
+            ['sector uses normSector', js.includes('normSector(a.sector')],
+            ['pos uses computePos',    js.includes('computePos(h, f)')],
+            ['neg uses computeNeg',    js.includes('computeNeg(h, f)')],
+            ['renderPortfolio present',js.includes('function renderPortfolio(')],
+            ['sortRows present',       js.includes('function sortRows(')],
           ];
+
           console.log('\nVerification:');
           checks.forEach(([name, pass]) => console.log((pass ? '  PASS' : '  FAIL') + ' ' + name));
           const failed = checks.filter(([,pass]) => !pass);
@@ -99,12 +149,12 @@ jobs:
           ENDOFSCRIPT
 
       - name: Run fix script
-        run: node fix.js
+        run: node fix_sort.js
 
       - name: Commit
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add app.js
-          git diff --staged --quiet || git commit -m "fix: sort all columns + search input focus"
+          git diff --staged --quiet || git commit -m "fix: sector normalised sort + computed pos/neg signals"
           git push
