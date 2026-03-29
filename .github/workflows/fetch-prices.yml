@@ -11,7 +11,7 @@ on:
         required: false
         default: 'all'
         type: choice
-        options: [all, prices_only, fundamentals_only]
+        options: [all, prices_only, fundamentals_only, clean]
 
 jobs:
   fetch-prices:
@@ -19,9 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
     if: >
       (github.event_name == 'schedule' && github.event.schedule == '*/15 3-11 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","prices_only"]'), github.event.inputs.fetch_type))
+      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","prices_only","clean"]'), github.event.inputs.fetch_type))
     steps:
       - uses: actions/checkout@v4
         with: {ref: main}
@@ -42,9 +44,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
     if: >
       (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","fundamentals_only"]'), github.event.inputs.fetch_type))
+      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","fundamentals_only","clean"]'), github.event.inputs.fetch_type))
     steps:
       - uses: actions/checkout@v4
         with: {ref: main}
@@ -55,7 +59,7 @@ jobs:
       - run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add fundamentals.json || true
+          git add fundamentals.json guidance.json || true
           git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "data: fundamentals $(date -u +'%H:%M UTC') [skip pages]"
           for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
