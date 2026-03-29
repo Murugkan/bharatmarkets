@@ -1300,6 +1300,7 @@ function normSector(raw){
     'Construction':'Infrastructure','Trading':'Diversified',
   };
   if(!raw||raw==='—') return 'zzz_unknown';
+  if(!raw||raw==='—') return 'zzz_unknown';
   return map[raw]||raw;
 }
 
@@ -1647,9 +1648,9 @@ function renderPortfolio(c){
 <table class="bls-t" id="bls-tbl">
 <thead><tr>
   <th class="th-l th-fix th-fix1" onclick="togglePfSort('sym')">${pfSortArrow('sym')}Ticker</th>
-  <th class="th-l th-fix th-fix2" onclick="togglePfSort('sector')" style="cursor:pointer">${pfSortArrow('sector')}Sector</th>
-  <th title="Bullish signals" onclick="togglePfSort('pos')" style="cursor:pointer">${pfSortArrow('pos')}Pos</th>
-  <th title="Bearish signals" onclick="togglePfSort('neg')" style="cursor:pointer">${pfSortArrow('neg')}Neg</th>
+  <th class="th-l th-fix th-fix2 ${S.pfSort==='sector'?'sorted':''}" onclick="togglePfSort('sector')">${pfSortArrow('sector')}Sector</th>
+  <th title="Bullish signals" class="${S.pfSort==='pos'?'sorted':''}" onclick="togglePfSort('pos')">${pfSortArrow('pos')}Pos</th>
+  <th title="Bearish signals" class="${S.pfSort==='neg'?'sorted':''}" onclick="togglePfSort('neg')">${pfSortArrow('neg')}Neg</th>
   <th onclick="togglePfSort('ath')"  class="${S.pfSort==='ath'?'sorted':''}">${pfSortArrow('ath')}ATH%</th>
   <th onclick="togglePfSort('w52')"  class="${S.pfSort==='w52'?'sorted':''}">${pfSortArrow('w52')}52W%</th>
   <th onclick="togglePfSort('prom')" class="${S.pfSort==='prom'?'sorted':''}">${pfSortArrow('prom')}Prom%</th>
