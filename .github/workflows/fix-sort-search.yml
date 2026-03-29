@@ -15,23 +15,17 @@ jobs:
           const fs = require('fs');
           let js = fs.readFileSync('app.js', 'utf8');
 
-          // Fix 1: Sector sort — normalise sector before sorting
-          // Replace sector case in sortRows to use same normalisation as display
-          js = js.replace(
-            `      case 'sector': av=a.sector||''; bv=b.sector||''; break;`,
-            `      case 'sector': av=normSector(a.sector||''); bv=normSector(b.sector||''); break;`
-          );
-
-          // Add normSector helper before sortRows
           const normSectorFn = `
           function normSector(raw){
             const map={
-              'Auto Ancillaries':'Auto','Automobiles':'Auto','Banks':'Banking','Bank':'Banking',
-              'Pharmaceutical':'Pharma','Pharmaceuticals':'Pharma','IT - Software':'IT',
-              'Information Technology':'IT','Technology':'IT',
-              'Telecomm Equipment & Infra Services':'Telecom','Telecom Services':'Telecom',
-              'Communication Services':'Telecom',
-              'Power Generation & Distribution':'Power','Utilities':'Power','POWER':'Power',
+              'Auto Ancillaries':'Auto','Automobiles':'Auto',
+              'Banks':'Banking','Bank':'Banking',
+              'Pharmaceutical':'Pharma','Pharmaceuticals':'Pharma',
+              'IT - Software':'IT','Information Technology':'IT','Technology':'IT',
+              'Telecomm Equipment & Infra Services':'Telecom',
+              'Telecom Services':'Telecom','Communication Services':'Telecom',
+              'Power Generation & Distribution':'Power',
+              'Utilities':'Power','POWER':'Power',
               'Capital Goods-Non Electrical Equipment':'Capital Goods',
               'Capital Goods - Electrical Equipment':'Capital Goods',
               'Industrials':'Capital Goods',
@@ -41,36 +35,18 @@ jobs:
               'Mining & Mineral products':'Mining',
               'Consumer Durables':'Consumer','Consumer Cyclical':'Consumer',
               'Consumer Defensive':'FMCG','Tobacco Products':'FMCG',
-              'Miscellaneous':'Diversified','Others':'Diversified','Other':'Diversified',
-              'Diversified':'Diversified','Services':'Diversified',
+              'Miscellaneous':'Diversified','Others':'Diversified',
+              'Other':'Diversified','Services':'Diversified',
               'Refineries':'Energy','Crude Oil & Natural Gas':'Energy',
               'Financial Services':'Finance',
-              'Insurance':'Finance','Health Care':'Pharma','Healthcare':'Pharma',
-              'Shipping':'Infrastructure','Steel':'Metals','Construction':'Infrastructure',
-              'Real Estate':'Real Estate','Trading':'Diversified',
+              'Health Care':'Pharma','Healthcare':'Pharma',
+              'Shipping':'Infrastructure','Steel':'Metals',
+              'Construction':'Infrastructure','Trading':'Diversified',
             };
             return map[raw]||raw;
           }
           `;
 
-          if (!js.includes('function normSector(')) {
-            js = js.replace('function sortRows(', normSectorFn + '\nfunction sortRows(');
-          }
-
-          // Fix 2: Pos/Neg — compute from signal data if f.pos/f.neg missing
-          // Replace pos/neg in mergeHolding to compute locally if 0
-          js = js.replace(
-            `    // Signal
-    signal:    f.signal || calcSignalLocal(h, f),
-    pos:       f.pos||0,
-    neg:       f.neg||0,`,
-            `    // Signal
-    signal:    f.signal || calcSignalLocal(h, f),
-    pos:       f.pos || computePos(h, f),
-    neg:       f.neg || computeNeg(h, f),`
-          );
-
-          // Add computePos/computeNeg helpers before mergeHolding
           const computeFns = `
           function computePos(h, f){
             let pos = 0;
@@ -79,8 +55,8 @@ jobs:
             const opm  = f.opm_pct || 0;
             const prom = f.prom_pct || h.promoter || 0;
             const chg  = f.chg1d || h.change || 0;
-            const ath  = f.ath_pct ?? null;
-            const debt = f.debt_eq ?? null;
+            const ath  = f.ath_pct != null ? f.ath_pct : null;
+            const debt = f.debt_eq != null ? f.debt_eq : null;
             if(roe > 15)  pos++;
             if(roe > 20)  pos++;
             if(pe > 0 && pe < 18) pos++;
@@ -99,8 +75,8 @@ jobs:
             const opm  = f.opm_pct || 0;
             const prom = f.prom_pct || h.promoter || 0;
             const chg  = f.chg1d || h.change || 0;
-            const ath  = f.ath_pct ?? null;
-            const debt = f.debt_eq ?? null;
+            const ath  = f.ath_pct != null ? f.ath_pct : null;
+            const debt = f.debt_eq != null ? f.debt_eq : null;
             if(roe > 0 && roe < 8)  neg++;
             if(pe > 35)  neg++;
             if(opm > 0 && opm < 8)  neg++;
@@ -112,24 +88,41 @@ jobs:
           }
           `;
 
+          if (!js.includes('function normSector(')) {
+            js = js.replace('function sortRows(', normSectorFn + '\nfunction sortRows(');
+          }
+
           if (!js.includes('function computePos(')) {
             js = js.replace('function mergeHolding(', computeFns + '\nfunction mergeHolding(');
           }
 
-          // Fix 3: ATH% and 52W% sort — these depend on ath_pct and w52_pct
-          // Make sure null values sort to bottom regardless of direction
           js = js.replace(
-            `      case 'ath':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;`,
-            `      case 'ath':    av=a.ath_pct??-9999; bv=b.ath_pct??-9999; break;`
+            "      case 'sector': av=a.sector||''; bv=b.sector||''; break;",
+            "      case 'sector': av=normSector(a.sector||''); bv=normSector(b.sector||''); break;"
           );
+
           js = js.replace(
-            `      case 'w52':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;`,
-            `      case 'w52':    av=a.w52_pct??-9999; bv=b.w52_pct??-9999; break;`
+            '    pos:       f.pos||0,',
+            '    pos:       f.pos || computePos(h, f),'
+          );
+
+          js = js.replace(
+            '    neg:       f.neg||0,',
+            '    neg:       f.neg || computeNeg(h, f),'
+          );
+
+          js = js.replace(
+            '      case \'ath\':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;',
+            '      case \'ath\':    av=a.ath_pct!=null?a.ath_pct:-9999; bv=b.ath_pct!=null?b.ath_pct:-9999; break;'
+          );
+
+          js = js.replace(
+            '      case \'w52\':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;',
+            '      case \'w52\':    av=a.w52_pct!=null?a.w52_pct:-9999; bv=b.w52_pct!=null?b.w52_pct:-9999; break;'
           );
 
           fs.writeFileSync('app.js', js);
 
-          // Verify
           const checks = [
             ['normSector defined',     js.includes('function normSector(')],
             ['computePos defined',     js.includes('function computePos(')],
@@ -137,8 +130,8 @@ jobs:
             ['sector uses normSector', js.includes('normSector(a.sector')],
             ['pos uses computePos',    js.includes('computePos(h, f)')],
             ['neg uses computeNeg',    js.includes('computeNeg(h, f)')],
-            ['renderPortfolio present',js.includes('function renderPortfolio(')],
             ['sortRows present',       js.includes('function sortRows(')],
+            ['mergeHolding present',   js.includes('function mergeHolding(')],
           ];
 
           console.log('\nVerification:');
