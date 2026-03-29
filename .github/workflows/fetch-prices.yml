@@ -11,11 +11,7 @@ on:
         required: false
         default: 'all'
         type: choice
-        options: [all, prices_only, fundamentals_only, new_symbol]
-      symbol:
-        description: 'Single NSE symbol (for new_symbol only)'
-        required: false
-        default: ''
+        options: [all, prices_only, fundamentals_only]
 
 jobs:
   fetch-prices:
@@ -23,11 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      SINGLE_SYMBOL: ${{ github.event.inputs.symbol || '' }}
     if: >
       (github.event_name == 'schedule' && github.event.schedule == '*/15 3-11 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","prices_only","new_symbol"]'), github.event.inputs.fetch_type))
+      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","prices_only"]'), github.event.inputs.fetch_type))
     steps:
       - uses: actions/checkout@v4
         with: {ref: main}
@@ -48,11 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      SINGLE_SYMBOL: ${{ github.event.inputs.symbol || '' }}
     if: >
       (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","fundamentals_only","new_symbol"]'), github.event.inputs.fetch_type))
+      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","fundamentals_only"]'), github.event.inputs.fetch_type))
     steps:
       - uses: actions/checkout@v4
         with: {ref: main}
