@@ -1202,8 +1202,8 @@ function mergeHolding(h){
     cfo:       f.cfo ?? null,
     // Signal
     signal:    f.signal || calcSignalLocal(h, f),
-    pos:       f.pos || computePos(h, f),
-    neg:       f.neg || computeNeg(h, f),
+    pos:       f.pos != null ? f.pos : computePos(h, f),
+    neg:       f.neg != null ? f.neg : computeNeg(h, f),
   };
 }
 
@@ -1299,6 +1299,7 @@ function normSector(raw){
     'Shipping':'Infrastructure','Steel':'Metals',
     'Construction':'Infrastructure','Trading':'Diversified',
   };
+  if(!raw||raw==='—') return 'zzz_unknown';
   return map[raw]||raw;
 }
 
