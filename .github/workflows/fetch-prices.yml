@@ -2,8 +2,8 @@ name: BharatMarkets Data Fetch
 
 on:
   schedule:
-    - cron: '*/15 3-11 * * 1-5'   # prices every 15min during NSE hours
-    - cron: '30 12 * * 1-5'        # fundamentals daily at 6PM IST
+    - cron: '*/15 3-11 * * 1-5'   # prices every 15min during NSE hours (8:30-4:30 IST)
+    - cron: '30 12 * * 1-5'        # fundamentals once daily at 6PM IST
   workflow_dispatch:
     inputs:
       fetch_type:
@@ -19,8 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
     if: >
       (github.event_name == 'schedule' && github.event.schedule == '*/15 3-11 * * 1-5') ||
       (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","prices_only","clean"]'), github.event.inputs.fetch_type))
@@ -30,7 +28,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install yfinance
-      - run: python fetch_prices.py
+      - name: Fetch prices
+        env:
+          RESOLVE:     ${{ github.event.inputs.fetch_type == 'all' && 'true' || 'false' }}
+          CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
+        run: python fetch_prices.py
       - run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -44,8 +46,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
     if: >
       (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
       (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","fundamentals_only","clean"]'), github.event.inputs.fetch_type))
@@ -55,11 +55,15 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install yfinance requests beautifulsoup4 lxml
-      - run: python fetch_fundamentals.py
+      - name: Fetch fundamentals
+        env:
+          RESOLVE:     ${{ github.event.inputs.fetch_type == 'all' && 'true' || 'false' }}
+          CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
+        run: python fetch_fundamentals.py
       - run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add fundamentals.json guidance.json || true
+          git add fundamentals.json guidance.json symbols.json || true
           git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "data: fundamentals $(date -u +'%H:%M UTC') [skip pages]"
           for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
