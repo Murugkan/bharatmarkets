@@ -1,0 +1,69 @@
+name: Fix Portfolio Sort v3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write and run fix
+        run: |
+          cat > fix.js << 'EOF'
+          const fs = require('fs');
+          let s = fs.readFileSync('app.js', 'utf8');
+
+          // Fix 1: pos/neg null-check
+          s = s.replace(
+            `    pos:       f.pos || computePos(h, f),\n    neg:       f.neg || computeNeg(h, f),`,
+            `    pos:       f.pos != null ? f.pos : computePos(h, f),\n    neg:       f.neg != null ? f.neg : computeNeg(h, f),`
+          );
+
+          // Fix 2: normSector blank handling
+          s = s.replace(
+            `  return map[raw]||raw;\n}`,
+            `  if(!raw||raw==='—') return 'zzz_unknown';\n  return map[raw]||raw;\n}`
+          );
+
+          // Fix 3: Sector th - add sorted class
+          s = s.replace(
+            `<th class="th-l th-fix th-fix2" onclick="togglePfSort('sector')" style="cursor:pointer">\${pfSortArrow('sector')}Sector</th>`,
+            `<th class="th-l th-fix th-fix2 \${S.pfSort==='sector'?'sorted':''}" onclick="togglePfSort('sector')">\${pfSortArrow('sector')}Sector</th>`
+          );
+
+          // Fix 4: Pos th - add sorted class
+          s = s.replace(
+            `<th title="Bullish signals" onclick="togglePfSort('pos')" style="cursor:pointer">\${pfSortArrow('pos')}Pos</th>`,
+            `<th title="Bullish signals" class="\${S.pfSort==='pos'?'sorted':''}" onclick="togglePfSort('pos')">\${pfSortArrow('pos')}Pos</th>`
+          );
+
+          // Fix 5: Neg th - add sorted class
+          s = s.replace(
+            `<th title="Bearish signals" onclick="togglePfSort('neg')" style="cursor:pointer">\${pfSortArrow('neg')}Neg</th>`,
+            `<th title="Bearish signals" class="\${S.pfSort==='neg'?'sorted':''}" onclick="togglePfSort('neg')">\${pfSortArrow('neg')}Neg</th>`
+          );
+
+          fs.writeFileSync('app.js', s);
+          console.log('done');
+          EOF
+          node fix.js
+
+      - name: Verify
+        run: |
+          grep -n "f.pos != null" app.js || echo "FIX 1 MISSING"
+          grep -n "zzz_unknown" app.js || echo "FIX 2 MISSING"
+          grep -n "pfSort==='sector'" app.js || echo "FIX 3 MISSING"
+          grep -n "pfSort==='pos'" app.js || echo "FIX 4 MISSING"
+          grep -n "pfSort==='neg'" app.js || echo "FIX 5 MISSING"
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app.js
+          git diff --cached --quiet && echo "No changes" || \
+          (git commit -m "fix: portfolio sort Sector/Pos/Neg" && git push)
