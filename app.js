@@ -1121,6 +1121,46 @@ async function loadFundamentals(forceRefresh){
 }
 
 // Merge portfolio holding with fundamentals data
+
+function computePos(h, f){
+  let pos = 0;
+  const roe  = f.roe  || h.roe  || 0;
+  const pe   = f.pe   || h.pe   || 0;
+  const opm  = f.opm_pct || 0;
+  const prom = f.prom_pct || h.promoter || 0;
+  const chg  = f.chg1d || h.change || 0;
+  const ath  = f.ath_pct != null ? f.ath_pct : null;
+  const debt = f.debt_eq != null ? f.debt_eq : null;
+  if(roe > 15)  pos++;
+  if(roe > 20)  pos++;
+  if(pe > 0 && pe < 18) pos++;
+  if(opm > 15)  pos++;
+  if(prom > 50) pos++;
+  if(chg > 1)   pos++;
+  if(ath !== null && ath > -10) pos++;
+  if(debt !== null && debt < 0.5) pos++;
+  return pos;
+}
+
+function computeNeg(h, f){
+  let neg = 0;
+  const roe  = f.roe  || h.roe  || 0;
+  const pe   = f.pe   || h.pe   || 0;
+  const opm  = f.opm_pct || 0;
+  const prom = f.prom_pct || h.promoter || 0;
+  const chg  = f.chg1d || h.change || 0;
+  const ath  = f.ath_pct != null ? f.ath_pct : null;
+  const debt = f.debt_eq != null ? f.debt_eq : null;
+  if(roe > 0 && roe < 8)  neg++;
+  if(pe > 35)  neg++;
+  if(opm > 0 && opm < 8)  neg++;
+  if(prom > 0 && prom < 35) neg++;
+  if(chg < -1) neg++;
+  if(ath !== null && ath < -30) neg++;
+  if(debt !== null && debt > 1.5) neg++;
+  return neg;
+}
+
 function mergeHolding(h){
   const f = FUND[h.sym] || {};
   const liveLtp = h.liveLtp || f.ltp || 0;  // single source of truth for live price
@@ -1162,8 +1202,8 @@ function mergeHolding(h){
     cfo:       f.cfo ?? null,
     // Signal
     signal:    f.signal || calcSignalLocal(h, f),
-    pos:       f.pos||0,
-    neg:       f.neg||0,
+    pos:       f.pos || computePos(h, f),
+    neg:       f.neg || computeNeg(h, f),
   };
 }
 
@@ -1231,12 +1271,43 @@ function fnCr(v){
 // PORTFOLIO TAB — Bloomberg-style 29-column screener
 // Data: portfolio holdings (CDSL import) + fundamentals.json
 
+
+function normSector(raw){
+  const map={
+    'Auto Ancillaries':'Auto','Automobiles':'Auto',
+    'Banks':'Banking','Bank':'Banking',
+    'Pharmaceutical':'Pharma','Pharmaceuticals':'Pharma',
+    'IT - Software':'IT','Information Technology':'IT','Technology':'IT',
+    'Telecomm Equipment & Infra Services':'Telecom',
+    'Telecom Services':'Telecom','Communication Services':'Telecom',
+    'Power Generation & Distribution':'Power',
+    'Utilities':'Power','POWER':'Power',
+    'Capital Goods-Non Electrical Equipment':'Capital Goods',
+    'Capital Goods - Electrical Equipment':'Capital Goods',
+    'Industrials':'Capital Goods',
+    'Infrastructure Developers & Operators':'Infrastructure',
+    'Ship Building':'Defence',
+    'Non Ferrous Metals':'Metals','Basic Materials':'Metals',
+    'Mining & Mineral products':'Mining',
+    'Consumer Durables':'Consumer','Consumer Cyclical':'Consumer',
+    'Consumer Defensive':'FMCG','Tobacco Products':'FMCG',
+    'Miscellaneous':'Diversified','Others':'Diversified',
+    'Other':'Diversified','Services':'Diversified',
+    'Refineries':'Energy','Crude Oil & Natural Gas':'Energy',
+    'Financial Services':'Finance',
+    'Health Care':'Pharma','Healthcare':'Pharma',
+    'Shipping':'Infrastructure','Steel':'Metals',
+    'Construction':'Infrastructure','Trading':'Diversified',
+  };
+  return map[raw]||raw;
+}
+
 function sortRows(rows, skey, sdir) {
   rows.sort((a,b) => {
     let av, bv;
     switch(skey) {
       case 'sym':    av=a.sym; bv=b.sym; break;
-      case 'sector': av=a.sector||''; bv=b.sector||''; break;
+      case 'sector': av=normSector(a.sector||''); bv=normSector(b.sector||''); break;
       case 'pos':    av=a.pos||0; bv=b.pos||0; break;
       case 'neg':    av=a.neg||0; bv=b.neg||0; break;
       case 'pledge': av=0; bv=0; break;
@@ -1264,8 +1335,8 @@ function sortRows(rows, skey, sdir) {
                      bv=b.ltp>0&&b.avgBuy>0?(b.ltp-b.avgBuy)/b.avgBuy*100:-Infinity; break;
       case 'wt':     av=a.ltp>0?a.qty*a.ltp:0; bv=b.ltp>0?b.qty*b.ltp:0; break;
       case 'sig':    av=a.signal||'HOLD'; bv=b.signal||'HOLD'; break;
-      case 'ath':    av=a.ath_pct??-999; bv=b.ath_pct??-999; break;
-      case 'w52':    av=a.w52_pct??-999; bv=b.w52_pct??-999; break;
+      case 'ath':    av=a.ath_pct!=null?a.ath_pct:-9999; bv=b.ath_pct!=null?b.ath_pct:-9999; break;
+      case 'w52':    av=a.w52_pct!=null?a.w52_pct:-9999; bv=b.w52_pct!=null?b.w52_pct:-9999; break;
       default:       av=a.qty*(a.ltp||0); bv=b.qty*(b.ltp||0);
     }
     if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
