@@ -1294,6 +1294,7 @@ function normSector(raw){
     'Construction':'Infrastructure','Trading':'Diversified',
   };
   if(!raw||raw==='—') return 'zzz_unknown';
+  if(!raw||raw==='—') return 'zzz_unknown';
   return map[raw]||raw;
 }
 
