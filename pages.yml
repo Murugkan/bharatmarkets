@@ -1,0 +1,58 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - '.github/workflows/pages.yml'
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Minify app.js
+        run: |
+          npx --yes terser app.js \
+            --compress --mangle \
+            --output app.min.js
+          echo "Original: $(wc -c < app.js) bytes"
+          echo "Minified: $(wc -c < app.min.js) bytes"
+
+      - name: Patch index.html to use app.min.js
+        run: sed -i 's/src="app\.js[^"]*"/src="app.min.js"/' index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
