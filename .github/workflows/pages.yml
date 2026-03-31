@@ -34,16 +34,24 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Minify app.js
+      - name: Minify JS modules
         run: |
-          npx --yes terser app.js \
-            --compress --mangle \
-            --output app.min.js
-          echo "Original: $(wc -c < app.js) bytes"
-          echo "Minified: $(wc -c < app.min.js) bytes"
+          total_orig=0; total_min=0
+          for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js; do
+            orig=$(wc -c < "$f")
+            npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
+            min=$(wc -c < "${f%.js}.min.js")
+            echo "$f: $orig → $min bytes"
+            total_orig=$((total_orig + orig))
+            total_min=$((total_min + min))
+          done
+          echo "Total: $total_orig → $total_min bytes"
 
-      - name: Patch index.html to use app.min.js
-        run: sed -i 's/src="app\.js[^"]*"/src="app.min.js"/' index.html
+      - name: Patch index.html to use minified modules
+        run: |
+          for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings; do
+            sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/" index.html
+          done
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
