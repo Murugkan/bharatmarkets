@@ -1,0 +1,66 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - '.github/workflows/pages.yml'
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Minify JS modules
+        run: |
+          total_orig=0; total_min=0
+          for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js app-boot.js; do
+            orig=$(wc -c < "$f")
+            npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
+            min=$(wc -c < "${f%.js}.min.js")
+            echo "$f: $orig → $min bytes"
+            total_orig=$((total_orig + orig))
+            total_min=$((total_min + min))
+          done
+          echo "Total: $total_orig → $total_min bytes"
+
+      - name: Patch index.html to use minified modules
+        run: |
+          for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings app-boot; do
+            sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/" index.html
+          done
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
