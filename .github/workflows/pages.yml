@@ -37,7 +37,7 @@ jobs:
       - name: Minify JS modules
         run: |
           total_orig=0; total_min=0
-          for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js; do
+          for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js app-boot.js; do
             orig=$(wc -c < "$f")
             npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
             min=$(wc -c < "${f%.js}.min.js")
@@ -49,7 +49,7 @@ jobs:
 
       - name: Patch index.html to use minified modules
         run: |
-          for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings; do
+          for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings app-boot; do
             sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/" index.html
           done
 
