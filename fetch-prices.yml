@@ -1,0 +1,75 @@
+name: BharatMarkets Data Fetch
+
+on:
+  schedule:
+    - cron: '*/15 3-11 * * 1-5'   # prices every 15min, 8:30-4:30 IST Mon-Fri
+    - cron: '30 12 * * 1-5'        # fundamentals daily 6PM IST Mon-Fri
+  workflow_dispatch:
+    inputs:
+      fetch_type:
+        description: 'What to fetch'
+        required: false
+        default: 'all'
+        type: choice
+        options: [all, prices_only, fundamentals_only, clean]
+
+jobs:
+  fetch-prices:
+    name: Fetch Live Prices
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: |
+      github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'prices_only' ||
+        github.event.inputs.fetch_type == 'clean'
+      ) || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install yfinance
+      - name: Fetch prices
+        env:
+          RESOLVE:     ${{ github.event.inputs.fetch_type == 'all' && 'true' || 'false' }}
+          CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
+        run: python fetch_prices.py
+      - run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prices.json symbols.json charts/ || true
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "data: prices $(date -u +'%H:%M UTC') [skip pages]"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
+
+  fetch-fundamentals:
+    name: Fetch Fundamentals
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: |
+      github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'fundamentals_only' ||
+        github.event.inputs.fetch_type == 'clean'
+      )
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install yfinance requests beautifulsoup4 lxml
+      - name: Fetch fundamentals
+        env:
+          RESOLVE:     ${{ github.event.inputs.fetch_type == 'all' && 'true' || 'false' }}
+          CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
+        run: python fetch_fundamentals.py
+      - run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add fundamentals.json guidance.json symbols.json || true
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "data: fundamentals $(date -u +'%H:%M UTC') [skip pages]"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
