@@ -2,8 +2,8 @@ name: BharatMarkets Data Fetch
 
 on:
   schedule:
-    - cron: '*/15 3-11 * * 1-5'   # prices every 15min, 8:30-4:30 IST Mon-Fri
-    - cron: '30 12 * * 1-5'        # fundamentals daily 6PM IST Mon-Fri
+    - cron: '*/15 3-11 * * 1-5'
+    - cron: '30 12 * * 1-5'
   workflow_dispatch:
     inputs:
       fetch_type:
@@ -19,35 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'prices_only' ||
+        github.event.inputs.fetch_type == 'clean'
+      ))
     steps:
-      - name: Check if should run
-        id: check
-        run: |
-          EVENT="${{ github.event_name }}"
-          TYPE="${{ github.event.inputs.fetch_type }}"
-          if [ "$EVENT" = "schedule" ]; then
-            echo "run=true" >> $GITHUB_OUTPUT
-          elif [ "$TYPE" = "all" ] || [ "$TYPE" = "prices_only" ] || [ "$TYPE" = "clean" ]; then
-            echo "run=true" >> $GITHUB_OUTPUT
-          else
-            echo "run=false" >> $GITHUB_OUTPUT
-          fi
       - uses: actions/checkout@v4
-        if: steps.check.outputs.run == 'true'
         with: {ref: main}
       - uses: actions/setup-python@v5
-        if: steps.check.outputs.run == 'true'
         with: {python-version: '3.12'}
       - run: pip install yfinance
-        if: steps.check.outputs.run == 'true'
       - name: Fetch prices
-        if: steps.check.outputs.run == 'true'
         env:
           RESOLVE:     ${{ github.event.inputs.fetch_type == 'all' && 'true' || 'false' }}
           CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
         run: python fetch_prices.py
       - name: Commit
-        if: steps.check.outputs.run == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -61,32 +51,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    if: >-
+      (github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'fundamentals_only' ||
+        github.event.inputs.fetch_type == 'clean'
+      ))
     steps:
-      - name: Check if should run
-        id: check
-        run: |
-          TYPE="${{ github.event.inputs.fetch_type }}"
-          if [ "$TYPE" = "all" ] || [ "$TYPE" = "fundamentals_only" ] || [ "$TYPE" = "clean" ]; then
-            echo "run=true" >> $GITHUB_OUTPUT
-          else
-            echo "run=false" >> $GITHUB_OUTPUT
-          fi
       - uses: actions/checkout@v4
-        if: steps.check.outputs.run == 'true'
         with: {ref: main}
       - uses: actions/setup-python@v5
-        if: steps.check.outputs.run == 'true'
         with: {python-version: '3.12'}
       - run: pip install yfinance requests beautifulsoup4 lxml
-        if: steps.check.outputs.run == 'true'
       - name: Fetch fundamentals
-        if: steps.check.outputs.run == 'true'
         env:
           RESOLVE:     ${{ github.event.inputs.fetch_type == 'all' && 'true' || 'false' }}
           CLEAN_STALE: ${{ github.event.inputs.fetch_type == 'clean' && 'true' || 'false' }}
         run: python fetch_fundamentals.py
       - name: Commit
-        if: steps.check.outputs.run == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
