@@ -2,8 +2,8 @@ name: BharatMarkets Data Fetch
 
 on:
   schedule:
-    - cron: '*/15 3-11 * * 1-5'   # prices every 15min during NSE hours (8:30-4:30 IST)
-    - cron: '30 12 * * 1-5'        # fundamentals once daily at 6PM IST
+    - cron: '*/15 3-11 * * 1-5'   # prices every 15min, 8:30-4:30 IST Mon-Fri
+    - cron: '30 12 * * 1-5'        # fundamentals daily 6PM IST Mon-Fri
   workflow_dispatch:
     inputs:
       fetch_type:
@@ -19,9 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '*/15 3-11 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","prices_only","clean"]'), github.event.inputs.fetch_type))
+    if: |
+      github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'prices_only' ||
+        github.event.inputs.fetch_type == 'clean'
+      ) || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
         with: {ref: main}
@@ -46,9 +49,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '30 12 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' && contains(fromJson('["all","fundamentals_only","clean"]'), github.event.inputs.fetch_type))
+    if: |
+      github.event_name == 'workflow_dispatch' && (
+        github.event.inputs.fetch_type == 'all' ||
+        github.event.inputs.fetch_type == 'fundamentals_only' ||
+        github.event.inputs.fetch_type == 'clean'
+      )
     steps:
       - uses: actions/checkout@v4
         with: {ref: main}
