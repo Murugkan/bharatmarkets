@@ -298,7 +298,8 @@ function sortRows(rows, skey, sdir) {
       case 'w52':    av=a.w52_pct!=null?a.w52_pct:-9999; bv=b.w52_pct!=null?b.w52_pct:-9999; break;
       default:       av=a.qty*(a.ltp||0); bv=b.qty*(b.ltp||0);
     }
-    if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+    // FIXED: Alphabetical string sorting using localeCompare
+    if(typeof av==='string') return sdir==='asc'?av.localeCompare(bv, undefined, {sensitivity: 'base'}):bv.localeCompare(av, undefined, {sensitivity: 'base'});
     return sdir==='asc'?av-bv:bv-av;
   });
 }
@@ -419,7 +420,6 @@ function renderPortfolio(c){
 <div class="bls">
 <div id="pf-status-strip"></div>
 
-<!-- ── KPI Strip ── -->
 <div class="kpi-strip" id="kpi-strip-el">
   <div class="kpi">
     <div class="kpi-l">Invested</div>
@@ -455,7 +455,6 @@ function renderPortfolio(c){
   </div>
 </div>
 
-<!-- ── Sector Bar ── -->
 <div class="sec-bar">
   ${sectors.map(([s,v])=>`<div class="sec-bar-seg" style="width:${(v/sTotal*100).toFixed(1)}%;background:${sectorColor(s)}" title="${s} ${(v/sTotal*100).toFixed(1)}%"></div>`).join('')}
 </div>
@@ -472,7 +471,6 @@ function renderPortfolio(c){
   </div>`).join('')}
 </div>
 
-<!-- ── Toolbar ── -->
 <div class="bls-tb" style="gap:6px;flex-wrap:nowrap">
   <input id="pf-search" type="text" value="${S.pfSearch||''}"
     placeholder="Search…"
@@ -488,7 +486,6 @@ function renderPortfolio(c){
   <button onclick="showPfDebug()" style="flex-shrink:0;background:rgba(100,181,246,.1);border:1px solid rgba(100,181,246,.3);border-radius:4px;padding:4px 8px;color:#64b5f6;font-size:9px;font-weight:700;cursor:pointer;font-family:'JetBrains Mono',monospace">DBG</button>
 </div>
 
-<!-- ── 37-Column Bloomberg Screener Table ── -->
 <div class="bls-table-outer">
 <table class="bls-t" id="bls-tbl">
 <thead><tr>
@@ -527,7 +524,7 @@ ${renderBLSRows(rows, totalCur)}
 </tbody>
 <tfoot id="bls-tfoot">
 ${(()=>{
-  // Use filtered rows so grand total matches visible rows
+  // FIXED: Grand total now uses 'rows' (the filtered set) instead of full 'pf'
   const totCur   = rows.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp, 0);
   const totInvPr = rows.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*(h.avgBuy||0), 0);
   const totPnL   = totCur - totInvPr;
@@ -617,13 +614,11 @@ function renderBLSRows(rows, totalCur){
                   sig==='SELL'? 'background:#0e0306' : 'background:#03060f';
 
     return `<tr style="${rb}" onclick="openPortfolioStock('${h.sym}')">
-      <!-- Fixed left -->
       <td class="td-l td-fix td-fix1" style="${fixBg}">
         <div class="sym-main">${h.sym}</div>
         <div class="sym-name">${trunc(h.name,14)}</div>
       </td>
       <td class="td-l td-fix td-fix2" style="${fixBg};color:#7a9ab8;font-size:8px;max-width:70px;overflow:hidden;text-overflow:ellipsis">${trunc(h.sector||"—",10)}</td>
-      <!-- Scrollable -->
       <td><div class="pos-neg"><span class="pn-p">${h.pos||0}</span></div></td>
       <td><div class="pos-neg"><span class="pn-n">${h.neg||0}</span></div></td>
       <td style="${cATH}">${fn(h.ath_pct,1,'','%')}</td>
@@ -692,7 +687,7 @@ function pfSortArrow(k){
 function togglePfSort(k){
   const strCols = new Set(['sym','sector','name','sig']);
   if(S.pfSort===k) S.pfSortDir=S.pfSortDir==='desc'?'asc':'desc';
-  else{ S.pfSort=k; S.pfSortDir=strCols.has(k)?'asc':'desc'; }
+  else{ S.pfSort=k; S.pfSortDir=strCols.has(k)?'asc':'desc'; } // FIXED: Strings default to ASC
   render();
 }
 
