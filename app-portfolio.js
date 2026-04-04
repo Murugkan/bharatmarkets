@@ -1,111 +1,110 @@
-// ─────────────────────────────────────────────────────────────
-//  PORTFOLIO MODULE - AUTO-RECOVERY EDITION (v7.2)
-// ─────────────────────────────────────────────────────────────
-
-/** 1. DATA LOADER: Fetches the file if window.FUND is missing **/
-async function getFundData() {
-    // If FUND is already there, just return the stocks
-    if (window.FUND && window.FUND.stocks) return window.FUND.stocks;
-
+/**
+ * 1. FORCE THE BRIDGE
+ * This part ensures that even if app-core.js is "empty", 
+ * this module fills it immediately upon loading.
+ */
+(async function initializeDataBridge() {
     try {
-        console.log("FUND missing. Fetching from server...");
-        const response = await fetch('fundamentals.json?t=' + Date.now());
-        if (!response.ok) throw new Error("File not found");
-        const data = await response.json();
-        
-        // Save it globally so other parts of the app can use it
+        const r = await fetch('fundamentals.json?v=' + Date.now());
+        const data = await r.json();
+        // Force-populate the global variable app-core.js is looking for
         window.FUND = data;
-        return data.stocks || {};
+        window.fundLoaded = true;
+        console.log("🚀 Data Bridge Active:", Object.keys(data.stocks).length, "stocks linked.");
     } catch (e) {
-        console.error("Manual fetch failed:", e);
-        return {};
+        console.error("Data Bridge Failed:", e);
     }
-}
+})();
 
-/** 2. THE RENDERER: The main entry point **/
+/**
+ * 2. THE RENDERER
+ * Optimized to handle the 92 stocks found in your diagnostics.
+ */
 async function renderPortfolio(container) {
     if (!container) return;
 
-    // Show a quick "Loading" message while we fetch the file
-    container.innerHTML = `<div style="padding:100px 20px; text-align:center; color:#8b949e; font-family:sans-serif;">
-        <div style="color:#58a6ff; font-weight:bold; margin-bottom:10px;">BHARATMARKETS PRO</div>
-        <div>Syncing Fundamentals...</div>
+    // Fast-path: if data is already there, don't show "Syncing"
+    if (window.FUND && window.FUND.stocks && window.S && S.portfolio.length > 0) {
+        return drawPortfolioFinal(container);
+    }
+
+    container.innerHTML = `<div style="padding:60px; text-align:center; color:#58a6ff; font-family:Syne;">
+        <div style="margin-bottom:15px; font-size:18px;">BHARATMARKETS PRO</div>
+        <div style="color:#8b949e; font-size:12px; font-family:monospace;">CONNECTING DATA NODES...</div>
     </div>`;
 
-    // Wait for the data fetch to finish
-    const stocksData = await getFundData();
-    
-    // Draw the table
-    drawPortfolioUI(container, stocksData);
+    // Polling logic for the 92 stocks
+    const syncInterval = setInterval(() => {
+        const isReady = (window.FUND && FUND.stocks && window.S && S.portfolio.length > 0);
+        if (isReady) {
+            clearInterval(syncInterval);
+            drawPortfolioFinal(container);
+        }
+    }, 500);
 }
 
-/** 3. THE UI: Builds the actual table **/
-function drawPortfolioUI(container, fundStocks) {
-    const pf = S.portfolio.map(h => {
-        const sym = h.sym.toUpperCase();
-        // Handle Ticker Mismatch (AFCONSINFRAS -> AFCONS)
-        const targetSym = sym === "AFCONSINFRAS" ? "AFCONS" : sym;
-        const f = fundStocks[targetSym] || {};
+/**
+ * 3. THE UI GENERATOR
+ */
+function drawPortfolioFinal(container) {
+    const portfolio = S.portfolio.map(holding => {
+        const sym = holding.sym.toUpperCase();
+        // JSON uses .stocks[SYMBOL]
+        const fundamental = (FUND.stocks && FUND.stocks[sym]) ? FUND.stocks[sym] : {};
         
-        const ltp = h.ltp || f.ltp || 0;
-        const avg = h.avgBuy || 0;
-        const pnlP = avg > 0 ? ((ltp - avg) / avg) * 100 : 0;
+        const ltp = holding.ltp || fundamental.ltp || 0;
+        const avg = holding.avgBuy || 0;
+        const pnl = avg > 0 ? ((ltp - avg) / avg) * 100 : 0;
         
-        return { ...h, ...f, ltp, pnlP, sym };
+        return { ...holding, ...fundamental, ltp, pnl, sym };
     });
 
-    const totalInv = pf.reduce((a, r) => a + (r.qty * r.avgBuy), 0);
-    const totalCur = pf.reduce((a, r) => a + (r.qty * r.ltp), 0);
-    const netPnlP = totalInv > 0 ? ((totalCur - totalInv) / totalInv) * 100 : 0;
+    // Summary Calculations
+    const totalInv = portfolio.reduce((a, b) => a + (b.qty * b.avgBuy), 0);
+    const totalCur = portfolio.reduce((a, b) => a + (b.qty * b.ltp), 0);
+    const netPnl = totalInv > 0 ? ((totalCur - totalInv) / totalInv) * 100 : 0;
 
     container.innerHTML = `
-    <div style="padding:12px; background:#02040a; min-height:100vh; font-family:sans-serif; color:#fff;">
+    <div style="padding:15px; background:#02040a; min-height:100vh; font-family:'DM Sans', sans-serif; color:#fff;">
         
-        <div style="background:#111d30; padding:20px; border-radius:12px; border:1px solid #1e3350; display:flex; justify-content:space-between; margin-bottom:16px;">
-            <div>
-                <div style="color:#8b949e; font-size:11px;">INVESTED</div>
-                <div style="font-size:20px; font-weight:bold; margin-top:4px;">₹${(totalInv/100000).toFixed(2)}L</div>
-            </div>
-            <div style="text-align:right;">
-                <div style="color:#8b949e; font-size:11px;">NET P&L</div>
-                <div style="font-size:20px; font-weight:bold; margin-top:4px; color:${netPnlP >= 0 ? '#3fb950' : '#f85149'}">${netPnlP.toFixed(2)}%</div>
-            </div>
+        <div style="background:#111d30; padding:20px; border-radius:16px; border:1px solid #1e3350; display:flex; justify-content:space-between; margin-bottom:20px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+            <div><small style="color:#8b949e; font-size:10px; text-transform:uppercase;">Invested Value</small><br><b style="font-size:22px;">₹${(totalInv/100000).toFixed(2)}L</b></div>
+            <div style="text-align:right;"><small style="color:#8b949e; font-size:10px; text-transform:uppercase;">Overall P&L</small><br><b style="font-size:22px; color:${netPnl >= 0 ? '#3fb950' : '#f85149'}">${netPnl.toFixed(2)}%</b></div>
         </div>
 
-        <div style="background:#0d1525; border-radius:12px; border:1px solid #1e3350; overflow:hidden;">
-            <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <div style="background:#0d1525; border-radius:16px; border:1px solid #1e3350; overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse;">
                 <tbody>
-                    ${pf.map(r => `
-                    <tr onclick="openStockDetail('${r.sym}')" style="border-bottom:1px solid #1e3350;">
-                        <td style="padding:14px 12px;">
-                            <div style="font-weight:bold;">${r.sym}</div>
-                            <div style="font-size:10px; color:${r.signal==='BUY'?'#3fb950':'#8b949e'}">${r.signal || 'HOLD'}</div>
+                    ${portfolio.map(s => `
+                    <tr onclick="openStockDetail('${s.sym}')" style="border-bottom:1px solid #1e3350;">
+                        <td style="padding:16px 12px;">
+                            <div style="font-weight:600; font-family:Syne;">${s.sym}</div>
+                            <div style="font-size:10px; color:#8b949e;">${s.sector || 'PORTFOLIO'}</div>
                         </td>
                         <td style="text-align:center;">
                             <div style="color:#8b949e; font-size:10px;">ROE</div>
-                            <div style="color:${r.roe > 15 ? '#3fb950' : '#fff'}">${r.roe ? r.roe.toFixed(1)+'%' : '—'}</div>
+                            <div style="font-weight:500; color:${s.roe > 15 ? '#3fb950' : '#fff'}">${s.roe ? s.roe.toFixed(1)+'%' : '—'}</div>
                         </td>
-                        <td style="padding:14px 12px; text-align:right;">
-                            <div style="color:${r.pnlP >= 0 ? '#3fb950' : '#f85149'}; font-weight:bold;">${r.pnlP.toFixed(1)}%</div>
-                            <div style="font-size:10px; color:#484f58">₹${r.ltp.toFixed(0)}</div>
+                        <td style="padding:16px 12px; text-align:right;">
+                            <div style="color:${s.pnl >= 0 ? '#3fb950' : '#f85149'}; font-weight:bold;">${s.pnl.toFixed(1)}%</div>
+                            <div style="font-size:10px; color:#484f58">₹${s.ltp.toFixed(0)}</div>
                         </td>
                     </tr>`).join('')}
                 </tbody>
             </table>
         </div>
-        <div style="height:80px;"></div>
+        <div style="height:100px;"></div>
     </div>`;
 }
 
-/** 4. NAVIGATION: Links back to app-core.js functionality **/
+/**
+ * 4. NAVIGATION
+ */
 window.openStockDetail = (sym) => {
     const s = sym.toUpperCase();
-    const h = S.portfolio.find(p => p.sym === s) || {};
-    const f = (window.FUND && FUND.stocks && FUND.stocks[s]) ? FUND.stocks[s] : {};
-    
+    const h = (S.portfolio || []).find(p => p.sym === s) || {};
+    const f = (FUND.stocks && FUND.stocks[s]) ? FUND.stocks[s] : {};
     S.selStock = { ...h, ...f, sym: s };
     S.drillTab = 'overview';
-    
-    // Call the global render function from app-core.js
     if (typeof render === 'function') render();
 };
