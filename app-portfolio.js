@@ -1,133 +1,108 @@
+/* ═══════════════════════════════════════════════════════════
+   app-portfolio.js - MATURED PORTFOLIO RENDERER
+   Logic: Pulls from Unified Engine -> Renders Swipeable Rows
+═══════════════════════════════════════════════════════════ */
+
+const FUND_CACHE_TTL = 60 * 60 * 1000; 
+
 /**
- * APP-PORTFOLIO.JS - V4.8 (UI-FIRST ARCHITECTURE)
- * FOCUS: STICKY HEADERS, STICKY COLUMNS, & GRID INTEGRITY
+ * 1. Main Entry Point: Renders the Portfolio Tab
  */
-
-window.currentSort = { key: 'mcap', dir: 'desc' };
-
-window.triggerSort = function(key) {
-    const dir = (window.currentSort.key === key && window.currentSort.dir === 'desc') ? 'asc' : 'desc';
-    window.currentSort = { key, dir };
-    renderPortfolio(document.getElementById('portfolio-container'));
-};
-
 async function renderPortfolio(container) {
     if (!container) return;
+    
+    // Get Data from the Engine (IndexedDB) instead of raw memory
+    const db = await initEngineDB();
+    const stocks = await new Promise(r => {
+        const tx = db.transaction('UnifiedStocks', 'readonly');
+        tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result);
+    });
 
-    // 1. HARD-CODED COLUMN SCHEMA (Order is Permanent)
-    const cols = [
-        { l: 'SYMBOL', k: 'sym', a: 'left', sticky: true },
-        { l: 'QTY', k: 'qty', a: 'center' },
-        { l: 'AVG', k: 'avg', a: 'right' },
-        { l: 'LTP', k: 'ltp', a: 'right' },
-        { l: 'INVESTED', k: 'invested', a: 'right' },
-        { l: 'P/L', k: 'pnl', a: 'right' },
-        { l: '1D%', k: 'changePct', a: 'center' },
-        { l: 'POS', k: 'pos', a: 'center' },
-        { l: 'NEG', k: 'neg', a: 'center' },
-        { l: 'ROE%', k: 'roe', a: 'center' },
-        { l: 'ROCE%', k: 'roce', a: 'center' },
-        { l: 'OPM%', k: 'opm', a: 'center' },
-        { l: 'NPM%', k: 'npm', a: 'center' },
-        { l: 'P/E', k: 'pe', a: 'center' },
-        { l: 'P/B', k: 'pb', a: 'center' },
-        { l: 'EPS', k: 'eps', a: 'center' },
-        { l: 'MCAP ↓', k: 'mcap', a: 'center' },
-        { l: 'SALES', k: 'sales', a: 'center' },
-        { l: 'CFO', k: 'cfo', a: 'center' },
-        { l: 'EBITDA', k: 'ebitda', a: 'center' },
-        { l: 'PROM%', k: 'prom_pct', a: 'center' },
-        { l: 'FII%', k: 'fii_pct', a: 'center' },
-        { l: 'DII%', k: 'dii_pct', a: 'center' },
-        { l: 'ATH%', k: 'ath_pct', a: 'center' },
-        { l: '52W%', k: 'w52_pct', a: 'center' },
-        { l: 'SIGNAL', k: 'signal', a: 'center' }
-    ];
+    if (stocks.length === 0) {
+        container.innerHTML = `
+            <div style="padding:60px 20px; text-align:center;">
+                <div style="font-size:40px; margin-bottom:16px;">💼</div>
+                <div style="color:var(--tx3); font-family:'Syne';">Portfolio is Empty</div>
+                <button onclick="showTab('upload')" style="margin-top:20px; padding:10px 20px; background:var(--b2); border:none; border-radius:8px; color:white;">Import Data</button>
+            </div>`;
+        return;
+    }
 
-    try {
-        const ts = Date.now();
-        const [sRes, fRes] = await Promise.all([
-            fetch(`./symbols.json?v=${ts}`).catch(() => ({ json: () => [] })),
-            fetch(`./fundamentals.json?v=${ts}`).catch(() => ({ json: () => ({}) }))
-        ]);
+    // Sort Logic (Applying your default sort)
+    stocks.sort((a, b) => (b.marketValue || 0) - (a.marketValue || 0));
+
+    let html = `
+        <div class="engine-status-bar">
+            <span>UNIFIED ENGINE ACTIVE</span>
+            <span style="color:var(--gr2)">● LIVE</span>
+        </div>
+        <div style="padding:12px 0;">
+    `;
+
+    stocks.forEach(s => {
+        const isPositive = s.chg >= 0;
         
-        const sData = await sRes.json();
-        const fRaw = await fRes.json();
-        const fData = fRaw.stocks || fRaw;
-
-        // 2. DATA MAPPING
-        let portfolio = sData.map(s => {
-            const sym = (s.sym || s.SYMBOL || "").toUpperCase();
-            const f = fData[sym] || {};
-            const qty = parseFloat(s.qty || s.QTY || 0);
-            const avg = parseFloat(s.avg || s.AVG || 0);
-            const ltp = parseFloat(f.ltp || 0);
-            return {
-                ...f, sym, qty, avg, ltp,
-                invested: qty * avg,
-                pnl: (qty * ltp) - (qty * avg)
-            };
-        });
-
-        // 3. SORT
-        portfolio.sort((a, b) => {
-            const vA = a[window.currentSort.key] || 0;
-            const vB = b[window.currentSort.key] || 0;
-            return window.currentSort.dir === 'desc' ? vB - vA : vA - vB;
-        });
-
-        // 4. GENERATE UI
-        let html = `
-        <style>
-            .pf-wrapper { background:#02040a; height:100vh; display:flex; flex-direction:column; color:#fff; font-family:sans-serif; }
-            .scroll-area { overflow: auto; flex: 1; border: 1px solid #30363d; margin: 10px; border-radius: 8px; }
-            table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 11px; }
-            th { 
-                position: sticky; top: 0; background: #161b22; z-index: 10; 
-                padding: 12px; text-align: center; border-bottom: 2px solid #30363d; color: #8b949e;
-            }
-            td { padding: 12px; border-bottom: 1px solid #21262d; background: #0d1117; }
-            .sticky-col { 
-                position: sticky; left: 0; z-index: 5; border-right: 1px solid #30363d; 
-                font-weight: bold; color: #58a6ff; background: #0d1117 !important; 
-            }
-            th.sticky-col { z-index: 15; background: #161b22 !important; }
-            .footer { background: #0d1117; border-top: 2px solid #30363d; padding: 15px; display: flex; justify-content: space-around; font-weight: bold; }
-        </style>
-        <div class="pf-wrapper">
-            <div class="scroll-area">
-                <table>
-                    <thead>
-                        <tr>
-                            ${cols.map(c => `<th class="${c.sticky ? 'sticky-col' : ''}" onclick="triggerSort('${c.k}')">
-                                ${c.l}${window.currentSort.key === c.k ? (window.currentSort.dir === 'desc' ? ' ↓' : ' ↑') : ''}
-                            </th>`).join('')}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${portfolio.map(item => `
-                            <tr>
-                                ${cols.map(c => {
-                                    const val = item[c.k] || 0;
-                                    let display = (val === 0 && c.k !== 'qty') ? '—' : val.toLocaleString('en-IN');
-                                    if(['roe','opm','npm','changePct'].includes(c.k) && display !== '—') display += '%';
-                                    return `<td class="${c.sticky ? 'sticky-col' : ''}" style="text-align:${c.a};">
-                                        ${c.k === 'sym' ? item.sym : (c.k === 'signal' ? (item.signal || 'HOLD') : display)}
-                                    </td>`;
-                                }).join('')}
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+        html += `
+        <div class="swipe-wrap">
+            <div class="delete-underlay" onclick="deepPurge('${s.sym}')">
+                <div class="delete-text">PURGE</div>
             </div>
-            <div class="footer">
-                <div>INVESTED: ₹${portfolio.reduce((a,b)=>a+b.invested,0).toLocaleString('en-IN')}</div>
-                <div>P/L: ₹${portfolio.reduce((a,b)=>a+b.pnl,0).toLocaleString('en-IN')}</div>
+
+            <div class="engine-row" 
+                 onclick="viewStock('${s.sym}')"
+                 ontouchstart="handleTouchStart(event)" 
+                 ontouchmove="handleTouchMove(event)" 
+                 ontouchend="handleTouchEnd(event, '${s.sym}')">
+                
+                <div style="flex:1">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-family:'Syne'; font-weight:800; font-size:15px;">${s.sym}</span>
+                        <span class="sig-badge ${s.signalScore > 70 ? 'sig-buy' : ''}">
+                            ${s.signalScore.toFixed(0)}
+                        </span>
+                    </div>
+                    <div class="eng-meta">
+                        <span class="sig-badge">W: ${s.weight.toFixed(1)}%</span>
+                        <span class="sig-badge">ROE: ${s.roe}%</span>
+                    </div>
+                </div>
+
+                <div style="text-align:right">
+                    <div style="font-family:'JetBrains Mono'; font-weight:600; font-size:15px;">
+                        ₹${Number(s.ltp).toLocaleString('en-IN')}
+                    </div>
+                    <div style="font-size:11px; font-weight:700; color:${isPositive ? 'var(--gr2)' : 'var(--rd2)'}">
+                        ${isPositive ? '▲' : '▼'} ${Math.abs(s.chg).toFixed(2)}%
+                    </div>
+                </div>
             </div>
         </div>`;
+    });
 
-        container.innerHTML = html;
-    } catch (e) {
-        container.innerHTML = "Table Load Error";
-    }
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+/**
+ * 2. Helper: Signal Color Logic
+ */
+function getSignalClass(score) {
+    if (score > 75) return 'sig-buy';
+    if (score < 40) return 'sig-sell';
+    return '';
+}
+
+/**
+ * 3. Portfolio Summary Component (Mini)
+ */
+function renderPortfolioSummary(stocks) {
+    const total = stocks.reduce((sum, s) => sum + (s.marketValue || 0), 0);
+    const dayGain = stocks.reduce((sum, s) => sum + (s.plAbs || 0), 0);
+    
+    return `
+        <div style="padding:16px; background:var(--s1); border-bottom:1px solid var(--b1);">
+            <div style="color:var(--tx3); font-size:10px; font-weight:700; text-transform:uppercase;">Total Value</div>
+            <div style="font-family:'Syne'; font-size:24px; font-weight:800;">₹${total.toLocaleString('en-IN')}</div>
+        </div>
+    `;
 }
