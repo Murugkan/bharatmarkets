@@ -3,45 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Unified Core</title>
+    <title>BharatMarkets | Solid State Portfolio</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd1: #ff4d6d; --tx3: #708499; }
         body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
         
-        /* Look and Feel: Legacy Header */
-        header { height: 60px; background: var(--s1); border-bottom: 1px solid var(--b1); display: flex; align-items: center; padding: 0 20px; justify-content: space-between; }
-        .logo { font-weight: 800; color: var(--gr1); font-size: 14px; }
-        .totals { display: flex; gap: 15px; font-size: 10px; }
+        /* Legacy Header & Totals */
+        header { height: 65px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 5px 20px; display: flex; flex-direction: column; justify-content: center; }
+        .logo { font-weight: 800; color: var(--gr1); font-size: 13px; letter-spacing: 1px; }
+        .totals-bar { display: flex; gap: 20px; font-size: 11px; margin-top: 4px; border-top: 1px solid #1e293b; padding-top: 4px; }
         .t-val { font-weight: 700; color: var(--gr1); }
 
-        /* The Viewport: Selective Mirror */
-        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 60px); }
+        /* The Viewport: Selective Table */
+        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 65px); }
         table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
+        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; text-transform: uppercase; }
         td { padding: 12px 15px; border-bottom: 1px solid #182840; }
         
+        /* Sticky Symbol Column */
         .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; color: var(--gr1); }
-        .up { color: var(--gr2); } .down { color: var(--rd1); }
-        .BUY { color: var(--gr2); font-weight: 800; } .SELL { color: var(--rd1); font-weight: 800; } .HOLD { color: #ffb800; }
+        
+        /* Legacy Signal & P&L Colors */
+        .pos { color: var(--gr2); } .neg { color: var(--rd1); }
+        .BUY { color: var(--gr2); font-weight: 800; border: 1px solid var(--gr2); padding: 2px 4px; border-radius: 2px; }
+        .SELL { color: var(--rd1); font-weight: 800; border: 1px solid var(--rd1); padding: 2px 4px; border-radius: 2px; }
+        .HOLD { color: #ffb800; font-weight: 800; }
     </style>
 </head>
 <body onload="init()">
 
     <header>
-        <div class="logo">BHARAT MARKETS</div>
-        <div class="totals" id="totals-bar">
+        <div class="logo">BHARAT MARKETS | TERMINAL</div>
+        <div class="totals-bar">
             <span>INV: <span class="t-val" id="t-inv">0</span></span>
-            <span>PNL: <span class="t-val" id="t-pnl">0</span></span>
+            <span>CUR: <span class="t-val" id="t-cur">0</span></span>
+            <span>P&L: <span class="t-val" id="t-pnl">0</span></span>
         </div>
     </header>
 
     <div id="app" class="table-outer"></div>
 
     <script>
-        const DB_NAME = "BharatCoreDB"; const STORE = "MasterDump";
+        const DB_NAME = "BharatSolidDB"; const STORE = "MasterDump";
 
-        // --- THE BASIS 1: THE DUMP (EVERY STOCK, EVERY FUNDAMENTAL) ---
+        // THE SELECTIVE LIST: Bringing these fields from the dump to the UI
+        const LEGACY_VIEW = [
+            { id: 'SYM', label: 'SYMBOL' },
+            { id: 'LTP', label: 'LTP' },
+            { id: 'CHG1D', label: '1D %' },
+            { id: 'PNL_VAL', label: 'P&L' },
+            { id: 'ROE', label: 'ROE%' },
+            { id: 'OPM_PCT', label: 'OPM%' },
+            { id: 'PE', label: 'P/E' },
+            { id: 'PB', label: 'P/B' },
+            { id: 'DEBT_EQ', label: 'D/E' },
+            { id: 'MCAP', label: 'MCAP' },
+            { id: 'W52H', label: '52W H' },
+            { id: 'W52L', label: '52W L' },
+            { id: 'SIGNAL', label: 'SIGNAL' },
+            { id: 'POS', label: 'POS' },
+            { id: 'NEG', label: 'NEG' },
+            { id: 'SECTOR', label: 'SECTOR' }
+        ];
+
+        // 1. DATA PIPELINE: Total Dump + Key Normalization
         async function runMasterDump() {
             try {
                 const res = await fetch('fundamentals.json');
@@ -50,29 +76,32 @@
                 const tx = db.transaction(STORE, "readwrite");
                 const store = tx.objectStore(STORE);
 
-                // This is the "Raw Dump" - No filtering here.
                 Object.keys(data.stocks).forEach(ticker => {
                     const raw = data.stocks[ticker];
-                    const sym = ticker.split('.')[0].toUpperCase(); // Resolve Suffix
+                    const sym = ticker.split('.')[0].toUpperCase(); // RESOLVES: HDFC.NS -> HDFC
                     
-                    // Standardize all keys to UPPERCASE during dump to fix "—" mismatches
+                    // Normalize all JSON keys to UPPERCASE (Fixes "—" mismatches)
                     const record = { SYM: sym };
                     for (let key in raw) record[key.toUpperCase()] = raw[key];
                     
-                    // Force calculate PNL for the UI mirror
-                    if (record.LTP && record.QTY) {
-                        record.PNL_VAL = Math.round((record.QTY * record.LTP) - (record.QTY * record.AVG));
-                    }
+                    // Pre-calculate Baked Values
+                    const qty = record.QTY || 0;
+                    const avg = record.AVG || 0;
+                    const ltp = record.LTP || 0;
                     
-                    store.put(record); // The full 33+ field record goes into DB
+                    record.PNL_VAL = ltp ? Math.round((qty * ltp) - (qty * avg)) : 0;
+                    record.INV_VAL = (qty * avg);
+                    record.CUR_VAL = (qty * ltp);
+                    
+                    store.put(record); // Full 33-field record goes into DB
                 });
 
-                tx.oncomplete = () => renderPortfolio();
-            } catch (e) { console.error("Dump Error:", e); }
+                tx.oncomplete = () => renderMirror();
+            } catch (e) { console.error("Pipeline Failed: Check fundamentals.json"); }
         }
 
-        // --- THE BASIS 2: SELECTIVE VIEW (OLD PORTFOLIO FIELDS) ---
-        async function renderPortfolio() {
+        // 2. PASSIVE UI: Selective Read from DB
+        async function renderMirror() {
             const db = await openDB();
             const stocks = await new Promise(r => {
                 db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
@@ -80,31 +109,29 @@
 
             if (!stocks.length) return;
 
-            // These are the SELECTIVE fields from your old portfolio JS
-            const cols = ['SYM', 'LTP', 'CHG1D', 'PNL_VAL', 'ROE', 'OPM_PCT', 'PE', 'DEBT_EQ', 'MCAP', 'SIGNAL', 'SECTOR'];
-
-            // Totals
-            let tInv = 0, tPnl = 0;
-            stocks.forEach(s => { 
-                tInv += (s.QTY * s.AVG) || 0; 
-                tPnl += s.PNL_VAL || 0; 
-            });
+            // Header Totals
+            let tInv = 0, tCur = 0, tPnl = 0;
+            stocks.forEach(s => { tInv += s.INV_VAL; tCur += s.CUR_VAL; tPnl += s.PNL_VAL; });
             document.getElementById('t-inv').innerText = Math.round(tInv).toLocaleString();
+            document.getElementById('t-cur').innerText = Math.round(tCur).toLocaleString();
             document.getElementById('t-pnl').innerText = Math.round(tPnl).toLocaleString();
+            document.getElementById('t-pnl').className = `t-val ${tPnl >= 0 ? 'pos' : 'neg'}`;
 
+            // Build Mirror Table
             let h = `<table><thead><tr>`;
-            cols.forEach(c => h += `<th class="${c==='SYM'?'sticky-sym':''}">${c}</th>`);
+            LEGACY_VIEW.forEach(f => h += `<th class="${f.id==='SYM'?'sticky-sym':''}">${f.label}</th>`);
             h += `</tr></thead><tbody>`;
 
             stocks.forEach(s => {
                 h += `<tr>`;
-                cols.forEach(c => {
-                    let val = s[c] !== undefined ? s[c] : '—';
-                    let cls = c === 'SYM' ? 'sticky-sym' : '';
+                LEGACY_VIEW.forEach(f => {
+                    let val = s[f.id] !== undefined ? s[f.id] : '—';
+                    let cls = f.id === 'SYM' ? 'sticky-sym' : '';
                     
-                    if (c === 'PNL_VAL' || c === 'CHG1D') cls += ` ${val >= 0 ? 'up' : 'down'}`;
-                    if (c === 'SIGNAL') cls += ` ${val}`;
-                    if (c === 'CHG1D' && val !== '—') val = val + '%';
+                    // Legacy Look & Feel Formatting
+                    if (f.id === 'PNL_VAL' || f.id === 'CHG1D') cls += ` ${val >= 0 ? 'pos' : 'neg'}`;
+                    if (f.id === 'SIGNAL') cls += ` ${val}`;
+                    if (f.id === 'CHG1D' && val !== '—') val = val + '%';
 
                     h += `<td class="${cls}">${val}</td>`;
                 });
@@ -116,7 +143,11 @@
         function openDB() {
             return new Promise(res => {
                 const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" });
+                req.onupgradeneeded = e => {
+                    const db = e.target.result;
+                    if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
+                    db.createObjectStore(STORE, { keyPath: "SYM" });
+                };
                 req.onsuccess = () => res(req.result);
             });
         }
