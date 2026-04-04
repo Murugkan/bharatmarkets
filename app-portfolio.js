@@ -843,4 +843,4 @@ function showPfDebug(){
     <button onclick="this.closest('div[style]').remove()" style="background:none;border:1px solid #4a6888;border-radius:6px;color:#8eb0d0;padding:4px 10px;cursor:pointer;font-size:11px">✕ Close</button></div>
   <pre style="flex:1;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:9px;color:#c8dff5;background:#02040a;border:1px solid #1e3350;border-radius:8px;padding:10px;white-space:pre-wrap;word-break:break-all">${out.join('\n')}</pre>`;
   document.body.appendChild(modal);
-}
+
