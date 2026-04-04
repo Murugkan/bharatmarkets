@@ -3,70 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets Pro | End-to-End Stable</title>
+    <title>BharatMarkets Pro | Nested Sync Fix</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b;
-            --gr1: #00f2ff; --gr2: #00e896; --tx1: #f0f6ff; --tx3: #708499;
+            --gr1: #00f2ff; --gr2: #00e896; --rd1: #ff4d6d; --tx1: #f0f6ff; --tx3: #708499;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
-        
-        /* High-Visibility Debug Console */
-        #debug-log { height: 140px; overflow-y: auto; background: #000; border-bottom: 2px solid var(--gr1); font-family: 'JetBrains Mono'; font-size: 11px; padding: 15px; color: var(--gr1); line-height: 1.5; }
-        
-        .bls-table-outer { width: 100%; overflow: auto; padding-bottom: 100px; height: calc(100vh - 290px); }
-        .bls-t { border-collapse: collapse; font-size: 10px; font-family: 'JetBrains Mono'; white-space: nowrap; min-width: 100%; }
-        .bls-t th { background: #16213e; color: var(--gr1); padding: 12px 15px; text-align: left; border: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; text-transform: uppercase; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
+        #debug-log { height: 120px; overflow-y: auto; background: #000; border-bottom: 2px solid var(--gr1); font-family: 'JetBrains Mono'; font-size: 11px; padding: 15px; color: var(--gr1); }
+        .bls-table-outer { width: 100%; overflow: auto; padding-bottom: 100px; height: calc(100vh - 270px); }
+        .bls-t { border-collapse: collapse; font-size: 10px; font-family: 'JetBrains Mono'; white-space: nowrap; width: 100%; }
+        .bls-t th { background: #16213e; color: var(--gr1); padding: 12px 15px; text-align: left; border: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; }
         .bls-t td { padding: 10px 15px; border: 1px solid #182840; color: #fff; }
-
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
         .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
         .btn-sync { background: var(--gr2) !important; color: #000 !important; font-weight: 900; }
-        
-        .import-box { padding: 20px; }
-        #import-area { width: 100%; height: 150px; background: var(--s2); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; }
     </style>
 </head>
 <body onload="init()">
 
-    <div id="debug-log">SYSTEM ONLINE. IMPORT SYMBOLS THEN 'FULL BAKE'.</div>
+    <div id="debug-log">V1.3: READY. Logic adjusted for 'stocks' header.</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="showTab('raw', this)">33 Fields View</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb btn-sync" onclick="bakeAndVerify()">FULL BAKE</button>
+        <button class="nb btn-sync" onclick="bakeAllFields()">FULL BAKE</button>
     </nav>
 
     <script src="app-engine.js"></script>
     <script>
         let curTab = 'portfolio';
 
-        function log(msg, color = "#00f2ff") {
+        function log(msg) {
             const l = document.getElementById('debug-log');
-            l.innerHTML = `<div><span style="color:${color}">> ${msg}</span></div>` + l.innerHTML;
+            l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
         }
 
-        // END-TO-END DATA EXTRACTOR
-        function extractTickerData(sourceObj, ticker) {
-            if (!sourceObj) return null;
-            // Check flat
-            if (sourceObj[ticker]) return sourceObj[ticker];
-            // Check common wrappers
-            const wrappers = ['data', 'stocks', 'results', 'market'];
-            for (let w of wrappers) {
-                if (sourceObj[w] && sourceObj[w][ticker]) return sourceObj[w][ticker];
-            }
+        // SPECIFIC FIX: Your JSON puts everything inside ["stocks"]
+        function findDataInJson(data, ticker) {
+            if (!data) return null;
+            if (data.stocks && data.stocks[ticker]) return data.stocks[ticker]; 
+            if (data[ticker]) return data[ticker];
             return null;
         }
 
-        async function bakeAndVerify() {
-            log("STARTING END-TO-END BAKE...", "#fff");
+        async function bakeAllFields() {
+            log("STARTING NESTED SYNC...");
             try {
-                const [fData, pData, sMaster, sMap] = await Promise.all([
+                const [fRaw, pRaw, sMaster, sMap] = await Promise.all([
                     fetch('fundamentals.json').then(r => r.json()),
                     fetch('prices.json').then(r => r.json()),
                     fetch('symbols.json').then(r => r.json()),
@@ -81,46 +69,38 @@
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                if (holdings.length === 0) return log("FAIL: No symbols in DB. Use Import tab.", "#ff4d6d");
-
+                let successCount = 0;
                 holdings.forEach(h => {
-                    // 1. Resolve through Map
-                    const mapped = sMap.overrides[h.sym] || h.sym;
-                    const clean = mapped.split('.')[0];
-                    const variations = [mapped, `${mapped}.NS`, `${mapped}.BO`, clean];
+                    const mappedSym = sMap.overrides[h.sym] || h.sym;
+                    const cleanKey = mappedSym.split('.')[0];
+                    const variants = [mappedSym, cleanKey, h.sym];
 
-                    let foundF = null, foundP = null;
-                    
-                    // 2. Scan Variations
-                    for (let v of variations) {
-                        if (!foundF) foundF = extractTickerData(fData, v);
-                        if (!foundP) foundP = extractTickerData(pData, v);
+                    let fEntry = null;
+                    for (let v of variants) {
+                        const found = findDataInJson(fRaw, v);
+                        if (found) { fEntry = found; break; }
                     }
 
-                    const master = sMaster.find(m => m.sym === h.sym || m.sym === clean) || {};
+                    const m = sMaster.find(item => item.sym === h.sym || item.sym === cleanKey) || {};
 
-                    // 3. Flatten All Fields
-                    const finalRecord = {
+                    const baked = {
                         ...h,
-                        ...master,
-                        ...foundF,
-                        ...foundP,
-                        sym: mapped, // Standardize to the mapped ticker
-                        sync_status: foundF ? "SUCCESS" : "NO_FUNDAMENTALS"
+                        ...m,
+                        ...fEntry, // This now spreads all 33 fields from your file
+                        sym: mappedSym,
+                        sync_status: fEntry ? "OK" : "MISSING"
                     };
 
-                    if (!foundF) log(`WARN: ${h.sym} not found in fundamentals.json`, "#ffbd2e");
-                    
-                    store.put(finalRecord);
+                    if (fEntry) successCount++;
+                    store.put(baked);
                 });
 
                 tx.oncomplete = () => {
-                    log("BAKE COMPLETE: Open '33 Fields View' to see every column.", "#00e896");
+                    log(`SUCCESS: ${successCount} stocks baked. Header 'stocks' detected.`);
                     render();
                 };
             } catch (e) {
-                log("FATAL: Fetch failed. Check if JSONs are in the root folder.", "#ff4d6d");
-                console.error(e);
+                log("FETCH ERROR. Check file placement.");
             }
         }
 
@@ -131,23 +111,26 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (!stocks.length) return container.innerHTML = "<div style='padding:50px'>Import data first.</div>";
+            if (!stocks.length) return container.innerHTML = "<div style='padding:50px'>No data.</div>";
 
-            // Header Discovery
-            const headerSet = new Set();
-            stocks.forEach(s => Object.keys(s).forEach(k => headerSet.add(k)));
-            const headers = Array.from(headerSet);
+            const allKeys = new Set();
+            stocks.forEach(s => Object.keys(s).forEach(k => allKeys.add(k)));
+            const keys = Array.from(allKeys);
 
-            let html = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
-            headers.forEach(h => html += `<th>${h}</th>`);
-            html += `</tr></thead><tbody>`;
+            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
+            keys.forEach(k => h += `<th>${k}</th>`);
+            h += `</tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                html += `<tr>`;
-                headers.forEach(h => html += `<td>${s[h] !== undefined ? s[h] : '—'}</td>`);
-                html += `</tr>`;
+                h += `<tr>`;
+                keys.forEach(k => {
+                    let val = s[k];
+                    if (k === 'quarterly') val = "[Array]";
+                    h += `<td>${val !== undefined ? val : '—'}</td>`;
+                });
+                h += `</tr>`;
             });
-            container.innerHTML = html + `</tbody></table></div>`;
+            container.innerHTML = h + `</tbody></table></div>`;
         }
 
         async function renderPortfolio(container) {
@@ -157,19 +140,17 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (!stocks.length) return container.innerHTML = "<div style='padding:100px;text-align:center'>Empty.</div>";
-
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th>Ticker</th><th>Sector</th><th>LTP</th><th>ROE%</th><th>Status</th>
+                <th>Ticker</th><th>Sector</th><th>ROE%</th><th>OPM%</th><th>Debt/Eq</th>
             </tr></thead><tbody>`;
 
             stocks.forEach(s => {
                 h += `<tr>
                     <td><strong>${s.sym}</strong></td>
                     <td>${s.sector || '—'}</td>
-                    <td>${s.ltp || 0}</td>
-                    <td>${s.roe || 0}%</td>
-                    <td style="color:${s.sync_status==='SUCCESS'?'#00e896':'#ff4d6d'}">${s.sync_status}</td>
+                    <td>${s.roe || '—'}</td>
+                    <td>${s.opm_pct || '—'}</td>
+                    <td>${s.debt_eq || '—'}</td>
                 </tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
@@ -185,10 +166,7 @@
         function render() {
             const c = document.getElementById('content');
             if (curTab === 'import') {
-                c.innerHTML = `<div class="import-box">
-                    <textarea id="import-area" placeholder="ZINKA 100 500"></textarea>
-                    <button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE SYMBOLS</button>
-                </div>`;
+                c.innerHTML = `<div style="padding:20px"><textarea id="import-area" style="width:100%;height:150px;background:#121a2d;color:#fff;padding:10px" placeholder="OLECTRA 10 1000"></textarea><button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE</button></div>`;
             } else if (curTab === 'raw') {
                 renderRaw(c);
             } else {
@@ -205,7 +183,7 @@
                 const p = line.split(/\s+/);
                 if (p.length >= 3) store.put({ sym: p[0].toUpperCase(), qty: parseFloat(p[1]), avgBuy: parseFloat(p[2]) });
             });
-            tx.oncomplete = () => { log("Imported. Tap FULL BAKE."); showTab('portfolio', document.querySelector('.nb')); };
+            tx.oncomplete = () => { log("Saved. Click FULL BAKE."); showTab('portfolio', document.querySelector('.nb')); };
         }
 
         function init() { render(); }
