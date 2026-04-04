@@ -9,36 +9,30 @@
         :root {
             --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d;
             --b1: #1e293b; --gr1: #00f2ff; --gr2: #00e896; --rd2: #ff6b85;
-            --tx1: #f0f6ff; --tx3: #708499; --yw2: #ffbf47;
+            --tx1: #f0f6ff; --tx3: #708499;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
-
-        /* KPI STRIP - Exact Match to Reference */
-        .kpi-strip { display: flex; background: var(--bg); padding: 25px 20px; gap: 30px; border-bottom: 1px solid #182840; }
-        .kpi { flex-shrink: 0; }
-        .kpi-l { font-size: 10px; color: var(--tx3); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-        .kpi-v { font-size: 24px; font-weight: 700; font-family: 'Syne'; line-height: 1; }
-        .kpi-s { font-size: 12px; color: var(--tx3); margin-top: 6px; font-family: 'JetBrains Mono'; }
-
-        /* TABLE - 29 Column Support */
-        .bls-table-outer { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); font-weight: 700; padding: 12px 10px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 20; }
-        .bls-t td { padding: 12px 10px; border-bottom: 1px solid #18284040; text-align: right; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
         
-        .th-l, .td-l { text-align: left !important; }
-        .th-fix, .td-fix { position: sticky; left: 0; z-index: 10; background: var(--bg); }
-        .th-fix1, .td-fix1 { left: 0; min-width: 90px; }
-        .th-fix2, .td-fix2 { left: 90px; min-width: 80px; border-right: 1px solid var(--b1); }
+        /* KPI & Table Styles */
+        .kpi-strip { display: flex; background: var(--bg); padding: 20px; gap: 20px; border-bottom: 1px solid #182840; overflow-x: auto; }
+        .kpi { flex-shrink: 0; }
+        .kpi-l { font-size: 10px; color: var(--tx3); font-weight: 800; margin-bottom: 4px; }
+        .kpi-v { font-size: 20px; font-weight: 700; font-family: 'Syne'; }
+        
+        .bls-table-outer { width: 100%; overflow-x: auto; }
+        .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px; text-align: right; border-bottom: 1px solid var(--b1); }
+        .bls-t td { padding: 10px; border-bottom: 1px solid #18284040; text-align: right; }
+        .td-l { text-align: left !important; }
 
         /* Navigation */
-        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
-        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-        .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
+        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
+        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 16px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .nb.active { color: var(--gr1); }
 
-        .u-dim { color: #4a6888; }
-        .pn-p { color: var(--gr2); font-weight: 800; }
-        .pn-n { color: var(--rd2); font-weight: 800; }
+        /* Debug Window Styles */
+        .debug-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.9); display: flex; flex-direction: column; padding: 16px; }
+        .debug-pre { flex: 1; overflow: auto; font-family: 'JetBrains Mono'; font-size: 10px; color: #00f2ff; background: #02040a; padding: 10px; border: 1px solid #1e3350; }
     </style>
 </head>
 <body onload="init()">
@@ -47,113 +41,111 @@
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
-        <button class="nb" onclick="showTab('watchlist', this)">Watchlist</button>
-        <button class="nb" onclick="openImport()">Import</button>
+        <button class="nb" onclick="showTab('raw', this)">Raw DB Data</button>
+        <button class="nb" onclick="showPfDebug()">Debug</button>
+        <button class="nb" onclick="seedTestData()">Seed Data</button>
     </nav>
 
-    <script>
-        let FUND = {}; // Will be populated by app-engine.js or fetch
-        let S = { portfolio: [], curTab: 'portfolio' }; 
-    </script>
-
     <script src="app-engine.js"></script>
-
     <script>
-        /* ═══════════════════════════════════════════════════════════
-           PORTFOLIO LOGIC (Adapted from app-portfolio.js)
-        ═══════════════════════════════════════════════════════════ */
-        
-        // Formatting helper from Section 1
-        function fn(v, dp=1, prefix='', suffix=''){
-            if(v===null||v===undefined||isNaN(v)) return '<span style="color:#2a3a4a">—</span>';
-            return prefix+Number(v).toFixed(dp)+suffix;
-        }
+        let currentTab = 'portfolio';
 
-        async function renderPortfolio(container) {
+        // 1. DEBUG WINDOW
+        async function showPfDebug() {
             const db = await initEngineDB();
-            const rawStocks = await new Promise(r => {
+            const stocks = await new Promise(r => {
                 const tx = db.transaction('UnifiedStocks', 'readonly');
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            // Calculate Totals using logic from Section 1
-            let tInv = 0, tCur = 0;
-            rawStocks.forEach(s => {
-                const q = parseFloat(s.qty || 0);
-                const a = parseFloat(s.avgBuy || 0);
-                const l = parseFloat(s.ltp || 0);
-                tInv += (q * a);
-                tCur += (q * l);
+            let log = "=== PORTFOLIO DEBUG ===\n";
+            log += `Total stocks in DB: ${stocks.length}\n\n`;
+            stocks.forEach(s => {
+                log += `${s.sym.padEnd(12)} | LTP: ${s.ltp || 0} | Qty: ${s.qty} | Avg: ${s.avgBuy}\n`;
             });
 
-            const tPnL = tCur - tInv;
-            const pPct = tInv > 0 ? (tPnL / tInv) * 100 : 0;
-            const pCol = tPnL >= 0 ? 'var(--gr2)' : 'var(--rd2)';
-
-            let html = `
-                <div class="kpi-strip">
-                    <div class="kpi"><div class="kpi-l">INVESTED</div><div class="kpi-v" style="color:#64b5f6">₹${(tInv/100000).toFixed(2)}L</div></div>
-                    <div class="kpi"><div class="kpi-l">MKT VALUE</div><div class="kpi-v">₹${(tCur/100000).toFixed(2)}L</div></div>
-                    <div class="kpi">
-                        <div class="kpi-l">TOTAL P&L</div>
-                        <div class="kpi-v" style="color:${pCol}">${tPnL>=0?'+':''}₹${(Math.abs(tPnL)/100000).toFixed(2)}L</div>
-                        <div class="kpi-s" style="color:${pCol}">${pPct.toFixed(2)}%</div>
-                    </div>
+            const modal = document.createElement('div');
+            modal.className = 'debug-overlay';
+            modal.innerHTML = `
+                <div style="display:flex; justify-content:space-between; margin-bottom:10px">
+                    <span style="font-family:Syne; font-weight:800; color:#00f2ff">SYSTEM DEBUG</span>
+                    <button onclick="this.closest('.debug-overlay').remove()" style="background:#1e293b; color:white; border:none; padding:5px 15px; border-radius:4px">Close</button>
                 </div>
-                <div class="bls-table-outer">
-                    <table class="bls-t">
-                        <thead>
-                            <tr>
-                                <th class="th-l th-fix th-fix1">Ticker</th>
-                                <th class="th-l th-fix th-fix2">Sector</th>
-                                <th>LTP</th>
-                                <th>%1D</th>
-                                <th>Qty</th>
-                                <th>Avg</th>
-                                <th>P&L</th>
-                                <th>P&L%</th>
-                                <th>Signals</th>
-                            </tr>
-                        </thead>
-                        <tbody>`;
+                <pre class="debug-pre">${log}</pre>
+            `;
+            document.body.appendChild(modal);
+        }
 
-            if (rawStocks.length === 0) {
-                html += `<tr><td colspan="9" style="text-align:center; padding:50px; color:var(--tx3)">No data. Tap Import.</td></tr>`;
-            } else {
-                rawStocks.forEach(s => {
-                    const inv = s.qty * s.avgBuy;
-                    const cur = s.qty * (s.ltp || 0);
-                    const pnl = cur - inv;
-                    const pnlP = s.avgBuy > 0 ? (pnl/inv)*100 : 0;
-                    
-                    // Row Background logic from Section 1
-                    const rowStyle = pnl >= 0 ? 'background:rgba(0,160,80,.05)' : 'background:rgba(200,30,50,.05)';
-                    const cellPnL = pnl >= 0 ? 'background:#003a20;color:#fff;font-weight:700' : 'background:#3a0010;color:#fff;font-weight:700';
+        // 2. DATA SEEDING (Ensure DB has data for testing)
+        async function seedTestData() {
+            const db = await initEngineDB();
+            const tx = db.transaction('UnifiedStocks', 'readwrite');
+            const store = tx.objectStore('UnifiedStocks');
+            
+            const sampleData = [
+                { sym: 'RELIANCE', qty: 10, avgBuy: 2450.50, ltp: 2980.20, chg: 1.2, sector: 'Energy', roe: 18.5, pe: 25.4, signal: 'BUY' },
+                { sym: 'TCS', qty: 5, avgBuy: 3200.00, ltp: 3850.00, chg: -0.5, sector: 'IT', roe: 35.2, pe: 30.1, signal: 'HOLD' },
+                { sym: 'HDFCBANK', qty: 20, avgBuy: 1550.00, ltp: 1420.00, chg: 0.2, sector: 'Banking', roe: 16.8, pe: 18.2, signal: 'BUY' }
+            ];
 
-                    html += `
-                        <tr style="${rowStyle}">
-                            <td class="td-l td-fix td-fix1"><strong>${s.sym}</strong></td>
-                            <td class="td-l td-fix td-fix2" style="color:var(--tx3); font-size:9px">${s.sector || '—'}</td>
-                            <td style="font-weight:600">₹${fn(s.ltp, 1)}</td>
-                            <td style="color:${s.chg >= 0 ? 'var(--gr2)' : 'var(--rd2)'}">${s.chg >= 0 ? '+' : ''}${fn(s.chg, 2)}%</td>
-                            <td class="u-dim">${s.qty}</td>
-                            <td class="u-dim">₹${fn(s.avgBuy, 1)}</td>
-                            <td style="${cellPnL}">${pnl.toFixed(0)}</td>
-                            <td style="${cellPnL}">${pnlP.toFixed(1)}%</td>
-                            <td><div class="pos-neg"><span class="pn-p">3</span><span class="pn-n">0</span></div></td>
-                        </tr>`;
-                });
+            sampleData.forEach(s => store.put(s));
+            tx.oncomplete = () => { alert("Test data seeded!"); render(); };
+        }
+
+        // 3. SHOW ALL FIELDS IN DB (Raw View)
+        async function renderRawData(container) {
+            const db = await initEngineDB();
+            const stocks = await new Promise(r => {
+                const tx = db.transaction('UnifiedStocks', 'readonly');
+                tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
+            });
+
+            if (stocks.length === 0) {
+                container.innerHTML = "<div style='padding:50px; text-align:center'>DB is empty. Tap Seed Data.</div>";
+                return;
             }
+
+            // Get all unique keys present in the objects
+            const allKeys = [...new Set(stocks.flatMap(Object.keys))];
+
+            let html = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
+            allKeys.forEach(k => html += `<th>${k}</th>`);
+            html += `</tr></thead><tbody>`;
+
+            stocks.forEach(s => {
+                html += `<tr>`;
+                allKeys.forEach(k => html += `<td>${s[k] !== undefined ? s[k] : '—'}</td>`);
+                html += `</tr>`;
+            });
 
             html += `</tbody></table></div>`;
             container.innerHTML = html;
         }
 
-        /* ═══════════════════════════════════════════════════════════
-           CORE NAVIGATION
-        ═══════════════════════════════════════════════════════════ */
-        async function showTab(t, btn) {
-            S.curTab = t;
+        async function renderPortfolio(container) {
+            const db = await initEngineDB();
+            const stocks = await new Promise(r => {
+                const tx = db.transaction('UnifiedStocks', 'readonly');
+                tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
+            });
+
+            let tInv = 0, tCur = 0;
+            stocks.forEach(s => {
+                tInv += (s.qty * s.avgBuy);
+                tCur += (s.qty * (s.ltp || 0));
+            });
+
+            container.innerHTML = `
+                <div class="kpi-strip">
+                    <div class="kpi"><div class="kpi-l">INVESTED</div><div class="kpi-v">₹${(tInv/100000).toFixed(2)}L</div></div>
+                    <div class="kpi"><div class="kpi-l">MKT VALUE</div><div class="kpi-v">₹${(tCur/100000).toFixed(2)}L</div></div>
+                </div>
+                <div style="padding:15px; font-size:12px; color:var(--tx3)">Showing active portfolio view. Tap "Raw DB Data" to see all fields.</div>
+            `;
+        }
+
+        function showTab(t, btn) {
+            currentTab = t;
             document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
             if(btn) btn.classList.add('active');
             render();
@@ -161,37 +153,11 @@
 
         function render() {
             const container = document.getElementById('content');
-            if (S.curTab === 'portfolio') renderPortfolio(container);
-            else container.innerHTML = '<div style="padding:100px; text-align:center; color:var(--tx3)">Watchlist Coming Soon</div>';
+            if (currentTab === 'portfolio') renderPortfolio(container);
+            else if (currentTab === 'raw') renderRawData(container);
         }
 
         function init() { render(); }
-
-        // Logic for the Import Panel
-        function openImport() {
-            const container = document.getElementById('content');
-            container.innerHTML = `
-                <div style="padding:20px">
-                    <h2 style="font-family:'Syne'">Import Portfolio</h2>
-                    <textarea id="import-area" placeholder="SYMBOL QTY AVG" style="width:100%; height:200px; background:var(--s2); color:white; border:1px solid var(--b1); border-radius:12px; padding:15px; font-family:'JetBrains Mono'"></textarea>
-                    <button onclick="processImport()" style="width:100%; padding:20px; background:var(--gr1); border:none; border-radius:12px; font-weight:800; margin-top:10px">SAVE</button>
-                </div>`;
-        }
-
-        async function processImport() {
-            const lines = document.getElementById('import-area').value.split('\n');
-            const stocks = [];
-            lines.forEach(l => {
-                const p = l.trim().split(/\s+/);
-                if (p.length >= 2) {
-                    stocks.push({ sym: p[0].toUpperCase(), qty: parseInt(p[1]), avgBuy: parseFloat(p[2]||0), ltp: 0, chg: 0 });
-                }
-            });
-            const db = await initEngineDB();
-            const tx = db.transaction('UnifiedStocks', 'readwrite');
-            stocks.forEach(s => tx.objectStore('UnifiedStocks').put(s));
-            tx.oncomplete = () => { S.curTab = 'portfolio'; render(); };
-        }
     </script>
 </body>
 </html>
