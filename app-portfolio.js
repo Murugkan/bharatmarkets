@@ -1,44 +1,3 @@
-// Keep your confirmed base variables
-if (typeof pfRefreshing === 'undefined') window.pfRefreshing = false;
-if (typeof fundLoaded === 'undefined') window.fundLoaded = false;
-
-async function loadFundamentals() {
-  if (window.pfRefreshing) return;
-  window.pfRefreshing = true;
-  try {
-    const ts = Date.now();
-    const [sRes, fRes] = await Promise.all([
-      fetch(`./symbols.json?v=${ts}`),
-      fetch(`./fundamentals.json?v=${ts}`)
-    ]);
-    const sData = await sRes.json();
-    const fData = await fRes.json();
-
-    window.S = window.S || {};
-    window.S.portfolio = sData.map(item => ({
-      sym: item.sym,
-      isin: item.isin || '',
-      sector: item.sector || 'N/A'
-    }));
-
-    window.FUND = fData.stocks || fData;
-    
-    window.ISIN_MAP = {};
-    Object.keys(window.FUND).forEach(key => {
-      const stock = window.FUND[key];
-      if (stock && stock.isin) window.ISIN_MAP[stock.isin] = key;
-    });
-
-    window.fundLoaded = true;
-    return true;
-  } catch (e) {
-    console.error("Engine Crash:", e);
-    return false;
-  } finally {
-    window.pfRefreshing = false;
-  }
-}
-
 async function renderPortfolio(container) {
   if (!container) return;
   const overlay = document.querySelector('.loading, #sync-overlay');
@@ -49,18 +8,15 @@ async function renderPortfolio(container) {
     await loadFundamentals();
   }
 
-  // --- ENGINE READINESS CHECK ---
+  // Engine Hit Counter
   let dataHits = 0;
   window.S.portfolio.forEach(h => {
-    if (window.FUND[h.sym] || (h.isin && window.FUND[window.ISIN_MAP[h.isin]])) {
-      dataHits++;
-    }
+    if (window.FUND[h.sym] || (h.isin && window.FUND[window.ISIN_MAP[h.isin]])) dataHits++;
   });
 
-  // START RENDERING
   let html = `<div style="padding:10px; background:#02040a; min-height:100vh; color:#fff; font-family:sans-serif;">`;
   
-  // STEP 3 STATUS BAR
+  // Status Bar
   html += `<div style="margin-bottom:15px; padding:10px; background:#0d1117; border:1px solid #1e3350; border-radius:4px; font-size:11px; font-family:monospace;">
             <span style="color:#3fb950;">● ENGINE: READY</span> | 
             <span style="color:#58a6ff;">STOCKS: ${window.S.portfolio.length}</span> | 
@@ -80,14 +36,24 @@ async function renderPortfolio(container) {
           </tr>`;
 
   window.S.portfolio.forEach(h => {
+    // Advanced Matcher
     const f = window.FUND[h.sym] || (h.isin ? window.FUND[window.ISIN_MAP[h.isin]] : null) || {};
     
+    // Data Extraction for Step 2
+    const roe = f.roe !== undefined ? f.roe : '—';
+    const opm = f.opm !== undefined ? f.opm : '—';
+    const ltp = f.ltp || f.price || 0; // Check both 'ltp' and 'price' keys
+    
+    // Colors
+    const roeColor = (parseFloat(roe) > 15) ? '#3fb950' : (parseFloat(roe) < 0 ? '#f85149' : '#fff');
+    const opmColor = (parseFloat(opm) > 20) ? '#d29922' : '#fff'; // Gold for high margin
+
     html += `<tr style="border-bottom:1px solid #1e3350;">
               <td style="padding:12px; font-weight:bold; color:#58a6ff; position:sticky; left:0; background:#02040a;">${h.sym}</td>
               <td style="padding:12px; color:#8b949e;">${h.sector || f.sector || '—'}</td>
-              <td style="padding:12px; text-align:center; color:${f.roe > 15 ? '#3fb950' : '#fff'}">${f.roe ? f.roe + '%' : '—'}</td>
-              <td style="padding:12px; text-align:center;">${f.opm || '—'}</td>
-              <td style="padding:12px; text-align:right; font-weight:bold;">₹${(f.ltp || 0).toFixed(0)}</td>
+              <td style="padding:12px; text-align:center; color:${roeColor}">${roe !== '—' ? roe + '%' : '—'}</td>
+              <td style="padding:12px; text-align:center; color:${opmColor}">${opm !== '—' ? opm + '%' : '—'}</td>
+              <td style="padding:12px; text-align:right; font-weight:bold;">₹${Number(ltp).toLocaleString('en-IN')}</td>
             </tr>`;
   });
 
