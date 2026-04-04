@@ -1,56 +1,54 @@
 /**
- * BHARATMARKETS PRO - RAW PROBE (v15.0)
- * Objective: Fetch the file and display the FIRST available stock data.
+ * BHARATMARKETS PRO - ARCHITECTURE BYPASS (v16.0)
+ * Force-clears the "Syncing" screen to show one data row.
  */
 async function renderPortfolio(container) {
     if (!container) return;
 
-    container.innerHTML = `
-        <div style="padding:40px; background:#02040a; min-height:100vh; font-family:monospace; color:#58a6ff;">
-            > CONNECTING TO fundamentals.json...
-        </div>`;
+    // 1. FORCE THE UI OPEN (Remove any "Syncing" overlays manually)
+    const overlays = document.querySelectorAll('.loading, #sync-overlay, [style*="z-index: 9999"]');
+    overlays.forEach(el => el.style.display = 'none');
+
+    container.innerHTML = `<div style="padding:40px; color:#58a6ff; font-family:monospace;">> ACCESSING FUNDAMENTALS...</div>`;
 
     try {
-        const response = await fetch('fundamentals.json?v=' + Date.now());
-        const data = await response.json();
+        const r = await fetch('fundamentals.json?v=' + Date.now());
+        const data = await r.json();
         
-        // 1. Identify the first stock in the list
-        // Most BharatMarkets JSONs use the "stocks" key
-        const stockList = data.stocks || data; 
-        const symbols = Object.keys(stockList);
-        
-        if (symbols.length > 0) {
-            const firstSym = symbols[0];
-            const stockDetails = stockList[firstSym];
+        // 2. Locate the first available stock
+        const stocksObj = data.stocks || data;
+        const firstSymbol = Object.keys(stocksObj)[0];
+        const s = stocksObj[firstSymbol];
 
-            // 2. DISPLAY RAW DATA FOR THE FIRST STOCK
-            container.innerHTML = `
-                <div style="padding:25px; background:#111d30; border:2px solid #58a6ff; border-radius:16px; color:#fff; font-family:sans-serif;">
-                    <div style="color:#58a6ff; font-weight:bold; font-size:12px; margin-bottom:10px; letter-spacing:1px;">PROBE SUCCESSFUL</div>
-                    
-                    <div style="font-size:32px; font-weight:bold; margin-bottom:5px;">${firstSym}</div>
-                    <div style="color:#8b949e; font-size:14px; margin-bottom:20px;">Raw Fundamental Data Row</div>
-                    
-                    <div style="background:#0d1117; padding:15px; border-radius:8px; font-family:monospace; font-size:16px; line-height:1.8;">
-                        <span style="color:#8b949e">ROE:</span> <b style="color:#3fb950">${stockDetails.roe || stockDetails.ROE || 'Missing'}%</b><br>
-                        <span style="color:#8b949e">LTP:</span> <b style="color:#3fb950">₹${stockDetails.ltp || stockDetails.LTP || 'Missing'}</b><br>
-                        <span style="color:#8b949e">Sector:</span> <b style="color:#fff">${stockDetails.sector || 'Missing'}</b>
-                    </div>
-
-                    <div style="margin-top:20px; font-size:11px; color:#484f58; border-top:1px solid #1e3350; padding-top:15px;">
-                        Total stocks identified in file: <b>${symbols.length}</b>
-                    </div>
-                </div>
-            `;
-        } else {
-            container.innerHTML = `<div style="color:#f85149; padding:40px;">❌ JSON found, but it is empty.</div>`;
-        }
-    } catch (e) {
+        // 3. RENDER ONE RAW ROW
         container.innerHTML = `
-            <div style="padding:40px; background:#02040a; color:#f85149; font-family:monospace;">
-                <b>❌ PROBE FAILED</b><br><br>
-                ERROR: ${e.message}<br><br>
-                Check if fundamentals.json exists in your GitHub root.
+            <div style="padding:25px; background:#111d30; border:2px solid #58a6ff; border-radius:12px; color:#fff; font-family:sans-serif;">
+                <div style="color:#58a6ff; font-weight:bold; font-size:10px; margin-bottom:8px;">DATA PROBE SUCCESSFUL</div>
+                <div style="font-size:28px; font-weight:bold;">${firstSymbol}</div>
+                <hr style="border:0; border-top:1px solid #1e3350; margin:12px 0;">
+                <div style="font-size:18px; line-height:1.6;">
+                    ROE: <span style="color:#3fb950">${s.roe || s.ROE || 'N/A'}%</span><br>
+                    LTP: <span style="color:#3fb950">₹${s.ltp || s.LTP || 'N/A'}</span><br>
+                    SEC: <span style="color:#8b949e">${s.sector || 'N/A'}</span>
+                </div>
+                <div style="margin-top:15px; font-size:10px; color:#484f58;">
+                    Total nodes in file: ${Object.keys(stocksObj).length}
+                </div>
             </div>`;
+
+    } catch (e) {
+        container.innerHTML = `<div style="padding:20px; color:#f85149; font-family:monospace;">
+            ❌ PROBE ERROR: ${e.message}<br>
+            Ensure fundamentals.json is in the root folder.
+        </div>`;
     }
 }
+
+// 4. ARCHITECTURE OVERRIDE
+// This forces the render even if the boot sequence is stuck.
+setTimeout(() => {
+    const mainBox = document.getElementById('main-content') || document.body;
+    if (mainBox.innerHTML.includes('Syncing')) {
+        renderPortfolio(mainBox);
+    }
+}, 2000);
