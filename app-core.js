@@ -1,13 +1,14 @@
 /* ═══════════════════════════════════════════════════════════
-   BHARATMARKETS PRO v2 — MATURED ENGINE INTEGRATED
-   1. High contrast dark theme ✓
-   2. Shadow Store (IndexedDB) Ready ✓
-   3. Swipe-to-Delete Gesture Engine ✓
-   4. Unified Data Schema (33+11 Fields) ✓
+   BHARATMARKETS PRO v2 — CORE STATE & GESTURES
 ═══════════════════════════════════════════════════════════ */
 
 // ── Storage ──────────────────────────────────────────────
-const SK = { PORT:'bmp_port_v2', WL:'bmp_wl_v2', SETTINGS:'bmp_settings_v2', LEDGER:'bmp_ledger_v1' };
+const SK = { 
+  PORT: 'bmp_port_v2', 
+  WL: 'bmp_wl_v2', 
+  SETTINGS: 'bmp_settings_v2',
+  LEDGER: 'bmp_ledger_v1' // REQUIRED for the Engine Purge Logic
+};
 
 // ── Cross-module globals ───────────────────────────────────
 let FUND        = {};     
@@ -43,7 +44,6 @@ function init(){
   if(w) S.watchlist = JSON.parse(w);
   if(s) S.settings  = JSON.parse(s);
   
-  // Set initial tab from URL or default
   const params = new URLSearchParams(window.location.search);
   const t = params.get('tab');
   if(t) S.curTab = t;
@@ -62,7 +62,6 @@ function handleTouchMove(e) {
     const touchX = e.touches[0].clientX;
     const diff = touchX - swipeStartX;
     const row = e.currentTarget;
-    // Limit swipe to 100px left
     if (diff < 0 && diff > -120) {
         row.style.transform = `translateX(${diff}px)`;
     }
@@ -82,7 +81,6 @@ function handleTouchEnd(e, sym) {
     }
 }
 
-// Close open swipes on outside tap
 document.addEventListener('touchstart', (e) => {
     if (currentSwipedRow && !currentSwipedRow.contains(e.target)) {
         currentSwipedRow.style.transform = 'translateX(0px)';
@@ -113,7 +111,6 @@ function render(){
     return;
   }
 
-  // Map tabs to module render functions
   switch(S.curTab){
     case 'portfolio': 
       if(typeof renderPortfolio === 'function') renderPortfolio(content); 
@@ -185,21 +182,16 @@ function viewStock(sym){
   document.getElementById('content').scrollTop = 0;
   render();
 }
+
 function closeStock(){S.selStock=null;render();}
 
-// ── Static Data Loading ───────────────────────────────────
+let ISIN_MAP = {}; 
 async function loadStaticData() {
-  _staticDataReady = (async () => {
     try {
       const r = await fetch('./symbols.json?t=' + Date.now(), {cache:'no-store'});
       if (r.ok) {
         const syms = await r.json();
-        const ISIN_MAP = {}; // Ensure local reference or global
-        syms.forEach(s => { if(s.isin && s.sym && s.resolved) window.ISIN_MAP[s.isin] = s.sym; });
+        syms.forEach(s => { if(s.isin && s.sym && s.resolved) ISIN_MAP[s.isin] = s.sym; });
       }
     } catch(e) { console.warn('symbols.json load failed:', e.message); }
-  })();
-  await _staticDataReady;
 }
-
-window.ISIN_MAP = {};
