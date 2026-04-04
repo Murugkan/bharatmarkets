@@ -1,22 +1,18 @@
 /* ═══════════════════════════════════════════════════════════
-   app-import.js - DATA PARSER & DATABASE WRITER
+   app-import.js - PERSISTENT WRITER
 ═══════════════════════════════════════════════════════════ */
 
 async function processImport() {
     const area = document.getElementById('import-area');
-    if (!area || !area.value.trim()) {
-        showToast("Please paste data first");
-        return;
-    }
+    if (!area || !area.value.trim()) return;
 
-    log("Import: Starting Parse...");
     const rawText = area.value;
+    log("Import: Processing text...");
     
     try {
         const lines = rawText.split('\n');
         const stocks = [];
 
-        // Simple Parser: Matches "SYMBOL QTY"
         lines.forEach(line => {
             const parts = line.trim().split(/[\s,]+/);
             if (parts.length >= 2) {
@@ -24,50 +20,42 @@ async function processImport() {
                 const qty = parseInt(parts[1]);
                 if (sym && !isNaN(qty)) {
                     stocks.push({ 
-                        sym, 
-                        qty, 
+                        sym, qty, 
                         lastUpdated: Date.now(),
-                        ltp: 0,
-                        chg: 0,
-                        marketValue: 0
+                        ltp: 0, chg: 0, marketValue: 0 
                     });
                 }
             }
         });
 
         if (stocks.length === 0) {
-            log("Import Error: No valid stock patterns found", "error");
-            showToast("Could not parse data");
+            log("Import: No valid patterns.", "error");
             return;
         }
 
-        log(`Import: Parsed ${stocks.length} stocks. Opening DB...`);
-
         const db = await initEngineDB();
-        const tx = db.transaction('UnifiedStocks', 'readwrite');
-        const store = tx.objectStore('UnifiedStocks');
-
-        // Clear existing and add new
-        stocks.forEach(s => store.put(s));
-
-        tx.oncomplete = () => {
-            log(`✅ SUCCESS: ${stocks.length} stocks saved to IndexedDB.`);
-            showToast(`Imported ${stocks.length} Stocks`);
+        // Use a Promise to ensure the transaction FULLY completes
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction('UnifiedStocks', 'readwrite');
+            const store = tx.objectStore('UnifiedStocks');
             
-            // Close panel and switch to portfolio
+            stocks.forEach(s => store.put(s));
+
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+
+        log(`✅ Saved ${stocks.length} stocks to DB.`);
+        
+        // FINAL VERIFICATION: Read it back immediately
+        const verifyTx = db.transaction('UnifiedStocks', 'readonly');
+        verifyTx.objectStore('UnifiedStocks').count().onsuccess = (e) => {
+            log(`🔍 Post-Save Verify: ${e.target.result} rows exist.`);
             closePanel();
-            
-            // Trigger a re-render of the portfolio tab
-            if (typeof showTab === 'function') {
-                showTab('portfolio');
-            }
-        };
-
-        tx.onerror = (e) => {
-            log("❌ Database Write Error: " + e.target.error, "error");
+            showTab('portfolio');
         };
 
     } catch (err) {
-        log("❌ Import Crash: " + err.message, "error");
+        log("Import Crash: " + err.message, "error");
     }
 }
