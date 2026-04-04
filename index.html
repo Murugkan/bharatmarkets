@@ -3,34 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Selective Terminal</title>
+    <title>BharatMarkets | Solid State Portfolio</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --tx3: #708499; }
+        :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd1: #ff4d6d; --tx3: #708499; }
         body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
-        header { height: 50px; background: var(--s1); border-bottom: 1px solid var(--b1); display: flex; align-items: center; padding: 0 20px; font-weight: 800; color: var(--gr1); font-size: 11px; letter-spacing: 1px; }
         
-        .view { width: 100%; overflow: auto; height: calc(100vh - 50px); }
+        /* 1. LOOK & FEEL: Legacy Header with Totals */
+        header { height: 70px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 10px 20px; display: flex; flex-direction: column; justify-content: center; }
+        .totals-bar { display: flex; gap: 20px; font-size: 11px; margin-top: 5px; }
+        .t-val { font-weight: 700; color: var(--gr1); }
+
+        /* 2. THE VIEWPORT: Selective Data Mirror */
+        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 70px); }
         table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
         th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; text-transform: uppercase; }
         td { padding: 12px 15px; border-bottom: 1px solid #182840; }
         
-        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); color: var(--gr1); font-weight: 700; }
+        /* Sticky Ticker Column */
+        .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; color: var(--gr1); }
         
-        /* Look and Feel Colors */
-        .pos { color: #00ff88; } .neg { color: #ff4d6d; }
-        .BUY { color: #00ff88; font-weight: 700; } .SELL { color: #ff4d6d; font-weight: 700; } .HOLD { color: #ffb800; }
+        /* Signal & P&L Colors */
+        .pos { color: var(--gr2); } .neg { color: var(--rd1); }
+        .BUY { color: var(--gr2); font-weight: 800; } .SELL { color: var(--rd1); font-weight: 800; } .HOLD { color: #ffb800; }
     </style>
 </head>
 <body onload="init()">
 
-    <header>BHARATMARKETS | SELECTIVE VIEWPORT</header>
-    <div id="app" class="view"></div>
+    <header>
+        <div style="font-size: 12px; font-weight: 800;">BHARAT MARKETS | PORTFOLIO</div>
+        <div class="totals-bar">
+            <span>INV: <span class="t-val" id="t-inv">0</span></span>
+            <span>CUR: <span class="t-val" id="t-cur">0</span></span>
+            <span>P&L: <span class="t-val" id="t-pnl">0</span></span>
+        </div>
+    </header>
+
+    <div id="app" class="table-outer"></div>
 
     <script>
-        const DB_NAME = "BharatMarkets_Solid"; const STORE = "Portfolio";
+        const DB_NAME = "BharatSolidDB"; const STORE = "Portfolio";
 
-        // 1. THE DATA PIPELINE: Dump all stocks, resolve mismatches
+        // THE SELECTIVE LIST: Pulled from your legacy portfolio format
+        const LEGACY_FIELDS = [
+            { id: 'SYM', label: 'SYMBOL' },
+            { id: 'LTP', label: 'LTP' },
+            { id: 'CHG1D', label: '1D %' },
+            { id: 'PNL_VAL', label: 'P&L' },
+            { id: 'ROE', label: 'ROE' },
+            { id: 'OPM_PCT', label: 'OPM%' },
+            { id: 'PE', label: 'P/E' },
+            { id: 'DEBT_EQ', label: 'D/E' },
+            { id: 'MCAP', label: 'MCAP' },
+            { id: 'SIGNAL', label: 'SIGNAL' },
+            { id: 'POS', label: 'POS' },
+            { id: 'NEG', label: 'NEG' },
+            { id: 'SECTOR', label: 'SECTOR' }
+        ];
+
+        // 1. DATA PIPELINE: The "Bake" that resolves mismatches
         async function runPipeline() {
             try {
                 const res = await fetch('fundamentals.json');
@@ -40,23 +71,27 @@
                 const store = tx.objectStore(STORE);
 
                 Object.keys(raw.stocks).forEach(ticker => {
-                    const m = raw.stocks[ticker];
-                    const sym = ticker.split('.')[0].toUpperCase(); // Resolves suffixes
+                    const metrics = raw.stocks[ticker];
+                    const cleanSym = ticker.split('.')[0].toUpperCase();
                     
-                    // The "Bake": Flatten all 33 fields into the DB record
+                    // Normalize all incoming JSON keys to UPPERCASE
+                    const normalized = {};
+                    for (let key in metrics) normalized[key.toUpperCase()] = metrics[key];
+
                     store.put({ 
-                        SYM: sym, 
-                        ...m,
-                        // Pre-calculate PNL so the UI stays "Dumb"
-                        PNL_VAL: m.LTP ? Math.round((m.QTY * m.LTP) - (m.QTY * m.AVG)) : 0
+                        SYM: cleanSym, 
+                        ...normalized,
+                        PNL_VAL: normalized.LTP ? Math.round((normalized.QTY * normalized.LTP) - (normalized.QTY * normalized.AVG)) : 0,
+                        INV_VAL: (normalized.QTY * normalized.AVG) || 0,
+                        CUR_VAL: (normalized.QTY * normalized.LTP) || 0
                     });
                 });
-                tx.oncomplete = () => render();
-            } catch (e) { console.error("Pipeline Sync Failed."); }
+                tx.oncomplete = () => renderPortfolio();
+            } catch (e) { console.error("Sync Failed"); }
         }
 
-        // 2. THE UI MIRROR: Selective rendering based on your example
-        async function render() {
+        // 2. THE MIRROR: Passive UI pulled from DB
+        async function renderPortfolio() {
             const db = await openDB();
             const stocks = await new Promise(r => {
                 db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
@@ -64,35 +99,40 @@
 
             if (!stocks.length) return;
 
-            // SELECTIVE FIELDS: Adjust this list to change what shows on screen
-            const cols = ['SYM', 'LTP', 'CHG1D', 'PNL_VAL', 'ROE', 'SIGNAL', 'SECTOR'];
+            // Grand Totals Calculation
+            let tInv = 0, tCur = 0, tPnl = 0;
+            stocks.forEach(s => { tInv += s.INV_VAL; tCur += s.CUR_VAL; tPnl += s.PNL_VAL; });
+            document.getElementById('t-inv').innerText = Math.round(tInv).toLocaleString();
+            document.getElementById('t-cur').innerText = Math.round(tCur).toLocaleString();
+            document.getElementById('t-pnl').innerText = Math.round(tPnl).toLocaleString();
+            document.getElementById('t-pnl').className = `t-val ${tPnl >= 0 ? 'pos' : 'neg'}`;
 
-            let html = `<table><thead><tr>`;
-            cols.forEach(c => html += `<th class="${c==='SYM'?'sticky':''}">${c}</th>`);
-            html += `</tr></thead><tbody>`;
+            // Build Table
+            let h = `<table><thead><tr>`;
+            LEGACY_FIELDS.forEach(f => h += `<th class="${f.id==='SYM'?'sticky-sym':''}">${f.label}</th>`);
+            h += `</tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                html += `<tr>`;
-                cols.forEach(c => {
-                    let val = s[c] !== undefined ? s[c] : '—';
-                    const isSym = c === 'SYM';
-                    let cls = isSym ? 'sticky' : '';
+                h += `<tr>`;
+                LEGACY_FIELDS.forEach(f => {
+                    let val = s[f.id] !== undefined ? s[f.id] : '—';
+                    let cls = f.id === 'SYM' ? 'sticky-sym' : '';
                     
-                    // Formatting & Color Logic
-                    if (c === 'PNL_VAL' || c === 'CHG1D') cls += ` ${val >= 0 ? 'pos' : 'neg'}`;
-                    if (c === 'SIGNAL') cls += ` ${val}`;
-                    if (c === 'CHG1D' && val !== '—') val = val + '%';
+                    // Formatting & Coloring
+                    if (f.id === 'PNL_VAL' || f.id === 'CHG1D') cls += ` ${val >= 0 ? 'pos' : 'neg'}`;
+                    if (f.id === 'SIGNAL') cls += ` ${val}`;
+                    if (f.id === 'CHG1D' && val !== '—') val = val + '%';
 
-                    html += `<td class="${cls}">${val}</td>`;
+                    h += `<td class="${cls}">${val}</td>`;
                 });
-                html += `</tr>`;
+                h += `</tr>`;
             });
-            document.getElementById('app').innerHTML = html + `</tbody></table>`;
+            document.getElementById('app').innerHTML = h + `</tbody></table>`;
         }
 
         function openDB() {
             return new Promise(res => {
-                const req = indexedDB.open(DB_NAME, 6); // Version bump for fresh start
+                const req = indexedDB.open(DB_NAME, 11); // Version bump
                 req.onupgradeneeded = e => {
                     const db = e.target.result;
                     if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
