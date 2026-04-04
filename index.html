@@ -4,50 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
     <title>BharatMarkets Pro</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d;
             --b1: #1e293b; --gr1: #00f2ff; --gr2: #00e896; --rd2: #ff6b85;
             --tx1: #f0f6ff; --tx3: #708499; --yw2: #ffbf47;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
         
-        /* THE SCREEENER TABLE STYLES */
-        .bls-table-outer { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid var(--b1); }
+        /* KPI STRIP (Matches Screenshot) */
+        .kpi-strip { display: flex; background: var(--bg); padding: 25px 20px; gap: 30px; border-bottom: 1px solid #182840; }
+        .kpi { flex-shrink: 0; }
+        .kpi-l { font-size: 10px; color: var(--tx3); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .kpi-v { font-size: 24px; font-weight: 700; font-family: 'Syne'; line-height: 1; }
+        .kpi-s { font-size: 12px; color: var(--tx3); margin-top: 6px; font-family: 'JetBrains Mono'; }
+
+        /* PROFESSIONAL TABLE STYLING */
+        .bls-table-outer { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); font-weight: 700; padding: 10px 8px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 20; }
-        .bls-t td { padding: 10px 8px; border-bottom: 1px solid #18284040; text-align: right; }
+        .bls-t th { background: var(--s1); color: var(--tx3); font-weight: 700; padding: 12px 10px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 20; text-transform: none; }
+        .bls-t td { padding: 12px 10px; border-bottom: 1px solid #18284040; text-align: right; }
         
-        /* Sticky Columns */
+        /* Sticky Columns for Mobile */
         .th-l, .td-l { text-align: left !important; }
         .th-fix, .td-fix { position: sticky; left: 0; z-index: 10; background: var(--bg); }
-        .th-fix1, .td-fix1 { left: 0; min-width: 80px; }
-        .th-fix2, .td-fix2 { left: 80px; min-width: 70px; border-right: 1px solid var(--b1); }
-
-        /* KPI Strip */
-        .kpi-strip { display: flex; overflow-x: auto; background: var(--s1); padding: 15px; gap: 20px; border-bottom: 1px solid var(--b1); }
-        .kpi { flex-shrink: 0; }
-        .kpi-l { font-size: 9px; color: var(--tx3); font-weight: 800; text-transform: uppercase; margin-bottom: 4px; }
-        .kpi-v { font-size: 16px; font-weight: 700; font-family: 'Syne'; }
-        .kpi-s { font-size: 10px; color: var(--tx3); margin-top: 2px; }
+        .th-fix1, .td-fix1 { left: 0; min-width: 90px; }
+        .th-fix2, .td-fix2 { left: 90px; min-width: 80px; border-right: 1px solid var(--b1); }
 
         /* Navigation */
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
-        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 16px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
 
-        /* Utilities */
-        .u-dark { color: #4a6888; }
-        .u-dim { color: #8eb0d0; }
-        .pos-neg { display: flex; gap: 4px; justify-content: flex-end; }
-        .pn-p { color: var(--gr2); font-weight: 800; }
-        .pn-n { color: var(--rd2); font-weight: 800; }
+        /* Panel UI */
+        .panel { position: fixed; bottom: -100%; left: 0; width: 100%; background: var(--s1); border-radius: 24px 24px 0 0; transition: 0.3s; z-index: 1500; padding: 25px; box-sizing: border-box; border-top: 1px solid var(--b1); }
+        .panel.open { bottom: 0; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; z-index: 1400; backdrop-filter: blur(4px); }
+        
+        .u-dim { color: #4a6888; }
+        .u-dark { color: #2a3a4a; }
     </style>
 </head>
 <body onload="init()">
 
     <div id="content"></div>
+    <div id="overlay" class="overlay" onclick="closePanel()"></div>
+    
+    <div id="action-panel" class="panel">
+        <div style="display:flex; justify-content:space-between; margin-bottom:20px">
+            <span id="panel-title" style="font-family:'Syne'; font-size:20px; font-weight:800">Import</span>
+            <button onclick="closePanel()" style="background:none; border:none; color:var(--tx3); font-size:22px">✕</button>
+        </div>
+        <div id="panel-body"></div>
+    </div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
@@ -58,30 +68,10 @@
     <script src="app-engine.js"></script>
 
     <script>
-        /* ═══════════════════════════════════════════════════════════
-           SECTION 1: UTILITIES (From app-portfolio.js)
-        ═══════════════════════════════════════════════════════════ */
-        const CSS = {
-            GRN_BD: 'background:#003a20;color:#fff;font-weight:700',
-            RED_BD: 'background:#3a0010;color:#fff;font-weight:700',
-            DIM: 'color:#4a6888',
-            NEU: 'color:#c8dff5'
-        };
-
-        function fn(v, dp=1, prefix='', suffix=''){
-            if(v===null||v===undefined||isNaN(v)) return '<span class="u-dark">—</span>';
-            return prefix+Number(v).toFixed(dp)+suffix;
-        }
-
-        function fnCr(v){
-            if(v===null||v===undefined||isNaN(v)) return '<span class="u-dark">—</span>';
-            if(v>=100000) return (v/100000).toFixed(1)+'LCr';
-            if(v>=1000)   return (v/1000).toFixed(1)+'KCr';
-            return v.toFixed(0)+'Cr';
-        }
+        let currentTab = 'portfolio';
 
         /* ═══════════════════════════════════════════════════════════
-           SECTION 2: RENDERERS
+           PORTFOLIO RENDERER (Logic from app-portfolio.js)
         ═══════════════════════════════════════════════════════════ */
         async function renderPortfolio(container) {
             const db = await initEngineDB();
@@ -90,19 +80,26 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            // 1. KPI Calculation
-            const totalInv = stocks.reduce((a,h)=> a + (h.qty * (h.avgBuy || 0)), 0);
-            const totalCur = stocks.reduce((a,h)=> a + (h.qty * (h.ltp || 0)), 0);
-            const totalPnL = totalCur - totalInv;
-            const pnlPct = totalInv > 0 ? (totalPnL / totalInv) * 100 : 0;
+            // Summary Calculations
+            let tInv = 0, tCur = 0;
+            stocks.forEach(s => {
+                const q = parseFloat(s.qty || 0);
+                const a = parseFloat(s.avgBuy || 0);
+                const l = parseFloat(s.ltp || 0);
+                tInv += (q * a);
+                tCur += (q * l);
+            });
+
+            const tPnL = tCur - tInv;
+            const pPct = tInv > 0 ? (tPnL / tInv) * 100 : 0;
+            const pCol = tPnL >= 0 ? 'var(--gr2)' : 'var(--rd2)';
 
             let html = `
                 <div class="kpi-strip">
-                    <div class="kpi"><div class="kpi-l">Invested</div><div class="kpi-v" style="color:#64b5f6">₹${(totalInv/100000).toFixed(2)}L</div></div>
-                    <div class="kpi"><div class="kpi-l">Mkt Value</div><div class="kpi-v">₹${(totalCur/100000).toFixed(2)}L</div></div>
-                    <div class="kpi"><div class="kpi-l">Total P&L</div><div class="kpi-v" style="color:${totalPnL>=0?'var(--gr2)':'var(--rd2)'}">${totalPnL>=0?'+':''}₹${(Math.abs(totalPnL)/100000).toFixed(2)}L</div><div class="kpi-s">${pnlPct.toFixed(2)}%</div></div>
+                    <div class="kpi"><div class="kpi-l">INVESTED</div><div class="kpi-v" style="color:#64b5f6">₹${(tInv/100000).toFixed(2)}L</div></div>
+                    <div class="kpi"><div class="kpi-l">MKT VALUE</div><div class="kpi-v">₹${(tCur/100000).toFixed(2)}L</div></div>
+                    <div class="kpi"><div class="kpi-l">TOTAL P&L</div><div class="kpi-v" style="color:${pCol}">${tPnL>=0?'+':''}₹${(Math.abs(tPnL)/100000).toFixed(2)}L</div><div class="kpi-s">${pPct.toFixed(2)}%</div></div>
                 </div>
-                
                 <div class="bls-table-outer">
                     <table class="bls-t">
                         <thead>
@@ -115,39 +112,73 @@
                                 <th>Avg</th>
                                 <th>P&L</th>
                                 <th>P&L%</th>
-                                <th>Signals</th>
                             </tr>
                         </thead>
                         <tbody>`;
 
-            stocks.forEach(h => {
-                const inv = h.qty * (h.avgBuy || 0);
-                const cur = h.qty * (h.ltp || 0);
-                const pnl = cur - inv;
-                const pnlP = inv > 0 ? (pnl/inv)*100 : 0;
-                const cPnL = pnl >= 0 ? CSS.GRN_BD : CSS.RED_BD;
+            if (stocks.length === 0) {
+                html += `<tr><td colspan="8" style="text-align:center; padding:60px; color:var(--tx3)">No holdings found.</td></tr>`;
+            } else {
+                stocks.forEach(s => {
+                    const inv = s.qty * s.avgBuy;
+                    const cur = s.qty * (s.ltp || 0);
+                    const pnl = cur - inv;
+                    const pnlP = s.avgBuy > 0 ? (pnl/inv)*100 : 0;
+                    const cPnL = pnl >= 0 ? 'background:#003a20;color:#fff;font-weight:700' : 'background:#3a0010;color:#fff;font-weight:700';
 
-                html += `
-                    <tr>
-                        <td class="td-l td-fix td-fix1"><strong>${h.sym}</strong></td>
-                        <td class="td-l td-fix td-fix2" style="color:var(--tx3); font-size:9px">${h.sector || '—'}</td>
-                        <td style="font-weight:600">₹${fn(h.ltp, 1)}</td>
-                        <td style="${h.chg >= 0 ? 'color:var(--gr2)' : 'color:var(--rd2)'}">${h.chg >= 0 ? '+' : ''}${fn(h.chg, 2)}%</td>
-                        <td class="u-dim">${h.qty}</td>
-                        <td class="u-dim">₹${fn(h.avgBuy, 1)}</td>
-                        <td style="${cPnL}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}</td>
-                        <td style="${cPnL}">${pnlP >= 0 ? '+' : ''}${pnlP.toFixed(1)}%</td>
-                        <td><div class="pos-neg"><span class="pn-p">3</span><span class="pn-n">0</span></div></td>
-                    </tr>`;
-            });
-
+                    html += `
+                        <tr>
+                            <td class="td-l td-fix td-fix1"><strong>${s.sym}</strong></td>
+                            <td class="td-l td-fix td-fix2" style="color:var(--tx3); font-size:9px">${s.sector || '—'}</td>
+                            <td style="font-weight:600">₹${(s.ltp || 0).toFixed(1)}</td>
+                            <td style="color:${s.chg >= 0 ? 'var(--gr2)' : 'var(--rd2)'}">${s.chg >= 0 ? '+' : ''}${(s.chg || 0).toFixed(2)}%</td>
+                            <td class="u-dim">${s.qty}</td>
+                            <td class="u-dim">₹${(s.avgBuy || 0).toFixed(1)}</td>
+                            <td style="${cPnL}">${pnl.toFixed(0)}</td>
+                            <td style="${cPnL}">${pnlP.toFixed(1)}%</td>
+                        </tr>`;
+                });
+            }
             html += `</tbody></table></div>`;
             container.innerHTML = html;
         }
 
         /* ═══════════════════════════════════════════════════════════
-           CORE NAVIGATION
+           IMPORT & CORE
         ═══════════════════════════════════════════════════════════ */
+        function openImport() {
+            document.getElementById('panel-body').innerHTML = `
+                <textarea id="import-area" placeholder="SYMBOL QTY AVG\nRELIANCE 10 2500" style="width:100%; height:180px; background:var(--s2); border:1px solid var(--b1); color:white; border-radius:12px; padding:15px; box-sizing:border-box; font-family:'JetBrains Mono'; outline:none; font-size:12px"></textarea>
+                <button onclick="processImport()" style="background:var(--gr1); color:var(--bg); border:none; width:100%; padding:18px; border-radius:14px; font-weight:800; font-family:'Syne'; margin-top:15px">SAVE PORTFOLIO</button>`;
+            document.getElementById('action-panel').classList.add('open');
+            document.getElementById('overlay').style.display = 'block';
+        }
+
+        async function processImport() {
+            const area = document.getElementById('import-area');
+            const lines = area.value.split('\n');
+            const stocks = [];
+            lines.forEach(l => {
+                const p = l.trim().split(/\s+/);
+                if (p.length >= 2) {
+                    stocks.push({ 
+                        sym: p[0].toUpperCase(), 
+                        qty: parseInt(p[1]), 
+                        avgBuy: parseFloat(p[2] || 0),
+                        ltp: 0, chg: 0, sector: '—' 
+                    });
+                }
+            });
+            if (stocks.length > 0) {
+                const db = await initEngineDB();
+                const tx = db.transaction('UnifiedStocks', 'readwrite');
+                stocks.forEach(s => tx.objectStore('UnifiedStocks').put(s));
+                tx.oncomplete = () => { closePanel(); render(); };
+            }
+        }
+
+        function closePanel() { document.getElementById('action-panel').classList.remove('open'); document.getElementById('overlay').style.display = 'none'; }
+        
         async function showTab(t, btn) {
             currentTab = t;
             document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
@@ -155,10 +186,10 @@
             render();
         }
 
-        async function render() {
+        function render() {
             const container = document.getElementById('content');
-            if (currentTab === 'portfolio') await renderPortfolio(container);
-            else container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--tx3)">Module coming soon...</div>';
+            if (currentTab === 'portfolio') renderPortfolio(container);
+            else container.innerHTML = `<div style="padding:100px 20px; text-align:center; color:var(--tx3); font-family:'Syne'">Coming Soon</div>`;
         }
 
         function init() { render(); }
