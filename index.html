@@ -3,55 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>BharatMarkets Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600&family=Syne:wght@700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #04060d; --s1: #0a0e1a; --s2: #121a2d;
-            --b1: #1e293b; --gr1: #00f2ff; --rd2: #ff4d4d;
+            --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd2: #ff4d4d;
             --tx1: #ffffff; --tx3: #708499;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: 'DM Sans', sans-serif; margin: 0; overflow-x: hidden; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
         
         /* Navigation */
-        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
-        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 15px 0; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
+        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 16px 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
         .nb.active { color: var(--gr1); }
         
-        /* Content Area */
-        #content { min-height: 100vh; padding-bottom: 80px; }
-
-        /* Debug Window */
-        #debug-window { position: fixed; top: 10px; right: 10px; width: 80%; max-height: 200px; background: rgba(0,0,0,0.9); border: 1px solid var(--b1); font-size: 10px; overflow-y: auto; display: none; z-index: 1000; padding: 10px; font-family: monospace; }
+        /* Content */
+        #content { min-height: 100vh; padding-bottom: 100px; }
+        
+        /* Debug Console */
+        #debug-window { position: fixed; top: 0; left: 0; width: 100%; height: 200px; background: rgba(0,0,0,0.95); border-bottom: 1px solid var(--b1); font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 2000; padding: 10px; display: none; box-sizing: border-box; }
         
         /* UI Components */
-        .card { background: var(--s2); border: 1px solid var(--b1); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-        .btn-main { background: var(--gr1); color: var(--bg); border: none; padding: 16px; border-radius: 12px; font-weight: 800; width: 100%; font-family: 'Syne'; }
+        .card { background: var(--s2); border: 1px solid var(--b1); border-radius: 14px; padding: 16px; margin: 0 16px 12px; display: flex; justify-content: space-between; align-items: center; }
+        .summary-box { padding: 30px 20px; background: linear-gradient(180deg, var(--s1) 0%, var(--bg) 100%); border-bottom: 1px solid var(--b1); margin-bottom: 20px; }
+        .btn-import { background: var(--gr1); color: var(--bg); border: none; width: 100%; padding: 18px; border-radius: 14px; font-weight: 800; font-family: 'Syne'; margin-top: 20px; }
+        
+        /* Bottom Panel */
+        .panel { position: fixed; bottom: -100%; left: 0; width: 100%; background: var(--s1); border-radius: 20px 20px 0 0; transition: bottom 0.3s ease; z-index: 1500; padding: 20px; box-sizing: border-box; padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
+        .panel.open { bottom: 0; }
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 1400; }
     </style>
 </head>
 <body onload="init()">
 
     <div id="debug-window"></div>
     <div id="content"></div>
+    <div id="overlay" class="overlay" onclick="closePanel()"></div>
+    
+    <div id="import-panel" class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+            <span style="font-family:'Syne'; font-size:18px; font-weight:800">Import Portfolio</span>
+            <button onclick="closePanel()" style="background:none; border:none; color:var(--tx3); font-size:20px">✕</button>
+        </div>
+        <textarea id="import-area" placeholder="RELIANCE 10&#10;TCS 5" style="width:100%; height:150px; background:var(--s2); border:1px solid var(--b1); color:white; border-radius:12px; padding:15px; box-sizing:border-box; font-family:monospace; outline:none"></textarea>
+        <button class="btn-import" onclick="processImport()">PROCESS & SAVE</button>
+    </div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
-        <button class="nb" onclick="showTab('upload', this)">Import</button>
+        <button class="nb" onclick="openPanel()">Import</button>
         <button class="nb" onclick="toggleDebug()">Debug</button>
     </nav>
 
+    <script src="app-engine.js"></script>
+
     <script>
         /* ═══════════════════════════════════════════════════════════
-           CORE ENGINE & STATE
+           UNIFIED LOGIC (Core + Portfolio + Import)
         ═══════════════════════════════════════════════════════════ */
-        const DB_NAME = 'BharatEngineDB';
-        const STORE = 'UnifiedStocks';
         let currentTab = 'portfolio';
 
         function log(msg, type = 'info') {
             const dbg = document.getElementById('debug-window');
-            dbg.innerHTML = `<div>[${type}] ${msg}</div>` + dbg.innerHTML;
-            console.log(msg);
+            if (dbg) dbg.innerHTML = `<div><span style="color:#708499">${new Date().toLocaleTimeString()}</span> [${type}] ${msg}</div>` + dbg.innerHTML;
+            console.log(`[${type}] ${msg}`);
         }
 
         function toggleDebug() {
@@ -59,20 +76,7 @@
             dbg.style.display = dbg.style.display === 'none' ? 'block' : 'none';
         }
 
-        async function initDB() {
-            return new Promise((resolve) => {
-                const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = (e) => {
-                    if (!e.target.result.objectStoreNames.contains(STORE))
-                        e.target.result.createObjectStore(STORE, { keyPath: 'sym' });
-                };
-                req.onsuccess = (e) => resolve(e.target.result);
-            });
-        }
-
-        /* ═══════════════════════════════════════════════════════════
-           NAVIGATION & RENDERING
-        ═══════════════════════════════════════════════════════════ */
+        // 1. NAVIGATION
         async function showTab(t, btn) {
             currentTab = t;
             document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
@@ -82,79 +86,93 @@
 
         async function render() {
             const container = document.getElementById('content');
+            container.innerHTML = ''; // Clear for refresh
             if (currentTab === 'portfolio') await renderPortfolio(container);
-            else if (currentTab === 'upload') renderImportUI(container);
         }
 
-        /* ═══════════════════════════════════════════════════════════
-           PORTFOLIO LOGIC
-        ═══════════════════════════════════════════════════════════ */
+        // 2. PORTFOLIO RENDERER
         async function renderPortfolio(container) {
-            const db = await initDB();
-            const stocks = await new Promise(r => {
-                const tx = db.transaction(STORE, 'readonly');
-                tx.objectStore(STORE).getAll().onsuccess = (e) => r(e.target.result || []);
-            });
+            log("Portfolio: Fetching...");
+            try {
+                const db = await initEngineDB();
+                const stocks = await new Promise(r => {
+                    const tx = db.transaction('UnifiedStocks', 'readonly');
+                    tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
+                });
 
-            log(`Rendering ${stocks.length} stocks`);
+                log(`Portfolio: Found ${stocks.length} stocks`);
 
-            if (stocks.length === 0) {
-                container.innerHTML = `<div style="padding:100px 20px; text-align:center;">
-                    <div style="font-size:50px">📁</div>
-                    <p style="color:var(--tx3)">No data found. Go to Import.</p>
-                </div>`;
-                return;
+                if (stocks.length === 0) {
+                    container.innerHTML = `<div style="padding:100px 20px; text-align:center;"><div style="font-size:50px">📁</div><p style="color:var(--tx3)">DB is Empty. Use Import.</p></div>`;
+                    return;
+                }
+
+                let html = `
+                    <div class="summary-box">
+                        <div style="font-size:11px; color:var(--tx3); font-weight:700; text-transform:uppercase">My Holdings</div>
+                        <div style="font-family:'Syne'; font-size:36px; font-weight:800; margin-top:5px">${stocks.length} <span style="font-size:16px; color:var(--tx3)">Stocks</span></div>
+                    </div>`;
+
+                stocks.forEach(s => {
+                    html += `
+                        <div class="card">
+                            <div>
+                                <div style="font-family:'Syne'; font-weight:800; font-size:17px">${s.sym}</div>
+                                <div style="font-size:12px; color:var(--tx3); margin-top:4px">Qty: ${s.qty}</div>
+                            </div>
+                            <div style="text-align:right">
+                                <div style="font-family:'JetBrains Mono'; font-weight:600">₹${Number(s.ltp || 0).toLocaleString('en-IN')}</div>
+                                <div style="font-size:11px; color:${(s.chg || 0) >= 0 ? 'var(--gr2)' : 'var(--rd2)'}; font-weight:700; margin-top:4px">
+                                    ${(s.chg || 0) >= 0 ? '▲' : '▼'} ${Math.abs(s.chg || 0).toFixed(2)}%
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                container.innerHTML = html;
+            } catch (e) {
+                log("Render Error: " + e, "error");
             }
-
-            let html = `<div style="padding:30px 20px; background:var(--s1); border-bottom:1px solid var(--b1)">
-                <div style="font-size:11px; color:var(--tx3)">PORTFOLIO</div>
-                <div style="font-size:32px; font-weight:800; font-family:Syne">${stocks.length} Stocks</div>
-            </div><div style="padding:16px">`;
-
-            stocks.forEach(s => {
-                html += `<div class="card">
-                    <div style="font-weight:800; font-size:18px">${s.sym}</div>
-                    <div style="color:var(--tx3); font-size:13px">Qty: ${s.qty}</div>
-                </div>`;
-            });
-            container.innerHTML = html + `</div>`;
         }
 
-        /* ═══════════════════════════════════════════════════════════
-           IMPORT LOGIC
-        ═══════════════════════════════════════════════════════════ */
-        function renderImportUI(container) {
-            container.innerHTML = `
-                <div style="padding:40px 20px">
-                    <h2 style="font-family:Syne">Import Data</h2>
-                    <textarea id="import-area" placeholder="RELIANCE 10" style="width:100%; height:200px; background:var(--s2); border:1px solid var(--b1); color:white; border-radius:12px; padding:15px; margin-bottom:20px; box-sizing:border-box; outline:none;"></textarea>
-                    <button class="btn-main" onclick="processImport()">SAVE TO DATABASE</button>
-                </div>`;
-        }
-
+        // 3. IMPORT LOGIC
         async function processImport() {
-            const txt = document.getElementById('import-area').value;
-            const lines = txt.split('\n');
+            const area = document.getElementById('import-area');
+            const lines = area.value.split('\n');
             const stocks = [];
 
             lines.forEach(l => {
                 const p = l.trim().split(/\s+/);
-                if (p.length >= 2) stocks.push({ sym: p[0].toUpperCase(), qty: parseInt(p[1]) });
+                if (p.length >= 2) stocks.push({ 
+                    sym: p[0].toUpperCase().replace(/[^A-Z0-9]/g, ''), 
+                    qty: parseInt(p[1]),
+                    ltp: 0, chg: 0, marketValue: 0
+                });
             });
 
             if (stocks.length > 0) {
-                const db = await initDB();
-                const tx = db.transaction(STORE, 'readwrite');
-                stocks.forEach(s => tx.objectStore(STORE).put(s));
+                const db = await initEngineDB();
+                const tx = db.transaction('UnifiedStocks', 'readwrite');
+                stocks.forEach(s => tx.objectStore('UnifiedStocks').put(s));
                 tx.oncomplete = () => {
-                    log(`Imported ${stocks.length} stocks`);
+                    log(`✅ Imported ${stocks.length} stocks.`);
+                    closePanel();
                     showTab('portfolio');
                 };
             }
         }
 
+        // 4. UI UTILS
+        function openPanel() {
+            document.getElementById('import-panel').classList.add('open');
+            document.getElementById('overlay').style.display = 'block';
+        }
+        function closePanel() {
+            document.getElementById('import-panel').classList.remove('open');
+            document.getElementById('overlay').style.display = 'none';
+        }
+
         function init() {
-            log("System Unified & Ready.");
+            log("System Unified. Ready.");
             render();
         }
     </script>
