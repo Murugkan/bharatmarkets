@@ -11,7 +11,7 @@ on:
       - 'app-drill.js'
       - 'app-analysis.js'
       - 'app-settings.js'
-      - 'app-engine.js'
+      - 'app-engine.js' # Added
       - 'app-boot.js'
       - '.github/workflows/pages.yml'
     branches:
@@ -45,7 +45,7 @@ jobs:
       - name: Minify JS modules
         run: |
           total_orig=0; total_min=0
-          # Ensure app-engine.js is in this list
+          # Included app-engine.js in the list below
           for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js app-engine.js app-boot.js; do
             orig=$(wc -c < "$f")
             npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
@@ -58,7 +58,7 @@ jobs:
 
       - name: Patch index.html to use minified modules
         run: |
-          # Ensure app-engine is in this list
+          # Included app-engine in the list below
           for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings app-engine app-boot; do
             sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/" index.html
           done
