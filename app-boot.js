@@ -1,30 +1,57 @@
-// ── Boot — must load LAST, after all app-*.js modules ──────────
-// loadFundamentals  → app-portfolio.js
-// loadGuidanceFromGitHub → app-analysis.js
-// All other functions → app-core.js
+/* ═══════════════════════════════════════════════════════════
+   app-boot.js — MISSION CONTROL (Bootstrapping)
+   Logic: This must be the last script loaded in index.html.
+   Flow: Engine Sync → Static Data → Core Init → Render
+═══════════════════════════════════════════════════════════ */
 
-function boot(){
-  loadState();
-  buildTicker();
-  setInterval(updClock,10000);
-  updClock();
+async function boot() {
+    console.log("🚀 BharatMarkets Pro: Boot Sequence Initiated...");
 
-  // Load static data first (ISIN_MAP), then render
-  loadStaticData().then(()=>{
-    render();
-    buildTicker();
-  });
+    try {
+        // 1. Initialize & Sync the Unified Data Engine
+        // This pulls from GitHub and populates IndexedDB with computed fields
+        if (typeof runEngineSync === 'function') {
+            await runEngineSync();
+        } else {
+            console.error("❌ Engine Module (app-engine.js) not found!");
+        }
 
-  // Also render immediately with cached state while static data loads
-  render();
+        // 2. Load Static Symbols & ISIN Maps
+        // Essential for resolving CDSL imports and Watchlist searches
+        if (typeof loadStaticData === 'function') {
+            await loadStaticData();
+        }
 
-  // Load fresh data in background
-  loadFundamentals()
-    .catch(e => console.warn('loadFundamentals failed:', e))
-    .then(() => { buildTicker(); render(); });
+        // 3. Initialize Core State (localStorage, Tabs, Global Routing)
+        if (typeof init === 'function') {
+            init();
+        }
 
-  loadGuidanceFromGitHub()
-    .catch(e => console.warn('loadGuidanceFromGitHub failed:', e))
-    .then(() => render());
+        // 4. Initial Render
+        // If engine synced successfully, S.portfolio will now reflect the latest data
+        if (typeof render === 'function') {
+            render();
+        }
+
+        console.log("✅ Boot Sequence Complete: System Ready.");
+        showToast("System Ready", 1500);
+
+    } catch (error) {
+        console.error("Critical Boot Failure:", error);
+        if (typeof showToast === 'function') {
+            showToast("Boot Error: Check Console", 5000);
+        }
+    }
 }
-boot();
+
+// ── Trigger Boot on DOM Load ─────────────────────────────
+window.addEventListener('DOMContentLoaded', boot);
+
+/**
+ * Global Engine Update Listener
+ * Listens for 'engine-updated' events to refresh the UI automatically
+ */
+window.addEventListener('engine-updated', () => {
+    console.log("🔄 Engine Update Detected: Re-rendering UI...");
+    if (typeof render === 'function') render();
+});
