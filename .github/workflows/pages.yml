@@ -44,28 +44,19 @@ jobs:
 
       - name: Minify JS modules
         run: |
-          total_orig=0; total_min=0
-          # List includes app-engine.js for minification
+          # ALL modules including app-engine MUST be in this list
           for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js app-engine.js app-boot.js; do
             if [ -f "$f" ]; then
-              orig=$(wc -c < "$f")
               npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
-              min=$(wc -c < "${f%.js}.min.js")
-              echo "Minified $f: $orig → $min bytes"
-              total_orig=$((total_orig + orig))
-              total_min=$((total_min + min))
-            else
-              echo "Warning: $f not found, skipping minification."
+              echo "✅ Minified $f"
             fi
           done
-          echo "Total Payload Optimization: $total_orig → $total_min bytes"
 
       - name: Patch index.html to use minified modules
         run: |
-          # Replaces .js with .min.js for all modules in the HTML script tags
+          # This replaces src="file.js" with src="file.min.js" in your HTML
           for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings app-engine app-boot; do
             sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/g" index.html
-            echo "Patched index.html for ${f}.js"
           done
 
       - name: Setup Pages
