@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets Pro (Flat Architecture)</title>
+    <title>BharatMarkets Pro (Unified Flat DB)</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -12,22 +12,18 @@
         }
         body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
         
-        /* Debug Console */
-        #debug-log { height: 100px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); line-height: 1.5; }
+        #debug-log { height: 80px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 10px; color: var(--gr1); }
         
-        /* Table Layout */
         .bls-table-outer { width: 100%; overflow-x: auto; padding-bottom: 100px; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; }
         .bls-t td { padding: 12px 15px; border-bottom: 1px solid #182840; text-align: right; }
         .th-l, .td-l { text-align: left !important; }
 
-        /* Import Area */
         .import-box { padding: 20px; }
         #import-area { width: 100%; height: 200px; background: var(--s2); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; font-size: 12px; }
         .btn-main { width: 100%; padding: 16px; background: var(--gr1); color: #000; border: none; border-radius: 8px; font-weight: 800; margin-top: 10px; cursor: pointer; }
 
-        /* Navigation */
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
         .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
@@ -35,13 +31,13 @@
 </head>
 <body onload="init()">
 
-    <div id="debug-log">System Initialized. Use Import to add symbols.</div>
+    <div id="debug-log">Ready. Symbols will be resolved during Sync.</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb" onclick="syncEverything()" style="color:var(--gr2)">Sync Data</button>
+        <button class="nb" onclick="syncAndResolve()" style="color:var(--gr2)">Resolve & Sync</button>
     </nav>
 
     <script src="app-engine.js"></script>
@@ -53,7 +49,6 @@
             l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
         }
 
-        // --- STEP 1: IMPORT SYMBOLS ---
         async function processImport() {
             const text = document.getElementById('import-area').value;
             const lines = text.trim().split('\n');
@@ -61,7 +56,6 @@
             const tx = db.transaction('UnifiedStocks', 'readwrite');
             const store = tx.objectStore('UnifiedStocks');
 
-            let count = 0;
             lines.forEach(line => {
                 const parts = line.split(/\s+/);
                 if (parts.length >= 3) {
@@ -71,19 +65,18 @@
                         avgBuy: parseFloat(parts[2]),
                         ltp: 0, sector: '—', roe: 0, pe: 0, signal: 'WAIT'
                     });
-                    count++;
                 }
             });
 
             tx.oncomplete = () => {
-                log(`Imported ${count} stocks. Now tap "Sync Data".`);
+                log("Imported. Run 'Resolve & Sync' to unify symbols.");
                 showTab('portfolio', document.querySelector('.nb'));
             };
         }
 
-        // --- STEP 2: SYNC WITH MASTER JSON & MARKET DATA ---
-        async function syncEverything() {
-            log("Fetching Master Files (symbols.json, symbol_map.json)...");
+        // THE RESOLUTION ENGINE: Resolves symbols before saving to DB
+        async function syncAndResolve() {
+            log("Loading Map & Market Data...");
             try {
                 const [fData, pData, sMaster, sMap] = await Promise.all([
                     fetch('fundamentals.json').then(r => r.json()),
@@ -100,24 +93,23 @@
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                if (holdings.length === 0) {
-                    log("ERROR: No symbols in DB. Use Import tab first.");
-                    return;
-                }
+                // Clear DB for fresh "Unified" write
+                store.clear();
 
                 holdings.forEach(h => {
-                    // Apply Mapping Overrides (e.g., ZINKA -> BLACKBUCK.NS)
-                    const mappedKey = sMap.overrides[h.sym] || h.sym;
-                    const cleanKey = mappedKey.split('.')[0];
+                    // RESOLVE SYMBOL HERE
+                    const unifiedSym = sMap.overrides[h.sym] || h.sym;
+                    const cleanKey = unifiedSym.split('.')[0];
 
-                    // Lookup in Market Data and Master List
-                    const f = fData[mappedKey] || fData[cleanKey] || {};
-                    const p = pData[mappedKey] || pData[cleanKey] || {};
-                    const masterEntry = sMaster.find(item => item.sym === h.sym) || {};
+                    const f = fData[unifiedSym] || fData[cleanKey] || {};
+                    const p = pData[unifiedSym] || pData[cleanKey] || {};
+                    const m = sMaster.find(item => item.sym === h.sym || item.sym === cleanKey) || {};
 
+                    // Save under the UNIFIED symbol
                     store.put({
                         ...h,
-                        sector: f.sector || masterEntry.sector || h.sector,
+                        sym: unifiedSym, // Symbol is now resolved permanently in DB
+                        sector: f.sector || m.sector || h.sector,
                         roe: f.roe || 0,
                         pe: p.pe || f.pe || 0,
                         ltp: p.ltp || h.ltp,
@@ -126,16 +118,14 @@
                 });
 
                 tx.oncomplete = () => {
-                    log("Sync Complete: DB updated with master sector and financial data.");
+                    log("SUCCESS: All symbols resolved and database is Flat.");
                     render();
                 };
             } catch (e) {
-                log("Fetch Error: Ensure all JSON files are in the same directory.");
-                console.error(e);
+                log("Sync failed. Check JSON files.");
             }
         }
 
-        // --- STEP 3: RENDER VIEWS ---
         async function renderPortfolio(container) {
             const db = await initEngineDB();
             const stocks = await new Promise(r => {
@@ -144,24 +134,24 @@
             });
 
             if (!stocks.length) {
-                container.innerHTML = `<div style="padding:100px;text-align:center;color:var(--tx3)">Empty. Go to Import.</div>`;
+                container.innerHTML = `<div style="padding:100px;text-align:center">No Data.</div>`;
                 return;
             }
 
+            // UI simply refers to the data - No logic needed here!
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>P/E</th><th>LTP</th><th>Qty</th><th>P&L</th>
+                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>LTP</th><th>Qty</th><th>P&L</th>
             </tr></thead><tbody>`;
 
             stocks.forEach(s => {
                 const pnl = (s.qty * s.ltp) - (s.qty * s.avgBuy);
                 h += `<tr>
-                    <td class="td-l"><strong>${s.sym}</strong><br><span style="font-size:9px;color:var(--tx3)">${s.signal}</span></td>
+                    <td class="td-l"><strong>${s.sym}</strong></td>
                     <td class="td-l" style="color:var(--tx3)">${s.sector}</td>
-                    <td style="color:${s.roe > 15 ? 'var(--gr2)' : 'white'}">${s.roe}%</td>
-                    <td>${s.pe}</td>
+                    <td>${s.roe}%</td>
                     <td style="font-weight:700">₹${s.ltp}</td>
                     <td class="u-dim">${s.qty}</td>
-                    <td style="background:${pnl>=0?'#003a20':'#3a0010'};color:#fff;font-weight:700">${pnl.toFixed(0)}</td>
+                    <td style="background:${pnl>=0?'#003a20':'#3a0010'};color:#fff">${pnl.toFixed(0)}</td>
                 </tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
@@ -178,7 +168,7 @@
             const c = document.getElementById('content');
             if (curTab === 'import') {
                 c.innerHTML = `<div class="import-box">
-                    <textarea id="import-area" placeholder="HDFCBANK 20 1550\nKAYNES 25 4000"></textarea>
+                    <textarea id="import-area" placeholder="HDFC 20 1550"></textarea>
                     <button class="btn-main" onclick="processImport()">SAVE SYMBOLS</button>
                 </div>`;
             } else {
