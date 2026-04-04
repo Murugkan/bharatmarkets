@@ -3,41 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets Pro (Calculated Flat DB)</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
+    <title>BharatMarkets Pro | Full Data Sync</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b;
-            --gr1: #00f2ff; --gr2: #00e896; --rd2: #ff6b85; --tx1: #f0f6ff; --tx3: #708499;
+            --gr1: #00f2ff; --gr2: #00e896; --tx1: #f0f6ff; --tx3: #708499;
         }
         body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
         
-        #debug-log { height: 80px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 10px; color: var(--gr1); }
+        /* Expanded Debug Window */
+        #debug-log { height: 150px; overflow-y: auto; background: #000; border-bottom: 2px solid var(--gr1); font-family: 'JetBrains Mono'; font-size: 11px; padding: 15px; color: var(--gr1); line-height: 1.6; }
         
         .bls-table-outer { width: 100%; overflow-x: auto; padding-bottom: 100px; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; }
-        .bls-t td { padding: 12px 15px; border-bottom: 1px solid #182840; text-align: right; }
-        .th-l, .td-l { text-align: left !important; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; }
+        .bls-t td { padding: 12px 15px; border-bottom: 1px solid #182840; }
 
         .import-box { padding: 20px; }
-        #import-area { width: 100%; height: 200px; background: var(--s2); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; font-size: 12px; }
-        .btn-main { width: 100%; padding: 16px; background: var(--gr1); color: #000; border: none; border-radius: 8px; font-weight: 800; margin-top: 10px; cursor: pointer; }
-
+        #import-area { width: 100%; height: 150px; background: var(--s2); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; }
+        
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
         .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
+        
+        .btn-sync { background: var(--gr2) !important; color: #000 !important; font-weight: 900; }
     </style>
 </head>
 <body onload="init()">
 
-    <div id="debug-log">Ready. Computations will be baked into DB during Sync.</div>
+    <div id="debug-log">SYSTEM READY. WAITING FOR COMMAND...</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
+        <button class="nb" onclick="showTab('raw', this)">33 Fields View</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb" onclick="syncResolveAndCompute()" style="color:var(--gr2)">Compute & Sync</button>
+        <button class="nb btn-sync" onclick="bakeAllFields()">BAKE 33 FIELDS</button>
     </nav>
 
     <script src="app-engine.js"></script>
@@ -46,37 +48,12 @@
 
         function log(msg) {
             const l = document.getElementById('debug-log');
-            l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            l.innerHTML = `<div><span style="color:#555">[${time}]</span> ${msg}</div>` + l.innerHTML;
         }
 
-        async function processImport() {
-            const text = document.getElementById('import-area').value;
-            const lines = text.trim().split('\n');
-            const db = await initEngineDB();
-            const tx = db.transaction('UnifiedStocks', 'readwrite');
-            const store = tx.objectStore('UnifiedStocks');
-
-            lines.forEach(line => {
-                const parts = line.split(/\s+/);
-                if (parts.length >= 3) {
-                    store.put({
-                        sym: parts[0].toUpperCase(),
-                        qty: parseFloat(parts[1]),
-                        avgBuy: parseFloat(parts[2]),
-                        ltp: 0, sector: '—', roe: 0, pe: 0, signal: 'WAIT',
-                        investedValue: 0, marketValue: 0, pnl: 0, pnlNet: 0 // Computation placeholders
-                    });
-                }
-            });
-
-            tx.oncomplete = () => {
-                log("Imported. Run 'Compute & Sync' to calculate values.");
-                showTab('portfolio', document.querySelector('.nb'));
-            };
-        }
-
-        async function syncResolveAndCompute() {
-            log("Fetching Master Data...");
+        async function bakeAllFields() {
+            log("INITIATING FULL DATA EXTRACTION...");
             try {
                 const [fData, pData, sMaster, sMap] = await Promise.all([
                     fetch('fundamentals.json').then(r => r.json()),
@@ -93,46 +70,70 @@
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                store.clear();
+                if (holdings.length === 0) return log("ABORTED: No symbols in DB.");
 
                 holdings.forEach(h => {
-                    const unifiedSym = sMap.overrides[h.sym] || h.sym;
-                    const cleanKey = unifiedSym.split('.')[0];
+                    const resolvedSym = sMap.overrides[h.sym] || h.sym;
+                    const cleanKey = resolvedSym.split('.')[0];
+                    
+                    // Match across all possible naming conventions
+                    const variants = [resolvedSym, `${resolvedSym}.NS`, `${resolvedSym}.BO`, cleanKey];
+                    let fundEntry = {}, priceEntry = {};
+                    
+                    for (let v of variants) {
+                        if (fData[v]) fundEntry = fData[v];
+                        if (pData[v]) priceEntry = pData[v];
+                    }
 
-                    const f = fData[unifiedSym] || fData[cleanKey] || {};
-                    const p = pData[unifiedSym] || pData[cleanKey] || {};
-                    const m = sMaster.find(item => item.sym === h.sym || item.sym === cleanKey) || {};
+                    const master = sMaster.find(m => m.sym === h.sym || m.sym === cleanKey) || {};
 
-                    // BAKE COMPUTATIONS HERE
-                    const ltp = p.ltp || h.ltp || 0;
-                    const investedValue = h.qty * h.avgBuy;
-                    const marketValue = h.qty * ltp;
-                    const pnl = marketValue - investedValue;
-                    const pnlNet = investedValue > 0 ? (pnl / investedValue) * 100 : 0;
-
-                    store.put({
+                    // BAKE ALL FIELDS (The 33 fields from your JSON)
+                    const bakedRecord = {
                         ...h,
-                        sym: unifiedSym,
-                        sector: f.sector || m.sector || h.sector,
-                        roe: f.roe || 0,
-                        pe: p.pe || f.pe || 0,
-                        ltp: ltp,
-                        signal: f.signal || 'HOLD',
-                        // Storing pre-calculated values
-                        investedValue: Math.round(investedValue),
-                        marketValue: Math.round(marketValue),
-                        pnl: Math.round(pnl),
-                        pnlNet: parseFloat(pnlNet.toFixed(2))
-                    });
+                        ...master,      // Pulls sector, name, isin
+                        ...fundEntry,    // Pulls ROE, PE, OPM%, Sales, EBITDA, etc.
+                        ...priceEntry,   // Pulls LTP, Change%
+                        sym: resolvedSym,
+                        lastSync: new Date().toISOString()
+                    };
+
+                    // Re-calculate basic P&L based on the newly pulled LTP
+                    const ltp = bakedRecord.ltp || 0;
+                    bakedRecord.pnl = Math.round((h.qty * ltp) - (h.qty * h.avgBuy));
+                    bakedRecord.pnlNet = h.avgBuy > 0 ? (((ltp - h.avgBuy) / h.avgBuy) * 100).toFixed(2) : 0;
+
+                    store.put(bakedRecord);
                 });
 
                 tx.oncomplete = () => {
-                    log("SUCCESS: Values calculated and saved to DB.");
+                    log("SUCCESS: 33+ fields baked into IndexedDB.");
                     render();
                 };
             } catch (e) {
-                log("Sync failed. Check JSON files.");
+                log("FETCH ERROR: Ensure fundamentals.json and prices.json are accessible.");
             }
+        }
+
+        async function renderRaw(container) {
+            const db = await initEngineDB();
+            const stocks = await new Promise(r => {
+                const tx = db.transaction('UnifiedStocks', 'readonly');
+                tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
+            });
+
+            if (!stocks.length) { container.innerHTML = "<div style='padding:50px'>No data.</div>"; return; }
+
+            const keys = Object.keys(stocks[0]);
+            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
+            keys.forEach(k => h += `<th>${k}</th>`);
+            h += `</tr></thead><tbody>`;
+
+            stocks.forEach(s => {
+                h += `<tr>`;
+                keys.forEach(k => h += `<td>${s[k] !== undefined ? s[k] : '—'}</td>`);
+                h += `</tr>`;
+            });
+            container.innerHTML = h + `</tbody></table></div>`;
         }
 
         async function renderPortfolio(container) {
@@ -142,26 +143,19 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (!stocks.length) {
-                container.innerHTML = `<div style="padding:100px;text-align:center">No Data.</div>`;
-                return;
-            }
+            if (!stocks.length) { container.innerHTML = "<div style='padding:100px;text-align:center'>Empty.</div>"; return; }
 
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>LTP</th><th>P&L</th><th>P&L%</th>
+                <th>Stock</th><th>Sector</th><th>ROE</th><th>LTP</th><th>P&L</th>
             </tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                // UI refers only to DB fields - NO math here
-                const pnlColor = s.pnl >= 0 ? 'background:#003a20' : 'background:#3a0010';
-                
                 h += `<tr>
-                    <td class="td-l"><strong>${s.sym}</strong></td>
-                    <td class="td-l" style="color:var(--tx3)">${s.sector}</td>
-                    <td>${s.roe}%</td>
-                    <td style="font-weight:700">₹${s.ltp}</td>
-                    <td style="${pnlColor};color:#fff;font-weight:700">${s.pnl}</td>
-                    <td style="${pnlColor};color:#fff">${s.pnlNet}%</td>
+                    <td><strong>${s.sym}</strong></td>
+                    <td style="color:var(--tx3)">${s.sector || '—'}</td>
+                    <td>${s.roe || 0}%</td>
+                    <td>₹${s.ltp || 0}</td>
+                    <td style="color:${s.pnl >= 0 ? 'var(--gr2)' : 'var(--rd2)'}">${s.pnl || 0} (${s.pnlNet}%)</td>
                 </tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
@@ -170,7 +164,7 @@
         function showTab(t, btn) {
             curTab = t;
             document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
-            if (btn) btn.classList.add('active');
+            btn.classList.add('active');
             render();
         }
 
@@ -178,12 +172,27 @@
             const c = document.getElementById('content');
             if (curTab === 'import') {
                 c.innerHTML = `<div class="import-box">
-                    <textarea id="import-area" placeholder="HDFC 20 1550"></textarea>
-                    <button class="btn-main" onclick="processImport()">SAVE SYMBOLS</button>
+                    <textarea id="import-area" placeholder="SYMBOL QTY AVG"></textarea>
+                    <button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE SYMBOLS</button>
                 </div>`;
+            } else if (curTab === 'raw') {
+                renderRaw(c);
             } else {
                 renderPortfolio(c);
             }
+        }
+
+        async function processImport() {
+            const text = document.getElementById('import-area').value;
+            const lines = text.trim().split('\n');
+            const db = await initEngineDB();
+            const tx = db.transaction('UnifiedStocks', 'readwrite');
+            const store = tx.objectStore('UnifiedStocks');
+            lines.forEach(line => {
+                const p = line.split(/\s+/);
+                if (p.length >= 3) store.put({ sym: p[0].toUpperCase(), qty: parseFloat(p[1]), avgBuy: parseFloat(p[2]) });
+            });
+            tx.oncomplete = () => { log("Symbols Saved. Click BAKE."); showTab('portfolio', document.querySelector('.nb')); };
         }
 
         function init() { render(); }
