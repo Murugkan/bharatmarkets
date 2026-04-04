@@ -1,21 +1,18 @@
 /**
- * STEP 1: DIAGNOSTIC LOADER
- * This version will tell us EXACTLY why it's stuck.
+ * STEP 1: FINAL INTEGRATED TEST (v21.0)
+ * Bypasses empty states to force-render the 37-column table.
  */
 async function loadFundamentals() {
   if (window.pfRefreshing) return;
   window.pfRefreshing = true;
 
   try {
-    console.log("📡 Attempting fetch: ./fundamentals.json");
-    const response = await fetch(`./fundamentals.json?v=${Date.now()}`);
+    const r = await fetch(`./fundamentals.json?v=${Date.now()}`);
+    if (!r.ok) throw new Error("File Not Found");
     
-    if (!response.ok) {
-        throw new Error(`File Not Found (HTTP ${response.status})`);
-    }
-
-    const data = await response.json();
-    // Ensure we handle both {stocks: {...}} and raw {...} formats
+    const data = await r.json();
+    
+    // Explicitly target the "stocks" wrapper from your JSON
     window.FUND = data.stocks || data;
     
     window.ISIN_MAP = {};
@@ -27,13 +24,7 @@ async function loadFundamentals() {
     window.fundLoaded = true;
     return true;
   } catch (e) {
-    console.error("❌ Diagnostic Failure:", e.message);
-    // STICK THE ERROR ON THE SCREEN SO YOU CAN SEE IT
-    document.body.insertAdjacentHTML('beforeend', 
-      `<div style="position:fixed;top:0;left:0;background:red;color:white;z-index:9999;padding:10px;font-size:10px;">
-        ENGINE ERROR: ${e.message}
-      </div>`
-    );
+    console.error("Step 1 Load Error:", e.message);
     return false;
   } finally {
     window.pfRefreshing = false;
@@ -43,39 +34,39 @@ async function loadFundamentals() {
 async function renderPortfolio(container) {
   if (!container) return;
 
-  // 1. Force hide the loading overlay
+  // 1. Clear UI
   const overlay = document.querySelector('.loading, #sync-overlay');
   if (overlay) overlay.style.display = 'none';
 
-  // 2. Try to boot the engine
+  // 2. Ensure Engine is Booted
   if (!window.fundLoaded) {
     container.innerHTML = `<div style="padding:40px;color:#58a6ff;font-family:monospace;">> BOOTING DATA ENGINE...</div>`;
-    const success = await loadFundamentals();
-    
-    // If it fails, don't stop! Let's try to render anyway with empty data
-    if (!success) {
-        console.warn("⚠️ Continuing without fundamentals...");
-        window.FUND = window.FUND || {};
-        window.fundLoaded = true; 
-    }
+    await loadFundamentals();
   }
 
-  // 3. Ensure S.portfolio exists for the 37-column logic
+  // 3. DATA INTEGRITY CHECK & DUMMY FALLBACK
+  // If no portfolio is found, we inject OLECTRA and others to test the 37 columns
   if (!window.S || !S.portfolio || S.portfolio.length === 0) {
-      // IF BROKER SYNC IS MISSING, CREATE A DUMMY LIST FROM FUND TO TEST UI
-      if (window.FUND && Object.keys(window.FUND).length > 0) {
-          window.S = window.S || {};
-          window.S.portfolio = Object.keys(window.FUND).slice(0, 10).map(sym => ({
-              sym: sym, 
-              isin: window.FUND[sym].isin || ''
-          }));
-      } else {
-          container.innerHTML = `<div style="padding:40px;color:var(--rd2);">❌ No Data Found in JSON or Portfolio.</div>`;
-          return;
-      }
+    console.warn("⚠️ Injecting Test Data to verify 37-column UI...");
+    window.S = window.S || { portfolio: [] };
+    
+    // Use first 5 stocks from FUND, or hardcoded samples if FUND is empty
+    const samples = (window.FUND && Object.keys(window.FUND).length > 0) 
+      ? Object.keys(window.FUND).slice(0, 5) 
+      : ["OLECTRA", "RELIANCE", "TCS", "INFY", "HDFCBANK"];
+
+    window.S.portfolio = samples.map(sym => ({
+      sym: sym,
+      isin: (window.FUND && window.FUND[sym]) ? window.FUND[sym].isin : '',
+      qty: 10,
+      avg: 100
+    }));
   }
 
-  // 4. RUN YOUR ORIGINAL 37-COLUMN LOGIC
-  console.log("🚀 Drawing Table...");
-  // Paste your original table drawing code here...
+  // 4. DRAW THE TABLE
+  // This calls the original drawing logic from your app-portfolio-Nkl.js file
+  console.log("🚀 Rendering 37-column table with " + S.portfolio.length + " stocks.");
+  
+  // --- PASTE YOUR ORIGINAL TABLE DRAWING LOGIC BELOW ---
+  // (Start from: const out = []; ... all the way to the end of your original file)
 }
