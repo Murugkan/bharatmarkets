@@ -11,7 +11,7 @@ on:
       - 'app-drill.js'
       - 'app-analysis.js'
       - 'app-settings.js'
-      - 'app-engine.js' # Added
+      - 'app-engine.js'
       - 'app-boot.js'
       - '.github/workflows/pages.yml'
     branches:
@@ -40,27 +40,32 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
 
       - name: Minify JS modules
         run: |
           total_orig=0; total_min=0
-          # Included app-engine.js in the list below
+          # List includes app-engine.js for minification
           for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js app-engine.js app-boot.js; do
-            orig=$(wc -c < "$f")
-            npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
-            min=$(wc -c < "${f%.js}.min.js")
-            echo "$f: $orig → $min bytes"
-            total_orig=$((total_orig + orig))
-            total_min=$((total_min + min))
+            if [ -f "$f" ]; then
+              orig=$(wc -c < "$f")
+              npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
+              min=$(wc -c < "${f%.js}.min.js")
+              echo "Minified $f: $orig → $min bytes"
+              total_orig=$((total_orig + orig))
+              total_min=$((total_min + min))
+            else
+              echo "Warning: $f not found, skipping minification."
+            fi
           done
-          echo "Total: $total_orig → $total_min bytes"
+          echo "Total Payload Optimization: $total_orig → $total_min bytes"
 
       - name: Patch index.html to use minified modules
         run: |
-          # Included app-engine in the list below
+          # Replaces .js with .min.js for all modules in the HTML script tags
           for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings app-engine app-boot; do
-            sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/" index.html
+            sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/g" index.html
+            echo "Patched index.html for ${f}.js"
           done
 
       - name: Setup Pages
