@@ -1,43 +1,3 @@
-// 1. GLOBAL STATE
-if (typeof window.pfRefreshing === 'undefined') window.pfRefreshing = false;
-if (typeof window.fundLoaded === 'undefined') window.fundLoaded = false;
-
-async function loadFundamentals() {
-  if (window.pfRefreshing) return;
-  window.pfRefreshing = true;
-  try {
-    const ts = Date.now();
-    const [sRes, fRes] = await Promise.all([
-      fetch(`./symbols.json?v=${ts}`),
-      fetch(`./fundamentals.json?v=${ts}`)
-    ]);
-    const sData = await sRes.json();
-    const fData = await fRes.json();
-
-    window.S = window.S || {};
-    window.S.portfolio = sData.map(item => ({
-      sym: item.sym || '?',
-      isin: item.isin || '',
-      sector: item.sector || 'N/A'
-    }));
-
-    window.FUND = fData.stocks || fData;
-    window.ISIN_MAP = {};
-    Object.keys(window.FUND).forEach(key => {
-      const stock = window.FUND[key];
-      if (stock && stock.isin) window.ISIN_MAP[stock.isin] = key;
-    });
-
-    window.fundLoaded = true;
-    return true;
-  } catch (e) {
-    console.error("Engine Error:", e);
-    return false;
-  } finally {
-    window.pfRefreshing = false;
-  }
-}
-
 async function renderPortfolio(container) {
   if (!container) return;
   const overlay = document.querySelector('.loading, #sync-overlay');
@@ -62,44 +22,56 @@ async function renderPortfolio(container) {
   html += `<div style="overflow-x:auto; border:1px solid #1e3350; border-radius:8px;">`;
   html += `<table style="width:100%; border-collapse:collapse; white-space:nowrap; font-size:12px;">`;
   
-  // --- UPDATED HEADER WITH MORE FIELDS ---
+  // HEADER - Expanded with efficiency and risk metrics
   html += `<tr style="background:#0d1117; border-bottom:2px solid #1e3350; color:#8b949e; text-transform:uppercase; font-size:10px;">
             <th style="padding:12px; text-align:left; position:sticky; left:0; background:#0d1117; z-index:2;">Symbol</th>
-            <th style="padding:12px; text-align:left;">Sector</th>
-            <th style="padding:12px; text-align:center;">ROE %</th>
-            <th style="padding:12px; text-align:center;">OPM %</th>
+            <th style="padding:12px; text-align:center;">ROE%</th>
+            <th style="padding:12px; text-align:center;">ROCE%</th>
+            <th style="padding:12px; text-align:center;">OPM%</th>
+            <th style="padding:12px; text-align:center;">NPM%</th>
             <th style="padding:12px; text-align:center;">P/E</th>
-            <th style="padding:12px; text-align:center;">MCAP (Cr)</th>
-            <th style="padding:12px; text-align:center;">52W High</th>
+            <th style="padding:12px; text-align:center;">D/E</th>
+            <th style="padding:12px; text-align:center;">PROM%</th>
             <th style="padding:12px; text-align:right;">Price (LTP)</th>
           </tr>`;
 
   window.S.portfolio.forEach((h, index) => {
     const f = window.FUND[h.sym] || (h.isin ? window.FUND[window.ISIN_MAP[h.isin]] : null) || {};
     
-    // Financial Data Extraction
-    const roe = f.roe ?? '—';
-    const opm = f.opm_pct ?? '—';
-    const pe = f.pe ?? '—';
-    const mcap = f.mcap ?? '—';
-    const w52h = f.w52h ?? '—';
+    // --- STEP 2: FULL DATA MAP ---
     const ltp = f.ltp || 0;
+    const roe = f.roe ?? '—';
+    const roce = f.roce ?? '—';
+    const opm = f.opm_pct ?? '—';
+    const npm = f.npm_pct ?? '—';
+    const pe = f.pe ?? '—';
+    const debtEq = f.debt_eq ?? '—';
+    const prom = f.prom_pct ?? '—';
     
+    // Hidden variables (Ready for Step 3 formatting)
+    const mcap = f.mcap ?? '—';
+    const fii = f.fii_pct ?? '—';
+    const dii = f.dii_pct ?? '—';
+    const sales = f.sales ?? '—';
+    const divYield = f.div_yield ?? '—';
+    const beta = f.beta ?? '—';
+
     const rowBg = index % 2 === 0 ? 'transparent' : '#0d1117';
+    
+    // Logic Colors
     const roeColor = (parseFloat(roe) > 15) ? '#3fb950' : (parseFloat(roe) < 0 ? '#f85149' : '#fff');
-    const opmColor = (parseFloat(opm) > 20) ? '#d29922' : '#fff';
+    const deColor = (parseFloat(debtEq) > 1.5) ? '#f85149' : '#fff';
 
     html += `<tr style="background:${rowBg}; border-bottom:1px solid #1e3350;">
               <td style="padding:12px; font-weight:bold; color:#58a6ff; position:sticky; left:0; background:${index % 2 === 0 ? '#02040a' : '#0d1117'}; z-index:1;">${h.sym}</td>
-              <td style="padding:12px; color:#8b949e;">${h.sector || f.sector || '—'}</td>
-              <td style="padding:12px; text-align:center; font-weight:bold; color:${roeColor}">${roe !== '—' ? roe + '%' : '—'}</td>
-              <td style="padding:12px; text-align:center; color:${opmColor}">${opm !== '—' ? opm + '%' : '—'}</td>
-              
+              <td style="padding:12px; text-align:center; color:${roeColor}">${roe !== '—' ? roe + '%' : '—'}</td>
+              <td style="padding:12px; text-align:center;">${roce !== '—' ? roce + '%' : '—'}</td>
+              <td style="padding:12px; text-align:center; color:#d29922;">${opm !== '—' ? opm + '%' : '—'}</td>
+              <td style="padding:12px; text-align:center;">${npm !== '—' ? npm + '%' : '—'}</td>
               <td style="padding:12px; text-align:center;">${pe !== '—' ? Number(pe).toFixed(1) : '—'}</td>
-              <td style="padding:12px; text-align:center;">${mcap !== '—' ? Math.round(mcap).toLocaleString('en-IN') : '—'}</td>
-              <td style="padding:12px; text-align:center; color:#8b949e;">${w52h !== '—' ? '₹' + Number(w52h).toLocaleString('en-IN') : '—'}</td>
-              
-              <td style="padding:12px; text-align:right; font-weight:bold; color:#fff;">₹${Number(ltp).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+              <td style="padding:12px; text-align:center; color:${deColor}">${debtEq}</td>
+              <td style="padding:12px; text-align:center;">${prom !== '—' ? prom + '%' : '—'}</td>
+              <td style="padding:12px; text-align:right; font-weight:bold;">₹${Number(ltp).toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
             </tr>`;
   });
 
