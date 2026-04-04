@@ -3,128 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Solid State Terminal</title>
+    <title>BharatMarkets | Selective Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd1: #ff4d6d; --tx3: #708499; }
+        :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --tx3: #708499; }
         body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
+        header { height: 50px; background: var(--s1); border-bottom: 1px solid var(--b1); display: flex; align-items: center; padding: 0 20px; font-weight: 800; color: var(--gr1); font-size: 11px; letter-spacing: 1px; }
         
-        /* 1. LOOK & FEEL: The Legacy Interface */
-        header { height: 60px; background: var(--s1); border-bottom: 1px solid var(--b1); display: flex; align-items: center; padding: 0 20px; justify-content: space-between; }
-        .logo { font-weight: 800; color: var(--gr1); font-size: 14px; letter-spacing: 1px; }
-        .status { font-size: 9px; color: var(--tx3); text-transform: uppercase; }
-
-        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 60px); }
-        table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
-        td { padding: 15px; border-bottom: 1px solid #182840; }
+        .view { width: 100%; overflow: auto; height: calc(100vh - 50px); }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
+        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; text-transform: uppercase; }
+        td { padding: 12px 15px; border-bottom: 1px solid #182840; }
         
-        /* Sticky Symbol Column */
-        .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; color: var(--gr1); }
-
-        /* Color Coding */
-        .pos { color: var(--gr2); } 
-        .neg { color: var(--rd1); }
-        .BUY { color: var(--gr2); font-weight: 700; }
-        .SELL { color: var(--rd1); font-weight: 700; }
-        .HOLD { color: #ffb800; font-weight: 700; }
+        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); color: var(--gr1); font-weight: 700; }
+        
+        /* Look and Feel Colors */
+        .pos { color: #00ff88; } .neg { color: #ff4d6d; }
+        .BUY { color: #00ff88; font-weight: 700; } .SELL { color: #ff4d6d; font-weight: 700; } .HOLD { color: #ffb800; }
     </style>
 </head>
 <body onload="init()">
 
-    <header>
-        <div class="logo">BHARAT MARKETS</div>
-        <div class="status" id="db-status">DB: CONNECTING...</div>
-    </header>
-
-    <div id="portfolio" class="table-outer"></div>
+    <header>BHARATMARKETS | SELECTIVE VIEWPORT</header>
+    <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "BharatSolidState";
-        const STORE = "MasterData";
+        const DB_NAME = "BharatMarkets_Solid"; const STORE = "Portfolio";
 
-        // --- THE ENGINE: RESOLVES MISMATCHES & BAKES DATA ---
-        async function runDataPipeline() {
+        // 1. THE DATA PIPELINE: Dump all stocks, resolve mismatches
+        async function runPipeline() {
             try {
                 const res = await fetch('fundamentals.json');
                 const raw = await res.json();
-                
                 const db = await openDB();
                 const tx = db.transaction(STORE, "readwrite");
                 const store = tx.objectStore(STORE);
 
-                // Clear existing to prevent stale mismatches
-                store.clear();
-
-                // Flatten the 33-field Nested JSON into Flat DB Records
                 Object.keys(raw.stocks).forEach(ticker => {
-                    const metrics = raw.stocks[ticker];
-                    const cleanSym = ticker.split('.')[0].toUpperCase(); // Resolves "HDFC.NS" -> "HDFC"
+                    const m = raw.stocks[ticker];
+                    const sym = ticker.split('.')[0].toUpperCase(); // Resolves suffixes
                     
-                    // The "Bake": Merge user data (qty/avg) with 33 metrics and calc P&L
-                    const bakedRecord = {
-                        sym: cleanSym,
-                        ...metrics,
-                        pnl: metrics.LTP ? Math.round((metrics.QTY * metrics.LTP) - (metrics.QTY * metrics.AVG)) : 0
-                    };
-                    store.put(bakedRecord);
+                    // The "Bake": Flatten all 33 fields into the DB record
+                    store.put({ 
+                        SYM: sym, 
+                        ...m,
+                        // Pre-calculate PNL so the UI stays "Dumb"
+                        PNL_VAL: m.LTP ? Math.round((m.QTY * m.LTP) - (m.QTY * m.AVG)) : 0
+                    });
                 });
-
-                tx.oncomplete = () => {
-                    document.getElementById('db-status').innerText = "DB: SYNCED & RESOLVED";
-                    renderPortfolio();
-                };
-            } catch (e) { document.getElementById('db-status').innerText = "DB: SYNC ERROR"; }
+                tx.oncomplete = () => render();
+            } catch (e) { console.error("Pipeline Sync Failed."); }
         }
 
-        // --- THE UI: PASSIVE MIRROR (LOOK & FEEL ONLY) ---
-        async function renderPortfolio() {
+        // 2. THE UI MIRROR: Selective rendering based on your example
+        async function render() {
             const db = await openDB();
             const stocks = await new Promise(r => {
                 db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
             });
 
-            const container = document.getElementById('portfolio');
             if (!stocks.length) return;
 
-            // Define exactly what to show from the 33 available fields
-            const displayCols = ['sym', 'LTP', 'CHG1D', 'pnl', 'ROE', 'SIGNAL', 'SECTOR'];
+            // SELECTIVE FIELDS: Adjust this list to change what shows on screen
+            const cols = ['SYM', 'LTP', 'CHG1D', 'PNL_VAL', 'ROE', 'SIGNAL', 'SECTOR'];
 
             let html = `<table><thead><tr>`;
-            displayCols.forEach(col => {
-                const isSticky = col === 'sym' ? 'class="sticky-sym"' : '';
-                html += `<th ${isSticky}>${col.toUpperCase()}</th>`;
-            });
+            cols.forEach(c => html += `<th class="${c==='SYM'?'sticky':''}">${c}</th>`);
             html += `</tr></thead><tbody>`;
 
             stocks.forEach(s => {
                 html += `<tr>`;
-                displayCols.forEach(col => {
-                    const val = s[col] !== undefined ? s[col] : '—';
-                    const isSticky = col === 'sym' ? 'class="sticky-sym"' : '';
+                cols.forEach(c => {
+                    let val = s[c] !== undefined ? s[c] : '—';
+                    const isSym = c === 'SYM';
+                    let cls = isSym ? 'sticky' : '';
                     
-                    let styleClass = "";
-                    if (col === 'pnl' || col === 'CHG1D') styleClass = val >= 0 ? 'pos' : 'neg';
-                    if (col === 'SIGNAL') styleClass = val;
+                    // Formatting & Color Logic
+                    if (c === 'PNL_VAL' || c === 'CHG1D') cls += ` ${val >= 0 ? 'pos' : 'neg'}`;
+                    if (c === 'SIGNAL') cls += ` ${val}`;
+                    if (c === 'CHG1D' && val !== '—') val = val + '%';
 
-                    html += `<td ${isSticky} class="${styleClass}">${val}${col === 'CHG1D' ? '%' : ''}</td>`;
+                    html += `<td class="${cls}">${val}</td>`;
                 });
                 html += `</tr>`;
             });
-            container.innerHTML = html + `</tbody></table>`;
+            document.getElementById('app').innerHTML = html + `</tbody></table>`;
         }
 
         function openDB() {
             return new Promise(res => {
-                const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "sym" });
+                const req = indexedDB.open(DB_NAME, 6); // Version bump for fresh start
+                req.onupgradeneeded = e => {
+                    const db = e.target.result;
+                    if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
+                    db.createObjectStore(STORE, { keyPath: "SYM" });
+                };
                 req.onsuccess = () => res(req.result);
             });
         }
 
-        function init() {
-            runDataPipeline(); // Auto-run pipeline on load to ensure DB is current
-        }
+        function init() { runPipeline(); }
     </script>
 </body>
 </html>
