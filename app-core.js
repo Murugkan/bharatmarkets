@@ -3,11 +3,12 @@
 ═══════════════════════════════════════════════════════════ */
 
 // ── Storage ──────────────────────────────────────────────
+// STORAGE KEYS — localStorage keys for persisting app state
 const SK = { 
-  PORT: 'bmp_port_v2', 
-  WL: 'bmp_wl_v2', 
-  SETTINGS: 'bmp_settings_v2',
-  LEDGER: 'bmp_ledger_v1' // REQUIRED for the Engine Purge Logic
+  PORT:'bmp_port_v2', 
+  WL:'bmp_wl_v2', 
+  SETTINGS:'bmp_settings_v2',
+  LEDGER:'bmp_ledger_v1' // <--- ADD THIS LINE
 };
 
 // ── Cross-module globals ───────────────────────────────────
