@@ -3,38 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Solid State Portfolio</title>
+    <title>BharatMarkets | Unified Solid State</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd1: #ff4d6d; --tx3: #708499; }
         body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
         
-        /* Legacy Header & Totals */
-        header { height: 65px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 5px 20px; display: flex; flex-direction: column; justify-content: center; }
+        header { height: 70px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 5px 20px; display: flex; flex-direction: column; justify-content: center; }
         .logo { font-weight: 800; color: var(--gr1); font-size: 13px; letter-spacing: 1px; }
-        .totals-bar { display: flex; gap: 20px; font-size: 11px; margin-top: 4px; border-top: 1px solid #1e293b; padding-top: 4px; }
+        .totals-bar { display: flex; gap: 20px; font-size: 10px; margin-top: 6px; border-top: 1px solid var(--b1); padding-top: 6px; }
         .t-val { font-weight: 700; color: var(--gr1); }
 
-        /* The Viewport: Selective Table */
-        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 65px); }
+        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 70px); }
         table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; text-transform: uppercase; }
+        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
         td { padding: 12px 15px; border-bottom: 1px solid #182840; }
         
-        /* Sticky Symbol Column */
-        .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; color: var(--gr1); }
+        .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); color: var(--gr1); font-weight: 700; }
         
-        /* Legacy Signal & P&L Colors */
         .pos { color: var(--gr2); } .neg { color: var(--rd1); }
-        .BUY { color: var(--gr2); font-weight: 800; border: 1px solid var(--gr2); padding: 2px 4px; border-radius: 2px; }
-        .SELL { color: var(--rd1); font-weight: 800; border: 1px solid var(--rd1); padding: 2px 4px; border-radius: 2px; }
+        .BUY { color: var(--gr2); font-weight: 800; border: 1px solid var(--gr2); padding: 1px 3px; }
+        .SELL { color: var(--rd1); font-weight: 800; border: 1px solid var(--rd1); padding: 1px 3px; }
         .HOLD { color: #ffb800; font-weight: 800; }
     </style>
 </head>
 <body onload="init()">
 
     <header>
-        <div class="logo">BHARAT MARKETS | TERMINAL</div>
+        <div class="logo">BHARAT MARKETS | PORTFOLIO SUMMARY</div>
         <div class="totals-bar">
             <span>INV: <span class="t-val" id="t-inv">0</span></span>
             <span>CUR: <span class="t-val" id="t-cur">0</span></span>
@@ -45,30 +41,27 @@
     <div id="app" class="table-outer"></div>
 
     <script>
-        const DB_NAME = "BharatSolidDB"; const STORE = "MasterDump";
+        const DB_NAME = "BharatUnifiedDB"; const STORE = "MasterData";
 
-        // THE SELECTIVE LIST: Bringing these fields from the dump to the UI
-        const LEGACY_VIEW = [
+        // THE SELECTIVE COLUMN ORDER: Prices + Import + Fundamentals
+        const LEGACY_FIELDS = [
             { id: 'SYM', label: 'SYMBOL' },
-            { id: 'LTP', label: 'LTP' },
-            { id: 'CHG1D', label: '1D %' },
-            { id: 'PNL_VAL', label: 'P&L' },
-            { id: 'ROE', label: 'ROE%' },
-            { id: 'OPM_PCT', label: 'OPM%' },
+            { id: 'QTY', label: 'QTY' },        // SET 1: Import
+            { id: 'AVG', label: 'AVG' },        // SET 1: Import
+            { id: 'LTP', label: 'LTP' },        // SET 1: Prices
+            { id: 'CHG1D', label: '1D %' },     // SET 1: Prices
+            { id: 'PNL_VAL', label: 'P&L' },    // Calculated
+            { id: 'ROE', label: 'ROE%' },       // SET 2: Fundamentals
+            { id: 'OPM_PCT', label: 'OPM%' },   // SET 2: Fundamentals
             { id: 'PE', label: 'P/E' },
             { id: 'PB', label: 'P/B' },
             { id: 'DEBT_EQ', label: 'D/E' },
             { id: 'MCAP', label: 'MCAP' },
-            { id: 'W52H', label: '52W H' },
-            { id: 'W52L', label: '52W L' },
             { id: 'SIGNAL', label: 'SIGNAL' },
-            { id: 'POS', label: 'POS' },
-            { id: 'NEG', label: 'NEG' },
             { id: 'SECTOR', label: 'SECTOR' }
         ];
 
-        // 1. DATA PIPELINE: Total Dump + Key Normalization
-        async function runMasterDump() {
+        async function runUnifiedDump() {
             try {
                 const res = await fetch('fundamentals.json');
                 const data = await res.json();
@@ -78,30 +71,29 @@
 
                 Object.keys(data.stocks).forEach(ticker => {
                     const raw = data.stocks[ticker];
-                    const sym = ticker.split('.')[0].toUpperCase(); // RESOLVES: HDFC.NS -> HDFC
+                    const sym = ticker.split('.')[0].toUpperCase();
                     
-                    // Normalize all JSON keys to UPPERCASE (Fixes "—" mismatches)
                     const record = { SYM: sym };
+                    // Normalize all keys to UPPERCASE to fix UI "—" mismatches
                     for (let key in raw) record[key.toUpperCase()] = raw[key];
                     
-                    // Pre-calculate Baked Values
-                    const qty = record.QTY || 0;
-                    const avg = record.AVG || 0;
-                    const ltp = record.LTP || 0;
+                    // Unified Logic: Calculate P&L from Price & Import data
+                    const q = record.QTY || 0;
+                    const a = record.AVG || 0;
+                    const l = record.LTP || 0;
                     
-                    record.PNL_VAL = ltp ? Math.round((qty * ltp) - (qty * avg)) : 0;
-                    record.INV_VAL = (qty * avg);
-                    record.CUR_VAL = (qty * ltp);
+                    record.PNL_VAL = l ? Math.round((q * l) - (q * a)) : 0;
+                    record.INV_VAL = (q * a);
+                    record.CUR_VAL = (q * l);
                     
-                    store.put(record); // Full 33-field record goes into DB
+                    store.put(record);
                 });
 
-                tx.oncomplete = () => renderMirror();
-            } catch (e) { console.error("Pipeline Failed: Check fundamentals.json"); }
+                tx.oncomplete = () => render();
+            } catch (e) { console.error("Dump Failed."); }
         }
 
-        // 2. PASSIVE UI: Selective Read from DB
-        async function renderMirror() {
+        async function render() {
             const db = await openDB();
             const stocks = await new Promise(r => {
                 db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
@@ -109,7 +101,7 @@
 
             if (!stocks.length) return;
 
-            // Header Totals
+            // Totals Logic
             let tInv = 0, tCur = 0, tPnl = 0;
             stocks.forEach(s => { tInv += s.INV_VAL; tCur += s.CUR_VAL; tPnl += s.PNL_VAL; });
             document.getElementById('t-inv').innerText = Math.round(tInv).toLocaleString();
@@ -117,42 +109,36 @@
             document.getElementById('t-pnl').innerText = Math.round(tPnl).toLocaleString();
             document.getElementById('t-pnl').className = `t-val ${tPnl >= 0 ? 'pos' : 'neg'}`;
 
-            // Build Mirror Table
-            let h = `<table><thead><tr>`;
-            LEGACY_VIEW.forEach(f => h += `<th class="${f.id==='SYM'?'sticky-sym':''}">${f.label}</th>`);
-            h += `</tr></thead><tbody>`;
+            let html = `<table><thead><tr>`;
+            LEGACY_FIELDS.forEach(f => html += `<th class="${f.id==='SYM'?'sticky-sym':''}">${f.label}</th>`);
+            html += `</tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                h += `<tr>`;
-                LEGACY_VIEW.forEach(f => {
+                html += `<tr>`;
+                LEGACY_FIELDS.forEach(f => {
                     let val = s[f.id] !== undefined ? s[f.id] : '—';
                     let cls = f.id === 'SYM' ? 'sticky-sym' : '';
                     
-                    // Legacy Look & Feel Formatting
                     if (f.id === 'PNL_VAL' || f.id === 'CHG1D') cls += ` ${val >= 0 ? 'pos' : 'neg'}`;
                     if (f.id === 'SIGNAL') cls += ` ${val}`;
                     if (f.id === 'CHG1D' && val !== '—') val = val + '%';
 
-                    h += `<td class="${cls}">${val}</td>`;
+                    html += `<td class="${cls}">${val}</td>`;
                 });
-                h += `</tr>`;
+                html += `</tr>`;
             });
-            document.getElementById('app').innerHTML = h + `</tbody></table>`;
+            document.getElementById('app').innerHTML = html + `</tbody></table>`;
         }
 
         function openDB() {
             return new Promise(res => {
                 const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = e => {
-                    const db = e.target.result;
-                    if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
-                    db.createObjectStore(STORE, { keyPath: "SYM" });
-                };
+                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" });
                 req.onsuccess = () => res(req.result);
             });
         }
 
-        function init() { runMasterDump(); }
+        function init() { runUnifiedDump(); }
     </script>
 </body>
 </html>
