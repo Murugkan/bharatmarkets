@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
     <title>BharatMarkets Pro</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d;
@@ -13,116 +13,98 @@
         }
         body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
         
-        /* KPI & Table Styles */
-        .kpi-strip { display: flex; background: var(--bg); padding: 20px; gap: 20px; border-bottom: 1px solid #182840; overflow-x: auto; }
-        .kpi { flex-shrink: 0; }
-        .kpi-l { font-size: 10px; color: var(--tx3); font-weight: 800; margin-bottom: 4px; }
-        .kpi-v { font-size: 20px; font-weight: 700; font-family: 'Syne'; }
+        /* Persistent Debug Log */
+        #debug-log { height: 120px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 10px; color: var(--gr1); }
         
-        .bls-table-outer { width: 100%; overflow-x: auto; }
+        /* Table Styles */
+        .bls-table-outer { width: 100%; overflow-x: auto; padding-bottom: 100px; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px; text-align: right; border-bottom: 1px solid var(--b1); }
-        .bls-t td { padding: 10px; border-bottom: 1px solid #18284040; text-align: right; }
-        .td-l { text-align: left !important; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px; text-align: left; border-bottom: 1px solid var(--b1); position: sticky; top: 0; }
+        .bls-t td { padding: 10px; border-bottom: 1px solid #182840; text-align: left; }
+
+        /* KPI Strip */
+        .kpi-strip { display: flex; padding: 20px; gap: 20px; border-bottom: 1px solid #182840; }
+        .kpi-v { font-size: 20px; font-weight: 800; font-family: 'Syne'; color: var(--tx1); }
 
         /* Navigation */
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
         .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 16px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .nb.active { color: var(--gr1); }
-
-        /* Debug Window Styles */
-        .debug-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.9); display: flex; flex-direction: column; padding: 16px; }
-        .debug-pre { flex: 1; overflow: auto; font-family: 'JetBrains Mono'; font-size: 10px; color: #00f2ff; background: #02040a; padding: 10px; border: 1px solid #1e3350; }
+        
+        .btn-seed { background: var(--gr1); color: #000; border: none; padding: 10px; border-radius: 4px; font-weight: 800; margin: 10px; }
     </style>
 </head>
 <body onload="init()">
 
+    <div id="debug-log">System initializing...</div>
+    
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
-        <button class="nb" onclick="showTab('raw', this)">Raw DB Data</button>
-        <button class="nb" onclick="showPfDebug()">Debug</button>
-        <button class="nb" onclick="seedTestData()">Seed Data</button>
+        <button class="nb" onclick="showTab('raw', this)">Raw Table</button>
+        <button class="nb" onclick="seedData()">Seed DB</button>
     </nav>
 
     <script src="app-engine.js"></script>
     <script>
-        let currentTab = 'portfolio';
+        let curTab = 'portfolio';
 
-        // 1. DEBUG WINDOW
-        async function showPfDebug() {
-            const db = await initEngineDB();
-            const stocks = await new Promise(r => {
-                const tx = db.transaction('UnifiedStocks', 'readonly');
-                tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
-            });
-
-            let log = "=== PORTFOLIO DEBUG ===\n";
-            log += `Total stocks in DB: ${stocks.length}\n\n`;
-            stocks.forEach(s => {
-                log += `${s.sym.padEnd(12)} | LTP: ${s.ltp || 0} | Qty: ${s.qty} | Avg: ${s.avgBuy}\n`;
-            });
-
-            const modal = document.createElement('div');
-            modal.className = 'debug-overlay';
-            modal.innerHTML = `
-                <div style="display:flex; justify-content:space-between; margin-bottom:10px">
-                    <span style="font-family:Syne; font-weight:800; color:#00f2ff">SYSTEM DEBUG</span>
-                    <button onclick="this.closest('.debug-overlay').remove()" style="background:#1e293b; color:white; border:none; padding:5px 15px; border-radius:4px">Close</button>
-                </div>
-                <pre class="debug-pre">${log}</pre>
-            `;
-            document.body.appendChild(modal);
+        function log(msg) {
+            const l = document.getElementById('debug-log');
+            l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
         }
 
-        // 2. DATA SEEDING (Ensure DB has data for testing)
-        async function seedTestData() {
+        // 1. DATA SEEDING (Manual Data Entry Based on your prompt)
+        async function seedData() {
+            log("Seeding data...");
             const db = await initEngineDB();
             const tx = db.transaction('UnifiedStocks', 'readwrite');
             const store = tx.objectStore('UnifiedStocks');
             
-            const sampleData = [
-                { sym: 'RELIANCE', qty: 10, avgBuy: 2450.50, ltp: 2980.20, chg: 1.2, sector: 'Energy', roe: 18.5, pe: 25.4, signal: 'BUY' },
-                { sym: 'TCS', qty: 5, avgBuy: 3200.00, ltp: 3850.00, chg: -0.5, sector: 'IT', roe: 35.2, pe: 30.1, signal: 'HOLD' },
-                { sym: 'HDFCBANK', qty: 20, avgBuy: 1550.00, ltp: 1420.00, chg: 0.2, sector: 'Banking', roe: 16.8, pe: 18.2, signal: 'BUY' }
+            const data = [
+                { sym: 'HDFCBANK', qty: 20, avgBuy: 1550, ltp: 1420, chg: 0.2, sector: 'Banking', roe: 16.8, pe: 18.2, signal: 'BUY' },
+                { sym: 'RELIANCE', qty: 10, avgBuy: 2450.5, ltp: 2980.2, chg: 1.2, sector: 'Energy', roe: 18.5, pe: 25.4, signal: 'BUY' },
+                { sym: 'TCS', qty: 5, avgBuy: 3200, ltp: 3850, chg: -0.5, sector: 'IT', roe: 35.2, pe: 30.1, signal: 'HOLD' }
             ];
 
-            sampleData.forEach(s => store.put(s));
-            tx.oncomplete = () => { alert("Test data seeded!"); render(); };
+            data.forEach(s => store.put(s));
+            tx.oncomplete = () => {
+                log("Data Seeded Successfully.");
+                render();
+            };
         }
 
-        // 3. SHOW ALL FIELDS IN DB (Raw View)
-        async function renderRawData(container) {
+        // 2. RAW TABLE (Show all fields without calculation)
+        async function renderRaw(container) {
+            log("Fetching Raw Data...");
             const db = await initEngineDB();
             const stocks = await new Promise(r => {
                 const tx = db.transaction('UnifiedStocks', 'readonly');
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (stocks.length === 0) {
-                container.innerHTML = "<div style='padding:50px; text-align:center'>DB is empty. Tap Seed Data.</div>";
+            if(stocks.length === 0) {
+                container.innerHTML = `<button class="btn-seed" onclick="seedData()">Tap to Seed DB</button>`;
                 return;
             }
 
-            // Get all unique keys present in the objects
-            const allKeys = [...new Set(stocks.flatMap(Object.keys))];
-
-            let html = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
-            allKeys.forEach(k => html += `<th>${k}</th>`);
-            html += `</tr></thead><tbody>`;
-
+            const keys = Object.keys(stocks[0]);
+            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
+            keys.forEach(k => h += `<th>${k}</th>`);
+            h += `</tr></thead><tbody>`;
+            
             stocks.forEach(s => {
-                html += `<tr>`;
-                allKeys.forEach(k => html += `<td>${s[k] !== undefined ? s[k] : '—'}</td>`);
-                html += `</tr>`;
+                h += `<tr>`;
+                keys.forEach(k => h += `<td>${s[k]}</td>`);
+                h += `</tr>`;
             });
-
-            html += `</tbody></table></div>`;
-            container.innerHTML = html;
+            container.innerHTML = h + `</tbody></table></div>`;
         }
 
+        // 3. CALCULATED PORTFOLIO (The UI version)
         async function renderPortfolio(container) {
+            log("Rendering Portfolio View...");
             const db = await initEngineDB();
             const stocks = await new Promise(r => {
                 const tx = db.transaction('UnifiedStocks', 'readonly');
@@ -135,29 +117,47 @@
                 tCur += (s.qty * (s.ltp || 0));
             });
 
-            container.innerHTML = `
+            let h = `
                 <div class="kpi-strip">
-                    <div class="kpi"><div class="kpi-l">INVESTED</div><div class="kpi-v">₹${(tInv/100000).toFixed(2)}L</div></div>
-                    <div class="kpi"><div class="kpi-l">MKT VALUE</div><div class="kpi-v">₹${(tCur/100000).toFixed(2)}L</div></div>
+                    <div><div style="font-size:10px; color:var(--tx3)">INVESTED</div><div class="kpi-v">₹${(tInv/100000).toFixed(2)}L</div></div>
+                    <div><div style="font-size:10px; color:var(--tx3)">MKT VALUE</div><div class="kpi-v">₹${(tCur/100000).toFixed(2)}L</div></div>
                 </div>
-                <div style="padding:15px; font-size:12px; color:var(--tx3)">Showing active portfolio view. Tap "Raw DB Data" to see all fields.</div>
-            `;
+                <div class="bls-table-outer"><table class="bls-t">
+                    <thead><tr><th>Ticker</th><th>LTP</th><th>Qty</th><th>Avg</th><th>P&L</th><th>P&L%</th></tr></thead><tbody>`;
+
+            stocks.forEach(s => {
+                const inv = s.qty * s.avgBuy;
+                const cur = s.qty * s.ltp;
+                const pnl = cur - inv;
+                const pnlP = (pnl/inv)*100;
+                const bg = pnl >= 0 ? 'background:#003a20' : 'background:#3a0010';
+
+                h += `<tr>
+                    <td><strong>${s.sym}</strong></td>
+                    <td>${s.ltp}</td>
+                    <td>${s.qty}</td>
+                    <td>${s.avgBuy}</td>
+                    <td style="${bg}; color:#fff; font-weight:700">${pnl.toFixed(0)}</td>
+                    <td style="${bg}; color:#fff; font-weight:700">${pnlP.toFixed(1)}%</td>
+                </tr>`;
+            });
+            container.innerHTML = h + `</tbody></table></div>`;
         }
 
         function showTab(t, btn) {
-            currentTab = t;
+            curTab = t;
             document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
-            if(btn) btn.classList.add('active');
+            btn.classList.add('active');
             render();
         }
 
         function render() {
-            const container = document.getElementById('content');
-            if (currentTab === 'portfolio') renderPortfolio(container);
-            else if (currentTab === 'raw') renderRawData(container);
+            const c = document.getElementById('content');
+            if(curTab === 'portfolio') renderPortfolio(c);
+            else renderRaw(c);
         }
 
-        function init() { render(); }
+        function init() { log("Application Started"); render(); }
     </script>
 </body>
 </html>
