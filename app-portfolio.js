@@ -1,12 +1,17 @@
 /**
- * APP-PORTFOLIO.JS - THE FULL RESOLUTION
- * Mapping all 38 keys from fundamentals.json
+ * APP-PORTFOLIO.JS - THE FINAL RESOLUTION (STAGES 1, 2, & 3)
+ * Logic: Multi-source Sync, 38-Field Mapping, Dynamic Scoring, & Interactive Sorting
  */
 
-// 1. GLOBAL STATE
-if (typeof window.pfRefreshing === 'undefined') window.pfRefreshing = false;
-if (typeof window.fundLoaded === 'undefined') window.fundLoaded = false;
+// 1. GLOBAL STATE & CONFIG
+window.pfRefreshing = false;
+window.fundLoaded = false;
+window.currentSort = { key: 'mcap', dir: 'desc' }; // Default: Biggest companies first
 
+/**
+ * STAGE 1: THE ENGINE
+ * Fetches and bridges Symbols + Fundamentals
+ */
 async function loadFundamentals() {
     if (window.pfRefreshing) return;
     window.pfRefreshing = true;
@@ -16,15 +21,17 @@ async function loadFundamentals() {
             fetch(`./symbols.json?v=${ts}`),
             fetch(`./fundamentals.json?v=${ts}`)
         ]);
+        
+        if (!sRes.ok || !fRes.ok) throw new Error("Sync Failed");
+        
         const sData = await sRes.json();
         const fData = await fRes.json();
 
-        window.S = window.S || {};
-        window.S.portfolio = sData.map(item => ({
+        window.S = { portfolio: sData.map(item => ({
             sym: item.sym || '?',
             isin: item.isin || '',
             sector: item.sector || 'N/A'
-        }));
+        }))};
 
         window.FUND = fData.stocks || fData;
         window.ISIN_MAP = {};
@@ -34,9 +41,10 @@ async function loadFundamentals() {
         });
 
         window.fundLoaded = true;
+        console.log("🚀 Engine Sync: 100%");
         return true;
     } catch (e) {
-        console.error("Engine Error:", e);
+        console.error("Engine Critical Error:", e);
         window.fundLoaded = true; 
         return false;
     } finally {
@@ -44,104 +52,135 @@ async function loadFundamentals() {
     }
 }
 
+/**
+ * STAGE 3 Logic: THE COLOR & SCORING ENGINE
+ * Evaluates raw data against fundamental benchmarks
+ */
+function getFormat(key, val, sector = "") {
+    const n = parseFloat(val);
+    if (isNaN(n) || val === null) return { text: '—', color: '#8b949e' };
+
+    let color = '#fff';
+    switch(key) {
+        case 'roe': case 'roce': 
+            color = n > 18 ? '#3fb950' : (n < 8 ? '#f85149' : '#d29922');
+            break;
+        case 'debt_eq':
+            if (sector.includes('Bank') || sector.includes('NBFC') || sector.includes('Finance')) {
+                color = '#8b949e'; // Leverage is a business model for Finance
+            } else {
+                color = n < 0.6 ? '#3fb950' : (n > 1.4 ? '#f85149' : '#d29922');
+            }
+            break;
+        case 'chg1d': case 'chg5d':
+            color = n > 0 ? '#3fb950' : (n < 0 ? '#f85149' : '#fff');
+            break;
+        case 'ath_pct': case 'w52_pct':
+            color = n > -10 ? '#3fb950' : (n < -30 ? '#f85149' : '#d29922');
+            break;
+        case 'pe':
+            color = n < 20 ? '#3fb950' : (n > 55 ? '#f85149' : '#fff');
+            break;
+    }
+    
+    // Formatting numbers
+    let display = n.toFixed(1);
+    if (key === 'ltp' || key === 'mcap' || key === 'sales') {
+        display = Math.round(n).toLocaleString('en-IN');
+    } else if (['roe', 'roce', 'opm_pct', 'chg1d', 'chg5d', 'ath_pct'].includes(key)) {
+        display += '%';
+    }
+    
+    return { text: display, color };
+}
+
+/**
+ * INTERACTIVE LAYER: SORTING
+ */
+function handleSort(key) {
+    const dir = (window.currentSort.key === key && window.currentSort.dir === 'desc') ? 'asc' : 'desc';
+    window.currentSort = { key, dir };
+    
+    window.S.portfolio.sort((a, b) => {
+        const getVal = (obj) => {
+            const data = window.FUND[obj.sym] || window.FUND[window.ISIN_MAP[obj.isin]] || {};
+            return data[key] ?? -999999;
+        };
+        const valA = getVal(a);
+        const valB = getVal(b);
+        return dir === 'desc' ? valB - valA : valA - valB;
+    });
+    renderPortfolio(document.getElementById('portfolio-container'));
+}
+
+/**
+ * STAGE 2 & 3: THE RENDER ENGINE
+ */
 async function renderPortfolio(container) {
     if (!container) return;
-    const overlay = document.querySelector('.loading, #sync-overlay');
-    if (overlay) overlay.style.display = 'none';
-
     if (!window.fundLoaded) {
-        container.innerHTML = `<div style="padding:40px;color:#58a6ff;font-family:monospace;">> BOOTING ENGINE...</div>`;
+        container.innerHTML = `<div style="padding:60px 20px; color:#58a6ff; font-family:monospace; text-align:center;">[ BOOTING_PORTFOLIO_ENGINE ]</div>`;
         await loadFundamentals();
     }
 
-    let html = `<div style="padding:10px; background:#02040a; min-height:100vh; color:#fff; font-family:sans-serif;">`;
+    let html = `<div style="background:#02040a; min-height:100vh; color:#fff; font-family:-apple-system, sans-serif; padding:10px;">`;
     
-    html += `<div style="overflow-x:auto; border:1px solid #1e3350; border-radius:8px;">`;
-    html += `<table style="width:100%; border-collapse:collapse; white-space:nowrap; font-size:10px;">`;
-    
-    // --- THE FULL 33+ COLUMN HEADER ---
-    html += `<tr style="background:#0d1117; border-bottom:2px solid #1e3350; color:#8b949e; text-transform:uppercase; font-size:8px;">
-                <th style="padding:10px; text-align:left; position:sticky; left:0; background:#0d1117; z-index:2;">Symbol</th>
-                <th style="padding:10px; text-align:right;">LTP</th>
-                <th style="padding:10px; text-align:center;">1D%</th>
-                <th style="padding:10px; text-align:center;">5D%</th>
-                <th style="padding:10px; text-align:center;">ROE%</th>
-                <th style="padding:10px; text-align:center;">ROCE%</th>
-                <th style="padding:10px; text-align:center;">OPM%</th>
-                <th style="padding:10px; text-align:center;">NPM%</th>
-                <th style="padding:10px; text-align:center;">GPM%</th>
-                <th style="padding:10px; text-align:center;">P/E</th>
-                <th style="padding:10px; text-align:center;">F-PE</th>
-                <th style="padding:10px; text-align:center;">P/B</th>
-                <th style="padding:10px; text-align:center;">EPS</th>
-                <th style="padding:10px; text-align:center;">BV</th>
-                <th style="padding:10px; text-align:center;">D/E</th>
-                <th style="padding:10px; text-align:center;">MCAP(Cr)</th>
-                <th style="padding:10px; text-align:center;">Sales</th>
-                <th style="padding:10px; text-align:center;">EBITDA</th>
-                <th style="padding:10px; text-align:center;">CFO</th>
-                <th style="padding:10px; text-align:center;">Div%</th>
-                <th style="padding:10px; text-align:center;">Beta</th>
-                <th style="padding:10px; text-align:center;">PROM%</th>
-                <th style="padding:10px; text-align:center;">FII%</th>
-                <th style="padding:10px; text-align:center;">DII%</th>
-                <th style="padding:10px; text-align:center;">PUB%</th>
-                <th style="padding:10px; text-align:center;">Insdr%</th>
-                <th style="padding:10px; text-align:center;">%off 52W</th>
-                <th style="padding:10px; text-align:center;">%off ATH</th>
-                <th style="padding:10px; text-align:center;">52W H</th>
-                <th style="padding:10px; text-align:center;">52W L</th>
-                <th style="padding:10px; text-align:center;">ATH</th>
-                <th style="padding:10px; text-align:center;">Signal</th>
-                <th style="padding:10px; text-align:center;">Pos/Neg</th>
-             </tr>`;
+    // Header Stats Bar
+    html += `<div style="display:flex; justify-content:space-between; padding:10px; background:#0d1117; border:1px solid #30363d; border-radius:8px; margin-bottom:12px; font-size:11px;">
+                <div style="color:#8b949e;">STOCKS: <span style="color:#fff;">${window.S.portfolio.length}</span></div>
+                <div style="color:#8b949e;">SORT: <span style="color:#58a6ff; text-transform:uppercase;">${window.currentSort.key} (${window.currentSort.dir})</span></div>
+             </div>`;
 
-    window.S.portfolio.forEach((h, index) => {
-        const f = window.FUND[h.sym] || (h.isin ? window.FUND[window.ISIN_MAP[h.isin]] : null) || {};
+    // Table Container
+    html += `<div style="overflow-x:auto; border:1px solid #30363d; border-radius:8px; background:#0d1117;">`;
+    html += `<table style="width:100%; border-collapse:collapse; white-space:nowrap; font-size:12px;">`;
+    
+    // Configurable Headers
+    const cols = [
+        { l: 'Symbol', k: 'sym', a: 'left', sticky: true },
+        { l: 'Price', k: 'ltp', a: 'right' },
+        { l: '1D%', k: 'chg1d', a: 'center' },
+        { l: '5D%', k: 'chg5d', a: 'center' },
+        { l: 'ROE%', k: 'roe', a: 'center' },
+        { l: 'OPM%', k: 'opm_pct', a: 'center' },
+        { l: 'P/E', k: 'pe', a: 'center' },
+        { l: 'D/E', k: 'debt_eq', a: 'center' },
+        { l: 'MCAP(Cr)', k: 'mcap', a: 'center' },
+        { l: '% off ATH', k: 'ath_pct', a: 'center' },
+        { l: 'Signal', k: 'signal', a: 'center' }
+    ];
+
+    html += `<tr style="border-bottom:2px solid #30363d; background:#161b22;">`;
+    cols.forEach(c => {
+        const arrow = window.currentSort.key === c.k ? (window.currentSort.dir === 'desc' ? ' ↓' : ' ↑') : '';
+        html += `<th onclick="handleSort('${c.k}')" style="padding:14px 12px; text-align:${c.a}; color:#8b949e; cursor:pointer; font-size:10px; text-transform:uppercase; ${c.sticky ? 'position:sticky; left:0; background:#161b22; z-index:10;' : ''}">
+                    ${c.l}${arrow}
+                 </th>`;
+    });
+    html += `</tr>`;
+
+    // Data Rows
+    window.S.portfolio.forEach((stock, idx) => {
+        const f = window.FUND[stock.sym] || window.FUND[window.ISIN_MAP[stock.isin]] || {};
+        const bg = idx % 2 === 0 ? '#0d1117' : '#161b22';
         
-        const num = (val, dec = 1) => (val !== undefined && val !== null) ? Number(val).toFixed(dec) : '—';
-        const curr = (val) => (val !== undefined && val !== null) ? Number(val).toLocaleString('en-IN') : '—';
+        // On-the-fly Scoring for Step 3 Indicator
+        let pos = 0;
+        if (f.roe > 20) pos++; if (f.opm_pct > 25) pos++; if (f.debt_eq < 0.5) pos++;
 
-        const rowBg = index % 2 === 0 ? 'transparent' : '#0d1117';
-        const c1d = f.chg1d > 0 ? '#3fb950' : (f.chg1d < 0 ? '#f85149' : '#fff');
-        const c5d = f.chg5d > 0 ? '#3fb950' : (f.chg5d < 0 ? '#f85149' : '#fff');
-        const dColor = (v) => (parseFloat(v) > -10) ? '#3fb950' : (parseFloat(v) < -30 ? '#f85149' : '#d29922');
-
-        html += `<tr style="background:${rowBg}; border-bottom:1px solid #1e3350;">
-                    <td style="padding:10px; font-weight:bold; color:#58a6ff; position:sticky; left:0; background:${index % 2 === 0 ? '#02040a' : '#0d1117'}; z-index:1;">${h.sym}</td>
-                    <td style="padding:10px; text-align:right; font-weight:bold;">₹${num(f.ltp, 2)}</td>
-                    <td style="padding:10px; text-align:center; color:${c1d}">${num(f.chg1d)}%</td>
-                    <td style="padding:10px; text-align:center; color:${c5d}">${num(f.chg5d)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.roe)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.roce)}%</td>
-                    <td style="padding:10px; text-align:center; color:#d29922;">${num(f.opm_pct)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.npm_pct)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.gpm_pct)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.pe)}</td>
-                    <td style="padding:10px; text-align:center;">${num(f.fwd_pe)}</td>
-                    <td style="padding:10px; text-align:center;">${num(f.pb)}</td>
-                    <td style="padding:10px; text-align:center;">${num(f.eps)}</td>
-                    <td style="padding:10px; text-align:center;">${num(f.bv)}</td>
-                    <td style="padding:10px; text-align:center;">${num(f.debt_eq, 2)}</td>
-                    <td style="padding:10px; text-align:center;">${curr(Math.round(f.mcap))}</td>
-                    <td style="padding:10px; text-align:center;">${curr(Math.round(f.sales))}</td>
-                    <td style="padding:10px; text-align:center;">${curr(Math.round(f.ebitda))}</td>
-                    <td style="padding:10px; text-align:center;">${curr(Math.round(f.cfo))}</td>
-                    <td style="padding:10px; text-align:center;">${num(f.div_yield)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.beta, 2)}</td>
-                    <td style="padding:10px; text-align:center;">${num(f.prom_pct)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.fii_pct)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.dii_pct)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.public_pct)}%</td>
-                    <td style="padding:10px; text-align:center;">${num(f.yf_insider_pct)}%</td>
-                    <td style="padding:10px; text-align:center; color:${dColor(f.w52_pct)}">${num(f.w52_pct)}%</td>
-                    <td style="padding:10px; text-align:center; color:${dColor(f.ath_pct)}">${num(f.ath_pct)}%</td>
-                    <td style="padding:10px; text-align:center; color:#8b949e;">₹${curr(f.w52h)}</td>
-                    <td style="padding:10px; text-align:center; color:#8b949e;">₹${curr(f.w52l)}</td>
-                    <td style="padding:10px; text-align:center; color:#8b949e;">₹${curr(f.ath)}</td>
-                    <td style="padding:10px; text-align:center; font-weight:bold; color:#d29922;">${f.signal || '—'}</td>
-                    <td style="padding:10px; text-align:center; color:#3fb950;">${f.pos || 0}P / <span style="color:#f85149;">${f.neg || 0}N</span></td>
-                </tr>`;
+        html += `<tr style="background:${bg}; border-bottom:1px solid #21262d;" onclick="window.location.href='stock.html?s=${stock.sym}'">`;
+        
+        cols.forEach(c => {
+            const fm = getFormat(c.k, f[c.k], f.sector || stock.sector);
+            const isSym = c.k === 'sym';
+            
+            html += `<td style="padding:14px 12px; text-align:${c.a}; color:${fm.color}; ${isSym ? 'font-weight:bold; color:#58a6ff; position:sticky; left:0; background:'+bg+'; z-index:5;' : ''}">
+                        ${isSym ? stock.sym : (c.k === 'signal' ? (f.signal || '—') : fm.text)}
+                        ${isSym && pos >= 2 ? '<span style="color:#238636; font-size:8px; margin-left:4px;">★</span>' : ''}
+                    </td>`;
+        });
+        
+        html += `</tr>`;
     });
 
     html += `</table></div></div>`;
