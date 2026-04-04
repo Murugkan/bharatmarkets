@@ -3,113 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Data Dump</title>
+    <title>BharatMarkets | Solid State Portfolio</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --tx3: #708499; }
+        :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd1: #ff4d6d; --tx3: #708499; }
         body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
         
-        /* Header & Sync Bar */
-        header { height: 60px; background: var(--s1); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--b1); }
-        .logo { font-weight: 800; color: var(--gr1); letter-spacing: 1px; }
-        .btn-sync { background: var(--gr1); color: #000; border: none; padding: 8px 16px; font-weight: 900; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        /* Header & Totals Bar */
+        header { height: 80px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 10px 20px; display: flex; flex-direction: column; justify-content: center; }
+        .totals-row { display: flex; gap: 20px; font-size: 11px; margin-top: 5px; }
+        .total-val { font-weight: 700; color: var(--gr1); }
 
-        /* Full Screen Data Table */
-        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 60px); }
-        table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; text-transform: uppercase; }
-        td { padding: 15px; border-bottom: 1px solid #182840; }
+        /* Controls */
+        .controls { padding: 10px 20px; background: var(--s2); border-bottom: 1px solid var(--b1); display: flex; gap: 10px; overflow-x: auto; }
+        select { background: var(--bg); color: #fff; border: 1px solid var(--b1); font-size: 10px; padding: 5px; border-radius: 4px; }
+
+        /* Table */
+        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 130px); }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
+        th { background: var(--s1); color: var(--tx3); padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
+        td { padding: 12px; border-bottom: 1px solid #182840; }
         
-        /* Sticky Ticker Column */
-        .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; color: var(--gr1); }
+        .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; }
+        
+        /* Signal Colors */
+        .buy { color: var(--gr2); font-weight: 700; }
+        .sell { color: var(--rd1); font-weight: 700; }
+        .hold { color: #ffb800; font-weight: 700; }
     </style>
 </head>
-<body onload="refreshData()">
+<body onload="init()">
 
     <header>
-        <div class="logo">BHARAT MARKETS</div>
-        <button class="btn-sync" onclick="runDumpSync()">REFRESH DUMP</button>
+        <div style="font-size: 12px; font-weight: 800;">BHARAT MARKETS PORTFOLIO</div>
+        <div class="totals-row" id="grand-total">
+            <span>INV: <span class="total-val" id="total-inv">0</span></span>
+            <span>CUR: <span class="total-val" id="total-cur">0</span></span>
+            <span>P&L: <span class="total-val" id="total-pnl">0</span></span>
+        </div>
     </header>
 
-    <div id="app"></div>
+    <div class="controls">
+        <select id="sector-filter" onchange="renderView()">
+            <option value="ALL">ALL SECTORS</option>
+        </select>
+        <select id="sort-by" onchange="renderView()">
+            <option value="SYM">SORT: SYMBOL</option>
+            <option value="PNL">SORT: P&L</option>
+            <option value="ROE">SORT: ROE</option>
+        </select>
+    </div>
+
+    <div id="app" class="table-outer"></div>
 
     <script>
-        const DB_NAME = "BharatDumpDB"; const STORE = "RawData";
+        const DB_NAME = "BharatSolidDB"; const STORE = "Unified";
+        let MASTER_DATA = [];
 
-        function getDB() {
-            return new Promise(res => {
-                const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "sym" });
-                req.onsuccess = () => res(req.result);
+        async function init() {
+            const req = indexedDB.open(DB_NAME, 1);
+            req.onsuccess = (e) => {
+                const db = e.target.result;
+                loadData(db);
+            };
+        }
+
+        async function loadData(db) {
+            MASTER_DATA = await new Promise(r => {
+                db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
             });
+            
+            // Populate Sector Filter
+            const sectors = [...new Set(MASTER_DATA.map(s => s.SECTOR).filter(Boolean))];
+            const filter = document.getElementById('sector-filter');
+            sectors.forEach(sec => {
+                const opt = document.createElement('option');
+                opt.value = sec; opt.innerText = sec; filter.appendChild(opt);
+            });
+
+            renderView();
         }
 
-        // 1. THE DUMP ENGINE: No imports, just flattens the JSON and saves
-        async function runDumpSync() {
-            try {
-                const res = await fetch('fundamentals.json');
-                const data = await res.json();
-                
-                const db = await getDB();
-                const tx = db.transaction(STORE, "readwrite");
-                const store = tx.objectStore(STORE);
-
-                // Clear old data to ensure a fresh dump
-                store.clear();
-
-                Object.keys(data.stocks).forEach(ticker => {
-                    const cleanSym = ticker.split('.')[0].toUpperCase();
-                    const metrics = data.stocks[ticker];
-                    
-                    // Save every single field from the JSON into the DB row
-                    store.put({ 
-                        sym: cleanSym, 
-                        ...metrics 
-                    });
-                });
-
-                tx.oncomplete = () => { 
-                    console.log("Dump Complete"); 
-                    refreshData(); 
-                };
-            } catch (e) { alert("Sync Failed. Ensure fundamentals.json is in the root folder."); }
-        }
-
-        // 2. THE MIRROR: Discovers every key and displays it
-        async function refreshData() {
-            const db = await getDB();
-            const stocks = await new Promise(r => db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result));
+        function renderView() {
+            const sector = document.getElementById('sector-filter').value;
+            const sortBy = document.getElementById('sort-by').value;
             const container = document.getElementById('app');
 
-            if (!stocks.length) {
-                container.innerHTML = "<div style='padding:50px;color:var(--tx3)'>Database empty. Click REFRESH DUMP.</div>";
-                return;
-            }
-
-            // Discovery: Identify every unique field in the dump
-            const keySet = new Set(['sym', 'ltp', 'roe', 'opm_pct', 'pe', 'debt_eq']);
-            stocks.forEach(s => Object.keys(s).forEach(k => keySet.add(k)));
-            const keys = Array.from(keySet);
-
-            let html = `<div class="table-outer"><table><thead><tr>`;
-            keys.forEach(k => {
-                const css = k === 'sym' ? 'class="sticky-sym"' : '';
-                html += `<th ${css}>${k.toUpperCase()}</th>`;
+            // 1. Filter & Sort
+            let filtered = MASTER_DATA.filter(s => sector === "ALL" || s.SECTOR === sector);
+            
+            filtered.sort((a, b) => {
+                if (sortBy === 'PNL') return (b.pnl || 0) - (a.pnl || 0);
+                if (sortBy === 'ROE') return (b.ROE || 0) - (a.ROE || 0);
+                return a.sym.localeCompare(b.sym);
             });
-            html += `</tr></thead><tbody>`;
 
-            stocks.forEach(s => {
-                html += `<tr>`;
-                keys.forEach(k => {
-                    const val = s[k] !== undefined ? s[k] : '—';
-                    const css = k === 'sym' ? 'class="sticky-sym"' : '';
-                    html += `<td ${css}>${val}</td>`;
-                });
-                html += `</tr>`;
+            // 2. Grand Totals Calculation
+            let tInv = 0, tCur = 0, tPnl = 0;
+            filtered.forEach(s => {
+                const inv = (s.qty * s.avgBuy) || 0;
+                const cur = (s.qty * s.ltp) || 0;
+                tInv += inv; tCur += cur; tPnl += (cur - inv);
             });
-            container.innerHTML = html + `</tbody></table></div>`;
+
+            document.getElementById('total-inv').innerText = Math.round(tInv).toLocaleString();
+            document.getElementById('total-cur').innerText = Math.round(tCur).toLocaleString();
+            document.getElementById('total-pnl').innerText = Math.round(tPnl).toLocaleString();
+            document.getElementById('total-pnl').style.color = tPnl >= 0 ? '#0f8' : '#f46';
+
+            // 3. Render Mirror
+            if (!filtered.length) { container.innerHTML = "<div style='padding:40px'>No Data.</div>"; return; }
+
+            let h = `<table><thead><tr>
+                <th class="sticky-sym">SYMBOL</th>
+                <th>LTP</th>
+                <th>1D %</th>
+                <th>ROE%</th>
+                <th>P&L</th>
+                <th>SIGNAL</th>
+                <th>SECTOR</th>
+            </tr></thead><tbody>`;
+
+            filtered.forEach(s => {
+                const pnl = s.pnl || 0;
+                const pnlColor = pnl >= 0 ? '#0f8' : '#f46';
+                const sigClass = (s.SIGNAL || '').toLowerCase();
+
+                h += `<tr>
+                    <td class="sticky-sym">${s.sym}</td>
+                    <td>${s.ltp || '—'}</td>
+                    <td style="color:${s.CHG1D >=0 ? '#0f8':'#f46'}">${s.CHG1D || 0}%</td>
+                    <td>${s.ROE || '—'}</td>
+                    <td style="color:${pnlColor}; font-weight:700">${pnl.toLocaleString()}</td>
+                    <td class="${sigClass}">${s.SIGNAL || '—'}</td>
+                    <td style="color:var(--tx3)">${s.SECTOR || '—'}</td>
+                </tr>`;
+            });
+            container.innerHTML = h + `</tbody></table>`;
         }
     </script>
 </body>
 </html>
- 
