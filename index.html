@@ -3,41 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Solid State</title>
+    <title>BharatMarkets | Data Dump</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --tx3: #708499; }
         body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
-        #console { height: 60px; background: #000; font-size: 10px; padding: 12px; color: var(--gr1); overflow-y: auto; border-bottom: 1px solid var(--b1); }
-        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 145px); }
+        
+        /* Header & Sync Bar */
+        header { height: 60px; background: var(--s1); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--b1); }
+        .logo { font-weight: 800; color: var(--gr1); letter-spacing: 1px; }
+        .btn-sync { background: var(--gr1); color: #000; border: none; padding: 8px 16px; font-weight: 900; border-radius: 4px; cursor: pointer; font-size: 11px; }
+
+        /* Full Screen Data Table */
+        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 60px); }
         table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
-        td { padding: 12px; border-bottom: 1px solid #182840; }
+        th { background: var(--s1); color: var(--tx3); padding: 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; text-transform: uppercase; }
+        td { padding: 15px; border-bottom: 1px solid #182840; }
+        
+        /* Sticky Ticker Column */
         .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; color: var(--gr1); }
-        nav { position: fixed; bottom: 0; width: 100%; display: flex; background: var(--s1); border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
-        .nb { flex: 1; padding: 18px 0; border: none; background: none; color: var(--tx3); font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
-        .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
-        .btn-sync { background: var(--gr1) !important; color: #000 !important; }
-        .import-wrap { padding: 20px; }
-        textarea { width: 100%; height: 150px; background: var(--s1); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 10px; }
     </style>
 </head>
-<body onload="init()">
+<body onload="refreshData()">
 
-    <div id="console">> CORE READY. SYMBOLS DEFINE THE DATABASE.</div>
+    <header>
+        <div class="logo">BHARAT MARKETS</div>
+        <button class="btn-sync" onclick="runDumpSync()">REFRESH DUMP</button>
+    </header>
+
     <div id="app"></div>
 
-    <nav>
-        <button class="nb active" onclick="setView('portfolio', this)">Portfolio</button>
-        <button class="nb" onclick="setView('import', this)">Import</button>
-        <button class="nb btn-sync" onclick="runSolidSync()">SYNC 33 FIELDS</button>
-    </nav>
-
     <script>
-        const DB_NAME = "BharatSolidDB"; const STORE = "Unified";
-        let curTab = 'portfolio';
-
-        function log(m) { const c = document.getElementById('console'); c.innerHTML = `<div>> ${new Date().toLocaleTimeString()} | ${m}</div>` + c.innerHTML; }
+        const DB_NAME = "BharatDumpDB"; const STORE = "RawData";
 
         function getDB() {
             return new Promise(res => {
@@ -47,94 +44,72 @@
             });
         }
 
-        // RESOLVER: This builds the 33 fields into the DB before the Portfolio loads
-        async function runSolidSync() {
-            log("FETCHING FUNDAMENTALS...");
+        // 1. THE DUMP ENGINE: No imports, just flattens the JSON and saves
+        async function runDumpSync() {
             try {
                 const res = await fetch('fundamentals.json');
-                const raw = await res.json();
+                const data = await res.json();
                 
-                // Key Handshake: "HDFC.NS" -> "HDFC"
-                const cleanData = {};
-                Object.keys(raw.stocks).forEach(k => {
-                    const cleanKey = k.split('.')[0].toUpperCase();
-                    cleanData[cleanKey] = raw.stocks[k];
-                });
-
                 const db = await getDB();
                 const tx = db.transaction(STORE, "readwrite");
                 const store = tx.objectStore(STORE);
-                const holdings = await new Promise(r => store.getAll().onsuccess = e => r(e.target.result || []));
 
-                holdings.forEach(h => {
-                    const metrics = cleanData[h.sym] || {};
-                    const bakedRecord = { ...h, ...metrics };
-                    if (metrics.ltp) {
-                        bakedRecord.pnl = Math.round((h.qty * metrics.ltp) - (h.qty * h.avgBuy));
-                    }
-                    store.put(bakedRecord); // Saving the "Resolved" flat row
+                // Clear old data to ensure a fresh dump
+                store.clear();
+
+                Object.keys(data.stocks).forEach(ticker => {
+                    const cleanSym = ticker.split('.')[0].toUpperCase();
+                    const metrics = data.stocks[ticker];
+                    
+                    // Save every single field from the JSON into the DB row
+                    store.put({ 
+                        sym: cleanSym, 
+                        ...metrics 
+                    });
                 });
 
-                tx.oncomplete = () => { log("SUCCESS: DB Resolved."); render(); };
-            } catch (e) { log("ERR: Sync Failed."); }
+                tx.oncomplete = () => { 
+                    console.log("Dump Complete"); 
+                    refreshData(); 
+                };
+            } catch (e) { alert("Sync Failed. Ensure fundamentals.json is in the root folder."); }
         }
 
-        // MIRROR: Shows exactly what is in the DB
-        async function renderPortfolio() {
+        // 2. THE MIRROR: Discovers every key and displays it
+        async function refreshData() {
             const db = await getDB();
             const stocks = await new Promise(r => db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result));
-            const app = document.getElementById('app');
+            const container = document.getElementById('app');
 
-            if (!stocks.length) return app.innerHTML = "<div style='padding:40px'>Import Ticker Qty Price</div>";
+            if (!stocks.length) {
+                container.innerHTML = "<div style='padding:50px;color:var(--tx3)'>Database empty. Click REFRESH DUMP.</div>";
+                return;
+            }
 
-            // Discovery: Show all 33 fields found in the DB
-            const keySet = new Set(['sym', 'ltp', 'pnl', 'roe', 'opm_pct', 'pe', 'debt_eq']);
-            stocks.forEach(s => Object.keys(s).forEach(k => {
-                if(!['qty', 'avgBuy'].includes(k)) keySet.add(k);
-            }));
+            // Discovery: Identify every unique field in the dump
+            const keySet = new Set(['sym', 'ltp', 'roe', 'opm_pct', 'pe', 'debt_eq']);
+            stocks.forEach(s => Object.keys(s).forEach(k => keySet.add(k)));
             const keys = Array.from(keySet);
 
-            let h = `<div class="table-outer"><table><thead><tr>`;
-            keys.forEach(k => h += `<th class="${k==='sym'?'sticky-sym':''}">${k.toUpperCase()}</th>`);
-            h += `</tr></thead><tbody>`;
+            let html = `<div class="table-outer"><table><thead><tr>`;
+            keys.forEach(k => {
+                const css = k === 'sym' ? 'class="sticky-sym"' : '';
+                html += `<th ${css}>${k.toUpperCase()}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                h += `<tr>`;
+                html += `<tr>`;
                 keys.forEach(k => {
-                    const v = s[k] !== undefined ? s[k] : '—';
-                    const color = (k === 'pnl') ? `style="color:${v>=0?'#0f8':'#f46'}"` : '';
-                    h += `<td class="${k==='sym'?'sticky-sym':''}" ${color}>${v}</td>`;
+                    const val = s[k] !== undefined ? s[k] : '—';
+                    const css = k === 'sym' ? 'class="sticky-sym"' : '';
+                    html += `<td ${css}>${val}</td>`;
                 });
-                h += `</tr>`;
+                html += `</tr>`;
             });
-            app.innerHTML = h + `</tbody></table></div>`;
+            container.innerHTML = html + `</tbody></table></div>`;
         }
-
-        function setView(v, b) { curTab = v; document.querySelectorAll('.nb').forEach(x => x.classList.remove('active')); b.classList.add('active'); render(); }
-
-        function render() {
-            const app = document.getElementById('app');
-            if (curTab === 'import') {
-                app.innerHTML = `<div class="import-wrap">
-                    <textarea id="inp" placeholder="TICKER QTY AVG"></textarea>
-                    <button class="nb btn-sync" style="width:100%;margin-top:15px;border-radius:8px" onclick="doImport()">SAVE SYMBOLS</button>
-                </div>`;
-            } else { renderPortfolio(); }
-        }
-
-        async function doImport() {
-            const txt = document.getElementById('inp').value.trim();
-            const db = await getDB();
-            const tx = db.transaction(STORE, "readwrite");
-            const store = tx.objectStore(STORE);
-            txt.split('\n').forEach(l => {
-                const p = l.split(/\s+/);
-                if (p.length >= 3) store.put({ sym: p[0].split('.')[0].toUpperCase(), qty: parseFloat(p[1]), avgBuy: parseFloat(p[2]) });
-            });
-            tx.oncomplete = () => { log("Symbols Built."); setView('portfolio', document.querySelector('.nb')); };
-        }
-
-        function init() { render(); }
     </script>
 </body>
 </html>
+ 
