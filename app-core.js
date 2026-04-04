@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
-   BHARATMARKETS PRO v2 — CORE STATE & GESTURE ENGINE
-   Logic: Manages global state, routing, and iPhone gestures.
+   BHARATMARKETS PRO v2 — CORE STATE & GESTURES
+   Module: app-core.js
+   Logic: Manages storage keys, global state, and iPhone gestures.
 ═══════════════════════════════════════════════════════════ */
 
 // ── 1. Storage Configuration ──────────────────────────────
@@ -18,6 +19,7 @@ let ISIN_MAP    = {};
 let fundLoaded  = false;
 let pfRefreshing  = false;
 let pfLastRefresh = null;
+let _staticDataReady = null;
 
 // ── 3. App State ──────────────────────────────────────────
 let S = {
@@ -33,7 +35,7 @@ let S = {
   sortDir:   -1
 };
 
-// ── 4. Gesture Engine State ───────────────────────────────
+// ── 4. Gesture Engine State (iPhone Swipe) ────────────────
 let swipeStartX = 0;
 let currentSwipedRow = null;
 
@@ -56,7 +58,7 @@ function init() {
   console.log("💎 Core State Initialized");
 }
 
-// ── 5. Gesture Handlers (iPhone Swipe-to-Delete) ──────────
+// ── 5. Gesture Handlers (iPhone Optimized) ────────────────
 function handleTouchStart(e) {
     swipeStartX = e.touches[0].clientX;
     const row = e.currentTarget;
@@ -80,17 +82,15 @@ function handleTouchEnd(e, sym) {
     row.style.transition = 'transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
 
     if (diff < -70) {
-        // Snap open to reveal the PURGE button
         row.style.transform = 'translateX(-90px)';
         currentSwipedRow = row;
     } else {
-        // Snap back shut
         row.style.transform = 'translateX(0px)';
         currentSwipedRow = null;
     }
 }
 
-// Close any open swipe if user taps elsewhere
+// Global click-away listener for swipes
 document.addEventListener('touchstart', (e) => {
     if (currentSwipedRow && !currentSwipedRow.contains(e.target)) {
         currentSwipedRow.style.transform = 'translateX(0px)';
@@ -141,7 +141,7 @@ function render() {
   }
 }
 
-// ── 8. Utility Components ─────────────────────────────────
+// ── 8. UI Utilities ───────────────────────────────────────
 function showToast(msg, dur = 3000) {
   const t = document.getElementById('toast');
   if (!t) return;
@@ -164,33 +164,50 @@ function openPanel(id) {
   if (ov) ov.style.display = 'block';
 }
 
-// ── 9. Stock View & Static Data ───────────────────────────
+// ── 9. Stock View Logic ───────────────────────────────────
 function viewStock(sym) {
-  // Logic to open the detailed view of a stock
-  S.selStock = { sym: sym };
-  S.drillTab = 'overview';
+  const f = FUND[sym] || {};
+  const p = S.portfolio.find(x => x.sym === sym) || S.watchlist.find(x => x.sym === sym) || {sym};
+  
+  S.selStock = {
+    sym:      sym,
+    name:     p.name    || sym,
+    sector:   p.sector  || f.sector || 'Other',
+    qty:      p.qty     || 0,
+    avgBuy:   p.avgBuy  || 0,
+    ltp:      p.ltp     || f.ltp || 0,
+    mcap:     f.mcap    || null,
+    pe:       f.pe      || null,
+    roe:      f.roe     || null,
+    promoter: f.promoter|| null,
+    pledge:   f.pledge  || null,
+    ath_dist: f.ath_dist|| null,
+    fcf:      f.fcf     || null,
+    cfo:      f.cfo     || null,
+    sales:    f.sales   || null,
+    opm_pct:  f.opm_pct || null,
+    npm_pct:  f.npm_pct || null,
+    debt_eq:  f.debt_eq || null,
+  };
+  S.drillTab  = 'overview';
+  S.chartRange= '1Y';
+  document.getElementById('content').scrollTop = 0;
   render();
 }
 
-function closeStock() {
-  S.selStock = null;
-  render();
-}
+function closeStock() { S.selStock = null; render(); }
 
-/**
- * Loads symbols.json to map ISINs to NSE Tickers
- */
+// ── 10. Data Resolution (ISIN to Ticker) ──────────────────
 async function loadStaticData() {
-    try {
-      const r = await fetch('./symbols.json?t=' + Date.now(), {cache:'no-store'});
-      if (r.ok) {
-        const syms = await r.json();
-        syms.forEach(s => { 
-            if(s.isin && s.sym && s.resolved) ISIN_MAP[s.isin] = s.sym; 
-        });
-        console.log(`✅ ISIN Map Loaded: ${Object.keys(ISIN_MAP).length} entries`);
-      }
-    } catch(e) { 
-        console.warn('Static symbols load failed:', e.message); 
-    }
+    _staticDataReady = (async () => {
+        try {
+            const r = await fetch('./symbols.json?t=' + Date.now(), {cache:'no-store'});
+            if (r.ok) {
+                const syms = await r.json();
+                syms.forEach(s => { if(s.isin && s.sym && s.resolved) ISIN_MAP[s.isin] = s.sym; });
+                console.log('✅ ISIN Map Built: ' + Object.keys(ISIN_MAP).length);
+            }
+        } catch(e) { console.warn('symbols.json load failed:', e.message); }
+    })();
+    await _staticDataReady;
 }
