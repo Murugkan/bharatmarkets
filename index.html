@@ -3,134 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets Pro | Nested Sync Fix</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <title>BharatMarkets Pro | Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b;
             --gr1: #00f2ff; --gr2: #00e896; --rd1: #ff4d6d; --tx1: #f0f6ff; --tx3: #708499;
         }
         body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
-        #debug-log { height: 120px; overflow-y: auto; background: #000; border-bottom: 2px solid var(--gr1); font-family: 'JetBrains Mono'; font-size: 11px; padding: 15px; color: var(--gr1); }
-        .bls-table-outer { width: 100%; overflow: auto; padding-bottom: 100px; height: calc(100vh - 270px); }
-        .bls-t { border-collapse: collapse; font-size: 10px; font-family: 'JetBrains Mono'; white-space: nowrap; width: 100%; }
-        .bls-t th { background: #16213e; color: var(--gr1); padding: 12px 15px; text-align: left; border: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; }
-        .bls-t td { padding: 10px 15px; border: 1px solid #182840; color: #fff; }
-        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
-        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+        
+        #debug-log { height: 60px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 10px; color: var(--gr1); }
+        
+        .portfolio-container { padding: 15px; padding-bottom: 100px; }
+        .stock-card { 
+            background: var(--s1); border: 1px solid var(--b1); border-radius: 12px; 
+            padding: 15px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px;
+        }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .sym-block b { font-family: 'Syne'; font-size: 18px; letter-spacing: -0.5px; color: var(--gr1); }
+        .sym-block span { display: block; font-size: 10px; color: var(--tx3); text-transform: uppercase; margin-top: 2px; }
+        
+        .price-block { text-align: right; }
+        .price-block .ltp { font-family: 'JetBrains Mono'; font-size: 16px; font-weight: 700; }
+        .price-block .pnl { font-size: 11px; font-weight: 700; margin-top: 2px; }
+
+        /* The 4-Grid Metrics */
+        .metrics-grid { 
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; 
+            border-top: 1px solid #182840; padding-top: 10px; 
+        }
+        .m-item { text-align: center; }
+        .m-label { font-size: 8px; color: var(--tx3); text-transform: uppercase; margin-bottom: 4px; }
+        .m-val { font-family: 'JetBrains Mono'; font-size: 11px; font-weight: 700; color: #fff; }
+
+        .pos { color: var(--gr2); }
+        .neg { color: var(--rd1); }
+
+        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); z-index: 100; }
+        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
         .btn-sync { background: var(--gr2) !important; color: #000 !important; font-weight: 900; }
     </style>
 </head>
 <body onload="init()">
 
-    <div id="debug-log">V1.3: READY. Logic adjusted for 'stocks' header.</div>
-    <div id="content"></div>
+    <div id="debug-log">System Ready.</div>
+    <div id="content" class="portfolio-container"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
-        <button class="nb" onclick="showTab('raw', this)">33 Fields View</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb btn-sync" onclick="bakeAllFields()">FULL BAKE</button>
+        <button class="nb btn-sync" onclick="bakeAll()">FULL SYNC</button>
     </nav>
 
     <script src="app-engine.js"></script>
     <script>
         let curTab = 'portfolio';
 
-        function log(msg) {
-            const l = document.getElementById('debug-log');
-            l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
-        }
+        function log(msg) { document.getElementById('debug-log').innerHTML = `> ${msg}`; }
 
-        // SPECIFIC FIX: Your JSON puts everything inside ["stocks"]
-        function findDataInJson(data, ticker) {
-            if (!data) return null;
-            if (data.stocks && data.stocks[ticker]) return data.stocks[ticker]; 
-            if (data[ticker]) return data[ticker];
-            return null;
-        }
-
-        async function bakeAllFields() {
-            log("STARTING NESTED SYNC...");
+        async function bakeAll() {
+            log("Syncing Fundamentals...");
             try {
-                const [fRaw, pRaw, sMaster, sMap] = await Promise.all([
+                const [fRaw, sMap] = await Promise.all([
                     fetch('fundamentals.json').then(r => r.json()),
-                    fetch('prices.json').then(r => r.json()),
-                    fetch('symbols.json').then(r => r.json()),
                     fetch('symbol_map.json').then(r => r.json())
                 ]);
 
                 const db = await initEngineDB();
                 const tx = db.transaction('UnifiedStocks', 'readwrite');
                 const store = tx.objectStore('UnifiedStocks');
-                
                 const holdings = await new Promise(r => {
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                let successCount = 0;
                 holdings.forEach(h => {
-                    const mappedSym = sMap.overrides[h.sym] || h.sym;
-                    const cleanKey = mappedSym.split('.')[0];
-                    const variants = [mappedSym, cleanKey, h.sym];
+                    const mapped = sMap.overrides[h.sym] || h.sym;
+                    const clean = mapped.split('.')[0];
+                    const data = fRaw.stocks[mapped] || fRaw.stocks[clean] || fRaw.stocks[h.sym] || {};
 
-                    let fEntry = null;
-                    for (let v of variants) {
-                        const found = findDataInJson(fRaw, v);
-                        if (found) { fEntry = found; break; }
-                    }
-
-                    const m = sMaster.find(item => item.sym === h.sym || item.sym === cleanKey) || {};
-
-                    const baked = {
+                    store.put({
                         ...h,
-                        ...m,
-                        ...fEntry, // This now spreads all 33 fields from your file
-                        sym: mappedSym,
-                        sync_status: fEntry ? "OK" : "MISSING"
-                    };
-
-                    if (fEntry) successCount++;
-                    store.put(baked);
+                        ...data,
+                        sym: mapped,
+                        last_ltp: data.ltp || 0,
+                        pnl: Math.round((h.qty * (data.ltp || 0)) - (h.qty * h.avgBuy))
+                    });
                 });
 
-                tx.oncomplete = () => {
-                    log(`SUCCESS: ${successCount} stocks baked. Header 'stocks' detected.`);
-                    render();
-                };
-            } catch (e) {
-                log("FETCH ERROR. Check file placement.");
-            }
-        }
-
-        async function renderRaw(container) {
-            const db = await initEngineDB();
-            const stocks = await new Promise(r => {
-                const tx = db.transaction('UnifiedStocks', 'readonly');
-                tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
-            });
-
-            if (!stocks.length) return container.innerHTML = "<div style='padding:50px'>No data.</div>";
-
-            const allKeys = new Set();
-            stocks.forEach(s => Object.keys(s).forEach(k => allKeys.add(k)));
-            const keys = Array.from(allKeys);
-
-            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
-            keys.forEach(k => h += `<th>${k}</th>`);
-            h += `</tr></thead><tbody>`;
-
-            stocks.forEach(s => {
-                h += `<tr>`;
-                keys.forEach(k => {
-                    let val = s[k];
-                    if (k === 'quarterly') val = "[Array]";
-                    h += `<td>${val !== undefined ? val : '—'}</td>`;
-                });
-                h += `</tr>`;
-            });
-            container.innerHTML = h + `</tbody></table></div>`;
+                tx.oncomplete = () => { log("Portfolio Updated."); render(); };
+            } catch (e) { log("Error: Check JSON."); }
         }
 
         async function renderPortfolio(container) {
@@ -140,20 +102,32 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th>Ticker</th><th>Sector</th><th>ROE%</th><th>OPM%</th><th>Debt/Eq</th>
-            </tr></thead><tbody>`;
+            if (!stocks.length) { container.innerHTML = "No Stocks. Go to Import."; return; }
 
+            let html = "";
             stocks.forEach(s => {
-                h += `<tr>
-                    <td><strong>${s.sym}</strong></td>
-                    <td>${s.sector || '—'}</td>
-                    <td>${s.roe || '—'}</td>
-                    <td>${s.opm_pct || '—'}</td>
-                    <td>${s.debt_eq || '—'}</td>
-                </tr>`;
+                const pnlCls = s.pnl >= 0 ? 'pos' : 'neg';
+                html += `
+                <div class="stock-card">
+                    <div class="card-header">
+                        <div class="sym-block">
+                            <b>${s.sym}</b>
+                            <span>${s.sector || 'N/A'}</span>
+                        </div>
+                        <div class="price-block">
+                            <div class="ltp">₹${s.ltp || 0}</div>
+                            <div class="pnl ${pnlCls}">${s.pnl >= 0 ? '+' : ''}${s.pnl}</div>
+                        </div>
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="m-item"><div class="m-label">ROE</div><div class="m-val">${s.roe || '—'}%</div></div>
+                        <div class="m-item"><div class="m-label">P/E</div><div class="m-val">${s.pe || '—'}</div></div>
+                        <div class="m-item"><div class="m-label">OPM%</div><div class="m-val">${s.opm_pct || '—'}%</div></div>
+                        <div class="m-item"><div class="m-label">DEBT/EQ</div><div class="m-val">${s.debt_eq || '—'}</div></div>
+                    </div>
+                </div>`;
             });
-            container.innerHTML = h + `</tbody></table></div>`;
+            container.innerHTML = html;
         }
 
         function showTab(t, btn) {
@@ -166,9 +140,7 @@
         function render() {
             const c = document.getElementById('content');
             if (curTab === 'import') {
-                c.innerHTML = `<div style="padding:20px"><textarea id="import-area" style="width:100%;height:150px;background:#121a2d;color:#fff;padding:10px" placeholder="OLECTRA 10 1000"></textarea><button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE</button></div>`;
-            } else if (curTab === 'raw') {
-                renderRaw(c);
+                c.innerHTML = `<div style="padding:10px"><textarea id="import-area" style="width:100%;height:150px;background:#121a2d;color:#fff;padding:10px;border-radius:8px" placeholder="OLECTRA 10 1000"></textarea><button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE</button></div>`;
             } else {
                 renderPortfolio(c);
             }
@@ -183,7 +155,7 @@
                 const p = line.split(/\s+/);
                 if (p.length >= 3) store.put({ sym: p[0].toUpperCase(), qty: parseFloat(p[1]), avgBuy: parseFloat(p[2]) });
             });
-            tx.oncomplete = () => { log("Saved. Click FULL BAKE."); showTab('portfolio', document.querySelector('.nb')); };
+            tx.oncomplete = () => { log("Saved. Tap Sync."); showTab('portfolio', document.querySelector('.nb')); };
         }
 
         function init() { render(); }
