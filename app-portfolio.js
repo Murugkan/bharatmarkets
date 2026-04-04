@@ -1,30 +1,34 @@
 /**
- * STEP 1: FINAL INTEGRATED TEST (v21.0)
- * Bypasses empty states to force-render the 37-column table.
+ * STEP 1: SYMBOLS-FIRST DATA ENGINE
+ * Uses your Master Symbol list to map all fundamental data.
  */
 async function loadFundamentals() {
   if (window.pfRefreshing) return;
   window.pfRefreshing = true;
 
   try {
+    // 1. Direct Fetch with Timestamp to bypass iPhone cache
     const r = await fetch(`./fundamentals.json?v=${Date.now()}`);
-    if (!r.ok) throw new Error("File Not Found");
+    if (!r.ok) throw new Error("Fundamentals file missing on server");
     
     const data = await r.json();
     
-    // Explicitly target the "stocks" wrapper from your JSON
+    // 2. Map data to the "stocks" object
     window.FUND = data.stocks || data;
     
+    // 3. Build ISIN Map for the 37-column logic
     window.ISIN_MAP = {};
-    Object.keys(window.FUND).forEach(sym => {
+    const keys = Object.keys(window.FUND);
+    keys.forEach(sym => {
       const s = window.FUND[sym];
       if (s && s.isin) window.ISIN_MAP[s.isin] = sym;
     });
 
+    console.log(`✅ Engine Linked: ${keys.length} data nodes found.`);
     window.fundLoaded = true;
     return true;
   } catch (e) {
-    console.error("Step 1 Load Error:", e.message);
+    console.error("❌ Engine Boot Error:", e.message);
     return false;
   } finally {
     window.pfRefreshing = false;
@@ -34,39 +38,30 @@ async function loadFundamentals() {
 async function renderPortfolio(container) {
   if (!container) return;
 
-  // 1. Clear UI
+  // Kill the "Syncing" overlay immediately
   const overlay = document.querySelector('.loading, #sync-overlay');
   if (overlay) overlay.style.display = 'none';
 
-  // 2. Ensure Engine is Booted
+  // 1. Ensure Fundamentals are ready
   if (!window.fundLoaded) {
     container.innerHTML = `<div style="padding:40px;color:#58a6ff;font-family:monospace;">> BOOTING DATA ENGINE...</div>`;
     await loadFundamentals();
   }
 
-  // 3. DATA INTEGRITY CHECK & DUMMY FALLBACK
-  // If no portfolio is found, we inject OLECTRA and others to test the 37 columns
+  // 2. Verify Symbols/Portfolio List
+  // S.portfolio is your master list of Symbols
   if (!window.S || !S.portfolio || S.portfolio.length === 0) {
-    console.warn("⚠️ Injecting Test Data to verify 37-column UI...");
-    window.S = window.S || { portfolio: [] };
-    
-    // Use first 5 stocks from FUND, or hardcoded samples if FUND is empty
-    const samples = (window.FUND && Object.keys(window.FUND).length > 0) 
-      ? Object.keys(window.FUND).slice(0, 5) 
-      : ["OLECTRA", "RELIANCE", "TCS", "INFY", "HDFCBANK"];
-
-    window.S.portfolio = samples.map(sym => ({
-      sym: sym,
-      isin: (window.FUND && window.FUND[sym]) ? window.FUND[sym].isin : '',
-      qty: 10,
-      avg: 100
-    }));
+    container.innerHTML = `
+      <div style="padding:40px;color:#8b949e;text-align:center;">
+        <b>0 Symbols Detected</b><br>
+        <small>Waiting for Broker/Core Sync...</small>
+      </div>`;
+    return;
   }
 
-  // 4. DRAW THE TABLE
-  // This calls the original drawing logic from your app-portfolio-Nkl.js file
-  console.log("🚀 Rendering 37-column table with " + S.portfolio.length + " stocks.");
+  // 3. START 37-COLUMN RENDER
+  // Now that the engine is loaded, we call your original drawing logic
+  console.log(`🚀 Rendering ${S.portfolio.length} Symbols...`);
   
-  // --- PASTE YOUR ORIGINAL TABLE DRAWING LOGIC BELOW ---
-  // (Start from: const out = []; ... all the way to the end of your original file)
+  // --- [PASTE YOUR ORIGINAL drawTable OR render logic HERE] ---
 }
