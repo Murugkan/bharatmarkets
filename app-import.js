@@ -1,57 +1,73 @@
+/* ═══════════════════════════════════════════════════════════
+   app-import.js - DATA PARSER & DATABASE WRITER
+═══════════════════════════════════════════════════════════ */
+
 async function processImport() {
     const area = document.getElementById('import-area');
-    const rawText = area.value.trim();
-    
-    // DEBUG TOOL: If you paste "DEBUG_QUERY_DB_ROWS", it lists the DB
-    if (rawText === "DEBUG_QUERY_DB_ROWS") {
-        log("🔍 Querying Database Rows...");
-        const db = await initEngineDB();
-        const tx = db.transaction('UnifiedStocks', 'readonly');
-        const store = tx.objectStore('UnifiedStocks');
-        store.getAll().onsuccess = (e) => {
-            const all = e.target.result;
-            if (all.length === 0) {
-                log("❌ DB IS EMPTY", "error");
-            } else {
-                log(`✅ DB FOUND: ${all.length} total rows.`);
-                // Show first 3 rows as samples
-                all.slice(0, 3).forEach(s => {
-                    log(`Row: ${s.sym} | Qty: ${s.qty} | Val: ${s.marketValue || 0}`);
-                });
-            }
-        };
+    if (!area || !area.value.trim()) {
+        showToast("Please paste data first");
         return;
     }
 
-    // --- Normal Import Logic Below ---
     log("Import: Starting Parse...");
+    const rawText = area.value;
+    
     try {
         const lines = rawText.split('\n');
         const stocks = [];
+
+        // Simple Parser: Matches "SYMBOL QTY"
         lines.forEach(line => {
             const parts = line.trim().split(/[\s,]+/);
             if (parts.length >= 2) {
                 const sym = parts[0].toUpperCase().replace(/[^A-Z0-9]/g, '');
                 const qty = parseInt(parts[1]);
-                if (sym && !isNaN(qty)) stocks.push({ sym, qty });
+                if (sym && !isNaN(qty)) {
+                    stocks.push({ 
+                        sym, 
+                        qty, 
+                        lastUpdated: Date.now(),
+                        ltp: 0,
+                        chg: 0,
+                        marketValue: 0
+                    });
+                }
             }
         });
 
         if (stocks.length === 0) {
-            log("Import Error: No valid data found", "error");
+            log("Import Error: No valid stock patterns found", "error");
+            showToast("Could not parse data");
             return;
         }
+
+        log(`Import: Parsed ${stocks.length} stocks. Opening DB...`);
 
         const db = await initEngineDB();
         const tx = db.transaction('UnifiedStocks', 'readwrite');
         const store = tx.objectStore('UnifiedStocks');
+
+        // Clear existing and add new
         stocks.forEach(s => store.put(s));
 
         tx.oncomplete = () => {
-            log(`Successfully saved ${stocks.length} stocks.`);
-            showTab('portfolio');
+            log(`✅ SUCCESS: ${stocks.length} stocks saved to IndexedDB.`);
+            showToast(`Imported ${stocks.length} Stocks`);
+            
+            // Close panel and switch to portfolio
+            closePanel();
+            
+            // Trigger a re-render of the portfolio tab
+            if (typeof showTab === 'function') {
+                showTab('portfolio');
+            }
         };
+
+        tx.onerror = (e) => {
+            log("❌ Database Write Error: " + e.target.error, "error");
+        };
+
     } catch (err) {
-        log("Import Crash: " + err.message, "error");
+        log("❌ Import Crash: " + err.message, "error");
     }
 }
