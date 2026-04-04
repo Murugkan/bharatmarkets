@@ -1,58 +1,47 @@
 /* ═══════════════════════════════════════════════════════════
-   app-portfolio.js - FINAL RESILIENT RENDERER
-   Goal: Handle "0 Stocks" state with a clear UI
+   app-portfolio.js - PORTFOLIO VIEW RENDERER
 ═══════════════════════════════════════════════════════════ */
 
 async function renderPortfolio(container) {
     if (!container) return;
     
-    // 1. Loading State
-    container.innerHTML = `<div style="padding:60px; text-align:center; color:var(--tx3)">
-        <div style="font-size:24px; margin-bottom:10px">⏳</div> Fetching Portfolio...
-    </div>`;
-    
-    log("Portfolio: Fetching from IndexedDB...");
-
     try {
         if (typeof initEngineDB !== 'function') throw new Error("Engine Missing");
 
         const db = await initEngineDB();
-        const stocks = await new Promise((resolve, reject) => {
+        const stocks = await new Promise((resolve) => {
             const tx = db.transaction('UnifiedStocks', 'readonly');
-            const store = tx.objectStore('UnifiedStocks');
-            const req = store.getAll();
+            const req = tx.objectStore('UnifiedStocks').getAll();
             req.onsuccess = () => resolve(req.result || []);
-            req.onerror = () => reject("Read Failed");
         });
 
-        log(`Portfolio: Received ${stocks.length} stocks`);
-
-        // 2. THE "EMPTY STATE" FIX
         if (stocks.length === 0) {
             container.innerHTML = `
                 <div style="padding:100px 20px; text-align:center;">
                     <div style="font-size:64px; margin-bottom:20px;">📁</div>
-                    <div style="color:var(--tx1); font-family:'Syne'; font-size:22px; font-weight:800">Portfolio Empty</div>
-                    <p style="color:var(--tx3); font-size:14px; margin:15px auto 30px; max-width:250px; line-height:1.5">
-                        Your local database has no holdings. Paste your data in the Import tab to begin.
+                    <div style="color:var(--tx1); font-family:'Syne'; font-size:22px; font-weight:800">No Data in DB</div>
+                    <p style="color:var(--tx3); font-size:14px; margin:15px auto 30px; line-height:1.5">
+                        Import logic ready. Please paste data in the Upload tab.
                     </p>
-                    <button onclick="showTab('upload')" style="width:200px; padding:16px; background:var(--gr1); color:var(--bg); border:none; border-radius:12px; font-weight:800; font-family:'Syne'; text-transform:uppercase; letter-spacing:1px; box-shadow: 0 10px 20px rgba(0,242,255,0.2)">
-                        Go to Import
+                    <button onclick="showTab('upload')" style="padding:16px 32px; background:var(--b2); border:none; border-radius:12px; color:white; font-weight:700;">
+                        Open Importer
                     </button>
                 </div>`;
             return;
         }
 
-        // 3. RENDER DATA (If stocks > 0)
+        // Render Summary
+        const totalVal = stocks.reduce((acc, s) => acc + (s.marketValue || 0), 0);
         let html = `
             <div style="padding:30px 20px; background:var(--s1); border-bottom:1px solid var(--b1);">
-                <div style="color:var(--tx3); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px">Total Holdings</div>
+                <div style="color:var(--tx3); font-size:11px; font-weight:700; text-transform:uppercase;">Portfolio Value</div>
                 <div style="font-family:'JetBrains Mono'; font-size:34px; font-weight:700; color:var(--tx1); margin:5px 0">
-                    ${stocks.length} <span style="font-size:16px; color:var(--tx3)">Stocks</span>
+                    ₹${Math.round(totalVal).toLocaleString('en-IN')}
                 </div>
             </div>
-            <div style="padding:10px 16px 120px;">`;
+            <div style="padding:16px 16px 120px;">`;
 
+        // Render Rows
         stocks.forEach(s => {
             html += `
             <div style="background:var(--s2); padding:16px; margin-bottom:12px; border-radius:12px; border:1px solid var(--b1); display:flex; justify-content:space-between; align-items:center">
@@ -70,7 +59,6 @@ async function renderPortfolio(container) {
         container.innerHTML = html;
 
     } catch (err) {
-        log("Portfolio Error: " + err, "error");
-        container.innerHTML = `<div style="padding:50px; color:var(--rd2); text-align:center">⚠️ Render Error: ${err}</div>`;
+        container.innerHTML = `<div style="padding:50px; color:var(--rd2); text-align:center">Error: ${err.message}</div>`;
     }
 }
