@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Portfolio Pro</title>
+    <title>BharatMarkets | Flat Engine Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -11,80 +11,113 @@
             --gr1: #00f2ff; --gr2: #00ff88; --rd1: #ff4d6d; --amb: #ffb100;
             --tx1: #f0f6ff; --tx3: #708499;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
         
-        /* Matching your app-portfolio.js CSS logic */
-        .badge { padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono'; font-size: 10px; font-weight: 700; }
-        .bg-grn { background: #003a20; color: var(--gr2); }
-        .bg-red { background: #3a0010; color: var(--rd1); }
-        .bg-amb { background: #3a1a00; color: var(--amb); }
+        /* Terminal Console */
+        #debug-log { height: 80px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); line-height: 1.4; }
 
+        /* Professional Portfolio Table */
         .bls-table-outer { width: 100%; overflow-x: auto; padding-bottom: 100px; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 10px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 10px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; font-size: 9px; text-transform: uppercase; }
         .bls-t td { padding: 12px 10px; border-bottom: 1px solid #182840; text-align: right; vertical-align: middle; }
         .t-left { text-align: left !important; }
 
-        .sym-cell { display: flex; flex-direction: column; line-height: 1.2; }
-        .sym-cell b { font-family: 'Syne'; font-size: 13px; color: var(--gr1); }
-        .sym-cell small { font-size: 9px; color: var(--tx3); text-transform: uppercase; }
+        /* Symbol Branding */
+        .sym-cell b { font-family: 'Syne'; font-size: 14px; color: var(--gr1); display: block; letter-spacing: -0.5px; }
+        .sym-cell small { font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: 0.5px; }
 
-        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
-        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
-        .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
+        /* CSS BADGES FROM app-portfolio.js */
+        .badge { padding: 3px 7px; border-radius: 4px; font-family: 'JetBrains Mono'; font-size: 10px; font-weight: 700; display: inline-block; }
+        .bg-grn { background: #003a20; color: #fff; }
+        .bg-red { background: #3a0010; color: #fff; }
+        .bg-amb { background: #3a1a00; color: #fff; }
+
+        /* Navigation Bar */
+        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); z-index: 100; }
+        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
+        .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); background: rgba(0,242,255,0.05); }
         .btn-sync { background: var(--gr1) !important; color: #000 !important; font-weight: 900; }
+
+        .import-box { padding: 20px; }
+        #import-area { width: 100%; height: 180px; background: var(--s1); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; font-size: 12px; }
     </style>
 </head>
 <body onload="init()">
 
+    <div id="debug-log">SYSTEM ONLINE. IMPORT HOLDINGS THEN CLICK 'SYNC DATA'.</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb btn-sync" onclick="fullBakeSync()">SYNC ALL</button>
+        <button class="nb btn-sync" onclick="flattenAndSync()">SYNC DATA</button>
     </nav>
 
     <script src="app-engine.js"></script>
     <script>
         let curTab = 'portfolio';
 
-        // Helper for the Green/Red/Amber logic from your .js file
-        function getStyle(val, type) {
-            if (type === 'roe') return val > 20 ? 'bg-grn' : (val > 12 ? 'bg-amb' : 'bg-red');
-            if (type === 'pnl') return val >= 0 ? 'bg-grn' : 'bg-red';
+        function log(msg) {
+            const l = document.getElementById('debug-log');
+            l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
+        }
+
+        // Logic from app-portfolio.js to determine badge colors
+        function getBadgeClass(val, type) {
+            const v = parseFloat(val) || 0;
+            if (type === 'roe') return v > 15 ? 'bg-grn' : (v > 10 ? 'bg-amb' : 'bg-red');
+            if (type === 'opm') return v > 20 ? 'bg-grn' : (v > 12 ? 'bg-amb' : 'bg-red');
+            if (type === 'pnl') return v >= 0 ? 'bg-grn' : 'bg-red';
             return '';
         }
 
-        async function fullBakeSync() {
+        async function flattenAndSync() {
+            log("FETCHING NESTED FUNDAMENTALS...");
             try {
-                const [fData, sMap] = await Promise.all([
-                    fetch('fundamentals.json').then(r => r.json()),
-                    fetch('symbol_map.json').then(r => r.json())
-                ]);
+                const response = await fetch('fundamentals.json');
+                const data = await response.json();
+                
+                if (!data.stocks) throw new Error("JSON missing 'stocks' header");
 
                 const db = await initEngineDB();
                 const tx = db.transaction('UnifiedStocks', 'readwrite');
                 const store = tx.objectStore('UnifiedStocks');
+                
                 const holdings = await new Promise(r => {
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
+                if (holdings.length === 0) return log("ABORTED: No holdings in DB. Import first.");
+
                 holdings.forEach(h => {
-                    const mapped = sMap.overrides[h.sym] || h.sym;
-                    const clean = mapped.split('.')[0];
-                    // DIGGING INTO THE 'STOCKS' WRAPPER FOUND IN YOUR JSON
-                    const f = fData.stocks[mapped] || fData.stocks[clean] || fData.stocks[h.sym] || {};
-
+                    // FLATTENING: Extract from data.stocks[TICKER]
+                    const f = data.stocks[h.sym] || {};
+                    
                     const ltp = f.ltp || 0;
-                    const pnl = Math.round((h.qty * ltp) - (h.qty * h.avgBuy));
-                    const pnlNet = h.avgBuy > 0 ? ((ltp - h.avgBuy) / h.avgBuy * 100).toFixed(2) : 0;
+                    const pnlVal = Math.round((h.qty * ltp) - (h.qty * h.avgBuy));
+                    const pnlPct = h.avgBuy > 0 ? ((ltp - h.avgBuy) / h.avgBuy * 100).toFixed(2) : 0;
 
-                    store.put({ ...h, ...f, sym: mapped, ltp, pnl, pnlNet });
+                    // Creating the FLAT RECORD
+                    const flatRecord = {
+                        ...h,      // User data (qty, avgBuy)
+                        ...f,      // 33 Fields from Python (roe, opm_pct, pe, etc.)
+                        pnl: pnlVal,
+                        pnlNet: pnlPct,
+                        baked_at: new Date().toLocaleTimeString()
+                    };
+
+                    store.put(flatRecord);
                 });
 
-                tx.oncomplete = () => render();
-            } catch (e) { console.error("Sync Failed", e); }
+                tx.oncomplete = () => {
+                    log("SUCCESS: Database is now FLAT and SYNCED.");
+                    render();
+                };
+            } catch (e) {
+                log(`ERROR: ${e.message}`);
+                console.error(e);
+            }
         }
 
         async function renderPortfolio(container) {
@@ -94,10 +127,13 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (!stocks.length) { container.innerHTML = "<div style='padding:40px'>No Data. Import & Sync.</div>"; return; }
+            if (!stocks.length) {
+                container.innerHTML = "<div style='padding:60px;text-align:center;color:var(--tx3)'>No stocks found.<br>Use Import tab to add holdings.</div>";
+                return;
+            }
 
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th class="t-left">SYMBOL</th><th>LTP</th><th>ROE%</th><th>OPM%</th><th>P&L</th>
+                <th class="t-left">TICKER</th><th>LTP</th><th>ROE%</th><th>OPM%</th><th>P&L</th>
             </tr></thead><tbody>`;
 
             stocks.forEach(s => {
@@ -105,10 +141,16 @@
                     <td class="t-left">
                         <div class="sym-cell"><b>${s.sym}</b><small>${s.sector || '—'}</small></div>
                     </td>
-                    <td><div style="font-weight:700">₹${s.ltp || 0}</div><small style="color:var(--tx3)">${s.chg1d || 0}%</small></td>
-                    <td><span class="badge ${getStyle(s.roe, 'roe')}">${s.roe || 0}%</span></td>
-                    <td><span class="badge bg-amb">${s.opm_pct || 0}%</span></td>
-                    <td><span class="badge ${getStyle(s.pnl, 'pnl')}">${s.pnl || 0}</span><br><small class="${getStyle(s.pnl, 'pnl')}" style="background:none">${s.pnlNet}%</small></td>
+                    <td>
+                        <div style="font-weight:700">₹${s.ltp || 0}</div>
+                        <small style="color:${s.chg1d >= 0 ? 'var(--gr2)':'var(--rd1)'}">${s.chg1d || 0}%</small>
+                    </td>
+                    <td><span class="badge ${getBadgeClass(s.roe, 'roe')}">${s.roe || 0}%</span></td>
+                    <td><span class="badge ${getBadgeClass(s.opm_pct, 'opm')}">${s.opm_pct || 0}%</span></td>
+                    <td>
+                        <span class="badge ${getBadgeClass(s.pnl, 'pnl')}">${s.pnl || 0}</span><br>
+                        <small style="font-weight:700;color:${s.pnl >= 0 ? 'var(--gr2)':'var(--rd1)'}">${s.pnlNet}%</small>
+                    </td>
                 </tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
@@ -124,8 +166,14 @@
         function render() {
             const c = document.getElementById('content');
             if (curTab === 'import') {
-                c.innerHTML = `<div style="padding:20px"><textarea id="import-area" style="width:100%;height:200px;background:#0a0e1a;color:#fff;border:1px solid #1e293b;padding:12px;font-family:'JetBrains Mono'" placeholder="TICKER QTY AVG"></textarea><button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE SYMBOLS</button></div>`;
-            } else { renderPortfolio(c); }
+                c.innerHTML = `<div class="import-box">
+                    <textarea id="import-area" placeholder="OLECTRA 10 1000\nHDFCBANK 5 1450"></textarea>
+                    <button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE HOLDINGS</button>
+                    <p style="font-size:10px;color:var(--tx3);margin-top:10px">Format: SYMBOL QTY AVG_PRICE (One per line)</p>
+                </div>`;
+            } else {
+                renderPortfolio(c);
+            }
         }
 
         async function processImport() {
@@ -133,11 +181,22 @@
             const db = await initEngineDB();
             const tx = db.transaction('UnifiedStocks', 'readwrite');
             const store = tx.objectStore('UnifiedStocks');
+            
             text.trim().split('\n').forEach(line => {
-                const p = line.split(/\s+/);
-                if (p.length >= 3) store.put({ sym: p[0].toUpperCase(), qty: parseFloat(p[1]), avgBuy: parseFloat(p[2]) });
+                const parts = line.split(/\s+/);
+                if (parts.length >= 3) {
+                    store.put({ 
+                        sym: parts[0].toUpperCase(), 
+                        qty: parseFloat(parts[1]), 
+                        avgBuy: parseFloat(parts[2]) 
+                    });
+                }
             });
-            tx.oncomplete = () => { showTab('portfolio', document.querySelector('.nb')); };
+            
+            tx.oncomplete = () => {
+                log("Holdings Stored. Click SYNC DATA to pull fundamentals.");
+                showTab('portfolio', document.querySelector('.nb'));
+            };
         }
 
         function init() { render(); }
