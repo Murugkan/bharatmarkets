@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets Pro (Unified Flat DB)</title>
+    <title>BharatMarkets Pro (Calculated Flat DB)</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -31,13 +31,13 @@
 </head>
 <body onload="init()">
 
-    <div id="debug-log">Ready. Symbols will be resolved during Sync.</div>
+    <div id="debug-log">Ready. Computations will be baked into DB during Sync.</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb" onclick="syncAndResolve()" style="color:var(--gr2)">Resolve & Sync</button>
+        <button class="nb" onclick="syncResolveAndCompute()" style="color:var(--gr2)">Compute & Sync</button>
     </nav>
 
     <script src="app-engine.js"></script>
@@ -63,20 +63,20 @@
                         sym: parts[0].toUpperCase(),
                         qty: parseFloat(parts[1]),
                         avgBuy: parseFloat(parts[2]),
-                        ltp: 0, sector: '—', roe: 0, pe: 0, signal: 'WAIT'
+                        ltp: 0, sector: '—', roe: 0, pe: 0, signal: 'WAIT',
+                        investedValue: 0, marketValue: 0, pnl: 0, pnlNet: 0 // Computation placeholders
                     });
                 }
             });
 
             tx.oncomplete = () => {
-                log("Imported. Run 'Resolve & Sync' to unify symbols.");
+                log("Imported. Run 'Compute & Sync' to calculate values.");
                 showTab('portfolio', document.querySelector('.nb'));
             };
         }
 
-        // THE RESOLUTION ENGINE: Resolves symbols before saving to DB
-        async function syncAndResolve() {
-            log("Loading Map & Market Data...");
+        async function syncResolveAndCompute() {
+            log("Fetching Master Data...");
             try {
                 const [fData, pData, sMaster, sMap] = await Promise.all([
                     fetch('fundamentals.json').then(r => r.json()),
@@ -93,11 +93,9 @@
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                // Clear DB for fresh "Unified" write
                 store.clear();
 
                 holdings.forEach(h => {
-                    // RESOLVE SYMBOL HERE
                     const unifiedSym = sMap.overrides[h.sym] || h.sym;
                     const cleanKey = unifiedSym.split('.')[0];
 
@@ -105,20 +103,31 @@
                     const p = pData[unifiedSym] || pData[cleanKey] || {};
                     const m = sMaster.find(item => item.sym === h.sym || item.sym === cleanKey) || {};
 
-                    // Save under the UNIFIED symbol
+                    // BAKE COMPUTATIONS HERE
+                    const ltp = p.ltp || h.ltp || 0;
+                    const investedValue = h.qty * h.avgBuy;
+                    const marketValue = h.qty * ltp;
+                    const pnl = marketValue - investedValue;
+                    const pnlNet = investedValue > 0 ? (pnl / investedValue) * 100 : 0;
+
                     store.put({
                         ...h,
-                        sym: unifiedSym, // Symbol is now resolved permanently in DB
+                        sym: unifiedSym,
                         sector: f.sector || m.sector || h.sector,
                         roe: f.roe || 0,
                         pe: p.pe || f.pe || 0,
-                        ltp: p.ltp || h.ltp,
-                        signal: f.signal || 'HOLD'
+                        ltp: ltp,
+                        signal: f.signal || 'HOLD',
+                        // Storing pre-calculated values
+                        investedValue: Math.round(investedValue),
+                        marketValue: Math.round(marketValue),
+                        pnl: Math.round(pnl),
+                        pnlNet: parseFloat(pnlNet.toFixed(2))
                     });
                 });
 
                 tx.oncomplete = () => {
-                    log("SUCCESS: All symbols resolved and database is Flat.");
+                    log("SUCCESS: Values calculated and saved to DB.");
                     render();
                 };
             } catch (e) {
@@ -138,20 +147,21 @@
                 return;
             }
 
-            // UI simply refers to the data - No logic needed here!
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>LTP</th><th>Qty</th><th>P&L</th>
+                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>LTP</th><th>P&L</th><th>P&L%</th>
             </tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                const pnl = (s.qty * s.ltp) - (s.qty * s.avgBuy);
+                // UI refers only to DB fields - NO math here
+                const pnlColor = s.pnl >= 0 ? 'background:#003a20' : 'background:#3a0010';
+                
                 h += `<tr>
                     <td class="td-l"><strong>${s.sym}</strong></td>
                     <td class="td-l" style="color:var(--tx3)">${s.sector}</td>
                     <td>${s.roe}%</td>
                     <td style="font-weight:700">₹${s.ltp}</td>
-                    <td class="u-dim">${s.qty}</td>
-                    <td style="background:${pnl>=0?'#003a20':'#3a0010'};color:#fff">${pnl.toFixed(0)}</td>
+                    <td style="${pnlColor};color:#fff;font-weight:700">${s.pnl}</td>
+                    <td style="${pnlColor};color:#fff">${s.pnlNet}%</td>
                 </tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
