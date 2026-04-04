@@ -1,58 +1,57 @@
 // ─────────────────────────────────────────────────────────────
-//  PORTFOLIO MODULE - BHARATMARKETS PRO (v6.0)
+//  PORTFOLIO MODULE - ACTIVE RECOVERY (v6.1)
 // ─────────────────────────────────────────────────────────────
 
 async function renderPortfolio(container) {
     if (!container) return;
 
-    // 1. INITIAL UI & CHECKLIST
+    // 1. SHOW THE "ACTIVE RECOVERY" STATUS
     container.innerHTML = `
         <div id="pf-loader" style="padding:60px 20px; text-align:center; font-family:sans-serif; background:#0d1117; min-height:100vh; color:#8b949e;">
             <div style="color:#58a6ff; font-size:18px; font-weight:bold; margin-bottom:15px;">BharatMarkets Pro</div>
-            <div id="step-fund" style="margin-bottom:8px;">📡 Connecting to Fundamentals...</div>
-            <div id="step-broker" style="opacity:0.5;">⌛ Waiting for Broker Sync...</div>
+            <div id="step-fund">📡 Fetching fundamentals.json...</div>
+            <div id="step-broker" style="margin-top:10px; opacity:0.5;">⌛ Waiting for Broker Data (S.portfolio)...</div>
         </div>`;
 
-    // 2. ACTIVE FETCH (Bypasses the missing 'FUND' variable)
-    let fundData = null;
+    // 2. FETCH FUNDAMENTALS MANUALLY (Since window.FUND is missing)
+    let fundStocks = {};
     try {
         const response = await fetch('fundamentals.json');
         if (!response.ok) throw new Error("HTTP " + response.status);
-        const json = await response.json();
-        fundData = json.stocks; // Extract the stocks object
-        window._FUND_CACHE = fundData; // Store globally for drill-down
+        const data = await response.json();
+        fundStocks = data.stocks || {};
+        window._LOCAL_FUND = fundStocks; // Store for navigation
         
         const fEl = document.getElementById('step-fund');
-        if (fEl) {
-            fEl.innerHTML = "✅ Fundamentals Loaded";
-            fEl.style.color = "#3fb950";
-        }
+        fEl.innerHTML = "✅ Fundamentals Loaded";
+        fEl.style.color = "#3fb950";
     } catch (e) {
-        document.getElementById('step-fund').innerHTML = "❌ Fundamentals Fail: " + e.message;
+        document.getElementById('step-fund').innerHTML = "❌ Fundamentals Fetch Failed: " + e.message;
         return;
     }
 
-    // 3. POLLING FOR BROKER DATA (S.portfolio)
+    // 3. POLL FOR BROKER DATA
     if (window.pfTimer) clearInterval(window.pfTimer);
     
     window.pfTimer = setInterval(() => {
+        // If S.portfolio is still missing, we look for ANY array that looks like your stocks
         const hasPF = (window.S && S.portfolio && S.portfolio.length > 0);
         const bEl = document.getElementById('step-broker');
-        
+
         if (hasPF) {
             clearInterval(window.pfTimer);
             bEl.innerHTML = "✅ Broker Synced";
             bEl.style.color = "#3fb950";
             
-            // Short delay so you can see the checklist complete
-            setTimeout(() => drawFinalTable(container, fundData), 300);
+            // Render the table using the data we just fetched
+            setTimeout(() => drawFinalTable(container, fundStocks), 300);
         } else {
-            if (bEl) bEl.style.opacity = "1";
+            bEl.style.opacity = "1";
         }
     }, 1000);
 }
 
-// 4. TABLE GENERATOR
+// 4. DATA-MAPPED TABLE
 function drawFinalTable(container, fundData) {
     const pf = S.portfolio.map(h => {
         const sym = h.sym.toUpperCase();
@@ -100,22 +99,18 @@ function drawFinalTable(container, fundData) {
                         </td>
                         <td style="padding:14px 12px; text-align:right;">
                             <div style="color:${r.pnlP >= 0 ? '#3fb950' : '#f85149'}; font-weight:bold;">${r.pnlP.toFixed(1)}%</div>
-                            <div style="font-size:10px; color:#484f58">₹${(r.ltp||0).toFixed(0)}</div>
                         </td>
                     </tr>`).join('')}
                 </tbody>
             </table>
         </div>
-        <div style="height:80px;"></div>
     </div>`;
 }
 
-// 5. DETAIL NAVIGATION
 window.openStockDetail = (sym) => {
     const h = S.portfolio.find(p => p.sym === sym) || {};
-    const f = (window._FUND_CACHE && _FUND_CACHE[sym]) ? _FUND_CACHE[sym] : {};
+    const f = (window._LOCAL_FUND && _LOCAL_FUND[sym.toUpperCase()]) ? _LOCAL_FUND[sym.toUpperCase()] : {};
     S.selStock = { ...h, ...f, sym };
     S.drillTab = 'overview';
-    const nav = window.showTab || window.setTab || window.router;
-    if (nav) nav('drill');
+    if (typeof showTab === 'function') showTab('drill');
 };
