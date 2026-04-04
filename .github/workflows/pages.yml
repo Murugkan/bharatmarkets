@@ -44,7 +44,6 @@ jobs:
 
       - name: Minify JS modules
         run: |
-          # The list below now includes app-engine and app-boot
           for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js app-engine.js app-boot.js; do
             if [ -f "$f" ]; then
               npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
@@ -52,9 +51,8 @@ jobs:
             fi
           done
 
-      - name: Patch index.html to use minified modules
+      - name: Patch index.html
         run: |
-          # This replaces src="app-engine.js" with src="app-engine.min.js"
           for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings app-engine app-boot; do
             sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/g" index.html
           done
