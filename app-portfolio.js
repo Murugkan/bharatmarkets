@@ -1,62 +1,88 @@
+// =============================================================
+// STEP 1: RELIABLE DATA LOADER (INTEGRATED VERSION)
+// =============================================================
+
 /**
- * BHARATMARKETS PRO - SINGLE STOCK MERGE (v19.0)
- * Objective: Merge Fundamentals and Prices for one specific stock.
+ * Replaces the old 1-hour localStorage logic with a 
+ * Fail-Safe Direct Fetch for fundamentals.json.
+ */
+async function loadFundamentals(forceRefresh) {
+  if (window.pfRefreshing) return;
+  window.pfRefreshing = true;
+
+  try {
+    console.log("📡 [Step 1] Requesting fresh fundamentals...");
+    
+    // Force browser to ignore cache and get the latest Python-generated data
+    const response = await fetch(`./fundamentals.json?v=${Date.now()}`, { 
+      cache: "no-store" 
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+    const stockData = data.stocks || data;
+
+    // 1. Update Global Fund Object
+    window.FUND = stockData;
+    
+    // 2. Re-build the ISIN Map used by the table logic
+    window.ISIN_MAP = {};
+    Object.keys(stockData).forEach(sym => {
+      const s = stockData[sym];
+      if (s && s.isin) window.ISIN_MAP[s.isin] = sym;
+    });
+
+    window.fundLoaded = true;
+    window.pfLastRefresh = Date.now();
+    
+    console.log(`✅ [Step 1] Sync Success: ${Object.keys(stockData).length} stocks ready.`);
+    return true;
+
+  } catch (e) {
+    console.error("❌ [Step 1] Load Failed:", e.message);
+    window.fundLoaded = false;
+    return false;
+  } finally {
+    window.pfRefreshing = false;
+  }
+}
+
+/**
+ * Enhanced renderPortfolio that ensures Step 1 is successful 
+ * before trying to draw the 37-column table.
  */
 async function renderPortfolio(container) {
-    if (!container) return;
+  if (!container) return;
 
-    // Remove app-core/boot overlays to show the result
-    const overlay = document.querySelector('.loading, #sync-overlay');
-    if (overlay) overlay.style.display = 'none';
+  // Kill any existing "Syncing" overlays from the core app
+  const overlay = document.querySelector('.loading, #sync-overlay');
+  if (overlay) overlay.style.display = 'none';
 
-    try {
-        // 1. Fetch both files independently
-        const [fRes, pRes] = await Promise.all([
-            fetch('fundamentals.json?v=' + Date.now()),
-            fetch('prices.json?v=' + Date.now())
-        ]);
-
-        const fData = await fRes.json();
-        const pData = await pRes.ok ? await pRes.json() : { stocks: {} };
-
-        // 2. Identify the target stock (OLECTRA)
-        const sym = "OLECTRA";
-        const f = (fData.stocks || fData)[sym] || {};
-        const p = (pData.stocks || pData)[sym] || {};
-
-        // 3. Render the Merged Data Row
-        container.innerHTML = `
-            <div style="padding:20px; background:#02040a; min-height:100vh; font-family:sans-serif;">
-                <div style="background:#111d30; border:1px solid #58a6ff; border-radius:12px; padding:20px; color:#fff;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                        <div>
-                            <div style="color:#58a6ff; font-weight:bold; font-size:12px; margin-bottom:5px;">MERGED DATA NODE</div>
-                            <h1 style="margin:0; font-size:28px;">${sym}</h1>
-                            <div style="color:#8b949e; font-size:14px; margin-top:4px;">${f.sector || 'N/A'}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:24px; font-weight:bold;">₹${(p.ltp || f.ltp || 0).toFixed(0)}</div>
-                            <div style="color:${(p.change || 0) >= 0 ? '#3fb950' : '#f85149'}; font-weight:bold;">
-                                ${(p.change || 0) >= 0 ? '+' : ''}${(p.change || 0).toFixed(2)}%
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr style="border:0; border-top:1px solid #1e3350; margin:20px 0;">
-
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-                        <div style="background:#0d1117; padding:12px; border-radius:8px;">
-                            <div style="color:#8b949e; font-size:10px;">FUNDAMENTAL ROE</div>
-                            <div style="font-size:18px; font-weight:bold; color:#3fb950;">${f.roe || 'N/A'}%</div>
-                        </div>
-                        <div style="background:#0d1117; padding:12px; border-radius:8px;">
-                            <div style="color:#8b949e; font-size:10px;">PRICE SOURCE</div>
-                            <div style="font-size:16px; font-weight:bold;">${pRes.ok ? 'prices.json' : 'fundamentals.json'}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-    } catch (e) {
-        container.innerHTML = `<div style="color:#f85149; padding:20px;">Merge Failed: ${e.message}</div>`;
+  // If fundamentals aren't loaded yet, trigger the Step 1 loader
+  if (!window.fundLoaded) {
+    container.innerHTML = `<div style="padding:40px;color:var(--bl2);font-family:monospace;">> BOOTING DATA ENGINE...</div>`;
+    const success = await loadFundamentals();
+    if (!success) {
+      container.innerHTML = `<div style="padding:40px;color:var(--rd2);">❌ Step 1 Failure: Could not reach fundamentals.json</div>`;
+      return;
     }
+  }
+
+  // NOW CALL YOUR ORIGINAL TABLE LOGIC
+  // (The rest of this function is your original code from app-portfolio-Nkl.js)
+  
+  if (!S.portfolio || S.portfolio.length === 0) {
+    container.innerHTML = `<div style="padding:40px;text-align:center;color:var(--tx3);">0 Stocks Detected in S.portfolio</div>`;
+    return;
+  }
+
+  // ... [YOUR ORIGINAL TABLE RENDERING LOGIC STARTS HERE] ...
+  // (Paste the rest of your original renderPortfolio function here)
+  // Ensure you include your cellColor, getSignalColor, etc. functions below.
 }
+
+/* NOTE: For this test, ensure you have pasted all your original 
+  helper functions (cellColor, getSignalColor, openStatsModal, etc.) 
+  below this line so the table can render properly.
+*/
