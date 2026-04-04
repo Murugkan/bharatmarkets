@@ -7,47 +7,40 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d;
-            --b1: #1e293b; --gr1: #00f2ff; --gr2: #00e896; --rd2: #ff6b85;
-            --tx1: #f0f6ff; --tx3: #708499;
+            --bg: #04060f; --s1: #0a0e1a; --b1: #1e293b;
+            --gr1: #00f2ff; --gr2: #00e896; --rd2: #ff6b85; --tx1: #f0f6ff; --tx3: #708499;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
         
         /* Debug Console */
-        #debug-log { height: 100px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); line-height: 1.4; }
+        #debug-log { height: 100px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); line-height: 1.5; }
         
-        /* KPI Strip */
-        .kpi-strip { display: flex; background: var(--bg); padding: 25px 20px; gap: 30px; border-bottom: 1px solid #182840; }
-        .kpi-l { font-size: 10px; color: var(--tx3); font-weight: 800; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
-        .kpi-v { font-size: 24px; font-weight: 800; font-family: 'Syne'; color: var(--tx1); }
-
-        /* Table */
-        .bls-table-outer { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 100px; }
+        /* Table Layout */
+        .bls-table-outer { width: 100%; overflow-x: auto; padding-bottom: 100px; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 20; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; }
         .bls-t td { padding: 12px 15px; border-bottom: 1px solid #182840; text-align: right; }
         .th-l, .td-l { text-align: left !important; }
 
         /* Navigation */
-        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); z-index: 100; }
-        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
+        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
 
-        /* P&L Styling from app-portfolio.js */
-        .pnl-cell { font-weight: 700; color: #fff; padding: 4px 8px; border-radius: 2px; }
-        .u-dim { color: var(--tx3); }
+        /* P&L Colors from app-portfolio.js reference */
+        .pnl-pos { background: #003a20; color: #fff; font-weight: 700; }
+        .pnl-neg { background: #3a0010; color: #fff; font-weight: 700; }
     </style>
 </head>
 <body onload="init()">
 
-    <div id="debug-log">System Initializing...</div>
-    
+    <div id="debug-log">Ready to process stock list...</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="showTab('raw', this)">Raw Table</button>
-        <button class="nb" onclick="seedFlatData()">Seed Full DB</button>
+        <button class="nb" onclick="syncPortfolioWithJSON()" style="color:var(--gr1)">Sync Fundamentals</button>
     </nav>
 
     <script src="app-engine.js"></script>
@@ -56,115 +49,113 @@
 
         function log(msg) {
             const l = document.getElementById('debug-log');
-            if (l) l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
+            l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
         }
 
-        // 1. FLAT DB SEEDING: Stores all 9 fields in one record
-        async function seedFlatData() {
-            log("Deleting old records and seeding full 9-field dataset...");
-            const db = await initEngineDB();
-            const tx = db.transaction('UnifiedStocks', 'readwrite');
-            const store = tx.objectStore('UnifiedStocks');
-            
-            store.clear();
+        /**
+         * THE SYNC ENGINE
+         * Loads prices.json and fundamentals.json, then updates the Flat DB
+         */
+        async function syncPortfolioWithJSON() {
+            log("Fetching market data files...");
+            try {
+                const [prices, fundamentals] = await Promise.all([
+                    fetch('prices.json').then(r => r.json()),
+                    fetch('fundamentals.json').then(r => r.json())
+                ]);
 
-            const fullDataset = [
-                { sym: 'HDFCBANK', qty: 20, avgBuy: 1550, ltp: 1420, chg: 0.2, sector: 'Banking', roe: 16.8, pe: 18.2, signal: 'BUY' },
-                { sym: 'RELIANCE', qty: 10, avgBuy: 2450.5, ltp: 2980.2, chg: 1.2, sector: 'Energy', roe: 18.5, pe: 25.4, signal: 'BUY' },
-                { sym: 'TCS', qty: 5, avgBuy: 3200, ltp: 3850, chg: -0.5, sector: 'IT', roe: 35.2, pe: 30.1, signal: 'HOLD' }
-            ];
+                const db = await initEngineDB();
+                const tx = db.transaction('UnifiedStocks', 'readwrite');
+                const store = tx.objectStore('UnifiedStocks');
 
-            fullDataset.forEach(s => store.put(s));
-            
-            tx.oncomplete = () => {
-                log("DB populated: sym, qty, avgBuy, ltp, chg, sector, roe, pe, signal saved.");
-                render();
-            };
+                // Get current user list (Symbols, Qty, Avg)
+                const userStocks = await new Promise(r => {
+                    store.getAll().onsuccess = (e) => r(e.target.result || []);
+                });
+
+                if (userStocks.length === 0) {
+                    log("Aborted: No symbols found in DB. Import symbols first.");
+                    return;
+                }
+
+                log(`Updating ${userStocks.length} symbols with full fundamental data...`);
+
+                userStocks.forEach(stock => {
+                    const f = fundamentals[stock.sym] || {};
+                    const p = prices[stock.sym] || {};
+
+                    // Create the FLAT record (all 9+ fields)
+                    const flatRecord = {
+                        ...stock,
+                        ltp: p.ltp || stock.ltp || 0,
+                        chg: p.chg || stock.chg || 0,
+                        sector: f.sector || '—',
+                        roe: f.roe || 0,
+                        pe: p.pe || 0,
+                        signal: f.signal || 'HOLD',
+                        opm: f.opm || 0,
+                        npm: f.npm || 0
+                    };
+                    store.put(flatRecord);
+                });
+
+                tx.oncomplete = () => {
+                    log("SUCCESS: IndexedDB updated with all JSON fields.");
+                    render();
+                };
+
+            } catch (err) {
+                log("ERROR: Ensure prices.json and fundamentals.json are in the root folder.");
+                console.error(err);
+            }
         }
 
-        // 2. PORTFOLIO RENDERER: Direct map from DB to UI
         async function renderPortfolio(container) {
-            log("Rendering Portfolio from Flat DB...");
             const db = await initEngineDB();
             const stocks = await new Promise(r => {
                 const tx = db.transaction('UnifiedStocks', 'readonly');
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (stocks.length === 0) {
-                container.innerHTML = `<div style="padding:60px; text-align:center;"><button onclick="seedFlatData()" style="padding:15px; background:var(--gr1); border:none; border-radius:8px; font-weight:800;">Seed Database</button></div>`;
+            if (!stocks.length) {
+                container.innerHTML = `<div style="padding:100px; text-align:center; color:var(--tx3)">No Symbols Found.</div>`;
                 return;
             }
 
-            let tInv = 0, tCur = 0;
-            stocks.forEach(s => {
-                tInv += (s.qty * s.avgBuy);
-                tCur += (s.qty * (s.ltp || 0));
-            });
-
-            let h = `
-                <div class="kpi-strip">
-                    <div><div class="kpi-l">INVESTED</div><div class="kpi-v" style="color:#64b5f6">₹${(tInv/100000).toFixed(2)}L</div></div>
-                    <div><div class="kpi-l">MKT VALUE</div><div class="kpi-v">₹${(tCur/100000).toFixed(2)}L</div></div>
-                    <div><div class="kpi-l">TOTAL P&L</div><div class="kpi-v" style="color:${(tCur-tInv)>=0?'var(--gr2)':'var(--rd2)'}">₹${(Math.abs(tCur-tInv)/100000).toFixed(2)}L</div></div>
-                </div>
-                <div class="bls-table-outer">
-                    <table class="bls-t">
-                        <thead>
-                            <tr>
-                                <th class="th-l">Ticker</th>
-                                <th class="th-l">Sector</th>
-                                <th>LTP</th>
-                                <th>ROE%</th>
-                                <th>P/E</th>
-                                <th>Qty</th>
-                                <th>P&L</th>
-                                <th>P&L%</th>
-                                <th>Signal</th>
-                            </tr>
-                        </thead>
-                        <tbody>`;
+            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
+                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>P/E</th><th>LTP</th><th>Qty</th><th>Avg</th><th>P&L</th>
+            </tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                const inv = s.qty * s.avgBuy;
-                const cur = s.qty * (s.ltp || 0);
-                const pnl = cur - inv;
-                const pnlP = (pnl/inv)*100;
-                const pnlBg = pnl >= 0 ? 'background:#003a20' : 'background:#3a0010';
+                const pnl = (s.qty * (s.ltp || 0)) - (s.qty * s.avgBuy);
+                const pnlClass = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
 
-                h += `
-                    <tr>
-                        <td class="td-l"><strong>${s.sym}</strong></td>
-                        <td class="td-l u-dim">${s.sector}</td>
-                        <td style="font-weight:700">₹${s.ltp}</td>
-                        <td style="color:${s.roe > 20 ? 'var(--gr2)' : 'white'}">${s.roe}%</td>
-                        <td>${s.pe}x</td>
-                        <td class="u-dim">${s.qty}</td>
-                        <td style="${pnlBg}" class="pnl-cell">${pnl.toFixed(0)}</td>
-                        <td style="${pnlBg}" class="pnl-cell">${pnlP.toFixed(1)}%</td>
-                        <td style="text-align:center"><span style="font-size:9px; border:1px solid #333; padding:2px 5px">${s.signal}</span></td>
-                    </tr>`;
+                h += `<tr>
+                    <td class="td-l"><strong>${s.sym}</strong><br><span style="font-size:9px;color:var(--tx3)">${s.signal}</span></td>
+                    <td class="td-l" style="color:var(--tx3)">${s.sector}</td>
+                    <td style="color:${s.roe > 15 ? 'var(--gr2)' : 'white'}">${s.roe}%</td>
+                    <td>${s.pe}</td>
+                    <td style="font-weight:700">₹${s.ltp}</td>
+                    <td style="color:var(--tx3)">${s.qty}</td>
+                    <td style="color:var(--tx3)">${s.avgBuy}</td>
+                    <td class="${pnlClass}" style="padding:4px 8px; border-radius:2px">${pnl.toFixed(0)}</td>
+                </tr>`;
             });
 
             container.innerHTML = h + `</tbody></table></div>`;
         }
 
-        // 3. RAW DATA VIEWER: Confirms every field exists in the DB
         async function renderRaw(container) {
-            log("Fetching Raw Table Data...");
             const db = await initEngineDB();
             const stocks = await new Promise(r => {
                 const tx = db.transaction('UnifiedStocks', 'readonly');
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
-
-            if(!stocks.length) { container.innerHTML = "<div style='padding:50px; text-align:center'>DB Empty</div>"; return; }
-
+            if(!stocks.length) return;
             const keys = Object.keys(stocks[0]);
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
             keys.forEach(k => h += `<th class="th-l">${k}</th>`);
             h += `</tr></thead><tbody>`;
-
             stocks.forEach(s => {
                 h += `<tr>`;
                 keys.forEach(k => h += `<td class="td-l">${s[k]}</td>`);
@@ -186,7 +177,7 @@
             else renderRaw(c);
         }
 
-        function init() { log("Application Ready."); render(); }
+        function init() { render(); }
     </script>
 </body>
 </html>
