@@ -7,40 +7,41 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #04060f; --s1: #0a0e1a; --b1: #1e293b;
+            --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b;
             --gr1: #00f2ff; --gr2: #00e896; --rd2: #ff6b85; --tx1: #f0f6ff; --tx3: #708499;
         }
         body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
         
-        /* Debug Console */
-        #debug-log { height: 100px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); line-height: 1.5; }
+        /* Debug Log */
+        #debug-log { height: 80px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 10px; color: var(--gr1); }
         
-        /* Table Layout */
+        /* Portfolio Table */
         .bls-table-outer { width: 100%; overflow-x: auto; padding-bottom: 100px; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; }
         .bls-t td { padding: 12px 15px; border-bottom: 1px solid #182840; text-align: right; }
         .th-l, .td-l { text-align: left !important; }
 
-        /* Navigation */
+        /* Import Area */
+        .import-box { padding: 20px; }
+        #import-area { width: 100%; height: 200px; background: var(--s2); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; font-size: 12px; }
+        .btn-main { width: 100%; padding: 16px; background: var(--gr1); color: #000; border: none; border-radius: 8px; font-weight: 800; margin-top: 10px; cursor: pointer; }
+
+        /* Nav */
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
         .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
-
-        /* P&L Colors from app-portfolio.js reference */
-        .pnl-pos { background: #003a20; color: #fff; font-weight: 700; }
-        .pnl-neg { background: #3a0010; color: #fff; font-weight: 700; }
     </style>
 </head>
 <body onload="init()">
 
-    <div id="debug-log">Ready to process stock list...</div>
+    <div id="debug-log">System Ready. Step 1: Import Symbols.</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
-        <button class="nb" onclick="showTab('raw', this)">Raw Table</button>
-        <button class="nb" onclick="syncPortfolioWithJSON()" style="color:var(--gr1)">Sync Fundamentals</button>
+        <button class="nb" onclick="showTab('import', this)">Import</button>
+        <button class="nb" onclick="syncEverything()" style="color:var(--gr2)">Sync JSON</button>
     </nav>
 
     <script src="app-engine.js"></script>
@@ -52,64 +53,79 @@
             l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
         }
 
-        /**
-         * THE SYNC ENGINE
-         * Loads prices.json and fundamentals.json, then updates the Flat DB
-         */
-        async function syncPortfolioWithJSON() {
-            log("Fetching market data files...");
+        // --- STEP 1: IMPORT SYMBOLS ---
+        async function processImport() {
+            const text = document.getElementById('import-area').value;
+            const lines = text.trim().split('\n');
+            const db = await initEngineDB();
+            const tx = db.transaction('UnifiedStocks', 'readwrite');
+            const store = tx.objectStore('UnifiedStocks');
+
+            let count = 0;
+            lines.forEach(line => {
+                const parts = line.split(/\s+/);
+                if (parts.length >= 3) {
+                    store.put({
+                        sym: parts[0].toUpperCase(),
+                        qty: parseFloat(parts[1]),
+                        avgBuy: parseFloat(parts[2]),
+                        ltp: 0, sector: '—', roe: 0, pe: 0, signal: 'WAIT'
+                    });
+                    count++;
+                }
+            });
+
+            tx.oncomplete = () => {
+                log(`Imported ${count} stocks. Now tap "Sync JSON".`);
+                showTab('portfolio', document.querySelector('.nb'));
+            };
+        }
+
+        // --- STEP 2: SYNC WITH FUNDAMENTALS.JSON ---
+        async function syncEverything() {
+            log("Fetching market files...");
             try {
-                const [prices, fundamentals] = await Promise.all([
-                    fetch('prices.json').then(r => r.json()),
-                    fetch('fundamentals.json').then(r => r.json())
+                const [fData, pData] = await Promise.all([
+                    fetch('fundamentals.json').then(r => r.json()),
+                    fetch('prices.json').then(r => r.json())
                 ]);
 
                 const db = await initEngineDB();
                 const tx = db.transaction('UnifiedStocks', 'readwrite');
                 const store = tx.objectStore('UnifiedStocks');
-
-                // Get current user list (Symbols, Qty, Avg)
-                const userStocks = await new Promise(r => {
+                
+                const holdings = await new Promise(r => {
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                if (userStocks.length === 0) {
-                    log("Aborted: No symbols found in DB. Import symbols first.");
+                if (holdings.length === 0) {
+                    log("ERROR: No symbols in DB. Use Import tab first.");
                     return;
                 }
 
-                log(`Updating ${userStocks.length} symbols with full fundamental data...`);
-
-                userStocks.forEach(stock => {
-                    const f = fundamentals[stock.sym] || {};
-                    const p = prices[stock.sym] || {};
-
-                    // Create the FLAT record (all 9+ fields)
-                    const flatRecord = {
-                        ...stock,
-                        ltp: p.ltp || stock.ltp || 0,
-                        chg: p.chg || stock.chg || 0,
-                        sector: f.sector || '—',
-                        roe: f.roe || 0,
-                        pe: p.pe || 0,
-                        signal: f.signal || 'HOLD',
-                        opm: f.opm || 0,
-                        npm: f.npm || 0
-                    };
-                    store.put(flatRecord);
+                holdings.forEach(h => {
+                    const f = fData[h.sym] || {};
+                    const p = pData[h.sym] || {};
+                    store.put({
+                        ...h,
+                        sector: f.sector || h.sector,
+                        roe: f.roe || h.roe,
+                        pe: p.pe || f.pe || 0,
+                        ltp: p.ltp || h.ltp,
+                        signal: f.signal || 'HOLD'
+                    });
                 });
 
                 tx.oncomplete = () => {
-                    log("SUCCESS: IndexedDB updated with all JSON fields.");
+                    log("Sync Complete! All 9 fields populated.");
                     render();
                 };
-
-            } catch (err) {
-                log("ERROR: Ensure prices.json and fundamentals.json are in the root folder.");
-                console.error(err);
+            } catch (e) {
+                log("Fetch Error. Check if JSON files exist.");
             }
         }
 
+        // --- STEP 3: RENDER VIEWS ---
         async function renderPortfolio(container) {
             const db = await initEngineDB();
             const stocks = await new Promise(r => {
@@ -118,48 +134,25 @@
             });
 
             if (!stocks.length) {
-                container.innerHTML = `<div style="padding:100px; text-align:center; color:var(--tx3)">No Symbols Found.</div>`;
+                container.innerHTML = `<div style="padding:100px;text-align:center">Empty. Go to Import.</div>`;
                 return;
             }
 
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>P/E</th><th>LTP</th><th>Qty</th><th>Avg</th><th>P&L</th>
+                <th class="th-l">Ticker</th><th class="th-l">Sector</th><th>ROE%</th><th>P/E</th><th>LTP</th><th>Qty</th><th>P&L</th>
             </tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                const pnl = (s.qty * (s.ltp || 0)) - (s.qty * s.avgBuy);
-                const pnlClass = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-
+                const pnl = (s.qty * s.ltp) - (s.qty * s.avgBuy);
                 h += `<tr>
-                    <td class="td-l"><strong>${s.sym}</strong><br><span style="font-size:9px;color:var(--tx3)">${s.signal}</span></td>
+                    <td class="td-l"><strong>${s.sym}</strong></td>
                     <td class="td-l" style="color:var(--tx3)">${s.sector}</td>
-                    <td style="color:${s.roe > 15 ? 'var(--gr2)' : 'white'}">${s.roe}%</td>
+                    <td>${s.roe}%</td>
                     <td>${s.pe}</td>
-                    <td style="font-weight:700">₹${s.ltp}</td>
-                    <td style="color:var(--tx3)">${s.qty}</td>
-                    <td style="color:var(--tx3)">${s.avgBuy}</td>
-                    <td class="${pnlClass}" style="padding:4px 8px; border-radius:2px">${pnl.toFixed(0)}</td>
+                    <td>₹${s.ltp}</td>
+                    <td class="u-dim">${s.qty}</td>
+                    <td style="background:${pnl>=0?'#003a20':'#3a0010'};color:#fff">${pnl.toFixed(0)}</td>
                 </tr>`;
-            });
-
-            container.innerHTML = h + `</tbody></table></div>`;
-        }
-
-        async function renderRaw(container) {
-            const db = await initEngineDB();
-            const stocks = await new Promise(r => {
-                const tx = db.transaction('UnifiedStocks', 'readonly');
-                tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
-            });
-            if(!stocks.length) return;
-            const keys = Object.keys(stocks[0]);
-            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
-            keys.forEach(k => h += `<th class="th-l">${k}</th>`);
-            h += `</tr></thead><tbody>`;
-            stocks.forEach(s => {
-                h += `<tr>`;
-                keys.forEach(k => h += `<td class="td-l">${s[k]}</td>`);
-                h += `</tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
         }
@@ -167,14 +160,20 @@
         function showTab(t, btn) {
             curTab = t;
             document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+            if (btn) btn.classList.add('active');
             render();
         }
 
         function render() {
             const c = document.getElementById('content');
-            if(curTab === 'portfolio') renderPortfolio(c);
-            else renderRaw(c);
+            if (curTab === 'import') {
+                c.innerHTML = `<div class="import-box">
+                    <textarea id="import-area" placeholder="HDFCBANK 20 1550\nRELIANCE 10 2450"></textarea>
+                    <button class="btn-main" onclick="processImport()">SAVE SYMBOLS</button>
+                </div>`;
+            } else {
+                renderPortfolio(c);
+            }
         }
 
         function init() { render(); }
