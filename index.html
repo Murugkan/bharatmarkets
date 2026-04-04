@@ -3,59 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets Pro | 33-Field Engine</title>
+    <title>BharatMarkets Pro | End-to-End Stable</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b;
             --gr1: #00f2ff; --gr2: #00e896; --tx1: #f0f6ff; --tx3: #708499;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
         
-        /* Debug Console */
-        #debug-log { height: 100px; overflow-y: auto; background: #000; border-bottom: 2px solid var(--gr1); font-family: 'JetBrains Mono'; font-size: 11px; padding: 15px; color: var(--gr1); line-height: 1.6; }
+        /* High-Visibility Debug Console */
+        #debug-log { height: 140px; overflow-y: auto; background: #000; border-bottom: 2px solid var(--gr1); font-family: 'JetBrains Mono'; font-size: 11px; padding: 15px; color: var(--gr1); line-height: 1.5; }
         
-        /* The Mega-Table */
-        .bls-table-outer { width: 100%; overflow: auto; padding-bottom: 100px; height: calc(100vh - 250px); }
-        .bls-t { border-collapse: collapse; font-size: 10px; font-family: 'JetBrains Mono'; white-space: nowrap; }
+        .bls-table-outer { width: 100%; overflow: auto; padding-bottom: 100px; height: calc(100vh - 290px); }
+        .bls-t { border-collapse: collapse; font-size: 10px; font-family: 'JetBrains Mono'; white-space: nowrap; min-width: 100%; }
         .bls-t th { background: #16213e; color: var(--gr1); padding: 12px 15px; text-align: left; border: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; text-transform: uppercase; }
         .bls-t td { padding: 10px 15px; border: 1px solid #182840; color: #fff; }
-        .bls-t tr:nth-child(even) { background: rgba(255,255,255,0.02); }
-        .bls-t tr:hover { background: rgba(0,242,255,0.05); }
 
-        /* Nav */
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
         .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
-        
         .btn-sync { background: var(--gr2) !important; color: #000 !important; font-weight: 900; }
+        
         .import-box { padding: 20px; }
         #import-area { width: 100%; height: 150px; background: var(--s2); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; }
     </style>
 </head>
 <body onload="init()">
 
-    <div id="debug-log">READY. IMPORT SYMBOLS THEN CLICK 'BAKE 33 FIELDS'.</div>
+    <div id="debug-log">SYSTEM ONLINE. IMPORT SYMBOLS THEN 'FULL BAKE'.</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="showTab('raw', this)">33 Fields View</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb btn-sync" onclick="bakeAllFields()">BAKE 33 FIELDS</button>
+        <button class="nb btn-sync" onclick="bakeAndVerify()">FULL BAKE</button>
     </nav>
 
     <script src="app-engine.js"></script>
     <script>
         let curTab = 'portfolio';
 
-        function log(msg) {
+        function log(msg, color = "#00f2ff") {
             const l = document.getElementById('debug-log');
-            l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
+            l.innerHTML = `<div><span style="color:${color}">> ${msg}</span></div>` + l.innerHTML;
         }
 
-        async function bakeAllFields() {
-            log("FETCHING ALL JSON SOURCES...");
+        // END-TO-END DATA EXTRACTOR
+        function extractTickerData(sourceObj, ticker) {
+            if (!sourceObj) return null;
+            // Check flat
+            if (sourceObj[ticker]) return sourceObj[ticker];
+            // Check common wrappers
+            const wrappers = ['data', 'stocks', 'results', 'market'];
+            for (let w of wrappers) {
+                if (sourceObj[w] && sourceObj[w][ticker]) return sourceObj[w][ticker];
+            }
+            return null;
+        }
+
+        async function bakeAndVerify() {
+            log("STARTING END-TO-END BAKE...", "#fff");
             try {
                 const [fData, pData, sMaster, sMap] = await Promise.all([
                     fetch('fundamentals.json').then(r => r.json()),
@@ -72,40 +81,46 @@
                     store.getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                if (!holdings.length) return log("ABORTED: DB is empty.");
+                if (holdings.length === 0) return log("FAIL: No symbols in DB. Use Import tab.", "#ff4d6d");
 
                 holdings.forEach(h => {
-                    const resolvedSym = sMap.overrides[h.sym] || h.sym;
-                    const cleanKey = resolvedSym.split('.')[0];
-                    const variants = [resolvedSym, `${resolvedSym}.NS`, `${resolvedSym}.BO`, cleanKey];
+                    // 1. Resolve through Map
+                    const mapped = sMap.overrides[h.sym] || h.sym;
+                    const clean = mapped.split('.')[0];
+                    const variations = [mapped, `${mapped}.NS`, `${mapped}.BO`, clean];
+
+                    let foundF = null, foundP = null;
                     
-                    let fundEntry = {}, priceEntry = {};
-                    for (let v of variants) {
-                        if (fData[v]) fundEntry = fData[v];
-                        if (pData[v]) priceEntry = pData[v];
+                    // 2. Scan Variations
+                    for (let v of variations) {
+                        if (!foundF) foundF = extractTickerData(fData, v);
+                        if (!foundP) foundP = extractTickerData(pData, v);
                     }
 
-                    const master = sMaster.find(m => m.sym === h.sym || m.sym === cleanKey) || {};
+                    const master = sMaster.find(m => m.sym === h.sym || m.sym === clean) || {};
 
-                    // BAKE EVERYTHING: This spreads all properties from the JSON into the DB record
-                    const bakedRecord = {
-                        ...h,           // User Qty/Avg
-                        ...master,      // Sector/Name/ISIN
-                        ...fundEntry,   // ALL 33+ Financial Fields
-                        ...priceEntry,  // LTP/Change
-                        sym: resolvedSym,
-                        bakedAt: new Date().toLocaleTimeString()
+                    // 3. Flatten All Fields
+                    const finalRecord = {
+                        ...h,
+                        ...master,
+                        ...foundF,
+                        ...foundP,
+                        sym: mapped, // Standardize to the mapped ticker
+                        sync_status: foundF ? "SUCCESS" : "NO_FUNDAMENTALS"
                     };
 
-                    store.put(bakedRecord);
+                    if (!foundF) log(`WARN: ${h.sym} not found in fundamentals.json`, "#ffbd2e");
+                    
+                    store.put(finalRecord);
                 });
 
                 tx.oncomplete = () => {
-                    log("SUCCESS: All fields merged into Flat DB.");
+                    log("BAKE COMPLETE: Open '33 Fields View' to see every column.", "#00e896");
                     render();
                 };
             } catch (e) {
-                log("SYNC ERROR: Check console (F12) for file path issues.");
+                log("FATAL: Fetch failed. Check if JSONs are in the root folder.", "#ff4d6d");
+                console.error(e);
             }
         }
 
@@ -116,27 +131,23 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (!stocks.length) { container.innerHTML = "<div style='padding:50px'>No data to show.</div>"; return; }
+            if (!stocks.length) return container.innerHTML = "<div style='padding:50px'>Import data first.</div>";
 
-            // AUTO-DISCOVERY: Get every unique key from across ALL stocks in the DB
-            const allKeys = new Set();
-            stocks.forEach(s => Object.keys(s).forEach(k => allKeys.add(k)));
-            const keys = Array.from(allKeys);
+            // Header Discovery
+            const headerSet = new Set();
+            stocks.forEach(s => Object.keys(s).forEach(k => headerSet.add(k)));
+            const headers = Array.from(headerSet);
 
-            let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
-            keys.forEach(k => h += `<th>${k}</th>`);
-            h += `</tr></thead><tbody>`;
+            let html = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>`;
+            headers.forEach(h => html += `<th>${h}</th>`);
+            html += `</tr></thead><tbody>`;
 
             stocks.forEach(s => {
-                h += `<tr>`;
-                keys.forEach(k => {
-                    let val = s[k];
-                    if (typeof val === 'object') val = JSON.stringify(val);
-                    h += `<td>${val !== undefined ? val : '—'}</td>`;
-                });
-                h += `</tr>`;
+                html += `<tr>`;
+                headers.forEach(h => html += `<td>${s[h] !== undefined ? s[h] : '—'}</td>`);
+                html += `</tr>`;
             });
-            container.innerHTML = h + `</tbody></table></div>`;
+            container.innerHTML = html + `</tbody></table></div>`;
         }
 
         async function renderPortfolio(container) {
@@ -146,10 +157,10 @@
                 tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
             });
 
-            if (!stocks.length) { container.innerHTML = "<div style='padding:100px;text-align:center'>Empty.</div>"; return; }
+            if (!stocks.length) return container.innerHTML = "<div style='padding:100px;text-align:center'>Empty.</div>";
 
             let h = `<div class="bls-table-outer"><table class="bls-t"><thead><tr>
-                <th>Ticker</th><th>Sector</th><th>LTP</th><th>ROE%</th><th>P/E</th><th>Signal</th>
+                <th>Ticker</th><th>Sector</th><th>LTP</th><th>ROE%</th><th>Status</th>
             </tr></thead><tbody>`;
 
             stocks.forEach(s => {
@@ -158,8 +169,7 @@
                     <td>${s.sector || '—'}</td>
                     <td>${s.ltp || 0}</td>
                     <td>${s.roe || 0}%</td>
-                    <td>${s.pe || 0}</td>
-                    <td>${s.signal || 'HOLD'}</td>
+                    <td style="color:${s.sync_status==='SUCCESS'?'#00e896':'#ff4d6d'}">${s.sync_status}</td>
                 </tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
@@ -176,7 +186,7 @@
             const c = document.getElementById('content');
             if (curTab === 'import') {
                 c.innerHTML = `<div class="import-box">
-                    <textarea id="import-area" placeholder="HDFCBANK 10 1450"></textarea>
+                    <textarea id="import-area" placeholder="ZINKA 100 500"></textarea>
                     <button class="nb btn-sync" style="width:100%;margin-top:10px;border-radius:8px" onclick="processImport()">SAVE SYMBOLS</button>
                 </div>`;
             } else if (curTab === 'raw') {
@@ -188,15 +198,14 @@
 
         async function processImport() {
             const text = document.getElementById('import-area').value;
-            const lines = text.trim().split('\n');
             const db = await initEngineDB();
             const tx = db.transaction('UnifiedStocks', 'readwrite');
             const store = tx.objectStore('UnifiedStocks');
-            lines.forEach(line => {
+            text.trim().split('\n').forEach(line => {
                 const p = line.split(/\s+/);
                 if (p.length >= 3) store.put({ sym: p[0].toUpperCase(), qty: parseFloat(p[1]), avgBuy: parseFloat(p[2]) });
             });
-            tx.oncomplete = () => { log("Imported. Tap BAKE."); showTab('portfolio', document.querySelector('.nb')); };
+            tx.oncomplete = () => { log("Imported. Tap FULL BAKE."); showTab('portfolio', document.querySelector('.nb')); };
         }
 
         function init() { render(); }
