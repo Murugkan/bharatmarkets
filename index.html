@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>BharatMarkets Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600&family=Syne:wght@700;800&display=swap" rel="stylesheet">
     <style>
@@ -12,28 +11,28 @@
             --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd2: #ff4d4d;
             --tx1: #ffffff; --tx3: #708499;
         }
-        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--tx1); font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         
         /* Navigation */
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); z-index: 1000; }
-        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 16px 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        .nb.active { color: var(--gr1); }
+        .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 16px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; transition: 0.2s; }
+        .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
         
         /* Content */
         #content { min-height: 100vh; padding-bottom: 100px; }
         
-        /* Debug Console */
-        #debug-window { position: fixed; top: 0; left: 0; width: 100%; height: 200px; background: rgba(0,0,0,0.95); border-bottom: 1px solid var(--b1); font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 2000; padding: 10px; display: none; box-sizing: border-box; }
-        
         /* UI Components */
         .card { background: var(--s2); border: 1px solid var(--b1); border-radius: 14px; padding: 16px; margin: 0 16px 12px; display: flex; justify-content: space-between; align-items: center; }
-        .summary-box { padding: 30px 20px; background: linear-gradient(180deg, var(--s1) 0%, var(--bg) 100%); border-bottom: 1px solid var(--b1); margin-bottom: 20px; }
-        .btn-import { background: var(--gr1); color: var(--bg); border: none; width: 100%; padding: 18px; border-radius: 14px; font-weight: 800; font-family: 'Syne'; margin-top: 20px; }
+        .summary-box { padding: 35px 20px; background: linear-gradient(180deg, var(--s1) 0%, var(--bg) 100%); border-bottom: 1px solid var(--b1); margin-bottom: 20px; }
+        .btn-main { background: var(--gr1); color: var(--bg); border: none; width: 100%; padding: 18px; border-radius: 14px; font-weight: 800; font-family: 'Syne'; margin-top: 10px; cursor: pointer; }
         
-        /* Bottom Panel */
-        .panel { position: fixed; bottom: -100%; left: 0; width: 100%; background: var(--s1); border-radius: 20px 20px 0 0; transition: bottom 0.3s ease; z-index: 1500; padding: 20px; box-sizing: border-box; padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
+        /* Panels */
+        .panel { position: fixed; bottom: -100%; left: 0; width: 100%; background: var(--s1); border-radius: 24px 24px 0 0; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 1500; padding: 25px; box-sizing: border-box; padding-bottom: calc(30px + env(safe-area-inset-bottom)); border-top: 1px solid var(--b1); }
         .panel.open { bottom: 0; }
-        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; z-index: 1400; }
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; z-index: 1400; backdrop-filter: blur(4px); }
+        
+        /* Debug Console */
+        #debug-window { position: fixed; top: 0; left: 0; width: 100%; height: 180px; background: rgba(0,0,0,0.95); border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono', monospace; font-size: 10px; overflow-y: auto; z-index: 2000; padding: 12px; display: none; box-sizing: border-box; }
     </style>
 </head>
 <body onload="init()">
@@ -42,32 +41,32 @@
     <div id="content"></div>
     <div id="overlay" class="overlay" onclick="closePanel()"></div>
     
-    <div id="import-panel" class="panel">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
-            <span style="font-family:'Syne'; font-size:18px; font-weight:800">Import Portfolio</span>
-            <button onclick="closePanel()" style="background:none; border:none; color:var(--tx3); font-size:20px">✕</button>
+    <div id="action-panel" class="panel">
+        <div id="panel-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+            <span id="panel-title" style="font-family:'Syne'; font-size:20px; font-weight:800">Action</span>
+            <button onclick="closePanel()" style="background:none; border:none; color:var(--tx3); font-size:24px">✕</button>
         </div>
-        <textarea id="import-area" placeholder="RELIANCE 10&#10;TCS 5" style="width:100%; height:150px; background:var(--s2); border:1px solid var(--b1); color:white; border-radius:12px; padding:15px; box-sizing:border-box; font-family:monospace; outline:none"></textarea>
-        <button class="btn-import" onclick="processImport()">PROCESS & SAVE</button>
+        <div id="panel-body"></div>
     </div>
 
     <nav id="nav">
-        <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
-        <button class="nb" onclick="openPanel()">Import</button>
-        <button class="nb" onclick="toggleDebug()">Debug</button>
+        <button class="nb active" onclick="showTab('portfolio', this)">💼 Portfolio</button>
+        <button class="nb" onclick="showTab('watchlist', this)">👁 Watch</button>
+        <button class="nb" onclick="openImport()">⬆ Import</button>
+        <button class="nb" onclick="toggleDebug()">⚙ Debug</button>
     </nav>
 
     <script src="app-engine.js"></script>
 
     <script>
         /* ═══════════════════════════════════════════════════════════
-           UNIFIED LOGIC (Core + Portfolio + Import)
+           STATE & CORE LOGIC
         ═══════════════════════════════════════════════════════════ */
         let currentTab = 'portfolio';
 
         function log(msg, type = 'info') {
             const dbg = document.getElementById('debug-window');
-            if (dbg) dbg.innerHTML = `<div><span style="color:#708499">${new Date().toLocaleTimeString()}</span> [${type}] ${msg}</div>` + dbg.innerHTML;
+            if (dbg) dbg.innerHTML = `<div>[${type}] ${msg}</div>` + dbg.innerHTML;
             console.log(`[${type}] ${msg}`);
         }
 
@@ -76,7 +75,6 @@
             dbg.style.display = dbg.style.display === 'none' ? 'block' : 'none';
         }
 
-        // 1. NAVIGATION
         async function showTab(t, btn) {
             currentTab = t;
             document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
@@ -86,13 +84,15 @@
 
         async function render() {
             const container = document.getElementById('content');
-            container.innerHTML = ''; // Clear for refresh
+            container.innerHTML = ''; 
             if (currentTab === 'portfolio') await renderPortfolio(container);
+            if (currentTab === 'watchlist') await renderWatchlist(container);
         }
 
-        // 2. PORTFOLIO RENDERER
+        /* ═══════════════════════════════════════════════════════════
+           PORTFOLIO MODULE
+        ═══════════════════════════════════════════════════════════ */
         async function renderPortfolio(container) {
-            log("Portfolio: Fetching...");
             try {
                 const db = await initEngineDB();
                 const stocks = await new Promise(r => {
@@ -100,81 +100,71 @@
                     tx.objectStore('UnifiedStocks').getAll().onsuccess = (e) => r(e.target.result || []);
                 });
 
-                log(`Portfolio: Found ${stocks.length} stocks`);
+                let html = `<div class="summary-box">
+                    <div style="font-size:11px; color:var(--tx3); font-weight:800; text-transform:uppercase; letter-spacing:1px">Current Portfolio</div>
+                    <div style="font-family:'Syne'; font-size:38px; font-weight:800; margin-top:5px">${stocks.length} <span style="font-size:18px; color:var(--tx3)">Stocks</span></div>
+                </div>`;
 
                 if (stocks.length === 0) {
-                    container.innerHTML = `<div style="padding:100px 20px; text-align:center;"><div style="font-size:50px">📁</div><p style="color:var(--tx3)">DB is Empty. Use Import.</p></div>`;
-                    return;
-                }
-
-                let html = `
-                    <div class="summary-box">
-                        <div style="font-size:11px; color:var(--tx3); font-weight:700; text-transform:uppercase">My Holdings</div>
-                        <div style="font-family:'Syne'; font-size:36px; font-weight:800; margin-top:5px">${stocks.length} <span style="font-size:16px; color:var(--tx3)">Stocks</span></div>
-                    </div>`;
-
-                stocks.forEach(s => {
-                    html += `
-                        <div class="card">
-                            <div>
-                                <div style="font-family:'Syne'; font-weight:800; font-size:17px">${s.sym}</div>
-                                <div style="font-size:12px; color:var(--tx3); margin-top:4px">Qty: ${s.qty}</div>
-                            </div>
-                            <div style="text-align:right">
-                                <div style="font-family:'JetBrains Mono'; font-weight:600">₹${Number(s.ltp || 0).toLocaleString('en-IN')}</div>
-                                <div style="font-size:11px; color:${(s.chg || 0) >= 0 ? 'var(--gr2)' : 'var(--rd2)'}; font-weight:700; margin-top:4px">
-                                    ${(s.chg || 0) >= 0 ? '▲' : '▼'} ${Math.abs(s.chg || 0).toFixed(2)}%
-                                </div>
-                            </div>
+                    html += `<div style="padding:50px; text-align:center; color:var(--tx3)">No holdings. Tap Import to add.</div>`;
+                } else {
+                    stocks.forEach(s => {
+                        html += `<div class="card">
+                            <div><div style="font-family:'Syne'; font-weight:800; font-size:18px">${s.sym}</div><div style="font-size:12px; color:var(--tx3); margin-top:4px">Qty: ${s.qty}</div></div>
+                            <div style="text-align:right"><div style="font-family:'JetBrains Mono'; font-weight:600">₹${Number(s.ltp || 0).toLocaleString('en-IN')}</div>
+                            <div style="font-size:11px; color:${(s.chg || 0) >= 0 ? 'var(--gr2)' : 'var(--rd2)'}; font-weight:800; margin-top:4px">${(s.chg || 0) >= 0 ? '▲' : '▼'} ${Math.abs(s.chg || 0).toFixed(2)}%</div></div>
                         </div>`;
-                });
+                    });
+                }
                 container.innerHTML = html;
-            } catch (e) {
-                log("Render Error: " + e, "error");
-            }
+            } catch (e) { log("Port Render Error", "error"); }
         }
 
-        // 3. IMPORT LOGIC
+        /* ═══════════════════════════════════════════════════════════
+           WATCHLIST MODULE
+        ═══════════════════════════════════════════════════════════ */
+        async function renderWatchlist(container) {
+            container.innerHTML = `<div class="summary-box">
+                <div style="font-size:11px; color:var(--tx3); font-weight:800; text-transform:uppercase; letter-spacing:1px">Live Watchlist</div>
+                <div style="font-family:'Syne'; font-size:38px; font-weight:800; margin-top:5px">Market <span style="font-size:18px; color:var(--tx3)">Watch</span></div>
+                <button class="btn-main" style="margin-top:20px; padding:12px;" onclick="openAddWatch()">+ Add Symbol</button>
+            </div><div id="watch-list" style="padding:0 0 100px 0"></div>`;
+            
+            // Note: In a full app, you'd fetch specific watchlist rows from IndexedDB here.
+            log("Watchlist Initialized");
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           IMPORT & ACTIONS
+        ═══════════════════════════════════════════════════════════ */
+        function openImport() {
+            document.getElementById('panel-title').innerText = "Import Portfolio";
+            document.getElementById('panel-body').innerHTML = `
+                <textarea id="import-area" placeholder="RELIANCE 10" style="width:100%; height:150px; background:var(--s2); border:1px solid var(--b1); color:white; border-radius:12px; padding:15px; box-sizing:border-box; font-family:monospace; outline:none"></textarea>
+                <button class="btn-main" onclick="processImport()">PROCESS & SAVE</button>`;
+            openPanel();
+        }
+
         async function processImport() {
             const area = document.getElementById('import-area');
             const lines = area.value.split('\n');
             const stocks = [];
-
             lines.forEach(l => {
                 const p = l.trim().split(/\s+/);
-                if (p.length >= 2) stocks.push({ 
-                    sym: p[0].toUpperCase().replace(/[^A-Z0-9]/g, ''), 
-                    qty: parseInt(p[1]),
-                    ltp: 0, chg: 0, marketValue: 0
-                });
+                if (p.length >= 2) stocks.push({ sym: p[0].toUpperCase(), qty: parseInt(p[1]), ltp: 0, chg: 0 });
             });
-
             if (stocks.length > 0) {
                 const db = await initEngineDB();
                 const tx = db.transaction('UnifiedStocks', 'readwrite');
                 stocks.forEach(s => tx.objectStore('UnifiedStocks').put(s));
-                tx.oncomplete = () => {
-                    log(`✅ Imported ${stocks.length} stocks.`);
-                    closePanel();
-                    showTab('portfolio');
-                };
+                tx.oncomplete = () => { log("Import Complete"); closePanel(); render(); };
             }
         }
 
-        // 4. UI UTILS
-        function openPanel() {
-            document.getElementById('import-panel').classList.add('open');
-            document.getElementById('overlay').style.display = 'block';
-        }
-        function closePanel() {
-            document.getElementById('import-panel').classList.remove('open');
-            document.getElementById('overlay').style.display = 'none';
-        }
+        function openPanel() { document.getElementById('action-panel').classList.add('open'); document.getElementById('overlay').style.display = 'block'; }
+        function closePanel() { document.getElementById('action-panel').classList.remove('open'); document.getElementById('overlay').style.display = 'none'; }
 
-        function init() {
-            log("System Unified. Ready.");
-            render();
-        }
+        function init() { log("Unified System Ready."); render(); }
     </script>
 </body>
 </html>
