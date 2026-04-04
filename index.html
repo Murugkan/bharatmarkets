@@ -1,71 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black"/>
-<meta name="theme-color" content="#04060d"/>
-<title>BharatMarkets Pro</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-<style>
-:root{
-  --bg:#02040a; --s1:#070c18; --s2:#0d1525; --card:#111d30;
-  --b1:#182840; --b2:#1e3350; --b3:#263d5c;
-  --tx1:#ffffff; --tx2:#d1dce5; --tx3:#708499;
-  --gr1:#00f2ff; --gr2:#00d084; --rd1:#ff3b30; --rd2:#ff6b6b;
-}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;padding:0;background:var(--bg);color:var(--tx1);font-family:'DM Sans',sans-serif;overflow-x:hidden}
-#content{padding-bottom:100px;min-height:100vh}
-
-/* Nav Bar */
-#nav{position:fixed;bottom:0;left:0;right:0;height:75px;background:rgba(7,12,24,0.95);backdrop-filter:blur(15px);display:flex;justify-content:space-around;padding:10px 5px;border-top:1px solid var(--b1);z-index:1000}
-.nb{background:none;border:none;color:var(--tx3);display:flex;flex-direction:column;align-items:center;font-size:10px;font-weight:600;gap:4px;transition:0.2s}
-.nb.active{color:var(--gr1)}
-.nb-ico{font-size:20px;margin-bottom:2px}
-
-/* Panels */
-.bottom-panel{position:fixed;bottom:0;left:0;right:0;background:var(--s1);border-radius:20px 20px 0 0;transform:translateY(100%);transition:transform 0.4s cubic-bezier(0.18,0.89,0.32,1.28);z-index:2000;display:flex;flex-direction:column;max-height:85vh;box-shadow:0 -10px 40px rgba(0,0,0,0.5)}
-.bottom-panel.open{transform:translateY(0)}
-.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:none;z-index:1500}
-#toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--b3);padding:10px 20px;border-radius:30px;font-size:12px;z-index:5000;display:none}
-
-/* Debug Window */
-#debug-window{display:none;position:fixed;bottom:80px;left:10px;right:10px;height:250px;background:#000;color:#00ff00;font-family:'JetBrains Mono';font-size:10px;padding:10px;border-radius:8px;z-index:9998;border:1px solid #333;overflow:hidden}
-</style>
-</head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BharatMarkets Pro</title>
+    </head>
 <body>
 
 <div id="content"></div>
 
 <div id="nav">
-  <button class="nb active" onclick="showTab('portfolio',this)"><span class="nb-ico">💼</span>Portfolio</button>
-  <button class="nb" onclick="showTab('watchlist',this)"><span class="nb-ico">👁</span>Watch</button>
-  <button class="nb" onclick="showTab('analysis',this)"><span class="nb-ico">🔬</span>Analysis</button>
-  <button class="nb" onclick="showTab('upload',this)"><span class="nb-ico">⬆</span>Import</button>
+  <button class="nb active" onclick="showTab('portfolio',this)">💼Portfolio</button>
+  <button class="nb" onclick="showTab('watchlist',this)">👁Watch</button>
+  <button class="nb" onclick="showTab('analysis',this)">🔬Analysis</button>
+  <button class="nb" onclick="showTab('upload',this)">⬆Import</button>
 </div>
 
 <div class="overlay" id="ov" onclick="closePanel()"></div>
 <div class="bottom-panel" id="import-panel">
-  <div style="width:40px;height:4px;background:var(--b3);border-radius:2px;margin:12px auto 8px"></div>
-  <div style="padding:0 16px 12px;display:flex;justify-content:space-between;align-items:center">
-    <span style="font-family:'Syne';font-weight:700">📂 Import Portfolio</span>
-    <button onclick="closePanel()" style="background:none;border:none;color:var(--tx3);font-size:20px">✕</button>
-  </div>
-  <div class="panel-body" id="import-panel-body" style="padding:0 16px 24px"></div>
+  <div id="import-panel-body"></div>
 </div>
 
 <div id="toast"></div>
 
-<button onclick="toggleDebug()" style="position:fixed;top:10px;right:10px;z-index:9999;background:var(--rd1);color:white;border:none;border-radius:4px;padding:4px 8px;font-size:10px;opacity:0.6">DEBUG</button>
+<button onclick="toggleDebug()" style="position:fixed; top:10px; right:10px; z-index:9999; background:#ff3b30; color:white; border:none; padding:4px 8px; font-size:10px; opacity:0.6">DEBUG</button>
 
-<div id="debug-window">
-    <div style="display:flex;justify-content:space-between;border-bottom:1px solid #333;padding-bottom:5px;margin-bottom:5px">
-        <span>SYSTEM LOGS</span>
-        <span onclick="document.getElementById('debug-console').innerHTML=''">CLEAR</span>
-    </div>
-    <div id="debug-console" style="height:210px;overflow-y:auto"></div>
+<div id="debug-window" style="display:none; position:fixed; bottom:80px; left:10px; right:10px; height:200px; background:black; color:#00ff00; font-family:monospace; font-size:10px; padding:10px; z-index:9998; border:1px solid #333; overflow-y:auto">
+    <div id="debug-console"></div>
 </div>
 
 <script src="app-core.js"></script>
