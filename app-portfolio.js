@@ -91,7 +91,7 @@ const SECTOR_MAP = {
 };
 
 // ─────────────────────────────────────────────────────────────
-//  SECTION 1 — Pure utility functions (no DOM, no globals)
+//  SECTION 1 — Pure utility functions
 // ─────────────────────────────────────────────────────────────
 
 function cellColor(val, goodAbove, badBelow) {
@@ -278,7 +278,7 @@ function sortRows(rows, skey, sdir){
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SECTION 2 — HTML fragment builders (no DOM writes)
+//  SECTION 2 — HTML fragment builders
 // ─────────────────────────────────────────────────────────────
 
 function sigBadge(sig){
@@ -303,7 +303,6 @@ function renderTableHead(){
   }).join('');
   return `<thead><tr>${ths}</tr></thead>`;
 }
-
 function renderKpiStrip(t, pf){
   const pnlUp=t.totalPnL>=0, dayUp=t.dayPnL>=0;
   const pCol=pnlUp?'#00e896':'#ff6b85', dCol=dayUp?'#00e896':'#ff6b85';
@@ -533,7 +532,7 @@ ${renderFundBanner()}
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SECTION 4 — Sort / filter controls (event handlers)
+//  SECTION 4 — Sort / filter controls
 // ─────────────────────────────────────────────────────────────
 
 function setPfFilter(f){S.pfFilter=f;if(S.curTab==='portfolio')render();}
@@ -647,13 +646,8 @@ async function refreshPortfolioData(){
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SECTION 6 — Market hours & auto-refresh timers
+//  SECTION 6 — Market hours & timers
 // ─────────────────────────────────────────────────────────────
-
-let lastActivity=Date.now();
-['touchstart','mousedown','scroll','keydown','visibilitychange'].forEach(evt=>{
-  document.addEventListener(evt,()=>{lastActivity=Date.now();},{passive:true});
-});
 
 function isMarketHours(){
   const ist=new Date(Date.now()+5.5*60*60*1000);
@@ -673,7 +667,7 @@ setInterval(()=>{
 },5*60*1000);
 
 // ─────────────────────────────────────────────────────────────
-//  SECTION 7 — Stock drill-down & portfolio management
+//  SECTION 7 — Drill-down
 // ─────────────────────────────────────────────────────────────
 
 function openPortfolioStock(sym){
