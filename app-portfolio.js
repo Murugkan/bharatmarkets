@@ -3,8 +3,8 @@ if (typeof window.pfRefreshing === 'undefined') window.pfRefreshing = false;
 if (typeof window.fundLoaded === 'undefined') window.fundLoaded = false;
 
 /**
- * STEP 1 & 2: THE DATA ENGINE
- * Fetches Master Symbols and Fundamental Data
+ * STEP 1: THE DATA ENGINE
+ * Fetches Master Symbols and Fundamental Data with Cache Busting
  */
 async function loadFundamentals() {
   if (window.pfRefreshing) return;
@@ -110,10 +110,10 @@ async function renderPortfolio(container) {
     // Attempt match via Symbol or ISIN
     const f = window.FUND[h.sym] || (h.isin ? window.FUND[window.ISIN_MAP[h.isin]] : null) || {};
     
-    // Field Extraction
+    // Field Extraction based on fundamentals.json structure
     const roe = f.roe !== undefined ? f.roe : '—';
-    const opm = f.opm !== undefined ? f.opm : '—';
-    const ltp = f.ltp || f.price || 0;
+    const opm = f.opm_pct !== undefined ? f.opm_pct : '—';
+    const ltp = f.ltp || 0;
     
     // Dynamic Styling
     const rowBg = index % 2 === 0 ? 'transparent' : '#0d1117';
@@ -125,7 +125,7 @@ async function renderPortfolio(container) {
               <td style="padding:12px; color:#8b949e;">${h.sector || f.sector || '—'}</td>
               <td style="padding:12px; text-align:center; font-weight:bold; color:${roeColor}">${roe !== '—' ? roe + '%' : '—'}</td>
               <td style="padding:12px; text-align:center; color:${opmColor}">${opm !== '—' ? opm + '%' : '—'}</td>
-              <td style="padding:12px; text-align:right; font-weight:bold; color:#fff;">₹${Number(ltp).toLocaleString('en-IN')}</td>
+              <td style="padding:12px; text-align:right; font-weight:bold; color:#fff;">₹${Number(ltp).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
             </tr>`;
   });
 
