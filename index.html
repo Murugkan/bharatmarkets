@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Unified Flat Engine</title>
+    <title>BharatMarkets | 33-Field Unified Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -12,16 +12,16 @@
         }
         body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; overflow: hidden; }
         
-        /* Terminal Console */
-        #console { height: 60px; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); overflow-y: auto; line-height: 1.4; }
+        /* Terminal Console for Debugging */
+        #console { height: 65px; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); overflow-y: auto; line-height: 1.5; }
 
         /* Unified Dynamic Table */
-        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 140px); padding-bottom: 80px; }
+        .table-outer { width: 100%; overflow: auto; height: calc(100vh - 145px); padding-bottom: 80px; }
         table { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono'; font-size: 11px; white-space: nowrap; }
         th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; text-transform: uppercase; font-size: 9px; }
         td { padding: 12px 15px; border-bottom: 1px solid #182840; color: #fff; }
         
-        /* Sticky Symbol Column for 33-field scrolling */
+        /* Sticky Ticker Column (Crucial for 33 fields) */
         .sticky-sym { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); font-weight: 700; color: var(--gr1); }
 
         /* Navigation */
@@ -30,24 +30,22 @@
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); background: rgba(0,242,255,0.05); }
         .btn-sync { background: var(--gr1) !important; color: #000 !important; font-weight: 900; }
 
-        /* Import UI */
         .import-wrap { padding: 20px; }
         #import-area { width: 100%; height: 160px; background: var(--s1); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; font-size: 12px; }
     </style>
 </head>
 <body onload="init()">
 
-    <div id="console">> TERMINAL ONLINE. AWAITING UNIFIED SYNC...</div>
+    <div id="console">> TERMINAL READY. AWAITING DATA RESOLUTION...</div>
     <div id="app-view"></div>
 
     <nav>
         <button class="nb active" onclick="switchView('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="switchView('import', this)">Import</button>
-        <button class="nb btn-sync" onclick="runUnifiedSync()">SYNC ALL FIELDS</button>
+        <button class="nb btn-sync" onclick="runUnifiedSync()">SYNC 33 FIELDS</button>
     </nav>
 
     <script>
-        // CONFIG MATCHING YOUR ENGINE
         const DB_NAME = "BharatEngineDB"; 
         const STORE = "UnifiedStocks";
         let currentTab = 'portfolio';
@@ -57,21 +55,20 @@
             c.innerHTML = `<div>> ${new Date().toLocaleTimeString()} | ${msg}</div>` + c.innerHTML; 
         }
 
-        // DATABASE RESOLVER
         function getDB() {
-            return new Promise((resolve) => {
+            return new Promise((res) => {
                 const req = indexedDB.open(DB_NAME, 1);
                 req.onupgradeneeded = (e) => {
                     const db = e.target.result;
                     if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "sym" });
                 };
-                req.onsuccess = () => resolve(req.result);
+                req.onsuccess = () => res(req.result);
             });
         }
 
-        // THE UNIFIED BAKE: Resolves the "stocks" wrapper before saving k-data
+        // THE RESOLVER: Flattens Python JSON into the Database
         async function runUnifiedSync() {
-            log("FETCHING JSON FROM GITHUB...");
+            log("FETCHING GITHUB JSON...");
             try {
                 const response = await fetch('fundamentals.json');
                 const rawData = await response.json();
@@ -80,20 +77,18 @@
                 const tx = db.transaction(STORE, "readwrite");
                 const store = tx.objectStore(STORE);
 
-                const holdings = await new Promise(r => {
-                    store.getAll().onsuccess = (e) => r(e.target.result || []);
-                });
+                const holdings = await new Promise(r => store.getAll().onsuccess = (e) => r(e.target.result || []));
 
-                if (holdings.length === 0) return log("ABORT: No holdings found. Import symbols first.");
+                if (holdings.length === 0) return log("ERROR: No holdings. Use Import tab first.");
 
                 holdings.forEach(h => {
-                    // RESOLUTION: Pull 33 fields from rawData.stocks[TICKER]
+                    // RESOLUTION: Extracting metrics from data.stocks[TICKER]
                     const metrics = rawData.stocks[h.sym] || {};
                     
-                    // UNIFIED FLAT RECORD: Merges your qty/avg with all 33 web fields
+                    // BAKE: Merging everything into a FLAT record
                     const flatRecord = {
-                        ...h,        // Personal data (qty, avgBuy)
-                        ...metrics,  // Web data (ltp, roe, opm_pct, pe, debt_eq, etc.)
+                        ...h,        // Personal data: sym, qty, avgBuy
+                        ...metrics,  // 33 fields from Python (ltp, roe, pe, etc.)
                         pnl: metrics.ltp ? Math.round((h.qty * metrics.ltp) - (h.qty * h.avgBuy)) : 0,
                         updated: new Date().toLocaleTimeString()
                     };
@@ -101,13 +96,13 @@
                 });
 
                 tx.oncomplete = () => { 
-                    log("SUCCESS: 33+ Fields Unified & Flattened in DB."); 
+                    log("SUCCESS: Unified Database Built (33 Fields)."); 
                     render(); 
                 };
-            } catch (e) { log("SYNC ERROR: Check fundamentals.json location."); }
+            } catch (e) { log("ERR: Check fundamentals.json location."); }
         }
 
-        // DYNAMIC RENDERER: Discovers all 33 fields automatically
+        // THE RENDERER: Discovers all keys in DB and creates columns
         async function renderPortfolio() {
             const db = await getDB();
             const stocks = await new Promise(r => {
@@ -121,8 +116,8 @@
                 return;
             }
 
-            // Discovery: Identify all unique keys across all records
-            const keySet = new Set(['sym', 'ltp', 'pnl', 'roe', 'opm_pct', 'debt_eq']); // Default Sort Order
+            // COLUMN DISCOVERY: Find every key in the database
+            const keySet = new Set(['sym', 'ltp', 'pnl', 'roe', 'opm_pct', 'pe', 'debt_eq']); 
             stocks.forEach(s => Object.keys(s).forEach(k => {
                 if(!['quarterly', 'qty', 'avgBuy', 'updated'].includes(k)) keySet.add(k);
             }));
@@ -131,7 +126,7 @@
             let html = `<div class="table-outer"><table><thead><tr>`;
             allKeys.forEach(k => {
                 const isSticky = k === 'sym' ? 'class="sticky-sym"' : '';
-                html += `<th ${isSticky}>${k.replace('_', ' ')}</th>`;
+                html += `<th ${isSticky}>${k.replace(/_/g, ' ')}</th>`;
             });
             html += `</tr></thead><tbody>`;
 
@@ -140,10 +135,10 @@
                 allKeys.forEach(k => {
                     const val = s[k] !== undefined ? s[k] : '—';
                     const isSticky = k === 'sym' ? 'class="sticky-sym"' : '';
-                    let style = "";
-                    if(k === 'pnl') style = `style="color:${val >= 0 ? 'var(--gr2)':'var(--rd1)'};font-weight:700"`;
+                    let color = "";
+                    if(k === 'pnl') color = `style="color:${val >= 0 ? 'var(--gr2)':'var(--rd1)'};font-weight:700"`;
                     
-                    html += `<td ${isSticky} ${style}>${val}</td>`;
+                    html += `<td ${isSticky} ${color}>${val}</td>`;
                 });
                 html += `</tr>`;
             });
@@ -161,9 +156,8 @@
             const view = document.getElementById('app-view');
             if (currentTab === 'import') {
                 view.innerHTML = `<div class="import-wrap">
-                    <textarea id="import-area" placeholder="SYMBOL QTY AVG_PRICE (e.g. OLECTRA 10 1000)"></textarea>
+                    <textarea id="import-area" placeholder="TICKER QTY AVG (Example: OLECTRA 10 1200)"></textarea>
                     <button class="nb btn-sync" style="width:100%;margin-top:15px;border-radius:8px" onclick="saveHoldings()">SAVE HOLDINGS</button>
-                    <p style="font-size:10px;color:var(--tx3);margin-top:12px;line-height:1.4">One stock per line. Use spaces to separate Ticker, Quantity, and Price.</p>
                 </div>`;
             } else { renderPortfolio(); }
         }
@@ -173,20 +167,14 @@
             const db = await getDB();
             const tx = db.transaction(STORE, "readwrite");
             const store = tx.objectStore(STORE);
-            
             rawText.split('\n').forEach(line => {
-                const parts = line.split(/\s+/);
-                if (parts.length >= 3) {
-                    store.put({ 
-                        sym: parts[0].toUpperCase(), 
-                        qty: parseFloat(parts[1]) || 0, 
-                        avgBuy: parseFloat(parts[2]) || 0 
-                    });
+                const p = line.split(/\s+/);
+                if (p.length >= 3) {
+                    store.put({ sym: p[0].toUpperCase(), qty: parseFloat(p[1]) || 0, avgBuy: parseFloat(p[2]) || 0 });
                 }
             });
-            
             tx.oncomplete = () => { 
-                log("Holdings Saved. Trigger Unified Sync to pull web metrics."); 
+                log("Holdings Saved. Now Click SYNC."); 
                 switchView('portfolio', document.querySelector('.nb')); 
             };
         }
