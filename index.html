@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets Pro</title>
+    <title>BharatMarkets Pro (Flat Architecture)</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -12,13 +12,13 @@
         }
         body { background: var(--bg); color: var(--tx1); font-family: -apple-system, sans-serif; margin: 0; padding: 0; }
         
-        /* Debug Log */
-        #debug-log { height: 80px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 10px; color: var(--gr1); }
+        /* Debug Console */
+        #debug-log { height: 100px; overflow-y: auto; background: #000; border-bottom: 1px solid var(--b1); font-family: 'JetBrains Mono'; font-size: 10px; padding: 12px; color: var(--gr1); line-height: 1.5; }
         
-        /* Portfolio Table */
+        /* Table Layout */
         .bls-table-outer { width: 100%; overflow-x: auto; padding-bottom: 100px; }
         .bls-t { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono'; white-space: nowrap; }
-        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; }
+        .bls-t th { background: var(--s1); color: var(--tx3); padding: 12px 15px; text-align: right; border-bottom: 1px solid var(--b1); position: sticky; top: 0; z-index: 10; }
         .bls-t td { padding: 12px 15px; border-bottom: 1px solid #182840; text-align: right; }
         .th-l, .td-l { text-align: left !important; }
 
@@ -27,7 +27,7 @@
         #import-area { width: 100%; height: 200px; background: var(--s2); color: #fff; border: 1px solid var(--b1); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono'; font-size: 12px; }
         .btn-main { width: 100%; padding: 16px; background: var(--gr1); color: #000; border: none; border-radius: 8px; font-weight: 800; margin-top: 10px; cursor: pointer; }
 
-        /* Nav */
+        /* Navigation */
         #nav { position: fixed; bottom: 0; width: 100%; background: var(--s1); display: flex; border-top: 1px solid var(--b1); padding-bottom: env(safe-area-inset-bottom); }
         .nb { flex: 1; background: none; border: none; color: var(--tx3); padding: 18px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .nb.active { color: var(--gr1); border-top: 2px solid var(--gr1); }
@@ -35,13 +35,13 @@
 </head>
 <body onload="init()">
 
-    <div id="debug-log">System Ready. Step 1: Import Symbols.</div>
+    <div id="debug-log">System Initialized. Use Import to add symbols.</div>
     <div id="content"></div>
 
     <nav id="nav">
         <button class="nb active" onclick="showTab('portfolio', this)">Portfolio</button>
         <button class="nb" onclick="showTab('import', this)">Import</button>
-        <button class="nb" onclick="syncEverything()" style="color:var(--gr2)">Sync JSON</button>
+        <button class="nb" onclick="syncEverything()" style="color:var(--gr2)">Sync Data</button>
     </nav>
 
     <script src="app-engine.js"></script>
@@ -76,18 +76,20 @@
             });
 
             tx.oncomplete = () => {
-                log(`Imported ${count} stocks. Now tap "Sync JSON".`);
+                log(`Imported ${count} stocks. Now tap "Sync Data".`);
                 showTab('portfolio', document.querySelector('.nb'));
             };
         }
 
-        // --- STEP 2: SYNC WITH FUNDAMENTALS.JSON ---
+        // --- STEP 2: SYNC WITH MASTER JSON & MARKET DATA ---
         async function syncEverything() {
-            log("Fetching market files...");
+            log("Fetching Master Files (symbols.json, symbol_map.json)...");
             try {
-                const [fData, pData] = await Promise.all([
+                const [fData, pData, sMaster, sMap] = await Promise.all([
                     fetch('fundamentals.json').then(r => r.json()),
-                    fetch('prices.json').then(r => r.json())
+                    fetch('prices.json').then(r => r.json()),
+                    fetch('symbols.json').then(r => r.json()),
+                    fetch('symbol_map.json').then(r => r.json())
                 ]);
 
                 const db = await initEngineDB();
@@ -104,12 +106,19 @@
                 }
 
                 holdings.forEach(h => {
-                    const f = fData[h.sym] || {};
-                    const p = pData[h.sym] || {};
+                    // Apply Mapping Overrides (e.g., ZINKA -> BLACKBUCK.NS)
+                    const mappedKey = sMap.overrides[h.sym] || h.sym;
+                    const cleanKey = mappedKey.split('.')[0];
+
+                    // Lookup in Market Data and Master List
+                    const f = fData[mappedKey] || fData[cleanKey] || {};
+                    const p = pData[mappedKey] || pData[cleanKey] || {};
+                    const masterEntry = sMaster.find(item => item.sym === h.sym) || {};
+
                     store.put({
                         ...h,
-                        sector: f.sector || h.sector,
-                        roe: f.roe || h.roe,
+                        sector: f.sector || masterEntry.sector || h.sector,
+                        roe: f.roe || 0,
                         pe: p.pe || f.pe || 0,
                         ltp: p.ltp || h.ltp,
                         signal: f.signal || 'HOLD'
@@ -117,11 +126,12 @@
                 });
 
                 tx.oncomplete = () => {
-                    log("Sync Complete! All 9 fields populated.");
+                    log("Sync Complete: DB updated with master sector and financial data.");
                     render();
                 };
             } catch (e) {
-                log("Fetch Error. Check if JSON files exist.");
+                log("Fetch Error: Ensure all JSON files are in the same directory.");
+                console.error(e);
             }
         }
 
@@ -134,7 +144,7 @@
             });
 
             if (!stocks.length) {
-                container.innerHTML = `<div style="padding:100px;text-align:center">Empty. Go to Import.</div>`;
+                container.innerHTML = `<div style="padding:100px;text-align:center;color:var(--tx3)">Empty. Go to Import.</div>`;
                 return;
             }
 
@@ -145,13 +155,13 @@
             stocks.forEach(s => {
                 const pnl = (s.qty * s.ltp) - (s.qty * s.avgBuy);
                 h += `<tr>
-                    <td class="td-l"><strong>${s.sym}</strong></td>
+                    <td class="td-l"><strong>${s.sym}</strong><br><span style="font-size:9px;color:var(--tx3)">${s.signal}</span></td>
                     <td class="td-l" style="color:var(--tx3)">${s.sector}</td>
-                    <td>${s.roe}%</td>
+                    <td style="color:${s.roe > 15 ? 'var(--gr2)' : 'white'}">${s.roe}%</td>
                     <td>${s.pe}</td>
-                    <td>₹${s.ltp}</td>
+                    <td style="font-weight:700">₹${s.ltp}</td>
                     <td class="u-dim">${s.qty}</td>
-                    <td style="background:${pnl>=0?'#003a20':'#3a0010'};color:#fff">${pnl.toFixed(0)}</td>
+                    <td style="background:${pnl>=0?'#003a20':'#3a0010'};color:#fff;font-weight:700">${pnl.toFixed(0)}</td>
                 </tr>`;
             });
             container.innerHTML = h + `</tbody></table></div>`;
@@ -168,7 +178,7 @@
             const c = document.getElementById('content');
             if (curTab === 'import') {
                 c.innerHTML = `<div class="import-box">
-                    <textarea id="import-area" placeholder="HDFCBANK 20 1550\nRELIANCE 10 2450"></textarea>
+                    <textarea id="import-area" placeholder="HDFCBANK 20 1550\nKAYNES 25 4000"></textarea>
                     <button class="btn-main" onclick="processImport()">SAVE SYMBOLS</button>
                 </div>`;
             } else {
