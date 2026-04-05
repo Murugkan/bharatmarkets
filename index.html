@@ -1,202 +1,199 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Onyx Engine v3</title>
+    <title>BharatMarkets | Tape Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root{--bg:#000;--s1:#0a0a0a;--b1:#222;--bl:#00f2ff;--gr:#064e3b;--rd:#7f1d1d;}
         *{box-sizing:border-box;margin:0;padding:0;}
-        body{background:var(--bg);color:#fff;font-family:'JetBrains Mono',monospace;overflow:hidden;}
-        
-        /* HEADER & KPIs */
-        header{background:var(--s1);border-bottom:1px solid var(--b1);padding:12px;display:flex;justify-content:space-around;}
-        .kpi-box{text-align:center;}
-        .kpi-label{font-size:8px;color:#666;text-transform:uppercase;}
-        .kpi-val{font-size:14px;font-weight:800;margin-top:2px;}
+        body{background:var(--bg);color:#fff;font-family:'JetBrains Mono',monospace;}
 
-        /* TAPE BAR */
-        #bar-wrap{padding:10px;background:#111;border-bottom:1px solid var(--b1);}
-        #tape-bar{width:100%;height:38px;border-radius:4px;overflow:hidden;display:flex;background:#050505;}
-        .seg{height:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#000;overflow:hidden;white-space:nowrap;transition:opacity 0.2s;}
-        .seg.dimmed{opacity:0.15;}
+```
+    header{background:var(--s1);border-bottom:1px solid var(--b1);padding:10px 12px;display:flex;justify-content:space-around;}
+    .kpi-box{text-align:center;}
+    .kpi-label{font-size:8px;color:#666;text-transform:uppercase;}
+    .kpi-val{font-size:14px;font-weight:800;margin-top:2px;}
 
-        /* LEGEND & STATUS */
-        #legend{display:flex;flex-wrap:wrap;gap:6px 12px;padding:8px 10px;border-bottom:1px solid var(--b1);background:#000;}
-        .leg{display:flex;align-items:center;gap:6px;font-size:9px;color:#888;cursor:pointer;}
-        .leg.on{color:#fff;font-weight:800;}
-        .dot{width:8px;height:8px;border-radius:2px;}
-        #active-label{font-size:9px;color:#555;padding:6px 10px;border-bottom:1px solid #111;min-height:22px;background:#050505;}
-        #active-label span{color:var(--bl);font-weight:800;}
+    #bar-wrap{padding:10px;background:#111;border-bottom:1px solid var(--b1);}
+    #tape-bar{width:100%;height:36px;border-radius:4px;overflow:hidden;display:flex;}
+    .seg{height:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;
+         font-size:8px;font-weight:800;color:#000;overflow:hidden;white-space:nowrap;}
+    .seg.dimmed{opacity:0.2;}
 
-        /* TABLE VIEW */
-        .view{overflow:auto;height:calc(100vh - 210px);background:#000;}
-        table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;}
-        th{background:var(--s1);color:#666;padding:12px;position:sticky;top:0;z-index:10;border-bottom:2px solid var(--b1);text-align:left;}
-        td{padding:12px;border-bottom:1px solid #111;}
-        .pin{position:sticky;left:0;background:#0a0a0a;border-right:1px solid var(--b1);color:var(--bl);font-weight:800;z-index:5;}
-        
-        /* PERFORMANCE COLORS */
-        .pos{background:var(--gr) !important;}
-        .neg{background:var(--rd) !important;}
-        #loading{padding:50px;text-align:center;font-size:12px;color:var(--bl);letter-spacing:1px;}
-    </style>
+    #legend{display:flex;flex-wrap:wrap;gap:6px 12px;padding:6px 10px;border-bottom:1px solid var(--b1);}
+    .leg{display:flex;align-items:center;gap:5px;font-size:9px;color:#888;cursor:pointer;}
+    .leg.on{color:#fff;}
+    .dot{width:8px;height:8px;border-radius:2px;}
+
+    #active-label{font-size:9px;color:#555;padding:3px 10px;border-bottom:1px solid #111;min-height:18px;}
+    #active-label span{color:var(--bl);font-weight:800;}
+
+    #status{padding:40px;text-align:center;font-size:11px;color:#444;line-height:1.8;}
+    .view{overflow:auto;height:calc(100vh - 200px);}
+    table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;}
+    th{background:var(--s1);color:#666;padding:10px 12px;position:sticky;top:0;z-index:9;border-bottom:1px solid var(--b1);text-align:left;}
+    td{padding:10px 12px;border-bottom:1px solid #111;}
+    .pin{position:sticky;left:0;background:#111;border-right:1px solid var(--b1);color:var(--bl);font-weight:800;z-index:5;}
+    .pos{background:var(--gr);}
+    .neg{background:var(--rd);}
+</style>
+```
+
 </head>
 <body>
-
     <header>
         <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="ki">—</div></div>
         <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kv">—</div></div>
         <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kp">—</div></div>
     </header>
-
     <div id="bar-wrap"><div id="tape-bar"></div></div>
     <div id="legend"></div>
-    <div id="active-label">Initializing Engine...</div>
-
-    <div class="view">
-        <div id="app"><div id="loading">STARTING SYSTEM...</div></div>
-    </div>
+    <div id="active-label">&nbsp;</div>
+    <div class="view"><div id="app"><div id="status">Loading…</div></div></div>
 
 <script>
-// --- CONFIGURATION ---
-const DB_NAME = "OnyxStableDB"; 
-const STORE = "MasterData";
-const FIELDS = ['SYM','QTY','AVG','LTP','PNL','ROE','SECTOR'];
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d'];
+const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635'];
+const FIELDS  = ['SYM','QTY','AVG','LTP','PNL','ROE','SECTOR'];
 
 let DATA = [], SECTORS = [], COL = {}, filter = null;
 
-// --- UTILS ---
-const fmt = (n) => `₹${(n/100000).toFixed(2)}L`;
-const status = (msg) => document.getElementById('active-label').innerHTML = msg;
+function fmt(n){ return `₹${(n/100000).toFixed(2)}L`; }
+function tap(sec){ filter = filter===sec ? null : sec; render(); }
+function status(msg){ document.getElementById('status').innerHTML = msg; }
 
-// --- ENGINE BOOTLOADER ---
-async function init() {
-    status("STORAGE: Checking local origin...");
-    const db = await openDB();
-    const rows = await getRows(db);
-
-    if (rows.length > 0) {
-        status("STORAGE: Active. Hydrating from local.");
-        DATA = rows;
-        setupAndRender();
-    } else {
-        status("STORAGE: Empty. Bootstrapping from JSON...");
-        await bootstrap(db);
+// ── Read portfolio from localStorage (S.portfolio) ──────────────
+function getPortfolio() {
+    // Your app stores state as S in localStorage — try common keys
+    const keys = ['S', 'bharat_state', 'app_state', 'state'];
+    for (const key of keys) {
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            const obj = JSON.parse(raw);
+            // S.portfolio is the array
+            if (obj.portfolio && Array.isArray(obj.portfolio) && obj.portfolio.length > 0) {
+                return obj.portfolio;
+            }
+        } catch(e) {}
     }
+    // Also try direct 'portfolio' key
+    try {
+        const raw = localStorage.getItem('portfolio');
+        if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr) && arr.length > 0) return arr;
+        }
+    } catch(e) {}
+    return null;
 }
 
-async function bootstrap(db) {
+// ── Build DATA by merging portfolio holdings + fundamentals ──────
+async function boot() {
+    const holdings = getPortfolio();
+
+    if (!holdings || holdings.length === 0) {
+        // Show all available localStorage keys to help debug
+        const allKeys = Object.keys(localStorage);
+        status(`No portfolio found in localStorage.<br><br>
+            Keys found: <b style="color:#00f2ff">${allKeys.length > 0 ? allKeys.join(', ') : '(none)'}</b><br><br>
+            This page must be served from the <b>same origin</b> as your main app.`);
+        return;
+    }
+
+    // Load fundamentals.json for live ltp + sector + roe
+    let fund = {};
     try {
         const res = await fetch('fundamentals.json');
-        if (!res.ok) throw new Error("fundamentals.json not found");
-        const json = await res.json();
-        
-        const tx = db.transaction(STORE, "readwrite");
-        const store = tx.objectStore(STORE);
+        if (res.ok) {
+            const json = await res.json();
+            fund = json.stocks || {};
+        }
+    } catch(e) {}
 
-        Object.keys(json.stocks).forEach(ticker => {
-            const s = json.stocks[ticker];
-            const rec = {
-                SYM: ticker.split('.')[0].toUpperCase(),
-                QTY: s.qty || 0,
-                AVG: s.avgBuy || s.AVG || 0,
-                LTP: s.ltp || 0,
-                SECTOR: s.sector || 'Others',
-                ROE: s.roe || 0
+    DATA = holdings
+        .filter(h => h.sym && h.qty > 0)
+        .map(h => {
+            const f   = fund[h.sym] || fund[h.sym + '.NS'] || {};
+            const ltp = f.ltp || h.ltp || 0;
+            const avg = h.avgBuy || h.avg || 0;
+            const qty = h.qty || 0;
+            const cost = qty * avg;
+            const mkt  = qty * ltp;
+            return {
+                SYM:    h.sym,
+                QTY:    qty,
+                AVG:    avg,
+                LTP:    ltp,
+                SECTOR: f.sector || h.sector || 'Other',
+                ROE:    f.roe    || h.roe    || 0,
+                COST:   cost,
+                MKT:    mkt,
+                PNL:    Math.round(mkt - cost)
             };
-            rec.COST = rec.QTY * rec.AVG;
-            rec.MKT = rec.QTY * rec.LTP;
-            rec.PNL = Math.round(rec.MKT - rec.COST);
-            store.put(rec);
-        });
+        })
+        .filter(d => d.QTY > 0);
 
-        tx.oncomplete = () => {
-            status("STORAGE: Sync Complete. Reloading...");
-            setTimeout(() => location.reload(), 500);
-        };
-    } catch (err) {
-        document.getElementById('loading').innerHTML = `CRITICAL ERROR: ${err.message}<br><br>Please ensure fundamentals.json is in the root directory.`;
+    if (DATA.length === 0) {
+        status('Portfolio found but no valid holdings with qty > 0.');
+        return;
     }
-}
 
-function openDB() {
-    return new Promise((res) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" });
-        req.onsuccess = () => res(req.result);
-    });
-}
-
-function getRows(db) {
-    return new Promise(res => {
-        const tx = db.transaction(STORE, "readonly");
-        tx.objectStore(STORE).getAll().onsuccess = e => res(e.target.result);
-    });
-}
-
-// --- ORCHESTRATION ---
-function setupAndRender() {
     SECTORS = [...new Set(DATA.map(s => s.SECTOR))];
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
     render();
 }
 
-function tap(sec) {
-    filter = filter === sec ? null : sec;
-    render();
-}
-
 function render() {
-    // 1. KPIs
+    // KPIs
     let tI=0, tM=0, tP=0;
     DATA.forEach(s => { tI += s.COST; tM += s.MKT; tP += s.PNL; });
     document.getElementById('ki').textContent = fmt(tI);
     document.getElementById('kv').textContent = fmt(tM);
-    const kP = document.getElementById('kp');
-    kP.textContent = fmt(tP);
-    kP.style.color = tP >= 0 ? '#00ff88' : '#ff4d6d';
+    const kp = document.getElementById('kp');
+    kp.textContent = fmt(tP);
+    kp.style.color = tP >= 0 ? '#00ff88' : '#ff4d6d';
 
-    // 2. TAPE BAR (Flex-based)
+    // Bar
     const sc = {};
-    DATA.forEach(s => { sc[s.SECTOR] = (sc[s.SECTOR] || 0) + s.COST; });
-    const total = Object.values(sc).reduce((a, b) => a + b, 0);
-    
+    DATA.forEach(s => { sc[s.SECTOR] = (sc[s.SECTOR]||0) + s.COST; });
+    const total = Object.values(sc).reduce((a,b)=>a+b, 0);
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
-        const pct = (sc[sec] / total * 100).toFixed(2);
+        const pct = (sc[sec]/total*100).toFixed(2);
         const dim = filter && filter !== sec ? ' dimmed' : '';
-        return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')">${pct > 10 ? sec : ''}</div>`;
+        return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}"
+                     onclick="tap('${sec}')">${pct > 9 ? sec : ''}</div>`;
     }).join('');
 
-    // 3. LEGEND
-    document.getElementById('legend').innerHTML = SECTORS.map(sec => `
-        <div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')">
-            <div class="dot" style="background:${COL[sec]}"></div>${sec}
-        </div>
-    `).join('');
+    // Legend
+    document.getElementById('legend').innerHTML = SECTORS.map(sec =>
+        `<div class="leg ${filter===sec?'on':''}" onclick="tap('${sec}')">
+            <div class="dot" style="background:${COL[sec]}"></div>${sec}</div>`
+    ).join('');
 
-    // 4. ACTIVE LABEL
-    status(filter ? `Sector: <span>${filter}</span> — tap again to clear` : "Select a sector to filter terminal");
+    // Active label
+    document.getElementById('active-label').innerHTML =
+        filter ? `Sector: <span>${filter}</span> — tap again to clear` : '&nbsp;';
 
-    // 5. TABLE HEATMAP
+    // Table
     const rows = filter ? DATA.filter(s => s.SECTOR === filter) : DATA;
-    let h = `<table><thead><tr>` + FIELDS.map(f => `<th class="${f==='SYM'?'pin':''}">${f}</th>`).join('') + `</tr></thead><tbody>`;
-    
+    let h = `<table><thead><tr>`
+        + FIELDS.map(f => `<th${f==='SYM'?' class="pin"':''}>${f}</th>`).join('')
+        + `</tr></thead><tbody>`;
     rows.forEach(s => {
         h += `<tr>` + FIELDS.map(f => {
             const v = s[f] ?? '—';
-            const c = f === 'SYM' ? 'pin' : f === 'PNL' ? (v >= 0 ? 'pos' : 'neg') : '';
-            return `<td class="${c}">${v}${f === 'ROE' ? '%' : ''}</td>`;
+            const c = f==='SYM' ? 'pin' : f==='PNL' ? (v>=0?'pos':'neg') : '';
+            return `<td${c?` class="${c}"`:''}>${v}${f==='ROE'?'%':''}</td>`;
         }).join('') + `</tr>`;
     });
-    
     document.getElementById('app').innerHTML = h + `</tbody></table>`;
 }
 
-// Start Engine
-init();
+boot();
 </script>
+
 </body>
 </html>
