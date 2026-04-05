@@ -38,6 +38,8 @@
     .sticky{position:sticky;left:0;background:#111!important;z-index:5;border-right:1px solid var(--b1);color:var(--bl)!important;font-weight:800;}
     .pos{background:var(--gr)!important;}
     .neg{background:var(--rd)!important;}
+    #msg{padding:30px;text-align:center;font-size:11px;color:#444;line-height:2;}
+    #msg b{color:var(--bl);}
 </style>
 ```
 
@@ -51,7 +53,7 @@
     <div id="bar-wrap"><div id="tape-bar"></div></div>
     <div id="legend"></div>
     <div id="filter-label">&nbsp;</div>
-    <div class="view"><div id="app"></div></div>
+    <div class="view"><div id="app"><div id="msg">Loading…</div></div></div>
 
 <script>
 const FIELDS  = ['SYM','QTY','AVG','LTP','PNL','ROE','SECTOR'];
@@ -59,94 +61,147 @@ const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#f
 
 let DATA = [], SECTORS = [], COL = {}, filter = null;
 
-// ── Load portfolio from bmp_port_v2 (written by main app) ────────
-function getHoldings() {
+function msg(html){ document.getElementById('msg').innerHTML = html; }
+
+// ── Try every known IndexedDB + localStorage source ──────────────
+async function loadData() {
+
+    // 1. Try BharatEngineDB / UnifiedStocks (app-engine.js)
+    let rows = await readIDB('BharatEngineDB', 'UnifiedStocks');
+    if (rows.length) return rows;
+
+    // 2. Try BharatTapeDB / Data (original tape terminal)
+    rows = await readIDB('BharatTapeDB', 'Data');
+    if (rows.length) return rows;
+
+    // 3. Try any IDB that has a sym field
+    rows = await scanAllIDB();
+    if (rows.length) return rows;
+
+    // 4. Try localStorage bmp_port_v2
     try {
         const raw = localStorage.getItem('bmp_port_v2');
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-        if (parsed && Array.isArray(parsed.portfolio)) return parsed.portfolio;
+        if (raw) {
+            const p = JSON.parse(raw);
+            const arr = Array.isArray(p) ? p : (p.portfolio || []);
+            if (arr.length) return arr;
+        }
+    } catch(e) {}
+
+    return [];
+}
+
+async function readIDB(dbName, storeName) {
+    return new Promise(resolve => {
+        try {
+            const req = indexedDB.open(dbName);
+            req.onerror = () => resolve([]);
+            req.onsuccess = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(storeName)) { db.close(); resolve([]); return; }
+                try {
+                    const tx  = db.transaction(storeName, 'readonly');
+                    const st  = tx.objectStore(storeName);
+                    const all = st.getAll();
+                    all.onsuccess = () => { db.close(); resolve(all.result || []); };
+                    all.onerror   = () => { db.close(); resolve([]); };
+                } catch(e) { db.close(); resolve([]); }
+            };
+        } catch(e) { resolve([]); }
+    });
+}
+
+async function scanAllIDB() {
+    try {
+        const dbs = await indexedDB.databases();
+        for (const info of dbs) {
+            const db = await new Promise(r => {
+                const req = indexedDB.open(info.name);
+                req.onsuccess = () => r(req.result);
+                req.onerror   = () => r(null);
+            });
+            if (!db) continue;
+            for (const store of Array.from(db.objectStoreNames)) {
+                const rows = await new Promise(r => {
+                    try {
+                        const tx  = db.transaction(store, 'readonly');
+                        const req = tx.objectStore(store).getAll();
+                        req.onsuccess = () => r(req.result || []);
+                        req.onerror   = () => r([]);
+                    } catch(e) { r([]); }
+                });
+                // Valid portfolio row has sym/SYM and ltp/LTP
+                if (rows.length > 0 && (rows[0].sym || rows[0].SYM) && (rows[0].ltp || rows[0].LTP)) {
+                    db.close();
+                    return rows;
+                }
+            }
+            db.close();
+        }
     } catch(e) {}
     return [];
 }
 
-// ── Boot: merge holdings + fundamentals.json ─────────────────────
+// ── Main ─────────────────────────────────────────────────────────
 async function init() {
-    const holdings = getHoldings();
+    const raw = await loadData();
 
-    // Load fundamentals for ltp / sector / roe
-    let fund = {};
-    try {
-        const res = await fetch('fundamentals.json');
-        if (res.ok) fund = (await res.json()).stocks || {};
-    } catch(e) {}
-
-    DATA = holdings
-        .filter(h => (h.sym || h.SYM) && (h.qty || h.QTY) > 0)
-        .map(h => {
-            const sym  = h.sym  || h.SYM;
-            const qty  = h.qty  || h.QTY  || 0;
-            const avg  = h.avgBuy || h.avg || h.AVG || 0;
-            const f    = fund[sym] || {};
-            const ltp  = f.ltp  || h.ltp  || h.LTP  || 0;
-            const cost = qty * avg;
-            const mkt  = qty * ltp;
-            return {
-                SYM:    sym,
-                QTY:    qty,
-                AVG:    avg,
-                LTP:    +ltp.toFixed(2),
-                SECTOR: f.sector || h.sector || 'Other',
-                ROE:    +(f.roe  || h.roe   || 0),
-                COST:   cost,
-                MKT:    mkt,
-                PNL:    Math.round(mkt - cost)
-            };
-        })
-        .filter(d => d.QTY > 0);
-
-    // Fallback: if no holdings in localStorage, read from fundamentals directly
-    // (shows market data without qty/avg — useful for watchlist view)
-    if (DATA.length === 0 && Object.keys(fund).length > 0) {
-        DATA = Object.keys(fund).map(sym => {
-            const f = fund[sym];
-            return {
-                SYM: sym, QTY: 0, AVG: 0,
-                LTP: +(f.ltp || 0).toFixed(2),
-                SECTOR: f.sector || 'Other',
-                ROE: +(f.roe || 0),
-                COST: 0, MKT: 0, PNL: 0
-            };
-        }).filter(d => d.LTP > 0);
+    if (!raw.length) {
+        msg(`No data found.<br>
+            Open the <b>main BharatMarkets app</b> first so it can sync data,<br>
+            then refresh this page.`);
+        return;
     }
+
+    // Normalise field names (engine uses lowercase, original used uppercase)
+    DATA = raw.map(r => {
+        const sym  = r.sym  || r.SYM  || '';
+        const qty  = r.qty  || r.QTY  || 0;
+        const avg  = r.avgBuy || r.avg || r.AVG || 0;
+        const ltp  = r.ltp  || r.LTP  || 0;
+        const sec  = r.sector || r.SECTOR || 'Other';
+        const roe  = r.roe  || r.ROE  || 0;
+        const cost = qty * avg;
+        const mkt  = qty * ltp;
+        return {
+            SYM: sym, QTY: qty, AVG: avg,
+            LTP: +ltp.toFixed(2),
+            SECTOR: sec, ROE: +roe,
+            COST: cost, MKT: mkt,
+            PNL: Math.round(mkt - cost)
+        };
+    }).filter(d => d.SYM && d.LTP > 0);
 
     SECTORS = [...new Set(DATA.map(s => s.SECTOR))];
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
     render();
 }
 
-// ── Render everything ────────────────────────────────────────────
 function render() {
-    // KPIs
+    // KPIs — only show if we have actual holdings
+    const hasHoldings = DATA.some(d => d.QTY > 0);
     let tI=0, tM=0, tP=0;
     DATA.forEach(s => { tI += s.COST; tM += s.MKT; tP += s.PNL; });
-    document.getElementById('kpi-inv').textContent = `₹${(tI/100000).toFixed(2)}L`;
-    document.getElementById('kpi-val').textContent = `₹${(tM/100000).toFixed(2)}L`;
+    document.getElementById('kpi-inv').textContent = hasHoldings ? `₹${(tI/100000).toFixed(2)}L` : '—';
+    document.getElementById('kpi-val').textContent = hasHoldings ? `₹${(tM/100000).toFixed(2)}L` : '—';
     const kp = document.getElementById('kpi-pnl');
-    kp.textContent  = `₹${(tP/100000).toFixed(2)}L`;
-    kp.style.color  = tP >= 0 ? '#00ff88' : '#ff4d6d';
+    kp.textContent = hasHoldings ? `₹${(tP/100000).toFixed(2)}L` : '—';
+    kp.style.color = tP >= 0 ? '#00ff88' : '#ff4d6d';
 
-    // Bar
+    // Bar — use COST if available else MKT else LTP as weight
     const sc = {};
-    DATA.forEach(s => { sc[s.SECTOR] = (sc[s.SECTOR]||0) + (s.COST || s.MKT); });
+    DATA.forEach(s => {
+        const weight = s.COST > 0 ? s.COST : s.MKT > 0 ? s.MKT : s.LTP;
+        sc[s.SECTOR] = (sc[s.SECTOR]||0) + weight;
+    });
     const total = Object.values(sc).reduce((a,b) => a+b, 0);
-    document.getElementById('tape-bar').innerHTML = total > 0 ? SECTORS.map(sec => {
+
+    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
         const pct = (sc[sec] / total * 100).toFixed(2);
         const dim = filter && filter !== sec ? ' dimmed' : '';
         return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}"
                      onclick="tap('${sec}')">${pct > 8 ? sec : ''}</div>`;
-    }).join('') : '<div style="width:100%;background:#222;height:100%;border-radius:4px"></div>';
+    }).join('');
 
     // Legend
     document.getElementById('legend').innerHTML = SECTORS.map(sec =>
@@ -173,7 +228,7 @@ function render() {
     document.getElementById('app').innerHTML = h + `</tbody></table>`;
 }
 
-function tap(sec) { filter = filter===sec ? null : sec; render(); }
+function tap(sec){ filter = filter===sec ? null : sec; render(); }
 
 init();
 </script>
