@@ -1,113 +1,89 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
-    <title>Onyx | Terminal Engine</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <title>Onyx // Nexus Terminal</title>
     <style>
-        :root { --bg:#000; --s1:#0a0a0a; --s2:#111; --b1:#222; --b2:#333; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; --tx3:#666; --ac:#f97316; --mono:'JetBrains Mono',monospace; }
-        * { box-sizing:border-box; margin:0; padding:0; }
-        body { background:var(--bg); color:var(--tx); font-family:var(--mono); padding-bottom:100px; -webkit-tap-highlight-color:transparent; }
-        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:20px; text-align:center; }
-        .title { font-size:11px; font-weight:800; letter-spacing:3px; color:var(--bl); text-transform:uppercase; }
-        .container { padding: 20px; }
-        .status-card { background: var(--s1); border: 1px solid var(--b1); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-        .stat-item { background: #050505; padding: 12px; border-radius: 8px; border: 1px solid #151515; }
-        .stat-label { font-size: 8px; color: var(--tx3); text-transform: uppercase; margin-bottom: 4px; }
-        .stat-val { font-size: 13px; font-weight: 800; }
-        .imp-tabs { display: flex; border-bottom: 1px solid var(--b1); margin-bottom: 15px; }
-        .btn-tab { flex:1; background:none; border:none; color:var(--tx3); padding:12px; font-family:'Syne',sans-serif; font-size:11px; font-weight:800; cursor:pointer; border-bottom: 2px solid transparent; }
-        .btn-tab.active { color:var(--bl); border-bottom-color:var(--bl); }
-        .btn { width: 100%; padding: 16px; background: var(--s2); color: var(--tx); border: 1px solid var(--b1); border-radius: 8px; font-family: inherit; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .btn-glow { background: var(--bl); color: #000; border: none; }
-        .import-textarea { width:100%; height:120px; background:#050505; border:1px solid var(--b1); color:#fff; padding:12px; font-family:var(--mono); font-size:10px; border-radius:8px; resize:none; margin-top:10px; }
-        #log { background: #050505; border: 1px solid #111; padding: 12px; height: 180px; overflow-y: auto; font-size: 10px; color: #444; border-radius: 8px; margin-top: 15px; }
-        .log-line { margin-bottom: 4px; padding-left: 8px; border-left: 2px solid #222; }
-        .log-line.success { border-color: var(--gr); color: var(--gr); }
-        .log-line.error { border-color: var(--rd); color: var(--rd); }
-        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.9); backdrop-filter: blur(15px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 12px 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
-        .nav-btn { text-decoration: none; color: #444; display: flex; flex-direction: column; align-items: center; width: 33%; }
-        .nav-btn.active { color: var(--bl); }
-        .nav-label { font-size: 8px; margin-top: 5px; font-weight: 800; text-transform: uppercase; }
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --b2:#333; --bl:#00f2ff; --tx:#fff; --tx3:#666; --ac:#f97316; --mono:'JetBrains Mono',monospace; }
+        body { background:var(--bg); color:var(--tx); font-family:sans-serif; margin:0; padding-bottom:100px; }
+        header { padding:20px; text-align:center; border-bottom:1px solid var(--b1); font-weight:800; color:var(--bl); letter-spacing:2px; font-size:12px; }
+        .container { padding:20px; }
+        
+        /* Re-using your app-import.js styles for perfect compatibility */
+        .imp-tabs{display:flex;gap:0;border-bottom:2px solid var(--b2);margin-bottom:14px;}
+        .imp-tab{flex:1;padding:12px 6px;text-align:center;font-size:11px;font-weight:700;cursor:pointer;color:var(--tx3);border-bottom:2px solid transparent;}
+        .imp-tab.on{color:var(--ac);border-bottom-color:var(--ac);}
+        .imp-pane{display:none;} .imp-pane.on{display:block;}
+        
+        .status-card { background:var(--s1); border:1px solid var(--b1); border-radius:12px; padding:16px; margin-bottom:16px; }
+        .import-textarea { width:100%; background:#050505; border:1px solid var(--b1); color:#fff; padding:12px; font-family:var(--mono); font-size:11px; border-radius:8px; margin-top:10px; }
+        .import-btn { width:100%; padding:16px; background:var(--ac); border:none; border-radius:8px; color:#000; font-weight:800; margin-top:10px; text-transform:uppercase; }
+        
+        footer { position:fixed; bottom:0; width:100%; background:#000; border-top:1px solid var(--b1); display:flex; padding:15px 0; }
+        .nav-btn { flex:1; text-align:center; text-decoration:none; color:var(--tx3); font-size:10px; font-weight:800; }
+        .nav-btn.active { color:var(--bl); }
     </style>
 </head>
 <body>
 
-<header><div class="title">Terminal // Nexus</div></header>
+<header>DATA ENGINE // NEXUS</header>
 
 <div class="container">
     <div class="status-card">
-        <div class="stat-label">System Status</div>
-        <div class="stat-val" id="sys-status">READY</div>
-        <div class="stat-grid">
-            <div class="stat-item">
-                <div class="stat-label">Local Cache</div>
-                <div class="stat-val" id="count-val">0 STOCKS</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">DB Version</div>
-                <div class="stat-val">v8.0</div>
-            </div>
-        </div>
+        <div style="font-size:9px; color:var(--tx3);">LOCAL CACHE</div>
+        <div id="cache-count" style="font-size:18px; font-weight:800; margin-top:5px;">-- STOCKS</div>
     </div>
 
-    <div class="status-card" style="border-color: var(--b2);">
+    <div class="status-card">
         <div class="imp-tabs">
-            <button class="btn-tab active" id="tab-file" onclick="switchMode('file')">CDSL FILE</button>
-            <button class="btn-tab" id="tab-manual" onclick="switchMode('manual')">MANUAL ENTRY</button>
+            <div class="imp-tab on" id="itab-file" onclick="switchImpTab('file')">📁 FILE</div>
+            <div class="imp-tab" id="itab-manual" onclick="switchImpTab('manual')">✏ MANUAL</div>
         </div>
 
-        <div id="pane-file">
-            <div class="file-drop" onclick="document.getElementById('file-input').click()" 
-                 style="border:2px dashed var(--b1); padding:30px; text-align:center; border-radius:12px;">
-                <input type="file" id="file-input" accept=".xls,.xlsx,.csv" style="display:none;" 
-                       onchange="handleFileSelect(this.files[0])">
-                <div style="font-size:24px; margin-bottom:10px;">📂</div>
-                <div style="font-size:11px; font-weight:800;">TAP TO UPLOAD XLS</div>
-            </div>
+        <div class="imp-pane on" id="ipane-file">
+            <input type="file" id="file-input" style="display:none;" onchange="handleFileSelect(this.files[0])">
+            <button class="import-btn" style="background:var(--b2); color:#fff;" onclick="document.getElementById('file-input').click()">Select CDSL XLS</button>
         </div>
 
-        <div id="pane-manual" style="display:none;">
-            <textarea id="import-ta-manual" class="import-textarea" placeholder="SYMBOL, QTY, AVG_BUY (e.g. RELIANCE, 10, 2500)"></textarea>
-            <button class="btn btn-glow" onclick="processManual()">RESOLVE & INJECT</button>
+        <div class="imp-pane" id="ipane-manual">
+            <textarea class="import-textarea" id="import-ta-manual" rows="6" placeholder="RELIANCE, 10, 2500"></textarea>
+            <button class="import-btn" onclick="runManualImport()">Inject 15 Stocks</button>
         </div>
     </div>
 
-    <div id="imp-report" style="display:none;"></div>
-    <div id="log"><div class="log-line">Initializing...</div></div>
+    <div id="file-status" style="font-size:10px; color:var(--bl); padding:10px;"></div>
+    <div id="imp-report"></div>
 </div>
 
 <footer>
-    <a href="index.html" class="nav-btn"><span class="nav-label">Portfolio</span></a>
-    <a href="nexus.html" class="nav-btn active"><span class="nav-label">Terminal</span></a>
+    <a href="index.html" class="nav-btn">PORTFOLIO</a>
+    <a href="nexus.html" class="nav-btn active">TERMINAL</a>
 </footer>
 
 <script src="app-import.js"></script>
 <script>
-    // Bridge logic to app-import.js
-    window.onload = () => {
-        const count = JSON.parse(localStorage.getItem('portfolio') || '[]').length;
-        document.getElementById('count-val').textContent = count + " STOCKS";
-    };
-
-    function switchMode(m) {
-        document.getElementById('pane-file').style.display = m==='file'?'block':'none';
-        document.getElementById('pane-manual').style.display = m==='manual'?'block':'none';
-        document.getElementById('tab-file').classList.toggle('active', m==='file');
-        document.getElementById('tab-manual').classList.toggle('active', m==='manual');
+    // Force refresh the stock count from your real portfolio data
+    function refreshCount() {
+        const data = JSON.parse(localStorage.getItem('portfolio') || '[]');
+        document.getElementById('cache-count').textContent = data.length + " STOCKS";
     }
+    window.onload = refreshCount;
 
-    async function processManual() {
+    // Bridge function for Manual Entry
+    function runManualImport() {
         const text = document.getElementById('import-ta-manual').value;
         if(!text) return;
         
-        // Calling core logic from your app-import.js
+        // Calling your original parser in app-import.js
         parsedHoldings = parsePortfolioText(text); 
         if(parsedHoldings.length > 0) {
+            // Calling your original apply function
             applyImport('append'); 
-            document.getElementById('log').innerHTML = `<div class="log-line success">Added ${parsedHoldings.length} stocks successfully.</div>`;
+            setTimeout(() => { 
+                refreshCount();
+                alert("Successfully added " + parsedHoldings.length + " stocks.");
+            }, 500);
         }
     }
 </script>
