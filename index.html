@@ -3,32 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Unified Core</title>
+    <title>BharatMarkets | Heatmap Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; --gr1: #00f2ff; --gr2: #00ff88; --rd1: #ff4d6d; --tx3: #708499; }
+        :root { 
+            --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; 
+            /* Full-Box Colors (For backgrounds) */
+            --bg-gr: rgba(0, 255, 136, 0.15); /* Soft Green */
+            --bg-rd: rgba(255, 77, 109, 0.15); /* Soft Red */
+            --bg-yl: rgba(255, 184, 0, 0.15);  /* Soft Yellow */
+            --bg-bl: rgba(0, 242, 255, 0.05); /* Soft Blue (MCAP/Sector) */
+            
+            /* Text Colors */
+            --fg-gr: #00ff88; --fg-rd: #ff4d6d; --fg-yl: #ffb800; --fg-bl: #00f2ff;
+            --tx: #ffffff; --tx3: #708499; 
+        }
         body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
-        header { height: 60px; background: var(--s1); border-bottom: 1px solid var(--b1); display: flex; align-items: center; padding: 0 20px; justify-content: space-between; }
-        .logo { font-weight: 800; color: var(--gr1); font-size: 13px; }
+        
+        header { height: 60px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 5px 20px; display: flex; flex-direction: column; justify-content: center; }
+        .logo { font-weight: 800; color: var(--fg-bl); font-size: 13px; }
+        .totals-bar { display: flex; gap: 20px; font-size: 11px; margin-top: 5px; color: var(--tx3); }
+        .t-val { font-weight: 700; color: var(--fg-gr); }
+
         .view { width: 100%; overflow: auto; height: calc(100vh - 60px); }
         table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
-        td { padding: 12px 15px; border-bottom: 1px solid #182840; }
-        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--gr1); color: var(--gr1); font-weight: 700; }
-        .up { color: var(--gr2); } .down { color: var(--rd1); }
-        .BUY { color: var(--gr2); font-weight: 800; } .SELL { color: var(--rd1); font-weight: 800; }
+        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; cursor: pointer; }
+        td { padding: 12px 15px; border-bottom: 1px solid #182840; color: var(--tx); }
+        
+        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--fg-bl); color: var(--fg-bl); font-weight: 700; }
+        
+        /* Full-Cell Heatmap Classes */
+        .pos { background-color: var(--bg-gr) !important; color: var(--fg-gr) !important; } /* Good */
+        .neg { background-color: var(--bg-rd) !important; color: var(--fg-rd) !important; } /* Bad */
+        .neu { background-color: var(--bg-yl) !important; color: var(--fg-yl) !important; } /* Neutral */
+        .inf { background-color: var(--bg-bl) !important; color: var(--fg-bl) !important; } /* MCAP/Sector */
+
+        /* Signal Special Blocks */
+        .BUY { background-color: var(--fg-gr) !important; color: #000 !important; font-weight: 800; padding: 2px 4px; border-radius: 2px; text-align: center; }
+        .SELL { background-color: var(--fg-rd) !important; color: #000 !important; font-weight: 800; padding: 2px 4px; border-radius: 2px; text-align: center; }
+        .HOLD { color: var(--fg-yl); font-weight: 800; }
     </style>
 </head>
 <body onload="init()">
 
-    <header><div class="logo">BHARAT MARKETS | DIRECT VIEW</div></header>
+    <header>
+        <div class="logo">BHARAT MARKETS | HEATMAP</div>
+        <div class="totals-bar">
+            <span>TOTAL INVESTED: <span class="t-val" id="t-inv">₹ 0</span></span>
+        </div>
+    </header>
+
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "BharatCoreDB"; const STORE = "MasterData";
+        const DB_NAME = "BharatFullHeatmapDB"; const STORE = "MasterData";
+        let MASTER_DATA = []; let currentSort = { col: 'SYM', asc: true };
 
-        // THE MAPPING: All direct fields + your new computed Pos/Neg
-        const UI_FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
+        const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'DEBT_EQ', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
 
         async function runBuild() {
             const res = await fetch('fundamentals.json');
@@ -42,48 +73,84 @@
                 const record = { SYM: ticker.split('.')[0].toUpperCase() };
                 for (let key in raw) record[key.toUpperCase()] = raw[key];
                 
-                // 1. COMPUTE P&L
-                const cost = (record.QTY || 0) * (record.AVG || 0);
-                record.PNL = Math.round(((record.QTY || 0) * (record.LTP || 0)) - cost);
-                record.PNL_PCT = cost ? ((record.PNL / cost) * 100).toFixed(2) : 0;
+                const q = record.QTY || 0; const a = record.AVG || 0; const l = record.LTP || 0;
+                record.INV_VAL = q * a;
+                record.PNL = Math.round((q * l) - record.INV_VAL);
+                record.PNL_PCT = record.INV_VAL ? parseFloat(((record.PNL / record.INV_VAL) * 100).toFixed(2)) : 0;
 
-                // 2. COMPUTE POS/NEG (Threshold Logic)
+                // POS/NEG Computation Logic
                 let p = 0, n = 0;
                 if (record.ROE > 15) p++; else n++;
                 if (record.PE < 25) p++; else n++;
+                if (record.DEBT_EQ < 1) p++; else n++;
                 if (record.CHG1D > 0) p++; else n++;
-                
-                record.POS = p;
-                record.NEG = n;
+                record.POS = p; record.NEG = n;
 
                 store.put(record);
             });
-            tx.oncomplete = () => render();
+            tx.oncomplete = () => loadAndRender();
         }
 
-        async function render() {
+        function getCellClass(field, val, row) {
+            if (field === 'SYM') return 'sticky';
+            if (field === 'SIGNAL') return val; // Retains BUY/SELL blocks
+            
+            // Numerical Triggers (Applying full cell background)
+            if (['PNL', 'CHG1D', 'PNL_PCT'].includes(field)) return val >= 0 ? 'pos' : 'neg';
+            if (field === 'ROE') return val > 15 ? 'pos' : (val > 10 ? 'neu' : 'neg');
+            if (field === 'PE') return val < 20 ? 'pos' : (val < 40 ? 'neu' : 'neg');
+            if (field === 'DEBT_EQ') return val < 0.5 ? 'pos' : (val < 1.5 ? 'neu' : 'neg');
+            if (field === 'POS') return 'pos';
+            if (field === 'NEG') return 'neg';
+            if (field === 'SECTOR') return 'inf';
+            
+            return '';
+        }
+
+        async function loadAndRender() {
             const db = await openDB();
-            const stocks = await new Promise(r => {
+            MASTER_DATA = await new Promise(r => {
                 db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
             });
+            renderTable();
+        }
 
-            let html = `<table><thead><tr>`;
-            UI_FIELDS.forEach(f => html += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
-            html += `</tr></thead><tbody>`;
+        function renderTable() {
+            const totalInv = MASTER_DATA.reduce((sum, s) => sum + (s.INV_VAL || 0), 0);
+            document.getElementById('t-inv').innerText = '₹ ' + Math.round(totalInv).toLocaleString('en-IN');
 
-            stocks.forEach(s => {
-                html += `<tr>`;
-                UI_FIELDS.forEach(f => {
-                    let val = s[f] !== undefined ? s[f] : '—';
-                    let cls = f === 'SYM' ? 'sticky' : '';
-                    if (['PNL', 'CHG1D', 'PNL_PCT'].includes(f)) cls += ` ${val >= 0 ? 'up' : 'down'}`;
-                    if (f === 'SIGNAL') cls += ` ${val}`;
-                    
-                    html += `<td class="${cls}">${val}${ (f==='CHG1D'||f==='PNL_PCT') && val!=='—' ? '%' : ''}</td>`;
-                });
-                html += `</tr>`;
+            const sorted = [...MASTER_DATA].sort((a, b) => {
+                let v1 = a[currentSort.col], v2 = b[currentSort.col];
+                if (typeof v1 === 'string') return currentSort.asc ? v1.localeCompare(v2) : v2.localeCompare(v1);
+                return currentSort.asc ? v1 - v2 : v2 - v1;
             });
-            document.getElementById('app').innerHTML = html + `</tbody></table>`;
+
+            let h = `<table><thead><tr>`;
+            FIELDS.forEach(f => {
+                const arrow = currentSort.col === f ? (currentSort.asc ? ' ↑' : ' ↓') : '';
+                h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}${arrow}</th>`;
+            });
+            h += `</tr></thead><tbody>`;
+
+            sorted.forEach(s => {
+                h += `<tr>`;
+                FIELDS.forEach(f => {
+                    let val = s[f] !== undefined ? s[f] : '—';
+                    let cls = getCellClass(f, val, s);
+                    let suffix = (f==='CHG1D'||f==='PNL_PCT'||f==='ROE') && val!=='—' ? '%' : '';
+                    
+                    // Force the background class onto the cell (td)
+                    h += `<td class="${cls}">${val}${suffix}</td>`;
+                });
+                h += `</tr>`;
+            });
+            document.getElementById('app').innerHTML = h + `</tbody></table>`;
+        }
+
+        function handleSort(col) {
+            if (currentSort.col === col) currentSort.asc = !currentSort.asc;
+            else { currentSort.col = col; currentSort.asc = true; }
+            renderTable();
         }
 
         function openDB() {
