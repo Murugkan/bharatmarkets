@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Full Terminal</title>
+    <title>Onyx | DB Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
@@ -12,121 +12,113 @@
         
         header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
         .kpi-box { text-align:center; }
-        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
+        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
 
+        /* TAPE BAR (Flex-Line) */
         #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
-        #tape-bar { width:100%; height:34px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
+        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
         .seg { height:100%; cursor:pointer; display:flex; align-items:center; justify-content:center;
-               font-size:9px; font-weight:800; color:#000; overflow:hidden; white-space:nowrap; transition: opacity 0.2s; }
-        .seg.dimmed { opacity:0.15; }
+               font-size:8px; font-weight:800; color:#000; overflow:hidden; }
+        .seg.dimmed { opacity:0.1; }
 
-        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:8px 12px; border-bottom:1px solid var(--b1); background:#000; }
-        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#777; cursor:pointer; }
-        .leg.on { color:#fff; font-weight:800; }
-        .dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
-        
-        #filter-label { font-size:9px; color:#444; padding:6px 12px; border-bottom:1px solid #111; min-height:24px; background:#050505; }
-        #filter-label span { color:var(--bl); font-weight:800; }
+        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; }
+        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
+        .leg.on { color:#fff; }
+        .dot { width:8px; height:8px; border-radius:2px; }
 
-        .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; }
-        table { width:100%; border-collapse:collapse; font-size:11px; white-space:nowrap; }
-        th { background:var(--s1); color:#555; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; text-transform: uppercase; }
-        td { padding:12px; border-bottom:1px solid #111; color:#eee; }
+        /* DB DUMP TABLE */
+        .view { width:100%; overflow:auto; height:calc(100vh - 190px); }
+        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
+        th { background:var(--s1); color:#444; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; }
+        td { padding:12px; border-bottom:1px solid #111; }
         
+        /* PINNED TICKER */
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
         
-        .pos { background:var(--gr)!important; color:#fff!important; }
-        .neg { background:var(--rd)!important; color:#fff!important; }
-        #loading { padding:60px; text-align:center; color:var(--bl); font-size:12px; }
+        .pos { background:var(--gr)!important; }
+        .neg { background:var(--rd)!important; }
+        #status { padding:20px; font-size:10px; color:#333; text-align:center; }
     </style>
 </head>
 <body>
 
-    <header>
-        <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="kpi-count">—</div></div>
-        <div class="kpi-box"><div class="kpi-label">Net P&L</div><div class="kpi-val" id="kpi-pnl">—</div></div>
-        <div class="kpi-box"><div class="kpi-label">Sectors</div><div class="kpi-val" id="kpi-sec">—</div></div>
-    </header>
+<header>
+    <div class="kpi-box"><div class="kpi-label">Entries</div><div class="kpi-val" id="k-count">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Sectors</div><div class="kpi-val" id="k-sec">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Status</div><div class="kpi-val" id="k-stat">OFFLINE</div></div>
+</header>
 
-    <div id="bar-wrap"><div id="tape-bar"></div></div>
-    <div id="legend"></div>
-    <div id="filter-label">Syncing data engine...</div>
+<div id="bar-wrap"><div id="tape-bar"></div></div>
+<div id="legend"></div>
+<div id="status">Reading IndexedDB...</div>
 
-    <div class="view">
-        <div id="app"><div id="loading">LOADING MODULES...</div></div>
-    </div>
+<div class="view"><div id="app"></div></div>
 
 <script>
-// --- FULL FIELD DEFINITION ---
-const FIELDS  = ['SYM','LTP','PNL','PNL%','ROE','PE','PB','MCAP','SECTOR'];
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899'];
+// --- CORE CONFIG (Set these to match your exact DB/Store names) ---
+const DB_NAME = "BharatSolidStateDB"; 
+const STORE_NAME = "MasterData";
+const FIELDS = ['SYM','LTP','PNL','PNL%','ROE','PE','PB','MCAP','SECTOR'];
+const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635'];
 
-let DATA = [], SECTORS = [], COL = {}, filter = null;
+let MASTER = [], SECTORS = [], COL = {}, filter = null;
 
 async function init() {
     try {
-        const res = await fetch('fundamentals.json');
-        const json = await res.json();
+        const db = await new Promise((res, rej) => {
+            const req = indexedDB.open(DB_NAME);
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej("DB Open Failed");
+        });
 
-        DATA = Object.keys(json.stocks).map(ticker => {
-            const s = json.stocks[ticker];
-            const qty = s.qty || 0;
-            const avg = s.avgBuy || 0;
-            const ltp = s.ltp || 0;
-            
-            // Logic: If personal data exists, calc PNL; else show '—'
-            const cost = qty * avg;
-            const mkt  = qty * ltp;
-            const pnl  = qty > 0 ? Math.round(mkt - cost) : null;
-            const pnlP = cost > 0 ? ((pnl / cost) * 100).toFixed(1) : null;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+            document.getElementById('status').innerHTML = `Store "${STORE_NAME}" not found in ${DB_NAME}`;
+            return;
+        }
 
-            return {
-                SYM:    ticker.split('.')[0].toUpperCase(),
-                LTP:    ltp,
-                'PNL':  pnl !== null ? pnl : '—',
-                'PNL%': pnlP !== null ? pnlP + '%' : '—',
-                ROE:    s.roe || 0,
-                PE:     s.pe ? +s.pe.toFixed(1) : '—',
-                PB:     s.pb ? +s.pb.toFixed(2) : '—',
-                MCAP:   s.mcap ? Math.round(s.mcap) : 0,
-                SECTOR: s.sector || 'Other',
-                _w:     s.mcap || ltp || 1, // Bar weighting
-                _rawP:  pnl // Helper for KPI coloring
-            };
-        }).filter(d => d.LTP > 0);
+        const tx = db.transaction(STORE_NAME, "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        
+        MASTER = await new Promise(res => {
+            store.getAll().onsuccess = e => res(e.target.result);
+        });
 
-        SECTORS = [...new Set(DATA.map(s => s.SECTOR))].sort();
+        if (MASTER.length === 0) {
+            document.getElementById('status').innerHTML = "DB is empty. No data to dump.";
+            return;
+        }
+
+        document.getElementById('k-stat').textContent = "LIVE";
+        document.getElementById('status').style.display = "none";
+
+        // Auto-extract sectors for the Tape Bar
+        SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
         SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
 
         render();
     } catch (e) {
-        document.getElementById('loading').innerHTML = `ERROR: JSON FETCH FAILED`;
+        document.getElementById('status').textContent = "ERROR: " + e;
     }
 }
 
 function render() {
     // 1. KPIs
-    let totalPnl = 0;
-    DATA.forEach(s => { if(typeof s._rawP === 'number') totalPnl += s._rawP; });
-    
-    document.getElementById('kpi-count').textContent = DATA.length;
-    document.getElementById('kpi-sec').textContent = SECTORS.length;
-    
-    const pnlEl = document.getElementById('kpi-pnl');
-    pnlEl.textContent = totalPnl !== 0 ? `₹${(totalPnl/100000).toFixed(2)}L` : 'GLOBAL';
-    pnlEl.style.color = totalPnl >= 0 ? '#00ff88' : '#ff4d6d';
+    document.getElementById('k-count').textContent = MASTER.length;
+    document.getElementById('k-sec').textContent = SECTORS.length;
 
-    // 2. TAPE BAR
+    // 2. TAPE BAR (Weighted by MCAP if exists, else count)
     const sc = {};
-    DATA.forEach(s => { sc[s.SECTOR] = (sc[s.SECTOR] || 0) + s._w; });
+    MASTER.forEach(s => { 
+        const weight = parseFloat(s.MCAP) || 1;
+        sc[s.SECTOR || 'OTHER'] = (sc[s.SECTOR || 'OTHER'] || 0) + weight; 
+    });
     const total = Object.values(sc).reduce((a, b) => a + b, 0);
 
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
         const pct = (sc[sec] / total * 100).toFixed(2);
         const dim = filter && filter !== sec ? ' dimmed' : '';
-        return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}" 
-                     onclick="tap('${sec}')">${pct > 8 ? sec : ''}</div>`;
+        return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
     }).join('');
 
     // 3. LEGEND
@@ -136,30 +128,31 @@ function render() {
         </div>
     `).join('');
 
-    // 4. TABLE
-    const rows = filter ? DATA.filter(s => s.SECTOR === filter) : DATA;
-    let h = `<table><thead><tr>` + FIELDS.map(f => `<th class="${f==='SYM'?'sticky':''}">${f}</th>`).join('') + `</tr></thead><tbody>`;
-    
-    rows.forEach(s => {
-        h += `<tr>` + FIELDS.map(f => {
-            const v = s[f] ?? '—';
-            let c = f === 'SYM' ? 'sticky' : '';
-            
-            // Heatmap: PNL & ROE
-            if ((f === 'PNL' || f === 'PNL%') && typeof s._rawP === 'number') {
-                c += s._rawP >= 0 ? ' pos' : ' neg';
-            }
-            if (f === 'ROE' && v !== '—') {
-                if (v > 22) c += ' pos';
-                else if (v < 12) c += ' neg';
-            }
+    // 4. TABLE DUMP
+    const rows = filter ? MASTER.filter(s => s.SECTOR === filter) : MASTER;
+    let h = `<table><thead><tr>`;
+    FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
+    h += `</tr></thead><tbody>`;
 
-            return `<td class="${c}">${v}</td>`;
-        }).join('') + `</tr>`;
+    rows.forEach(s => {
+        h += `<tr>`;
+        FIELDS.forEach(f => {
+            const val = s[f] ?? '—';
+            let cls = f === 'SYM' ? 'sticky' : '';
+            
+            // Basic Color Logic
+            if (f.includes('PNL')) {
+                const num = parseFloat(val);
+                if (num > 0) cls += ' pos';
+                if (num < 0) cls += ' neg';
+            }
+            
+            h += `<td class="${cls}">${val}${f==='ROE' && val!=='—'?'%':''}</td>`;
+        });
+        h += `</tr>`;
     });
 
     document.getElementById('app').innerHTML = h + `</tbody></table>`;
-    document.getElementById('filter-label').innerHTML = filter ? `Sector: <span>${filter}</span>` : "Terminal: All Sectors Active";
 }
 
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
