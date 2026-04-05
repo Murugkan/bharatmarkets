@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Legacy Strict Terminal</title>
+    <title>Onyx | Action Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
@@ -33,6 +33,7 @@
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
         .pos { color:var(--gr)!important; font-weight:800; }
         .neg { color:var(--rd)!important; font-weight:800; }
+        .sig-buy { color:#00ff88; font-weight:800; border:1px solid #00ff88; padding:2px 4px; border-radius:2px; }
         
         #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; letter-spacing:1px; }
     </style>
@@ -47,37 +48,65 @@
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
-<div id="status">Initializing Legacy Core...</div>
+<div id="status">Waking Action Engine...</div>
 
 <div class="view"><div id="app"></div></div>
 
 <script>
 const DB_NAME = "OnyxPortfolioDB"; 
 const STORE_NAME = "Stocks";
-const DB_VERSION = 4; // Bump to force-apply the legacy whitelist
+const DB_VERSION = 7; // Bumped for new "Action-First" order
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
 
-let MASTER = [], SECTORS = [], COL = {}, filter = null, DYNAMIC_FIELDS = [];
+let MASTER = [], SECTORS = [], COL = {}, filter = null;
 
-// --- THE LEGACY WHITELIST (Exact sequence from your stable file) ---
-const LEGACY_WHITELIST = [
-    'SYM', 'QTY', 'AVGBUY', 'LTP', 'INVESTED', 'PNL', 'PNL%', 
-    'ROE', 'PE', 'MCAP', 'OPM%', 'NPM%', 'ROCE%', 
-    '1D%', '5D%', 'ATH%', '52W%', 
-    'POS', 'NEG', 'SIGNAL', 'SECTOR'
+// --- THE STRATEGIC 27-FIELD ORDER ---
+const UI_FIELDS = [
+    'SYM', 'SIGNAL', 'PNL', 'PNL%', '1D%', 'LTP',      // Action Zone (Visible on Load)
+    'QTY', 'AVG', 'INVESTED',                         // Position Zone
+    'POS', 'NEG', 'ROE%', 'ROCE%', 'OPM%', 'NPM%',    // Health Zone
+    'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO',     // Scale Zone
+    'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%',   // Ownership/Risk
+    'SECTOR'                                          // Grouping
 ];
 
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
     if (!v || v === '—') return 0;
-    const n = parseFloat(v.toString().replace(/[^\d.-]/g, ''));
-    return isNaN(n) ? 0 : n;
+    return parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
+};
+
+// Resolver for Fuzzy Matching JSON keys to UI Headers
+const resolve = (obj, field) => {
+    const f = field.toUpperCase();
+    const mappings = {
+        'SYM': ['SYM', 'SYMBOL', 'TICKER'],
+        'AVG': ['AVG', 'AVGBUY', 'COST'],
+        'PNL%': ['PNL%', 'PNL_PCT', 'CHANGE_PCT'],
+        '1D%': ['1D%', 'CHANGE_1D', 'DAY_CHANGE'],
+        'ROE%': ['ROE%', 'ROE', 'RETURN_ON_EQUITY'],
+        'ROCE%': ['ROCE%', 'ROCE'],
+        'OPM%': ['OPM%', 'OPM_PCT'],
+        'NPM%': ['NPM%', 'NPM_PCT'],
+        'PROM%': ['PROM%', 'PROMOTER_HOLDING'],
+        'FII%': ['FII%', 'FII_HOLDING'],
+        'DII%': ['DII%', 'DII_HOLDING'],
+        'ATH%': ['ATH%', 'ATH_DIST'],
+        '52W%': ['52W%', '52W_DIST'],
+        'SIGNAL': ['SIGNAL', 'TECH_SIGNAL']
+    };
+    const targets = mappings[f] || [f];
+    for (let t of targets) {
+        if (obj[t] !== undefined) return obj[t];
+        const cleanT = t.replace('%', '');
+        if (obj[cleanT] !== undefined) return obj[cleanT];
+    }
+    return '—';
 };
 
 async function init() {
     const statusEl = document.getElementById('status');
-    
-    const db = await new Promise((res) => {
+    const db = await new Promise(res => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = e => {
             const d = e.target.result;
@@ -88,62 +117,47 @@ async function init() {
     });
 
     const tx = db.transaction(STORE_NAME, "readonly");
-    const existing = await new Promise(res => {
+    MASTER = await new Promise(res => {
         tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
     });
 
-    // Check if hydration is needed or if fields are misaligned
-    if (existing.length === 0 || Object.keys(existing[0]).length < 15) {
-        statusEl.innerHTML = "REBUILDING LEGACY CACHE...";
+    if (MASTER.length === 0) {
+        statusEl.innerHTML = "SYNCING 27-FIELD CACHE...";
         try {
-            const response = await fetch('fundamentals.json');
-            const json = await response.json();
+            const resp = await fetch('fundamentals.json');
+            const json = await resp.json();
             const stocks = json.stocks || json;
-            
             const writeTx = db.transaction(STORE_NAME, "readwrite");
             const store = writeTx.objectStore(STORE_NAME);
-            
-            Object.keys(stocks).forEach(ticker => {
-                const s = stocks[ticker];
-                const entry = { SYM: ticker.split('.')[0].toUpperCase() };
+            Object.keys(stocks).forEach(t => {
+                const s = stocks[t];
+                const entry = { SYM: t.split('.')[0].toUpperCase() };
                 Object.keys(s).forEach(k => entry[k.toUpperCase()] = s[k]);
                 store.put(entry);
             });
-
             writeTx.oncomplete = () => location.reload();
-        } catch (e) {
-            statusEl.innerHTML = "ERR: JSON SOURCE MISSING.";
-        }
+        } catch (e) { statusEl.innerHTML = "JSON SOURCE ERROR."; }
         return;
     }
 
-    MASTER = existing;
     statusEl.style.display = "none";
-    
-    // STRICT FILTER: Match database keys against our legacy whitelist
-    const dbKeys = Object.keys(MASTER[0]);
-    DYNAMIC_FIELDS = LEGACY_WHITELIST.filter(f => 
-        dbKeys.some(dk => dk.toUpperCase() === f.toUpperCase())
-    );
-    
-    SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
+    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
-    
     render();
 }
 
 function render() {
     let totalPnl = 0;
-    document.getElementById('k-count').textContent = MASTER.length;
-    document.getElementById('k-cols').textContent = DYNAMIC_FIELDS.length;
-
     const sc = {};
     MASTER.forEach(s => { 
-        totalPnl += cleanNum(s.PNL);
-        const weight = Math.max(cleanNum(s.MCAP) || cleanNum(s.LTP), 1);
-        sc[s.SECTOR || 'OTHER'] = (sc[s.SECTOR || 'OTHER'] || 0) + weight; 
+        const sec = resolve(s, 'SECTOR') || 'OTHER';
+        totalPnl += cleanNum(resolve(s, 'PNL'));
+        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || cleanNum(resolve(s, 'LTP')), 1);
+        sc[sec] = (sc[sec] || 0) + weight; 
     });
     
+    document.getElementById('k-count').textContent = MASTER.length;
+    document.getElementById('k-cols').textContent = UI_FIELDS.length;
     const pEl = document.getElementById('k-pnl');
     pEl.textContent = `₹${(totalPnl/100000).toFixed(2)}L`;
     pEl.style.color = totalPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
@@ -160,23 +174,27 @@ function render() {
         </div>
     `).join('');
 
-    const rows = filter ? MASTER.filter(s => (s.SECTOR || 'OTHER') === filter) : MASTER;
+    const rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : MASTER;
     let h = `<table><thead><tr>`;
-    DYNAMIC_FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
+    UI_FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
     h += `</tr></thead><tbody>`;
 
     rows.forEach(s => {
         h += `<tr>`;
-        DYNAMIC_FIELDS.forEach(f => {
-            const val = s[f] ?? '—';
+        UI_FIELDS.forEach(f => {
+            const val = resolve(s, f);
             let cls = f === 'SYM' ? 'sticky' : '';
             const n = cleanNum(val);
-            if (n !== 0) {
-                const uf = f.toUpperCase();
-                if ((uf.includes('PNL') || uf.includes('ROE') || uf === 'POS') && n > 0) cls += ' pos';
-                if ((uf.includes('PNL') || uf === 'NEG') && n < 0) cls += ' neg';
+            
+            // UI Coloring Logic
+            if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += `<td class="${cls}"><span class="sig-buy">BUY</span></td>`;
+            else {
+                if (n !== 0) {
+                    if (['PNL', 'PNL%', '1D%', 'ROE%', 'ROCE%', 'POS'].includes(f) && n > 0) cls += ' pos';
+                    if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+                }
+                h += `<td class="${cls}">${val}</td>`;
             }
-            h += `<td class="${cls}">${val}</td>`;
         });
         h += `</tr>`;
     });
