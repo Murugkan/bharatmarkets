@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Deep Terminal</title>
+    <title>Onyx | Bulletproof Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
@@ -14,10 +14,9 @@
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
         
-        /* FLEX CHART BAR */
         #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
-        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; gap:1px; }
-        .seg { height:100%; cursor:pointer; transition: opacity 0.2s; min-width:1px; }
+        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
+        .seg { height:100%; cursor:pointer; min-width:2px; transition: opacity 0.2s; }
         .seg.dimmed { opacity:0.1; }
 
         #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
@@ -54,7 +53,14 @@ const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#f
 
 let MASTER = [], SECTORS = [], COL = {}, filter = null, DYNAMIC_FIELDS = [];
 
-// Helper to safely extract numbers from strings (handles % and ₹)
+// --- CRITICAL HELPERS ---
+// 1. Case-Insensitive Property Finder
+const findProp = (obj, key) => {
+    const k = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+    return k ? obj[k] : null;
+};
+
+// 2. String-to-Number Sanitizer
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
     if (!v || v === '—') return 0;
@@ -79,7 +85,8 @@ async function init() {
         MASTER.forEach(item => Object.keys(item).forEach(k => { if(!k.startsWith('_')) allKeys.add(k); }));
         DYNAMIC_FIELDS = ['SYM', ...Array.from(allKeys).filter(f => !['SYM','SECTOR'].includes(f)), 'SECTOR'];
         
-        SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
+        // Use findProp for Sector mapping
+        SECTORS = [...new Set(MASTER.map(s => findProp(s, 'SECTOR') || 'OTHER'))].sort();
         SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
         render();
     }
@@ -90,14 +97,17 @@ function render() {
     document.getElementById('k-count').textContent = MASTER.length;
     document.getElementById('k-cols').textContent = DYNAMIC_FIELDS.length;
 
-    // 1. CHART LOGIC (Sanitized for Deep Dump)
+    // 1. SECURE CHART LOGIC
     const sc = {};
     MASTER.forEach(s => { 
-        // Sum up total PNL for KPI while we iterate
-        totalPnl += cleanNum(s.PNL);
-        // Use MCAP or LTP for weight, default to 1
-        const weight = Math.max(cleanNum(s.MCAP) || cleanNum(s.LTP), 1);
-        sc[s.SECTOR || 'OTHER'] = (sc[s.SECTOR || 'OTHER'] || 0) + weight; 
+        const sec = findProp(s, 'SECTOR') || 'OTHER';
+        const pnl = cleanNum(findProp(s, 'PNL'));
+        const mcap = cleanNum(findProp(s, 'MCAP'));
+        const ltp = cleanNum(findProp(s, 'LTP'));
+        
+        totalPnl += pnl;
+        const weight = Math.max(mcap || ltp, 1);
+        sc[sec] = (sc[sec] || 0) + weight; 
     });
     
     const pEl = document.getElementById('k-pnl');
@@ -119,7 +129,7 @@ function render() {
     `).join('');
 
     // 3. TABLE
-    const rows = filter ? MASTER.filter(s => s.SECTOR === filter) : MASTER;
+    const rows = filter ? MASTER.filter(s => (findProp(s, 'SECTOR') || 'OTHER') === filter) : MASTER;
     let h = `<table><thead><tr>`;
     DYNAMIC_FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
     h += `</tr></thead><tbody>`;
@@ -131,8 +141,8 @@ function render() {
             let cls = f === 'SYM' ? 'sticky' : '';
             const n = cleanNum(val);
             if (n !== 0) {
-                if ((f.includes('PNL') || f === 'ROE') && n > 0) cls += ' pos';
-                if (f.includes('PNL') && n < 0) cls += ' neg';
+                if ((f.toUpperCase().includes('PNL') || f.toUpperCase() === 'ROE') && n > 0) cls += ' pos';
+                if (f.toUpperCase().includes('PNL') && n < 0) cls += ' neg';
             }
             h += `<td class="${cls}">${val}</td>`;
         });
