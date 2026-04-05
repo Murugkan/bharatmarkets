@@ -3,199 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Pro Terminal</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <title>Onyx // Portfolio Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap" rel="stylesheet">
     <style>
-        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
-        *{box-sizing:border-box;margin:0;padding:0;}
-        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; }
-        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
-        .kpi-box { text-align:center; }
-        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
-        .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
-        #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
-        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,0,0,0.3); }
-        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
-        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
-        .leg.on { color:#fff; font-weight:800; }
-        .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; -webkit-overflow-scrolling:touch; }
-        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
-        th { background:var(--s1); color:#666; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
-        th.active { color: var(--bl); }
-        td { padding:12px; border-bottom:1px solid #111; }
-        tfoot td { background: var(--s1); font-weight: 800; color: var(--tx); border-top: 2px solid var(--b1); position: sticky; bottom: 0; }
-        .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; }
-        .pos { color:var(--gr)!important; }
-        .neg { color:var(--rd)!important; }
-        .sig-buy { color:#00ff88; font-weight:800; border:1px solid #00ff88; padding:2px 4px; border-radius:2px; font-size:9px; }
-        #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; }
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#1a1a1a; --ac:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; --tx3:#555; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; margin:0; padding:0; overflow-x:hidden; }
+        
+        /* Header & Stats Bar */
+        header { padding: 25px 15px 15px; border-bottom: 1px solid var(--b1); background: var(--bg); position: sticky; top: 0; z-index: 100; }
+        .head-row { display: flex; justify-content: space-between; align-items: flex-end; }
+        h1 { font-size: 20px; margin: 0; color: var(--ac); letter-spacing: -1.5px; font-weight: 800; }
+        .market-badge { font-size: 9px; color: var(--gr); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 5px; }
+        .market-badge::before { content: ''; width: 6px; height: 6px; background: var(--gr); border-radius: 50%; display: inline-block; box-shadow: 0 0 8px var(--gr); }
+
+        /* Search & Filter Bar */
+        .tool-bar { padding: 10px 15px; background: var(--s1); border-bottom: 1px solid var(--b1); display: flex; gap: 10px; }
+        #search-input { background: transparent; border: 1px solid var(--b1); color: var(--tx); padding: 8px 12px; border-radius: 6px; font-size: 12px; font-family: inherit; flex-grow: 1; }
+        #search-input:focus { border-color: var(--ac); }
+
+        /* High-Density Table */
+        main { padding-bottom: 90px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; min-width: 750px; table-layout: fixed; }
+        th { background: var(--s1); color: var(--tx3); font-size: 10px; text-align: left; padding: 15px 12px; position: sticky; top: 0; border-bottom: 2px solid var(--b1); text-transform: uppercase; cursor: pointer; z-index: 20; transition: color 0.2s; }
+        th:active { color: var(--ac); }
+        td { padding: 14px 12px; font-size: 13px; border-bottom: 1px solid #080808; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Cell Formatting */
+        .pos { color: var(--gr); }
+        .neg { color: var(--rd); }
+        .dim { color: var(--tx3); font-size: 11px; }
+        .sector-tag { font-size: 10px; background: #111; padding: 3px 7px; border-radius: 4px; color: var(--ac); border: 1px solid #222; text-transform: uppercase; }
+        .val-bold { font-weight: 800; }
+
+        /* Navigation Footer */
+        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.92); backdrop-filter: blur(20px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; align-items: center; padding: 16px 0; z-index: 1000; }
+        .nav-link { text-decoration: none; color: var(--tx3); display: flex; flex-direction: column; align-items: center; width: 25%; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .nav-link.active { color: var(--ac); }
+        .nav-link:active { transform: scale(0.9); opacity: 0.7; }
+        .nav-label { font-size: 9px; margin-top: 6px; letter-spacing: 1.5px; font-weight: 800; text-transform: uppercase; }
+
+        /* State Overlays */
+        #loading-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 2000; }
+        .spinner { width: 30px; height: 30px; border: 2px solid var(--b1); border-top-color: var(--ac); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-<header>
-    <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
-</header>
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <div style="font-size: 10px; letter-spacing: 2px; color: var(--tx3);">INITIALIZING ONYX</div>
+    </div>
 
-<div id="bar-wrap"><div id="tape-bar"></div></div>
-<div id="legend"></div>
-<div id="status">Loading Pro Engine...</div>
-<div class="view"><div id="app"></div></div>
+    <header>
+        <div class="head-row">
+            <div>
+                <h1>PORTFOLIO</h1>
+                <div class="market-badge" id="mkt-status">Engine Connected</div>
+            </div>
+            <div style="text-align: right">
+                <div id="item-count" style="font-size: 10px; color: var(--tx3); margin-bottom: 2px;">ITEMS: 0</div>
+                <div id="sync-time" style="font-size: 9px; color: var(--ac);">LAST SYNC: --:--</div>
+            </div>
+        </div>
+    </header>
 
-<script>
-const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
+    <div class="tool-bar">
+        <input type="text" id="search-input" placeholder="SEARCH SYMBOL OR SECTOR..." onkeyup="engine.filter()">
+    </div>
 
-let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false;
+    <main>
+        <table id="master-table">
+            <thead>
+                <tr>
+                    <th style="width: 25%;" onclick="engine.sort('sym')">Symbol</th>
+                    <th style="width: 15%;" onclick="engine.sort('price')">LTP</th>
+                    <th style="width: 15%;" onclick="engine.sort('chg')">Change%</th>
+                    <th style="width: 20%;" onclick="engine.sort('sector')">Sector</th>
+                    <th style="width: 12.5%;" onclick="engine.sort('roe')">ROE</th>
+                    <th style="width: 12.5%;" onclick="engine.sort('pe')">P/E</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                </tbody>
+        </table>
+    </main>
 
-const UI_FIELDS = [
-    'SYM', 'SIGNAL', 'PNL', 'PNL%', '1D%', 'LTP',
-    'QTY', 'AVG', 'INVESTED',
-    'POS', 'NEG', 'ROE%', 'ROCE%', 'OPM%', 'NPM%',
-    'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO',
-    'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%',
-    'SECTOR'
-];
+    <footer>
+        <a href="index.html" class="nav-link active">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+            <span class="nav-label">Terminal</span>
+        </a>
+        <a href="nexus.html" class="nav-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+            <span class="nav-label">Nexus</span>
+        </a>
+    </footer>
 
-const cleanNum = (v) => {
-    if (typeof v === 'number') return v;
-    if (!v || v === '—') return 0;
-    return parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
-};
+    <script>
+        /**
+         * ONYX DATA ENGINE v2.4
+         * Core Logic: Fetch -> Sanitize -> Render -> Sort
+         */
+        const engine = {
+            raw: [],
+            filtered: [],
+            sortKey: '',
+            sortDir: 1,
 
-// Formatter to enforce 2 decimals on LTP/Price
-const fmt = (val, field) => {
-    const n = cleanNum(val);
-    if (n === 0 && val === '—') return '—';
-    if (['LTP', 'AVG', 'PNL', 'INVESTED', 'MCAP'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (field.includes('%')) return n.toFixed(2) + '%';
-    return val;
-};
+            async boot() {
+                try {
+                    // Check for local symbol registration
+                    if (!localStorage.getItem('onyx_symbols')) {
+                        return window.location.href = 'nexus.html';
+                    }
 
-const resolve = (obj, field) => {
-    const f = field.toUpperCase();
-    const mappings = { 'SYM':['SYM','SYMBOL','TICKER'], 'AVG':['AVG','AVGBUY'], 'PNL':['PNL','P/L'], 'PNL%':['PNL%','PNL_PCT'], '1D%':['1D%','CHANGE_1D'], 'ROE%':['ROE%','ROE'], 'SIGNAL':['SIGNAL','TECH_SIGNAL'] };
-    const targets = mappings[f] || [f];
-    for (let t of targets) {
-        if (obj[t] !== undefined) return obj[t];
-        const cleanT = t.replace('%', '');
-        if (obj[cleanT] !== undefined) return obj[cleanT];
-    }
-    return '—';
-};
+                    const response = await fetch('unified_data.json');
+                    if (!response.ok) throw new Error("Sync Failed");
+                    
+                    const data = await response.json();
+                    
+                    // The "Blank Killer" Transformation
+                    this.raw = data.map(item => ({
+                        sym: item.sym || 'UNKNOWN',
+                        price: parseFloat(item.price) || 0.00,
+                        chg: parseFloat(item.chg) || 0.00,
+                        sector: item.sector || 'N/A',
+                        roe: parseFloat(item.roe) || 0.00,
+                        pe: parseFloat(item.pe) || 0.00
+                    }));
 
-async function init() {
-    const statusEl = document.getElementById('status');
-    const db = await new Promise(res => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = e => {
-            const d = e.target.result;
-            if (d.objectStoreNames.contains(STORE_NAME)) d.deleteObjectStore(STORE_NAME);
-            d.createObjectStore(STORE_NAME, { keyPath: "SYM" });
-        };
-        req.onsuccess = () => res(req.result);
-    });
-
-    const tx = db.transaction(STORE_NAME, "readonly");
-    MASTER = await new Promise(res => {
-        tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
-    });
-
-    if (MASTER.length === 0) {
-        statusEl.innerHTML = "INITIALIZING CORE...";
-        const resp = await fetch('fundamentals.json');
-        const json = await resp.json();
-        const stocks = json.stocks || json;
-        const writeTx = db.transaction(STORE_NAME, "readwrite");
-        const store = writeTx.objectStore(STORE_NAME);
-        Object.keys(stocks).forEach(t => {
-            const s = stocks[t];
-            const entry = { SYM: t.split('.')[0].toUpperCase() };
-            Object.keys(s).forEach(k => entry[k.toUpperCase()] = s[k]);
-            store.put(entry);
-        });
-        writeTx.oncomplete = () => location.reload();
-        return;
-    }
-
-    statusEl.style.display = "none";
-    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
-    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
-    render();
-}
-
-function render() {
-    let sumPnl = 0, sumInv = 0, sc = {};
-    
-    // Process Data
-    MASTER.forEach(s => { 
-        const sec = resolve(s, 'SECTOR') || 'OTHER';
-        sumPnl += cleanNum(resolve(s, 'PNL'));
-        sumInv += cleanNum(resolve(s, 'INVESTED'));
-        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || cleanNum(resolve(s, 'LTP')), 1);
-        sc[sec] = (sc[sec] || 0) + weight; 
-    });
-    
-    document.getElementById('k-count').textContent = MASTER.length;
-    const pEl = document.getElementById('k-pnl');
-    pEl.textContent = `₹${(sumPnl/100000).toFixed(2)}L`;
-    pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
-
-    // Tape & Legend
-    const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
-    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => `<div class="seg${filter && filter !== sec ? ' dimmed' : ''}" style="flex-basis:${((sc[sec]/totalW)*100)}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`).join('');
-    document.getElementById('legend').innerHTML = SECTORS.map(sec => `<div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')"><div class="dot" style="background:${COL[sec]}"></div>${sec}</div>`).join('');
-
-    // Filter & Sort
-    let rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : [...MASTER];
-    rows.sort((a, b) => {
-        let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
-        let nA = cleanNum(vA), nB = cleanNum(vB);
-        return sortAsc ? nA - nB : nB - nA;
-    });
-
-    // Build Table
-    let h = `<table><thead><tr>`;
-    UI_FIELDS.forEach(f => h += `<th onclick="doSort('${f}')" class="${f===sortCol?'active':''} ${f==='SYM'?'sticky':''}"><sup>${f===sortCol?(sortAsc?'▲':'▼'):''}</sup>${f}</th>`);
-    h += `</tr></thead><tbody>`;
-
-    rows.forEach(s => {
-        h += `<tr>`;
-        UI_FIELDS.forEach(f => {
-            const raw = resolve(s, f);
-            const val = fmt(raw, f);
-            let cls = f === 'SYM' ? 'sticky' : '';
-            const n = cleanNum(raw);
-            if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += `<td class="${cls}"><span class="sig-buy">BUY</span></td>`;
-            else {
-                if (n !== 0) {
-                    if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
-                    if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+                    this.filtered = [...this.raw];
+                    this.render();
+                    
+                    document.getElementById('loading-screen').style.display = 'none';
+                    document.getElementById('item-count').innerText = `ITEMS: ${this.raw.length}`;
+                    document.getElementById('sync-time').innerText = `SYNC: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                } catch (err) {
+                    console.error(err);
+                    document.querySelector('#loading-screen div:last-child').innerText = "OFFLINE: RUN NEXUS";
                 }
-                h += `<td class="${cls}">${val}</td>`;
+            },
+
+            render() {
+                const tbody = document.getElementById('table-body');
+                tbody.innerHTML = this.filtered.map(row => {
+                    const cClass = row.chg >= 0 ? 'pos' : 'neg';
+                    const rClass = row.roe > 15 ? 'pos' : (row.roe < 0 ? 'neg' : '');
+                    
+                    return `
+                        <tr>
+                            <td class="val-bold">${row.sym}</td>
+                            <td>${row.price.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                            <td class="${cClass}">${row.chg > 0 ? '+' : ''}${row.chg.toFixed(2)}%</td>
+                            <td><span class="sector-tag">${row.sector}</span></td>
+                            <td class="${rClass}">${row.roe.toFixed(1)}%</td>
+                            <td class="dim">${row.pe.toFixed(1)}</td>
+                        </tr>
+                    `;
+                }).join('');
+            },
+
+            filter() {
+                const query = document.getElementById('search-input').value.toUpperCase();
+                this.filtered = this.raw.filter(i => 
+                    i.sym.includes(query) || i.sector.toUpperCase().includes(query)
+                );
+                this.render();
+            },
+
+            sort(key) {
+                if (this.sortKey === key) this.sortDir *= -1;
+                else { this.sortKey = key; this.sortDir = 1; }
+
+                this.filtered.sort((a, b) => {
+                    let vA = a[key];
+                    let vB = b[key];
+                    if (typeof vA === 'string') return this.sortDir * vA.localeCompare(vB);
+                    return this.sortDir * (vA - vB);
+                });
+                this.render();
             }
-        });
-        h += `</tr>`;
-    });
+        };
 
-    // FOOTER TOTALS
-    h += `</tbody><tfoot><tr>`;
-    UI_FIELDS.forEach(f => {
-        let cls = f === 'SYM' ? 'sticky' : '';
-        if (f === 'SYM') h += `<td class="${cls}">TOTAL</td>`;
-        else if (f === 'PNL') h += `<td class="${sumPnl>=0?'pos':'neg'}">${fmt(sumPnl, 'PNL')}</td>`;
-        else if (f === 'INVESTED') h += `<td>${fmt(sumInv, 'INVESTED')}</td>`;
-        else h += `<td class="${cls}"></td>`;
-    });
-    document.getElementById('app').innerHTML = h + `</tr></tfoot></table>`;
-}
-
-function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
-function tap(sec) { filter = filter === sec ? null : sec; render(); }
-init();
-</script>
+        window.onload = () => engine.boot();
+    </script>
 </body>
 </html>
