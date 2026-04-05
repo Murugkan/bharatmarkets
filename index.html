@@ -31,7 +31,7 @@
     #active-label{font-size:9px;color:#555;padding:3px 10px;border-bottom:1px solid #111;min-height:18px;}
     #active-label span{color:var(--bl);font-weight:800;}
 
-    #status{padding:40px;text-align:center;font-size:11px;color:#444;line-height:1.8;}
+    #status{padding:40px;text-align:center;font-size:11px;color:#444;line-height:2;}
     .view{overflow:auto;height:calc(100vh - 200px);}
     table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;}
     th{background:var(--s1);color:#666;padding:10px 12px;position:sticky;top:0;z-index:9;border-bottom:1px solid var(--b1);text-align:left;}
@@ -64,69 +64,52 @@ function fmt(n){ return `₹${(n/100000).toFixed(2)}L`; }
 function tap(sec){ filter = filter===sec ? null : sec; render(); }
 function status(msg){ document.getElementById('status').innerHTML = msg; }
 
-// ── Read portfolio from localStorage (S.portfolio) ──────────────
-function getPortfolio() {
-    // Your app stores state as S in localStorage — try common keys
-    const keys = ['S', 'bharat_state', 'app_state', 'state'];
-    for (const key of keys) {
-        try {
-            const raw = localStorage.getItem(key);
-            if (!raw) continue;
-            const obj = JSON.parse(raw);
-            // S.portfolio is the array
-            if (obj.portfolio && Array.isArray(obj.portfolio) && obj.portfolio.length > 0) {
-                return obj.portfolio;
-            }
-        } catch(e) {}
-    }
-    // Also try direct 'portfolio' key
+async function boot() {
+    // ── Read S.portfolio from localStorage ──────────────────────
+    let holdings = null;
     try {
-        const raw = localStorage.getItem('portfolio');
+        const raw = localStorage.getItem('S');
         if (raw) {
-            const arr = JSON.parse(raw);
-            if (Array.isArray(arr) && arr.length > 0) return arr;
+            const S = JSON.parse(raw);
+            if (Array.isArray(S.portfolio) && S.portfolio.length > 0) {
+                holdings = S.portfolio;
+            }
         }
     } catch(e) {}
-    return null;
-}
 
-// ── Build DATA by merging portfolio holdings + fundamentals ──────
-async function boot() {
-    const holdings = getPortfolio();
-
-    if (!holdings || holdings.length === 0) {
-        // Show all available localStorage keys to help debug
-        const allKeys = Object.keys(localStorage);
-        status(`No portfolio found in localStorage.<br><br>
-            Keys found: <b style="color:#00f2ff">${allKeys.length > 0 ? allKeys.join(', ') : '(none)'}</b><br><br>
-            This page must be served from the <b>same origin</b> as your main app.`);
+    if (!holdings) {
+        status(`No portfolio found.<br>
+            Open <a href="https://murugkan.github.io/bharatmarkets/" style="color:var(--bl)">bharatmarkets</a>
+            first, import your holdings, then come back here.`);
         return;
     }
 
-    // Load fundamentals.json for live ltp + sector + roe
+    // ── Load fundamentals.json for live ltp + sector + roe ──────
     let fund = {};
     try {
-        const res = await fetch('fundamentals.json');
+        const res = await fetch('/bharatmarkets/fundamentals.json');
         if (res.ok) {
             const json = await res.json();
             fund = json.stocks || {};
         }
     } catch(e) {}
 
+    // ── Merge holdings + fundamentals ────────────────────────────
     DATA = holdings
-        .filter(h => h.sym && h.qty > 0)
+        .filter(h => h.sym && (h.qty || h.QTY) > 0)
         .map(h => {
-            const f   = fund[h.sym] || fund[h.sym + '.NS'] || {};
-            const ltp = f.ltp || h.ltp || 0;
-            const avg = h.avgBuy || h.avg || 0;
-            const qty = h.qty || 0;
+            const sym  = h.sym || h.SYM;
+            const f    = fund[sym] || {};
+            const ltp  = f.ltp  || h.ltp  || h.LTP  || 0;
+            const avg  = h.avgBuy || h.avg || h.AVG  || 0;
+            const qty  = h.qty  || h.QTY  || 0;
             const cost = qty * avg;
             const mkt  = qty * ltp;
             return {
-                SYM:    h.sym,
+                SYM:    sym,
                 QTY:    qty,
                 AVG:    avg,
-                LTP:    ltp,
+                LTP:    +ltp.toFixed(2),
                 SECTOR: f.sector || h.sector || 'Other',
                 ROE:    f.roe    || h.roe    || 0,
                 COST:   cost,
@@ -136,8 +119,8 @@ async function boot() {
         })
         .filter(d => d.QTY > 0);
 
-    if (DATA.length === 0) {
-        status('Portfolio found but no valid holdings with qty > 0.');
+    if (!DATA.length) {
+        status('Portfolio loaded but no valid holdings found.');
         return;
     }
 
@@ -159,9 +142,9 @@ function render() {
     // Bar
     const sc = {};
     DATA.forEach(s => { sc[s.SECTOR] = (sc[s.SECTOR]||0) + s.COST; });
-    const total = Object.values(sc).reduce((a,b)=>a+b, 0);
+    const total = Object.values(sc).reduce((a,b) => a+b, 0);
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
-        const pct = (sc[sec]/total*100).toFixed(2);
+        const pct = (sc[sec] / total * 100).toFixed(2);
         const dim = filter && filter !== sec ? ' dimmed' : '';
         return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}"
                      onclick="tap('${sec}')">${pct > 9 ? sec : ''}</div>`;
