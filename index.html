@@ -3,38 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Onyx Fix</title>
+    <title>BharatMarkets | Terminal</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #333; --bl: #00f2ff; --tx: #fff; }
+        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #333; --bl: #00f2ff; --gr: #064e3b; --rd: #7f1d1d; --tx: #ffffff; }
         body { background: var(--bg); color: var(--tx); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
-        .kpi-row { display: flex; justify-content: space-around; background: var(--s1); padding: 15px 5px; border-bottom: 1px solid var(--b1); }
-        .kpi-box { text-align: center; flex: 1; }
-        .kpi-label { font-size: 9px; color: #888; text-transform: uppercase; }
-        .kpi-val { font-size: 15px; font-weight: 800; margin-top: 4px; }
-        #chart-wrap { height: 150px; background: #000; padding: 10px; border-bottom: 2px solid var(--b1); }
+        
+        /* Header & KPIs */
+        header { background: var(--s1); border-bottom: 1px solid var(--b1); padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        .kpi-row { display: flex; width: 100%; justify-content: space-around; margin-bottom: 5px; }
+        .kpi-box { text-align: center; }
+        .kpi-label { font-size: 8px; color: #888; text-transform: uppercase; }
+        .kpi-val { font-size: 14px; font-weight: 800; margin-top: 2px; }
+        .reset-btn { font-size: 9px; color: var(--bl); border: 1px solid var(--bl); padding: 2px 8px; border-radius: 10px; margin-top: 5px; cursor: pointer; }
+
+        /* Chart Area - Forced Height */
+        #chart-wrap { height: 180px; background: #000; padding: 5px 10px; border-bottom: 2px solid var(--b1); }
+        
+        /* Table Area */
         .view { width: 100%; overflow: auto; height: calc(100vh - 280px); }
-        table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        th { background: var(--s1); color: #888; padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
-        td { padding: 12px; border-bottom: 1px solid #111; color: #fff !important; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
+        th { background: var(--s1); color: #888; padding: 10px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #111; color: #fff !important; }
+        
         .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl) !important; font-weight: 800; }
-        .pos { background: #064e3b !important; } .neg { background: #7f1d1d !important; }
+        
+        /* Heatmap Full-Cell */
+        .pos { background: var(--gr) !important; }
+        .neg { background: var(--rd) !important; }
+        .neu { background: #78350f !important; }
     </style>
 </head>
 <body onload="init()">
 
-    <div class="kpi-row">
-        <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">₹0.00L</div></div>
-        <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">₹0.00L</div></div>
-        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">₹0.00L</div></div>
-    </div>
+    <header>
+        <div class="kpi-row">
+            <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">0.00L</div></div>
+            <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">0.00L</div></div>
+            <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">0.00L</div></div>
+        </div>
+        <div class="reset-btn" onclick="clearFilter()">RESET FILTERS</div>
+    </header>
 
     <div id="chart-wrap"><canvas id="sectorChart"></canvas></div>
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "OnyxStableDB"; const STORE = "Data";
+        const DB_NAME = "OnyxFinalTerminal"; const STORE = "Data";
         let MASTER_DATA = [], activeFilter = null, chart = null;
+        const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'PNL', 'PNL_PCT', 'ROE', 'SECTOR'];
 
         async function init() {
             const res = await fetch('fundamentals.json');
@@ -43,21 +61,20 @@
             const tx = db.transaction(STORE, "readwrite");
             const store = tx.objectStore(STORE);
 
-            // Mapping raw JSON to normalized keys
             Object.keys(data.stocks).forEach(ticker => {
                 const s = data.stocks[ticker];
                 const rec = {
-                    sym: ticker.split('.')[0].toUpperCase(),
-                    qty: s.qty || 0,
-                    avg: s.avgBuy || s.AVG || 0,
-                    ltp: s.ltp || 0,
-                    sector: s.sector || 'Others',
-                    chg: s.chg1d || 0,
-                    roe: s.roe || 0
+                    SYM: ticker.split('.')[0].toUpperCase(),
+                    QTY: s.qty || 0,
+                    AVG: s.avgBuy || s.AVG || 0,
+                    LTP: s.ltp || 0,
+                    SECTOR: s.sector || 'Others',
+                    ROE: s.roe || 0
                 };
-                rec.cost = rec.qty * rec.avg;
-                rec.mkt = rec.qty * rec.ltp;
-                rec.pnl = Math.round(rec.mkt - rec.cost);
+                rec.COST = rec.QTY * rec.AVG;
+                rec.MKT = rec.QTY * rec.LTP;
+                rec.PNL = Math.round(rec.MKT - rec.COST);
+                rec.PNL_PCT = rec.COST ? ((rec.PNL / rec.COST) * 100).toFixed(1) : 0;
                 store.put(rec);
             });
             tx.oncomplete = () => load();
@@ -73,7 +90,7 @@
 
         function updateKPIs() {
             let tI = 0, tM = 0, tP = 0;
-            MASTER_DATA.forEach(s => { tI += s.cost; tM += s.mkt; tP += s.pnl; });
+            MASTER_DATA.forEach(s => { tI += s.COST; tM += s.MKT; tP += s.PNL; });
             document.getElementById('kpi-inv').innerText = `₹${(tI/100000).toFixed(2)}L`;
             document.getElementById('kpi-val').innerText = `₹${(tM/100000).toFixed(2)}L`;
             document.getElementById('kpi-pnl').innerText = `₹${(tP/100000).toFixed(2)}L`;
@@ -83,11 +100,7 @@
         function renderChart() {
             const ctx = document.getElementById('sectorChart').getContext('2d');
             const secMap = {};
-            // Grouping logic with strict key matching
-            MASTER_DATA.forEach(s => { 
-                const key = s.sector;
-                secMap[key] = (secMap[key] || 0) + s.pnl;
-            });
+            MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR] || 0) + s.PNL; });
 
             const labels = Object.keys(secMap);
             const values = Object.values(secMap);
@@ -95,18 +108,17 @@
             if(chart) chart.destroy();
             chart = new Chart(ctx, {
                 type: 'bar',
-                data: { labels, datasets: [{ data: values, backgroundColor: '#00f2ff' }] },
+                data: { labels, datasets: [{ data: values, backgroundColor: '#00f2ff', borderRadius: 4 }] },
                 options: {
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: { 
-                        x: { ticks: { color: '#fff', font: { size: 9 } }, grid: { display: false } },
-                        y: { display: false }
+                        x: { ticks: { color: '#fff', font: { size: 8 }, maxRotation: 45, minRotation: 45 }, grid: { display: false } },
+                        y: { ticks: { color: '#444', font: { size: 8 } }, grid: { color: '#222' } } // Show minor axis for height ref
                     },
                     onClick: (e, elements) => {
                         if (elements.length > 0) {
-                            const i = elements[0].index;
-                            activeFilter = (activeFilter === labels[i]) ? null : labels[i];
+                            activeFilter = labels[elements[0].index];
                             renderTable();
                         }
                     }
@@ -115,31 +127,27 @@
         }
 
         function renderTable() {
-            const filtered = activeFilter ? MASTER_DATA.filter(s => s.sector === activeFilter) : MASTER_DATA;
-            let h = `<table><thead><tr><th class="sticky">SYM</th><th>QTY</th><th>AVG</th><th>LTP</th><th>PNL</th><th>ROE</th><th>SECTOR</th></tr></thead><tbody>`;
+            const filtered = activeFilter ? MASTER_DATA.filter(s => s.SECTOR === activeFilter) : MASTER_DATA;
+            let h = `<table><thead><tr>`;
+            FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
+            h += `</tr></thead><tbody>`;
             
             filtered.forEach(s => {
-                const pnlCls = s.pnl >= 0 ? 'pos' : 'neg';
-                h += `<tr>
-                    <td class="sticky">${s.sym}</td>
-                    <td>${s.qty}</td>
-                    <td>${s.avg}</td>
-                    <td>${s.ltp}</td>
-                    <td class="${pnlCls}">${s.pnl}</td>
-                    <td>${s.roe}%</td>
-                    <td>${s.sector}</td>
-                </tr>`;
+                h += `<tr>`;
+                FIELDS.forEach(f => {
+                    let v = s[f] ?? '—';
+                    let cls = f==='SYM' ? 'sticky' : '';
+                    if(f==='PNL' || f==='PNL_PCT') cls += v >= 0 ? ' pos' : ' neg';
+                    if(f==='ROE') cls += v > 15 ? ' pos' : (v > 10 ? ' neu' : ' neg');
+                    h += `<td class="${cls}">${v}${f==='PNL_PCT' || f==='ROE' ? '%' : ''}</td>`;
+                });
+                h += `</tr>`;
             });
             document.getElementById('app').innerHTML = h + `</tbody></table>`;
         }
 
-        function openDB() { 
-            return new Promise(res => { 
-                const req = indexedDB.open(DB_NAME, 1); 
-                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "sym" }); 
-                req.onsuccess = () => res(req.result); 
-            }); 
-        }
+        function clearFilter() { activeFilter = null; renderTable(); }
+        function openDB() { return new Promise(res => { const req = indexedDB.open(DB_NAME, 1); req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" }); req.onsuccess = () => res(req.result); }); }
     </script>
 </body>
 </html>
