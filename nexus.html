@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <title>Onyx // Nexus</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#1a1a1a; --ac:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; --tx3:#555; }
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; padding:15px; }
+        header { margin-bottom:20px; display:flex; justify-content:space-between; }
+        h1 { font-size:18px; color:var(--ac); }
+        textarea { 
+            width:100%; height:180px; background:var(--s1); border:1px solid var(--b1); 
+            border-radius:8px; color:var(--gr); padding:12px; font-size:13px; font-family:inherit; outline:none;
+        }
+        .btn { 
+            background:var(--ac); color:#000; border:none; padding:18px; 
+            font-size:13px; font-weight:800; border-radius:8px; width:100%; margin-top:12px;
+        }
+        #audit-grid { margin-top:20px; border-top:1px solid var(--b1); padding-top:10px; }
+        .audit-item { font-size:11px; padding:6px; background:var(--s1); margin-bottom:4px; display:flex; justify-content:space-between; }
+    </style>
+</head>
+<body>
+    <header><h1>ONYX // NEXUS</h1></header>
+    <textarea id="symbol-well" placeholder="Paste symbols here..."></textarea>
+    <button class="btn" onclick="registerSymbols()">RESOLVE & SAVE</button>
+    <div id="audit-grid"></div>
+
+    <script>
+        async function registerSymbols() {
+            const raw = document.getElementById('symbol-well').value;
+            const input = [...new Set(raw.split(/[\s,]+/).map(s => s.trim().toUpperCase()).filter(s => s))];
+            
+            const resp = await fetch('symbol_map.json');
+            const map = await resp.json();
+            const overrides = map.overrides || {};
+
+            const resolved = input.map(s => ({
+                sym: s,
+                yf: overrides[s] || `${s}.NS`,
+                source: ["portfolio"]
+            }));
+
+            localStorage.setItem('onyx_symbols', JSON.stringify(resolved));
+            renderAudit(resolved);
+        }
+
+        function renderAudit(list) {
+            document.getElementById('audit-grid').innerHTML = list.map(s => `
+                <div class="audit-item">
+                    <span>${s.sym}</span><span style="color:var(--tx3)">→ ${s.yf}</span>
+                </div>`).join('');
+        }
+    </script>
+</body>
+</html>
