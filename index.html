@@ -3,69 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Onyx Edition</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <title>BharatMarkets | Onyx Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root { 
-            --bg: #000000;      /* Pure Black */
-            --s1: #0a0a0a;      /* Near Black for Header */
-            --s2: #111111;      /* Sticky Column Background */
-            --b1: #222222;      /* Borders */
-            
-            /* Appealing Heatmap Palette (Box Backgrounds) */
-            --bg-gr: #064e3b;   /* Deep Emerald Green */
-            --bg-rd: #7f1d1d;   /* Deep Maroon/Red */
-            --bg-yl: #78350f;   /* Deep Amber/Yellow */
-            --bg-bl: #1e3a8a;   /* Deep Royal Blue */
-            
-            /* Text & Accents */
-            --fg-bl: #00f2ff;   /* Neon Cyan for Symbols */
-            --tx: #ffffff;      /* High-Contrast White */
-            --tx-dim: #888888;  /* Dimmed Headers */
-        }
-
+        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #222; --gr: #00ff88; --rd: #ff4d6d; --bl: #00f2ff; --yl: #ffb800; --tx: #fff; --tx3: #888; }
         body { background: var(--bg); color: var(--tx); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
-        
-        header { height: 60px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; }
-        .logo { font-weight: 800; color: var(--fg-bl); font-size: 14px; letter-spacing: 1px; }
-        .t-box { font-size: 11px; color: var(--tx-dim); }
-        .t-val { color: #00ff88; font-weight: 700; font-size: 13px; text-shadow: 0 0 8px rgba(0,255,136,0.4); }
 
-        .view { width: 100%; overflow: auto; height: calc(100vh - 60px); }
+        /* KPI TOP ROW */
+        .kpi-row { display: flex; justify-content: space-around; background: var(--s1); padding: 12px 10px; border-bottom: 1px solid var(--b1); }
+        .kpi-box { text-align: center; flex: 1; }
+        .kpi-label { font-size: 9px; color: var(--tx3); text-transform: uppercase; margin-bottom: 4px; }
+        .kpi-val { font-size: 14px; font-weight: 800; }
+        .kpi-sub { font-size: 10px; margin-top: 2px; }
+
+        /* CHART AREA */
+        #chart-wrap { height: 160px; background: var(--bg); border-bottom: 1px solid var(--b1); padding: 10px; }
+        
+        /* TABLE AREA */
+        .view { width: 100%; overflow: auto; height: calc(100vh - 250px); }
         table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
+        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid var(--b1); text-align: left; cursor: pointer; }
+        td { padding: 12px 15px; border-bottom: 1px solid #111; }
         
-        th { background: var(--s1); color: var(--tx-dim); padding: 15px; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid var(--b1); text-align: left; cursor: pointer; text-transform: uppercase; }
-        td { padding: 14px 15px; border-bottom: 1px solid #1a1a1a; transition: background 0.2s; }
+        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl); font-weight: 800; }
         
-        /* Sticky Symbol Logic */
-        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--fg-bl); font-weight: 700; }
-        
-        /* Full Box Color Logic */
-        .pos { background-color: var(--bg-gr) !important; color: #ffffff !important; font-weight: 600; }
-        .neg { background-color: var(--bg-rd) !important; color: #ffffff !important; font-weight: 600; }
-        .neu { background-color: var(--bg-yl) !important; color: #ffffff !important; }
-        .inf { background-color: var(--bg-bl) !important; color: #ffffff !important; }
-
-        /* Signal Blocks: Solid Bright Colors with Black Text for "Alert" feel */
-        .BUY { background-color: #00ff88 !important; color: #000 !important; font-weight: 800; border-radius: 2px; text-align: center; display: block; width: 100%; }
-        .SELL { background-color: #ff4d6d !important; color: #000 !important; font-weight: 800; border-radius: 2px; text-align: center; display: block; width: 100%; }
-        .HOLD { color: #ffb800; font-weight: 800; text-align: center; }
+        /* Heatmap Styles */
+        .pos { background: rgba(0,255,136,0.15) !important; color: var(--gr) !important; }
+        .neg { background: rgba(255,77,109,0.15) !important; color: var(--rd) !important; }
+        .neu { background: rgba(255,184,0,0.1) !important; color: var(--yl) !important; }
+        .BUY { background: var(--gr) !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
+        .SELL { background: var(--rd) !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
     </style>
 </head>
 <body onload="init()">
 
-    <header>
-        <div class="logo">BHARAT MARKETS</div>
-        <div class="t-box">GRAND INVESTED: <span class="t-val" id="t-inv">₹ 0</span></div>
-    </header>
+    <div class="kpi-row">
+        <div class="kpi-box">
+            <div class="kpi-label">Invested</div>
+            <div class="kpi-val" id="kpi-inv">0.00L</div>
+        </div>
+        <div class="kpi-box">
+            <div class="kpi-label">Mkt Value</div>
+            <div class="kpi-val" id="kpi-val">0.00L</div>
+        </div>
+        <div class="kpi-box">
+            <div class="kpi-label">Total P&L</div>
+            <div class="kpi-val" id="kpi-pnl">0.00L</div>
+            <div class="kpi-sub" id="kpi-pnl-pct">0.00%</div>
+        </div>
+    </div>
 
+    <div id="chart-wrap"><canvas id="mainChart"></canvas></div>
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "OnyxTerminalDB"; const STORE = "MasterData";
-        let MASTER_DATA = []; let currentSort = { col: 'SYM', asc: true };
-
-        const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
+        const DB_NAME = "BharatOnyxDB"; const STORE = "MasterData";
+        let MASTER_DATA = [], activeFilter = null, chart = null, sort = { col: 'SYM', asc: true };
+        const COLS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
 
         async function runBuild() {
             const res = await fetch('fundamentals.json');
@@ -75,89 +70,80 @@
             const store = tx.objectStore(STORE);
 
             Object.keys(data.stocks).forEach(ticker => {
-                const raw = data.stocks[ticker];
-                const record = { SYM: ticker.split('.')[0].toUpperCase() };
-                for (let key in raw) record[key.toUpperCase()] = raw[key];
+                const raw = data.stocks[ticker], rec = { SYM: ticker.split('.')[0].toUpperCase() };
+                for (let k in raw) rec[k.toUpperCase()] = raw[k];
                 
-                const q = record.QTY || 0; const a = record.AVG || 0; const l = record.LTP || 0;
-                record.INV_VAL = q * a;
-                record.PNL = Math.round((q * l) - record.INV_VAL);
-                record.PNL_PCT = record.INV_VAL ? parseFloat(((record.PNL / record.INV_VAL) * 100).toFixed(2)) : 0;
-
-                // Simple Pos/Neg Indicators
-                record.POS = (record.ROE > 15 ? 1 : 0) + (record.PE < 25 ? 1 : 0) + (record.CHG1D > 0 ? 1 : 0);
-                record.NEG = 3 - record.POS;
-
-                store.put(record);
+                const q = rec.QTY||0, a = rec.AVG||0, l = rec.LTP||0;
+                rec.COST = q * a; rec.MKT = q * l;
+                rec.PNL = Math.round(rec.MKT - rec.COST);
+                rec.PNL_PCT = rec.COST ? parseFloat(((rec.PNL / rec.COST) * 100).toFixed(2)) : 0;
+                rec.POS = (rec.ROE > 15?1:0) + (rec.PE < 25?1:0) + (rec.CHG1D > 0?1:0);
+                rec.NEG = 3 - rec.POS;
+                store.put(rec);
             });
-            tx.oncomplete = () => loadAndRender();
+            tx.oncomplete = () => load();
         }
 
-        function getCellClass(field, val) {
-            if (field === 'SYM') return 'sticky';
-            if (field === 'SIGNAL') return val;
-            
-            if (['PNL', 'CHG1D', 'PNL_PCT'].includes(field)) return val >= 0 ? 'pos' : 'neg';
-            if (field === 'ROE') return val > 15 ? 'pos' : (val > 10 ? 'neu' : 'neg');
-            if (field === 'PE') return val < 20 ? 'pos' : (val < 40 ? 'neu' : 'neg');
-            if (field === 'POS') return 'pos';
-            if (field === 'NEG') return 'neg';
-            if (field === 'SECTOR') return 'inf';
-            return '';
-        }
-
-        async function loadAndRender() {
+        async function load() {
             const db = await openDB();
             MASTER_DATA = await new Promise(r => {
                 db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
             });
-            renderTable();
+            updateKPIs(); renderChart(); renderTable();
+        }
+
+        function updateKPIs() {
+            let tInv = 0, tCur = 0, tPnl = 0;
+            MASTER_DATA.forEach(s => { tInv += s.COST; tCur += s.MKT; tPnl += s.PNL; });
+            const pPct = tInv ? ((tPnl / tInv) * 100).toFixed(2) : 0;
+
+            document.getElementById('kpi-inv').innerText = `₹${(tInv/100000).toFixed(2)}L`;
+            document.getElementById('kpi-val').innerText = `₹${(tCur/100000).toFixed(2)}L`;
+            document.getElementById('kpi-pnl').innerText = `₹${(tPnl/100000).toFixed(2)}L`;
+            document.getElementById('kpi-pnl').className = `kpi-val ${tPnl>=0?'pos':'neg'}`;
+            document.getElementById('kpi-pnl-pct').innerText = `${pPct}%`;
+            document.getElementById('kpi-pnl-pct').className = `kpi-sub ${tPnl>=0?'pos':'neg'}`;
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            const secMap = {}; MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR]||0) + s.PNL; });
+            const labels = Object.keys(secMap), values = Object.values(secMap);
+
+            if(chart) chart.destroy();
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets: [{ data: values, borderColor: '#00f2ff', tension: 0.4, fill: true, backgroundColor: 'rgba(0,242,255,0.05)' }] },
+                options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, 
+                scales: { x: { grid: { display: false }, ticks: { color: '#555', font: { size: 8 } } }, y: { grid: { color: '#222' }, ticks: { color: '#555', font: { size: 8 } } } },
+                onClick: (e, el) => { if(el.length) { activeFilter = (activeFilter === labels[el[0].index]) ? null : labels[el[0].index]; renderTable(); } }
+            }});
         }
 
         function renderTable() {
-            const totalInv = MASTER_DATA.reduce((sum, s) => sum + (s.INV_VAL || 0), 0);
-            document.getElementById('t-inv').innerText = '₹ ' + Math.round(totalInv).toLocaleString('en-IN');
-
-            const sorted = [...MASTER_DATA].sort((a, b) => {
-                let v1 = a[currentSort.col], v2 = b[currentSort.col];
-                if (typeof v1 === 'string') return currentSort.asc ? v1.localeCompare(v2) : v2.localeCompare(v1);
-                return currentSort.asc ? v1 - v2 : v2 - v1;
+            const data = activeFilter ? MASTER_DATA.filter(s => s.SECTOR === activeFilter) : MASTER_DATA;
+            data.sort((a,b) => {
+                let v1 = a[sort.col], v2 = b[sort.col];
+                return typeof v1 === 'string' ? (sort.asc ? v1.localeCompare(v2) : v2.localeCompare(v1)) : (sort.asc ? v1-v2 : v2-v1);
             });
 
             let h = `<table><thead><tr>`;
-            FIELDS.forEach(f => {
-                const arrow = currentSort.col === f ? (currentSort.asc ? ' ↑' : ' ↓') : '';
-                h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}${arrow}</th>`;
-            });
+            COLS.forEach(f => h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}${sort.col===f?(sort.asc?'↑':'↓'):''}</th>`);
             h += `</tr></thead><tbody>`;
-
-            sorted.forEach(s => {
+            data.forEach(s => {
                 h += `<tr>`;
-                FIELDS.forEach(f => {
-                    let val = s[f] !== undefined ? s[f] : '—';
-                    let cls = getCellClass(f, val);
-                    let suffix = (f==='CHG1D'||f==='PNL_PCT'||f==='ROE') && val!=='—' ? '%' : '';
-                    h += `<td class="${cls}">${val}${suffix}</td>`;
+                COLS.forEach(f => {
+                    let v = s[f] ?? '—', cls = f==='SYM'?'sticky' : (['PNL','CHG1D','PNL_PCT'].includes(f) ? (v>=0?'pos':'neg') : (f==='SIGNAL'?v:''));
+                    if(f==='ROE') cls = v>15?'pos':(v>10?'neu':'neg');
+                    h += `<td class="${cls}">${v}${['CHG1D','PNL_PCT','ROE'].includes(f)?'%':''}</td>`;
                 });
                 h += `</tr>`;
             });
             document.getElementById('app').innerHTML = h + `</tbody></table>`;
         }
 
-        function handleSort(col) {
-            if (currentSort.col === col) currentSort.asc = !currentSort.asc;
-            else { currentSort.col = col; currentSort.asc = true; }
-            renderTable();
-        }
-
-        function openDB() {
-            return new Promise(res => {
-                const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" });
-                req.onsuccess = () => res(req.result);
-            });
-        }
-
+        function handleSort(col) { sort.asc = sort.col===col ? !sort.asc : true; sort.col = col; renderTable(); }
+        function openDB() { return new Promise(res => { const req = indexedDB.open(DB_NAME, 1); req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" }); req.onsuccess = () => res(req.result); }); }
         function init() { runBuild(); }
     </script>
 </body>
