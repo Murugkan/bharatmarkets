@@ -8,153 +8,96 @@
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --s2:#111; --b1:#222; --b2:#333; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; --tx3:#666; --ac:#f97316; --mono:'JetBrains Mono',monospace; }
         * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-        body { background:var(--bg); color:var(--tx); font-family:var(--mono); padding-bottom:100px; line-height:1.5; }
+        body { background:var(--bg); color:var(--tx); font-family:var(--mono); padding-bottom:100px; }
         
-        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:20px; text-align:center; position:sticky; top:0; z-index:100; }
+        /* Required containers for app-import.js */
+        #ov { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:none; z-index:900; }
+        #ov.on { display:block; }
+        #import-panel { position:fixed; bottom:0; left:0; width:100%; background:var(--s1); border-top:1px solid var(--b1); border-radius:20px 20px 0 0; transform:translateY(100%); transition:transform .3s ease; z-index:1000; max-height:85vh; overflow-y:auto; padding:20px; }
+        #import-panel.on { transform:translateY(0); }
+
+        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:20px; text-align:center; }
         .title { font-size:11px; font-weight:800; letter-spacing:3px; color:var(--bl); text-transform:uppercase; }
 
         .container { padding: 20px; max-width: 600px; margin: 0 auto; }
         .card { background: var(--s1); border: 1px solid var(--b1); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-        
-        /* Dashboard Stats */
-        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-        .stat-item { background: #050505; padding: 12px; border-radius: 8px; border: 1px solid #151515; }
         .stat-label { font-size: 8px; color: var(--tx3); text-transform: uppercase; margin-bottom: 4px; letter-spacing: 1px; }
         .stat-val { font-size: 14px; font-weight: 800; }
 
-        /* Data Loading Section (Matches app-import.js Logic) */
-        .imp-tabs { display: flex; border-bottom: 2px solid var(--b2); margin-bottom: 15px; }
-        .imp-tab { flex:1; background:none; border:none; color:var(--tx3); padding:12px; font-family:'Syne',sans-serif; font-size:11px; font-weight:700; cursor:pointer; border-bottom: 2px solid transparent; text-align:center; transition: all 0.2s; }
-        .imp-tab.on { color:var(--ac); border-bottom-color:var(--ac); }
-        .imp-pane { display:none; } 
-        .imp-pane.on { display:block; }
+        /* The big Load Button from your screenshot */
+        .btn-load { width:100%; padding:18px; background:var(--bl); color:#000; border:none; border-radius:8px; font-weight:800; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; cursor:pointer; }
+        .btn-clear { width:100%; padding:14px; background:var(--s2); color:var(--tx3); border:1px solid var(--b1); border-radius:8px; font-weight:800; font-size:11px; text-transform:uppercase; }
 
-        .import-textarea { width:100%; height:160px; background:#050505; border:1px solid var(--b1); color:#fff; padding:12px; font-family:var(--mono); font-size:11px; border-radius:8px; resize:none; margin-top:10px; outline:none; border-left: 3px solid var(--b2); }
-        .import-textarea:focus { border-color: var(--ac); }
-        
-        .btn-main { width: 100%; padding: 18px; background: var(--ac); color: #000; border: none; border-radius: 8px; font-family: inherit; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-top: 12px; cursor: pointer; box-shadow: 0 4px 15px rgba(249, 115, 22, 0.2); }
-        .btn-main:active { transform: scale(0.98); opacity: 0.9; }
-        
-        #log-area { background: #050505; border: 1px solid #111; padding: 12px; height: 140px; overflow-y: auto; font-size: 10px; color: #555; border-radius: 8px; margin-top: 15px; border-left: 2px solid var(--b1); }
-        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #111; padding-bottom: 5px; }
+        #log-terminal { background: #050505; border: 1px solid #111; padding: 12px; height: 160px; overflow-y: auto; font-size: 10px; color: #555; border-radius: 8px; margin-top: 15px; border-left: 2px solid var(--b1); }
 
-        /* Global Footer Navigation */
-        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(20px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 15px 0; padding-bottom: calc(15px + env(safe-area-inset-bottom)); z-index: 1000; }
-        .nav-btn { text-decoration: none; color: var(--tx3); display: flex; flex-direction: column; align-items: center; width: 33%; transition: .2s; }
+        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.9); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 15px 0; padding-bottom: calc(15px + env(safe-area-inset-bottom)); z-index: 100; }
+        .nav-btn { text-decoration: none; color: var(--tx3); text-align: center; font-size: 10px; font-weight: 800; text-transform: uppercase; }
         .nav-btn.active { color: var(--bl); }
-        .nav-label { font-size: 9px; margin-top: 5px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
     </style>
 </head>
 <body>
 
-<header><div class="title">Terminal // Nexus</div></header>
+<div id="ov" onclick="closePanel()"></div>
+<div id="import-panel">
+    <div id="import-panel-body"></div>
+</div>
+
+<header><div class="title">Data Engine // Nexus</div></header>
 
 <div class="container">
     <div class="card">
-        <div class="stat-label">Memory Cache</div>
-        <div class="stat-val" id="nexus-stock-count">FETCHING...</div>
-        <div class="stat-grid">
-            <div class="stat-item"><div class="stat-label">App State</div><div class="stat-val" style="color:var(--gr)">OPERATIONAL</div></div>
-            <div class="stat-item"><div class="stat-label">Engine</div><div class="stat-val">ONYX v8.4</div></div>
-        </div>
-    </div>
-
-    <div class="card" style="border-color: var(--b2);">
-        <div class="imp-tabs">
-            <div class="imp-tab on" id="itab-file" onclick="ui_switchTab('file')">📁 CDSL XLS</div>
-            <div class="imp-tab" id="itab-manual" onclick="ui_switchTab('manual')">✏ MANUAL</div>
-        </div>
-
-        <div class="imp-pane on" id="ipane-file">
-            <div onclick="document.getElementById('file-input').click()" 
-                 style="border:2px dashed var(--b1); padding:40px; text-align:center; border-radius:12px; background:#050505; cursor:pointer;">
-                <input type="file" id="file-input" accept=".xls,.xlsx,.csv" style="display:none;" 
-                       onchange="handleFileSelect(this.files[0])">
-                <div style="font-size:32px; margin-bottom:10px;">📥</div>
-                <div style="font-size:11px; font-weight:800; letter-spacing:1px;">UPLOAD CDSL STATEMENT</div>
-                <div style="font-size:9px; color:var(--tx3); margin-top:8px;">Resolves ISIN to Symbols</div>
+        <div class="stat-label">System Status</div>
+        <div class="stat-val" id="sys-status">OPERATIONAL</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px;">
+            <div style="background:#050505; padding:12px; border-radius:8px; border:1px solid #151515;">
+                <div class="stat-label">Local Cache</div>
+                <div class="stat-val" id="cache-count">-- STOCKS</div>
+            </div>
+            <div style="background:#050505; padding:12px; border-radius:8px; border:1px solid #151515;">
+                <div class="stat-label">DB Version</div>
+                <div class="stat-val">v8.0</div>
             </div>
         </div>
-
-        <div class="imp-pane" id="ipane-manual">
-            <div class="stat-label" style="margin-bottom:5px;">Input Format: SYMBOL, QTY, PRICE</div>
-            <textarea id="import-ta-manual" class="import-textarea" 
-                      placeholder="RELIANCE, 10, 2550&#10;HDFCBANK, 50, 1420"></textarea>
-            <button class="btn-main" onclick="ui_executeLoad()">Resolve & Inject</button>
-        </div>
     </div>
 
-    <div id="imp-report"></div>
-    <div id="file-status" style="font-size:11px; color:var(--bl); padding:10px 0; font-weight:800;"></div>
+    <button class="btn-load" onclick="openImport()">📤 Load Stock List</button>
+    <button class="btn-clear" onclick="if(confirm('Wipe DB?')) { localStorage.removeItem('portfolio'); location.reload(); }">Clear Database</button>
 
-    <div id="log-area">
-        <div class="log-entry">[SYSTEM] Awaiting Ingestion...</div>
+    <div id="log-terminal">
+        <div style="color:var(--tx3)">[SYSTEM] Initializing ETL environment...</div>
     </div>
 </div>
 
 <footer>
-    <a href="index.html" class="nav-btn">
-        <span class="nav-label">Portfolio</span>
-    </a>
-    <a href="nexus.html" class="nav-btn active">
-        <span class="nav-label">Terminal</span>
-    </a>
+    <a href="index.html" class="nav-btn">Terminal</a>
+    <a href="portfolio.html" class="nav-btn">Portfolio</a>
+    <a href="system.html" class="nav-btn">System</a>
 </footer>
 
-<script src="app-import.js"></script>
 <script>
-    // Internal State Management
-    function ui_refreshStats() {
-        try {
-            const pf = JSON.parse(localStorage.getItem('portfolio') || '[]');
-            document.getElementById('nexus-stock-count').textContent = pf.length + " STOCKS LOADED";
-        } catch(e) {
-            document.getElementById('nexus-stock-count').textContent = "ERROR";
-        }
+    // 1. Mock Global State required by app-import.js
+    var S = {
+        portfolio: JSON.parse(localStorage.getItem('portfolio') || '[]'),
+        settings: JSON.parse(localStorage.getItem('settings') || '{}'),
+        curTab: 'terminal'
+    };
+    var FUND = {}, ISIN_MAP = {};
+
+    // 2. Helper functions to prevent script crashes
+    function savePF() { localStorage.setItem('portfolio', JSON.stringify(S.portfolio)); }
+    function toast(m) { alert(m); }
+    function fmt(n) { return n.toLocaleString('en-IN'); }
+    async function ensureStaticData() { return true; } 
+    function render() { refreshUI(); }
+
+    function refreshUI() {
+        document.getElementById('cache-count').textContent = S.portfolio.length + " STOCKS";
     }
 
-    // Explicit Tab Switching
-    function ui_switchTab(type) {
-        document.getElementById('itab-file').classList.toggle('on', type === 'file');
-        document.getElementById('itab-manual').classList.toggle('on', type === 'manual');
-        document.getElementById('ipane-file').classList.toggle('on', type === 'file');
-        document.getElementById('ipane-manual').classList.toggle('on', type === 'manual');
-    }
-
-    // Bridge function for Manual Load
-    function ui_executeLoad() {
-        const raw = document.getElementById('import-ta-manual').value;
-        if(!raw || raw.trim().length === 0) {
-            ui_log("Error: No data in textarea", "error");
-            return;
-        }
-
-        // 1. Call core parser from app-import.js
-        parsedHoldings = parsePortfolioText(raw); 
-        
-        if(parsedHoldings && parsedHoldings.length > 0) {
-            ui_log(`Resolved ${parsedHoldings.length} stocks. Applying to DB...`);
-            
-            // 2. Commit and trigger GitHub Action via app-import.js
-            applyImport('append'); 
-            
-            setTimeout(() => {
-                ui_refreshStats();
-                alert(`Successfully injected ${parsedHoldings.length} stocks.`);
-                document.getElementById('import-ta-manual').value = "";
-            }, 1000);
-        } else {
-            ui_log("Failed to resolve symbols. Check format.", "error");
-        }
-    }
-
-    function ui_log(msg, type="") {
-        const log = document.getElementById('log-area');
-        const color = type === "error" ? "var(--rd)" : "var(--tx3)";
-        log.innerHTML = `<div class="log-entry" style="color:${color}">[${new Date().toLocaleTimeString()}] ${msg}</div>` + log.innerHTML;
-    }
-
-    window.onload = ui_refreshStats;
+    window.onload = refreshUI;
 </script>
+
+<script src="app-import.js"></script>
+
 </body>
 </html>
