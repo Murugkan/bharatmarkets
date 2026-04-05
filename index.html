@@ -3,56 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Global Terminal</title>
+    <title>Onyx | Unified Portfolio</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
         *{box-sizing:border-box;margin:0;padding:0;}
         body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; }
+        
+        /* HEADER & KPIs */
         header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
         .kpi-box { text-align:center; }
-        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
+        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
+
+        /* TAPE BAR CHART */
         #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
         #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; min-width:1px; flex-shrink:0; transition: opacity 0.2s; }
+        .seg { height:100%; cursor:pointer; flex-shrink:0; transition: opacity 0.2s; border-right:1px solid rgba(0,0,0,0.2); }
         .seg.dimmed { opacity:0.1; }
+
+        /* LEGEND */
         #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
         .leg.on { color:#fff; font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+
+        /* TABLE VIEW */
         .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; -webkit-overflow-scrolling:touch; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#444; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; text-transform: uppercase; }
         td { padding:12px; border-bottom:1px solid #111; }
+        
+        /* PINNED COLUMNS & THEMES */
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
         .pos { color:#00ff88!important; font-weight:800; }
         .neg { color:#ff4d6d!important; font-weight:800; }
-        #status { padding:40px; font-size:12px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; }
+        
+        #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; letter-spacing:1px; }
     </style>
 </head>
 <body>
 
 <header>
-    <div class="kpi-box"><div class="kpi-label">Entries</div><div class="kpi-val" id="k-count">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
     <div class="kpi-box"><div class="kpi-label">Fields</div><div class="kpi-val" id="k-cols">0</div></div>
     <div class="kpi-box"><div class="kpi-label">Net P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
-<div id="status">Waking Engine...</div>
+<div id="status">Waking Data Engine...</div>
 
 <div class="view"><div id="app"></div></div>
 
 <script>
+// --- CONFIG & CONSTANTS ---
 const DB_NAME = "OnyxPortfolioDB"; 
 const STORE_NAME = "Stocks";
-const DB_VERSION = 2; // Incremented to clear old Chrome 9-field data
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#f43f5e','#8b5cf6'];
+const DB_VERSION = 3; // Version bump to force-refresh field priority logic
+const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
 
 let MASTER = [], SECTORS = [], COL = {}, filter = null, DYNAMIC_FIELDS = [];
 
+// --- UTILS ---
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
     if (!v || v === '—') return 0;
@@ -60,6 +73,19 @@ const cleanNum = (v) => {
     return isNaN(n) ? 0 : n;
 };
 
+function getPriorityFields(item) {
+    const allKeys = Object.keys(item).filter(k => !k.startsWith('_'));
+    const priority = [
+        'SYM', 'QTY', 'AVGBUY', 'LTP', 'PNL', 'PNL%', 'INVESTED', 
+        'ROE', 'PE', 'PB', 'MCAP', 'OPM%', 'NPM%', 'ROCE%', 
+        '1D%', '5D%', 'ATH%', '52W%', 
+        'POS', 'NEG', 'SIGNAL', 'SECTOR'
+    ];
+    const remaining = allKeys.filter(k => !priority.includes(k));
+    return [...priority.filter(p => allKeys.includes(p)), ...remaining];
+}
+
+// --- ENGINE INIT ---
 async function init() {
     const statusEl = document.getElementById('status');
     
@@ -78,9 +104,9 @@ async function init() {
         tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
     });
 
-    // Detect if we need a full 40+ field sync
+    // Forced Hydration if empty or version mismatch detected
     if (existing.length === 0 || Object.keys(existing[0]).length < 15) {
-        statusEl.innerHTML = "UPGRADING ENGINE: SYNCING 40+ FIELDS...";
+        statusEl.innerHTML = "SYNCING STABLE 26+ FIELD SCHEMA...";
         try {
             const response = await fetch('fundamentals.json');
             const json = await response.json();
@@ -96,28 +122,25 @@ async function init() {
                 store.put(entry);
             });
 
-            writeTx.oncomplete = () => {
-                statusEl.innerHTML = "SUCCESS. REBOOTING...";
-                location.reload();
-            };
+            writeTx.oncomplete = () => location.reload();
         } catch (e) {
-            statusEl.innerHTML = "CRITICAL: fundamentals.json NOT FOUND.";
+            statusEl.innerHTML = "ERR: JSON NOT FOUND.";
         }
         return;
     }
 
     MASTER = existing;
     statusEl.style.display = "none";
-
-    const allKeys = new Set();
-    MASTER.forEach(item => Object.keys(item).forEach(k => { if(!k.startsWith('_')) allKeys.add(k); }));
-    DYNAMIC_FIELDS = ['SYM', ...Array.from(allKeys).filter(f => !['SYM','SECTOR'].includes(f)), 'SECTOR'];
     
+    // Sort Fields and Sectors
+    DYNAMIC_FIELDS = getPriorityFields(MASTER[0]);
     SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+    
     render();
 }
 
+// --- UI RENDER ---
 function render() {
     let totalPnl = 0;
     document.getElementById('k-count').textContent = MASTER.length;
@@ -158,8 +181,9 @@ function render() {
             let cls = f === 'SYM' ? 'sticky' : '';
             const n = cleanNum(val);
             if (n !== 0) {
-                if ((f.includes('PNL') || f === 'ROE') && n > 0) cls += ' pos';
-                if (f.includes('PNL') && n < 0) cls += ' neg';
+                const uf = f.toUpperCase();
+                if ((uf.includes('PNL') || uf.includes('ROE') || uf === 'POS') && n > 0) cls += ' pos';
+                if ((uf.includes('PNL') || uf === 'NEG') && n < 0) cls += ' neg';
             }
             h += `<td class="${cls}">${val}</td>`;
         });
@@ -169,6 +193,7 @@ function render() {
 }
 
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
+
 init();
 </script>
 </body>
