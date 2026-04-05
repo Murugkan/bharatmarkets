@@ -3,39 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Onyx Filter</title>
+    <title>BharatMarkets | Onyx Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #333; --gr: #064e3b; --rd: #7f1d1d; --bl: #00f2ff; --tx: #ffffff; }
+        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #333; --bl: #00f2ff; --tx: #fff; }
         body { background: var(--bg); color: var(--tx); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
-
-        /* Top KPI Bar */
         .kpi-row { display: flex; justify-content: space-around; background: var(--s1); padding: 15px 5px; border-bottom: 1px solid var(--b1); }
         .kpi-box { text-align: center; flex: 1; }
         .kpi-label { font-size: 9px; color: #888; text-transform: uppercase; }
-        .kpi-val { font-size: 15px; font-weight: 800; color: var(--tx); margin-top: 4px; }
-
-        /* The Bar Chart Filter Area */
-        #chart-wrap { height: 140px; background: var(--bg); padding: 10px; border-bottom: 2px solid var(--b1); position: relative; }
-        
-        /* The Table View */
-        .view { width: 100%; overflow: auto; height: calc(100vh - 275px); }
+        .kpi-val { font-size: 15px; font-weight: 800; margin-top: 4px; }
+        #chart-wrap { height: 150px; background: #000; padding: 10px; border-bottom: 2px solid var(--b1); }
+        .view { width: 100%; overflow: auto; height: calc(100vh - 280px); }
         table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
         th { background: var(--s1); color: #888; padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
-        td { padding: 12px; border-bottom: 1px solid #111; color: var(--tx) !important; font-weight: 500; }
-        
+        td { padding: 12px; border-bottom: 1px solid #111; color: #fff !important; }
         .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl) !important; font-weight: 800; }
-        
-        /* Heatmap Backgrounds */
-        .pos { background: var(--gr) !important; }
-        .neg { background: var(--rd) !important; }
-        .neu { background: #78350f !important; }
-        .inf { background: #1e3a8a !important; }
-
-        /* Signals */
-        .BUY { background: #00ff88 !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
-        .SELL { background: #ff4d6d !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
+        .pos { background: #064e3b !important; } .neg { background: #7f1d1d !important; }
     </style>
 </head>
 <body onload="init()">
@@ -43,33 +26,38 @@
     <div class="kpi-row">
         <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">₹0.00L</div></div>
         <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">₹0.00L</div></div>
-        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">₹0.00L</div><div id="kpi-pnl-pct" style="font-size:9px">0%</div></div>
+        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">₹0.00L</div></div>
     </div>
 
     <div id="chart-wrap"><canvas id="sectorChart"></canvas></div>
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "BharatFilterDB"; const STORE = "Data";
-        let MASTER_DATA = [], activeFilter = null, chart = null, sort = { col: 'SYM', asc: true };
-        const COLS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
+        const DB_NAME = "OnyxStableDB"; const STORE = "Data";
+        let MASTER_DATA = [], activeFilter = null, chart = null;
 
         async function init() {
-            const db = await openDB();
             const res = await fetch('fundamentals.json');
             const data = await res.json();
+            const db = await openDB();
             const tx = db.transaction(STORE, "readwrite");
             const store = tx.objectStore(STORE);
 
+            // Mapping raw JSON to normalized keys
             Object.keys(data.stocks).forEach(ticker => {
-                const raw = data.stocks[ticker], rec = { SYM: ticker.split('.')[0].toUpperCase() };
-                for (let k in raw) rec[k.toUpperCase()] = raw[k];
-                const q = rec.QTY||0, a = rec.AVG||0, l = rec.LTP||0;
-                rec.COST = q * a; rec.MKT = q * l;
-                rec.PNL = Math.round(rec.MKT - rec.COST);
-                rec.PNL_PCT = rec.COST ? parseFloat(((rec.PNL / rec.COST) * 100).toFixed(2)) : 0;
-                rec.POS = (rec.ROE > 15?1:0) + (rec.PE < 25?1:0) + (rec.CHG1D > 0?1:0);
-                rec.NEG = 3 - rec.POS;
+                const s = data.stocks[ticker];
+                const rec = {
+                    sym: ticker.split('.')[0].toUpperCase(),
+                    qty: s.qty || 0,
+                    avg: s.avgBuy || s.AVG || 0,
+                    ltp: s.ltp || 0,
+                    sector: s.sector || 'Others',
+                    chg: s.chg1d || 0,
+                    roe: s.roe || 0
+                };
+                rec.cost = rec.qty * rec.avg;
+                rec.mkt = rec.qty * rec.ltp;
+                rec.pnl = Math.round(rec.mkt - rec.cost);
                 store.put(rec);
             });
             tx.oncomplete = () => load();
@@ -85,37 +73,41 @@
 
         function updateKPIs() {
             let tI = 0, tM = 0, tP = 0;
-            MASTER_DATA.forEach(s => { tI += s.COST; tM += s.MKT; tP += s.PNL; });
+            MASTER_DATA.forEach(s => { tI += s.cost; tM += s.mkt; tP += s.pnl; });
             document.getElementById('kpi-inv').innerText = `₹${(tI/100000).toFixed(2)}L`;
             document.getElementById('kpi-val').innerText = `₹${(tM/100000).toFixed(2)}L`;
             document.getElementById('kpi-pnl').innerText = `₹${(tP/100000).toFixed(2)}L`;
-            document.getElementById('kpi-pnl-pct').innerText = `${((tP/tI)*100).toFixed(2)}%`;
             document.getElementById('kpi-pnl').style.color = tP >= 0 ? '#00ff88' : '#ff4d6d';
         }
 
         function renderChart() {
             const ctx = document.getElementById('sectorChart').getContext('2d');
-            const secMap = {}; MASTER_DATA.forEach(s => { const sc = s.SECTOR || 'OTH'; secMap[sc] = (secMap[sc]||0) + s.PNL; });
-            const labels = Object.keys(secMap), values = Object.values(secMap);
+            const secMap = {};
+            // Grouping logic with strict key matching
+            MASTER_DATA.forEach(s => { 
+                const key = s.sector;
+                secMap[key] = (secMap[key] || 0) + s.pnl;
+            });
+
+            const labels = Object.keys(secMap);
+            const values = Object.values(secMap);
 
             if(chart) chart.destroy();
             chart = new Chart(ctx, {
                 type: 'bar',
-                data: { labels, datasets: [{ data: values, backgroundColor: '#00f2ff', borderRadius: 2 }] },
-                options: { 
-                    maintainAspectRatio: false, 
+                data: { labels, datasets: [{ data: values, backgroundColor: '#00f2ff' }] },
+                options: {
+                    maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: { 
-                        x: { grid: { display: false }, ticks: { color: '#ffffff', font: { size: 9 }, maxRotation: 45, minRotation: 45 } }, 
-                        y: { display: false } 
+                        x: { ticks: { color: '#fff', font: { size: 9 } }, grid: { display: false } },
+                        y: { display: false }
                     },
-                    // FIX: Ensure the click event triggers a table filter update
-                    onClick: (event, elements) => {
+                    onClick: (e, elements) => {
                         if (elements.length > 0) {
-                            const index = elements[0].index;
-                            const clickedSector = labels[index];
-                            activeFilter = (activeFilter === clickedSector) ? null : clickedSector;
-                            renderTable(); // Force table to filter
+                            const i = elements[0].index;
+                            activeFilter = (activeFilter === labels[i]) ? null : labels[i];
+                            renderTable();
                         }
                     }
                 }
@@ -123,30 +115,31 @@
         }
 
         function renderTable() {
-            const filtered = activeFilter ? MASTER_DATA.filter(s => s.SECTOR === activeFilter) : MASTER_DATA;
-            filtered.sort((a,b) => {
-                let v1 = a[sort.col], v2 = b[sort.col];
-                return typeof v1 === 'string' ? (sort.asc ? v1.localeCompare(v2) : v2.localeCompare(v1)) : (sort.asc ? v1-v2 : v2-v1);
-            });
-
-            let h = `<table><thead><tr>`;
-            COLS.forEach(f => h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}</th>`);
-            h += `</tr></thead><tbody>`;
+            const filtered = activeFilter ? MASTER_DATA.filter(s => s.sector === activeFilter) : MASTER_DATA;
+            let h = `<table><thead><tr><th class="sticky">SYM</th><th>QTY</th><th>AVG</th><th>LTP</th><th>PNL</th><th>ROE</th><th>SECTOR</th></tr></thead><tbody>`;
+            
             filtered.forEach(s => {
-                h += `<tr>`;
-                COLS.forEach(f => {
-                    let v = s[f] ?? '—', cls = f==='SYM'?'sticky' : (['PNL','CHG1D','PNL_PCT'].includes(f) ? (v>=0?'pos':'neg') : (f==='SIGNAL'?v:''));
-                    if(f==='ROE') cls = v > 15 ? 'pos' : (v > 10 ? 'neu' : 'neg');
-                    if(f==='SECTOR') cls = 'inf';
-                    h += `<td class="${cls}">${v}${['CHG1D','PNL_PCT','ROE'].includes(f)?'%':''}</td>`;
-                });
-                h += `</tr>`;
+                const pnlCls = s.pnl >= 0 ? 'pos' : 'neg';
+                h += `<tr>
+                    <td class="sticky">${s.sym}</td>
+                    <td>${s.qty}</td>
+                    <td>${s.avg}</td>
+                    <td>${s.ltp}</td>
+                    <td class="${pnlCls}">${s.pnl}</td>
+                    <td>${s.roe}%</td>
+                    <td>${s.sector}</td>
+                </tr>`;
             });
             document.getElementById('app').innerHTML = h + `</tbody></table>`;
         }
 
-        function handleSort(col) { sort.asc = sort.col===col ? !sort.asc : true; sort.col = col; renderTable(); }
-        function openDB() { return new Promise(res => { const req = indexedDB.open(DB_NAME, 1); req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" }); req.onsuccess = () => res(req.result); }); }
+        function openDB() { 
+            return new Promise(res => { 
+                const req = indexedDB.open(DB_NAME, 1); 
+                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "sym" }); 
+                req.onsuccess = () => res(req.result); 
+            }); 
+        }
     </script>
 </body>
 </html>
