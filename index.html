@@ -10,184 +10,169 @@
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
         body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; margin:0; padding:0; overflow-x:hidden; }
         
-        /* Header & Stats Bar */
+        /* Header Section */
         header { padding: 25px 15px 15px; border-bottom: 1px solid var(--b1); background: var(--bg); position: sticky; top: 0; z-index: 100; }
         .head-row { display: flex; justify-content: space-between; align-items: flex-end; }
         h1 { font-size: 20px; margin: 0; color: var(--ac); letter-spacing: -1.5px; font-weight: 800; }
         .market-badge { font-size: 9px; color: var(--gr); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 5px; }
         .market-badge::before { content: ''; width: 6px; height: 6px; background: var(--gr); border-radius: 50%; display: inline-block; box-shadow: 0 0 8px var(--gr); }
 
-        /* Search & Filter Bar */
+        /* Search Infrastructure */
         .tool-bar { padding: 10px 15px; background: var(--s1); border-bottom: 1px solid var(--b1); display: flex; gap: 10px; }
-        #search-input { background: transparent; border: 1px solid var(--b1); color: var(--tx); padding: 8px 12px; border-radius: 6px; font-size: 12px; font-family: inherit; flex-grow: 1; }
+        #search-input { background: transparent; border: 1px solid var(--b1); color: var(--tx); padding: 10px 12px; border-radius: 6px; font-size: 13px; font-family: inherit; flex-grow: 1; transition: border 0.2s; }
         #search-input:focus { border-color: var(--ac); }
 
-        /* High-Density Table */
-        main { padding-bottom: 90px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        table { width: 100%; border-collapse: collapse; min-width: 750px; table-layout: fixed; }
-        th { background: var(--s1); color: var(--tx3); font-size: 10px; text-align: left; padding: 15px 12px; position: sticky; top: 0; border-bottom: 2px solid var(--b1); text-transform: uppercase; cursor: pointer; z-index: 20; transition: color 0.2s; }
-        th:active { color: var(--ac); }
+        /* Portfolio Table Grid */
+        main { padding-bottom: 100px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; min-width: 700px; table-layout: fixed; }
+        th { background: var(--s1); color: var(--tx3); font-size: 10px; text-align: left; padding: 16px 12px; position: sticky; top: 0; border-bottom: 2px solid var(--b1); text-transform: uppercase; cursor: pointer; z-index: 20; }
         td { padding: 14px 12px; font-size: 13px; border-bottom: 1px solid #080808; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        /* Cell Formatting */
+        /* Dynamic Data Styling */
         .pos { color: var(--gr); }
         .neg { color: var(--rd); }
         .dim { color: var(--tx3); font-size: 11px; }
-        .sector-tag { font-size: 10px; background: #111; padding: 3px 7px; border-radius: 4px; color: var(--ac); border: 1px solid #222; text-transform: uppercase; }
+        .sector-tag { font-size: 9px; background: #111; padding: 3px 6px; border-radius: 4px; color: var(--ac); border: 1px solid #222; text-transform: uppercase; font-weight: 800; }
         .val-bold { font-weight: 800; }
 
-        /* Navigation Footer */
-        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.92); backdrop-filter: blur(20px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; align-items: center; padding: 16px 0; z-index: 1000; }
-        .nav-link { text-decoration: none; color: var(--tx3); display: flex; flex-direction: column; align-items: center; width: 25%; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .nav-link.active { color: var(--ac); }
-        .nav-link:active { transform: scale(0.9); opacity: 0.7; }
-        .nav-label { font-size: 9px; margin-top: 6px; letter-spacing: 1.5px; font-weight: 800; text-transform: uppercase; }
+        /* Bottom Navigation Bar (Landing Page Controller) */
+        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(20px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; align-items: center; padding: 14px 0; z-index: 1000; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+        .nav-item { text-decoration: none; color: var(--tx3); display: flex; flex-direction: column; align-items: center; width: 33%; transition: 0.2s ease; }
+        .nav-item.active { color: var(--ac); }
+        .nav-item:active { transform: scale(0.9); opacity: 0.6; }
+        .nav-label { font-size: 8px; margin-top: 5px; letter-spacing: 1.5px; font-weight: 800; text-transform: uppercase; }
 
-        /* State Overlays */
-        #loading-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 2000; }
-        .spinner { width: 30px; height: 30px; border: 2px solid var(--b1); border-top-color: var(--ac); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 15px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Loader */
+        #boot-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 2000; }
+        .spin { width: 24px; height: 24px; border: 2px solid var(--b1); border-top-color: var(--ac); border-radius: 50%; animation: rotate 0.7s linear infinite; margin-bottom: 12px; }
+        @keyframes rotate { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div id="loading-screen">
-        <div class="spinner"></div>
-        <div style="font-size: 10px; letter-spacing: 2px; color: var(--tx3);">INITIALIZING ONYX</div>
+    <div id="boot-screen">
+        <div class="spin"></div>
+        <div style="font-size: 9px; letter-spacing: 2px; color: var(--tx3);">LOADING PORTFOLIO</div>
     </div>
 
     <header>
         <div class="head-row">
             <div>
-                <h1>PORTFOLIO</h1>
-                <div class="market-badge" id="mkt-status">Engine Connected</div>
+                <h1>ONYX</h1>
+                <div class="market-badge">Live Terminal</div>
             </div>
             <div style="text-align: right">
-                <div id="item-count" style="font-size: 10px; color: var(--tx3); margin-bottom: 2px;">ITEMS: 0</div>
-                <div id="sync-time" style="font-size: 9px; color: var(--ac);">LAST SYNC: --:--</div>
+                <div id="count-ui" style="font-size: 10px; color: var(--tx3);">UNITS: 0</div>
+                <div id="time-ui" style="font-size: 9px; color: var(--ac);">--:--</div>
             </div>
         </div>
     </header>
 
     <div class="tool-bar">
-        <input type="text" id="search-input" placeholder="SEARCH SYMBOL OR SECTOR..." onkeyup="engine.filter()">
+        <input type="text" id="search-input" placeholder="SEARCH SYMBOLS..." onkeyup="engine.filter()">
     </div>
 
     <main>
-        <table id="master-table">
+        <table id="portfolio-table">
             <thead>
                 <tr>
                     <th style="width: 25%;" onclick="engine.sort('sym')">Symbol</th>
                     <th style="width: 15%;" onclick="engine.sort('price')">LTP</th>
-                    <th style="width: 15%;" onclick="engine.sort('chg')">Change%</th>
+                    <th style="width: 15%;" onclick="engine.sort('chg')">Chg%</th>
                     <th style="width: 20%;" onclick="engine.sort('sector')">Sector</th>
                     <th style="width: 12.5%;" onclick="engine.sort('roe')">ROE</th>
                     <th style="width: 12.5%;" onclick="engine.sort('pe')">P/E</th>
                 </tr>
             </thead>
-            <tbody id="table-body">
+            <tbody id="data-body">
                 </tbody>
         </table>
     </main>
 
     <footer>
-        <a href="index.html" class="nav-link active">
+        <a href="index.html" class="nav-item active">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
             <span class="nav-label">Terminal</span>
         </a>
-        <a href="nexus.html" class="nav-link">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        
+        <a href="nexus.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+            </svg>
             <span class="nav-label">Nexus</span>
         </a>
     </footer>
 
     <script>
-        /**
-         * ONYX DATA ENGINE v2.4
-         * Core Logic: Fetch -> Sanitize -> Render -> Sort
-         */
         const engine = {
-            raw: [],
-            filtered: [],
-            sortKey: '',
-            sortDir: 1,
+            store: [],
+            view: [],
+            sKey: '',
+            sDir: 1,
 
-            async boot() {
+            async start() {
                 try {
-                    // Check for local symbol registration
+                    // Logic to ensure user has symbols registered
                     if (!localStorage.getItem('onyx_symbols')) {
                         return window.location.href = 'nexus.html';
                     }
 
-                    const response = await fetch('unified_data.json');
-                    if (!response.ok) throw new Error("Sync Failed");
+                    const res = await fetch('unified_data.json');
+                    const data = await res.json();
                     
-                    const data = await response.json();
-                    
-                    // The "Blank Killer" Transformation
-                    this.raw = data.map(item => ({
-                        sym: item.sym || 'UNKNOWN',
-                        price: parseFloat(item.price) || 0.00,
-                        chg: parseFloat(item.chg) || 0.00,
-                        sector: item.sector || 'N/A',
-                        roe: parseFloat(item.roe) || 0.00,
-                        pe: parseFloat(item.pe) || 0.00
+                    // Transform: Kill nulls/blanks to 0.00
+                    this.store = data.map(i => ({
+                        sym: i.sym || 'N/A',
+                        price: parseFloat(i.price) || 0.00,
+                        chg: parseFloat(i.chg) || 0.00,
+                        sector: i.sector || 'OTHER',
+                        roe: parseFloat(i.roe) || 0.00,
+                        pe: parseFloat(i.pe) || 0.00
                     }));
 
-                    this.filtered = [...this.raw];
+                    this.view = [...this.store];
                     this.render();
                     
-                    document.getElementById('loading-screen').style.display = 'none';
-                    document.getElementById('item-count').innerText = `ITEMS: ${this.raw.length}`;
-                    document.getElementById('sync-time').innerText = `SYNC: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-                } catch (err) {
-                    console.error(err);
-                    document.querySelector('#loading-screen div:last-child').innerText = "OFFLINE: RUN NEXUS";
+                    document.getElementById('boot-screen').style.display = 'none';
+                    document.getElementById('count-ui').innerText = `UNITS: ${this.store.length}`;
+                    document.getElementById('time-ui').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                } catch (e) {
+                    document.getElementById('boot-screen').innerHTML = `<div style="color:var(--rd);font-size:10px;">ENGINE OFFLINE</div>`;
                 }
             },
 
             render() {
-                const tbody = document.getElementById('table-body');
-                tbody.innerHTML = this.filtered.map(row => {
-                    const cClass = row.chg >= 0 ? 'pos' : 'neg';
-                    const rClass = row.roe > 15 ? 'pos' : (row.roe < 0 ? 'neg' : '');
-                    
-                    return `
-                        <tr>
-                            <td class="val-bold">${row.sym}</td>
-                            <td>${row.price.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-                            <td class="${cClass}">${row.chg > 0 ? '+' : ''}${row.chg.toFixed(2)}%</td>
-                            <td><span class="sector-tag">${row.sector}</span></td>
-                            <td class="${rClass}">${row.roe.toFixed(1)}%</td>
-                            <td class="dim">${row.pe.toFixed(1)}</td>
-                        </tr>
-                    `;
-                }).join('');
+                const body = document.getElementById('data-body');
+                body.innerHTML = this.view.map(r => `
+                    <tr>
+                        <td class="val-bold">${r.sym}</td>
+                        <td>${r.price.toFixed(2)}</td>
+                        <td class="${r.chg >= 0 ? 'pos' : 'neg'}">${r.chg > 0 ? '+' : ''}${r.chg.toFixed(2)}%</td>
+                        <td><span class="sector-tag">${r.sector}</span></td>
+                        <td class="${r.roe > 15 ? 'pos' : ''}">${r.roe.toFixed(1)}</td>
+                        <td class="dim">${r.pe.toFixed(1)}</td>
+                    </tr>
+                `).join('');
             },
 
             filter() {
-                const query = document.getElementById('search-input').value.toUpperCase();
-                this.filtered = this.raw.filter(i => 
-                    i.sym.includes(query) || i.sector.toUpperCase().includes(query)
-                );
+                const val = document.getElementById('search-input').value.toUpperCase();
+                this.view = this.store.filter(i => i.sym.includes(val) || i.sector.includes(val));
                 this.render();
             },
 
             sort(key) {
-                if (this.sortKey === key) this.sortDir *= -1;
-                else { this.sortKey = key; this.sortDir = 1; }
-
-                this.filtered.sort((a, b) => {
-                    let vA = a[key];
-                    let vB = b[key];
-                    if (typeof vA === 'string') return this.sortDir * vA.localeCompare(vB);
-                    return this.sortDir * (vA - vB);
+                if(this.sKey === key) this.sDir *= -1;
+                else { this.sKey = key; this.sDir = 1; }
+                this.view.sort((a,b) => {
+                    let vA = a[key], vB = b[key];
+                    return typeof vA === 'string' ? this.sDir * vA.localeCompare(vB) : this.sDir * (vA - vB);
                 });
                 this.render();
             }
         };
 
-        window.onload = () => engine.boot();
+        window.onload = () => engine.start();
     </script>
 </body>
 </html>
