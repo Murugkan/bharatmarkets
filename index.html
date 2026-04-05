@@ -7,128 +7,98 @@
     <title>BharatMarkets | Tape Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root{--bg:#000;--s1:#0a0a0a;--b1:#222;--bl:#00f2ff;--gr:#064e3b;--rd:#7f1d1d;}
+        :root{--bg:#000;--s1:#0a0a0a;--b1:#222;--bl:#00f2ff;--gr:#064e3b;--rd:#7f1d1d;--tx:#fff;}
         *{box-sizing:border-box;margin:0;padding:0;}
-        body{background:var(--bg);color:#fff;font-family:'JetBrains Mono',monospace;}
+        body{background:var(--bg);color:var(--tx);font-family:'JetBrains Mono',monospace;overflow:hidden;}
 
 ```
-    header{background:var(--s1);border-bottom:1px solid var(--b1);padding:10px 12px;display:flex;justify-content:space-around;}
+    header{background:var(--s1);border-bottom:1px solid var(--b1);padding:12px;display:flex;justify-content:space-around;}
     .kpi-box{text-align:center;}
     .kpi-label{font-size:8px;color:#666;text-transform:uppercase;}
     .kpi-val{font-size:14px;font-weight:800;margin-top:2px;}
 
     #bar-wrap{padding:10px;background:#111;border-bottom:1px solid var(--b1);}
-    #tape-bar{width:100%;height:36px;border-radius:4px;overflow:hidden;display:flex;}
+    #tape-bar{width:100%;height:32px;border-radius:4px;overflow:hidden;display:flex;}
     .seg{height:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;
          font-size:8px;font-weight:800;color:#000;overflow:hidden;white-space:nowrap;}
     .seg.dimmed{opacity:0.2;}
 
-    #legend{display:flex;flex-wrap:wrap;gap:6px 12px;padding:6px 10px;border-bottom:1px solid var(--b1);}
-    .leg{display:flex;align-items:center;gap:5px;font-size:9px;color:#888;cursor:pointer;}
+    #legend{display:flex;flex-wrap:wrap;gap:4px 10px;padding:6px 10px;border-bottom:1px solid var(--b1);}
+    .leg{display:flex;align-items:center;gap:4px;font-size:9px;color:#777;cursor:pointer;}
     .leg.on{color:#fff;}
-    .dot{width:8px;height:8px;border-radius:2px;}
+    .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
 
-    #active-label{font-size:9px;color:#555;padding:3px 10px;border-bottom:1px solid #111;min-height:18px;}
-    #active-label span{color:var(--bl);font-weight:800;}
+    #filter-label{font-size:9px;color:#555;padding:3px 10px;border-bottom:1px solid #111;min-height:16px;}
+    #filter-label span{color:var(--bl);font-weight:800;}
 
-    #status{padding:40px;text-align:center;font-size:11px;color:#444;line-height:1.8;}
-    .view{overflow:auto;height:calc(100vh - 200px);}
+    .view{width:100%;overflow:auto;height:calc(100vh - 196px);}
     table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;}
-    th{background:var(--s1);color:#666;padding:10px 12px;position:sticky;top:0;z-index:9;border-bottom:1px solid var(--b1);text-align:left;}
-    td{padding:10px 12px;border-bottom:1px solid #111;}
-    .pin{position:sticky;left:0;background:#111;border-right:1px solid var(--b1);color:var(--bl);font-weight:800;z-index:5;}
-    .pos{background:var(--gr);}
-    .neg{background:var(--rd);}
+    th{background:var(--s1);color:#666;padding:10px 12px;position:sticky;top:0;z-index:10;border-bottom:1px solid var(--b1);text-align:left;}
+    td{padding:10px 12px;border-bottom:1px solid #111;color:var(--tx);}
+    .sticky{position:sticky;left:0;background:#111!important;z-index:5;border-right:1px solid var(--b1);color:var(--bl)!important;font-weight:800;}
+    .pos{background:var(--gr)!important;}
+    .neg{background:var(--rd)!important;}
 </style>
 ```
 
 </head>
 <body>
     <header>
-        <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="ki">—</div></div>
-        <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kv">—</div></div>
-        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kp">—</div></div>
+        <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">—</div></div>
+        <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">—</div></div>
+        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">—</div></div>
     </header>
     <div id="bar-wrap"><div id="tape-bar"></div></div>
     <div id="legend"></div>
-    <div id="active-label">&nbsp;</div>
-    <div class="view"><div id="app"><div id="status">Loading…</div></div></div>
+    <div id="filter-label">&nbsp;</div>
+    <div class="view"><div id="app"></div></div>
 
 <script>
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635'];
 const FIELDS  = ['SYM','QTY','AVG','LTP','PNL','ROE','SECTOR'];
+const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635'];
 
 let DATA = [], SECTORS = [], COL = {}, filter = null;
 
-function fmt(n){ return `₹${(n/100000).toFixed(2)}L`; }
-function tap(sec){ filter = filter===sec ? null : sec; render(); }
-function status(msg){ document.getElementById('status').innerHTML = msg; }
-
-// ── Read portfolio from localStorage (S.portfolio) ──────────────
-function getPortfolio() {
-    // Your app stores state as S in localStorage — try common keys
-    const keys = ['S', 'bharat_state', 'app_state', 'state'];
-    for (const key of keys) {
-        try {
-            const raw = localStorage.getItem(key);
-            if (!raw) continue;
-            const obj = JSON.parse(raw);
-            // S.portfolio is the array
-            if (obj.portfolio && Array.isArray(obj.portfolio) && obj.portfolio.length > 0) {
-                return obj.portfolio;
-            }
-        } catch(e) {}
-    }
-    // Also try direct 'portfolio' key
+// ── Load portfolio from bmp_port_v2 (written by main app) ────────
+function getHoldings() {
     try {
-        const raw = localStorage.getItem('portfolio');
-        if (raw) {
-            const arr = JSON.parse(raw);
-            if (Array.isArray(arr) && arr.length > 0) return arr;
-        }
+        const raw = localStorage.getItem('bmp_port_v2');
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && Array.isArray(parsed.portfolio)) return parsed.portfolio;
     } catch(e) {}
-    return null;
+    return [];
 }
 
-// ── Build DATA by merging portfolio holdings + fundamentals ──────
-async function boot() {
-    const holdings = getPortfolio();
+// ── Boot: merge holdings + fundamentals.json ─────────────────────
+async function init() {
+    const holdings = getHoldings();
 
-    if (!holdings || holdings.length === 0) {
-        // Show all available localStorage keys to help debug
-        const allKeys = Object.keys(localStorage);
-        status(`No portfolio found in localStorage.<br><br>
-            Keys found: <b style="color:#00f2ff">${allKeys.length > 0 ? allKeys.join(', ') : '(none)'}</b><br><br>
-            This page must be served from the <b>same origin</b> as your main app.`);
-        return;
-    }
-
-    // Load fundamentals.json for live ltp + sector + roe
+    // Load fundamentals for ltp / sector / roe
     let fund = {};
     try {
         const res = await fetch('fundamentals.json');
-        if (res.ok) {
-            const json = await res.json();
-            fund = json.stocks || {};
-        }
+        if (res.ok) fund = (await res.json()).stocks || {};
     } catch(e) {}
 
     DATA = holdings
-        .filter(h => h.sym && h.qty > 0)
+        .filter(h => (h.sym || h.SYM) && (h.qty || h.QTY) > 0)
         .map(h => {
-            const f   = fund[h.sym] || fund[h.sym + '.NS'] || {};
-            const ltp = f.ltp || h.ltp || 0;
-            const avg = h.avgBuy || h.avg || 0;
-            const qty = h.qty || 0;
+            const sym  = h.sym  || h.SYM;
+            const qty  = h.qty  || h.QTY  || 0;
+            const avg  = h.avgBuy || h.avg || h.AVG || 0;
+            const f    = fund[sym] || {};
+            const ltp  = f.ltp  || h.ltp  || h.LTP  || 0;
             const cost = qty * avg;
             const mkt  = qty * ltp;
             return {
-                SYM:    h.sym,
+                SYM:    sym,
                 QTY:    qty,
                 AVG:    avg,
-                LTP:    ltp,
+                LTP:    +ltp.toFixed(2),
                 SECTOR: f.sector || h.sector || 'Other',
-                ROE:    f.roe    || h.roe    || 0,
+                ROE:    +(f.roe  || h.roe   || 0),
                 COST:   cost,
                 MKT:    mkt,
                 PNL:    Math.round(mkt - cost)
@@ -136,9 +106,19 @@ async function boot() {
         })
         .filter(d => d.QTY > 0);
 
-    if (DATA.length === 0) {
-        status('Portfolio found but no valid holdings with qty > 0.');
-        return;
+    // Fallback: if no holdings in localStorage, read from fundamentals directly
+    // (shows market data without qty/avg — useful for watchlist view)
+    if (DATA.length === 0 && Object.keys(fund).length > 0) {
+        DATA = Object.keys(fund).map(sym => {
+            const f = fund[sym];
+            return {
+                SYM: sym, QTY: 0, AVG: 0,
+                LTP: +(f.ltp || 0).toFixed(2),
+                SECTOR: f.sector || 'Other',
+                ROE: +(f.roe || 0),
+                COST: 0, MKT: 0, PNL: 0
+            };
+        }).filter(d => d.LTP > 0);
     }
 
     SECTORS = [...new Set(DATA.map(s => s.SECTOR))];
@@ -146,26 +126,27 @@ async function boot() {
     render();
 }
 
+// ── Render everything ────────────────────────────────────────────
 function render() {
     // KPIs
     let tI=0, tM=0, tP=0;
     DATA.forEach(s => { tI += s.COST; tM += s.MKT; tP += s.PNL; });
-    document.getElementById('ki').textContent = fmt(tI);
-    document.getElementById('kv').textContent = fmt(tM);
-    const kp = document.getElementById('kp');
-    kp.textContent = fmt(tP);
-    kp.style.color = tP >= 0 ? '#00ff88' : '#ff4d6d';
+    document.getElementById('kpi-inv').textContent = `₹${(tI/100000).toFixed(2)}L`;
+    document.getElementById('kpi-val').textContent = `₹${(tM/100000).toFixed(2)}L`;
+    const kp = document.getElementById('kpi-pnl');
+    kp.textContent  = `₹${(tP/100000).toFixed(2)}L`;
+    kp.style.color  = tP >= 0 ? '#00ff88' : '#ff4d6d';
 
     // Bar
     const sc = {};
-    DATA.forEach(s => { sc[s.SECTOR] = (sc[s.SECTOR]||0) + s.COST; });
-    const total = Object.values(sc).reduce((a,b)=>a+b, 0);
-    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
-        const pct = (sc[sec]/total*100).toFixed(2);
+    DATA.forEach(s => { sc[s.SECTOR] = (sc[s.SECTOR]||0) + (s.COST || s.MKT); });
+    const total = Object.values(sc).reduce((a,b) => a+b, 0);
+    document.getElementById('tape-bar').innerHTML = total > 0 ? SECTORS.map(sec => {
+        const pct = (sc[sec] / total * 100).toFixed(2);
         const dim = filter && filter !== sec ? ' dimmed' : '';
         return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}"
-                     onclick="tap('${sec}')">${pct > 9 ? sec : ''}</div>`;
-    }).join('');
+                     onclick="tap('${sec}')">${pct > 8 ? sec : ''}</div>`;
+    }).join('') : '<div style="width:100%;background:#222;height:100%;border-radius:4px"></div>';
 
     // Legend
     document.getElementById('legend').innerHTML = SECTORS.map(sec =>
@@ -173,26 +154,28 @@ function render() {
             <div class="dot" style="background:${COL[sec]}"></div>${sec}</div>`
     ).join('');
 
-    // Active label
-    document.getElementById('active-label').innerHTML =
+    // Filter label
+    document.getElementById('filter-label').innerHTML =
         filter ? `Sector: <span>${filter}</span> — tap again to clear` : '&nbsp;';
 
     // Table
     const rows = filter ? DATA.filter(s => s.SECTOR === filter) : DATA;
     let h = `<table><thead><tr>`
-        + FIELDS.map(f => `<th${f==='SYM'?' class="pin"':''}>${f}</th>`).join('')
+        + FIELDS.map(f => `<th${f==='SYM'?' class="sticky"':''}>${f}</th>`).join('')
         + `</tr></thead><tbody>`;
     rows.forEach(s => {
         h += `<tr>` + FIELDS.map(f => {
             const v = s[f] ?? '—';
-            const c = f==='SYM' ? 'pin' : f==='PNL' ? (v>=0?'pos':'neg') : '';
+            const c = f==='SYM' ? 'sticky' : f==='PNL' ? (v>=0?'pos':'neg') : '';
             return `<td${c?` class="${c}"`:''}>${v}${f==='ROE'?'%':''}</td>`;
         }).join('') + `</tr>`;
     });
     document.getElementById('app').innerHTML = h + `</tbody></table>`;
 }
 
-boot();
+function tap(sec) { filter = filter===sec ? null : sec; render(); }
+
+init();
 </script>
 
 </body>
