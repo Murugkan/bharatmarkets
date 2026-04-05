@@ -1,8 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <title>Onyx | Self-Healing Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; }
+        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
+        .kpi-box { text-align:center; }
+        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
+        .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
+        #bar-wrap { padding:10px; background:#111; border-bottom:1px solid var(--b1); }
+        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
+        .seg { height:100%; cursor:pointer; transition: opacity 0.2s; }
+        .seg.dimmed { opacity:0.1; }
+        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; }
+        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
+        .leg.on { color:#fff; font-weight:800; }
+        .dot { width:8px; height:8px; border-radius:2px; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 190px); }
+        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
+        th { background:var(--s1); color:#444; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; }
+        td { padding:12px; border-bottom:1px solid #111; }
+        .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
+        .pos { background:var(--gr)!important; color:#fff!important; }
+        .neg { background:var(--rd)!important; color:#fff!important; }
+        #status { padding:40px; font-size:12px; color:var(--bl); text-align:center; letter-spacing:1px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Sectors</div><div class="kpi-val" id="k-sec">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">System</div><div class="kpi-val" id="k-stat">INIT</div></div>
+</header>
+
+<div id="bar-wrap"><div id="tape-bar"></div></div>
+<div id="legend"></div>
+<div id="status">Waking Engine...</div>
+
+<div class="view"><div id="app"></div></div>
+
+<script>
 // --- CONFIG ---
 const DB_NAME = "OnyxPortfolioDB"; 
 const STORE_NAME = "Stocks";
 const FIELDS = ['SYM','LTP','PNL','PNL%','ROE','PE','PB','MCAP','SECTOR'];
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635'];
+const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899'];
 
 let MASTER = [], SECTORS = [], COL = {}, filter = null;
 
@@ -16,18 +64,18 @@ async function init() {
         req.onsuccess = () => res(req.result);
     });
 
-    // 2. Try to Read Data
+    // 2. Read Local Storage
     const tx = db.transaction(STORE_NAME, "readonly");
     MASTER = await new Promise(res => {
         tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
     });
 
-    // 3. If Empty, Force Hydrate from JSON
+    // 3. Self-Healing: If Empty, Fetch & Build
     if (MASTER.length === 0) {
-        statusEl.innerHTML = "Origin Empty. Syncing from fundamentals.json...";
+        statusEl.innerHTML = "ORIGIN EMPTY. SYNCING FROM FUNDAMENTALS.JSON...";
         try {
-            const res = await fetch('fundamentals.json');
-            const json = await res.json();
+            const response = await fetch('fundamentals.json');
+            const json = await response.json();
             const stocks = json.stocks || json;
             
             const writeTx = db.transaction(STORE_NAME, "readwrite");
@@ -36,7 +84,7 @@ async function init() {
             Object.keys(stocks).forEach(ticker => {
                 const s = stocks[ticker];
                 const qty = s.qty || 0;
-                const avg = s.avgBuy || 0;
+                const avg = s.avgBuy || s.avg || 0;
                 const ltp = s.ltp || 0;
                 const cost = qty * avg;
                 const pnl = qty > 0 ? Math.round((qty * ltp) - cost) : 0;
@@ -50,21 +98,23 @@ async function init() {
                     PE: s.pe || '—',
                     PB: s.pb || '—',
                     MCAP: s.mcap || 0,
-                    SECTOR: s.sector || 'Other'
+                    SECTOR: s.sector || 'Other',
+                    _rawP: pnl
                 });
             });
 
             writeTx.oncomplete = () => {
-                statusEl.innerHTML = "Sync Complete. Reloading...";
-                location.reload();
+                statusEl.innerHTML = "SYNC COMPLETE. REBOOTING...";
+                setTimeout(() => location.reload(), 800);
             };
         } catch (e) {
-            statusEl.innerHTML = "CRITICAL: fundamentals.json not found in this folder.";
+            statusEl.innerHTML = "CRITICAL: FUNDAMENTALS.JSON NOT FOUND.";
+            console.error(e);
         }
         return;
     }
 
-    // 4. If Data exists, Render
+    // 4. Render Interface
     document.getElementById('k-stat').textContent = "LIVE";
     statusEl.style.display = "none";
     SECTORS = [...new Set(MASTER.map(s => s.SECTOR))].sort();
@@ -72,5 +122,58 @@ async function init() {
     render();
 }
 
-// ... Keep your existing render() and tap() functions ...
+function render() {
+    document.getElementById('k-count').textContent = MASTER.length;
+    document.getElementById('k-sec').textContent = SECTORS.length;
+
+    // Tape Bar
+    const sc = {};
+    MASTER.forEach(s => { 
+        const weight = parseFloat(s.MCAP) || parseFloat(s.LTP) || 1;
+        sc[s.SECTOR] = (sc[s.SECTOR] || 0) + weight; 
+    });
+    const total = Object.values(sc).reduce((a, b) => a + b, 0);
+
+    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
+        const pct = (sc[sec] / total * 100).toFixed(2);
+        const dim = filter && filter !== sec ? ' dimmed' : '';
+        return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
+    }).join('');
+
+    // Legend
+    document.getElementById('legend').innerHTML = SECTORS.map(sec => `
+        <div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')">
+            <div class="dot" style="background:${COL[sec]}"></div>${sec}
+        </div>
+    `).join('');
+
+    // Table
+    const rows = filter ? MASTER.filter(s => s.SECTOR === filter) : MASTER;
+    let h = `<table><thead><tr>`;
+    FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
+    h += `</tr></thead><tbody>`;
+
+    rows.forEach(s => {
+        h += `<tr>`;
+        FIELDS.forEach(f => {
+            const val = s[f] ?? '—';
+            let cls = f === 'SYM' ? 'sticky' : '';
+            if ((f === 'PNL' || f === 'PNL%') && typeof s._rawP === 'number') {
+                cls += s._rawP >= 0 ? ' pos' : ' neg';
+            }
+            if (f === 'ROE' && val !== '—') {
+                cls += parseFloat(val) > 20 ? ' pos' : (parseFloat(val) < 12 ? ' neg' : '');
+            }
+            h += `<td class="${cls}">${val}</td>`;
+        });
+        h += `</tr>`;
+    });
+    document.getElementById('app').innerHTML = h + `</tbody></table>`;
+}
+
+function tap(sec) { filter = filter === sec ? null : sec; render(); }
+
 init();
+</script>
+</body>
+</html>
