@@ -3,63 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Heatmap Terminal</title>
+    <title>BharatMarkets | Onyx Edition</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root { 
-            --bg: #04060f; --s1: #0a0e1a; --s2: #121a2d; --b1: #1e293b; 
-            /* Full-Box Colors (For backgrounds) */
-            --bg-gr: rgba(0, 255, 136, 0.15); /* Soft Green */
-            --bg-rd: rgba(255, 77, 109, 0.15); /* Soft Red */
-            --bg-yl: rgba(255, 184, 0, 0.15);  /* Soft Yellow */
-            --bg-bl: rgba(0, 242, 255, 0.05); /* Soft Blue (MCAP/Sector) */
+            --bg: #000000;      /* Pure Black */
+            --s1: #0a0a0a;      /* Near Black for Header */
+            --s2: #111111;      /* Sticky Column Background */
+            --b1: #222222;      /* Borders */
             
-            /* Text Colors */
-            --fg-gr: #00ff88; --fg-rd: #ff4d6d; --fg-yl: #ffb800; --fg-bl: #00f2ff;
-            --tx: #ffffff; --tx3: #708499; 
+            /* Appealing Heatmap Palette (Box Backgrounds) */
+            --bg-gr: #064e3b;   /* Deep Emerald Green */
+            --bg-rd: #7f1d1d;   /* Deep Maroon/Red */
+            --bg-yl: #78350f;   /* Deep Amber/Yellow */
+            --bg-bl: #1e3a8a;   /* Deep Royal Blue */
+            
+            /* Text & Accents */
+            --fg-bl: #00f2ff;   /* Neon Cyan for Symbols */
+            --tx: #ffffff;      /* High-Contrast White */
+            --tx-dim: #888888;  /* Dimmed Headers */
         }
-        body { background: var(--bg); color: #fff; font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
+
+        body { background: var(--bg); color: var(--tx); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
         
-        header { height: 60px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 5px 20px; display: flex; flex-direction: column; justify-content: center; }
-        .logo { font-weight: 800; color: var(--fg-bl); font-size: 13px; }
-        .totals-bar { display: flex; gap: 20px; font-size: 11px; margin-top: 5px; color: var(--tx3); }
-        .t-val { font-weight: 700; color: var(--fg-gr); }
+        header { height: 60px; background: var(--s1); border-bottom: 1px solid var(--b1); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; }
+        .logo { font-weight: 800; color: var(--fg-bl); font-size: 14px; letter-spacing: 1px; }
+        .t-box { font-size: 11px; color: var(--tx-dim); }
+        .t-val { color: #00ff88; font-weight: 700; font-size: 13px; text-shadow: 0 0 8px rgba(0,255,136,0.4); }
 
         .view { width: 100%; overflow: auto; height: calc(100vh - 60px); }
-        table { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; cursor: pointer; }
-        td { padding: 12px 15px; border-bottom: 1px solid #182840; color: var(--tx); }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
         
-        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 2px solid var(--fg-bl); color: var(--fg-bl); font-weight: 700; }
+        th { background: var(--s1); color: var(--tx-dim); padding: 15px; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid var(--b1); text-align: left; cursor: pointer; text-transform: uppercase; }
+        td { padding: 14px 15px; border-bottom: 1px solid #1a1a1a; transition: background 0.2s; }
         
-        /* Full-Cell Heatmap Classes */
-        .pos { background-color: var(--bg-gr) !important; color: var(--fg-gr) !important; } /* Good */
-        .neg { background-color: var(--bg-rd) !important; color: var(--fg-rd) !important; } /* Bad */
-        .neu { background-color: var(--bg-yl) !important; color: var(--fg-yl) !important; } /* Neutral */
-        .inf { background-color: var(--bg-bl) !important; color: var(--fg-bl) !important; } /* MCAP/Sector */
+        /* Sticky Symbol Logic */
+        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--fg-bl); font-weight: 700; }
+        
+        /* Full Box Color Logic */
+        .pos { background-color: var(--bg-gr) !important; color: #ffffff !important; font-weight: 600; }
+        .neg { background-color: var(--bg-rd) !important; color: #ffffff !important; font-weight: 600; }
+        .neu { background-color: var(--bg-yl) !important; color: #ffffff !important; }
+        .inf { background-color: var(--bg-bl) !important; color: #ffffff !important; }
 
-        /* Signal Special Blocks */
-        .BUY { background-color: var(--fg-gr) !important; color: #000 !important; font-weight: 800; padding: 2px 4px; border-radius: 2px; text-align: center; }
-        .SELL { background-color: var(--fg-rd) !important; color: #000 !important; font-weight: 800; padding: 2px 4px; border-radius: 2px; text-align: center; }
-        .HOLD { color: var(--fg-yl); font-weight: 800; }
+        /* Signal Blocks: Solid Bright Colors with Black Text for "Alert" feel */
+        .BUY { background-color: #00ff88 !important; color: #000 !important; font-weight: 800; border-radius: 2px; text-align: center; display: block; width: 100%; }
+        .SELL { background-color: #ff4d6d !important; color: #000 !important; font-weight: 800; border-radius: 2px; text-align: center; display: block; width: 100%; }
+        .HOLD { color: #ffb800; font-weight: 800; text-align: center; }
     </style>
 </head>
 <body onload="init()">
 
     <header>
-        <div class="logo">BHARAT MARKETS | HEATMAP</div>
-        <div class="totals-bar">
-            <span>TOTAL INVESTED: <span class="t-val" id="t-inv">₹ 0</span></span>
-        </div>
+        <div class="logo">BHARAT MARKETS</div>
+        <div class="t-box">GRAND INVESTED: <span class="t-val" id="t-inv">₹ 0</span></div>
     </header>
 
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "BharatFullHeatmapDB"; const STORE = "MasterData";
+        const DB_NAME = "OnyxTerminalDB"; const STORE = "MasterData";
         let MASTER_DATA = []; let currentSort = { col: 'SYM', asc: true };
 
-        const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'DEBT_EQ', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
+        const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
 
         async function runBuild() {
             const res = await fetch('fundamentals.json');
@@ -78,32 +84,25 @@
                 record.PNL = Math.round((q * l) - record.INV_VAL);
                 record.PNL_PCT = record.INV_VAL ? parseFloat(((record.PNL / record.INV_VAL) * 100).toFixed(2)) : 0;
 
-                // POS/NEG Computation Logic
-                let p = 0, n = 0;
-                if (record.ROE > 15) p++; else n++;
-                if (record.PE < 25) p++; else n++;
-                if (record.DEBT_EQ < 1) p++; else n++;
-                if (record.CHG1D > 0) p++; else n++;
-                record.POS = p; record.NEG = n;
+                // Simple Pos/Neg Indicators
+                record.POS = (record.ROE > 15 ? 1 : 0) + (record.PE < 25 ? 1 : 0) + (record.CHG1D > 0 ? 1 : 0);
+                record.NEG = 3 - record.POS;
 
                 store.put(record);
             });
             tx.oncomplete = () => loadAndRender();
         }
 
-        function getCellClass(field, val, row) {
+        function getCellClass(field, val) {
             if (field === 'SYM') return 'sticky';
-            if (field === 'SIGNAL') return val; // Retains BUY/SELL blocks
+            if (field === 'SIGNAL') return val;
             
-            // Numerical Triggers (Applying full cell background)
             if (['PNL', 'CHG1D', 'PNL_PCT'].includes(field)) return val >= 0 ? 'pos' : 'neg';
             if (field === 'ROE') return val > 15 ? 'pos' : (val > 10 ? 'neu' : 'neg');
             if (field === 'PE') return val < 20 ? 'pos' : (val < 40 ? 'neu' : 'neg');
-            if (field === 'DEBT_EQ') return val < 0.5 ? 'pos' : (val < 1.5 ? 'neu' : 'neg');
             if (field === 'POS') return 'pos';
             if (field === 'NEG') return 'neg';
             if (field === 'SECTOR') return 'inf';
-            
             return '';
         }
 
@@ -136,10 +135,8 @@
                 h += `<tr>`;
                 FIELDS.forEach(f => {
                     let val = s[f] !== undefined ? s[f] : '—';
-                    let cls = getCellClass(f, val, s);
+                    let cls = getCellClass(f, val);
                     let suffix = (f==='CHG1D'||f==='PNL_PCT'||f==='ROE') && val!=='—' ? '%' : '';
-                    
-                    // Force the background class onto the cell (td)
                     h += `<td class="${cls}">${val}${suffix}</td>`;
                 });
                 h += `</tr>`;
