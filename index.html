@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | DB Terminal</title>
+    <title>BharatMarkets | Terminal Dump</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
@@ -15,11 +15,9 @@
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
 
-        /* TAPE BAR (Flex-Line) */
-        #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
+        #bar-wrap { padding:10px; background:#111; border-bottom:1px solid var(--b1); }
         #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; display:flex; align-items:center; justify-content:center;
-               font-size:8px; font-weight:800; color:#000; overflow:hidden; }
+        .seg { height:100%; cursor:pointer; }
         .seg.dimmed { opacity:0.1; }
 
         #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; }
@@ -27,18 +25,15 @@
         .leg.on { color:#fff; }
         .dot { width:8px; height:8px; border-radius:2px; }
 
-        /* DB DUMP TABLE */
         .view { width:100%; overflow:auto; height:calc(100vh - 190px); }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#444; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; }
         td { padding:12px; border-bottom:1px solid #111; }
         
-        /* PINNED TICKER */
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
-        
-        .pos { background:var(--gr)!important; }
-        .neg { background:var(--rd)!important; }
-        #status { padding:20px; font-size:10px; color:#333; text-align:center; }
+        .pos { background:var(--gr)!important; color:#fff!important; }
+        .neg { background:var(--rd)!important; color:#fff!important; }
+        #status { padding:20px; font-size:10px; color:#ff4d6d; text-align:center; }
     </style>
 </head>
 <body>
@@ -51,14 +46,14 @@
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
-<div id="status">Reading IndexedDB...</div>
+<div id="status">Scanning Origin Storage...</div>
 
 <div class="view"><div id="app"></div></div>
 
 <script>
-// --- CORE CONFIG (Set these to match your exact DB/Store names) ---
-const DB_NAME = "BharatSolidStateDB"; 
-const STORE_NAME = "MasterData";
+// --- CORE CONFIG (Unified Architecture) ---
+const DB_NAME = "PortfolioEngine"; 
+const STORE_NAME = "UnifiedStocks";
 const FIELDS = ['SYM','LTP','PNL','PNL%','ROE','PE','PB','MCAP','SECTOR'];
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635'];
 
@@ -69,48 +64,48 @@ async function init() {
         const db = await new Promise((res, rej) => {
             const req = indexedDB.open(DB_NAME);
             req.onsuccess = () => res(req.result);
-            req.onerror = () => rej("DB Open Failed");
+            req.onerror = () => rej("Access Denied");
         });
 
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-            document.getElementById('status').innerHTML = `Store "${STORE_NAME}" not found in ${DB_NAME}`;
+            // Error fallback: Show existing stores to help debug
+            const available = Array.from(db.objectStoreNames).join(', ');
+            document.getElementById('status').innerHTML = `Store "${STORE_NAME}" not found.<br>Available: [${available}]`;
+            db.close();
             return;
         }
 
         const tx = db.transaction(STORE_NAME, "readonly");
-        const store = tx.objectStore(STORE_NAME);
-        
         MASTER = await new Promise(res => {
-            store.getAll().onsuccess = e => res(e.target.result);
+            tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
         });
+        db.close();
 
         if (MASTER.length === 0) {
-            document.getElementById('status').innerHTML = "DB is empty. No data to dump.";
+            document.getElementById('status').innerHTML = "Database is empty.";
             return;
         }
 
         document.getElementById('k-stat').textContent = "LIVE";
         document.getElementById('status').style.display = "none";
 
-        // Auto-extract sectors for the Tape Bar
         SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
         SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
 
         render();
     } catch (e) {
-        document.getElementById('status').textContent = "ERROR: " + e;
+        document.getElementById('status').textContent = "Connection Error: " + e;
     }
 }
 
 function render() {
-    // 1. KPIs
     document.getElementById('k-count').textContent = MASTER.length;
     document.getElementById('k-sec').textContent = SECTORS.length;
 
-    // 2. TAPE BAR (Weighted by MCAP if exists, else count)
+    // Tape Bar
     const sc = {};
     MASTER.forEach(s => { 
-        const weight = parseFloat(s.MCAP) || 1;
+        const weight = parseFloat(s.MCAP) || parseFloat(s.LTP) || 1;
         sc[s.SECTOR || 'OTHER'] = (sc[s.SECTOR || 'OTHER'] || 0) + weight; 
     });
     const total = Object.values(sc).reduce((a, b) => a + b, 0);
@@ -121,14 +116,14 @@ function render() {
         return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
     }).join('');
 
-    // 3. LEGEND
+    // Legend
     document.getElementById('legend').innerHTML = SECTORS.map(sec => `
         <div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')">
             <div class="dot" style="background:${COL[sec]}"></div>${sec}
         </div>
     `).join('');
 
-    // 4. TABLE DUMP
+    // Table Dump
     const rows = filter ? MASTER.filter(s => s.SECTOR === filter) : MASTER;
     let h = `<table><thead><tr>`;
     FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
@@ -140,11 +135,16 @@ function render() {
             const val = s[f] ?? '—';
             let cls = f === 'SYM' ? 'sticky' : '';
             
-            // Basic Color Logic
-            if (f.includes('PNL')) {
+            // Basic Heatmap logic
+            if (f === 'PNL' || f === 'PNL%') {
                 const num = parseFloat(val);
                 if (num > 0) cls += ' pos';
-                if (num < 0) cls += ' neg';
+                else if (num < 0) cls += ' neg';
+            }
+            if (f === 'ROE' && val !== '—') {
+                const r = parseFloat(val);
+                if (r > 20) cls += ' pos';
+                else if (r < 12) cls += ' neg';
             }
             
             h += `<td class="${cls}">${val}${f==='ROE' && val!=='—'?'%':''}</td>`;
