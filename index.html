@@ -5,132 +5,97 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
     <title>BharatMarkets | Tape Terminal</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg: #000; --s1: #0a0a0a; --b1: #222; --bl: #00f2ff; --gr: #064e3b; --rd: #7f1d1d; --tx: #fff; }
+        * { box-sizing: border-box; }
         body { background: var(--bg); color: var(--tx); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
 
 ```
-    header { background: var(--s1); border-bottom: 1px solid var(--b1); padding: 12px; display: flex; justify-content: space-around; }
+    header { background: var(--s1); border-bottom: 1px solid var(--b1); padding: 10px 12px; display: flex; justify-content: space-around; }
     .kpi-box { text-align: center; }
     .kpi-label { font-size: 8px; color: #666; text-transform: uppercase; }
     .kpi-val { font-size: 14px; font-weight: 800; margin-top: 2px; }
 
-    /* TAPE CHART AREA */
-    #chart-wrap {
-        height: 60px;
-        background: #000;
-        padding: 10px;
-        border-bottom: 1px solid var(--b1);
-        position: relative;
-    }
+    #chart-wrap { padding: 10px; background: #000; border-bottom: 1px solid var(--b1); }
+    #tape-bar { width: 100%; height: 32px; display: flex; border-radius: 4px; overflow: hidden; }
+    .seg { height: 100%; cursor: pointer; transition: filter .15s, opacity .15s; position: relative; }
+    .seg:hover { filter: brightness(1.4); }
+    .seg.dimmed { opacity: 0.22; }
+    .seg-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        font-size: 8px; font-weight: 800; color: #000; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; max-width: 90%; pointer-events: none; }
 
-    /* Sector legend below chart */
-    #sector-legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px 12px;
-        padding: 6px 10px;
-        border-bottom: 1px solid var(--b1);
-        background: #000;
-    }
-    .legend-item {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 9px;
-        color: #999;
-        cursor: pointer;
-        transition: color 0.2s;
-    }
+    #sector-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 6px 10px;
+        border-bottom: 1px solid var(--b1); background: #000; }
+    .legend-item { display: flex; align-items: center; gap: 4px; font-size: 9px; color: #777; cursor: pointer; transition: color .15s; }
     .legend-item.active { color: #fff; }
-    .legend-dot {
-        width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
-    }
-    
-    .view { width: 100%; overflow: auto; height: calc(100vh - 220px); }
+    .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+    #filter-badge { font-size: 9px; color: #555; padding: 3px 10px; background: #000;
+        border-bottom: 1px solid #111; display: none; }
+    #filter-badge span { color: var(--bl); font-weight: 800; }
+
+    .view { width: 100%; overflow: auto; height: calc(100vh - 196px); }
     table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-    th { background: var(--s1); color: #666; padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
-    td { padding: 12px; border-bottom: 1px solid #111; color: #fff !important; }
-    
+    th { background: var(--s1); color: #666; padding: 10px 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
+    td { padding: 10px 12px; border-bottom: 1px solid #111; color: #fff !important; }
     .sticky { position: sticky; left: 0; background: #111 !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl) !important; font-weight: 800; }
-    
     .pos { background: var(--gr) !important; }
     .neg { background: var(--rd) !important; }
-
-    #filter-badge {
-        font-size: 9px;
-        color: #666;
-        padding: 4px 10px;
-        background: #000;
-        border-bottom: 1px solid #111;
-    }
-    #filter-badge span { color: var(--bl); font-weight: 800; }
 </style>
 ```
 
 </head>
 <body onload="init()">
+    <header>
+        <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">—</div></div>
+        <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">—</div></div>
+        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">—</div></div>
+    </header>
+    <div id="chart-wrap"><div id="tape-bar"></div></div>
+    <div id="sector-legend"></div>
+    <div id="filter-badge">Sector: <span id="filter-name"></span> &nbsp;·&nbsp; tap again to clear</div>
+    <div id="app" class="view"></div>
 
 ```
-<header>
-    <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">0.00L</div></div>
-    <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">0.00L</div></div>
-    <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">0.00L</div></div>
-</header>
-
-<div id="chart-wrap"><canvas id="tapeChart"></canvas></div>
-<div id="sector-legend"></div>
-<div id="filter-badge" style="display:none">Sector: <span id="filter-name"></span> — tap chart again to clear</div>
-<div id="app" class="view"></div>
-
 <script>
-    const DB_NAME = "BharatTapeDB"; const STORE = "Data";
-    let MASTER_DATA = [], activeFilter = null, chart = null;
-    const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'PNL', 'ROE', 'SECTOR'];
-    const PALETTE = ['#00f2ff', '#7000ff', '#ff007a', '#ffb800', '#00ff88', '#007aff', '#ff4d6d'];
+    const DB_NAME = "BharatTapeDB2", STORE = "Data";
+    const FIELDS  = ['SYM','QTY','AVG','LTP','PNL','ROE','SECTOR'];
+    const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635'];
+    let MASTER_DATA = [], activeFilter = null, sectorColors = {};
+
+    function colorFor(s) {
+        if (!sectorColors[s]) sectorColors[s] = PALETTE[Object.keys(sectorColors).length % PALETTE.length];
+        return sectorColors[s];
+    }
 
     async function init() {
-        // Try to load from fundamentals.json; fall back to demo data if fetch fails
         let data;
         try {
             const res = await fetch('fundamentals.json');
-            if (!res.ok) throw new Error('not found');
+            if (!res.ok) throw 0;
             data = await res.json();
-        } catch(e) {
-            // Demo data so the UI renders without the JSON file
-            data = {
-                stocks: {
-                    "RELIANCE.NS": { qty: 10, avgBuy: 2400, ltp: 2650, sector: "Energy", roe: 14 },
-                    "INFY.NS":     { qty: 20, avgBuy: 1500, ltp: 1420, sector: "IT", roe: 29 },
-                    "HDFCBANK.NS": { qty: 15, avgBuy: 1600, ltp: 1720, sector: "Banking", roe: 17 },
-                    "TCS.NS":      { qty: 8,  avgBuy: 3500, ltp: 3800, sector: "IT", roe: 45 },
-                    "TATASTEEL.NS":{ qty: 50, avgBuy: 120,  ltp: 135,  sector: "Metals", roe: 21 },
-                    "SUNPHARMA.NS":{ qty: 12, avgBuy: 1100, ltp: 1050, sector: "Pharma", roe: 18 },
-                    "ICICIBANK.NS":{ qty: 25, avgBuy: 900,  ltp: 980,  sector: "Banking", roe: 16 }
-                }
-            };
+        } catch {
+            data = { stocks: {
+                "RELIANCE.NS": { qty:10, avgBuy:2400, ltp:2650, sector:"Energy",  roe:14 },
+                "INFY.NS":     { qty:20, avgBuy:1500, ltp:1420, sector:"IT",       roe:29 },
+                "HDFCBANK.NS": { qty:15, avgBuy:1600, ltp:1720, sector:"Banking",  roe:17 },
+                "TCS.NS":      { qty:8,  avgBuy:3500, ltp:3800, sector:"IT",       roe:45 },
+                "TATASTEEL.NS":{ qty:50, avgBuy:120,  ltp:135,  sector:"Metals",   roe:21 },
+                "SUNPHARMA.NS":{ qty:12, avgBuy:1100, ltp:1050, sector:"Pharma",   roe:18 },
+                "ICICIBANK.NS":{ qty:25, avgBuy:900,  ltp:980,  sector:"Banking",  roe:16 }
+            }};
         }
-
         const db = await openDB();
-        const tx = db.transaction(STORE, "readwrite");
-        const store = tx.objectStore(STORE);
-
+        const tx = db.transaction(STORE, "readwrite"), st = tx.objectStore(STORE);
         Object.keys(data.stocks).forEach(ticker => {
             const s = data.stocks[ticker];
-            const rec = {
-                SYM: ticker.split('.')[0].toUpperCase(),
-                QTY: s.qty || 0,
-                AVG: s.avgBuy || s.AVG || 0,
-                LTP: s.ltp || 0,
-                SECTOR: s.sector || 'Others',
-                ROE: s.roe || 0
-            };
-            rec.COST = rec.QTY * rec.AVG;
-            rec.MKT  = rec.QTY * rec.LTP;
+            const rec = { SYM: ticker.split('.')[0].toUpperCase(), QTY: s.qty||0,
+                AVG: s.avgBuy||s.AVG||0, LTP: s.ltp||0, SECTOR: s.sector||'Others', ROE: s.roe||0 };
+            rec.COST = rec.QTY * rec.AVG; rec.MKT = rec.QTY * rec.LTP;
             rec.PNL  = Math.round(rec.MKT - rec.COST);
-            store.put(rec);
+            st.put(rec);
         });
         tx.oncomplete = () => load();
     }
@@ -140,135 +105,65 @@
         MASTER_DATA = await new Promise(r => {
             db.transaction(STORE).objectStore(STORE).getAll().onsuccess = e => r(e.target.result);
         });
-        updateKPIs(); renderChart(); renderTable();
+        updateKPIs(); renderBar(); renderTable();
     }
 
     function updateKPIs() {
-        let tI = 0, tM = 0, tP = 0;
-        MASTER_DATA.forEach(s => { tI += s.COST; tM += s.MKT; tP += s.PNL; });
+        let tI=0,tM=0,tP=0;
+        MASTER_DATA.forEach(s => { tI+=s.COST; tM+=s.MKT; tP+=s.PNL; });
         document.getElementById('kpi-inv').innerText = `₹${(tI/100000).toFixed(2)}L`;
         document.getElementById('kpi-val').innerText = `₹${(tM/100000).toFixed(2)}L`;
         document.getElementById('kpi-pnl').innerText = `₹${(tP/100000).toFixed(2)}L`;
-        document.getElementById('kpi-pnl').style.color = tP >= 0 ? '#00ff88' : '#ff4d6d';
+        document.getElementById('kpi-pnl').style.color = tP>=0 ? '#00ff88' : '#ff4d6d';
     }
 
-    function renderChart() {
-        // Build sector → cost map
+    function renderBar() {
         const secMap = {};
-        MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR] || 0) + s.COST; });
-
+        MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR]||0) + s.COST; });
+        const total   = Object.values(secMap).reduce((a,b)=>a+b,0);
         const sectors = Object.keys(secMap);
-
-        /*
-         * FIX: A stacked horizontal bar with ONE group row.
-         * Each sector becomes ONE dataset whose `data` array has exactly
-         * one entry (the portfolio row). Chart.js stacks them side-by-side.
-         */
-        const datasets = sectors.map((sector, i) => ({
-            label: sector,
-            data: [secMap[sector]],           // single value per dataset ✓
-            backgroundColor: PALETTE[i % PALETTE.length],
-            borderWidth: 0,
-            borderRadius: 2,
-            barThickness: 28                  // fits inside 60px chart-wrap
-        }));
-
-        const ctx = document.getElementById('tapeChart').getContext('2d');
-        if (chart) chart.destroy();
-
-        chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['Portfolio'],         // single row label ✓
-                datasets
-            },
-            options: {
-                indexAxis: 'y',
-                maintainAspectRatio: false,
-                animation: { duration: 600 },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => `${ctx.dataset.label}: ₹${(ctx.raw / 100000).toFixed(2)}L`
-                        }
-                    }
-                },
-                scales: {
-                    x: { stacked: true, display: false },
-                    y: { stacked: true, display: false }
-                },
-                onClick: (e, elements) => {
-                    if (elements.length > 0) {
-                        const clicked = chart.data.datasets[elements[0].datasetIndex].label;
-                        activeFilter = (activeFilter === clicked) ? null : clicked;
-                        updateFilterBadge();
-                        renderTable();
-                        renderLegend(sectors);
-                    }
-                }
-            }
-        });
-
-        renderLegend(sectors);
+        document.getElementById('tape-bar').innerHTML = sectors.map(sec => {
+            const pct    = ((secMap[sec]/total)*100).toFixed(2);
+            const dimmed = activeFilter && activeFilter!==sec ? 'dimmed' : '';
+            return `<div class="seg ${dimmed}" style="width:${pct}%;background:${colorFor(sec)}"
+                         title="${sec}: ₹${(secMap[sec]/100000).toFixed(2)}L"
+                         onclick="toggleFilter('${sec}')">
+                        ${pct>8?`<span class="seg-label">${sec}</span>`:''}
+                    </div>`;
+        }).join('');
+        document.getElementById('sector-legend').innerHTML = sectors.map(s =>
+            `<div class="legend-item ${activeFilter===s?'active':''}" onclick="toggleFilter('${s}')">
+                <div class="legend-dot" style="background:${colorFor(s)}"></div>${s}</div>`
+        ).join('');
     }
 
-    function renderLegend(sectors) {
-        const el = document.getElementById('sector-legend');
-        el.innerHTML = sectors.map((s, i) => `
-            <div class="legend-item ${activeFilter === s ? 'active' : ''}"
-                 onclick="toggleFilter('${s}', ${JSON.stringify(sectors).replace(/"/g,"'")})">
-                <div class="legend-dot" style="background:${PALETTE[i % PALETTE.length]}"></div>
-                ${s}
-            </div>
-        `).join('');
-    }
-
-    function toggleFilter(sector, sectors) {
-        activeFilter = (activeFilter === sector) ? null : sector;
-        updateFilterBadge();
-        renderTable();
-        renderLegend(sectors);
-    }
-
-    function updateFilterBadge() {
+    function toggleFilter(sector) {
+        activeFilter = (activeFilter===sector) ? null : sector;
         const badge = document.getElementById('filter-badge');
-        if (activeFilter) {
-            badge.style.display = 'block';
-            document.getElementById('filter-name').innerText = activeFilter;
-        } else {
-            badge.style.display = 'none';
-        }
+        badge.style.display = activeFilter ? 'block' : 'none';
+        if (activeFilter) document.getElementById('filter-name').innerText = activeFilter;
+        renderBar(); renderTable();
     }
 
     function renderTable() {
-        const filtered = activeFilter
-            ? MASTER_DATA.filter(s => s.SECTOR === activeFilter)
-            : MASTER_DATA;
-
-        let h = `<table><thead><tr>`;
-        FIELDS.forEach(f => h += `<th class="${f === 'SYM' ? 'sticky' : ''}">${f}</th>`);
-        h += `</tr></thead><tbody>`;
-
-        filtered.forEach(s => {
-            h += `<tr>`;
-            FIELDS.forEach(f => {
-                let v = s[f] ?? '—';
-                let cls = f === 'SYM' ? 'sticky'
-                        : f === 'PNL' ? (v >= 0 ? 'pos' : 'neg')
-                        : '';
-                h += `<td class="${cls}">${v}${f === 'ROE' ? '%' : ''}</td>`;
-            });
-            h += `</tr>`;
+        const rows = activeFilter ? MASTER_DATA.filter(s=>s.SECTOR===activeFilter) : MASTER_DATA;
+        let h = `<table><thead><tr>` +
+            FIELDS.map(f=>`<th class="${f==='SYM'?'sticky':''}">${f}</th>`).join('') +
+            `</tr></thead><tbody>`;
+        rows.forEach(s => {
+            h += `<tr>` + FIELDS.map(f => {
+                const v   = s[f]??'—';
+                const cls = f==='SYM'?'sticky':f==='PNL'?(v>=0?'pos':'neg'):'';
+                return `<td class="${cls}">${v}${f==='ROE'?'%':''}</td>`;
+            }).join('') + `</tr>`;
         });
-
         document.getElementById('app').innerHTML = h + `</tbody></table>`;
     }
 
     function openDB() {
         return new Promise(res => {
             const req = indexedDB.open(DB_NAME, 1);
-            req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" });
+            req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, {keyPath:"SYM"});
             req.onsuccess = () => res(req.result);
         });
     }
