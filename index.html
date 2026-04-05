@@ -1,159 +1,64 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Cross-Browser Terminal</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
-    <style>
-        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
-        *{box-sizing:border-box;margin:0;padding:0;}
-        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; }
-        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
-        .kpi-box { text-align:center; }
-        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
-        .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
-        
-        #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
-        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; min-width:1px; transition: opacity 0.2s; flex-shrink:0; }
-        .seg.dimmed { opacity:0.1; }
-
-        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
-        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
-        .leg.on { color:#fff; font-weight:800; }
-        .dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
-
-        .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; -webkit-overflow-scrolling:touch; }
-        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
-        th { background:var(--s1); color:#444; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; text-transform: uppercase; }
-        td { padding:12px; border-bottom:1px solid #111; }
-        .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
-        .pos { color:#00ff88!important; font-weight:800; }
-        .neg { color:#ff4d6d!important; font-weight:800; }
-    </style>
-</head>
-<body>
-
-<header>
-    <div class="kpi-box"><div class="kpi-label">Entries</div><div class="kpi-val" id="k-count">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">Fields</div><div class="kpi-val" id="k-cols">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">Net P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
-</header>
-
-<div id="bar-wrap"><div id="tape-bar"></div></div>
-<div id="legend"></div>
-
-<div class="view"><div id="app"></div></div>
-
 <script>
+// 1. INCREMENT VERSION TO 2 (Forces Safari to re-examine the store)
 const DB_NAME = "OnyxPortfolioDB"; 
 const STORE_NAME = "Stocks";
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899'];
+const DB_VERSION = 2; 
 
+const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899'];
 let MASTER = [], SECTORS = [], COL = {}, filter = null, DYNAMIC_FIELDS = [];
 
-// --- THE NORMALIZER (The Cross-Browser Fix) ---
-const cleanNum = (v) => {
-    if (typeof v === 'number') return v;
-    if (!v || v === '—') return 0;
-    const n = parseFloat(v.toString().replace(/[^\d.-]/g, ''));
-    return isNaN(n) ? 0 : n;
-};
-
-const normalize = (rawArray) => {
-    return rawArray.map(item => {
-        const cleanObj = {};
-        Object.keys(item).forEach(key => {
-            // Force all keys to uppercase for Safari/Chrome parity
-            const upperKey = key.toUpperCase();
-            cleanObj[upperKey] = item[key];
-        });
-        return cleanObj;
-    });
-};
-
 async function init() {
-    const db = await new Promise(res => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = e => e.target.result.createObjectStore(STORE_NAME, { keyPath: "SYM" });
+    const statusEl = document.getElementById('status');
+    
+    const db = await new Promise((res) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (d.objectStoreNames.contains(STORE_NAME)) d.deleteObjectStore(STORE_NAME);
+            d.createObjectStore(STORE_NAME, { keyPath: "SYM" });
+        };
         req.onsuccess = () => res(req.result);
     });
 
     const tx = db.transaction(STORE_NAME, "readonly");
-    const rawData = await new Promise(res => {
+    const existing = await new Promise(res => {
         tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
     });
 
-    if (rawData.length > 0) {
-        // STEP 1: Normalize everything immediately
-        MASTER = normalize(rawData);
-
-        // STEP 2: Unified Field Discovery
-        const allKeys = new Set();
-        MASTER.forEach(item => Object.keys(item).forEach(k => { if(!k.startsWith('_')) allKeys.add(k); }));
-        DYNAMIC_FIELDS = ['SYM', ...Array.from(allKeys).filter(f => !['SYM','SECTOR'].includes(f)), 'SECTOR'];
+    // 2. FORCE SYNC if Fields are missing (Your Chrome is stuck on 9, we need 40+)
+    if (existing.length === 0 || Object.keys(existing[0]).length < 15) {
+        statusEl.innerHTML = "UPGRADING DATA ENGINE: SYNCING ALL 40+ FIELDS...";
+        const response = await fetch('fundamentals.json');
+        const json = await response.json();
+        const stocks = json.stocks || json;
         
-        SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
-        SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
-        render();
-    }
-}
-
-function render() {
-    let totalPnl = 0;
-    document.getElementById('k-count').textContent = MASTER.length;
-    document.getElementById('k-cols').textContent = DYNAMIC_FIELDS.length;
-
-    const sc = {};
-    MASTER.forEach(s => { 
-        totalPnl += cleanNum(s.PNL);
-        const weight = Math.max(cleanNum(s.MCAP) || cleanNum(s.LTP), 1);
-        sc[s.SECTOR || 'OTHER'] = (sc[s.SECTOR || 'OTHER'] || 0) + weight; 
-    });
-    
-    const pEl = document.getElementById('k-pnl');
-    pEl.textContent = `₹${(totalPnl/100000).toFixed(2)}L`;
-    pEl.style.color = totalPnl >= 0 ? '#00ff88' : '#ff4d6d';
-
-    const totalWeight = Object.values(sc).reduce((a, b) => a + b, 0);
-    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
-        const pct = ((sc[sec] / totalWeight) * 100).toFixed(2);
-        const dim = filter && filter !== sec ? ' dimmed' : '';
-        // Safari fix: using flex-basis instead of raw width for better bar rendering
-        return `<div class="seg${dim}" style="flex-basis:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
-    }).join('');
-
-    document.getElementById('legend').innerHTML = SECTORS.map(sec => `
-        <div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')">
-            <div class="dot" style="background:${COL[sec]}"></div>${sec}
-        </div>
-    `).join('');
-
-    const rows = filter ? MASTER.filter(s => (s.SECTOR || 'OTHER') === filter) : MASTER;
-    let h = `<table><thead><tr>`;
-    DYNAMIC_FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
-    h += `</tr></thead><tbody>`;
-
-    rows.forEach(s => {
-        h += `<tr>`;
-        DYNAMIC_FIELDS.forEach(f => {
-            const val = s[f] ?? '—';
-            let cls = f === 'SYM' ? 'sticky' : '';
-            const n = cleanNum(val);
-            if (n !== 0) {
-                if ((f.includes('PNL') || f === 'ROE') && n > 0) cls += ' pos';
-                if (f.includes('PNL') && n < 0) cls += ' neg';
-            }
-            h += `<td class="${cls}">${val}</td>`;
+        const writeTx = db.transaction(STORE_NAME, "readwrite");
+        const store = writeTx.objectStore(STORE_NAME);
+        
+        Object.keys(stocks).forEach(ticker => {
+            const s = stocks[ticker];
+            const entry = { SYM: ticker.split('.')[0].toUpperCase() };
+            // Force every key to UPPERCASE during ingestion
+            Object.keys(s).forEach(k => entry[k.toUpperCase()] = s[k]);
+            store.put(entry);
         });
-        h += `</tr>`;
-    });
-    document.getElementById('app').innerHTML = h + `</tbody></table>`;
+
+        writeTx.oncomplete = () => location.reload();
+        return;
+    }
+
+    MASTER = existing;
+    statusEl.style.display = "none";
+
+    // 3. FIELD DISCOVERY
+    const allKeys = new Set();
+    MASTER.forEach(item => Object.keys(item).forEach(k => { if(!k.startsWith('_')) allKeys.add(k); }));
+    DYNAMIC_FIELDS = ['SYM', ...Array.from(allKeys).filter(f => !['SYM','SECTOR'].includes(f)), 'SECTOR'];
+    
+    SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
+    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+    render();
 }
 
-function tap(sec) { filter = filter === sec ? null : sec; render(); }
-init();
+// ... Use the render() and cleanNum() from the previous "Bulletproof" build ...
 </script>
-</body>
-</html>
