@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Deep Dump</title>
+    <title>Onyx | Deep Terminal</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
@@ -13,22 +13,25 @@
         .kpi-box { text-align:center; }
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
-        #bar-wrap { padding:10px; background:#111; border-bottom:1px solid var(--b1); }
-        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; }
+        
+        /* FLEX CHART BAR */
+        #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
+        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; gap:1px; }
+        .seg { height:100%; cursor:pointer; transition: opacity 0.2s; min-width:1px; }
         .seg.dimmed { opacity:0.1; }
-        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; }
+
+        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
         .leg.on { color:#fff; font-weight:800; }
-        .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 190px); background:#000; }
+        .dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+
+        .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#444; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; text-transform: uppercase; }
         td { padding:12px; border-bottom:1px solid #111; }
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
         .pos { color:#00ff88!important; font-weight:800; }
         .neg { color:#ff4d6d!important; font-weight:800; }
-        #status { padding:40px; font-size:12px; color:var(--bl); text-align:center; }
     </style>
 </head>
 <body>
@@ -36,12 +39,11 @@
 <header>
     <div class="kpi-box"><div class="kpi-label">Entries</div><div class="kpi-val" id="k-count">0</div></div>
     <div class="kpi-box"><div class="kpi-label">Fields</div><div class="kpi-val" id="k-cols">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">Sectors</div><div class="kpi-val" id="k-sec">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Net P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
-<div id="status">Waking Database...</div>
 
 <div class="view"><div id="app"></div></div>
 
@@ -52,94 +54,71 @@ const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#f
 
 let MASTER = [], SECTORS = [], COL = {}, filter = null, DYNAMIC_FIELDS = [];
 
+// Helper to safely extract numbers from strings (handles % and ₹)
+const cleanNum = (v) => {
+    if (typeof v === 'number') return v;
+    if (!v || v === '—') return 0;
+    const n = parseFloat(v.toString().replace(/[^\d.-]/g, ''));
+    return isNaN(n) ? 0 : n;
+};
+
 async function init() {
-    const statusEl = document.getElementById('status');
-    
-    try {
-        // 1. Open DB with a 2-second timeout
-        const db = await Promise.race([
-            new Promise((res) => {
-                const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE_NAME, { keyPath: "SYM" });
-                req.onsuccess = () => res(req.result);
-            }),
-            new Promise((_, rej) => setTimeout(() => rej("DB_TIMEOUT"), 2000))
-        ]);
+    const db = await new Promise(res => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore(STORE_NAME, { keyPath: "SYM" });
+        req.onsuccess = () => res(req.result);
+    });
 
-        // 2. Read Data
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const store = tx.objectStore(STORE_NAME);
-        MASTER = await new Promise(res => {
-            store.getAll().onsuccess = e => res(e.target.result);
-        });
+    const tx = db.transaction(STORE_NAME, "readonly");
+    MASTER = await new Promise(res => {
+        tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
+    });
 
-        // 3. If Empty OR Timeout occurred, trigger Hydrate
-        if (MASTER.length === 0) {
-            await hydrate(db, statusEl);
-            return;
-        }
-
-        // 4. Discover ALL keys (The 32+ Fields)
+    if (MASTER.length > 0) {
         const allKeys = new Set();
-        MASTER.forEach(item => Object.keys(item).forEach(k => {
-            if(!k.startsWith('_')) allKeys.add(k);
-        }));
-        
+        MASTER.forEach(item => Object.keys(item).forEach(k => { if(!k.startsWith('_')) allKeys.add(k); }));
         DYNAMIC_FIELDS = ['SYM', ...Array.from(allKeys).filter(f => !['SYM','SECTOR'].includes(f)), 'SECTOR'];
+        
         SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
         SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
-        
-        statusEl.style.display = "none";
         render();
-
-    } catch (err) {
-        statusEl.innerHTML = "DB Locked. Refreshing page...";
-        if(err === "DB_TIMEOUT") location.reload();
     }
 }
 
-async function hydrate(db, statusEl) {
-    statusEl.innerHTML = "SYNCING 40+ FIELDS FROM JSON...";
-    const res = await fetch('fundamentals.json');
-    const json = await res.json();
-    const stocks = json.stocks || json;
-    
-    const writeTx = db.transaction(STORE_NAME, "readwrite");
-    const store = writeTx.objectStore(STORE_NAME);
-    
-    Object.keys(stocks).forEach(ticker => {
-        const s = stocks[ticker];
-        // This spreads EVERY field from the JSON into the DB
-        const entry = { SYM: ticker.split('.')[0].toUpperCase(), ...s };
-        store.put(entry);
-    });
-
-    writeTx.oncomplete = () => location.reload();
-}
-
 function render() {
+    let totalPnl = 0;
     document.getElementById('k-count').textContent = MASTER.length;
     document.getElementById('k-cols').textContent = DYNAMIC_FIELDS.length;
-    document.getElementById('k-sec').textContent = SECTORS.length;
 
+    // 1. CHART LOGIC (Sanitized for Deep Dump)
     const sc = {};
     MASTER.forEach(s => { 
-        const weight = parseFloat(s.MCAP) || parseFloat(s.LTP) || 1;
+        // Sum up total PNL for KPI while we iterate
+        totalPnl += cleanNum(s.PNL);
+        // Use MCAP or LTP for weight, default to 1
+        const weight = Math.max(cleanNum(s.MCAP) || cleanNum(s.LTP), 1);
         sc[s.SECTOR || 'OTHER'] = (sc[s.SECTOR || 'OTHER'] || 0) + weight; 
     });
-    const total = Object.values(sc).reduce((a, b) => a + b, 0);
+    
+    const pEl = document.getElementById('k-pnl');
+    pEl.textContent = `₹${(totalPnl/100000).toFixed(2)}L`;
+    pEl.style.color = totalPnl >= 0 ? '#00ff88' : '#ff4d6d';
 
+    const totalWeight = Object.values(sc).reduce((a, b) => a + b, 0);
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
-        const pct = (sc[sec] / total * 100).toFixed(2);
-        return `<div class="seg${filter && filter !== sec ? ' dimmed' : ''}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
+        const pct = ((sc[sec] / totalWeight) * 100).toFixed(2);
+        const dim = filter && filter !== sec ? ' dimmed' : '';
+        return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
     }).join('');
 
+    // 2. LEGEND
     document.getElementById('legend').innerHTML = SECTORS.map(sec => `
         <div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')">
             <div class="dot" style="background:${COL[sec]}"></div>${sec}
         </div>
     `).join('');
 
+    // 3. TABLE
     const rows = filter ? MASTER.filter(s => s.SECTOR === filter) : MASTER;
     let h = `<table><thead><tr>`;
     DYNAMIC_FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
@@ -150,10 +129,10 @@ function render() {
         DYNAMIC_FIELDS.forEach(f => {
             const val = s[f] ?? '—';
             let cls = f === 'SYM' ? 'sticky' : '';
-            if (typeof val === 'number' || (typeof val === 'string' && val.includes('%'))) {
-                const n = parseFloat(val);
-                if (n > 0 && (f.includes('PNL') || f === 'ROE')) cls += ' pos';
-                if (n < 0 && f.includes('PNL')) cls += ' neg';
+            const n = cleanNum(val);
+            if (n !== 0) {
+                if ((f.includes('PNL') || f === 'ROE') && n > 0) cls += ' pos';
+                if (f.includes('PNL') && n < 0) cls += ' neg';
             }
             h += `<td class="${cls}">${val}</td>`;
         });
