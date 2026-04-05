@@ -3,62 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Onyx Elite</title>
+    <title>BharatMarkets | Onyx Filter</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #222; --gr: #006b3c; --rd: #7f1d1d; --bl: #00f2ff; --yl: #78350f; --tx: #ffffff; }
+        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #333; --gr: #064e3b; --rd: #7f1d1d; --bl: #00f2ff; --tx: #ffffff; }
         body { background: var(--bg); color: var(--tx); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
 
-        /* KPI TOP STRIP */
-        .kpi-row { display: flex; justify-content: space-around; background: var(--s1); padding: 15px 10px; border-bottom: 1px solid var(--b1); }
+        /* Top KPI Bar */
+        .kpi-row { display: flex; justify-content: space-around; background: var(--s1); padding: 15px 5px; border-bottom: 1px solid var(--b1); }
         .kpi-box { text-align: center; flex: 1; }
-        .kpi-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 5px; }
-        .kpi-val { font-size: 16px; font-weight: 800; color: var(--tx); }
-        .pnl-box { background: #004d2c; padding: 4px 15px; border-radius: 2px; display: inline-block; }
-        .pnl-box.neg { background: #5a1212; }
+        .kpi-label { font-size: 9px; color: #888; text-transform: uppercase; }
+        .kpi-val { font-size: 15px; font-weight: 800; color: var(--tx); margin-top: 4px; }
 
-        /* CLEAN BAR CHART */
-        #chart-wrap { height: 120px; background: var(--bg); padding: 10px 20px; border-bottom: 1px solid var(--b1); }
+        /* The Bar Chart Filter Area */
+        #chart-wrap { height: 140px; background: var(--bg); padding: 10px; border-bottom: 2px solid var(--b1); position: relative; }
         
-        /* TABLE */
-        .view { width: 100%; overflow: auto; height: calc(100vh - 300px); }
+        /* The Table View */
+        .view { width: 100%; overflow: auto; height: calc(100vh - 275px); }
         table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        th { background: var(--s1); color: #888; padding: 14px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid var(--b1); text-align: left; }
-        td { padding: 14px 15px; border-bottom: 1px solid #111; color: var(--tx) !important; }
+        th { background: var(--s1); color: #888; padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
+        td { padding: 12px; border-bottom: 1px solid #111; color: var(--tx) !important; font-weight: 500; }
         
         .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl) !important; font-weight: 800; }
         
-        /* HEATMAP (Full Cell) */
+        /* Heatmap Backgrounds */
         .pos { background: var(--gr) !important; }
         .neg { background: var(--rd) !important; }
-        .neu { background: var(--yl) !important; }
-        
-        /* Signal Special */
-        .BUY { background: #00ff88 !important; color: #000 !important; font-weight: 800; text-align: center; }
-        .SELL { background: #ff4d6d !important; color: #000 !important; font-weight: 800; text-align: center; }
+        .neu { background: #78350f !important; }
+        .inf { background: #1e3a8a !important; }
+
+        /* Signals */
+        .BUY { background: #00ff88 !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
+        .SELL { background: #ff4d6d !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
     </style>
 </head>
 <body onload="init()">
 
     <div class="kpi-row">
-        <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">0.00L</div></div>
-        <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">0.00L</div></div>
-        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="pnl-box" id="pnl-container"><div class="kpi-val" id="kpi-pnl">₹0.00L</div><div style="font-size:10px" id="kpi-pnl-pct">0%</div></div></div>
+        <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">₹0.00L</div></div>
+        <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">₹0.00L</div></div>
+        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">₹0.00L</div><div id="kpi-pnl-pct" style="font-size:9px">0%</div></div>
     </div>
 
-    <div id="chart-wrap"><canvas id="barChart"></canvas></div>
+    <div id="chart-wrap"><canvas id="sectorChart"></canvas></div>
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "OnyxFinalDB"; const STORE = "Data";
+        const DB_NAME = "BharatFilterDB"; const STORE = "Data";
         let MASTER_DATA = [], activeFilter = null, chart = null, sort = { col: 'SYM', asc: true };
-        const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
+        const COLS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
 
-        async function runBuild() {
+        async function init() {
+            const db = await openDB();
             const res = await fetch('fundamentals.json');
             const data = await res.json();
-            const db = await openDB();
             const tx = db.transaction(STORE, "readwrite");
             const store = tx.objectStore(STORE);
 
@@ -91,12 +90,12 @@
             document.getElementById('kpi-val').innerText = `₹${(tM/100000).toFixed(2)}L`;
             document.getElementById('kpi-pnl').innerText = `₹${(tP/100000).toFixed(2)}L`;
             document.getElementById('kpi-pnl-pct').innerText = `${((tP/tI)*100).toFixed(2)}%`;
-            document.getElementById('pnl-container').className = `pnl-box ${tP < 0 ? 'neg' : ''}`;
+            document.getElementById('kpi-pnl').style.color = tP >= 0 ? '#00ff88' : '#ff4d6d';
         }
 
         function renderChart() {
-            const ctx = document.getElementById('barChart').getContext('2d');
-            const secMap = {}; MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR]||0) + s.PNL; });
+            const ctx = document.getElementById('sectorChart').getContext('2d');
+            const secMap = {}; MASTER_DATA.forEach(s => { const sc = s.SECTOR || 'OTH'; secMap[sc] = (secMap[sc]||0) + s.PNL; });
             const labels = Object.keys(secMap), values = Object.values(secMap);
 
             if(chart) chart.destroy();
@@ -107,29 +106,38 @@
                     maintainAspectRatio: false, 
                     plugins: { legend: { display: false } },
                     scales: { 
-                        x: { grid: { display: false }, ticks: { color: '#fff', font: { size: 9 }, maxRotation: 45, minRotation: 45 } }, 
+                        x: { grid: { display: false }, ticks: { color: '#ffffff', font: { size: 9 }, maxRotation: 45, minRotation: 45 } }, 
                         y: { display: false } 
                     },
-                    onClick: (e, el) => { if(el.length) { activeFilter = (activeFilter === labels[el[0].index]) ? null : labels[el[0].index]; renderTable(); } }
+                    // FIX: Ensure the click event triggers a table filter update
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const clickedSector = labels[index];
+                            activeFilter = (activeFilter === clickedSector) ? null : clickedSector;
+                            renderTable(); // Force table to filter
+                        }
+                    }
                 }
             });
         }
 
         function renderTable() {
-            const data = activeFilter ? MASTER_DATA.filter(s => s.SECTOR === activeFilter) : MASTER_DATA;
-            data.sort((a,b) => {
+            const filtered = activeFilter ? MASTER_DATA.filter(s => s.SECTOR === activeFilter) : MASTER_DATA;
+            filtered.sort((a,b) => {
                 let v1 = a[sort.col], v2 = b[sort.col];
                 return typeof v1 === 'string' ? (sort.asc ? v1.localeCompare(v2) : v2.localeCompare(v1)) : (sort.asc ? v1-v2 : v2-v1);
             });
 
             let h = `<table><thead><tr>`;
-            FIELDS.forEach(f => h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}</th>`);
+            COLS.forEach(f => h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}</th>`);
             h += `</tr></thead><tbody>`;
-            data.forEach(s => {
+            filtered.forEach(s => {
                 h += `<tr>`;
-                FIELDS.forEach(f => {
+                COLS.forEach(f => {
                     let v = s[f] ?? '—', cls = f==='SYM'?'sticky' : (['PNL','CHG1D','PNL_PCT'].includes(f) ? (v>=0?'pos':'neg') : (f==='SIGNAL'?v:''));
-                    if(f==='ROE') cls = v>15?'pos':(v>10?'neu':'neg');
+                    if(f==='ROE') cls = v > 15 ? 'pos' : (v > 10 ? 'neu' : 'neg');
+                    if(f==='SECTOR') cls = 'inf';
                     h += `<td class="${cls}">${v}${['CHG1D','PNL_PCT','ROE'].includes(f)?'%':''}</td>`;
                 });
                 h += `</tr>`;
@@ -139,7 +147,6 @@
 
         function handleSort(col) { sort.asc = sort.col===col ? !sort.asc : true; sort.col = col; renderTable(); }
         function openDB() { return new Promise(res => { const req = indexedDB.open(DB_NAME, 1); req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: "SYM" }); req.onsuccess = () => res(req.result); }); }
-        function init() { runBuild(); }
     </script>
 </body>
 </html>
