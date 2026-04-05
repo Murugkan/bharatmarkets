@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Legacy Core</title>
+    <title>BharatMarkets | Tape Terminal</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
@@ -15,12 +15,12 @@
         .kpi-label { font-size: 8px; color: #666; text-transform: uppercase; }
         .kpi-val { font-size: 14px; font-weight: 800; margin-top: 2px; }
 
-        /* CLEAN CHART - NO AXIS LINES */
-        #chart-wrap { height: 160px; background: #000; padding: 10px; border-bottom: 1px solid var(--b1); }
+        /* TAPE CHART AREA */
+        #chart-wrap { height: 80px; background: #000; padding: 20px 10px; border-bottom: 1px solid var(--b1); }
         
-        .view { width: 100%; overflow: auto; height: calc(100vh - 250px); }
+        .view { width: 100%; overflow: auto; height: calc(100vh - 180px); }
         table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        th { background: var(--s1); color: #666; padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; cursor: pointer; }
+        th { background: var(--s1); color: #666; padding: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--b1); text-align: left; }
         td { padding: 12px; border-bottom: 1px solid #111; color: #fff !important; }
         
         .sticky { position: sticky; left: 0; background: #111 !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl) !important; font-weight: 800; }
@@ -37,13 +37,14 @@
         <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="kpi-pnl">0.00L</div></div>
     </header>
 
-    <div id="chart-wrap"><canvas id="legacyChart"></canvas></div>
+    <div id="chart-wrap"><canvas id="tapeChart"></canvas></div>
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "BharatLegacyDB"; const STORE = "Data";
+        const DB_NAME = "BharatTapeDB"; const STORE = "Data";
         let MASTER_DATA = [], activeFilter = null, chart = null;
         const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'PNL', 'ROE', 'SECTOR'];
+        const PALETTE = ['#00f2ff', '#7000ff', '#ff007a', '#ffb800', '#00ff88', '#007aff', '#ff4d6d'];
 
         async function init() {
             const res = await fetch('fundamentals.json');
@@ -88,39 +89,39 @@
         }
 
         function renderChart() {
-            const ctx = document.getElementById('legacyChart').getContext('2d');
+            const ctx = document.getElementById('tapeChart').getContext('2d');
             const secMap = {};
-            MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR] || 0) + s.PNL; });
+            MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR] || 0) + s.COST; });
 
             const labels = Object.keys(secMap);
-            const values = Object.values(secMap);
+            const datasets = labels.map((label, i) => ({
+                label: label,
+                data: [secMap[label]],
+                backgroundColor: PALETTE[i % PALETTE.length],
+                borderWidth: 0,
+                barThickness: 30
+            }));
 
             if(chart) chart.destroy();
             chart = new Chart(ctx, {
-                type: 'line', // Restore line type for legacy feel
-                data: { 
-                    labels, 
-                    datasets: [{ 
-                        data: values, 
-                        borderColor: '#00f2ff', 
-                        backgroundColor: 'rgba(0, 242, 255, 0.1)', 
-                        fill: true,
-                        tension: 0.4,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#fff'
-                    }] 
-                },
+                type: 'bar',
+                data: { labels: ['Portfolio'], datasets: datasets },
                 options: {
+                    indexAxis: 'y',
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ₹${(ctx.raw/100000).toFixed(2)}L` } }
+                    },
                     scales: { 
-                        x: { grid: { display: false }, ticks: { color: '#888', font: { size: 9 } } },
-                        y: { display: false } // Remove Y-Axis entirely
+                        x: { stacked: true, display: false }, 
+                        y: { stacked: true, display: false } 
                     },
                     onClick: (e, elements) => {
                         if (elements.length > 0) {
-                            const i = elements[0].index;
-                            activeFilter = (activeFilter === labels[i]) ? null : labels[i];
+                            const dsIndex = elements[0].datasetIndex;
+                            const clickedSector = chart.data.datasets[dsIndex].label;
+                            activeFilter = (activeFilter === clickedSector) ? null : clickedSector;
                             renderTable();
                         }
                     }
@@ -133,13 +134,11 @@
             let h = `<table><thead><tr>`;
             FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
             h += `</tr></thead><tbody>`;
-            
             filtered.forEach(s => {
                 h += `<tr>`;
                 FIELDS.forEach(f => {
                     let v = s[f] ?? '—';
-                    let cls = f==='SYM' ? 'sticky' : '';
-                    if(f==='PNL') cls += v >= 0 ? ' pos' : ' neg';
+                    let cls = f==='SYM' ? 'sticky' : (f==='PNL' ? (v >= 0 ? 'pos' : 'neg') : '');
                     h += `<td class="${cls}">${v}${f==='ROE'?'%':''}</td>`;
                 });
                 h += `</tr>`;
