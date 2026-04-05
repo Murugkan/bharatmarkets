@@ -3,64 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>BharatMarkets | Onyx Dashboard</title>
+    <title>BharatMarkets | Onyx Elite</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #222; --gr: #00ff88; --rd: #ff4d6d; --bl: #00f2ff; --yl: #ffb800; --tx: #fff; --tx3: #888; }
+        :root { --bg: #000; --s1: #0a0a0a; --s2: #111; --b1: #222; --gr: #006b3c; --rd: #7f1d1d; --bl: #00f2ff; --yl: #78350f; --tx: #ffffff; }
         body { background: var(--bg); color: var(--tx); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; }
 
-        /* KPI TOP ROW */
-        .kpi-row { display: flex; justify-content: space-around; background: var(--s1); padding: 12px 10px; border-bottom: 1px solid var(--b1); }
+        /* KPI TOP STRIP */
+        .kpi-row { display: flex; justify-content: space-around; background: var(--s1); padding: 15px 10px; border-bottom: 1px solid var(--b1); }
         .kpi-box { text-align: center; flex: 1; }
-        .kpi-label { font-size: 9px; color: var(--tx3); text-transform: uppercase; margin-bottom: 4px; }
-        .kpi-val { font-size: 14px; font-weight: 800; }
-        .kpi-sub { font-size: 10px; margin-top: 2px; }
+        .kpi-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 5px; }
+        .kpi-val { font-size: 16px; font-weight: 800; color: var(--tx); }
+        .pnl-box { background: #004d2c; padding: 4px 15px; border-radius: 2px; display: inline-block; }
+        .pnl-box.neg { background: #5a1212; }
 
-        /* CHART AREA */
-        #chart-wrap { height: 160px; background: var(--bg); border-bottom: 1px solid var(--b1); padding: 10px; }
+        /* CLEAN BAR CHART */
+        #chart-wrap { height: 120px; background: var(--bg); padding: 10px 20px; border-bottom: 1px solid var(--b1); }
         
-        /* TABLE AREA */
-        .view { width: 100%; overflow: auto; height: calc(100vh - 250px); }
+        /* TABLE */
+        .view { width: 100%; overflow: auto; height: calc(100vh - 300px); }
         table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        th { background: var(--s1); color: var(--tx3); padding: 12px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid var(--b1); text-align: left; cursor: pointer; }
-        td { padding: 12px 15px; border-bottom: 1px solid #111; }
+        th { background: var(--s1); color: #888; padding: 14px 15px; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid var(--b1); text-align: left; }
+        td { padding: 14px 15px; border-bottom: 1px solid #111; color: var(--tx) !important; }
         
-        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl); font-weight: 800; }
+        .sticky { position: sticky; left: 0; background: var(--s2) !important; z-index: 5; border-right: 1px solid var(--b1); color: var(--bl) !important; font-weight: 800; }
         
-        /* Heatmap Styles */
-        .pos { background: rgba(0,255,136,0.15) !important; color: var(--gr) !important; }
-        .neg { background: rgba(255,77,109,0.15) !important; color: var(--rd) !important; }
-        .neu { background: rgba(255,184,0,0.1) !important; color: var(--yl) !important; }
-        .BUY { background: var(--gr) !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
-        .SELL { background: var(--rd) !important; color: #000 !important; font-weight: 800; text-align: center; border-radius: 2px; }
+        /* HEATMAP (Full Cell) */
+        .pos { background: var(--gr) !important; }
+        .neg { background: var(--rd) !important; }
+        .neu { background: var(--yl) !important; }
+        
+        /* Signal Special */
+        .BUY { background: #00ff88 !important; color: #000 !important; font-weight: 800; text-align: center; }
+        .SELL { background: #ff4d6d !important; color: #000 !important; font-weight: 800; text-align: center; }
     </style>
 </head>
 <body onload="init()">
 
     <div class="kpi-row">
-        <div class="kpi-box">
-            <div class="kpi-label">Invested</div>
-            <div class="kpi-val" id="kpi-inv">0.00L</div>
-        </div>
-        <div class="kpi-box">
-            <div class="kpi-label">Mkt Value</div>
-            <div class="kpi-val" id="kpi-val">0.00L</div>
-        </div>
-        <div class="kpi-box">
-            <div class="kpi-label">Total P&L</div>
-            <div class="kpi-val" id="kpi-pnl">0.00L</div>
-            <div class="kpi-sub" id="kpi-pnl-pct">0.00%</div>
-        </div>
+        <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="kpi-inv">0.00L</div></div>
+        <div class="kpi-box"><div class="kpi-label">Mkt Value</div><div class="kpi-val" id="kpi-val">0.00L</div></div>
+        <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="pnl-box" id="pnl-container"><div class="kpi-val" id="kpi-pnl">₹0.00L</div><div style="font-size:10px" id="kpi-pnl-pct">0%</div></div></div>
     </div>
 
-    <div id="chart-wrap"><canvas id="mainChart"></canvas></div>
+    <div id="chart-wrap"><canvas id="barChart"></canvas></div>
     <div id="app" class="view"></div>
 
     <script>
-        const DB_NAME = "BharatOnyxDB"; const STORE = "MasterData";
+        const DB_NAME = "OnyxFinalDB"; const STORE = "Data";
         let MASTER_DATA = [], activeFilter = null, chart = null, sort = { col: 'SYM', asc: true };
-        const COLS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
+        const FIELDS = ['SYM', 'QTY', 'AVG', 'LTP', 'CHG1D', 'PNL', 'PNL_PCT', 'ROE', 'PE', 'SIGNAL', 'POS', 'NEG', 'SECTOR'];
 
         async function runBuild() {
             const res = await fetch('fundamentals.json');
@@ -72,7 +65,6 @@
             Object.keys(data.stocks).forEach(ticker => {
                 const raw = data.stocks[ticker], rec = { SYM: ticker.split('.')[0].toUpperCase() };
                 for (let k in raw) rec[k.toUpperCase()] = raw[k];
-                
                 const q = rec.QTY||0, a = rec.AVG||0, l = rec.LTP||0;
                 rec.COST = q * a; rec.MKT = q * l;
                 rec.PNL = Math.round(rec.MKT - rec.COST);
@@ -93,31 +85,34 @@
         }
 
         function updateKPIs() {
-            let tInv = 0, tCur = 0, tPnl = 0;
-            MASTER_DATA.forEach(s => { tInv += s.COST; tCur += s.MKT; tPnl += s.PNL; });
-            const pPct = tInv ? ((tPnl / tInv) * 100).toFixed(2) : 0;
-
-            document.getElementById('kpi-inv').innerText = `₹${(tInv/100000).toFixed(2)}L`;
-            document.getElementById('kpi-val').innerText = `₹${(tCur/100000).toFixed(2)}L`;
-            document.getElementById('kpi-pnl').innerText = `₹${(tPnl/100000).toFixed(2)}L`;
-            document.getElementById('kpi-pnl').className = `kpi-val ${tPnl>=0?'pos':'neg'}`;
-            document.getElementById('kpi-pnl-pct').innerText = `${pPct}%`;
-            document.getElementById('kpi-pnl-pct').className = `kpi-sub ${tPnl>=0?'pos':'neg'}`;
+            let tI = 0, tM = 0, tP = 0;
+            MASTER_DATA.forEach(s => { tI += s.COST; tM += s.MKT; tP += s.PNL; });
+            document.getElementById('kpi-inv').innerText = `₹${(tI/100000).toFixed(2)}L`;
+            document.getElementById('kpi-val').innerText = `₹${(tM/100000).toFixed(2)}L`;
+            document.getElementById('kpi-pnl').innerText = `₹${(tP/100000).toFixed(2)}L`;
+            document.getElementById('kpi-pnl-pct').innerText = `${((tP/tI)*100).toFixed(2)}%`;
+            document.getElementById('pnl-container').className = `pnl-box ${tP < 0 ? 'neg' : ''}`;
         }
 
         function renderChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
+            const ctx = document.getElementById('barChart').getContext('2d');
             const secMap = {}; MASTER_DATA.forEach(s => { secMap[s.SECTOR] = (secMap[s.SECTOR]||0) + s.PNL; });
             const labels = Object.keys(secMap), values = Object.values(secMap);
 
             if(chart) chart.destroy();
             chart = new Chart(ctx, {
-                type: 'line',
-                data: { labels, datasets: [{ data: values, borderColor: '#00f2ff', tension: 0.4, fill: true, backgroundColor: 'rgba(0,242,255,0.05)' }] },
-                options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, 
-                scales: { x: { grid: { display: false }, ticks: { color: '#555', font: { size: 8 } } }, y: { grid: { color: '#222' }, ticks: { color: '#555', font: { size: 8 } } } },
-                onClick: (e, el) => { if(el.length) { activeFilter = (activeFilter === labels[el[0].index]) ? null : labels[el[0].index]; renderTable(); } }
-            }});
+                type: 'bar',
+                data: { labels, datasets: [{ data: values, backgroundColor: '#00f2ff', borderRadius: 2 }] },
+                options: { 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        x: { grid: { display: false }, ticks: { color: '#fff', font: { size: 9 }, maxRotation: 45, minRotation: 45 } }, 
+                        y: { display: false } 
+                    },
+                    onClick: (e, el) => { if(el.length) { activeFilter = (activeFilter === labels[el[0].index]) ? null : labels[el[0].index]; renderTable(); } }
+                }
+            });
         }
 
         function renderTable() {
@@ -128,11 +123,11 @@
             });
 
             let h = `<table><thead><tr>`;
-            COLS.forEach(f => h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}${sort.col===f?(sort.asc?'↑':'↓'):''}</th>`);
+            FIELDS.forEach(f => h += `<th onclick="handleSort('${f}')" class="${f==='SYM'?'sticky':''}">${f}</th>`);
             h += `</tr></thead><tbody>`;
             data.forEach(s => {
                 h += `<tr>`;
-                COLS.forEach(f => {
+                FIELDS.forEach(f => {
                     let v = s[f] ?? '—', cls = f==='SYM'?'sticky' : (['PNL','CHG1D','PNL_PCT'].includes(f) ? (v>=0?'pos':'neg') : (f==='SIGNAL'?v:''));
                     if(f==='ROE') cls = v>15?'pos':(v>10?'neu':'neg');
                     h += `<td class="${cls}">${v}${['CHG1D','PNL_PCT','ROE'].includes(f)?'%':''}</td>`;
