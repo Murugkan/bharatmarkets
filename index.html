@@ -3,37 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>Onyx | Full DB Dump</title>
+    <title>Onyx | Deep Dump</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#064e3b; --rd:#7f1d1d; --tx:#fff; }
         *{box-sizing:border-box;margin:0;padding:0;}
         body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; }
-        
         header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
         .kpi-box { text-align:center; }
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
-
         #bar-wrap { padding:10px; background:#111; border-bottom:1px solid var(--b1); }
         #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
         .seg { height:100%; cursor:pointer; }
         .seg.dimmed { opacity:0.1; }
-
         #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; }
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
         .leg.on { color:#fff; font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
-
         .view { width:100%; overflow:auto; height:calc(100vh - 190px); background:#000; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#444; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; text-transform: uppercase; }
         td { padding:12px; border-bottom:1px solid #111; }
-        
-        /* PINNED TICKER & KEYS */
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; font-weight:800; }
-        
-        /* DYNAMIC COLORS */
         .pos { color:#00ff88!important; font-weight:800; }
         .neg { color:#ff4d6d!important; font-weight:800; }
         #status { padding:40px; font-size:12px; color:var(--bl); text-align:center; }
@@ -43,13 +35,13 @@
 
 <header>
     <div class="kpi-box"><div class="kpi-label">Entries</div><div class="kpi-val" id="k-count">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">Columns</div><div class="kpi-val" id="k-cols">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Fields</div><div class="kpi-val" id="k-cols">0</div></div>
     <div class="kpi-box"><div class="kpi-label">Sectors</div><div class="kpi-val" id="k-sec">0</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
-<div id="status">Scanning All DB Keys...</div>
+<div id="status">Waking Database...</div>
 
 <div class="view"><div id="app"></div></div>
 
@@ -61,38 +53,68 @@ const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#f
 let MASTER = [], SECTORS = [], COL = {}, filter = null, DYNAMIC_FIELDS = [];
 
 async function init() {
-    const db = await new Promise(res => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onsuccess = () => res(req.result);
-    });
+    const statusEl = document.getElementById('status');
+    
+    try {
+        // 1. Open DB with a 2-second timeout
+        const db = await Promise.race([
+            new Promise((res) => {
+                const req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = e => e.target.result.createObjectStore(STORE_NAME, { keyPath: "SYM" });
+                req.onsuccess = () => res(req.result);
+            }),
+            new Promise((_, rej) => setTimeout(() => rej("DB_TIMEOUT"), 2000))
+        ]);
 
-    const tx = db.transaction(STORE_NAME, "readonly");
-    MASTER = await new Promise(res => {
-        tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
-    });
+        // 2. Read Data
+        const tx = db.transaction(STORE_NAME, "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        MASTER = await new Promise(res => {
+            store.getAll().onsuccess = e => res(e.target.result);
+        });
 
-    if (MASTER.length > 0) {
-        document.getElementById('status').style.display = "none";
-        
-        // --- DYNAMIC FIELD DISCOVERY ---
-        // Get all unique keys from all objects in the DB
+        // 3. If Empty OR Timeout occurred, trigger Hydrate
+        if (MASTER.length === 0) {
+            await hydrate(db, statusEl);
+            return;
+        }
+
+        // 4. Discover ALL keys (The 32+ Fields)
         const allKeys = new Set();
         MASTER.forEach(item => Object.keys(item).forEach(k => {
-            if(!k.startsWith('_')) allKeys.add(k); // Ignore hidden helper keys
+            if(!k.startsWith('_')) allKeys.add(k);
         }));
         
-        // Move SYM to front, SECTOR to back
-        DYNAMIC_FIELDS = Array.from(allKeys);
-        DYNAMIC_FIELDS = [
-            'SYM', 
-            ...DYNAMIC_FIELDS.filter(f => !['SYM','SECTOR'].includes(f)), 
-            'SECTOR'
-        ];
-
+        DYNAMIC_FIELDS = ['SYM', ...Array.from(allKeys).filter(f => !['SYM','SECTOR'].includes(f)), 'SECTOR'];
         SECTORS = [...new Set(MASTER.map(s => s.SECTOR || 'OTHER'))].sort();
         SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+        
+        statusEl.style.display = "none";
         render();
+
+    } catch (err) {
+        statusEl.innerHTML = "DB Locked. Refreshing page...";
+        if(err === "DB_TIMEOUT") location.reload();
     }
+}
+
+async function hydrate(db, statusEl) {
+    statusEl.innerHTML = "SYNCING 40+ FIELDS FROM JSON...";
+    const res = await fetch('fundamentals.json');
+    const json = await res.json();
+    const stocks = json.stocks || json;
+    
+    const writeTx = db.transaction(STORE_NAME, "readwrite");
+    const store = writeTx.objectStore(STORE_NAME);
+    
+    Object.keys(stocks).forEach(ticker => {
+        const s = stocks[ticker];
+        // This spreads EVERY field from the JSON into the DB
+        const entry = { SYM: ticker.split('.')[0].toUpperCase(), ...s };
+        store.put(entry);
+    });
+
+    writeTx.oncomplete = () => location.reload();
 }
 
 function render() {
@@ -100,7 +122,6 @@ function render() {
     document.getElementById('k-cols').textContent = DYNAMIC_FIELDS.length;
     document.getElementById('k-sec').textContent = SECTORS.length;
 
-    // Tape Bar (Weighted by MCAP if available)
     const sc = {};
     MASTER.forEach(s => { 
         const weight = parseFloat(s.MCAP) || parseFloat(s.LTP) || 1;
@@ -110,18 +131,15 @@ function render() {
 
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => {
         const pct = (sc[sec] / total * 100).toFixed(2);
-        const dim = filter && filter !== sec ? ' dimmed' : '';
-        return `<div class="seg${dim}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
+        return `<div class="seg${filter && filter !== sec ? ' dimmed' : ''}" style="width:${pct}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`;
     }).join('');
 
-    // Legend
     document.getElementById('legend').innerHTML = SECTORS.map(sec => `
         <div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')">
             <div class="dot" style="background:${COL[sec]}"></div>${sec}
         </div>
     `).join('');
 
-    // Table Build
     const rows = filter ? MASTER.filter(s => s.SECTOR === filter) : MASTER;
     let h = `<table><thead><tr>`;
     DYNAMIC_FIELDS.forEach(f => h += `<th class="${f==='SYM'?'sticky':''}">${f}</th>`);
@@ -132,14 +150,11 @@ function render() {
         DYNAMIC_FIELDS.forEach(f => {
             const val = s[f] ?? '—';
             let cls = f === 'SYM' ? 'sticky' : '';
-            
-            // Color highlighting for any numeric value
             if (typeof val === 'number' || (typeof val === 'string' && val.includes('%'))) {
-                const num = parseFloat(val);
-                if (num > 0 && (f.includes('PNL') || f === 'ROE')) cls += ' pos';
-                if (num < 0 && f.includes('PNL')) cls += ' neg';
+                const n = parseFloat(val);
+                if (n > 0 && (f.includes('PNL') || f === 'ROE')) cls += ' pos';
+                if (n < 0 && f.includes('PNL')) cls += ' neg';
             }
-            
             h += `<td class="${cls}">${val}</td>`;
         });
         h += `</tr>`;
