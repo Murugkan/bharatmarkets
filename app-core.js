@@ -1,20 +1,11 @@
-/**
- * ONYX SYSTEM v9.8 - MASTER CORE
- * Requirements: SheetJS, Duplicate Logic, Manual Entry, Category Binding
- */
+/** ONYX v9.8 MASTER CORE */
 window.S = JSON.parse(localStorage.getItem('bm_settings')) || { settings: { ghToken: '', ghRepo: '', _ghStatus: 'dim' } };
 window.SYMBOLS = JSON.parse(localStorage.getItem('bm_symbols')) || [];
 
 const ghHeaders = () => ({ 'Authorization': `token ${S.settings.ghToken}`, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' });
 
-function normalizeName(n) {
-    return n.toUpperCase().replace(/LTD|LIMITED|CORP|INC|PLC/g, '').replace(/[^\w\s]/gi, '').trim();
-}
-
-function checkDuplicate(name) {
-    const norm = normalizeName(name);
-    return window.SYMBOLS.find(s => normalizeName(s.name) === norm);
-}
+function normalizeName(n) { return n.toUpperCase().replace(/LTD|LIMITED|CORP|INC|PLC/g, '').replace(/[^\w\s]/gi, '').trim(); }
+function checkDuplicate(name) { const norm = normalizeName(name); return window.SYMBOLS.find(s => normalizeName(s.name) === norm); }
 
 async function parseFile(file) {
     return new Promise((resolve) => {
