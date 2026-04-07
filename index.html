@@ -15,11 +15,14 @@
         #sector-bar { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0; -webkit-overflow-scrolling: touch; }
         .s-pill { white-space: nowrap; padding: 6px 12px; background: var(--b1); border-radius: 20px; font-size: 9px; color: var(--tx3); border: 1px solid transparent; }
         .s-pill.on { background: var(--bl); color: #000; font-weight: 800; }
+        .dot { height: 6px; width: 6px; border-radius: 50%; display: inline-block; margin-left: 4px; }
+        .dot-ok { background: var(--gr); box-shadow: 0 0 5px var(--gr); }
+        .dot-off { background: #555; }
     </style>
 </head>
 <body>
 
-<header style="display:flex; justify-content:space-between; align-items:center; padding: 10px 0;">
+<header style="display:flex; justify-content:space-between; align-items:center; padding: 10px 15px;">
     <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:var(--bl);">ONYX // PORTFOLIO</div>
     <div style="display:flex; gap:8px;">
         <span class="dot" id="dot-token"></span>
@@ -27,13 +30,13 @@
     </div>
 </header>
 
-<div class="sec" style="padding:20px; background: linear-gradient(145deg, #0a0a0a, #000); border: 1px solid var(--b1);">
+<div class="sec" style="margin: 0 15px; padding:20px; background: linear-gradient(145deg, #0a0a0a, #000); border: 1px solid var(--b1); border-radius: 8px;">
     <div style="font-size:8px; color:var(--tx3); text-transform:uppercase; margin-bottom:4px;">Portfolio Value</div>
     <div id="total-val" style="font-size:26px; font-weight:800; letter-spacing:-1px;">₹ 0.00</div>
     <div id="total-pnl" style="font-size:11px; font-weight:800; margin-top:8px; color:var(--gr);">+0.00% Today</div>
 </div>
 
-<div id="sector-bar">
+<div id="sector-bar" style="padding-left: 15px;">
     <div class="s-pill on" id="s-all" onclick="PF.filter('ALL')">ALL</div>
 </div>
 
@@ -63,7 +66,7 @@ const PF = {
 
     async init() {
         loadState();
-        if (S.settings.ghToken) {
+        if (S.settings.ghToken && S.settings.ghRepo) {
             const data = await ghFetchRaw('symbols.json');
             if (data) SYMBOLS = migrateSymbols(data);
             const pData = await ghFetchRaw('prices.json');
@@ -71,12 +74,12 @@ const PF = {
         }
         this.renderSectors();
         this.render();
-        refreshPatStatus(); // From app-core.js
+        updateStatusDots();
     },
 
     renderSectors() {
-        const sectors = [...new Set(SYMBOLS.filter(s=>s.category==='portfolio').map(s=>s.sector||'Other'))];
         const bar = document.getElementById('sector-bar');
+        const sectors = [...new Set(SYMBOLS.filter(s=>s.category==='portfolio').map(s=>s.sector||'Other'))];
         sectors.forEach(s => {
             const div = document.createElement('div');
             div.className = 's-pill';
@@ -120,7 +123,7 @@ const PF = {
                 <td><span class="ticker">${s.sym}</span><span class="sub">${s.name.slice(0,12)}</span></td>
                 <td style="text-align:right;">${s.qty}</td>
                 <td style="text-align:right;">₹${fmt(val)}</td>
-                <td style="text-align:right; color:var(--gr);">+0.0%</td>
+                <td style="text-align:right; color:var(--gr);">+${fmt(PRICES[s.sym]?.changePercent || 0)}%</td>
             `;
             body.appendChild(tr);
         });
@@ -130,16 +133,10 @@ const PF = {
     getVal(s) {
         if (this.sortKey === 'sym') return s.sym;
         if (this.sortKey === 'qty') return s.qty;
-        return s.qty * (PRICES[s.sym]?.price || 0);
+        const ltp = PRICES[s.sym]?.price || 0;
+        return s.qty * ltp;
     }
 };
-
-// Map status dot helper to app-core logic
-function refreshPatStatus() {
-    const setDot = (id, ok) => { const el = document.getElementById(id); if (el) el.className = 'dot ' + (ok ? 'dot-ok' : 'dot-off'); };
-    setDot('dot-token', !!S.settings.ghToken);
-    setDot('dot-repo', !!S.settings.ghRepo);
-}
 
 window.addEventListener('load', () => PF.init());
 </script>
