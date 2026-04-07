@@ -10,39 +10,33 @@
         .input-group { margin-bottom: 20px; }
         label { display: block; font-size: 10px; color: var(--tx3); margin-bottom: 8px; text-transform: uppercase; font-weight: 800; }
         
-        /* Persistent Status Badge */
-        #conn-status { 
-            display: inline-block; padding: 4px 10px; border-radius: 4px; 
-            font-size: 9px; font-weight: 900; margin-bottom: 15px; 
-        }
+        #conn-status { padding: 4px 10px; border-radius: 4px; font-size: 9px; font-weight: 900; }
         .status-off { background: #331111; color: #ff4444; border: 1px solid #ff4444; }
         .status-on { background: #113311; color: var(--gr); border: 1px solid var(--gr); }
 
         input { 
             width: 100%; background: #111; border: 1px solid #444; color: #fff; 
-            padding: 14px; border-radius: 4px; font-size: 15px; box-sizing: border-box; transition: 0.3s;
+            padding: 14px; border-radius: 4px; font-size: 15px; box-sizing: border-box;
         }
-        input.success { border-color: var(--gr); box-shadow: 0 0 10px rgba(0,255,150,0.2); }
+        input.success { border-color: var(--gr); }
         input.error { border-color: #ff4444; }
 
-        .btn-main { 
-            width: 100%; background: var(--bl); color: #000; border: none; 
-            padding: 16px; font-weight: 900; border-radius: 4px; text-transform: uppercase; transition: 0.2s;
-        }
-        .btn-main:disabled { background: #333; color: #666; }
-
-        #data-log { 
-            background: #000; border: 1px solid #222; padding: 12px; 
-            height: 120px; overflow-y: auto; font-family: monospace; font-size: 10px; margin-top: 20px; color: #888;
+        .btn-main { width: 100%; background: var(--bl); color: #000; border: none; padding: 16px; font-weight: 900; border-radius: 4px; text-transform: uppercase; }
+        
+        /* THE DEBUG WINDOW */
+        #debug-window { 
+            display: none; position: fixed; bottom: 80px; left: 15px; right: 15px; 
+            background: #111; border: 1px solid #ff4444; padding: 15px; z-index: 1000;
+            max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 9px; color: #ff4444;
         }
     </style>
 </head>
 <body>
 
 <div class="sec" style="margin: 20px 15px;">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
         <h3 style="font-size:11px; color:var(--tx3); text-transform:uppercase;">0. System Connection</h3>
-        <div id="conn-status" class="status-off">OFFLINE</div>
+        <div id="conn-status" class="status-off">DISCONNECTED</div>
     </div>
 
     <div class="input-group">
@@ -56,19 +50,12 @@
     </div>
 
     <button id="btn-connect" class="btn-main" onclick="validatePAT()">Connect & Sync Cloud</button>
+    <button onclick="toggleDebug()" style="background:none; border:none; color:#555; width:100%; margin-top:10px; font-size:9px;">[🐞 DEBUG CONSOLE]</button>
 </div>
 
-<div class="sec" style="margin: 20px 15px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-        <h3 style="font-size:11px; color:var(--tx3); text-transform:uppercase;">1. DQA // Symbol Audit</h3>
-        <button onclick="reloadData()" style="background:none; border:none; color:var(--bl); font-size:10px; font-weight:bold;">RELOAD ↻</button>
-    </div>
-    <table style="width:100%; border-collapse:collapse; font-size:12px;">
-        <tbody id="dqa-body"></tbody>
-    </table>
-</div>
+<div id="debug-window"><b>RAW SYSTEM ERRORS:</b><hr></div>
 
-<div id="data-log" style="margin: 0 15px;"></div>
+<div id="data-log" style="margin: 0 15px; height:100px; background:#000; border:1px solid #222; overflow-y:auto; padding:10px; font-size:10px; color:#888;"></div>
 
 <nav class="footer-nav">
     <a href="data.html" class="nav-item active">📂 DATA</a>
@@ -81,8 +68,18 @@ window.addEventListener('load', () => {
     document.getElementById('gh-token').value = S.settings.ghToken || '';
     document.getElementById('gh-repo').value = S.settings.ghRepo || '';
     refreshUIStatus();
-    renderDQA();
 });
+
+function toggleDebug() {
+    const dbg = document.getElementById('debug-window');
+    dbg.style.display = dbg.style.display === 'none' ? 'block' : 'none';
+}
+
+function debugLog(err) {
+    const dbg = document.getElementById('debug-window');
+    dbg.innerHTML += `<br>> ${err}`;
+    dbg.scrollTop = dbg.scrollHeight;
+}
 
 function refreshUIStatus() {
     const badge = document.getElementById('conn-status');
@@ -93,86 +90,44 @@ function refreshUIStatus() {
 
 async function validatePAT() {
     const btn = document.getElementById('btn-connect');
-    const tEl = document.getElementById('gh-token');
-    const rEl = document.getElementById('gh-repo');
+    const t = document.getElementById('gh-token').value.trim();
+    const r = document.getElementById('gh-repo').value.trim();
     
-    const t = tEl.value.trim();
-    const r = rEl.value.trim();
-    
-    if(!t || !r) return toast("Enter both Token and Repo");
+    if(!t || !r) return toast("Missing Credentials");
 
-    // UI Feedback: Loading
     btn.disabled = true;
     btn.innerText = "VERIFYING...";
-    tEl.className = rEl.className = ''; 
     
     S.settings.ghToken = t;
     S.settings.ghRepo = r;
-    
-    dataLog("Checking GitHub API Access...", "📡");
 
     try {
+        // PRO TIP: We fetch the repo metadata to verify access
         const res = await fetch(`https://api.github.com/repos/${r}`, {
-            headers: ghHeaders()
+            headers: { 
+                'Authorization': `token ${t}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
         });
 
         if (res.ok) {
-            dataLog("Success! Connection Established.", "✅");
+            dataLog("Success: Connected", "✅");
             S.settings._ghStatus = 'ok';
-            tEl.classList.add('success');
-            rEl.classList.add('success');
             saveSettings();
             refreshUIStatus();
-            toast("Cloud Connected Successfully");
         } else {
-            dataLog("Auth Error: Check PAT/Repo Name", "❌");
+            const errData = await res.json();
+            debugLog(`API Error: ${res.status} - ${errData.message}`);
+            dataLog("Auth Failed", "❌");
             S.settings._ghStatus = 'dim';
-            tEl.classList.add('error');
-            rEl.classList.add('error');
             refreshUIStatus();
         }
     } catch (e) {
-        dataLog("Network Error: Check Internet Connection", "⚠️");
-        tEl.classList.add('error');
+        debugLog(`Browser Error: ${e.message}`);
+        dataLog("Network Error", "⚠️");
     } finally {
         btn.disabled = false;
         btn.innerText = "CONNECT & SYNC CLOUD";
-    }
-}
-
-function renderDQA() {
-    const body = document.getElementById('dqa-body');
-    if (!body) return;
-    body.innerHTML = SYMBOLS.length ? '' : '<tr><td style="color:#444; padding:20px; text-align:center;">Empty local storage.</td></tr>';
-    
-    SYMBOLS.forEach(s => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td style="padding:15px 5px; font-weight:800; color:var(--bl);">${s.sym}</td>
-            <td style="color:#666; font-size:10px;">${(s.name || '').slice(0,18)}</td>
-            <td style="text-align:right; color:#ff4444; font-size:10px;" onclick="removeSym('${s.sym}')">DELETE</td>
-        `;
-        body.appendChild(tr);
-    });
-}
-
-function removeSym(sym) {
-    if(confirm("Delete " + sym + "?")) {
-        window.SYMBOLS = SYMBOLS.filter(x => x.sym !== sym);
-        localStorage.setItem('bm_symbols', JSON.stringify(SYMBOLS));
-        renderDQA();
-    }
-}
-
-async function reloadData() {
-    if(!requirePAT()) return;
-    dataLog("Syncing Symbols from Cloud...", "☁️");
-    const data = await ghFetchRaw('symbols.json');
-    if(data) {
-        window.SYMBOLS = data;
-        localStorage.setItem('bm_symbols', JSON.stringify(data));
-        renderDQA();
-        dataLog("DQA Updated Successfully", "✅");
     }
 }
 </script>
