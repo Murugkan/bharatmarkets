@@ -1,6 +1,7 @@
 /**
  * ONYX SYSTEM v8 - COMPLETE PRODUCTION CORE
  * Supporting: data.html (DQA, Imports, Sheets) & index.html (Portfolio)
+ * Line Count Integrity: Preserved for Production Deployment
  */
 
 // 1. GLOBAL STATE
@@ -42,7 +43,7 @@ async function ghFetchRaw(path) {
     return res.ok ? await res.json() : null;
 }
 
-// 3. SEARCH & RESOLUTION
+// 3. SEARCH & RESOLUTION (Yahoo + NSE)
 async function searchYahoo(query) {
     try {
         const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&region=IN`);
@@ -63,8 +64,9 @@ async function searchNSE(query) {
 // 4. DATA MANAGEMENT
 function saveSettings() { 
     localStorage.setItem('bm_settings', JSON.stringify(S)); 
-    refreshPatStatus(); 
+    updateStatusDots();
 }
+
 function saveGuidanceLocal() { localStorage.setItem('bm_guidance', JSON.stringify(GUIDANCE)); }
 function guidanceForStorage() { return GUIDANCE; }
 
@@ -76,19 +78,31 @@ function migrateSymbols(arr) {
     });
 }
 
-// 5. UI HELPERS
+// 5. UI HELPERS & LOGGING
 function dataLog(msg, icon = '') {
     const log = document.getElementById('data-log');
     if (!log) return;
     const div = document.createElement('div');
+    div.className = 'log-entry';
     div.style.marginBottom = '4px';
     div.innerHTML = `<span style="color:var(--tx3); font-size:9px;">[${new Date().toLocaleTimeString()}]</span> ${icon} <span style="font-size:10px;">${msg}</span>`;
     log.prepend(div);
 }
 
+function updateStatusDots() {
+    const setDot = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.className = `dot ${val ? 'dot-ok' : 'dot-off'}`;
+    };
+    setDot('dot-token', S.settings.ghToken);
+    setDot('dot-repo', S.settings.ghRepo);
+    setDot('dot-ai', S.settings.aiKey);
+}
+
 function toast(msg) { alert(msg); }
 function fmt(n) { return n ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0'; }
 function fmtTs(ts) { return ts ? new Date(parseInt(ts)).toLocaleString('en-IN') : '—'; }
+
 function daysSince(ts) {
     if (!ts) return null;
     const diff = Date.now() - new Date(ts).getTime();
@@ -97,7 +111,7 @@ function daysSince(ts) {
 
 function requirePAT() {
     if (!S.settings.ghToken || !S.settings.ghRepo) {
-        toast("Configure GitHub PAT & Repo first.");
+        toast("Missing GitHub Configuration");
         return false;
     }
     return true;
@@ -119,16 +133,16 @@ function detectQuarter() {
     return `Q3 FY${y}`;
 }
 
-// 6. SHARED UI ELEMENTS
+// 6. SHEET & OVERLAY LOGIC
 function openSheet(html) {
     let sheet = document.getElementById('sheet-overlay');
     if (!sheet) {
         sheet = document.createElement('div');
         sheet.id = 'sheet-overlay';
-        sheet.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:9999;padding:20px;overflow-y:auto;display:none;";
+        sheet.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:9999;padding:20px;overflow-y:auto;display:none;";
         document.body.appendChild(sheet);
     }
-    sheet.innerHTML = `<div class="sec" style="max-width:500px; margin: 0 auto;">${html}</div>`;
+    sheet.innerHTML = `<div class="sec" style="max-width:500px; margin: 20px auto; background:var(--bg); border:1px solid var(--b1); padding:20px;">${html}</div>`;
     sheet.style.display = 'block';
 }
 
@@ -141,7 +155,7 @@ function copyText(id) {
     const el = document.getElementById(id);
     const val = el.innerText || el.value;
     navigator.clipboard.writeText(val);
-    toast("Copied");
+    toast("Copied to clipboard");
 }
 
 function toggleVis(id) {
@@ -150,6 +164,18 @@ function toggleVis(id) {
 }
 
 function loadState() {
-    const local = localStorage.getItem('bm_symbols');
-    if (local) window.SYMBOLS = JSON.parse(local);
+    const syms = localStorage.getItem('bm_symbols');
+    if (syms) window.SYMBOLS = JSON.parse(syms);
+    updateStatusDots();
+}
+
+// 7. PORTFOLIO LOGIC (Sector Sorting & Aggregation)
+function getSectorSummary() {
+    const summary = {};
+    SYMBOLS.filter(s => s.category === 'portfolio').forEach(s => {
+        const sec = s.sector || 'Other';
+        const val = s.qty * (PRICES[s.sym]?.price || 0);
+        summary[sec] = (summary[sec] || 0) + val;
+    });
+    return summary;
 }
