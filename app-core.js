@@ -1,165 +1,172 @@
 /**
- * ONYX CORE ENGINE v8
- * Standardization: Modular Logic & GitHub Bridge
- * Purpose: Handle Data Ingestion, DQA, and Cloud Sync for iPhone Deployment
+ * ONYX SYSTEM v8 - PRODUCTION CORE ENGINE
+ * Logic: Data Management, GitHub Sync, & Stock Resolution
  */
 
 // 1. GLOBAL STATE & CONFIG
-window.S = {
-    portfolio: JSON.parse(localStorage.getItem('portfolio') || '[]'),
-    config: {
-        token: localStorage.getItem('gh_token'),
-        owner: localStorage.getItem('gh_owner') || "YOUR_GITHUB_USERNAME",
-        repo: localStorage.getItem('gh_repo') || "YOUR_REPO_NAME",
-        path: "symbols.json"
-    }
+window.S = JSON.parse(localStorage.getItem('bm_settings')) || {
+    settings: { ghToken: '', ghRepo: '', aiKey: '', _ghStatus: 'dim' }
 };
 
+window.DB = {
+    symbols: [],      // symbols.json
+    fundamentals: {}, // fundamentals.json
+    prices: {},       // prices.json
+    guidance: {}      // guidance.json
+};
+
+// 2. INITIALIZATION & SCHEMA MIGRATION
 const Core = {
-    init() {
+    async init() {
+        this.log("Initializing Onyx Core v8...");
+        await this.loadLocal();
+        this.migrateSchema();
         this.updateStatusDots();
-        console.log("Core Engine Initialized");
     },
 
-    // 2. AUTHENTICATION CHECKS
-    updateStatusDots() {
-        const dotToken = document.getElementById('dot-token');
-        const dotRepo = document.getElementById('dot-repo');
-        
-        if (dotToken) dotToken.className = S.config.token ? 'dot dot-on' : 'dot dot-off';
-        if (dotRepo) dotRepo.className = S.config.repo ? 'dot dot-on' : 'dot dot-off';
+    loadLocal() {
+        const cachedSymbols = localStorage.getItem('bm_symbols');
+        if (cachedSymbols) DB.symbols = JSON.parse(cachedSymbols);
+        // Load other modules if available in localStorage
     },
 
-    // 3. THE "SMART-SPLIT" PARSER (Fixes "Resolution Failed")
-    parseInput(text) {
-        const lines = text.trim().split('\n');
-        let newStocks = [];
-
-        lines.forEach(line => {
-            // Standardized Regex: Split by one or more spaces, tabs, or commas
-            const parts = line.split(/[\s,]+/).filter(p => p.trim().length > 0);
-            
-            if (parts.length >= 3) {
-                const name = parts[0].toUpperCase();
-                const qty = parseFloat(parts[1]);
-                const avg = parseFloat(parts[2]);
-
-                if (!isNaN(qty) && !isNaN(avg)) {
-                    newStocks.push({ symbol: name, qty: qty, avg: avg });
-                }
+    migrateSchema() {
+        let changed = false;
+        DB.symbols = DB.symbols.map(s => {
+            if (s.source && Array.isArray(s.source)) {
+                s.category = s.source[0] || 'portfolio';
+                delete s.source;
+                changed = true;
             }
+            if (s.resolved === undefined) { s.resolved = true; changed = true; }
+            return s;
         });
-        return newStocks;
+        if (changed) {
+            this.log("Schema migration complete: source[] -> category");
+            this.savePF();
+        }
     },
 
-    // 4. FILE INGESTION (Fixes "Reading..." Hang)
-    processFile(input) {
-        const file = input.files[0];
-        if (!file) return;
+    savePF() {
+        localStorage.setItem('bm_symbols', JSON.stringify(DB.symbols));
+    },
 
-        UI.log(`Accessing ${file.name}...`);
-        const reader = new FileReader();
-        
-        reader.onload = (e) => {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const wb = XLSX.read(data, { type: 'array' });
-                const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+    saveSettings() {
+        localStorage.setItem('bm_settings', JSON.stringify(S));
+    },
 
-                let count = 0;
-                rows.forEach(r => {
-                    // Logic: Extract Col 0 (Name), Col 1 (Qty), Col 2 (Avg)
-                    if (r.length >= 3 && typeof r[1] === 'number') {
-                        S.portfolio.push({ symbol: r[0], qty: r[1], avg: r[2] });
-                        count++;
-                    }
-                });
-                this.commit(count);
-            } catch (err) {
-                UI.log("READ ERROR: Check file format.");
-            }
+    // 3. GITHUB API OPERATIONS (Production Pattern)
+    async ghPut(path, content, message) {
+        const { ghToken, ghRepo } = S.settings;
+        if (!ghToken || !ghRepo) return this.log("❌ Error: Missing PAT/Repo", "red");
+
+        const url = `https://api.github.com/repos/${ghRepo}/contents/${path}`;
+        const headers = {
+            'Authorization': `token ${ghToken}`,
+            'Accept': 'application/vnd.github.v3+json'
         };
-        reader.readAsArrayBuffer(file);
-    },
-
-    // 5. THE NEXUS BRIDGE (GitHub Cloud Sync)
-    async syncToCloud() {
-        if (!S.config.token) { UI.log("ERR: Missing Token"); return; }
-        UI.log("Pushing update to GitHub...");
 
         try {
-            const url = `https://api.github.com/repos/${S.config.owner}/${S.config.repo}/contents/${S.config.path}`;
-            const ref = await fetch(url, { headers: { 'Authorization': `token ${S.config.token}` } });
-            const fileData = await ref.json();
+            let sha = null;
+            const res = await fetch(url, { headers });
+            if (res.ok) {
+                const data = await res.json();
+                sha = data.sha;
+            }
 
-            // Logic: Migrate current local state to symbols.json
-            const content = btoa(unescape(encodeURIComponent(JSON.stringify(S.portfolio))));
-            
-            const push = await fetch(url, {
+            const body = {
+                message: message || `Update ${path}`,
+                content: btoa(unescape(encodeURIComponent(content))),
+                sha: sha
+            };
+
+            const putRes = await fetch(url, {
                 method: 'PUT',
-                headers: { 'Authorization': `token ${S.config.token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: "Nexus Update via iPhone",
-                    content: content,
-                    sha: fileData.sha
-                })
+                headers,
+                body: JSON.stringify(body)
             });
 
-            if (push.ok) UI.log("CLOUD SYNC COMPLETE ✅");
-            else UI.log("SYNC FAILED ❌");
-        } catch (e) {
-            UI.log("SYNC ERROR: Network or Config issue.");
-        }
-    },
-
-    commit(count) {
-        localStorage.setItem('portfolio', JSON.stringify(S.portfolio));
-        UI.refreshCache();
-        UI.log(`SUCCESS: ${count} stocks committed.`);
-        this.syncToCloud();
-    },
-
-    wipeDB() {
-        if (confirm("Permanently wipe local portfolio?")) {
-            localStorage.removeItem('portfolio');
-            S.portfolio = [];
-            UI.refreshCache();
-            UI.log("DATABASE WIPED");
-        }
-    }
-};
-
-// 6. UI COMPONENT CONTROLLER
-const UI = {
-    refreshCache() {
-        const el = document.getElementById('cache-count');
-        if (el) el.textContent = S.portfolio.length + " STOCKS";
-    },
-
-    log(msg) {
-        const el = document.getElementById('status-line');
-        if (el) el.innerHTML = `<div>> ${msg}</div>` + el.innerHTML;
-    },
-
-    triggerFile() {
-        // Prevents execution if XLSX library isn't loaded yet
-        if (typeof XLSX === 'undefined') {
-            alert("Waiting for XLSX engine...");
-            return;
-        }
-        document.getElementById('f-input').click();
-    },
-
-    openManual() {
-        const val = prompt("Enter Stocks (NAME QTY AVG):");
-        if (val) {
-            const result = Core.parseInput(val);
-            if (result.length > 0) {
-                S.portfolio = S.portfolio.concat(result);
-                Core.commit(result.length);
-            } else {
-                alert("Resolution failed. Verify format: SYMBOL QTY PRICE");
+            if (putRes.ok) {
+                this.log(`✅ GitHub Sync: ${path} updated`, "green");
+                return true;
             }
+        } catch (e) {
+            this.log(`❌ GitHub Error: ${e.message}`, "red");
         }
+        return false;
+    },
+
+    async ghFetchRaw(path) {
+        const { ghToken, ghRepo } = S.settings;
+        const url = `https://raw.githubusercontent.com/${ghRepo}/main/${path}?t=${Date.now()}`;
+        const res = await fetch(url, {
+            headers: { 'Authorization': `token ${ghToken}` },
+            cache: 'no-store'
+        });
+        return res.ok ? await res.json() : null;
+    },
+
+    // 4. RESOLUTION PIPELINE (Yahoo + NSE)
+    async resolveStock(name) {
+        this.log(`⏳ Resolving: ${name}...`);
+        
+        // Step 1: Yahoo Finance Search
+        try {
+            const yUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(name)}&region=IN`;
+            const yRes = await fetch(yUrl);
+            const yData = await yRes.json();
+            
+            const match = yData.quotes?.find(q => q.symbol.endsWith('.NS'));
+            if (match) {
+                this.log(`✅ Found Yahoo: ${match.symbol}`, "green");
+                return { sym: match.symbol.replace('.NS', ''), source: 'yahoo' };
+            }
+        } catch (e) { console.error("Yahoo failed", e); }
+
+        // Step 2: NSE Fallback
+        try {
+            const nUrl = `https://www.nseindia.com/api/suggest?q=${encodeURIComponent(name)}`;
+            const nRes = await fetch(nUrl);
+            const nData = await nRes.json();
+            if (nData && nData.length > 0) {
+                this.log(`✅ Found NSE: ${nData[0].symbol}`, "green");
+                return { sym: nData[0].symbol, source: 'nse' };
+            }
+        } catch (e) { console.error("NSE failed", e); }
+
+        this.log(`❌ Unresolved: ${name}`, "red");
+        return null;
+    },
+
+    // 5. UTILS & UI BRIDGES
+    updateStatusDots() {
+        const setDot = (id, val) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.className = 'dot ' + (val ? 'dot-ok' : 'dot-off');
+        };
+        setDot('dot-token', S.settings.ghToken);
+        setDot('dot-repo', S.settings.ghRepo);
+        setDot('dot-ai', S.settings.aiKey);
+    },
+
+    log(msg, colorClass = "") {
+        const term = document.getElementById('log-terminal');
+        if (!term) return;
+        const time = new Date().toLocaleTimeString([], { hour12: false });
+        const entry = document.createElement('div');
+        entry.style.marginBottom = "4px";
+        if (colorClass === "green") entry.style.color = "var(--gr)";
+        if (colorClass === "red") entry.style.color = "var(--rd)";
+        entry.innerHTML = `[${time}] ${msg}`;
+        term.appendChild(entry);
+        term.scrollTop = term.scrollHeight;
+    },
+
+    toast(msg) {
+        alert(msg); // Replace with UI toast if available
     }
 };
+
+// Initialize on Load
+window.onload = () => Core.init();
