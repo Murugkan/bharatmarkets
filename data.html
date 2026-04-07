@@ -5,242 +5,134 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
     <title>Onyx | DATA</title>
     <link rel="stylesheet" href="app-styles.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="app-core.js"></script>
     <style>
-        /* Page-specific Functional Overrides */
-        .tab-btn { flex: 1; padding: 12px; font-size: 10px; background: var(--b1); color: var(--tx3); border: none; font-weight: 800; }
-        .tab-btn.active { background: var(--bl); color: #000; }
-        .category-pill { padding: 8px 15px; border-radius: 20px; font-size: 9px; border: 1px solid var(--b1); color: var(--tx3); font-weight: 800; }
-        .category-pill.active.portfolio { background: #0066ff; color: #fff; border-color: #0066ff; }
-        .category-pill.active.watchlist { background: #a333ff; color: #fff; border-color: #a333ff; }
-        .panel-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 2000; display: none; padding: 20px; overflow-y: auto; }
-        .sticky-col { position: sticky; left: 0; background: var(--s1); z-index: 2; color: var(--bl); font-weight: 800; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; font-size: 10px; color: var(--bl); margin-bottom: 8px; text-transform: uppercase; font-weight: 800; }
+        input { 
+            width: 100%; background: #111; border: 1px solid #444; color: #fff; 
+            padding: 14px; border-radius: 4px; font-size: 15px; box-sizing: border-box;
+        }
+        input:focus { border-color: var(--bl); background: #000; outline: none; }
+        .btn-main { 
+            width: 100%; background: var(--bl); color: #000; border: none; 
+            padding: 16px; font-weight: 900; border-radius: 4px; text-transform: uppercase; margin-bottom: 10px;
+        }
+        #data-log { 
+            background: #000; border: 1px solid #222; padding: 12px; 
+            height: 120px; overflow-y: auto; font-family: monospace; font-size: 10px; margin-top: 20px; color: #888;
+        }
+        tr { border-bottom: 1px solid #222; }
     </style>
 </head>
 <body>
 
-<div class="sec" id="sec-config">
-    <div class="sec-hdr">
-        <div class="sec-title">0. PAT & CONFIG</div>
-        <button class="btn btn-ghost" onclick="DataApp.validateGate()">VALIDATE</button>
+<div class="sec" style="margin: 20px 15px;">
+    <h3 style="font-size:11px; color:var(--tx3); text-transform:uppercase; margin-bottom:15px;">0. Connection Settings</h3>
+    <div class="input-group">
+        <label>GitHub Token (PAT)</label>
+        <input type="password" id="gh-token" placeholder="paste github_pat_...">
     </div>
-    <div style="padding: 15px 20px; display: flex; gap: 20px; border-bottom: 1px solid var(--b1);">
-        <div onclick="DataApp.toggleField('f-pat')" style="display:flex; align-items:center; gap:6px;">
-            <span class="dot" id="dot-token"></span> <span style="font-size:9px; color:var(--tx3)">PAT</span>
-        </div>
-        <div onclick="DataApp.toggleField('f-repo')" style="display:flex; align-items:center; gap:6px;">
-            <span class="dot" id="dot-repo"></span> <span style="font-size:9px; color:var(--tx3)">REPO</span>
-        </div>
-        <div onclick="DataApp.toggleField('f-ai')" style="display:flex; align-items:center; gap:6px;">
-            <span class="dot" id="dot-ai"></span> <span style="font-size:9px; color:var(--tx3)">AI KEY</span>
-        </div>
+
+    <div class="input-group">
+        <label>Repository (user/repo)</label>
+        <input type="text" id="gh-repo" placeholder="e.g. murugkan/bharatmarkets">
     </div>
-    <div id="config-fields" style="padding: 0 20px 15px 20px;">
-        <div id="f-pat" style="display:none;">
-            <input type="password" placeholder="GitHub PAT" oninput="S.settings.ghToken=this.value.trim(); Core.saveSettings(); Core.updateStatusDots()" id="input-pat">
-            <div style="font-size:8px; color:var(--tx3); margin-top:5px;">Required: repo, workflow scopes. <a href="https://github.com/settings/tokens/new?scopes=repo,workflow" target="_blank" style="color:var(--bl)">Generate ↗</a></div>
-        </div>
-        <div id="f-repo" style="display:none;">
-            <input type="text" placeholder="owner/repo" oninput="S.settings.ghRepo=this.value.trim(); Core.saveSettings(); Core.updateStatusDots()">
-        </div>
-        <div id="f-ai" style="display:none;">
-            <input type="password" placeholder="Anthropic Key" oninput="S.settings.aiKey=this.value.trim(); Core.saveSettings(); Core.updateStatusDots()">
-        </div>
-    </div>
+
+    <button class="btn-main" onclick="validatePAT()">Connect & Sync Cloud</button>
 </div>
 
-<div class="sec">
-    <div class="sec-hdr">
-        <div class="sec-title">1. IMPORT ENGINE</div>
-        <div id="import-count" style="font-size:10px; color:var(--gr)">0 DETECTED</div>
+<div class="sec" style="margin: 20px 15px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h3 style="font-size:11px; color:var(--tx3); text-transform:uppercase;">1. DQA // Symbol Audit</h3>
+        <button onclick="reloadData()" style="background:none; border:none; color:var(--bl); font-size:10px; font-weight:bold;">RELOAD ↻</button>
     </div>
-    <div style="display:flex;">
-        <button class="tab-btn active" id="tab-a" onclick="DataApp.setTab('A')">FILE UPLOAD</button>
-        <button class="tab-btn" id="tab-b" onclick="DataApp.setTab('B')">MANUAL ENTRY</button>
-    </div>
-    <div style="padding: 20px;">
-        <div id="panel-a">
-            <button class="btn-main" onclick="document.getElementById('f-upload').click()">📩 SELECT EXCEL / CSV</button>
-            <input type="file" id="f-upload" hidden accept=".csv,.xls,.xlsx" onchange="DataApp.handleFileUpload(this)">
-        </div>
-        <div id="panel-b" style="display:none;">
-            <textarea id="manual-input" rows="4" placeholder="Reliance, 10, 2500&#10;HDFC Bank, 5, 1450" oninput="DataApp.handleManualInput()"></textarea>
-        </div>
-        
-        <div style="display:flex; gap:10px; margin-top:20px; align-items:center;">
-            <span style="font-size:9px; color:var(--tx3)">CATEGORY:</span>
-            <div class="category-pill portfolio active" id="cat-p" onclick="DataApp.setCat('portfolio')">PORTFOLIO</div>
-            <div class="category-pill watchlist" id="cat-w" onclick="DataApp.setCat('watchlist')">WATCHLIST</div>
-        </div>
-
-        <button class="btn-main" style="background:var(--tx); color:#000; margin-top:20px;" onclick="DataApp.runResolution()">🚀 START RESOLUTION PIPELINE</button>
-    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <tbody id="dqa-body"></tbody>
+    </table>
 </div>
 
-<div class="sec">
-    <div class="sec-hdr">
-        <div class="sec-title">2. DQA // AUDIT</div>
-        <button class="btn btn-ghost" onclick="DataApp.refreshDQA()">↻ RELOAD</button>
-    </div>
-    <div class="table-wrapper">
-        <table id="dqa-table">
-            <thead>
-                <tr>
-                    <th>SYM</th>
-                    <th>NAME</th>
-                    <th>CAT</th>
-                    <th>FUND</th>
-                    <th>PRICE</th>
-                    <th>CONCALL</th>
-                    <th style="text-align:center;">✕</th>
-                </tr>
-            </thead>
-            <tbody id="dqa-body">
-                <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--tx3)">NO DATA LOADED</td></tr>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="sec">
-    <div class="sec-hdr"><div class="sec-title">3. SYNC & EXTRACT</div></div>
-    <div style="padding:15px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-        <button class="btn" style="background:var(--b1); color:var(--bl)" onclick="DataApp.triggerWorkflow('prices_only')">⚡ PRICES</button>
-        <button class="btn" style="background:var(--b1); color:var(--bl)" onclick="DataApp.triggerWorkflow('fundamentals_only')">⚡ FUNDAMENTALS</button>
-    </div>
-</div>
-
-<div id="log-terminal"></div>
+<div id="data-log" style="margin: 0 15px;"></div>
 
 <nav class="footer-nav">
     <a href="data.html" class="nav-item active">📂<br>DATA</a>
     <a href="index.html" class="nav-item">📊<br>PORTFOLIO</a>
-    <a href="system.html" class="nav-item">🛠️<br>SYSTEM</a>
 </nav>
 
-<div id="concall-panel" class="panel-overlay">
-    <div class="sec-title" id="cc-title" style="margin-bottom:20px;">CONCALL UPDATE</div>
-    <textarea id="cc-prompt" readonly style="height:200px; font-size:10px; color:var(--gr)"></textarea>
-    <button class="btn-main" onclick="DataApp.copyCC()">📋 COPY PROMPT</button>
-    <textarea id="cc-paste" placeholder="Paste Claude response here..." style="height:150px; margin-top:20px;"></textarea>
-    <button class="btn-main" onclick="DataApp.saveCC()">💾 SAVE CONCALL</button>
-    <button class="btn btn-ghost" style="width:100%; margin-top:10px;" onclick="document.getElementById('concall-panel').style.display='none'">CLOSE</button>
-</div>
-
 <script>
-const DataApp = {
-    activeTab: 'A',
-    activeCat: 'portfolio',
-    importQueue: [],
-
-    setTab(t) {
-        this.activeTab = t;
-        document.getElementById('tab-a').className = t === 'A' ? 'tab-btn active' : 'tab-btn';
-        document.getElementById('tab-b').className = t === 'B' ? 'tab-btn active' : 'tab-btn';
-        document.getElementById('panel-a').style.display = t === 'A' ? 'block' : 'none';
-        document.getElementById('panel-b').style.display = t === 'B' ? 'block' : 'none';
-    },
-
-    setCat(c) {
-        this.activeCat = c;
-        document.getElementById('cat-p').className = 'category-pill portfolio ' + (c === 'portfolio' ? 'active' : '');
-        document.getElementById('cat-w').className = 'category-pill watchlist ' + (c === 'watchlist' ? 'active' : '');
-    },
-
-    toggleField(id) {
-        const el = document.getElementById(id);
-        el.style.display = el.style.display === 'none' ? 'block' : 'none';
-    },
-
-    handleManualInput() {
-        const text = document.getElementById('manual-input').value;
-        const lines = text.split('\n').filter(l => l.trim().length > 5);
-        document.getElementById('import-count').innerText = `${lines.length} DETECTED`;
-        this.importQueue = lines.map(l => {
-            const parts = l.split(/[,|\t]/);
-            return { name: parts[0]?.trim(), qty: parseFloat(parts[1]) || 0, avg: parseFloat(parts[2]) || 0 };
-        });
-    },
-
-    async runResolution() {
-        if (!S.settings.ghToken) return Core.log("⚠ PAT Required", "red");
-        Core.log(`Starting resolution for ${this.importQueue.length} items...`);
-        
-        for (let item of this.importQueue) {
-            const res = await Core.resolveStock(item.name);
-            if (res) {
-                const newStock = {
-                    sym: res.sym,
-                    name: item.name,
-                    category: this.activeCat,
-                    qty: item.qty,
-                    avg: item.avg,
-                    resolved: true
-                };
-                DB.symbols.push(newStock);
-                Core.log(`Added ${res.sym} to local batch.`);
-            }
-        }
-        Core.savePF();
-        this.refreshDQA();
-    },
-
-    refreshDQA() {
-        const body = document.getElementById('dqa-body');
-        body.innerHTML = '';
-        DB.symbols.forEach((s, idx) => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="sticky-col">${s.sym}</td>
-                <td>${s.name.substring(0,12)}</td>
-                <td><span class="category-pill active ${s.category}">${s.category[0]}</span></td>
-                <td>-</td>
-                <td>-</td>
-                <td onclick="DataApp.openCC('${s.sym}')">📝</td>
-                <td style="color:var(--rd)" onclick="DataApp.deleteStock(${idx})">✕</td>
-            `;
-            body.appendChild(tr);
-        });
-    },
-
-    deleteStock(idx) {
-        if (confirm("Delete this stock?")) {
-            const sym = DB.symbols[idx].sym;
-            DB.symbols.splice(idx, 1);
-            Core.savePF();
-            Core.log(`🗑 Removed ${sym}`);
-            this.refreshDQA();
-        }
-    },
-
-    openCC(sym) {
-        document.getElementById('cc-title').innerText = `CONCALL: ${sym}`;
-        document.getElementById('cc-prompt').value = `Analyze Concall for ${sym}...`; // Logic to build full prompt
-        document.getElementById('concall-panel').style.display = 'block';
-    },
-
-    async validateGate() {
-        Core.log("Validating GitHub Credentials...");
-        const res = await fetch('https://api.github.com/user', {
-            headers: { 'Authorization': `token ${S.settings.ghToken}` }
-        });
-        if (res.ok) {
-            Core.log("✅ Credentials Validated", "green");
-            S.settings._ghStatus = 'ok';
-        } else {
-            Core.log("❌ Validation Failed", "red");
-            S.settings._ghStatus = 'dim';
-        }
-        Core.saveSettings();
-        Core.updateStatusDots();
-    }
-};
-
 window.addEventListener('load', () => {
-    Core.updateStatusDots();
-    DataApp.refreshDQA();
+    loadState();
+    document.getElementById('gh-token').value = S.settings.ghToken || '';
+    document.getElementById('gh-repo').value = S.settings.ghRepo || '';
+    renderDQA();
 });
+
+async function validatePAT() {
+    const t = document.getElementById('gh-token').value.trim();
+    const r = document.getElementById('gh-repo').value.trim();
+    
+    if(!t || !r) return toast("Enter both Token and Repo");
+
+    // Save to global state immediately for the fetch headers to use
+    S.settings.ghToken = t;
+    S.settings.ghRepo = r;
+    
+    dataLog("Verifying GitHub Access...", "📡");
+
+    try {
+        const res = await fetch(`https://api.github.com/repos/${r}`, {
+            headers: ghHeaders()
+        });
+
+        if (res.ok) {
+            dataLog("Success! Repo Linked: " + r, "✅");
+            S.settings._ghStatus = 'ok';
+            saveSettings();
+            toast("Connection Verified");
+        } else {
+            dataLog("Error: " + res.status + " - Unauthorized", "❌");
+            toast("Connection Failed");
+        }
+    } catch (e) {
+        dataLog("Network Error", "⚠️");
+    }
+}
+
+function renderDQA() {
+    const body = document.getElementById('dqa-body');
+    if (!body) return;
+    body.innerHTML = SYMBOLS.length ? '' : '<tr><td style="color:#444; padding:20px; text-align:center;">No data found in local storage.</td></tr>';
+    
+    SYMBOLS.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="padding:15px 5px; font-weight:800; color:var(--bl);">${s.sym}</td>
+            <td style="color:#666; font-size:10px;">${(s.name || '').slice(0,18)}</td>
+            <td style="text-align:right; color:#ff4444; font-weight:bold; font-size:10px;" onclick="removeSym('${s.sym}')">DELETE</td>
+        `;
+        body.appendChild(tr);
+    });
+}
+
+function removeSym(sym) {
+    if(confirm("Remove " + sym + "?")) {
+        window.SYMBOLS = SYMBOLS.filter(x => x.sym !== sym);
+        localStorage.setItem('bm_symbols', JSON.stringify(SYMBOLS));
+        renderDQA();
+    }
+}
+
+async function reloadData() {
+    if(!requirePAT()) return;
+    dataLog("Downloading symbols.json...", "☁️");
+    const data = await ghFetchRaw('symbols.json');
+    if(data) {
+        window.SYMBOLS = data;
+        localStorage.setItem('bm_symbols', JSON.stringify(data));
+        renderDQA();
+        dataLog("DQA Sync Complete", "✅");
+    }
+}
 </script>
 </body>
 </html>
