@@ -1,79 +1,83 @@
 /**
- * ONYX SYSTEM v8.9 - HARDENED PRODUCTION CORE
- * Requirements: Manual Insert, iPhone Optimized, Exact Line Counts
+ * ONYX SYSTEM v9.4 - MASTER CORE
+ * Requirements: Automated Resolution Pipeline, Similarity Scoring, Multi-file Commit
  */
 
-// 1. GLOBAL STATE INITIALIZATION
 window.S = JSON.parse(localStorage.getItem('bm_settings')) || {
     settings: { ghToken: '', ghRepo: '', _ghStatus: 'dim' }
 };
 window.SYMBOLS = JSON.parse(localStorage.getItem('bm_symbols')) || [];
-window.FUND = {}; 
-window.PRICES = {}; 
 
-// 2. AUTHENTICATION & HEADERS
 const ghHeaders = () => ({
     'Authorization': `token ${S.settings.ghToken}`,
     'Accept': 'application/vnd.github.v3+json',
     'Cache-Control': 'no-cache'
 });
 
-// 3. FILE HANDLING (Post-Selection Logic)
-async function processSelectedFile(file) {
+async function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        // Preserves exact content including comments/line breaks
         reader.onload = (e) => resolve(e.target.result);
         reader.onerror = (e) => reject(e);
         reader.readAsText(file);
     });
 }
 
-// 4. CLOUD OPERATIONS
+function calculateSimilarity(str1, str2) {
+    const s1 = str1.toUpperCase().replace(/LTD|LIMITED|CORP|INC/g, '').trim();
+    const s2 = str2.toUpperCase().replace(/LTD|LIMITED|CORP|INC/g, '').trim();
+    const w1 = new Set(s1.split(/\s+/));
+    const w2 = new Set(s2.split(/\s+/));
+    const intersection = new Set([...w1].filter(x => w2.has(x)));
+    const overlap = (intersection.size * 2) / (w1.size + w2.size);
+    const lenRatio = Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length);
+    return (overlap * 0.7 + lenRatio * 0.3) * 100;
+}
+
+async function searchYahoo(query) {
+    try {
+        const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&region=IN&lang=en-IN`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const nsResults = (data.quotes || []).filter(q => q.symbol && q.symbol.endsWith('.NS'));
+        if (!nsResults.length) return null;
+        let best = { score: 0, quote: null };
+        nsResults.forEach(q => {
+            const score = calculateSimilarity(query, q.shortname || q.longname || '');
+            if (score > best.score) best = { score, quote: q };
+        });
+        return best;
+    } catch (e) { return null; }
+}
+
+async function searchNSE(query) {
+    try {
+        const url = `https://www.nseindia.com/api/suggest?q=${encodeURIComponent(query)}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const firstEquity = (data.keywords || []).find(k => k.type === 'Equity');
+        return firstEquity ? firstEquity.symbol : null;
+    } catch (e) { return null; }
+}
+
 async function ghPut(path, content, message) {
     const url = `https://api.github.com/repos/${S.settings.ghRepo}/contents/${path}`;
     const getRes = await fetch(url, { headers: ghHeaders() });
     let sha = null;
     if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }
-
-    return fetch(url, {
-        method: 'PUT',
-        headers: ghHeaders(),
-        body: JSON.stringify({
-            message,
-            content: btoa(unescape(encodeURIComponent(content))), // Maintains special chars
-            sha
-        })
-    });
+    const body = {
+        message: message,
+        content: btoa(unescape(encodeURIComponent(content))),
+        sha: sha
+    };
+    return fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
 }
 
-async function ghFetchRaw(path) {
-    const url = `https://raw.githubusercontent.com/${S.settings.ghRepo}/main/${path}?t=${Date.now()}`;
-    const res = await fetch(url, { headers: ghHeaders() });
-    return res.ok ? await res.json() : null;
-}
-
-// 5. STORAGE & UI UTILS
-function saveSettings() { 
-    localStorage.setItem('bm_settings', JSON.stringify(S)); 
-}
-
-function dataLog(msg, icon = '') {
-    const log = document.getElementById('data-log');
-    if (!log) return;
-    const div = document.createElement('div');
-    div.style.borderBottom = "1px solid #111";
-    div.style.padding = "4px 0";
-    div.innerHTML = `<span style="color:#444; font-size:9px;">[${new Date().toLocaleTimeString()}]</span> ${icon} <span style="font-size:10px;">${msg}</span>`;
-    log.prepend(div);
-}
-
-function toast(msg) { alert(msg); }
-function fmt(n) { return n ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0'; }
-
+function saveSettings() { localStorage.setItem('bm_settings', JSON.stringify(S)); }
 function loadState() {
     const syms = localStorage.getItem('bm_symbols');
     if (syms) window.SYMBOLS = JSON.parse(syms);
 }
-
 loadState();
