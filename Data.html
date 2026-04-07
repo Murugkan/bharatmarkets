@@ -1,1144 +1,246 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
-<title>Onyx | Data</title>
-<link rel="stylesheet" href="app-styles.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="app-core.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Onyx | DATA</title>
+    <link rel="stylesheet" href="app-styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="app-core.js"></script>
+    <style>
+        /* Page-specific Functional Overrides */
+        .tab-btn { flex: 1; padding: 12px; font-size: 10px; background: var(--b1); color: var(--tx3); border: none; font-weight: 800; }
+        .tab-btn.active { background: var(--bl); color: #000; }
+        .category-pill { padding: 8px 15px; border-radius: 20px; font-size: 9px; border: 1px solid var(--b1); color: var(--tx3); font-weight: 800; }
+        .category-pill.active.portfolio { background: #0066ff; color: #fff; border-color: #0066ff; }
+        .category-pill.active.watchlist { background: #a333ff; color: #fff; border-color: #a333ff; }
+        .panel-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 2000; display: none; padding: 20px; overflow-y: auto; }
+        .sticky-col { position: sticky; left: 0; background: var(--s1); z-index: 2; color: var(--bl); font-weight: 800; }
+    </style>
 </head>
 <body>
-<div id="page">
-<div id="scroll-body">
 
-<!-- ═══ SECTION 0 — PAT & CONFIG ═══ -->
+<div class="sec" id="sec-config">
+    <div class="sec-hdr">
+        <div class="sec-title">0. PAT & CONFIG</div>
+        <button class="btn btn-ghost" onclick="DataApp.validateGate()">VALIDATE</button>
+    </div>
+    <div style="padding: 15px 20px; display: flex; gap: 20px; border-bottom: 1px solid var(--b1);">
+        <div onclick="DataApp.toggleField('f-pat')" style="display:flex; align-items:center; gap:6px;">
+            <span class="dot" id="dot-token"></span> <span style="font-size:9px; color:var(--tx3)">PAT</span>
+        </div>
+        <div onclick="DataApp.toggleField('f-repo')" style="display:flex; align-items:center; gap:6px;">
+            <span class="dot" id="dot-repo"></span> <span style="font-size:9px; color:var(--tx3)">REPO</span>
+        </div>
+        <div onclick="DataApp.toggleField('f-ai')" style="display:flex; align-items:center; gap:6px;">
+            <span class="dot" id="dot-ai"></span> <span style="font-size:9px; color:var(--tx3)">AI KEY</span>
+        </div>
+    </div>
+    <div id="config-fields" style="padding: 0 20px 15px 20px;">
+        <div id="f-pat" style="display:none;">
+            <input type="password" placeholder="GitHub PAT" oninput="S.settings.ghToken=this.value.trim(); Core.saveSettings(); Core.updateStatusDots()" id="input-pat">
+            <div style="font-size:8px; color:var(--tx3); margin-top:5px;">Required: repo, workflow scopes. <a href="https://github.com/settings/tokens/new?scopes=repo,workflow" target="_blank" style="color:var(--bl)">Generate ↗</a></div>
+        </div>
+        <div id="f-repo" style="display:none;">
+            <input type="text" placeholder="owner/repo" oninput="S.settings.ghRepo=this.value.trim(); Core.saveSettings(); Core.updateStatusDots()">
+        </div>
+        <div id="f-ai" style="display:none;">
+            <input type="password" placeholder="Anthropic Key" oninput="S.settings.aiKey=this.value.trim(); Core.saveSettings(); Core.updateStatusDots()">
+        </div>
+    </div>
+</div>
 
 <div class="sec">
-  <div class="sec-hdr">
-    <div>
-      <div class="sec-title">⚙ PAT &amp; Config</div>
-      <div class="sec-sub">GitHub token · repository · AI key</div>
+    <div class="sec-hdr">
+        <div class="sec-title">1. IMPORT ENGINE</div>
+        <div id="import-count" style="font-size:10px; color:var(--gr)">0 DETECTED</div>
     </div>
-    <button class="btn btn-xs btn-ghost" onclick="app.ui.toggleSection('pat-body')" aria-label="Toggle PAT section">▾</button>
-  </div>
-
-  <div style="padding:8px 13px;display:flex;gap:16px;border-bottom:1px solid var(--b1);">
-    <div class="row" style="gap:4px;">
-      <span class="dot dot-off" id="dot-token" role="status" aria-label="PAT status"></span>
-      <span style="font-size:9px;color:var(--tx3)">PAT</span>
+    <div style="display:flex;">
+        <button class="tab-btn active" id="tab-a" onclick="DataApp.setTab('A')">FILE UPLOAD</button>
+        <button class="tab-btn" id="tab-b" onclick="DataApp.setTab('B')">MANUAL ENTRY</button>
     </div>
-    <div class="row" style="gap:4px;">
-      <span class="dot dot-off" id="dot-repo" role="status" aria-label="Repo status"></span>
-      <span style="font-size:9px;color:var(--tx3)">Repo</span>
+    <div style="padding: 20px;">
+        <div id="panel-a">
+            <button class="btn-main" onclick="document.getElementById('f-upload').click()">📩 SELECT EXCEL / CSV</button>
+            <input type="file" id="f-upload" hidden accept=".csv,.xls,.xlsx" onchange="DataApp.handleFileUpload(this)">
+        </div>
+        <div id="panel-b" style="display:none;">
+            <textarea id="manual-input" rows="4" placeholder="Reliance, 10, 2500&#10;HDFC Bank, 5, 1450" oninput="DataApp.handleManualInput()"></textarea>
+        </div>
+        
+        <div style="display:flex; gap:10px; margin-top:20px; align-items:center;">
+            <span style="font-size:9px; color:var(--tx3)">CATEGORY:</span>
+            <div class="category-pill portfolio active" id="cat-p" onclick="DataApp.setCat('portfolio')">PORTFOLIO</div>
+            <div class="category-pill watchlist" id="cat-w" onclick="DataApp.setCat('watchlist')">WATCHLIST</div>
+        </div>
+
+        <button class="btn-main" style="background:var(--tx); color:#000; margin-top:20px;" onclick="DataApp.runResolution()">🚀 START RESOLUTION PIPELINE</button>
     </div>
-    <div class="row" style="gap:4px;">
-      <span class="dot dot-off" id="dot-ai" role="status" aria-label="AI Key status"></span>
-      <span style="font-size:9px;color:var(--tx3)">AI Key</span>
-    </div>
-    <div class="row f1" style="justify-content:flex-end;gap:6px;">
-      <span id="scope-repo" style="font-size:9px;" role="status"></span>
-      <span id="scope-workflow" style="font-size:9px;" role="status"></span>
-    </div>
-  </div>
-
-  <div id="pat-body" style="padding:10px 13px;display:flex;flex-direction:column;gap:10px;">
-    <div id="last-sync-strip" role="status" aria-live="polite"></div>
-
-```
-<div>
-  <div class="row-sb mb4">
-    <label for="gh-token-inp" class="label">GitHub PAT</label>
-    <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=BharatMarkets" 
-       target="_blank" 
-       rel="noopener noreferrer"
-       style="font-size:8px;color:var(--bl);text-decoration:none;">Generate ↗</a>
-  </div>
-  <div style="position:relative;">
-    <input id="gh-token-inp" 
-           type="password" 
-           autocomplete="off" 
-           class="inp" 
-           placeholder="ghp_xxxxxxxxxxxx"
-           aria-label="GitHub Personal Access Token"
-           data-field="ghToken">
-    <button onclick="app.ui.toggleVisibility('gh-token-inp')" 
-            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--tx3);background:none;border:none;"
-            aria-label="Toggle token visibility">👁</button>
-  </div>
-  <div class="hint">Needs scopes: <b>repo</b> + <b>workflow</b></div>
 </div>
-
-<div>
-  <label for="gh-repo-inp" class="label">Repository</label>
-  <input id="gh-repo-inp" 
-         class="inp" 
-         placeholder="owner/repo  e.g. Murugkan/bharatmarkets"
-         aria-label="GitHub repository"
-         data-field="ghRepo">
-</div>
-
-<div>
-  <div class="row-sb mb4">
-    <label for="ai-key-inp" class="label">Anthropic AI Key</label>
-    <a href="https://console.anthropic.com/settings/keys" 
-       target="_blank" 
-       rel="noopener noreferrer"
-       style="font-size:8px;color:var(--bl);text-decoration:none;">Get key ↗</a>
-  </div>
-  <div style="position:relative;">
-    <input id="ai-key-inp" 
-           type="password" 
-           autocomplete="off" 
-           class="inp" 
-           placeholder="sk-ant-xxxxxxxxxxxx"
-           aria-label="Anthropic API Key"
-           data-field="aiKey">
-    <button onclick="app.ui.toggleVisibility('ai-key-inp')" 
-            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--tx3);background:none;border:none;"
-            aria-label="Toggle key visibility">👁</button>
-  </div>
-  <div class="hint">For AI Guidance · stored locally · never leaves device</div>
-</div>
-
-<div style="display:flex;gap:8px;">
-  <button class="btn btn-cyan btn-sm f1" onclick="app.pat.validate()">🔌 Validate</button>
-  <button class="btn btn-ghost btn-sm f1" onclick="app.pat.runDiagnostic()">🧪 Diagnostic</button>
-</div>
-
-<div id="gh-diag" role="status" aria-live="polite"></div>
-<div id="validate-result" style="font-size:9px;margin-top:4px;" role="alert" aria-live="assertive"></div>
-```
-
-  </div>
-</div>
-
-<!-- ═══ SECTION 1 — IMPORT ═══ -->
 
 <div class="sec">
-  <div class="sec-hdr">
-    <div>
-      <div class="sec-title">📥 Import</div>
-      <div class="sec-sub">Add new stocks to your list</div>
+    <div class="sec-hdr">
+        <div class="sec-title">2. DQA // AUDIT</div>
+        <button class="btn btn-ghost" onclick="DataApp.refreshDQA()">↻ RELOAD</button>
     </div>
-    <button class="btn btn-xs btn-ghost" onclick="app.ui.toggleSection('import-body')" aria-label="Toggle import section">▾</button>
-  </div>
-
-  <div id="import-body" style="padding:10px 13px;">
-    <div class="mb10">
-      <div class="label">Category (applies to entire batch)</div>
-      <div class="cat-pills" role="group" aria-label="Category selection">
-        <button class="cat-pill port on" 
-                id="cat-port" 
-                data-category="portfolio"
-                aria-pressed="true">📊 Portfolio</button>
-        <button class="cat-pill watch" 
-                id="cat-watch" 
-                data-category="watchlist"
-                aria-pressed="false">👁 Watchlist</button>
-      </div>
+    <div class="table-wrapper">
+        <table id="dqa-table">
+            <thead>
+                <tr>
+                    <th>SYM</th>
+                    <th>NAME</th>
+                    <th>CAT</th>
+                    <th>FUND</th>
+                    <th>PRICE</th>
+                    <th>CONCALL</th>
+                    <th style="text-align:center;">✕</th>
+                </tr>
+            </thead>
+            <tbody id="dqa-body">
+                <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--tx3)">NO DATA LOADED</td></tr>
+            </tbody>
+        </table>
     </div>
-
-```
-<div class="tabs" role="tablist">
-  <button class="tab on" 
-          id="itab-file" 
-          role="tab"
-          aria-selected="true"
-          aria-controls="ipane-file">📁 File Upload</button>
-  <button class="tab" 
-          id="itab-manual" 
-          role="tab"
-          aria-selected="false"
-          aria-controls="ipane-manual">✏ Manual</button>
 </div>
 
-<!-- File tab -->
-<div class="tab-pane on" id="ipane-file" role="tabpanel" aria-labelledby="itab-file">
-  <div style="border:2px dashed var(--b2);border-radius:10px;padding:24px 16px;text-align:center;cursor:pointer;"
-    id="drop-zone">
-    <input type="file" 
-           id="file-inp" 
-           hidden 
-           accept=".csv,.xls,.xlsx"
-           aria-label="File upload">
-    <div style="font-size:28px;margin-bottom:8px;" aria-hidden="true">📂</div>
-    <div style="font-size:12px;font-weight:800;color:var(--tx);">Tap to select file</div>
-    <div class="hint mt4">CSV or XLS/XLSX · Columns: Company Name, Qty, Avg Price</div>
-  </div>
-  <div id="file-status" 
-       style="font-size:10px;color:var(--tx3);min-height:16px;margin-top:6px;" 
-       role="status" 
-       aria-live="polite"></div>
+<div class="sec">
+    <div class="sec-hdr"><div class="sec-title">3. SYNC & EXTRACT</div></div>
+    <div style="padding:15px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+        <button class="btn" style="background:var(--b1); color:var(--bl)" onclick="DataApp.triggerWorkflow('prices_only')">⚡ PRICES</button>
+        <button class="btn" style="background:var(--b1); color:var(--bl)" onclick="DataApp.triggerWorkflow('fundamentals_only')">⚡ FUNDAMENTALS</button>
+    </div>
 </div>
 
-<!-- Manual tab -->
-<div class="tab-pane" id="ipane-manual" role="tabpanel" aria-labelledby="itab-manual">
-  <div class="hint mb8">
-    One per line: <span style="color:var(--bl);">Company Name, Qty, Avg</span><br>
-    e.g. <span style="color:#8eb0d0;">Tata Power Company, 100, 385</span>
-  </div>
-  <textarea class="inp" 
-            id="manual-inp" 
-            rows="6"
-            placeholder="Tata Power Company, 100, 385&#10;HDFC Bank, 50, 1600&#10;Infosys Limited, 20, 1450"
-            aria-label="Manual stock entry"></textarea>
-  <div id="manual-count" 
-       style="font-size:9px;color:var(--tx3);margin-top:4px;" 
-       role="status" 
-       aria-live="polite"></div>
+<div id="log-terminal"></div>
+
+<nav class="footer-nav">
+    <a href="data.html" class="nav-item active">📂<br>DATA</a>
+    <a href="index.html" class="nav-item">📊<br>PORTFOLIO</a>
+    <a href="system.html" class="nav-item">🛠️<br>SYSTEM</a>
+</nav>
+
+<div id="concall-panel" class="panel-overlay">
+    <div class="sec-title" id="cc-title" style="margin-bottom:20px;">CONCALL UPDATE</div>
+    <textarea id="cc-prompt" readonly style="height:200px; font-size:10px; color:var(--gr)"></textarea>
+    <button class="btn-main" onclick="DataApp.copyCC()">📋 COPY PROMPT</button>
+    <textarea id="cc-paste" placeholder="Paste Claude response here..." style="height:150px; margin-top:20px;"></textarea>
+    <button class="btn-main" onclick="DataApp.saveCC()">💾 SAVE CONCALL</button>
+    <button class="btn btn-ghost" style="width:100%; margin-top:10px;" onclick="document.getElementById('concall-panel').style.display='none'">CLOSE</button>
 </div>
-
-<button class="btn btn-warn mt10" 
-        id="btn-resolve" 
-        style="display:none;"
-        aria-label="Resolve stock symbols">⚡ Resolve Symbols</button>
-
-<div id="unres-panel" style="display:none;margin-top:10px;" role="region" aria-label="Unresolved stocks">
-  <div style="font-size:9px;font-weight:800;color:var(--rd);margin-bottom:6px;">
-    ❌ UNRESOLVED — Enter NSE Symbol Manually
-  </div>
-  <div id="unres-list"></div>
-</div>
-
-<div id="preview-section" style="display:none;margin-top:10px;" role="region" aria-label="Import preview">
-  <div class="row-sb mb8">
-    <div style="font-size:9px;font-weight:800;color:var(--tx2);" id="preview-title">Preview</div>
-    <div style="font-size:8px;color:var(--tx3);" id="preview-counts" role="status"></div>
-  </div>
-  <div id="preview-wrap">
-    <table id="preview-table" role="table">
-      <thead>
-        <tr>
-          <th scope="col">Name</th>
-          <th scope="col">Symbol</th>
-          <th scope="col">Cat</th>
-          <th scope="col">Qty</th>
-          <th scope="col">Avg</th>
-          <th scope="col">Source</th>
-        </tr>
-      </thead>
-      <tbody id="preview-body"></tbody>
-    </table>
-  </div>
-  <div style="display:flex;gap:8px;margin-top:10px;">
-    <button class="btn btn-success btn-sm f1" data-import-mode="append">+ Append</button>
-    <button class="btn btn-warn btn-sm f1" data-import-mode="replace">↺ Replace All</button>
-  </div>
-  <div id="import-result" role="alert" aria-live="assertive"></div>
-</div>
-```
-
-  </div>
-</div>
-
-<!-- DQA and other sections remain similar with accessibility improvements -->
-
-<!-- For brevity, showing pattern for other sections -->
-
-</div><!-- /scroll-body -->
-<footer></footer>
-</div><!-- /page -->
 
 <script>
-// ══════════════════════════════════════════════
-// REFACTORED APPLICATION - MODULAR ARCHITECTURE
-// ══════════════════════════════════════════════
+const DataApp = {
+    activeTab: 'A',
+    activeCat: 'portfolio',
+    importQueue: [],
 
-(function() {
-  'use strict';
-
-  // ============================================
-  // CONSTANTS & CONFIGURATION
-  // ============================================
-  
-  const CONFIG = {
-    API_BASE: 'https://api.github.com',
-    GITHUB_TOKEN_KEY: 'gh_token',
-    GITHUB_REPO_KEY: 'gh_repo',
-    AI_KEY: 'ai_key',
-    POLL_INTERVAL: 10000,
-    REQUEST_TIMEOUT: 30000,
-    MAX_RETRIES: 3,
-    DEBOUNCE_DELAY: 300,
-    FILE_SIZE_LIMIT: 10 * 1024 * 1024, // 10MB
-    SIMILARITY_THRESHOLD: 75,
-    LOW_CONFIDENCE_THRESHOLD: 70,
-    SCOPE_REQUIREMENTS: ['repo', 'workflow']
-  };
-
-  // ============================================
-  // UTILITY FUNCTIONS
-  // ============================================
-  
-  const Utils = {
-    /**
-     * Debounce function to limit rate of function calls
-     */
-    debounce(func, wait) {
-      let timeout;
-      return function executedFunction(...args) {
-        const later = () => {
-          clearTimeout(timeout);
-          func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-      };
+    setTab(t) {
+        this.activeTab = t;
+        document.getElementById('tab-a').className = t === 'A' ? 'tab-btn active' : 'tab-btn';
+        document.getElementById('tab-b').className = t === 'B' ? 'tab-btn active' : 'tab-btn';
+        document.getElementById('panel-a').style.display = t === 'A' ? 'block' : 'none';
+        document.getElementById('panel-b').style.display = t === 'B' ? 'block' : 'none';
     },
 
-    /**
-     * Sanitize HTML to prevent XSS
-     */
-    sanitizeHTML(str) {
-      const temp = document.createElement('div');
-      temp.textContent = str;
-      return temp.innerHTML;
+    setCat(c) {
+        this.activeCat = c;
+        document.getElementById('cat-p').className = 'category-pill portfolio ' + (c === 'portfolio' ? 'active' : '');
+        document.getElementById('cat-w').className = 'category-pill watchlist ' + (c === 'watchlist' ? 'active' : '');
     },
 
-    /**
-     * Validate email format
-     */
-    isValidEmail(email) {
-      const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      return re.test(email);
+    toggleField(id) {
+        const el = document.getElementById(id);
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
     },
 
-    /**
-     * Format number with commas
-     */
-    formatNumber(num) {
-      if (num === null || num === undefined || isNaN(num)) return '—';
-      return new Intl.NumberFormat('en-IN').format(num);
-    },
-
-    /**
-     * Format currency
-     */
-    formatCurrency(amount) {
-      if (!amount || amount <= 0) return '—';
-      return '₹' + this.formatNumber(amount);
-    },
-
-    /**
-     * Calculate days since date
-     */
-    daysSince(dateString) {
-      if (!dateString) return null;
-      try {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-        return diff;
-      } catch (e) {
-        return null;
-      }
-    },
-
-    /**
-     * Format timestamp
-     */
-    formatTimestamp(timestamp) {
-      if (!timestamp) return '—';
-      try {
-        const date = new Date(parseInt(timestamp) || timestamp);
-        return date.toLocaleTimeString('en-IN', { 
-          hour: '2-digit', 
-          minute: '2-digit', 
-          hour12: false 
+    handleManualInput() {
+        const text = document.getElementById('manual-input').value;
+        const lines = text.split('\n').filter(l => l.trim().length > 5);
+        document.getElementById('import-count').innerText = `${lines.length} DETECTED`;
+        this.importQueue = lines.map(l => {
+            const parts = l.split(/[,|\t]/);
+            return { name: parts[0]?.trim(), qty: parseFloat(parts[1]) || 0, avg: parseFloat(parts[2]) || 0 };
         });
-      } catch (e) {
-        return '—';
-      }
     },
 
-    /**
-     * Deep clone object
-     */
-    deepClone(obj) {
-      return JSON.parse(JSON.stringify(obj));
-    },
-
-    /**
-     * String similarity using Levenshtein distance
-     */
-    stringSimilarity(str1, str2) {
-      const s1 = (str1 || '').toLowerCase().trim();
-      const s2 = (str2 || '').toLowerCase().trim();
-      
-      if (s1 === s2) return 100;
-      if (!s1 || !s2) return 0;
-      
-      const matrix = Array(s2.length + 1).fill(null)
-        .map(() => Array(s1.length + 1).fill(null));
-      
-      for (let i = 0; i <= s1.length; i++) matrix[0][i] = i;
-      for (let j = 0; j <= s2.length; j++) matrix[j][0] = j;
-      
-      for (let j = 1; j <= s2.length; j++) {
-        for (let i = 1; i <= s1.length; i++) {
-          const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1;
-          matrix[j][i] = Math.min(
-            matrix[j][i - 1] + 1,
-            matrix[j - 1][i] + 1,
-            matrix[j - 1][i - 1] + indicator
-          );
-        }
-      }
-      
-      const distance = matrix[s2.length][s1.length];
-      const maxLen = Math.max(s1.length, s2.length);
-      return Math.round((1 - distance / maxLen) * 100);
-    },
-
-    /**
-     * Parse number from string with various formats
-     */
-    parseNumber(str) {
-      if (typeof str === 'number') return str;
-      if (!str) return 0;
-      
-      const cleaned = String(str).replace(/[,₹\s]/g, '');
-      const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : num;
-    },
-
-    /**
-     * Validate GitHub token format
-     */
-    isValidGitHubToken(token) {
-      return /^(ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,255}$/.test(token);
-    },
-
-    /**
-     * Validate repository format
-     */
-    isValidRepo(repo) {
-      return /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(repo);
-    }
-  };
-
-  // ============================================
-  // ERROR HANDLING
-  // ============================================
-  
-  class AppError extends Error {
-    constructor(message, code, details = {}) {
-      super(message);
-      this.name = 'AppError';
-      this.code = code;
-      this.details = details;
-      this.timestamp = new Date().toISOString();
-    }
-  }
-
-  const ErrorHandler = {
-    handle(error, context = '') {
-      console.error(`[${context}]`, error);
-      
-      let userMessage = 'An error occurred';
-      
-      if (error instanceof AppError) {
-        userMessage = error.message;
-      } else if (error.name === 'TypeError') {
-        userMessage = 'Invalid data format';
-      } else if (error.name === 'NetworkError') {
-        userMessage = 'Network error - check connection';
-      } else {
-        userMessage = error.message || userMessage;
-      }
-      
-      app.ui.showToast(userMessage, 'error');
-      app.logger.log(userMessage, '❌');
-      
-      return { success: false, error: userMessage };
-    },
-
-    async retry(fn, maxRetries = CONFIG.MAX_RETRIES, delay = 1000) {
-      for (let i = 0; i < maxRetries; i++) {
-        try {
-          return await fn();
-        } catch (error) {
-          if (i === maxRetries - 1) throw error;
-          await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
-        }
-      }
-    }
-  };
-
-  // ============================================
-  // STORAGE SERVICE
-  // ============================================
-  
-  const StorageService = {
-    /**
-     * Set item in localStorage with error handling
-     */
-    set(key, value) {
-      try {
-        const data = typeof value === 'string' ? value : JSON.stringify(value);
-        localStorage.setItem(key, data);
-        return true;
-      } catch (e) {
-        console.error('Storage set error:', e);
-        return false;
-      }
-    },
-
-    /**
-     * Get item from localStorage
-     */
-    get(key, defaultValue = null) {
-      try {
-        const item = localStorage.getItem(key);
-        if (item === null) return defaultValue;
+    async runResolution() {
+        if (!S.settings.ghToken) return Core.log("⚠ PAT Required", "red");
+        Core.log(`Starting resolution for ${this.importQueue.length} items...`);
         
-        try {
-          return JSON.parse(item);
-        } catch {
-          return item;
+        for (let item of this.importQueue) {
+            const res = await Core.resolveStock(item.name);
+            if (res) {
+                const newStock = {
+                    sym: res.sym,
+                    name: item.name,
+                    category: this.activeCat,
+                    qty: item.qty,
+                    avg: item.avg,
+                    resolved: true
+                };
+                DB.symbols.push(newStock);
+                Core.log(`Added ${res.sym} to local batch.`);
+            }
         }
-      } catch (e) {
-        console.error('Storage get error:', e);
-        return defaultValue;
-      }
+        Core.savePF();
+        this.refreshDQA();
     },
 
-    /**
-     * Remove item from localStorage
-     */
-    remove(key) {
-      try {
-        localStorage.removeItem(key);
-        return true;
-      } catch (e) {
-        console.error('Storage remove error:', e);
-        return false;
-      }
-    },
-
-    /**
-     * Clear all storage
-     */
-    clear() {
-      try {
-        localStorage.clear();
-        return true;
-      } catch (e) {
-        console.error('Storage clear error:', e);
-        return false;
-      }
-    }
-  };
-
-  // ============================================
-  // API SERVICE
-  // ============================================
-  
-  const APIService = {
-    /**
-     * Get GitHub headers
-     */
-    getGitHubHeaders() {
-      const token = StorageService.get(CONFIG.GITHUB_TOKEN_KEY);
-      if (!token) {
-        throw new AppError('GitHub token not configured', 'NO_TOKEN');
-      }
-      
-      return {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      };
-    },
-
-    /**
-     * Fetch with timeout
-     */
-    async fetchWithTimeout(url, options = {}, timeout = CONFIG.REQUEST_TIMEOUT) {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), timeout);
-      
-      try {
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal
+    refreshDQA() {
+        const body = document.getElementById('dqa-body');
+        body.innerHTML = '';
+        DB.symbols.forEach((s, idx) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="sticky-col">${s.sym}</td>
+                <td>${s.name.substring(0,12)}</td>
+                <td><span class="category-pill active ${s.category}">${s.category[0]}</span></td>
+                <td>-</td>
+                <td>-</td>
+                <td onclick="DataApp.openCC('${s.sym}')">📝</td>
+                <td style="color:var(--rd)" onclick="DataApp.deleteStock(${idx})">✕</td>
+            `;
+            body.appendChild(tr);
         });
-        clearTimeout(id);
-        return response;
-      } catch (error) {
-        clearTimeout(id);
-        if (error.name === 'AbortError') {
-          throw new AppError('Request timeout', 'TIMEOUT');
+    },
+
+    deleteStock(idx) {
+        if (confirm("Delete this stock?")) {
+            const sym = DB.symbols[idx].sym;
+            DB.symbols.splice(idx, 1);
+            Core.savePF();
+            Core.log(`🗑 Removed ${sym}`);
+            this.refreshDQA();
         }
-        throw error;
-      }
     },
 
-    /**
-     * Fetch raw file from GitHub
-     */
-    async fetchGitHubFile(filename) {
-      const repo = StorageService.get(CONFIG.GITHUB_REPO_KEY);
-      if (!repo) {
-        throw new AppError('Repository not configured', 'NO_REPO');
-      }
-      
-      const url = `${CONFIG.API_BASE}/repos/${repo}/contents/${filename}`;
-      const response = await this.fetchWithTimeout(url, {
-        headers: this.getGitHubHeaders()
-      });
-      
-      if (!response.ok) {
-        throw new AppError(
-          `Failed to fetch ${filename}`,
-          'FETCH_ERROR',
-          { status: response.status }
-        );
-      }
-      
-      const data = await response.json();
-      const content = atob(data.content);
-      
-      try {
-        return JSON.parse(content);
-      } catch {
-        return content;
-      }
+    openCC(sym) {
+        document.getElementById('cc-title').innerText = `CONCALL: ${sym}`;
+        document.getElementById('cc-prompt').value = `Analyze Concall for ${sym}...`; // Logic to build full prompt
+        document.getElementById('concall-panel').style.display = 'block';
     },
 
-    /**
-     * Update file on GitHub
-     */
-    async updateGitHubFile(filename, content, message) {
-      const repo = StorageService.get(CONFIG.GITHUB_REPO_KEY);
-      if (!repo) {
-        throw new AppError('Repository not configured', 'NO_REPO');
-      }
-      
-      // Get current file SHA
-      const url = `${CONFIG.API_BASE}/repos/${repo}/contents/${filename}`;
-      let sha;
-      
-      try {
-        const getResponse = await this.fetchWithTimeout(url, {
-          headers: this.getGitHubHeaders()
+    async validateGate() {
+        Core.log("Validating GitHub Credentials...");
+        const res = await fetch('https://api.github.com/user', {
+            headers: { 'Authorization': `token ${S.settings.ghToken}` }
         });
-        
-        if (getResponse.ok) {
-          const data = await getResponse.json();
-          sha = data.sha;
+        if (res.ok) {
+            Core.log("✅ Credentials Validated", "green");
+            S.settings._ghStatus = 'ok';
+        } else {
+            Core.log("❌ Validation Failed", "red");
+            S.settings._ghStatus = 'dim';
         }
-      } catch (e) {
-        // File doesn't exist, will create new
-      }
-      
-      const payload = {
-        message,
-        content: btoa(typeof content === 'string' ? content : JSON.stringify(content, null, 2)),
-        ...(sha && { sha })
-      };
-      
-      const response = await this.fetchWithTimeout(url, {
-        method: 'PUT',
-        headers: this.getGitHubHeaders(),
-        body: JSON.stringify(payload)
-      });
-      
-      if (!response.ok) {
-        throw new AppError(
-          `Failed to update ${filename}`,
-          'UPDATE_ERROR',
-          { status: response.status }
-        );
-      }
-      
-      return await response.json();
-    },
-
-    /**
-     * Validate GitHub PAT
-     */
-    async validatePAT() {
-      try {
-        const response = await this.fetchWithTimeout(
-          `${CONFIG.API_BASE}/user`,
-          { headers: this.getGitHubHeaders() }
-        );
-        
-        if (!response.ok) {
-          throw new AppError('Invalid PAT', 'INVALID_PAT', { status: response.status });
-        }
-        
-        const user = await response.json();
-        const scopes = (response.headers.get('x-oauth-scopes') || '').split(',').map(s => s.trim());
-        
-        return {
-          valid: true,
-          user: user.login,
-          scopes,
-          hasRequiredScopes: CONFIG.SCOPE_REQUIREMENTS.every(req => scopes.includes(req))
-        };
-      } catch (error) {
-        return {
-          valid: false,
-          error: error.message
-        };
-      }
-    },
-
-    /**
-     * Trigger GitHub workflow
-     */
-    async triggerWorkflow(workflowName, inputs = {}) {
-      const repo = StorageService.get(CONFIG.GITHUB_REPO_KEY);
-      const url = `${CONFIG.API_BASE}/repos/${repo}/actions/workflows/${workflowName}/dispatches`;
-      
-      const response = await this.fetchWithTimeout(url, {
-        method: 'POST',
-        headers: this.getGitHubHeaders(),
-        body: JSON.stringify({
-          ref: 'main',
-          inputs
-        })
-      });
-      
-      if (response.status === 204) {
-        return { success: true };
-      } else if (response.status === 403) {
-        throw new AppError('PAT needs workflow scope', 'MISSING_SCOPE');
-      } else if (response.status === 422) {
-        throw new AppError('Workflow not found', 'WORKFLOW_NOT_FOUND');
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new AppError(
-          errorData.message || 'Workflow trigger failed',
-          'WORKFLOW_ERROR',
-          { status: response.status }
-        );
-      }
+        Core.saveSettings();
+        Core.updateStatusDots();
     }
-  };
+};
 
-  // ============================================
-  // UI MANAGER
-  // ============================================
-  
-  const UIManager = {
-    /**
-     * Toggle section visibility
-     */
-    toggleSection(sectionId) {
-      const element = document.getElementById(sectionId);
-      if (!element) return;
-      
-      const isHidden = element.style.display === 'none';
-      element.style.display = isHidden ? '' : 'none';
-      
-      // Update ARIA attributes
-      const button = document.querySelector(`[onclick*="${sectionId}"]`);
-      if (button) {
-        button.setAttribute('aria-expanded', isHidden);
-      }
-    },
-
-    /**
-     * Toggle password visibility
-     */
-    toggleVisibility(inputId) {
-      const input = document.getElementById(inputId);
-      if (!input) return;
-      
-      input.type = input.type === 'password' ? 'text' : 'password';
-    },
-
-    /**
-     * Show toast notification
-     */
-    showToast(message, type = 'info') {
-      // Implementation depends on your toast system
-      console.log(`[${type.toUpperCase()}] ${message}`);
-    },
-
-    /**
-     * Update status dot
-     */
-    updateStatusDot(dotId, isActive) {
-      const dot = document.getElementById(dotId);
-      if (!dot) return;
-      
-      dot.className = `dot ${isActive ? 'dot-ok' : 'dot-off'}`;
-      dot.setAttribute('aria-label', isActive ? 'Active' : 'Inactive');
-    },
-
-    /**
-     * Set loading state for button
-     */
-    setButtonLoading(button, isLoading, loadingText = '⏳') {
-      if (!button) return;
-      
-      if (isLoading) {
-        button.dataset.originalText = button.textContent;
-        button.textContent = loadingText;
-        button.disabled = true;
-      } else {
-        button.textContent = button.dataset.originalText || 'Run';
-        button.disabled = false;
-        delete button.dataset.originalText;
-      }
-    },
-
-    /**
-     * Render table rows with virtual scrolling optimization
-     */
-    renderTable(tableId, data, rowRenderer) {
-      const tbody = document.querySelector(`#${tableId} tbody`);
-      if (!tbody) return;
-      
-      // Use DocumentFragment for better performance
-      const fragment = document.createDocumentFragment();
-      
-      data.forEach(item => {
-        const row = rowRenderer(item);
-        fragment.appendChild(row);
-      });
-      
-      tbody.innerHTML = '';
-      tbody.appendChild(fragment);
-    }
-  };
-
-  // ============================================
-  // LOGGER
-  // ============================================
-  
-  const Logger = {
-    container: null,
-    maxLogs: 100,
-
-    init() {
-      this.container = document.getElementById('data-log');
-    },
-
-    log(message, icon = 'ℹ') {
-      if (!this.container) return;
-      
-      const timestamp = new Date().toLocaleTimeString('en-IN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      });
-      
-      const entry = document.createElement('div');
-      entry.className = 'log-entry';
-      entry.style.cssText = 'font-size:9px;padding:4px 0;color:var(--tx3);border-bottom:1px solid var(--b1);';
-      entry.innerHTML = `<span style="color:var(--tx3);">${timestamp}</span> ${icon} ${Utils.sanitizeHTML(message)}`;
-      
-      this.container.insertBefore(entry, this.container.firstChild);
-      
-      // Limit log entries
-      while (this.container.children.length > this.maxLogs) {
-        this.container.removeChild(this.container.lastChild);
-      }
-    },
-
-    clear() {
-      if (this.container) {
-        this.container.innerHTML = '';
-      }
-    }
-  };
-
-  // ============================================
-  // PAT MODULE
-  // ============================================
-  
-  const PATModule = {
-    /**
-     * Initialize PAT module
-     */
-    init() {
-      this.bindEvents();
-      this.loadSavedCredentials();
-      this.updateStatus();
-    },
-
-    /**
-     * Bind event listeners
-     */
-    bindEvents() {
-      // Auto-save on input with debouncing
-      const inputs = document.querySelectorAll('[data-field]');
-      inputs.forEach(input => {
-        input.addEventListener('input', Utils.debounce((e) => {
-          const field = e.target.dataset.field;
-          const value = e.target.value.trim();
-          
-          StorageService.set(field === 'ghToken' ? CONFIG.GITHUB_TOKEN_KEY :
-                           field === 'ghRepo' ? CONFIG.GITHUB_REPO_KEY :
-                           CONFIG.AI_KEY, value);
-          
-          this.updateStatus();
-        }, CONFIG.DEBOUNCE_DELAY));
-      });
-    },
-
-    /**
-     * Load saved credentials
-     */
-    loadSavedCredentials() {
-      const token = StorageService.get(CONFIG.GITHUB_TOKEN_KEY);
-      const repo = StorageService.get(CONFIG.GITHUB_REPO_KEY);
-      const aiKey = StorageService.get(CONFIG.AI_KEY);
-      
-      if (token) {
-        const input = document.getElementById('gh-token-inp');
-        if (input && !input.value) input.value = token;
-      }
-      
-      if (repo) {
-        const input = document.getElementById('gh-repo-inp');
-        if (input && !input.value) input.value = repo;
-      }
-      
-      if (aiKey) {
-        const input = document.getElementById('ai-key-inp');
-        if (input && !input.value) input.value = aiKey;
-      }
-    },
-
-    /**
-     * Update status indicators
-     */
-    updateStatus() {
-      const token = StorageService.get(CONFIG.GITHUB_TOKEN_KEY);
-      const repo = StorageService.get(CONFIG.GITHUB_REPO_KEY);
-      const aiKey = StorageService.get(CONFIG.AI_KEY);
-      
-      UIManager.updateStatusDot('dot-token', !!token);
-      UIManager.updateStatusDot('dot-repo', !!repo);
-      UIManager.updateStatusDot('dot-ai', !!aiKey);
-      
-      // Update last sync display
-      const lastSync = StorageService.get('last_sync');
-      if (lastSync) {
-        this.displayLastSync(lastSync);
-      }
-    },
-
-    /**
-     * Display last sync information
-     */
-    displayLastSync(syncData) {
-      const strip = document.getElementById('last-sync-strip');
-      if (!strip) return;
-      
-      const color = syncData.success ? '#00e896' : '#ff6b85';
-      const icon = syncData.success ? '✅' : '❌';
-      const time = Utils.formatTimestamp(syncData.timestamp);
-      
-      strip.innerHTML = `
-        <div style="font-size:9px;color:${color};padding:4px 0;">
-          ${icon} Last sync: ${time} — ${Utils.sanitizeHTML(syncData.message || '')}
-        </div>
-      `;
-    },
-
-    /**
-     * Validate PAT
-     */
-    async validate() {
-      const resultEl = document.getElementById('validate-result');
-      if (!resultEl) return;
-      
-      const token = StorageService.get(CONFIG.GITHUB_TOKEN_KEY);
-      
-      if (!token) {
-        UIManager.showToast('Enter PAT first', 'warning');
-        return;
-      }
-      
-      if (!Utils.isValidGitHubToken(token)) {
-        resultEl.innerHTML = '<span class="red">❌ Invalid token format</span>';
-        return;
-      }
-      
-      resultEl.innerHTML = '<span class="amber"><span class="spinner">⏳</span> Validating...</span>';
-      Logger.log('Validating PAT...', '⏳');
-      
-      try {
-        const validation = await APIService.validatePAT();
-        
-        if (!validation.valid) {
-          throw new AppError(validation.error || 'Validation failed', 'VALIDATION_ERROR');
-        }
-        
-        const { user, scopes, hasRequiredScopes } = validation;
-        
-        // Update scope indicators
-        const scopeRepo = document.getElementById('scope-repo');
-        const scopeWorkflow = document.getElementById('scope-workflow');
-        
-        const hasRepo = scopes.includes('repo');
-        const hasWorkflow = scopes.includes('workflow');
-        
-        if (scopeRepo) {
-          scopeRepo.innerHTML = `<span class="${hasRepo ? 'scope-ok' : 'scope-miss'}">
-            ${hasRepo ? '✅' : '❌'} repo
-          </span>`;
-        }
-        
-        if (scopeWorkflow) {
-          scopeWorkflow.innerHTML = `<span class="${hasWorkflow ? 'scope-ok' : 'scope-miss'}">
-            ${hasWorkflow ? '✅' : '❌'} workflow
-          </span>`;
-        }
-        
-        // Validate repo access if configured
-        let repoStatus = '';
-        const repo = StorageService.get(CONFIG.GITHUB_REPO_KEY);
-        if (repo) {
-          try {
-            const repoCheck = await APIService.fetchWithTimeout(
-              `${CONFIG.API_BASE}/repos/${repo}`,
-              { headers: APIService.getGitHubHeaders() }
-            );
-            repoStatus = ` · Repo: ${repoCheck.ok ? '✅' : '❌'}`;
-          } catch (e) {
-            repoStatus = ' · Repo: ❌';
-          }
-        }
-        
-        resultEl.innerHTML = `
-          <span class="green">
-            ✅ ${Utils.sanitizeHTML(user)} · 
-            repo: ${hasRepo ? '✅' : '❌'} 
-            workflow: ${hasWorkflow ? '✅' : '❌'}${repoStatus}
-          </span>
-        `;
-        
-        Logger.log(`PAT valid — ${user} · scopes: ${scopes.join(', ')}`, '✅');
-        
-        // Save validation status
-        StorageService.set('gh_status', hasRequiredScopes ? 'ok' : 'partial');
-        this.updateStatus();
-        
-      } catch (error) {
-        const errorMsg = ErrorHandler.handle(error, 'PAT Validation');
-        resultEl.innerHTML = `<span class="red">❌ ${Utils.sanitizeHTML(errorMsg.error)}</span>`;
-        StorageService.set('gh_status', 'fail');
-      }
-    },
-
-    /**
-     * Run diagnostic
-     */
-    async runDiagnostic() {
-      const diagEl = document.getElementById('gh-diag');
-      if (!diagEl) return;
-      
-      diagEl.innerHTML = '<div class="amber">🧪 Running diagnostic...</div>';
-      Logger.log('Running diagnostic...', '🧪');
-      
-      const results = [];
-      
-      // Check token format
-      const token = StorageService.get(CONFIG.GITHUB_TOKEN_KEY);
-      results.push({
-        test: 'Token Format',
-        pass: Utils.isValidGitHubToken(token),
-        message: Utils.isValidGitHubToken(token) ? 'Valid' : 'Invalid format'
-      });
-      
-      // Check repo format
-      const repo = StorageService.get(CONFIG.GITHUB_REPO_KEY);
-      results.push({
-        test: 'Repo Format',
-        pass: Utils.isValidRepo(repo),
-        message: Utils.isValidRepo(repo) ? 'Valid' : 'Invalid format'
-      });
-      
-      // Check API connectivity
-      try {
-        await APIService.fetchWithTimeout('https://api.github.com/rate_limit', {
-          headers: { 'Accept': 'application/json' }
-        });
-        results.push({
-          test: 'GitHub API',
-          pass: true,
-          message: 'Accessible'
-        });
-      } catch (e) {
-        results.push({
-          test: 'GitHub API',
-          pass: false,
-          message: e.message
-        });
-      }
-      
-      // Display results
-      diagEl.innerHTML = results.map(r => `
-        <div style="font-size:9px;padding:4px 0;border-bottom:1px solid var(--b1);">
-          ${r.pass ? '✅' : '❌'} ${r.test}: ${Utils.sanitizeHTML(r.message)}
-        </div>
-      `).join('');
-      
-      Logger.log(`Diagnostic complete — ${results.filter(r => r.pass).length}/${results.length} passed`, '🧪');
-    }
-  };
-
-  // ============================================
-  // MAIN APPLICATION
-  // ============================================
-  
-  const App = {
-    // Public modules
-    pat: PATModule,
-    ui: UIManager,
-    logger: Logger,
-    utils: Utils,
-    api: APIService,
-    storage: StorageService,
-
-    /**
-     * Initialize application
-     */
-    async init() {
-      try {
-        Logger.init();
-        Logger.log('Initializing application...', '⏳');
-        
-        PATModule.init();
-        
-        // Add additional module initializations here
-        
-        Logger.log('Application ready', '✅');
-      } catch (error) {
-        ErrorHandler.handle(error, 'Application Init');
-      }
-    }
-  };
-
-  // ============================================
-  // EXPORT TO GLOBAL SCOPE
-  // ============================================
-  
-  window.app = App;
-
-  // ============================================
-  // AUTO-INITIALIZE
-  // ============================================
-  
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => App.init());
-  } else {
-    App.init();
-  }
-
-})();
+window.addEventListener('load', () => {
+    Core.updateStatusDots();
+    DataApp.refreshDQA();
+});
 </script>
-
 </body>
 </html>
