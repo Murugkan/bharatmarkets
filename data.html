@@ -8,27 +8,43 @@
     <script src="app-core.js"></script>
     <style>
         .input-group { margin-bottom: 20px; }
-        label { display: block; font-size: 10px; color: var(--bl); margin-bottom: 8px; text-transform: uppercase; font-weight: 800; }
+        label { display: block; font-size: 10px; color: var(--tx3); margin-bottom: 8px; text-transform: uppercase; font-weight: 800; }
+        
+        /* Persistent Status Badge */
+        #conn-status { 
+            display: inline-block; padding: 4px 10px; border-radius: 4px; 
+            font-size: 9px; font-weight: 900; margin-bottom: 15px; 
+        }
+        .status-off { background: #331111; color: #ff4444; border: 1px solid #ff4444; }
+        .status-on { background: #113311; color: var(--gr); border: 1px solid var(--gr); }
+
         input { 
             width: 100%; background: #111; border: 1px solid #444; color: #fff; 
-            padding: 14px; border-radius: 4px; font-size: 15px; box-sizing: border-box;
+            padding: 14px; border-radius: 4px; font-size: 15px; box-sizing: border-box; transition: 0.3s;
         }
-        input:focus { border-color: var(--bl); background: #000; outline: none; }
+        input.success { border-color: var(--gr); box-shadow: 0 0 10px rgba(0,255,150,0.2); }
+        input.error { border-color: #ff4444; }
+
         .btn-main { 
             width: 100%; background: var(--bl); color: #000; border: none; 
-            padding: 16px; font-weight: 900; border-radius: 4px; text-transform: uppercase; margin-bottom: 10px;
+            padding: 16px; font-weight: 900; border-radius: 4px; text-transform: uppercase; transition: 0.2s;
         }
+        .btn-main:disabled { background: #333; color: #666; }
+
         #data-log { 
             background: #000; border: 1px solid #222; padding: 12px; 
             height: 120px; overflow-y: auto; font-family: monospace; font-size: 10px; margin-top: 20px; color: #888;
         }
-        tr { border-bottom: 1px solid #222; }
     </style>
 </head>
 <body>
 
 <div class="sec" style="margin: 20px 15px;">
-    <h3 style="font-size:11px; color:var(--tx3); text-transform:uppercase; margin-bottom:15px;">0. Connection Settings</h3>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:11px; color:var(--tx3); text-transform:uppercase;">0. System Connection</h3>
+        <div id="conn-status" class="status-off">OFFLINE</div>
+    </div>
+
     <div class="input-group">
         <label>GitHub Token (PAT)</label>
         <input type="password" id="gh-token" placeholder="paste github_pat_...">
@@ -39,7 +55,7 @@
         <input type="text" id="gh-repo" placeholder="e.g. murugkan/bharatmarkets">
     </div>
 
-    <button class="btn-main" onclick="validatePAT()">Connect & Sync Cloud</button>
+    <button id="btn-connect" class="btn-main" onclick="validatePAT()">Connect & Sync Cloud</button>
 </div>
 
 <div class="sec" style="margin: 20px 15px;">
@@ -55,8 +71,8 @@
 <div id="data-log" style="margin: 0 15px;"></div>
 
 <nav class="footer-nav">
-    <a href="data.html" class="nav-item active">📂<br>DATA</a>
-    <a href="index.html" class="nav-item">📊<br>PORTFOLIO</a>
+    <a href="data.html" class="nav-item active">📂 DATA</a>
+    <a href="index.html" class="nav-item">📊 PORTFOLIO</a>
 </nav>
 
 <script>
@@ -64,20 +80,36 @@ window.addEventListener('load', () => {
     loadState();
     document.getElementById('gh-token').value = S.settings.ghToken || '';
     document.getElementById('gh-repo').value = S.settings.ghRepo || '';
+    refreshUIStatus();
     renderDQA();
 });
 
+function refreshUIStatus() {
+    const badge = document.getElementById('conn-status');
+    const isOk = S.settings._ghStatus === 'ok';
+    badge.innerText = isOk ? 'CONNECTED' : 'DISCONNECTED';
+    badge.className = isOk ? 'status-on' : 'status-off';
+}
+
 async function validatePAT() {
-    const t = document.getElementById('gh-token').value.trim();
-    const r = document.getElementById('gh-repo').value.trim();
+    const btn = document.getElementById('btn-connect');
+    const tEl = document.getElementById('gh-token');
+    const rEl = document.getElementById('gh-repo');
+    
+    const t = tEl.value.trim();
+    const r = rEl.value.trim();
     
     if(!t || !r) return toast("Enter both Token and Repo");
 
-    // Save to global state immediately for the fetch headers to use
+    // UI Feedback: Loading
+    btn.disabled = true;
+    btn.innerText = "VERIFYING...";
+    tEl.className = rEl.className = ''; 
+    
     S.settings.ghToken = t;
     S.settings.ghRepo = r;
     
-    dataLog("Verifying GitHub Access...", "📡");
+    dataLog("Checking GitHub API Access...", "📡");
 
     try {
         const res = await fetch(`https://api.github.com/repos/${r}`, {
@@ -85,37 +117,47 @@ async function validatePAT() {
         });
 
         if (res.ok) {
-            dataLog("Success! Repo Linked: " + r, "✅");
+            dataLog("Success! Connection Established.", "✅");
             S.settings._ghStatus = 'ok';
+            tEl.classList.add('success');
+            rEl.classList.add('success');
             saveSettings();
-            toast("Connection Verified");
+            refreshUIStatus();
+            toast("Cloud Connected Successfully");
         } else {
-            dataLog("Error: " + res.status + " - Unauthorized", "❌");
-            toast("Connection Failed");
+            dataLog("Auth Error: Check PAT/Repo Name", "❌");
+            S.settings._ghStatus = 'dim';
+            tEl.classList.add('error');
+            rEl.classList.add('error');
+            refreshUIStatus();
         }
     } catch (e) {
-        dataLog("Network Error", "⚠️");
+        dataLog("Network Error: Check Internet Connection", "⚠️");
+        tEl.classList.add('error');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "CONNECT & SYNC CLOUD";
     }
 }
 
 function renderDQA() {
     const body = document.getElementById('dqa-body');
     if (!body) return;
-    body.innerHTML = SYMBOLS.length ? '' : '<tr><td style="color:#444; padding:20px; text-align:center;">No data found in local storage.</td></tr>';
+    body.innerHTML = SYMBOLS.length ? '' : '<tr><td style="color:#444; padding:20px; text-align:center;">Empty local storage.</td></tr>';
     
     SYMBOLS.forEach(s => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td style="padding:15px 5px; font-weight:800; color:var(--bl);">${s.sym}</td>
             <td style="color:#666; font-size:10px;">${(s.name || '').slice(0,18)}</td>
-            <td style="text-align:right; color:#ff4444; font-weight:bold; font-size:10px;" onclick="removeSym('${s.sym}')">DELETE</td>
+            <td style="text-align:right; color:#ff4444; font-size:10px;" onclick="removeSym('${s.sym}')">DELETE</td>
         `;
         body.appendChild(tr);
     });
 }
 
 function removeSym(sym) {
-    if(confirm("Remove " + sym + "?")) {
+    if(confirm("Delete " + sym + "?")) {
         window.SYMBOLS = SYMBOLS.filter(x => x.sym !== sym);
         localStorage.setItem('bm_symbols', JSON.stringify(SYMBOLS));
         renderDQA();
@@ -124,13 +166,13 @@ function removeSym(sym) {
 
 async function reloadData() {
     if(!requirePAT()) return;
-    dataLog("Downloading symbols.json...", "☁️");
+    dataLog("Syncing Symbols from Cloud...", "☁️");
     const data = await ghFetchRaw('symbols.json');
     if(data) {
         window.SYMBOLS = data;
         localStorage.setItem('bm_symbols', JSON.stringify(data));
         renderDQA();
-        dataLog("DQA Sync Complete", "✅");
+        dataLog("DQA Updated Successfully", "✅");
     }
 }
 </script>
