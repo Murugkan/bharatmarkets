@@ -1,37 +1,49 @@
 /**
- * ONYX SYSTEM v9.5 - MASTER CORE
- * Requirements: Automated Resolution, Similarity Scoring, Header Gatekeeper, PAT Auth
+ * ONYX SYSTEM v9.8 - MASTER CORE
+ * Requirements: SheetJS, Duplicate Logic, Manual Entry, Category Binding
  */
-window.S = JSON.parse(localStorage.getItem('bm_settings')) || {
-    settings: { ghToken: '', ghRepo: '', _ghStatus: 'dim' }
-};
+window.S = JSON.parse(localStorage.getItem('bm_settings')) || { settings: { ghToken: '', ghRepo: '', _ghStatus: 'dim' } };
 window.SYMBOLS = JSON.parse(localStorage.getItem('bm_symbols')) || [];
 
-const ghHeaders = () => ({
-    'Authorization': `token ${S.settings.ghToken}`,
-    'Accept': 'application/vnd.github.v3+json',
-    'Cache-Control': 'no-cache'
-});
+const ghHeaders = () => ({ 'Authorization': `token ${S.settings.ghToken}`, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' });
 
-async function readFileAsText(file) {
-    return new Promise((resolve, reject) => {
+function normalizeName(n) {
+    return n.toUpperCase().replace(/LTD|LIMITED|CORP|INC|PLC/g, '').replace(/[^\w\s]/gi, '').trim();
+}
+
+function checkDuplicate(name) {
+    const norm = normalizeName(name);
+    return window.SYMBOLS.find(s => normalizeName(s.name) === norm);
+}
+
+async function parseFile(file) {
+    return new Promise((resolve) => {
         const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = (e) => reject(e);
-        reader.readAsText(file);
+        const ext = file.name.split('.').pop().toLowerCase();
+        reader.onload = (e) => {
+            let data = [];
+            if (ext === 'xlsx' || ext === 'xls') {
+                const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                data = XLSX.utils.sheet_to_json(firstSheet);
+            } else {
+                const rows = e.target.result.split('\n').filter(r => r.trim().length > 5);
+                const headers = rows[0].toLowerCase().split(',');
+                const nIdx = headers.indexOf('company name'), qIdx = headers.indexOf('qty'), aIdx = headers.indexOf('avg price');
+                data = rows.slice(1).map(r => {
+                    const p = r.split(',');
+                    return { "Company Name": p[nIdx], "Qty": p[qIdx], "Avg Price": p[aIdx] };
+                });
+            }
+            resolve(data.map(d => ({ name: d["Company Name"] || '', qty: d["Qty"] || 0, avg: d["Avg Price"] || 0 })));
+        };
+        if (ext === 'xlsx' || ext === 'xls') reader.readAsBinaryString(file);
+        else reader.readAsText(file);
     });
 }
 
-function isCrap(text) {
-    const hasBinary = /[\x00-\x08\x0E-\x1F\x7F]/.test(text.slice(0, 500));
-    const lower = text.toLowerCase();
-    const hasHeaders = lower.includes('name') && (lower.includes('qty') || lower.includes('avg'));
-    return hasBinary || !hasHeaders;
-}
-
 function calculateSimilarity(str1, str2) {
-    const s1 = str1.toUpperCase().replace(/LTD|LIMITED|CORP|INC/g, '').trim();
-    const s2 = str2.toUpperCase().replace(/LTD|LIMITED|CORP|INC/g, '').trim();
+    const s1 = normalizeName(str1), s2 = normalizeName(str2);
     const w1 = new Set(s1.split(/\s+/)), w2 = new Set(s2.split(/\s+/));
     const intersection = new Set([...w1].filter(x => w2.has(x)));
     const overlap = (intersection.size * 2) / (w1.size + w2.size);
@@ -72,11 +84,7 @@ async function ghPut(path, content, message) {
     const getRes = await fetch(url, { headers: ghHeaders() });
     let sha = null;
     if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }
-    const body = {
-        message: message,
-        content: btoa(unescape(encodeURIComponent(content))),
-        sha: sha
-    };
+    const body = { message: message, content: btoa(unescape(encodeURIComponent(content))), sha: sha };
     return fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
 }
 
