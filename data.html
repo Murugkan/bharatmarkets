@@ -11,16 +11,23 @@
         .sec { margin: 15px; padding: 15px; background: #080808; border-radius: 8px; border: 1px solid #111; }
         .btn-main { width: 100%; background: #00f2ff; color: #000; border: none; padding: 16px; font-weight: 900; border-radius: 4px; text-transform: uppercase; margin-top:10px; }
         .btn-sec { background:#222; color:#00f2ff; border:1px solid #00f2ff; padding:12px; border-radius:4px; font-weight:700; width:100%; margin-top:10px; }
-        #data-log { background: #000; border: 1px solid #222; padding: 10px; height: 150px; overflow-y: auto; font-size: 10px; color: #888; border-radius: 4px; }
-        .unresolved-card { border: 1px solid #ff4444; padding: 10px; margin-top: 10px; border-radius: 4px; background: #110505; }
-        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 15px; }
+        #data-log { background: #000; border: 1px solid #222; padding: 10px; height: 120px; overflow-y: auto; font-size: 10px; color: #888; border-radius: 4px; }
+        .unresolved-card { border: 1px solid #ff4444; padding: 10px; margin-top: 10px; border-radius: 4px; background: #110505; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 15px; }
         th { text-align: left; color: #555; padding: 8px 4px; border-bottom: 1px solid #222; }
-        td { padding: 8px 4px; border-bottom: 1px solid #111; }
-        input[type="text"] { background:#111; border:1px solid #333; color:#fff; padding:8px; border-radius:3px; }
+        input[type="text"] { background:#111; border:1px solid #333; color:#fff; padding:8px; border-radius:3px; width: 100%; box-sizing: border-box; }
+        .status-dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
     </style>
 </head>
 <body>
 <div class="sec">
+    <h3 style="font-size:11px; color:#555; text-transform:uppercase; margin:0 0 10px 0;">0. Connection</h3>
+    <input type="text" id="pat" placeholder="GitHub PAT" style="margin-bottom:10px;">
+    <input type="text" id="repo" placeholder="user/repo" style="margin-bottom:10px;">
+    <button class="btn-main" onclick="connect()">Connect & Sync</button>
+    <div id="conn-status" style="font-size:10px; margin-top:10px; color:#555;">Status: Disconnected</div>
+</div>
+<div class="sec" id="import-gate" style="opacity:0.3; pointer-events:none;">
     <h3 style="font-size:11px; color:#555; text-transform:uppercase; margin:0 0 10px 0;">1. Import Engine</h3>
     <input type="file" id="csv-file" style="display:none" onchange="startPipeline(this)">
     <button class="btn-sec" onclick="document.getElementById('csv-file').click()">📂 SELECT FILE (NAME, QTY, AVG)</button>
@@ -31,16 +38,8 @@
 </div>
 <div id="preview-panel" class="sec" style="display:none;">
     <h3 style="font-size:11px; color:#00ff88; text-transform:uppercase;">Preview & Import</h3>
-    <div style="overflow-x:auto;">
-        <table>
-            <thead><tr><th>Name</th><th>Symbol</th><th>Qty</th><th>Avg</th><th>Src</th></tr></thead>
-            <tbody id="preview-body"></tbody>
-        </table>
-    </div>
-    <div style="display:flex; gap:10px;">
-        <button class="btn-main" onclick="finalizeImport(true)">Replace All</button>
-        <button class="btn-main" style="background:#fff;" onclick="finalizeImport(false)">Append</button>
-    </div>
+    <div style="overflow-x:auto;"><table><thead><tr><th>Name</th><th>Symbol</th><th>Qty</th><th>Avg</th><th>Src</th></tr></thead><tbody id="preview-body"></tbody></table></div>
+    <div style="display:flex; gap:10px;"><button class="btn-main" onclick="finalizeImport(true)">Replace All</button><button class="btn-main" style="background:#fff;" onclick="finalizeImport(false)">Append</button></div>
 </div>
 <div class="sec">
     <h3 style="font-size:11px; color:#555; text-transform:uppercase; margin-bottom:10px;">Live Resolution Log</h3>
@@ -49,35 +48,33 @@
 <nav class="footer-nav"><a href="data.html" class="nav-item active">DATA</a><a href="index.html" class="nav-item">PORTFOLIO</a></nav>
 <script>
 let resItems = [], unresItems = [];
+async function connect() {
+    S.settings.ghToken = document.getElementById('pat').value;
+    S.settings.ghRepo = document.getElementById('repo').value;
+    const ok = await validatePAT();
+    document.getElementById('conn-status').innerHTML = ok ? '✅ Connected' : '❌ Failed';
+    if(ok) { document.getElementById('import-gate').style.opacity = '1'; document.getElementById('import-gate').style.pointer_events = 'auto'; saveSettings(); }
+}
 async function startPipeline(input) {
     if(!input.files.length) return;
     const raw = await readFileAsText(input.files[0]);
+    if(isCrap(raw)) { log("ABORTED: Invalid file structure or binary crap detected.", "⛔"); return; }
     const lines = raw.split('\n').filter(l => l.trim().length > 5);
-    log(`Starting pipeline for ${lines.length} items...`, "🚀");
+    log(`Processing ${lines.length} lines...`, "🚀");
     resItems = []; unresItems = [];
-    document.getElementById('preview-panel').style.display = 'none';
-    document.getElementById('unresolved-panel').style.display = 'none';
     for(let line of lines) {
         const parts = line.split(',');
-        if(parts.length < 3) continue;
-        const item = { name: parts[0].trim(), qty: parts[1].trim(), avg: parts[2].trim() };
+        if(parts.length < 3 || parts[0].toLowerCase().includes('name')) continue;
+        const item = { name: parts[0].trim().substring(0,40), qty: parts[1].trim(), avg: parts[2].trim() };
         log(`Resolving: ${item.name}...`, "⏳");
         const yahoo = await searchYahoo(item.name);
         if(yahoo && yahoo.score > 70) {
-            log(`${yahoo.quote.symbol} - Yahoo (${Math.round(yahoo.score)}%)`, "✅");
+            log(`${yahoo.quote.symbol} (Score: ${Math.round(yahoo.score)}%)`, "✅");
             resItems.push({...item, sym: yahoo.quote.symbol, src: 'yahoo'});
-        } else if(yahoo && yahoo.score >= 40) {
-            log(`${yahoo.quote.symbol} - Low Confidence (${Math.round(yahoo.score)}%)`, "⚠");
-            resItems.push({...item, sym: yahoo.quote.symbol, src: 'yahoo-low'});
         } else {
             const nse = await searchNSE(item.name);
-            if(nse) {
-                log(`${nse}.NS - NSE Direct`, "✅");
-                resItems.push({...item, sym: nse + '.NS', src: 'nse'});
-            } else {
-                log(`${item.name} - Unresolved`, "❌");
-                unresItems.push(item);
-            }
+            if(nse) { log(`${nse}.NS (NSE Source)`, "✅"); resItems.push({...item, sym: nse + '.NS', src: 'nse'}); }
+            else { log(`${item.name} (Unresolved)`, "❌"); unresItems.push(item); }
         }
         renderUI();
     }
@@ -85,7 +82,7 @@ async function startPipeline(input) {
 function renderUI() {
     const p = document.getElementById('unresolved-panel'), l = document.getElementById('unresolved-list');
     p.style.display = unresItems.length ? 'block' : 'none';
-    l.innerHTML = unresItems.map((it, i) => `<div class="unresolved-card"><div>${it.name}</div><div style="display:flex; gap:5px; margin-top:5px;"><input type="text" id="m-${i}" placeholder="Symbol" style="flex:1;"><button onclick="fix(${i})" style="background:#00f2ff; border:none; padding:5px; border-radius:3px;">FIX</button></div></div>`).join('');
+    l.innerHTML = unresItems.map((it, i) => `<div class="unresolved-card"><div style="font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${it.name}</div><div style="display:flex; gap:5px; margin-top:5px;"><input type="text" id="m-${i}" placeholder="Sym" style="flex:1;"><button onclick="fix(${i})" style="background:#00f2ff; border:none; padding:8px; border-radius:3px; font-size:10px; font-weight:bold;">FIX</button></div></div>`).join('');
     const pr = document.getElementById('preview-panel'), b = document.getElementById('preview-body');
     pr.style.display = resItems.length ? 'block' : 'none';
     b.innerHTML = resItems.map(i => `<tr><td>${i.name.slice(0,10)}</td><td><b>${i.sym}</b></td><td>${i.qty}</td><td>${i.avg}</td><td>${i.src}</td></tr>`).join('');
@@ -98,21 +95,21 @@ function fix(i) {
     renderUI();
 }
 async function finalizeImport(isReplace) {
-    log("Updating symbols.json...", "⏳");
+    log("Syncing...", "⏳");
     const entries = resItems.map(i => ({ sym: i.sym, name: i.name, isin: '', sector: '', category: 'Imported', qty: i.qty, avg: i.avg, resolved: true }));
     const data = isReplace ? entries : [...window.SYMBOLS, ...entries];
-    const r1 = await ghPut('symbols.json', JSON.stringify(data, null, 2), 'Update symbols.json');
+    const r1 = await ghPut('symbols.json', JSON.stringify(data, null, 2), 'v9.5 Sync');
     if(r1.ok) {
-        log("symbols.json updated.", "✅");
         const txt = data.map(s => s.sym.replace('.NS', '')).join('\n');
-        const r2 = await ghPut('portfolio_symbols.txt', txt, 'Update portfolio list');
-        if(r2.ok) log("Import Sequence Complete!", "🏆");
+        await ghPut('portfolio_symbols.txt', txt, 'v9.5 Sync');
+        log("Sync Complete!", "🏆");
     }
 }
 function log(m, i) {
     const l = document.getElementById('data-log');
-    l.innerHTML = `<div>[${new Date().toLocaleTimeString()}] ${i} ${m}</div>` + l.innerHTML;
+    l.innerHTML = `<div>[${new Date().toLocaleTimeString().split(' ')[0]}] ${i} ${m}</div>` + l.innerHTML;
 }
+window.onload = () => { document.getElementById('pat').value = S.settings.ghToken; document.getElementById('repo').value = S.settings.ghRepo; };
 </script>
 </body>
 </html>
