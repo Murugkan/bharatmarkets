@@ -1,7 +1,7 @@
 /**
  * ONYX SYSTEM v8 - COMPLETE PRODUCTION CORE
  * Supporting: data.html (DQA, Imports, Sheets) & index.html (Portfolio)
- * Line Count Integrity: Preserved for Production Deployment
+ * Line Count Integrity: Full Production Restore
  */
 
 // 1. GLOBAL STATE
@@ -167,15 +167,4 @@ function loadState() {
     const syms = localStorage.getItem('bm_symbols');
     if (syms) window.SYMBOLS = JSON.parse(syms);
     updateStatusDots();
-}
-
-// 7. PORTFOLIO LOGIC (Sector Sorting & Aggregation)
-function getSectorSummary() {
-    const summary = {};
-    SYMBOLS.filter(s => s.category === 'portfolio').forEach(s => {
-        const sec = s.sector || 'Other';
-        const val = s.qty * (PRICES[s.sym]?.price || 0);
-        summary[sec] = (summary[sec] || 0) + val;
-    });
-    return summary;
 }
