@@ -1,172 +1,155 @@
 /**
- * ONYX SYSTEM v8 - PRODUCTION CORE ENGINE
- * Logic: Data Management, GitHub Sync, & Stock Resolution
+ * ONYX SYSTEM v8 - COMPLETE PRODUCTION CORE
+ * Supporting: data.html (DQA, Imports, Sheets) & index.html (Portfolio)
  */
 
-// 1. GLOBAL STATE & CONFIG
+// 1. GLOBAL STATE
 window.S = JSON.parse(localStorage.getItem('bm_settings')) || {
     settings: { ghToken: '', ghRepo: '', aiKey: '', _ghStatus: 'dim' }
 };
+window.SYMBOLS = []; 
+window.FUND = {}; 
+window.PRICES = {}; 
+window.GUIDANCE = JSON.parse(localStorage.getItem('bm_guidance')) || {};
 
-window.DB = {
-    symbols: [],      // symbols.json
-    fundamentals: {}, // fundamentals.json
-    prices: {},       // prices.json
-    guidance: {}      // guidance.json
-};
+// 2. GITHUB / API UTILS
+const ghHeaders = () => ({
+    'Authorization': `token ${S.settings.ghToken}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Cache-Control': 'no-cache'
+});
 
-// 2. INITIALIZATION & SCHEMA MIGRATION
-const Core = {
-    async init() {
-        this.log("Initializing Onyx Core v8...");
-        await this.loadLocal();
-        this.migrateSchema();
-        this.updateStatusDots();
-    },
+async function ghPut(path, content, message) {
+    const url = `https://api.github.com/repos/${S.settings.ghRepo}/contents/${path}`;
+    const getRes = await fetch(url, { headers: ghHeaders() });
+    let sha = null;
+    if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }
 
-    loadLocal() {
-        const cachedSymbols = localStorage.getItem('bm_symbols');
-        if (cachedSymbols) DB.symbols = JSON.parse(cachedSymbols);
-        // Load other modules if available in localStorage
-    },
+    return fetch(url, {
+        method: 'PUT',
+        headers: ghHeaders(),
+        body: JSON.stringify({
+            message,
+            content: btoa(unescape(encodeURIComponent(content))),
+            sha
+        })
+    });
+}
 
-    migrateSchema() {
-        let changed = false;
-        DB.symbols = DB.symbols.map(s => {
-            if (s.source && Array.isArray(s.source)) {
-                s.category = s.source[0] || 'portfolio';
-                delete s.source;
-                changed = true;
-            }
-            if (s.resolved === undefined) { s.resolved = true; changed = true; }
-            return s;
-        });
-        if (changed) {
-            this.log("Schema migration complete: source[] -> category");
-            this.savePF();
-        }
-    },
+async function ghFetchRaw(path) {
+    const url = `https://raw.githubusercontent.com/${S.settings.ghRepo}/main/${path}?t=${Date.now()}`;
+    const res = await fetch(url, { headers: ghHeaders() });
+    return res.ok ? await res.json() : null;
+}
 
-    savePF() {
-        localStorage.setItem('bm_symbols', JSON.stringify(DB.symbols));
-    },
+// 3. SEARCH & RESOLUTION
+async function searchYahoo(query) {
+    try {
+        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&region=IN`);
+        const data = await res.json();
+        const match = data.quotes?.find(q => q.symbol.endsWith('.NS'));
+        if (match) return { sym: match.symbol.replace('.NS', ''), confidence: 90, isin: match.isin || '' };
+    } catch (e) { return null; }
+}
 
-    saveSettings() {
-        localStorage.setItem('bm_settings', JSON.stringify(S));
-    },
+async function searchNSE(query) {
+    try {
+        const res = await fetch(`https://www.nseindia.com/api/suggest?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        if (data && data.length) return { sym: data[0].symbol, confidence: 80 };
+    } catch (e) { return null; }
+}
 
-    // 3. GITHUB API OPERATIONS (Production Pattern)
-    async ghPut(path, content, message) {
-        const { ghToken, ghRepo } = S.settings;
-        if (!ghToken || !ghRepo) return this.log("❌ Error: Missing PAT/Repo", "red");
+// 4. DATA MANAGEMENT
+function saveSettings() { 
+    localStorage.setItem('bm_settings', JSON.stringify(S)); 
+    refreshPatStatus(); 
+}
+function saveGuidanceLocal() { localStorage.setItem('bm_guidance', JSON.stringify(GUIDANCE)); }
+function guidanceForStorage() { return GUIDANCE; }
 
-        const url = `https://api.github.com/repos/${ghRepo}/contents/${path}`;
-        const headers = {
-            'Authorization': `token ${ghToken}`,
-            'Accept': 'application/vnd.github.v3+json'
-        };
+function migrateSymbols(arr) {
+    return arr.map(s => {
+        if (s.source && !s.category) s.category = s.source[0] === 'p' ? 'portfolio' : 'watchlist';
+        if (!s.category) s.category = 'portfolio';
+        return s;
+    });
+}
 
-        try {
-            let sha = null;
-            const res = await fetch(url, { headers });
-            if (res.ok) {
-                const data = await res.json();
-                sha = data.sha;
-            }
+// 5. UI HELPERS
+function dataLog(msg, icon = '') {
+    const log = document.getElementById('data-log');
+    if (!log) return;
+    const div = document.createElement('div');
+    div.style.marginBottom = '4px';
+    div.innerHTML = `<span style="color:var(--tx3); font-size:9px;">[${new Date().toLocaleTimeString()}]</span> ${icon} <span style="font-size:10px;">${msg}</span>`;
+    log.prepend(div);
+}
 
-            const body = {
-                message: message || `Update ${path}`,
-                content: btoa(unescape(encodeURIComponent(content))),
-                sha: sha
-            };
+function toast(msg) { alert(msg); }
+function fmt(n) { return n ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0'; }
+function fmtTs(ts) { return ts ? new Date(parseInt(ts)).toLocaleString('en-IN') : '—'; }
+function daysSince(ts) {
+    if (!ts) return null;
+    const diff = Date.now() - new Date(ts).getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
 
-            const putRes = await fetch(url, {
-                method: 'PUT',
-                headers,
-                body: JSON.stringify(body)
-            });
-
-            if (putRes.ok) {
-                this.log(`✅ GitHub Sync: ${path} updated`, "green");
-                return true;
-            }
-        } catch (e) {
-            this.log(`❌ GitHub Error: ${e.message}`, "red");
-        }
+function requirePAT() {
+    if (!S.settings.ghToken || !S.settings.ghRepo) {
+        toast("Configure GitHub PAT & Repo first.");
         return false;
-    },
-
-    async ghFetchRaw(path) {
-        const { ghToken, ghRepo } = S.settings;
-        const url = `https://raw.githubusercontent.com/${ghRepo}/main/${path}?t=${Date.now()}`;
-        const res = await fetch(url, {
-            headers: { 'Authorization': `token ${ghToken}` },
-            cache: 'no-store'
-        });
-        return res.ok ? await res.json() : null;
-    },
-
-    // 4. RESOLUTION PIPELINE (Yahoo + NSE)
-    async resolveStock(name) {
-        this.log(`⏳ Resolving: ${name}...`);
-        
-        // Step 1: Yahoo Finance Search
-        try {
-            const yUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(name)}&region=IN`;
-            const yRes = await fetch(yUrl);
-            const yData = await yRes.json();
-            
-            const match = yData.quotes?.find(q => q.symbol.endsWith('.NS'));
-            if (match) {
-                this.log(`✅ Found Yahoo: ${match.symbol}`, "green");
-                return { sym: match.symbol.replace('.NS', ''), source: 'yahoo' };
-            }
-        } catch (e) { console.error("Yahoo failed", e); }
-
-        // Step 2: NSE Fallback
-        try {
-            const nUrl = `https://www.nseindia.com/api/suggest?q=${encodeURIComponent(name)}`;
-            const nRes = await fetch(nUrl);
-            const nData = await nRes.json();
-            if (nData && nData.length > 0) {
-                this.log(`✅ Found NSE: ${nData[0].symbol}`, "green");
-                return { sym: nData[0].symbol, source: 'nse' };
-            }
-        } catch (e) { console.error("NSE failed", e); }
-
-        this.log(`❌ Unresolved: ${name}`, "red");
-        return null;
-    },
-
-    // 5. UTILS & UI BRIDGES
-    updateStatusDots() {
-        const setDot = (id, val) => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.className = 'dot ' + (val ? 'dot-ok' : 'dot-off');
-        };
-        setDot('dot-token', S.settings.ghToken);
-        setDot('dot-repo', S.settings.ghRepo);
-        setDot('dot-ai', S.settings.aiKey);
-    },
-
-    log(msg, colorClass = "") {
-        const term = document.getElementById('log-terminal');
-        if (!term) return;
-        const time = new Date().toLocaleTimeString([], { hour12: false });
-        const entry = document.createElement('div');
-        entry.style.marginBottom = "4px";
-        if (colorClass === "green") entry.style.color = "var(--gr)";
-        if (colorClass === "red") entry.style.color = "var(--rd)";
-        entry.innerHTML = `[${time}] ${msg}`;
-        term.appendChild(entry);
-        term.scrollTop = term.scrollHeight;
-    },
-
-    toast(msg) {
-        alert(msg); // Replace with UI toast if available
     }
-};
+    return true;
+}
 
-// Initialize on Load
-window.onload = () => Core.init();
+function nameSimilarity(a, b) {
+    const s1 = a.toLowerCase(); const s2 = b.toLowerCase();
+    if (s1 === s2) return 100;
+    return s1.includes(s2) || s2.includes(s1) ? 80 : 0;
+}
+
+function detectQuarter() {
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    if (m >= 3 && m <= 5) return `Q4 FY${y}`;
+    if (m >= 6 && m <= 8) return `Q1 FY${y+1}`;
+    if (m >= 9 && m <= 11) return `Q2 FY${y+1}`;
+    return `Q3 FY${y}`;
+}
+
+// 6. SHARED UI ELEMENTS
+function openSheet(html) {
+    let sheet = document.getElementById('sheet-overlay');
+    if (!sheet) {
+        sheet = document.createElement('div');
+        sheet.id = 'sheet-overlay';
+        sheet.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:9999;padding:20px;overflow-y:auto;display:none;";
+        document.body.appendChild(sheet);
+    }
+    sheet.innerHTML = `<div class="sec" style="max-width:500px; margin: 0 auto;">${html}</div>`;
+    sheet.style.display = 'block';
+}
+
+function closeSheet() {
+    const sheet = document.getElementById('sheet-overlay');
+    if (sheet) sheet.style.display = 'none';
+}
+
+function copyText(id) {
+    const el = document.getElementById(id);
+    const val = el.innerText || el.value;
+    navigator.clipboard.writeText(val);
+    toast("Copied");
+}
+
+function toggleVis(id) {
+    const el = document.getElementById(id);
+    el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function loadState() {
+    const local = localStorage.getItem('bm_symbols');
+    if (local) window.SYMBOLS = JSON.parse(local);
+}
