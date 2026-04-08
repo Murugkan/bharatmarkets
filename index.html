@@ -43,8 +43,6 @@
         .nav-btn.active { color: var(--bl); }
         .nav-label { font-size: 8px; margin-top: 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
     </style>
-    <!-- ADDED: Import workflow script -->
-    <script src="app-import.js"></script>
 </head>
 <body>
 
@@ -52,8 +50,6 @@
     <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
     <div class="kpi-box"><div class="kpi-label">P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
     <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
-    <!-- ADDED: Import button -->
-    <div class="kpi-box" style="cursor:pointer;" onclick="openImportWorkflow()" title="Import your portfolio"><div class="kpi-label">Import</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">📥</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
@@ -62,17 +58,17 @@
 <div class="view"><div id="app"></div></div>
 
 <footer>
-    <a href="nexus.html" class="nav-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        <span class="nav-label">Terminal</span>
-    </a>
     <a href="index.html" class="nav-btn active">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
         <span class="nav-label">Portfolio</span>
     </a>
-    <a href="#" class="nav-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        <span class="nav-label">System</span>
+    <a href="data.html" class="nav-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg>
+        <span class="nav-label">Data</span>
+    </a>
+    <a href="nexus.html" class="nav-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <span class="nav-label">Import</span>
     </a>
 </footer>
 
@@ -102,89 +98,112 @@ const fmt = (val, field) => {
     if (n === 0 && val === '—') return '—';
     if (['LTP', 'AVG', 'PNL', 'INVESTED', 'MCAP'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (field.includes('%')) return n.toFixed(2) + '%';
-    if (['PE', 'PB', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'EPS'].includes(field)) return n.toFixed(2);
-    return n.toString();
+    return val;
 };
 
-async function boot() {
-    try {
-        const db = await new Promise((r, j) => {
-            const req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onsuccess = () => r(req.result);
-            req.onerror = () => j(req.error);
-        });
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const data = await new Promise((r) => {
-            tx.objectStore(STORE_NAME).getAll().onsuccess = (e) => r(e.target.result);
-        });
-        MASTER = data;
-        render();
-    } catch (err) {
-        console.error('Boot error:', err);
+const resolve = (obj, field) => {
+    const f = field.toUpperCase();
+    const mappings = { 'SYM':['SYM','SYMBOL','TICKER'], 'AVG':['AVG','AVGBUY'], 'PNL':['PNL','P/L'], 'PNL%':['PNL%','PNL_PCT'], '1D%':['1D%','CHANGE_1D'], 'ROE%':['ROE%','ROE'], 'SIGNAL':['SIGNAL','TECH_SIGNAL'] };
+    const targets = mappings[f] || [f];
+    for (let t of targets) {
+        if (obj[t] !== undefined) return obj[t];
+        const cleanT = t.replace('%', '');
+        if (obj[cleanT] !== undefined) return obj[cleanT];
     }
-}
+    return '—';
+};
 
-function render() {
-    const app = document.getElementById('app');
-    if (!MASTER || MASTER.length === 0) {
-        app.innerHTML = '<div style="padding:40px; text-align:center; color:#666;">' +
-            '<p>No data loaded. Click 📥 Import to add your stocks or SYNC ↻ to load market data.</p>' +
-            '</div>';
+async function init() {
+    const statusEl = document.getElementById('status');
+    const db = await new Promise(res => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (d.objectStoreNames.contains(STORE_NAME)) d.deleteObjectStore(STORE_NAME);
+            d.createObjectStore(STORE_NAME, { keyPath: "SYM" });
+        };
+        req.onsuccess = () => res(req.result);
+    });
+
+    const tx = db.transaction(STORE_NAME, "readonly");
+    MASTER = await new Promise(res => {
+        tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
+    });
+
+    if (MASTER.length === 0) {
+        statusEl.innerHTML = "SYSTEM EMPTY. CLICK TERMINAL TO SYNC.";
         return;
     }
-    
-    const filtered = filter ? MASTER.filter(s => s.SYM && s.SYM.includes(filter.toUpperCase())) : MASTER;
-    const sorted = filtered.sort((a, b) => {
-        const av = cleanNum(a[sortCol]);
-        const bv = cleanNum(b[sortCol]);
-        return sortAsc ? av - bv : bv - av;
-    });
-    
-    let html = '<table>';
-    html += '<thead><tr>';
-    UI_FIELDS.forEach(f => {
-        const isActive = f === sortCol ? 'active' : '';
-        html += `<th class="${isActive}" onclick="doSort('${f}')">${f}</th>`;
-    });
-    html += '</tr></thead>';
-    html += '<tbody>';
-    
-    sorted.forEach(row => {
-        html += '<tr>';
-        UI_FIELDS.forEach(f => {
-            const val = row[f] || '—';
-            const color = f === 'SYM' ? 'sticky' : '';
-            if (f === 'PNL' || f === 'PNL%' || f === '1D%') {
-                const n = cleanNum(val);
-                const cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
-                html += `<td class="${color} ${cls}">${fmt(val, f)}</td>`;
-            } else {
-                html += `<td class="${color}">${fmt(val, f)}</td>`;
-            }
-        });
-        html += '</tr>';
-    });
-    
-    html += '</tbody></table>';
-    app.innerHTML = html;
-    updateKPIs();
-}
 
-function updateKPIs() {
-    const pnl = MASTER.reduce((sum, s) => sum + cleanNum(s.PNL), 0);
-    const count = MASTER.length;
-    document.getElementById('k-count').textContent = count;
-    document.getElementById('k-pnl').textContent = '₹' + pnl.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
-
-function doSort(col) {
-    sortCol = col;
-    sortAsc = !sortAsc;
+    statusEl.style.display = "none";
+    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
+    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
     render();
 }
 
-window.addEventListener('DOMContentLoaded', boot);
-</script>
+function render() {
+    let sumPnl = 0, sumInv = 0, sc = {};
+    MASTER.forEach(s => { 
+        const sec = resolve(s, 'SECTOR') || 'OTHER';
+        sumPnl += cleanNum(resolve(s, 'PNL'));
+        sumInv += cleanNum(resolve(s, 'INVESTED'));
+        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || cleanNum(resolve(s, 'LTP')), 1);
+        sc[sec] = (sc[sec] || 0) + weight; 
+    });
+    
+    document.getElementById('k-count').textContent = MASTER.length;
+    const pEl = document.getElementById('k-pnl');
+    pEl.textContent = `₹${(sumPnl/100000).toFixed(2)}L`;
+    pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
 
+    const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
+    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => `<div class="seg${filter && filter !== sec ? ' dimmed' : ''}" style="flex-basis:${((sc[sec]/totalW)*100)}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`).join('');
+    document.getElementById('legend').innerHTML = SECTORS.map(sec => `<div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')"><div class="dot" style="background:${COL[sec]}"></div>${sec}</div>`).join('');
+
+    let rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : [...MASTER];
+    rows.sort((a, b) => {
+        let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
+        let nA = cleanNum(vA), nB = cleanNum(vB);
+        return sortAsc ? nA - nB : nB - nA;
+    });
+
+    let h = `<table><thead><tr>`;
+    UI_FIELDS.forEach(f => h += `<th onclick="doSort('${f}')" class="${f===sortCol?'active':''} ${f==='SYM'?'sticky':''}"><sup>${f===sortCol?(sortAsc?'▲':'▼'):''}</sup>${f}</th>`);
+    h += `</tr></thead><tbody>`;
+
+    rows.forEach(s => {
+        h += `<tr>`;
+        UI_FIELDS.forEach(f => {
+            const raw = resolve(s, f);
+            const val = fmt(raw, f);
+            let cls = f === 'SYM' ? 'sticky' : '';
+            const n = cleanNum(raw);
+            if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += `<td class="${cls}"><span class="sig-buy">BUY</span></td>`;
+            else {
+                if (n !== 0) {
+                    if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
+                    if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+                }
+                h += `<td class="${cls}">${val}</td>`;
+            }
+        });
+        h += `</tr>`;
+    });
+
+    h += `</tbody><tfoot><tr>`;
+    UI_FIELDS.forEach(f => {
+        let cls = f === 'SYM' ? 'sticky' : '';
+        if (f === 'SYM') h += `<td class="${cls}">TOTAL</td>`;
+        else if (f === 'PNL') h += `<td class="${sumPnl>=0?'pos':'neg'}">${fmt(sumPnl, 'PNL')}</td>`;
+        else if (f === 'INVESTED') h += `<td>${fmt(sumInv, 'INVESTED')}</td>`;
+        else h += `<td class="${cls}"></td>`;
+    });
+    document.getElementById('app').innerHTML = h + `</tr></tfoot></table>`;
+}
+
+function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
+function tap(sec) { filter = filter === sec ? null : sec; render(); }
+init();
+</script>
 </body>
 </html>
