@@ -20,8 +20,8 @@
 
 <div class="card">
     <h3 style="font-size:10px; color:#555; margin-bottom:10px;">0. CONNECTION</h3>
-    <input type="password" id="p" placeholder="GitHub PAT" onchange="S.settings.ghToken=this.value">
-    <input type="text" id="r" placeholder="username/repository" onchange="S.settings.ghRepo=this.value">
+    <input type="password" id="p" placeholder="GitHub PAT" onchange="window.S.settings.ghToken=this.value; localStorage.setItem('bm_settings', JSON.stringify(window.S));">
+    <input type="text" id="r" placeholder="username/repository" onchange="window.S.settings.ghRepo=this.value; localStorage.setItem('bm_settings', JSON.stringify(window.S));">
     <button class="btn" onclick="testGitHubConnection()">SAVE & DIAGNOSE</button>
     <div id="gh-diag"></div>
 </div>
@@ -43,42 +43,46 @@ async function startImport(input) {
     if(!input.files[0]) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
-        const wb = XLSX.read(e.target.result, {type:'binary'});
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        const list = document.getElementById('res-list');
-        document.getElementById('res-area').style.display = 'block';
-        list.innerHTML = '';
-        
-        dataLog(`Importing ${rows.length} rows...`, 'info');
-
-        for(let r of rows) {
-            const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
-            if(!name) continue;
-
-            const rowDiv = document.createElement('div');
-            rowDiv.className = 'res-row';
-            list.appendChild(rowDiv);
-
-            const res = await resolveSymbol(name);
+        try {
+            const wb = XLSX.read(e.target.result, {type:'binary'});
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            const list = document.getElementById('res-list');
+            document.getElementById('res-area').style.display = 'block';
+            list.innerHTML = '';
             
-            rowDiv.innerHTML = `
-                <div style="flex:1">
-                    <div style="font-size:10px; color:#555">${name}</div>
-                    <div style="color:${res.error?'#ff4444':'#00ff88'}; font-weight:bold">${res.symbol}</div>
-                </div>
-                <input type="text" class="fix" placeholder="Fix" 
-                    value="${res.error?'':res.symbol}" 
-                    onchange="updateAlias('${name}', this.value)">
-            `;
+            dataLog(`File loaded: ${rows.length} stocks found.`, 'info');
+
+            for(let r of rows) {
+                const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
+                if(!name) continue;
+
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'res-row';
+                list.appendChild(rowDiv);
+
+                const res = await resolveSymbol(name);
+                
+                rowDiv.innerHTML = `
+                    <div style="flex:1">
+                        <div style="font-size:10px; color:#666">${name}</div>
+                        <div style="color:${res.error?'#ff4444':'#00ff88'}; font-weight:bold">${res.symbol}</div>
+                    </div>
+                    <input type="text" class="fix" placeholder="Fix" 
+                        value="${res.error?'':res.symbol}" 
+                        onchange="updateAlias('${name}', this.value)">
+                `;
+            }
+            dataLog("Success: Resolution complete.", "success");
+        } catch(err) {
+            dataLog("Import Error: " + err.message, "error");
         }
-        dataLog("Success: Resolution complete.", "success");
     };
     reader.readAsBinaryString(input.files[0]);
 }
 
 window.onload = () => {
-    document.getElementById('p').value = S.settings.ghToken || '';
-    document.getElementById('r').value = S.settings.ghRepo || '';
+    document.getElementById('p').value = window.S.settings.ghToken || '';
+    document.getElementById('r').value = window.S.settings.ghRepo || '';
 };
 </script>
 </body>
