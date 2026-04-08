@@ -1,4 +1,4 @@
-/** ONYX v10.0 CORE - Simple Pass Version */
+/** ONYX v11.0 CORE - Diagnostic Version */
 window.S = JSON.parse(localStorage.getItem('bm_settings')) || { settings: { ghToken: '', ghRepo: '' } };
 window.SYMBOLS = JSON.parse(localStorage.getItem('bm_symbols')) || [];
 
@@ -7,6 +7,27 @@ const ghHeaders = () => ({
     'Accept': 'application/vnd.github.v3+json', 
     'Cache-Control': 'no-cache' 
 });
+
+// Diagnostic: Verifies Repo and Workflow existence
+async function testConnection(token, repo) {
+    const headers = { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' };
+    const results = { repo: false, workflow: false, status: 'fail' };
+    
+    try {
+        // 1. Check Repo Existence
+        const rRes = await fetch(`https://api.github.com/repos/${repo}`, { headers });
+        if (!rRes.ok) return { ...results, msg: rRes.status === 401 ? 'Invalid PAT' : 'Repo Not Found' };
+        results.repo = true;
+
+        // 2. Check Workflow File
+        const wRes = await fetch(`https://api.github.com/repos/${repo}/contents/.github/workflows/fetch-prices.yml`, { headers });
+        results.workflow = wRes.ok;
+        results.status = 'ok';
+        return results;
+    } catch (e) {
+        return { ...results, status: 'network_block', msg: 'Browser/CORS Blocked Request' };
+    }
+}
 
 function normalizeName(n) { 
     return n.toUpperCase().replace(/LTD|LIMITED|CORP|INC|PLC/g, '').replace(/[^\w\s]/gi, '').trim(); 
@@ -43,15 +64,6 @@ async function parseFile(file) {
     });
 }
 
-function calculateSimilarity(str1, str2) {
-    const s1 = normalizeName(str1), s2 = normalizeName(str2);
-    const w1 = new Set(s1.split(/\s+/)), w2 = new Set(s2.split(/\s+/));
-    const intersection = new Set([...w1].filter(x => w2.has(x)));
-    const overlap = (intersection.size * 2) / (w1.size + w2.size);
-    const lenRatio = Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length);
-    return (overlap * 0.7 + lenRatio * 0.3) * 100;
-}
-
 async function searchYahoo(query) {
     try {
         const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&region=IN&lang=en-IN`;
@@ -69,13 +81,13 @@ async function searchYahoo(query) {
     } catch (e) { return null; }
 }
 
-async function ghPut(path, content, message) {
-    const url = `https://api.github.com/repos/${S.settings.ghRepo}/contents/${path}`;
-    const getRes = await fetch(url, { headers: ghHeaders() });
-    let sha = null;
-    if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }
-    const body = { message: message, content: btoa(unescape(encodeURIComponent(content))), sha: sha };
-    return fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
+function calculateSimilarity(str1, str2) {
+    const s1 = normalizeName(str1), s2 = normalizeName(str2);
+    const w1 = new Set(s1.split(/\s+/)), w2 = new Set(s2.split(/\s+/));
+    const intersection = new Set([...w1].filter(x => w2.has(x)));
+    const overlap = (intersection.size * 2) / (w1.size + w2.size);
+    const lenRatio = Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length);
+    return (overlap * 0.7 + lenRatio * 0.3) * 100;
 }
 
 function saveSettings() { 
