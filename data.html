@@ -8,21 +8,19 @@
     <script src="app-core.js"></script>
     <style>
         body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding-bottom:120px; -webkit-tap-highlight-color: transparent; }
-        .sec { margin: 15px; padding: 15px; background: #080808; border-radius: 8px; border: 1px solid #111; position: relative; }
+        .sec { margin: 15px; padding: 15px; background: #080808; border-radius: 8px; border: 1px solid #111; }
         .btn-main { 
             width: 100%; background: #00f2ff; color: #000; border: none; padding: 18px; 
-            font-weight: 900; border-radius: 4px; text-transform: uppercase; margin-top:10px;
-            cursor: pointer; display: block;
+            font-weight: 900; border-radius: 4px; text-transform: uppercase; margin-top:10px; cursor: pointer;
         }
-        .btn-main:active { opacity: 0.7; transform: scale(0.98); }
-        .btn-connected { background: #111 !important; color: #00ff88 !important; border: 1px solid #00ff88 !important; }
-        #conn-status { font-size:12px; margin-top:12px; color:#555; display:block; text-align:center; font-weight: bold; }
-        input[type="password"], input[type="text"] { 
+        .btn-main:disabled { background: #222; color: #555; }
+        #conn-status { font-size:11px; margin-top:12px; display:block; text-align:center; }
+        input { 
             background:#111; border:1px solid #333; color:#fff; padding:14px; 
             border-radius:3px; width: 100%; box-sizing: border-box; font-size: 16px; margin-bottom: 10px; 
         }
-        .card { border: 1px solid #333; padding: 10px; margin-top: 10px; border-radius: 4px; background: #111; font-size: 13px; }
-        .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+        .diag-row { display: flex; justify-content: space-between; font-size: 10px; padding: 4px 0; border-bottom: 1px solid #111; color: #888; }
+        .u-grn { color: #00ff88; } .u-red { color: #ff4444; }
     </style>
 </head>
 <body>
@@ -32,7 +30,11 @@
     <input type="password" id="pat" placeholder="GitHub PAT">
     <input type="text" id="repo" placeholder="username/repository">
     <button type="button" class="btn-main" id="btn-connect">CONNECT</button>
-    <span id="conn-status">Status: Ready</span>
+    <div id="diag-panel" style="margin-top:10px; display:none;">
+        <div class="diag-row"><span>Repo Access</span><span id="diag-repo">—</span></div>
+        <div class="diag-row"><span>Workflow File</span><span id="diag-wf">—</span></div>
+    </div>
+    <span id="conn-status">Ready</span>
 </div>
 
 <div class="sec" id="import-gate">
@@ -50,46 +52,57 @@
 const btn = document.getElementById('btn-connect');
 const status = document.getElementById('conn-status');
 
-// Simple Pass: Save and Unlock immediately
-btn.addEventListener('click', () => {
+btn.addEventListener('click', async () => {
     const pVal = document.getElementById('pat').value.trim();
     const rVal = document.getElementById('repo').value.trim();
     
-    if(!pVal || !rVal) {
-        status.innerText = "Error: Fields cannot be blank";
-        status.style.color = "#ff4444";
+    // 1. LOCAL SANITY CHECK (The "bbnnn" filter)
+    const repoRegex = /^[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+$/;
+    if (!repoRegex.test(rVal)) {
+        status.innerText = "Error: Invalid Repo Format (e.g. user/repo)";
+        status.className = "u-red";
         return;
     }
 
+    // 2. PERSIST SETTINGS
     S.settings.ghToken = pVal;
     S.settings.ghRepo = rVal;
     saveSettings();
 
-    btn.innerText = "CONNECTED";
-    btn.classList.add('btn-connected');
-    status.innerText = "Settings Saved Locally";
-    status.style.color = "#00ff88";
+    // 3. ASYNC DIAGNOSTIC
+    btn.disabled = true;
+    btn.innerText = "VERIFYING...";
+    document.getElementById('diag-panel').style.display = 'block';
     
-    document.getElementById('import-gate').style.opacity = "1";
-    document.getElementById('import-gate').style.pointerEvents = "auto";
+    const check = await testConnection(pVal, rVal);
+    
+    document.getElementById('diag-repo').innerHTML = check.repo ? '<span class="u-grn">OK</span>' : '<span class="u-red">FAIL</span>';
+    document.getElementById('diag-wf').innerHTML = check.workflow ? '<span class="u-grn">OK</span>' : '<span class="u-red">MISSING</span>';
+
+    if (check.status === 'ok' && check.repo) {
+        btn.innerText = "CONNECTED";
+        btn.style.background = "#111"; btn.style.color = "#00ff88";
+        status.innerText = "GitHub Sync Active"; status.className = "u-grn";
+    } else if (check.status === 'network_block') {
+        btn.innerText = "LOCAL MODE";
+        status.innerText = "CORS Blocked Verification - Using Local Memory";
+        status.className = "u-red";
+    } else {
+        btn.innerText = "RETRY"; btn.disabled = false;
+        status.innerText = check.msg || "Connection Failed";
+    }
 });
 
 async function handleFile(input) {
     if(!input.files[0]) return;
     const rawStocks = await parseFile(input.files[0]);
-    
     document.getElementById('res-panel').style.display = 'block';
     const list = document.getElementById('res-list');
-    list.innerHTML = 'Processing stocks...';
-
+    list.innerHTML = 'Processing...';
     for(let s of rawStocks) {
         if(checkDuplicate(s.name)) continue;
         const res = await searchYahoo(s.name);
-        if(res && res.score > 70) {
-            list.innerHTML += `<div class="card">✅ ${res.quote.symbol} (${s.name})</div>`;
-        } else {
-            list.innerHTML += `<div class="card" style="border-color:#ff4444;"><div class="truncate">${s.name}</div><input type="text" placeholder="Manual Symbol" style="margin-top:5px; font-size:12px;"></div>`;
-        }
+        list.innerHTML += `<div style="padding:10px; border-bottom:1px solid #111;">${res ? '✅ '+res.quote.symbol : '❌ '+s.name}</div>`;
     }
 }
 
