@@ -1,37 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <title>Onyx | DATA</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="app-core.js"></script>
+    <style>
+        body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding:15px; }
+        .card { background:#0a0a0a; border:1px solid #1a1a1a; padding:15px; border-radius:8px; margin-bottom:15px; }
+        .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:15px; font-weight:800; border-radius:4px; }
+        input { width:100%; background:#111; border:1px solid #333; color:#fff; padding:12px; margin-bottom:10px; box-sizing:border-box; }
+        #debug-console { height:120px; background:#050505; border:1px solid #222; overflow-y:auto; padding:8px; font-family:monospace; margin-top:10px; }
+        .res-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #111; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <button class="btn" onclick="document.getElementById('f-in').click()">📂 SELECT FILE</button>
+    <input type="file" id="f-in" style="display:none" onchange="process(this)">
+    <div id="debug-console"></div>
+</div>
+
+<div id="res-area" class="card" style="display:none">
+    <div id="res-list"></div>
+</div>
+
 <script>
-async function processImport(input) {
+async function process(input) {
     const reader = new FileReader();
     reader.onload = async (e) => {
-        const wb = XLSX.read(e.target.result, {type:'binary'});
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        document.getElementById('res-card').style.display = 'block';
-        const list = document.getElementById('res-list');
-        list.innerHTML = ''; // Clear "Processing..."
+        try {
+            const wb = XLSX.read(e.target.result, {type:'binary'});
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            const list = document.getElementById('res-list');
+            document.getElementById('res-area').style.display = 'block';
+            list.innerHTML = ''; 
 
-        for(let r of rows) {
-            const rawName = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
-            if(!rawName) continue;
-
-            const result = await resolveSymbol(rawName);
-            const div = document.createElement('div');
-            div.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #111";
-            
-            // If fallback is true, color it orange to show it's a guess
-            const color = result ? (result.fallback ? '#ffbf47' : '#00ff88') : '#ff4444';
-            
-            div.innerHTML = `
-                <div style="flex:1">
-                    <div style="font-size:10px; color:#555">${rawName}</div>
-                    <div style="color:${color}; font-weight:bold; font-family:monospace">${result ? result.symbol : 'FAILED'}</div>
-                </div>
-                <input type="text" placeholder="Ticker" 
-                    style="width:90px; margin:0; padding:8px; background:#111; border:1px solid #333; color:#fff; font-size:12px;" 
-                    value="${result ? result.symbol : ''}" 
-                    onchange="updateAlias('${rawName}', this.value)">
-            `;
-            list.appendChild(div);
+            for(let r of rows) {
+                const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
+                const res = await resolveSymbol(name); // Never returns null
+                
+                const div = document.createElement('div');
+                div.className = 'res-row';
+                div.innerHTML = `
+                    <div style="flex:1">
+                        <div style="font-size:10px; color:#555">${name}</div>
+                        <div style="color:${res.error?'#ff4444':'#00ff88'}; font-weight:bold">${res.symbol}</div>
+                    </div>
+                    <input type="text" style="width:80px; padding:6px; margin:0;" 
+                        value="${res.error ? '' : res.symbol}" 
+                        onchange="updateAlias('${name}', this.value)">
+                `;
+                list.appendChild(div);
+            }
+        } catch(err) {
+            dataLog("Crash: " + err.message, "error");
         }
     };
     reader.readAsBinaryString(input.files[0]);
 }
 </script>
+</body>
+</html>
