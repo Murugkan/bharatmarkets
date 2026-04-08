@@ -1,144 +1,92 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
-    <title>Onyx | PORTFOLIO</title>
-    <link rel="stylesheet" href="app-styles.css">
-    <script src="app-core.js"></script>
-    <style>
-        .pf-table { width: 100%; border-collapse: collapse; }
-        .pf-table th { text-align: left; font-size: 9px; color: var(--tx3); padding: 12px 8px; border-bottom: 2px solid var(--b1); position: sticky; top: 0; background: var(--bg); z-index: 5; }
-        .pf-table td { padding: 12px 8px; border-bottom: 1px solid var(--b1); font-size: 11px; vertical-align: middle; }
-        .ticker { font-weight: 800; color: var(--bl); display: block; font-size: 12px; }
-        .sub { font-size: 8px; color: var(--tx3); text-transform: uppercase; }
-        #sector-bar { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0; -webkit-overflow-scrolling: touch; }
-        .s-pill { white-space: nowrap; padding: 6px 12px; background: var(--b1); border-radius: 20px; font-size: 9px; color: var(--tx3); border: 1px solid transparent; }
-        .s-pill.on { background: var(--bl); color: #000; font-weight: 800; }
-        .dot { height: 6px; width: 6px; border-radius: 50%; display: inline-block; margin-left: 4px; }
-        .dot-ok { background: var(--gr); box-shadow: 0 0 5px var(--gr); }
-        .dot-off { background: #555; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Soya Portfolio</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-<header style="display:flex; justify-content:space-between; align-items:center; padding: 10px 15px;">
-    <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:var(--bl);">ONYX // PORTFOLIO</div>
-    <div style="display:flex; gap:8px;">
-        <span class="dot" id="dot-token"></span>
-        <span class="dot" id="dot-repo"></span>
+  <header class="app-header">
+    <div class="logo">SOYA</div>
+    <div id="import-status-strip"></div>
+  </header>
+
+  <nav class="app-nav">
+    <button class="nb active" onclick="switchTab('portfolio')">Portfolio</button>
+    <button class="nb" onclick="switchTab('watchlist')">Watchlist</button>
+    <button class="nb" onclick="openImport()">Stock Upload</button>
+  </nav>
+
+  <main id="app-content">
+    <div id="dashboard-view" class="tab-pane active">
+      <div id="sector-grid"></div>
+      <div id="stock-list"></div>
     </div>
-</header>
+  </main>
 
-<div class="sec" style="margin: 0 15px; padding:20px; background: linear-gradient(145deg, #0a0a0a, #000); border: 1px solid var(--b1); border-radius: 8px;">
-    <div style="font-size:8px; color:var(--tx3); text-transform:uppercase; margin-bottom:4px;">Portfolio Value</div>
-    <div id="total-val" style="font-size:26px; font-weight:800; letter-spacing:-1px;">₹ 0.00</div>
-    <div id="total-pnl" style="font-size:11px; font-weight:800; margin-top:8px; color:var(--gr);">+0.00% Today</div>
-</div>
+  <div id="ov" class="overlay" onclick="closePanel()"></div>
+  <div id="import-panel" class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Stock Intelligence Hub</div>
+      <div class="panel-close" onclick="closePanel()">✕</div>
+    </div>
+    <div id="import-panel-body" class="panel-body">
+      </div>
+  </div>
 
-<div id="sector-bar" style="padding-left: 15px;">
-    <div class="s-pill on" id="s-all" onclick="PF.filter('ALL')">ALL</div>
-</div>
+  <script src="js/app-core.js"></script>
+  <script src="js/app-import.js"></script>
+  <script src="js/app-watchlist.js"></script>
 
-<div class="sec" style="margin-top:10px;">
-    <table class="pf-table">
-        <thead>
-            <tr>
-                <th onclick="PF.sort('sym')">ASSET</th>
-                <th style="text-align:right;" onclick="PF.sort('qty')">QTY</th>
-                <th style="text-align:right;" onclick="PF.sort('val')">VALUE</th>
-                <th style="text-align:right;" onclick="PF.sort('pnl')">P&L</th>
-            </tr>
-        </thead>
-        <tbody id="pf-body"></tbody>
-    </table>
-</div>
+  <script>
+    // Global State
+    window.S = {
+      curTab: 'portfolio',
+      portfolio: [],
+      settings: JSON.parse(localStorage.getItem('soya_settings') || '{}'),
+      _importStatus: null
+    };
 
-<nav class="footer-nav">
-    <a href="data.html" class="nav-item">📂<br>DATA</a>
-    <a href="index.html" class="nav-item active">📊<br>PORTFOLIO</a>
-    <a href="system.html" class="nav-item">🛠️<br>SYSTEM</a>
-</nav>
-
-<script>
-const PF = {
-    sortKey: 'val', sortDir: -1, activeSector: 'ALL',
-
-    async init() {
-        loadState();
-        if (S.settings.ghToken && S.settings.ghRepo) {
-            const data = await ghFetchRaw('symbols.json');
-            if (data) SYMBOLS = migrateSymbols(data);
-            const pData = await ghFetchRaw('prices.json');
-            if (pData) PRICES = pData.quotes || {};
-        }
-        this.renderSectors();
-        this.render();
-        updateStatusDots();
-    },
-
-    renderSectors() {
-        const bar = document.getElementById('sector-bar');
-        const sectors = [...new Set(SYMBOLS.filter(s=>s.category==='portfolio').map(s=>s.sector||'Other'))];
-        sectors.forEach(s => {
-            const div = document.createElement('div');
-            div.className = 's-pill';
-            div.innerText = s.toUpperCase();
-            div.onclick = () => this.filter(s);
-            bar.appendChild(div);
-        });
-    },
-
-    filter(s) {
-        this.activeSector = s;
-        document.querySelectorAll('.s-pill').forEach(p => p.classList.toggle('on', p.innerText === s.toUpperCase()));
-        if (s === 'ALL') document.getElementById('s-all').classList.add('on');
-        this.render();
-    },
-
-    sort(k) {
-        if (this.sortKey === k) this.sortDir *= -1;
-        else { this.sortKey = k; this.sortDir = -1; }
-        this.render();
-    },
-
-    render() {
-        const body = document.getElementById('pf-body');
-        body.innerHTML = '';
-        let list = SYMBOLS.filter(s => s.category === 'portfolio');
-        if (this.activeSector !== 'ALL') list = list.filter(s => (s.sector||'Other') === this.activeSector);
-
-        list.sort((a,b) => {
-            let vA = this.getVal(a), vB = this.getVal(b);
-            return vA > vB ? (1 * this.sortDir) : (-1 * this.sortDir);
-        });
-
-        let total = 0;
-        list.forEach(s => {
-            const ltp = PRICES[s.sym]?.price || 0;
-            const val = s.qty * ltp;
-            total += val;
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><span class="ticker">${s.sym}</span><span class="sub">${s.name.slice(0,12)}</span></td>
-                <td style="text-align:right;">${s.qty}</td>
-                <td style="text-align:right;">₹${fmt(val)}</td>
-                <td style="text-align:right; color:var(--gr);">+${fmt(PRICES[s.sym]?.changePercent || 0)}%</td>
-            `;
-            body.appendChild(tr);
-        });
-        document.getElementById('total-val').innerText = `₹ ${fmt(total)}`;
-    },
-
-    getVal(s) {
-        if (this.sortKey === 'sym') return s.sym;
-        if (this.sortKey === 'qty') return s.qty;
-        const ltp = PRICES[s.sym]?.price || 0;
-        return s.qty * ltp;
+    // Initial Load
+    async function init() {
+      // Ensure we have our settings (GH Tokens, etc.)
+      if (!S.settings.ghToken) {
+        console.warn("GitHub Token missing. Sync will not work.");
+      }
+      
+      // Load Master Data (symbols.json)
+      await loadMasterData(); 
+      
+      // Render Initial View
+      render();
     }
-};
 
-window.addEventListener('load', () => PF.init());
-</script>
+    function switchTab(tab) {
+      S.curTab = tab;
+      document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+      render(); // Triggered from app-watchlist.js
+    }
+
+    // Load static data from GitHub/Local
+    async function loadMasterData() {
+      try {
+        const res = await fetch('symbols.json');
+        window.FUND = await res.json();
+        // Generate ISIN Map for the Import Scanner
+        window.ISIN_MAP = {};
+        window.FUND.forEach(item => {
+          if (item.isin) ISIN_MAP[item.isin] = item.sym;
+        });
+      } catch (e) {
+        console.error("Failed to load master symbols:", e);
+      }
+    }
+
+    window.onload = init;
+  </script>
 </body>
 </html>
