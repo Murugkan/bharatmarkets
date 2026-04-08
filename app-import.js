@@ -7,15 +7,15 @@ window.openImport = () => {
     if (!ov || !panel || !body) return;
 
     body.innerHTML = `
-        <div class="upload-zone" style="border:2px dashed #444; border-radius:20px; padding:40px; text-align:center; margin-bottom:20px; cursor:pointer;" onclick="document.getElementById('file-input').click()">
-            <div style="font-size:40px; margin-bottom:10px;">📊</div>
-            <div style="font-weight:700; color:#fff;">Select CDSL XLS/CSV</div>
+        <div class="upload-zone" style="border:2px dashed #444; border-radius:20px; padding:40px; text-align:center;" onclick="document.getElementById('file-input').click()">
+            <div style="font-size:30px;">📄</div>
+            <b style="color:#fff; display:block; margin-top:10px;">Select Portfolio XLS</b>
             <input type="file" id="file-input" hidden onchange="handleFileSelect(event)">
         </div>
-        <div id="file-status" style="font-family:var(--mono); font-size:12px; margin-bottom:20px; color:var(--ac); text-align:center;"></div>
-        <div id="import-actions" style="display:none; gap:10px; grid-template-columns: 1fr 1fr;">
-            <button class="import-btn" style="background:#222; color:#fff;" onclick="commitImport(true)">Replace All</button>
-            <button class="import-btn" onclick="commitImport(false)">Append Data</button>
+        <div id="file-status" style="margin:20px 0; text-align:center; color:var(--ac); font-family:var(--mono);"></div>
+        <div id="import-actions" style="display:none; gap:10px;">
+            <button class="import-btn" style="background:#222;" onclick="commitImport(true)">Replace All</button>
+            <button class="import-btn" onclick="commitImport(false)">Append</button>
         </div>
     `;
     ov.classList.add('on');
@@ -27,46 +27,26 @@ window.handleFileSelect = (e) => {
     if (!file) return;
 
     const reader = new FileReader();
-    // Use readAsBinaryString for older XLS or readAsText for CSV
-    // We'll use readAsArrayBuffer to be safe with binary Excel
     reader.onload = (event) => {
-        const arrayBuffer = event.target.result;
-        const uint8 = new Uint8Array(arrayBuffer);
-        let raw = "";
-        
-        // Convert to string safely (works for both binary and text)
-        for (let i = 0; i < uint8.length; i++) {
-            raw += String.fromCharCode(uint8[i]);
-        }
-
-        const lines = raw.split(/[\r\n]+/);
+        const raw = event.target.result;
+        const lines = raw.split(/\r?\n/);
         const parsed = [];
 
-        lines.forEach((line) => {
-            // Remove non-printable characters that Excel inserts
-            const cleanLine = line.replace(/[^\x20-\x7E,]/g, "");
-            const parts = cleanLine.split(',').map(p => p.trim());
+        lines.forEach(line => {
+            // Split by comma and clean quotes
+            const p = line.split(',').map(item => item.trim().replace(/^"|"$/g, ''));
+            
+            // The "Clueless" Fix: Back to exact column counting.
+            // If the row has data and isn't a header, grab the 3 columns.
+            if (p.length >= 5 && p[1] !== "" && !p[1].includes("Details")) {
+                const qty = parseFloat(p[4].replace(/[^0-9.]/g, ''));
+                const avg = parseFloat(p[5].replace(/[^0-9.]/g, ''));
 
-            // Landmark: Stock Names are usually uppercase and long
-            const nameIdx = parts.findIndex(p => 
-                p.length > 5 && 
-                !p.includes("Details") && 
-                !p.includes("Report") &&
-                !p.includes("TOTAL")
-            );
-
-            if (nameIdx !== -1) {
-                const stockName = parts[nameIdx];
-                // Grab numbers in that row
-                const rowNums = parts.slice(nameIdx + 1)
-                    .map(p => parseFloat(p.replace(/[^0-9.]/g, '')))
-                    .filter(n => !isNaN(n) && n > 0);
-
-                if (rowNums.length >= 2) {
+                if (!isNaN(qty) && qty > 0) {
                     parsed.push({
-                        sym: stockName,
-                        qty: rowNums[rowNums.length - 2], // Penultimate number is usually Qty
-                        avg: rowNums[rowNums.length - 1]  // Last number is usually Price
+                        sym: p[1], // Stock Name
+                        qty: qty,  // Quantity
+                        avg: avg   // Average Price
                     });
                 }
             }
@@ -74,33 +54,22 @@ window.handleFileSelect = (e) => {
 
         if (parsed.length > 0) {
             window.PENDING_DATA = parsed;
-            document.getElementById('file-status').innerHTML = `✅ Parsed ${parsed.length} Stocks`;
+            document.getElementById('file-status').innerText = `✅ Detected ${parsed.length} items`;
             document.getElementById('import-actions').style.display = 'grid';
         } else {
-            document.getElementById('file-status').innerHTML = `❌ Format Error: Try saving as CSV`;
+            document.getElementById('file-status').innerText = `❌ No data found in file`;
         }
     };
-    reader.readAsArrayBuffer(file);
+    reader.readAsText(file);
 };
 
-window.commitImport = (replaceAll) => {
+window.commitImport = (replace) => {
     if (!window.PENDING_DATA) return;
-    if (replaceAll) S.portfolio = [...window.PENDING_DATA];
-    else {
-        window.PENDING_DATA.forEach(n => {
-            const idx = S.portfolio.findIndex(p => p.sym === n.sym);
-            if (idx > -1) {
-                const oldQ = S.portfolio[idx].qty || 0;
-                const newQ = oldQ + n.qty;
-                if (newQ > 0) {
-                    S.portfolio[idx].avg = ((oldQ * (S.portfolio[idx].avg || 0)) + (n.qty * n.avg)) / newQ;
-                }
-                S.portfolio[idx].qty = newQ;
-            } else S.portfolio.push(n);
-        });
-    }
+    if (replace) S.portfolio = [...window.PENDING_DATA];
+    else S.portfolio = [...S.portfolio, ...window.PENDING_DATA];
+    
     localStorage.setItem('soya_portfolio', JSON.stringify(S.portfolio));
     if (window.render) render();
     closePanel();
-    toast("Import Successful");
+    toast("Portfolio Updated");
 };
