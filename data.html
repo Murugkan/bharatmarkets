@@ -7,31 +7,33 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="app-core.js"></script>
     <style>
-        body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding:20px; }
+        body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding:15px; }
         .card { background:#0a0a0a; border:1px solid #1a1a1a; padding:15px; border-radius:8px; margin-bottom:15px; }
         .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:15px; font-weight:800; border-radius:4px; margin-bottom:10px; }
         input { width:100%; background:#111; border:1px solid #333; color:#fff; padding:12px; margin-bottom:10px; box-sizing:border-box; font-size:16px; }
-        .row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #111; }
+        .row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #111; }
+        .u-grn { color:#00ff88; font-weight:700; }
+        .u-red { color:#ff4444; font-weight:700; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2 style="font-size:10px; color:#555; text-transform:uppercase;">GitHub Connection</h2>
+    <h2 style="font-size:10px; color:#555; text-transform:uppercase;">1. GitHub Access</h2>
     <input type="password" id="pat" placeholder="GitHub PAT">
-    <input type="text" id="repo" placeholder="username/repository">
-    <button class="btn" onclick="saveAndTest()">SAVE & RUN DIAGNOSTIC</button>
+    <input type="text" id="repo" placeholder="username/repo">
+    <button class="btn" onclick="saveAndTest()">SAVE & DIAGNOSE</button>
     <div id="gh-diag" style="display:none"></div>
 </div>
 
 <div class="card">
-    <h2 style="font-size:10px; color:#555; text-transform:uppercase;">Portfolio Import</h2>
-    <input type="file" id="f-in" style="display:none" onchange="handleFile(this)">
-    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff" onclick="document.getElementById('f-in').click()">SELECT FILE</button>
+    <h2 style="font-size:10px; color:#555; text-transform:uppercase;">2. Import Portfolio</h2>
+    <input type="file" id="file-in" style="display:none" onchange="processImport(this)">
+    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff" onclick="document.getElementById('file-in').click()">SELECT EXCEL/CSV</button>
 </div>
 
 <div id="res-card" class="card" style="display:none">
-    <h2 style="font-size:10px; color:#00f2ff; text-transform:uppercase;">Resolution Engine</h2>
+    <h2 style="font-size:10px; color:#00f2ff; text-transform:uppercase;">3. Stock Resolution</h2>
     <div id="res-list"></div>
 </div>
 
@@ -43,7 +45,7 @@ function saveAndTest() {
     testGitHubConnection();
 }
 
-async function handleFile(input) {
+async function processImport(input) {
     if(!input.files[0]) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -51,23 +53,27 @@ async function handleFile(input) {
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         document.getElementById('res-card').style.display = 'block';
         const list = document.getElementById('res-list');
-        list.innerHTML = '';
+        list.innerHTML = '<div style="color:#555; font-size:12px;">Resolving symbols...</div>';
 
+        let html = '';
         for(let r of rows) {
-            const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
-            const res = await resolveSymbol(name);
-            const div = document.createElement('div');
-            div.className = 'row';
-            div.innerHTML = `
-                <div style="flex:1">
-                    <div style="font-size:10px; color:#555">${name}</div>
-                    <div style="color:${res?'#00ff88':'#ff4444'}; font-weight:700">${res?res.symbol:'FAILED'}</div>
-                </div>
-                <input type="text" placeholder="Fix" style="width:100px; margin:0; padding:6px; font-size:12px;" 
-                    value="${res?res.symbol:''}" onchange="updateAlias('${name}', this.value)">
-            `;
-            list.appendChild(div);
+            const rawName = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
+            if(!rawName) continue;
+            
+            const result = await resolveSymbol(rawName);
+            html += `
+                <div class="row">
+                    <div style="flex:1">
+                        <div style="font-size:10px; color:#666">${rawName}</div>
+                        <div class="${result ? 'u-grn' : 'u-red'}">${result ? result.symbol : 'FAILED'}</div>
+                    </div>
+                    <input type="text" placeholder="Ticker" 
+                        style="width:90px; margin:0; padding:6px; font-size:12px"
+                        value="${result ? result.symbol : ''}" 
+                        onchange="updateAlias('${rawName}', this.value)">
+                </div>`;
         }
+        list.innerHTML = html;
     };
     reader.readAsBinaryString(input.files[0]);
 }
