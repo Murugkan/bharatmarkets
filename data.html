@@ -2,87 +2,78 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
     <title>Onyx | DATA</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="app-core.js"></script>
     <style>
-        body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding-bottom:120px; }
-        .sec { margin: 15px; padding: 15px; background: #080808; border-radius: 8px; border: 1px solid #111; }
-        .btn-main { width: 100%; background: #00f2ff; color: #000; border: none; padding: 16px; font-weight: 900; border-radius: 4px; cursor: pointer; }
-        input { background:#111; border:1px solid #333; color:#fff; padding:12px; border-radius:3px; width: 100%; box-sizing: border-box; font-size: 16px; margin-bottom: 10px; }
-        .res-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #111; }
-        .res-name { font-size: 11px; color: #888; flex: 1; }
-        .res-action { width: 120px; }
-        .tag-method { font-size: 8px; padding: 2px 4px; background: #222; color: #00f2ff; margin-left: 5px; border-radius: 2px; }
-        .u-grn { color: #00ff88; } .u-red { color: #ff4444; }
+        body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding:20px; }
+        .card { background:#0a0a0a; border:1px solid #1a1a1a; padding:15px; border-radius:8px; margin-bottom:15px; }
+        .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:15px; font-weight:800; border-radius:4px; }
+        input { width:100%; background:#111; border:1px solid #333; color:#fff; padding:12px; margin-bottom:10px; box-sizing:border-box; }
+        .res-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #111; }
     </style>
 </head>
 <body>
 
-<div class="sec">
-    <h3 style="font-size:10px; color:#555; text-transform:uppercase;">0. Connection</h3>
-    <input type="password" id="pat" placeholder="GitHub PAT">
-    <input type="text" id="repo" placeholder="username/repository">
-    <button type="button" class="btn-main" id="btn-connect">CONNECT</button>
+<div class="card">
+    <h3 style="font-size:10px; color:#555;">GITHUB CONFIG</h3>
+    <input type="password" id="gh-token" placeholder="GitHub PAT">
+    <input type="text" id="gh-repo" placeholder="username/repo">
+    <button class="btn" onclick="saveSettingsAndTest()">SAVE & TEST CONNECTION</button>
+    <div id="gh-diag" style="margin-top:10px; font-size:11px;"></div>
 </div>
 
-<div class="sec">
-    <h3 style="font-size:10px; color:#555; text-transform:uppercase;">1. Import & Resolve</h3>
-    <input type="file" id="f-in" style="display:none" onchange="handleFile(this)">
-    <button type="button" class="btn-main" style="background:#111; color:#00f2ff; border:1px solid #00f2ff;" onclick="document.getElementById('f-in').click()">📂 SELECT FILE</button>
+<div class="card">
+    <h3 style="font-size:10px; color:#555;">PORTFOLIO IMPORT</h3>
+    <input type="file" id="f-picker" style="display:none" onchange="processFile(this)">
+    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff;" onclick="document.getElementById('f-picker').click()">UPLOAD FILE</button>
 </div>
 
-<div id="res-panel" class="sec" style="display:none;">
-    <h3 style="font-size:10px; color:#00f2ff; text-transform:uppercase;">Resolution Engine</h3>
+<div id="res-area" class="card" style="display:none">
+    <h3 style="font-size:10px; color:#00f2ff;">RESOLUTION ENGINE</h3>
     <div id="res-list"></div>
 </div>
 
 <script>
-const btn = document.getElementById('btn-connect');
-btn.addEventListener('click', async () => {
-    S.settings.ghToken = document.getElementById('pat').value;
-    S.settings.ghRepo = document.getElementById('repo').value;
-    saveSettings();
-    btn.innerText = "SAVED LOCALLY";
-    setTimeout(() => btn.innerText = "CONNECT", 2000);
-});
-
-async function handleFile(input) {
-    if(!input.files[0]) return;
-    const rawStocks = await parseFile(input.files[0]);
-    document.getElementById('res-panel').style.display = 'block';
-    const list = document.getElementById('res-list');
-    list.innerHTML = '<div style="color:#555; font-size:11px;">Normalizing & Matching...</div>';
-    
-    let html = '';
-    for(let s of rawStocks) {
-        const res = await resolveSymbol(s.name);
-        html += `<div class="res-row">
-            <div class="res-name">
-                ${s.name} ${res ? `<span class="tag-method">${res.method.toUpperCase()}</span>` : ''}
-                <div style="font-weight:bold; color:#fff; margin-top:4px;">${res ? res.symbol : 'FAILED'}</div>
-            </div>
-            <div class="res-action">
-                <input type="text" placeholder="Fix Symbol" 
-                    onchange="manualFix('${s.name}', this.value)" 
-                    style="margin:0; font-size:12px; padding:8px;"
-                    value="${res ? res.symbol : ''}">
-            </div>
-        </div>`;
-    }
-    list.innerHTML = html;
+function saveSettingsAndTest() {
+    S.settings.ghToken = document.getElementById('gh-token').value;
+    S.settings.ghRepo = document.getElementById('gh-repo').value;
+    localStorage.setItem('bm_settings', JSON.stringify(S));
+    testGitHubConnection();
 }
 
-function manualFix(originalName, newSymbol) {
-    if(!newSymbol) return;
-    saveAlias(originalName, newSymbol);
-    console.log(`Learned: ${originalName} -> ${newSymbol}`);
+async function processFile(input) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const wb = XLSX.read(e.target.result, {type:'binary'});
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        document.getElementById('res-area').style.display = 'block';
+        const list = document.getElementById('res-list');
+        list.innerHTML = '';
+
+        for(let row of data) {
+            const name = row["Company Name"] || row["Security Name"] || Object.values(row)[0];
+            const res = await resolveSymbol(name);
+            const div = document.createElement('div');
+            div.className = 'res-row';
+            div.innerHTML = `
+                <div style="flex:1">
+                    <div style="font-size:10px; color:#555">${name}</div>
+                    <div style="color:${res?'#00ff88':'#ff4444'}">${res?res.symbol:'FAILED'}</div>
+                </div>
+                <input type="text" placeholder="Fix" style="width:100px; margin:0; padding:5px;" 
+                    onchange="updateAlias('${name}', this.value)" value="${res?res.symbol:''}">
+            `;
+            list.appendChild(div);
+        }
+    };
+    reader.readAsBinaryString(input.files[0]);
 }
 
 window.onload = () => {
-    document.getElementById('pat').value = S.settings.ghToken || '';
-    document.getElementById('repo').value = S.settings.ghRepo || '';
+    document.getElementById('gh-token').value = S.settings.ghToken || '';
+    document.getElementById('gh-repo').value = S.settings.ghRepo || '';
 };
 </script>
 </body>
