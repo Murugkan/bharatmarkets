@@ -9,13 +9,13 @@ window.openImport = () => {
     body.innerHTML = `
         <div class="upload-zone" style="border:2px dashed #333; border-radius:20px; padding:40px; text-align:center; margin-bottom:20px;" onclick="document.getElementById('file-input').click()">
             <div style="font-size:40px; margin-bottom:10px;">📁</div>
-            <div style="font-weight:700;">Tap to select CDSL XLS file</div>
+            <div style="font-weight:700; color:#fff;">Select CDSL XLS/CSV</div>
             <input type="file" id="file-input" hidden onchange="handleFileSelect(event)" accept=".xls,.xlsx,.csv">
         </div>
         <div id="file-status" style="font-family:var(--mono); font-size:12px; margin-bottom:20px; color:var(--ac);"></div>
-        <div id="import-actions" style="display:none; gap:10px;">
-            <button class="import-btn" style="background:#222; color:#fff;" onclick="commitImport(true)">Import (Replace All)</button>
-            <button class="import-btn" onclick="commitImport(false)">Append to Existing</button>
+        <div id="import-actions" style="display:none; gap:10px; grid-template-columns: 1fr 1fr;">
+            <button class="import-btn" style="background:#222; color:#fff;" onclick="commitImport(true)">Replace All</button>
+            <button class="import-btn" onclick="commitImport(false)">Append</button>
         </div>
     `;
     ov.classList.add('on');
@@ -32,30 +32,40 @@ window.handleFileSelect = (e) => {
         const lines = raw.split(/\r?\n/);
         const parsed = [];
 
-        // Skip the first 5 rows (headers/metadata)
-        for (let i = 5; i < lines.length; i++) {
-            const cols = lines[i].split(',');
-            if (cols.length < 5) continue;
+        log(`Processing ${lines.length} lines...`);
 
-            const isin = cols[1]?.trim(); // ISIN is Column 1
-            if (isin && isin.startsWith('IN')) {
-                parsed.push({
-                    sym: cols[0]?.trim(),        // Stock Name
-                    isin: isin,
-                    qty: parseFloat(cols[3]) || 0, // Quantity
-                    avg: parseFloat(cols[4]) || 0, // Average Cost
-                    sector: cols[2]?.trim() || "Others" // Sector
-                });
+        lines.forEach((line, index) => {
+            // Clean the line and split by comma
+            const cols = line.split(',').map(c => c.trim());
+            
+            // Look for the ISIN pattern (IN...) in any column to identify data rows
+            const isinIdx = cols.findIndex(c => c.startsWith('IN') && c.length === 12);
+            
+            if (isinIdx !== -1) {
+                // Based on your file: Name is Col 0, ISIN is Col 1, Sector is Col 2, Qty is Col 3, Price is Col 4
+                const qty = parseFloat(cols[isinIdx + 2]);
+                const price = parseFloat(cols[isinIdx + 3]);
+
+                if (!isNaN(qty) && qty > 0) {
+                    parsed.push({
+                        sym: cols[isinIdx - 1] || "Unknown",
+                        isin: cols[isinIdx],
+                        sector: cols[isinIdx + 1] || "Others",
+                        qty: qty,
+                        avg: price || 0
+                    });
+                }
             }
-        }
+        });
 
         if (parsed.length > 0) {
             window.PENDING_DATA = parsed;
-            document.getElementById('file-status').innerHTML = `✅ Decoded ${parsed.length} stocks.`;
+            document.getElementById('file-status').innerHTML = `✅ Found ${parsed.length} stocks`;
             document.getElementById('import-actions').style.display = 'grid';
-            document.getElementById('import-actions').style.gridTemplateColumns = '1fr 1fr';
+            log(`Successfully parsed ${parsed.length} rows.`);
         } else {
-            document.getElementById('file-status').innerHTML = `❌ Could not decode data.`;
+            document.getElementById('file-status').innerHTML = `❌ No valid data found. Check console.`;
+            log("Parsing failed: No rows matched the ISIN pattern.");
         }
     };
     reader.readAsText(file);
@@ -70,10 +80,12 @@ window.commitImport = (replaceAll) => {
         window.PENDING_DATA.forEach(newItem => {
             const idx = S.portfolio.findIndex(p => p.isin === newItem.isin);
             if (idx > -1) {
-                // Update existing: Weighted Average Price
                 const oldQty = S.portfolio[idx].qty;
                 const newQty = oldQty + newItem.qty;
-                S.portfolio[idx].avg = ((oldQty * S.portfolio[idx].avg) + (newItem.qty * newItem.avg)) / newQty;
+                // Avoid division by zero
+                if (newQty > 0) {
+                    S.portfolio[idx].avg = ((oldQty * S.portfolio[idx].avg) + (newItem.qty * newItem.avg)) / newQty;
+                }
                 S.portfolio[idx].qty = newQty;
             } else {
                 S.portfolio.push(newItem);
@@ -82,7 +94,7 @@ window.commitImport = (replaceAll) => {
     }
 
     localStorage.setItem('soya_portfolio', JSON.stringify(S.portfolio));
-    toast("Portfolio Updated!");
+    toast(replaceAll ? "Portfolio Reset" : "Portfolio Appended");
     if (typeof render === 'function') render();
     closePanel();
 };
