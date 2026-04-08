@@ -12,7 +12,7 @@
         .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:16px; font-weight:800; border-radius:4px; font-size:12px; }
         input { width:100%; background:#111; border:1px solid #333; color:#fff; padding:12px; margin-bottom:10px; box-sizing:border-box; font-size:16px; border-radius:4px; }
         #debug-console { height:120px; background:#050505; border:1px solid #222; overflow-y:auto; margin-top:10px; padding:5px; border-radius:4px; font-family:monospace; }
-        .res-row { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #111; }
+        .res-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #111; }
         input.fix { width:90px; background:#111; border:1px solid #333; color:#fff; padding:8px; margin:0; font-size:13px; text-align:center; }
     </style>
 </head>
@@ -20,27 +20,26 @@
 
 <div class="card">
     <h3 style="font-size:10px; color:#555; margin-bottom:10px;">0. CONNECTION</h3>
-    <input type="password" id="p" placeholder="GitHub PAT" onchange="window.S.settings.ghToken=this.value; localStorage.setItem('bm_settings', JSON.stringify(window.S));">
-    <input type="text" id="r" placeholder="username/repository" onchange="window.S.settings.ghRepo=this.value; localStorage.setItem('bm_settings', JSON.stringify(window.S));">
+    <input type="password" id="p" placeholder="GitHub PAT">
+    <input type="text" id="r" placeholder="username/repository">
     <button class="btn" onclick="testGitHubConnection()">SAVE & DIAGNOSE</button>
     <div id="gh-diag"></div>
 </div>
 
 <div class="card">
-    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">1. IMPORT & RESOLVE</h3>
-    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff" onclick="document.getElementById('fin').click()">SELECT FILE</button>
+    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">1. IMPORT</h3>
+    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff" onclick="document.getElementById('fin').click()">SELECT EXCEL/CSV</button>
     <input type="file" id="fin" style="display:none" onchange="startImport(this)">
     <div id="debug-console"></div>
 </div>
 
 <div id="res-area" class="card" style="display:none">
-    <h3 style="font-size:10px; color:#00f2ff; margin-bottom:10px;">RESOLUTION ENGINE</h3>
+    <h3 style="font-size:10px; color:#00f2ff; margin-bottom:10px;">RESOLUTION RESULTS</h3>
     <div id="res-list"></div>
 </div>
 
 <script>
 async function startImport(input) {
-    if(!input.files[0]) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
         try {
@@ -50,32 +49,28 @@ async function startImport(input) {
             document.getElementById('res-area').style.display = 'block';
             list.innerHTML = '';
             
-            dataLog(`File loaded: ${rows.length} stocks found.`, 'info');
+            dataLog(`Processing ${rows.length} rows...`, 'info');
 
             for(let r of rows) {
                 const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
-                if(!name) continue;
+                const res = await resolveSymbol(name);
+                if(!res) continue;
 
                 const rowDiv = document.createElement('div');
                 rowDiv.className = 'res-row';
-                list.appendChild(rowDiv);
-
-                const res = await resolveSymbol(name);
-                
                 rowDiv.innerHTML = `
                     <div style="flex:1">
-                        <div style="font-size:10px; color:#666">${name}</div>
+                        <div style="font-size:10px; color:#555">${name}</div>
                         <div style="color:${res.error?'#ff4444':'#00ff88'}; font-weight:bold">${res.symbol}</div>
                     </div>
                     <input type="text" class="fix" placeholder="Fix" 
                         value="${res.error?'':res.symbol}" 
                         onchange="updateAlias('${name}', this.value)">
                 `;
+                list.appendChild(rowDiv);
             }
-            dataLog("Success: Resolution complete.", "success");
-        } catch(err) {
-            dataLog("Import Error: " + err.message, "error");
-        }
+            dataLog("Finished.", "success");
+        } catch(err) { dataLog("Error: " + err.message, "error"); }
     };
     reader.readAsBinaryString(input.files[0]);
 }
