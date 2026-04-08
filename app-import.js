@@ -1,5 +1,6 @@
 function openPanel(){document.getElementById('ov').classList.add('on');document.getElementById('import-panel').classList.add('on');}
 function closePanel(){document.getElementById('ov').classList.remove('on');document.getElementById('import-panel').classList.remove('on');}
+
 // PORTFOLIO IMPORT — CDSL XLS, CSV, or manual entry
 // Parses holdings, saves, then triggers full data refresh
 function openImport(){
@@ -34,14 +35,12 @@ function renderImportPanel(){
   .imp-report-reason{color:var(--tx3);}
   </style>
 
-  <!-- Tabs -->
   <div class="imp-tabs">
     <div class="imp-tab on" id="itab-file" onclick="switchImpTab('file')">📁 CDSL XLS</div>
     <div class="imp-tab" id="itab-paste" onclick="switchImpTab('paste')">📋 CDSL Text</div>
     <div class="imp-tab" id="itab-manual" onclick="switchImpTab('manual')">✏ Manual</div>
   </div>
 
-  <!-- Tab: XLS File Upload -->
   <div class="imp-pane on" id="ipane-file">
     <div class="file-drop" id="file-drop-zone"
       onclick="document.getElementById('file-input').click()"
@@ -58,11 +57,9 @@ function renderImportPanel(){
       </div>
     </div>
     <div id="file-status" style="margin-top:10px;font-size:10px;color:var(--tx3);font-family:var(--mono);min-height:20px"></div>
-    <!-- Error/warning report -->
     <div id="imp-report" style="display:none;margin-top:8px"></div>
   </div>
 
-  <!-- Tab: CDSL Text Paste -->
   <div class="imp-pane" id="ipane-paste">
     <div class="imp-fmt">
       <b class="u-gr2">How to get this:</b><br>
@@ -76,7 +73,6 @@ function renderImportPanel(){
       oninput="liveParseImport(this.value)" rows="9"></textarea>
   </div>
 
-  <!-- Tab: Manual Entry -->
   <div class="imp-pane" id="ipane-manual">
     <div class="imp-fmt">
       <b class="u-gr2">Format:</b>  SYMBOL, QTY, AVG_BUY<br>
@@ -92,7 +88,6 @@ function renderImportPanel(){
       oninput="liveParseImport(this.value,'manual')" rows="9"></textarea>
   </div>
 
-  <!-- Preview -->
   <div class="import-err" id="import-err"></div>
   <div class="import-preview" id="import-preview">
     <div class="import-preview-title" id="import-preview-title">Preview</div>
@@ -369,21 +364,16 @@ function parsePortfolioText(text){
   const seen    = new Set();
 
   // ── Detect CDSL XLS/CSV export format ─────────────────────────
-  // Header: Stock Name,ISIN,Sector Name,Quantity,Average Cost Price,Value At Cost,
-  //         Current Market Price,Current Market Price % Change,Valuation at Current Market Price,
-  //         Unrealized Profit/Loss,...
   const isCDSLExport = /Stock Name.*ISIN.*Sector.*Quantity.*Average Cost Price/i.test(text) ||
                        /ISIN.*Sector.*Quantity.*Average Cost/i.test(text);
 
   if(isCDSLExport){
-    // Parse as CSV — split by lines, skip header rows and summary rows
     const lines = text.replace(/\r/g,'').split('\n');
     for(const line of lines){
       const cols = line.split(',').map(c=>c.replace(/^"|"$/g,'').trim());
-      // Need at least: name, isin, sector, qty, avgBuy
       if(cols.length < 5) continue;
       const isin = cols[1];
-      if(!/^IN[A-Z0-9]{10,12}$/.test(isin)) continue; // must have valid ISIN
+      if(!/^IN[A-Z0-9]{10,12}$/.test(isin)) continue;
 
       const name    = cols[0].trim();
       const sector  = cols[2].trim();
@@ -393,11 +383,8 @@ function parsePortfolioText(text){
       const pnl     = parseFloat((cols[9]||'').replace(/,/g,'')) || 0;
 
       if(!name || qty <= 0 || seen.has(isin)) continue;
-
-      // Skip ETFs and Bonds (no NSE equity symbol)
       if(/ETF|BOND|GOLDBOND|SGB|SBI ETF|MIRAEAMC/i.test(name)) continue;
 
-      // Resolve NSE symbol from ISIN map first, then name
       let sym = ISIN_MAP[isin] || '';
       if(!sym){ sym = name.replace(/[^A-Z0-9]/g,'').slice(0,12); }
 
@@ -406,14 +393,14 @@ function parsePortfolioText(text){
       results.push({
         sym,
         isin,
-        cdslName: name,   // original CDSL company name — used for Yahoo search fallback
+        cdslName: name,
         name:    info.name || name,
         sector:  info.sector || sector || 'Diversified',
         qty,
-        avgBuy,           // ✅ Real avg buy price from CDSL
-        ltp,              // Current market price from CDSL
+        avgBuy,
+        ltp,
         change:  0,
-        pnl,              // Unrealized P&L from CDSL
+        pnl,
         cdslImport: true,
       });
     }
@@ -421,7 +408,6 @@ function parsePortfolioText(text){
   }
 
   // ── Fallback: Plain text / manual paste ────────────────────────
-  // Step 1: Join wrapped CDSL lines (ISIN on line 1, Beneficiary on line 2)
   const rawLines = text.replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(l=>l.length>2);
   const joined   = [];
   let i = 0;
@@ -448,7 +434,6 @@ function parsePortfolioText(text){
 
     let sym='', isin='', qty=0, avgBuy=0, ltp=0;
 
-    // Pattern 1: CDSL text — has ISIN + Beneficiary
     const cdslMatch = line.match(/\b(IN[A-Z0-9]{10,12})\b/);
     if(cdslMatch){
       isin = cdslMatch[1];
@@ -460,14 +445,9 @@ function parsePortfolioText(text){
         .filter(n=>n>0&&n<1e10);
       if(nums.length>=2){
         qty = Math.round(nums[0]);
-        // CDSL text last number = current market value (qty × LTP)
-        // Derive LTP from value/qty — this is the CDSL snapshot price, not avg buy
-        // avgBuy is NOT available in CDSL text format — leave as 0
-        // But we store the CDSL value/qty as ltp so at least we have a price reference
         const totalVal = nums[nums.length-1];
         ltp = qty>0 ? Math.round(totalVal/qty*100)/100 : 0;
-        avgBuy = 0; // CDSL text format does not include avg buy price
-        // Note: to get avgBuy, use CDSL XLS/CSV export (Equity_Summary_Details)
+        avgBuy = 0;
       } else if(nums.length===1){
         qty = Math.round(nums[0]);
       }
@@ -490,7 +470,6 @@ function parsePortfolioText(text){
       continue;
     }
 
-    // Pattern 2: CSV / manual — Symbol, Qty, AvgBuy  OR  Symbol, ISIN, Qty, AvgBuy
     const parts = line.split(/[,\t|;]+/).map(p=>p.trim()).filter(Boolean);
     if(parts.length>=2){
       const maybeISIN = parts.find(p=>/^IN[A-Z0-9]{10,12}$/.test(p));
@@ -499,8 +478,6 @@ function parsePortfolioText(text){
       isin = maybeISIN || '';
       sym  = isin ? (ISIN_MAP[isin]||maybeSym) : maybeSym;
       if(nums.length>=2){ qty=Math.round(nums[0]); avgBuy=nums[1]; }
-      // If 3 numbers and nums[1] looks like a total invested amount (not per-share):
-      // heuristic — if nums[1]/nums[0] gives a price < nums[2] then nums[1] is total
       if(nums.length>=3){
         const perShare = nums[1]/Math.max(nums[0],1);
         if(perShare > 1 && perShare < nums[2] * 0.95){
@@ -519,12 +496,10 @@ function parsePortfolioText(text){
   return results;
 }
 
-// Apply parsed holdings to portfolio, then trigger data refresh
+// Apply parsed holdings to portfolio, then trigger 3-step data refresh
 function applyImport(mode){
   if(!parsedHoldings.length){toast('Nothing to import — paste data first');return;}
 
-  // Save avgBuy values keyed by sym AND isin before any changes
-  // so they survive both replace and append modes
   const savedAvg = {};
   S.portfolio.forEach(h=>{
     if(h.avgBuy>0){
@@ -545,7 +520,6 @@ function applyImport(mode){
     }
   });
 
-  // Restore avgBuy values that were lost during import
   S.portfolio.forEach(h=>{
     if(!h.avgBuy || h.avgBuy===0){
       const restored = savedAvg[h.sym] || savedAvg[h.isin] || 0;
@@ -556,19 +530,18 @@ function applyImport(mode){
   closePanel();
   parsedHoldings = [];
 
-  // ── Switch to portfolio tab immediately ───────────────────────
+  // Switch to portfolio tab
   S.curTab = 'portfolio';
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   const pfBtn = document.querySelector('.nb');
   if(pfBtn) pfBtn.classList.add('active');
 
-  // Set sync status to show live progress in portfolio tab
   S._importStatus = { state:'syncing', msg:'Imported — refreshing data…', ts: Date.now() };
   render();
 
-  // ── Data refresh pipeline (sequential, with visible status) ──
+  // Sequential AI-driven refresh pipeline
   (async ()=>{
-    // Step 1: Clear stale fund cache + reload fundamentals.json
+    // Step 1: Reload Fundamentals
     localStorage.removeItem('fund_cache');
     localStorage.removeItem('fund_cache_ts');
     S._importStatus = { state:'syncing', msg:'Step 1/3 — Loading fundamentals…', ts: Date.now() };
@@ -576,19 +549,18 @@ function applyImport(mode){
     await loadFundamentals(true);
     render();
 
-    // Step 2: Fetch live prices
+    // Step 2: Fetch Live Prices
     S._importStatus = { state:'syncing', msg:'Step 2/3 — Fetching live prices…', ts: Date.now() };
     updateImportStatus();
     await refreshPortfolioData();
 
-    // Step 3: Sync to GitHub + trigger Actions
+    // Step 3: Sync Symbols & Trigger GitHub Action
     S._importStatus = { state:'syncing', msg:'Step 3/3 — Syncing to GitHub…', ts: Date.now() };
     updateImportStatus();
     await autoSyncPortfolioSymbols();
   })();
 }
 
-// ── Update the status strip in portfolio tab without full re-render ──
 function updateImportStatus(){
   const el = document.getElementById('import-status-strip');
   if(el && S._importStatus) el.innerHTML = importStatusHtml();
@@ -607,14 +579,10 @@ function importStatusHtml(){
   </div>`;
 }
 
-// ── Auto-sync portfolio symbols to GitHub after import ────────────
-// AUTO-SYNC — commits portfolio_symbols.txt to GitHub
-// and triggers 'all' workflow after import (RESOLVE=true confirms symbols via Yahoo)
-
 async function autoSyncPortfolioSymbols(){
   const token = S.settings.ghToken?.trim();
   const repo  = S.settings.ghRepo?.trim();
-  if(!token || !repo) return; // silent — user hasn't configured GitHub
+  if(!token || !repo) return;
 
   const txt = S.portfolio
     .filter(h=>h.sym)
@@ -626,18 +594,16 @@ async function autoSyncPortfolioSymbols(){
   const fileUrl = 'https://api.github.com/repos/'+repo+'/contents/portfolio_symbols.txt';
 
   try{
-    // Get current SHA
     let sha = null;
     const get = await fetch(fileUrl, {headers});
     if(get.ok){ const d = await get.json(); sha = d.sha; }
 
-    // Commit updated portfolio_symbols.txt
     const body = { message:'portfolio: update symbols', content: encoded };
     if(sha) body.sha = sha;
     const put = await fetch(fileUrl, { method:'PUT', headers, body:JSON.stringify(body) });
     if(!put.ok){
       const err = await put.json().catch(()=>({}));
-      const msg = 'portfolio_symbols.txt commit failed: '+(err.message||put.status)+' — check PAT has repo scope';
+      const msg = 'portfolio_symbols.txt commit failed: '+(err.message||put.status);
       S.settings._lastSync = Date.now();
       S.settings._lastSyncOk = false;
       S.settings._lastSyncMsg = msg;
@@ -648,8 +614,7 @@ async function autoSyncPortfolioSymbols(){
       return;
     }
 
-    // Trigger fundamentals fetch workflow
-    await new Promise(r=>setTimeout(r, 1500)); // let commit land
+    await new Promise(r=>setTimeout(r, 1500));
     const wfUrl = 'https://api.github.com/repos/'+repo+'/actions/workflows/fetch-prices.yml/dispatches';
     const wfRes = await fetch(wfUrl, {
       method:'POST', headers,
@@ -662,18 +627,6 @@ async function autoSyncPortfolioSymbols(){
       S.settings._lastSyncMsg = 'Symbols synced + workflow triggered';
       saveSettings();
       S._importStatus = { state:'ok', msg:'Synced ✓ — fundamentals fetching in background (~5 min)', ts: Date.now() };
-      updateImportStatus();
-    } else if(wfRes.status === 403){
-      const msg = 'GitHub PAT needs "workflow" scope — run diagnostic in Watchlist settings';
-      S.settings._lastSync    = Date.now();
-      S.settings._lastSyncOk  = false;
-      S.settings._lastSyncMsg = msg;
-      saveSettings();
-      S._importStatus = { state:'error', msg: msg, ts: Date.now() };
-      updateImportStatus();
-    } else if(wfRes.status === 422){
-      const msg = 'Workflow not found — check fetch-prices.yml exists in .github/workflows/';
-      S._importStatus = { state:'error', msg, ts: Date.now() };
       updateImportStatus();
     } else {
       const e2 = await wfRes.json().catch(()=>({}));
@@ -691,11 +644,3 @@ async function autoSyncPortfolioSymbols(){
     updateImportStatus();
   }
 }
-
-//  PORTFOLIO TAB — Bloomberg Terminal Style Screener Grid
-//  Matches: color-coded rows, dense columns, signal badges
-
-// Refresh state
-
-// Signal logic for each stock
-// Color a numeric cell based on value vs threshold
