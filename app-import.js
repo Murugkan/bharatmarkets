@@ -9,7 +9,7 @@ window.openImport = () => {
     body.innerHTML = `
         <div class="upload-zone" style="border:2px dashed #444; border-radius:20px; padding:40px; text-align:center; margin-bottom:20px; cursor:pointer;" onclick="document.getElementById('file-input').click()">
             <div style="font-size:40px; margin-bottom:10px;">📊</div>
-            <div style="font-weight:700; color:#fff;">Select Portfolio File</div>
+            <div style="font-weight:700; color:#fff;">Select CDSL XLS/CSV</div>
             <input type="file" id="file-input" hidden onchange="handleFileSelect(event)">
         </div>
         <div id="file-status" style="font-family:var(--mono); font-size:12px; margin-bottom:20px; color:var(--ac); text-align:center;"></div>
@@ -27,37 +27,46 @@ window.handleFileSelect = (e) => {
     if (!file) return;
 
     const reader = new FileReader();
+    // Use readAsBinaryString for older XLS or readAsText for CSV
+    // We'll use readAsArrayBuffer to be safe with binary Excel
     reader.onload = (event) => {
-        const raw = event.target.result;
-        const lines = raw.split(/\r?\n/);
+        const arrayBuffer = event.target.result;
+        const uint8 = new Uint8Array(arrayBuffer);
+        let raw = "";
+        
+        // Convert to string safely (works for both binary and text)
+        for (let i = 0; i < uint8.length; i++) {
+            raw += String.fromCharCode(uint8[i]);
+        }
+
+        const lines = raw.split(/[\r\n]+/);
         const parsed = [];
 
         lines.forEach((line) => {
-            const parts = line.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
-            
-            // Find row by Name (Exclude headers/totals)
+            // Remove non-printable characters that Excel inserts
+            const cleanLine = line.replace(/[^\x20-\x7E,]/g, "");
+            const parts = cleanLine.split(',').map(p => p.trim());
+
+            // Landmark: Stock Names are usually uppercase and long
             const nameIdx = parts.findIndex(p => 
-                p.length > 2 && 
+                p.length > 5 && 
                 !p.includes("Details") && 
-                !p.includes("Stock Name") && 
+                !p.includes("Report") &&
                 !p.includes("TOTAL")
             );
 
             if (nameIdx !== -1) {
                 const stockName = parts[nameIdx];
-                
-                // Collect all valid numbers in the row
+                // Grab numbers in that row
                 const rowNums = parts.slice(nameIdx + 1)
-                    .map(p => parseFloat(p.replace(/[^0-9.-]/g, '')))
-                    .filter(n => !isNaN(n));
+                    .map(p => parseFloat(p.replace(/[^0-9.]/g, '')))
+                    .filter(n => !isNaN(n) && n > 0);
 
-                // CDSL Mapping: [Sector, ISIN, Qty, Price...]
-                // rowNums[1] is Qty, rowNums[2] is Avg Price
-                if (rowNums.length >= 3) {
+                if (rowNums.length >= 2) {
                     parsed.push({
                         sym: stockName,
-                        qty: rowNums[1],
-                        avg: rowNums[2]
+                        qty: rowNums[rowNums.length - 2], // Penultimate number is usually Qty
+                        avg: rowNums[rowNums.length - 1]  // Last number is usually Price
                     });
                 }
             }
@@ -65,39 +74,33 @@ window.handleFileSelect = (e) => {
 
         if (parsed.length > 0) {
             window.PENDING_DATA = parsed;
-            document.getElementById('file-status').innerHTML = `✅ Found ${parsed.length} Stocks`;
+            document.getElementById('file-status').innerHTML = `✅ Parsed ${parsed.length} Stocks`;
             document.getElementById('import-actions').style.display = 'grid';
         } else {
-            document.getElementById('file-status').innerHTML = `❌ No valid data rows.`;
+            document.getElementById('file-status').innerHTML = `❌ Format Error: Try saving as CSV`;
         }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
 };
 
 window.commitImport = (replaceAll) => {
     if (!window.PENDING_DATA) return;
-
-    if (replaceAll) {
-        S.portfolio = [...window.PENDING_DATA];
-    } else {
-        window.PENDING_DATA.forEach(newItem => {
-            const idx = S.portfolio.findIndex(p => p.sym === newItem.sym);
+    if (replaceAll) S.portfolio = [...window.PENDING_DATA];
+    else {
+        window.PENDING_DATA.forEach(n => {
+            const idx = S.portfolio.findIndex(p => p.sym === n.sym);
             if (idx > -1) {
-                const oldQty = S.portfolio[idx].qty || 0;
-                const newQty = oldQty + newItem.qty;
-                if (newQty > 0) {
-                    const totalCost = (oldQty * (S.portfolio[idx].avg || 0)) + (newItem.qty * newItem.avg);
-                    S.portfolio[idx].avg = totalCost / newQty;
+                const oldQ = S.portfolio[idx].qty || 0;
+                const newQ = oldQ + n.qty;
+                if (newQ > 0) {
+                    S.portfolio[idx].avg = ((oldQ * (S.portfolio[idx].avg || 0)) + (n.qty * n.avg)) / newQ;
                 }
-                S.portfolio[idx].qty = newQty;
-            } else {
-                S.portfolio.push(newItem);
-            }
+                S.portfolio[idx].qty = newQ;
+            } else S.portfolio.push(n);
         });
     }
-
     localStorage.setItem('soya_portfolio', JSON.stringify(S.portfolio));
-    toast(replaceAll ? "Portfolio Reset" : "Data Appended");
-    if (typeof render === 'function') render();
+    if (window.render) render();
     closePanel();
+    toast("Import Successful");
 };
