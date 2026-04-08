@@ -7,90 +7,45 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="app-core.js"></script>
     <style>
-        body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding-bottom:120px; -webkit-tap-highlight-color: transparent; }
+        body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding-bottom:120px; }
         .sec { margin: 15px; padding: 15px; background: #080808; border-radius: 8px; border: 1px solid #111; }
-        .btn-main { 
-            width: 100%; background: #00f2ff; color: #000; border: none; padding: 18px; 
-            font-weight: 900; border-radius: 4px; text-transform: uppercase; margin-top:10px; cursor: pointer;
-        }
-        .btn-main:disabled { background: #222; color: #555; }
-        #conn-status { font-size:11px; margin-top:12px; display:block; text-align:center; }
-        input { 
-            background:#111; border:1px solid #333; color:#fff; padding:14px; 
-            border-radius:3px; width: 100%; box-sizing: border-box; font-size: 16px; margin-bottom: 10px; 
-        }
-        .diag-row { display: flex; justify-content: space-between; font-size: 10px; padding: 4px 0; border-bottom: 1px solid #111; color: #888; }
+        .btn-main { width: 100%; background: #00f2ff; color: #000; border: none; padding: 16px; font-weight: 900; border-radius: 4px; cursor: pointer; }
+        input { background:#111; border:1px solid #333; color:#fff; padding:12px; border-radius:3px; width: 100%; box-sizing: border-box; font-size: 16px; margin-bottom: 10px; }
+        .res-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #111; }
+        .res-name { font-size: 11px; color: #888; flex: 1; }
+        .res-action { width: 120px; }
+        .tag-method { font-size: 8px; padding: 2px 4px; background: #222; color: #00f2ff; margin-left: 5px; border-radius: 2px; }
         .u-grn { color: #00ff88; } .u-red { color: #ff4444; }
     </style>
 </head>
 <body>
 
 <div class="sec">
-    <h3 style="font-size:10px; color:#555; text-transform:uppercase; margin-bottom:10px;">0. Connection</h3>
+    <h3 style="font-size:10px; color:#555; text-transform:uppercase;">0. Connection</h3>
     <input type="password" id="pat" placeholder="GitHub PAT">
     <input type="text" id="repo" placeholder="username/repository">
     <button type="button" class="btn-main" id="btn-connect">CONNECT</button>
-    <div id="diag-panel" style="margin-top:10px; display:none;">
-        <div class="diag-row"><span>Repo Access</span><span id="diag-repo">—</span></div>
-        <div class="diag-row"><span>Workflow File</span><span id="diag-wf">—</span></div>
-    </div>
-    <span id="conn-status">Ready</span>
 </div>
 
-<div class="sec" id="import-gate">
-    <h3 style="font-size:10px; color:#555; text-transform:uppercase; margin-bottom:10px;">1. Import</h3>
+<div class="sec">
+    <h3 style="font-size:10px; color:#555; text-transform:uppercase;">1. Import & Resolve</h3>
     <input type="file" id="f-in" style="display:none" onchange="handleFile(this)">
-    <button type="button" class="btn-main" style="background:#222; color:#00f2ff; border:1px solid #00f2ff;" onclick="document.getElementById('f-in').click()">📂 SELECT FILE</button>
+    <button type="button" class="btn-main" style="background:#111; color:#00f2ff; border:1px solid #00f2ff;" onclick="document.getElementById('f-in').click()">📂 SELECT FILE</button>
 </div>
 
 <div id="res-panel" class="sec" style="display:none;">
-    <h3 style="font-size:10px; color:#00f2ff; text-transform:uppercase;">Resolution Results</h3>
+    <h3 style="font-size:10px; color:#00f2ff; text-transform:uppercase;">Resolution Engine</h3>
     <div id="res-list"></div>
 </div>
 
 <script>
 const btn = document.getElementById('btn-connect');
-const status = document.getElementById('conn-status');
-
 btn.addEventListener('click', async () => {
-    const pVal = document.getElementById('pat').value.trim();
-    const rVal = document.getElementById('repo').value.trim();
-    
-    // 1. LOCAL SANITY CHECK (The "bbnnn" filter)
-    const repoRegex = /^[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+$/;
-    if (!repoRegex.test(rVal)) {
-        status.innerText = "Error: Invalid Repo Format (e.g. user/repo)";
-        status.className = "u-red";
-        return;
-    }
-
-    // 2. PERSIST SETTINGS
-    S.settings.ghToken = pVal;
-    S.settings.ghRepo = rVal;
+    S.settings.ghToken = document.getElementById('pat').value;
+    S.settings.ghRepo = document.getElementById('repo').value;
     saveSettings();
-
-    // 3. ASYNC DIAGNOSTIC
-    btn.disabled = true;
-    btn.innerText = "VERIFYING...";
-    document.getElementById('diag-panel').style.display = 'block';
-    
-    const check = await testConnection(pVal, rVal);
-    
-    document.getElementById('diag-repo').innerHTML = check.repo ? '<span class="u-grn">OK</span>' : '<span class="u-red">FAIL</span>';
-    document.getElementById('diag-wf').innerHTML = check.workflow ? '<span class="u-grn">OK</span>' : '<span class="u-red">MISSING</span>';
-
-    if (check.status === 'ok' && check.repo) {
-        btn.innerText = "CONNECTED";
-        btn.style.background = "#111"; btn.style.color = "#00ff88";
-        status.innerText = "GitHub Sync Active"; status.className = "u-grn";
-    } else if (check.status === 'network_block') {
-        btn.innerText = "LOCAL MODE";
-        status.innerText = "CORS Blocked Verification - Using Local Memory";
-        status.className = "u-red";
-    } else {
-        btn.innerText = "RETRY"; btn.disabled = false;
-        status.innerText = check.msg || "Connection Failed";
-    }
+    btn.innerText = "SAVED LOCALLY";
+    setTimeout(() => btn.innerText = "CONNECT", 2000);
 });
 
 async function handleFile(input) {
@@ -98,12 +53,31 @@ async function handleFile(input) {
     const rawStocks = await parseFile(input.files[0]);
     document.getElementById('res-panel').style.display = 'block';
     const list = document.getElementById('res-list');
-    list.innerHTML = 'Processing...';
+    list.innerHTML = '<div style="color:#555; font-size:11px;">Normalizing & Matching...</div>';
+    
+    let html = '';
     for(let s of rawStocks) {
-        if(checkDuplicate(s.name)) continue;
-        const res = await searchYahoo(s.name);
-        list.innerHTML += `<div style="padding:10px; border-bottom:1px solid #111;">${res ? '✅ '+res.quote.symbol : '❌ '+s.name}</div>`;
+        const res = await resolveSymbol(s.name);
+        html += `<div class="res-row">
+            <div class="res-name">
+                ${s.name} ${res ? `<span class="tag-method">${res.method.toUpperCase()}</span>` : ''}
+                <div style="font-weight:bold; color:#fff; margin-top:4px;">${res ? res.symbol : 'FAILED'}</div>
+            </div>
+            <div class="res-action">
+                <input type="text" placeholder="Fix Symbol" 
+                    onchange="manualFix('${s.name}', this.value)" 
+                    style="margin:0; font-size:12px; padding:8px;"
+                    value="${res ? res.symbol : ''}">
+            </div>
+        </div>`;
     }
+    list.innerHTML = html;
+}
+
+function manualFix(originalName, newSymbol) {
+    if(!newSymbol) return;
+    saveAlias(originalName, newSymbol);
+    console.log(`Learned: ${originalName} -> ${newSymbol}`);
 }
 
 window.onload = () => {
