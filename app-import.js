@@ -79,19 +79,28 @@ function showImportUI() {
 function renderStep1() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Upload Stock List</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Upload CSV or XLS file with columns: <b>Stock Name, Symbol, [QTY], [AVG]</b><br>' +
-        'Symbol is required. QTY and AVG are optional.<br>' +
-        'If QTY exists → marked as PORTFOLIO, else WATCHLIST' +
-        '</p>' +
+        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
+        '<b style="color:#00ff88;">CSV Format:</b><br>' +
+        'Stock Name, [QTY], [AVG]<br><br>' +
+        '<b style="color:#00ff88;">Requirements:</b><br>' +
+        '• Stock Name: Full company name (required)<br>' +
+        '• QTY: Quantity (optional)<br>' +
+        '• AVG: Average price (optional)<br>' +
+        '• Has QTY → PORTFOLIO | No QTY → WATCHLIST<br><br>' +
+        '<b style="color:#ffb347;">Examples:</b><br>' +
+        'HDFC Bank Limited,84,817.50<br>' +
+        'Reliance Industries Limited,10,2450<br>' +
+        'TCS Limited<br>' +
+        'Apple Inc,5,150<br>' +
+        '</div>' +
         '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;" ' +
         'onclick="document.getElementById(\'file-input\').click()">' +
         '<div style="font-size:32px;margin-bottom:10px;">📁</div>' +
-        '<div style="color:#fff;font-weight:bold;margin-bottom:5px;">Click to upload CSV/XLS</div>' +
+        '<div style="color:#fff;font-weight:bold;margin-bottom:5px;">Click to upload CSV/TSV</div>' +
         '<div style="color:#666;font-size:12px;">or drag and drop</div>' +
         '</div>' +
-        '<input type="file" id="file-input" accept=".csv,.xls,.xlsx" style="display:none;" ' +
+        '<input type="file" id="file-input" accept=".csv,.xls,.xlsx,.tsv,.txt" style="display:none;" ' +
         'onchange="handleImportFile(this.files[0])">' +
         '<div id="file-status" style="margin:10px 0;font-size:12px;color:#666;"></div>' +
         '<div id="step1-preview" style="margin:10px 0;"></div>' +
@@ -161,14 +170,13 @@ function processImportCSV(csv) {
     
     // Find column indices
     var nameIdx = headers.findIndex(function(h) { return h.includes('stock') && h.includes('name'); });
-    if (nameIdx < 0) nameIdx = headers.findIndex(function(h) { return h === 'name'; });
+    if (nameIdx < 0) nameIdx = 0; // First column is stock name
     
-    var symIdx = headers.findIndex(function(h) { return h.includes('symbol') || h.includes('sym'); });
-    var typeIdx = headers.findIndex(function(h) { return h.includes('type'); });
     var qtyIdx = headers.findIndex(function(h) { return h.includes('qty') || h.includes('quantity'); });
     var avgIdx = headers.findIndex(function(h) { return h.includes('avg') || h.includes('price'); });
     
     var stocks = [];
+    var seen = new Set();
     
     for (var i = 1; i < lines.length; i++) {
         var line = lines[i].trim();
@@ -184,44 +192,30 @@ function processImportCSV(csv) {
             continue;
         }
         
-        var name = nameIdx >= 0 ? parts[nameIdx] : parts[0];
-        var symbol = symIdx >= 0 ? parts[symIdx] : '';
-        var type = typeIdx >= 0 ? parts[typeIdx] : '';
+        var name = parts[nameIdx] || parts[0];
+        
+        // Skip duplicates
+        if (seen.has(name)) continue;
+        seen.add(name);
+        
+        // Get QTY and AVG
         var qty = qtyIdx >= 0 && parts[qtyIdx] && parts[qtyIdx] !== '-' ? parseFloat(parts[qtyIdx]) : null;
         var avg = avgIdx >= 0 && parts[avgIdx] && parts[avgIdx] !== '-' ? parseFloat(parts[avgIdx]) : null;
         
-        // If symbol is same as name or not provided, generate from name
-        if (!symbol || symbol === name || symbol.length === 0) {
-            // Remove common suffixes and special chars
-            symbol = name
-                .replace(/\s*LTD\s*$/i, '')
-                .replace(/\s*LIMITED\s*$/i, '')
-                .replace(/\s*\(.*\)\s*$/i, '')
-                .replace(/[^A-Z0-9&%-]/gi, '')
-                .toUpperCase()
-                .substring(0, 20); // Limit to 20 chars
-        }
+        // Auto-detect type: if QTY exists → PORTFOLIO, else → WATCHLIST
+        var type = qty ? 'PORTFOLIO' : 'WATCHLIST';
         
-        // Auto-detect type from QTY or from Type column
-        if (type && type !== '-') {
-            type = type.toUpperCase();
-        } else {
-            type = qty ? 'PORTFOLIO' : 'WATCHLIST';
-        }
-        
-        // Only add if we have a valid symbol
-        if (symbol && symbol.length > 0) {
-            stocks.push({
-                name: name,
-                symbol: symbol,
-                qty: qty,
-                avg: avg,
-                type: type,
-                isin: '',
-                sector: '',
-                industry: ''
-            });
-        }
+        // Add stock with just name, qty, avg (NO symbol)
+        stocks.push({
+            name: name,
+            symbol: '',  // Empty - will be matched later
+            qty: qty,
+            avg: avg,
+            type: type,
+            isin: '',
+            sector: '',
+            industry: ''
+        });
     }
     
     importState.stocks = stocks;
@@ -346,29 +340,30 @@ function renderStep2Preview() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep3() {
-    var symbols = importState.stocks.map(function(s) { return s.symbol; }).join('\n');
+    var names = importState.stocks.map(function(s) { return s.name; }).join('\n');
     
-    var prompt = 'I have these Indian stocks (NSE/BSE). Get ISIN, sector, and industry for each.\n\n' +
-        'Symbols:\n' +
-        symbols + '\n\n' +
+    var prompt = 'For these Indian company names, get ISIN code, Sector, and Industry.\n\n' +
+        'Company Names:\n' +
+        names + '\n\n' +
         '⚠️ CRITICAL OUTPUT FORMAT (no extra spaces, pipe separated):\n\n' +
-        'Symbol|ISIN|Sector|Industry\n' +
-        'HDFCBANK|INE040A01034|Banking|Financial Services\n' +
-        'RELIANCE|INE002A01015|Energy|Oil & Gas\n' +
-        'TCS|INE467B01029|IT|IT Services\n' +
+        'Name|ISIN|Sector|Industry\n' +
+        'HDFC Bank Limited|INE040A01034|Banking|Financial Services\n' +
+        'Reliance Industries Limited|INE002A01015|Energy|Oil & Gas\n' +
+        'TCS Limited|INE467B01029|IT|IT Services\n' +
         '\n' +
         'Rules:\n' +
+        '• Match EXACT company names (case-insensitive)\n' +
+        '• Get ISIN code (format: INE + 10 chars)\n' +
         '• No spaces around pipe (|) characters\n' +
-        '• One stock per line\n' +
-        '• Skip international stocks\n' +
-        '• If not found, skip that stock\n' +
+        '• One company per line\n' +
+        '• Skip if not found\n' +
         '• Output ONLY the table, no extra text';
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Generate AI Prompt</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Copy prompt below → Paste in ChatGPT/Claude → Get ISIN, Sector, Industry<br>' +
-        '<b style="color:#ffb347;">⚠️ Important:</b> Tell AI: "Output ONLY the table, no extra text"' +
+        'Copy prompt → Paste in ChatGPT/Claude → Get ISIN & Sector<br>' +
+        '<b style="color:#ffb347;">Tell AI:</b> "Output ONLY the table with Name|ISIN|Sector|Industry"' +
         '</p>' +
         '<textarea id="ai-prompt" readonly style="width:100%;height:300px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
@@ -379,7 +374,7 @@ function renderStep3() {
         '</div>' +
         '<div style="margin:10px 0;padding:10px;background:#111;border-radius:6px;' +
         'border-left:3px solid #ffb347;color:#ffb347;font-size:12px;">' +
-        '⚠️ After getting AI response, paste it in Step 4 (no modifications needed)' +
+        '⚠️ After getting AI response, paste it in Step 4' +
         '</div>' +
         '</div>';
 }
@@ -400,21 +395,22 @@ function renderStep4() {
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Paste AI Response</h3>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;font-family:monospace;">' +
         '<b style="color:#00ff88;">Expected Format (from AI):</b><br><br>' +
-        'Symbol|ISIN|Sector|Industry<br>' +
-        'HDFCBANK|INE040A01034|Banking|Financial Services<br>' +
-        'RELIANCE|INE002A01015|Energy|Oil & Gas<br>' +
-        'TCS|INE467B01029|IT|IT Services<br>' +
+        'Name|ISIN|Sector|Industry<br>' +
+        'HDFC Bank Limited|INE040A01034|Banking|Financial Services<br>' +
+        'Reliance Industries Limited|INE002A01015|Energy|Oil & Gas<br>' +
+        'TCS Limited|INE467B01029|IT|IT Services<br>' +
         '<br>' +
         '<b style="color:#ffb347;">Important:</b><br>' +
+        '• Names must MATCH company names from Step 1<br>' +
+        '• ISIN: Format INE + 10 characters<br>' +
         '• No spaces around pipes (|)<br>' +
-        '• Each stock on its own line<br>' +
+        '• Each company on its own line<br>' +
         '• Copy entire AI response (header + data)<br>' +
-        '• We will auto-parse it<br>' +
         '</div>' +
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Symbol|ISIN|Sector|Industry&#10;HDFCBANK|INE040A01034|Banking|Financial Services&#10;RELIANCE|INE002A01015|Energy|Oil & Gas"></textarea>' +
+        'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services&#10;Reliance Industries Limited|INE002A01015|Energy|Oil & Gas"></textarea>' +
         '<div style="margin:10px 0;">' +
         '<button onclick="parseAIResponse()" style="padding:10px 20px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">✓ Parse Response</button>' +
@@ -430,7 +426,7 @@ function parseAIResponse() {
         return;
     }
     
-    // Split by lines and reconstruct if sector/industry span multiple lines
+    // Split by lines and reconstruct if multi-line
     var lines = response.split(/\r?\n/).filter(function(l) { return l.trim(); });
     var processedLines = [];
     var currentLine = '';
@@ -475,15 +471,18 @@ function parseAIResponse() {
         var parts = line.split('|');
         if (parts.length < 4) return;
         
-        var sym = parts[0].trim();
+        var name = parts[0].trim();
         var isin = parts[1].trim();
         var sector = parts[2].trim();
         var industry = parts[3].trim();
         
         // Skip header row
-        if (sym.toLowerCase() === 'symbol') return;
+        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'symbol') return;
         
-        var stock = importState.stocks.find(function(s) { return s.symbol === sym; });
+        // Find stock by name (case-insensitive)
+        var stock = importState.stocks.find(function(s) { 
+            return s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
+        });
         
         if (stock) {
             stock.isin = isin;
