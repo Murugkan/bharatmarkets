@@ -43,6 +43,8 @@
         .nav-btn.active { color: var(--bl); }
         .nav-label { font-size: 8px; margin-top: 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
     </style>
+    <!-- ADDED: Import workflow script -->
+    <script src="app-import.js"></script>
 </head>
 <body>
 
@@ -50,6 +52,8 @@
     <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
     <div class="kpi-box"><div class="kpi-label">P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
     <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
+    <!-- ADDED: Import button -->
+    <div class="kpi-box" style="cursor:pointer;" onclick="openImportWorkflow()" title="Import your portfolio"><div class="kpi-label">Import</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">📥</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
@@ -98,112 +102,89 @@ const fmt = (val, field) => {
     if (n === 0 && val === '—') return '—';
     if (['LTP', 'AVG', 'PNL', 'INVESTED', 'MCAP'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (field.includes('%')) return n.toFixed(2) + '%';
-    return val;
+    if (['PE', 'PB', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'EPS'].includes(field)) return n.toFixed(2);
+    return n.toString();
 };
 
-const resolve = (obj, field) => {
-    const f = field.toUpperCase();
-    const mappings = { 'SYM':['SYM','SYMBOL','TICKER'], 'AVG':['AVG','AVGBUY'], 'PNL':['PNL','P/L'], 'PNL%':['PNL%','PNL_PCT'], '1D%':['1D%','CHANGE_1D'], 'ROE%':['ROE%','ROE'], 'SIGNAL':['SIGNAL','TECH_SIGNAL'] };
-    const targets = mappings[f] || [f];
-    for (let t of targets) {
-        if (obj[t] !== undefined) return obj[t];
-        const cleanT = t.replace('%', '');
-        if (obj[cleanT] !== undefined) return obj[cleanT];
+async function boot() {
+    try {
+        const db = await new Promise((r, j) => {
+            const req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = () => r(req.result);
+            req.onerror = () => j(req.error);
+        });
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const data = await new Promise((r) => {
+            tx.objectStore(STORE_NAME).getAll().onsuccess = (e) => r(e.target.result);
+        });
+        MASTER = data;
+        render();
+    } catch (err) {
+        console.error('Boot error:', err);
     }
-    return '—';
-};
-
-async function init() {
-    const statusEl = document.getElementById('status');
-    const db = await new Promise(res => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = e => {
-            const d = e.target.result;
-            if (d.objectStoreNames.contains(STORE_NAME)) d.deleteObjectStore(STORE_NAME);
-            d.createObjectStore(STORE_NAME, { keyPath: "SYM" });
-        };
-        req.onsuccess = () => res(req.result);
-    });
-
-    const tx = db.transaction(STORE_NAME, "readonly");
-    MASTER = await new Promise(res => {
-        tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
-    });
-
-    if (MASTER.length === 0) {
-        statusEl.innerHTML = "SYSTEM EMPTY. CLICK TERMINAL TO SYNC.";
-        return;
-    }
-
-    statusEl.style.display = "none";
-    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
-    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
-    render();
 }
 
 function render() {
-    let sumPnl = 0, sumInv = 0, sc = {};
-    MASTER.forEach(s => { 
-        const sec = resolve(s, 'SECTOR') || 'OTHER';
-        sumPnl += cleanNum(resolve(s, 'PNL'));
-        sumInv += cleanNum(resolve(s, 'INVESTED'));
-        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || cleanNum(resolve(s, 'LTP')), 1);
-        sc[sec] = (sc[sec] || 0) + weight; 
+    const app = document.getElementById('app');
+    if (!MASTER || MASTER.length === 0) {
+        app.innerHTML = '<div style="padding:40px; text-align:center; color:#666;">' +
+            '<p>No data loaded. Click 📥 Import to add your stocks or SYNC ↻ to load market data.</p>' +
+            '</div>';
+        return;
+    }
+    
+    const filtered = filter ? MASTER.filter(s => s.SYM && s.SYM.includes(filter.toUpperCase())) : MASTER;
+    const sorted = filtered.sort((a, b) => {
+        const av = cleanNum(a[sortCol]);
+        const bv = cleanNum(b[sortCol]);
+        return sortAsc ? av - bv : bv - av;
     });
     
-    document.getElementById('k-count').textContent = MASTER.length;
-    const pEl = document.getElementById('k-pnl');
-    pEl.textContent = `₹${(sumPnl/100000).toFixed(2)}L`;
-    pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
-
-    const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
-    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => `<div class="seg${filter && filter !== sec ? ' dimmed' : ''}" style="flex-basis:${((sc[sec]/totalW)*100)}%;background:${COL[sec]}" onclick="tap('${sec}')"></div>`).join('');
-    document.getElementById('legend').innerHTML = SECTORS.map(sec => `<div class="leg ${filter === sec ? 'on' : ''}" onclick="tap('${sec}')"><div class="dot" style="background:${COL[sec]}"></div>${sec}</div>`).join('');
-
-    let rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : [...MASTER];
-    rows.sort((a, b) => {
-        let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
-        let nA = cleanNum(vA), nB = cleanNum(vB);
-        return sortAsc ? nA - nB : nB - nA;
+    let html = '<table>';
+    html += '<thead><tr>';
+    UI_FIELDS.forEach(f => {
+        const isActive = f === sortCol ? 'active' : '';
+        html += `<th class="${isActive}" onclick="doSort('${f}')">${f}</th>`;
     });
-
-    let h = `<table><thead><tr>`;
-    UI_FIELDS.forEach(f => h += `<th onclick="doSort('${f}')" class="${f===sortCol?'active':''} ${f==='SYM'?'sticky':''}"><sup>${f===sortCol?(sortAsc?'▲':'▼'):''}</sup>${f}</th>`);
-    h += `</tr></thead><tbody>`;
-
-    rows.forEach(s => {
-        h += `<tr>`;
+    html += '</tr></thead>';
+    html += '<tbody>';
+    
+    sorted.forEach(row => {
+        html += '<tr>';
         UI_FIELDS.forEach(f => {
-            const raw = resolve(s, f);
-            const val = fmt(raw, f);
-            let cls = f === 'SYM' ? 'sticky' : '';
-            const n = cleanNum(raw);
-            if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += `<td class="${cls}"><span class="sig-buy">BUY</span></td>`;
-            else {
-                if (n !== 0) {
-                    if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
-                    if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
-                }
-                h += `<td class="${cls}">${val}</td>`;
+            const val = row[f] || '—';
+            const color = f === 'SYM' ? 'sticky' : '';
+            if (f === 'PNL' || f === 'PNL%' || f === '1D%') {
+                const n = cleanNum(val);
+                const cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
+                html += `<td class="${color} ${cls}">${fmt(val, f)}</td>`;
+            } else {
+                html += `<td class="${color}">${fmt(val, f)}</td>`;
             }
         });
-        h += `</tr>`;
+        html += '</tr>';
     });
-
-    h += `</tbody><tfoot><tr>`;
-    UI_FIELDS.forEach(f => {
-        let cls = f === 'SYM' ? 'sticky' : '';
-        if (f === 'SYM') h += `<td class="${cls}">TOTAL</td>`;
-        else if (f === 'PNL') h += `<td class="${sumPnl>=0?'pos':'neg'}">${fmt(sumPnl, 'PNL')}</td>`;
-        else if (f === 'INVESTED') h += `<td>${fmt(sumInv, 'INVESTED')}</td>`;
-        else h += `<td class="${cls}"></td>`;
-    });
-    document.getElementById('app').innerHTML = h + `</tr></tfoot></table>`;
+    
+    html += '</tbody></table>';
+    app.innerHTML = html;
+    updateKPIs();
 }
 
-function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
-function tap(sec) { filter = filter === sec ? null : sec; render(); }
-init();
+function updateKPIs() {
+    const pnl = MASTER.reduce((sum, s) => sum + cleanNum(s.PNL), 0);
+    const count = MASTER.length;
+    document.getElementById('k-count').textContent = count;
+    document.getElementById('k-pnl').textContent = '₹' + pnl.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function doSort(col) {
+    sortCol = col;
+    sortAsc = !sortAsc;
+    render();
+}
+
+window.addEventListener('DOMContentLoaded', boot);
 </script>
+
 </body>
 </html>
