@@ -34,23 +34,27 @@ window.handleFileSelect = (e) => {
 
         log(`Processing ${lines.length} lines...`);
 
-        lines.forEach((line, index) => {
-            // Clean the line and split by comma
+        lines.forEach((line) => {
+            // Split by comma and clean whitespace
             const cols = line.split(',').map(c => c.trim());
             
-            // Look for the ISIN pattern (IN...) in any column to identify data rows
-            const isinIdx = cols.findIndex(c => c.startsWith('IN') && c.length === 12);
+            // FLEXIBLE SEARCH: Find any column that looks like an ISIN (Starts with IN, 12 chars)
+            const isinIdx = cols.findIndex(c => /^IN[A-Z0-9]{10}$/.test(c));
             
             if (isinIdx !== -1) {
-                // Based on your file: Name is Col 0, ISIN is Col 1, Sector is Col 2, Qty is Col 3, Price is Col 4
+                // Mapping based on your Equity_Summary_Details structure:
+                // Name is always the column immediately before ISIN
+                // Qty is 2 columns after ISIN, Price is 3 columns after ISIN
+                const name = cols[isinIdx - 1];
                 const qty = parseFloat(cols[isinIdx + 2]);
                 const price = parseFloat(cols[isinIdx + 3]);
+                const sector = cols[isinIdx + 1] || "Others";
 
                 if (!isNaN(qty) && qty > 0) {
                     parsed.push({
-                        sym: cols[isinIdx - 1] || "Unknown",
+                        sym: name || "Unknown",
                         isin: cols[isinIdx],
-                        sector: cols[isinIdx + 1] || "Others",
+                        sector: sector,
                         qty: qty,
                         avg: price || 0
                     });
@@ -62,10 +66,10 @@ window.handleFileSelect = (e) => {
             window.PENDING_DATA = parsed;
             document.getElementById('file-status').innerHTML = `✅ Found ${parsed.length} stocks`;
             document.getElementById('import-actions').style.display = 'grid';
-            log(`Successfully parsed ${parsed.length} rows.`);
+            log(`Success: Decoded ${parsed.length} stocks.`);
         } else {
-            document.getElementById('file-status').innerHTML = `❌ No valid data found. Check console.`;
-            log("Parsing failed: No rows matched the ISIN pattern.");
+            document.getElementById('file-status').innerHTML = `❌ No valid rows found.`;
+            log("Parsing failed: No ISIN pattern detected in columns.");
         }
     };
     reader.readAsText(file);
@@ -80,11 +84,11 @@ window.commitImport = (replaceAll) => {
         window.PENDING_DATA.forEach(newItem => {
             const idx = S.portfolio.findIndex(p => p.isin === newItem.isin);
             if (idx > -1) {
+                // Update existing: Weighted Average Calculation
                 const oldQty = S.portfolio[idx].qty;
                 const newQty = oldQty + newItem.qty;
-                // Avoid division by zero
                 if (newQty > 0) {
-                    S.portfolio[idx].avg = ((oldQty * S.portfolio[idx].avg) + (newItem.qty * newItem.avg)) / newQty;
+                    S.portfolio[idx].avg = ((oldQty * (S.portfolio[idx].avg || 0)) + (newItem.qty * newItem.avg)) / newQty;
                 }
                 S.portfolio[idx].qty = newQty;
             } else {
