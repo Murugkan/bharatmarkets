@@ -9,61 +9,62 @@
     <style>
         body { background:#000; color:#fff; font-family:sans-serif; margin:0; padding:20px; }
         .card { background:#0a0a0a; border:1px solid #1a1a1a; padding:15px; border-radius:8px; margin-bottom:15px; }
-        .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:15px; font-weight:800; border-radius:4px; }
-        input { width:100%; background:#111; border:1px solid #333; color:#fff; padding:12px; margin-bottom:10px; box-sizing:border-box; }
-        .res-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #111; }
+        .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:15px; font-weight:800; border-radius:4px; margin-bottom:10px; }
+        input { width:100%; background:#111; border:1px solid #333; color:#fff; padding:12px; margin-bottom:10px; box-sizing:border-box; font-size:16px; }
+        .row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #111; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h3 style="font-size:10px; color:#555;">GITHUB CONFIG</h3>
-    <input type="password" id="gh-token" placeholder="GitHub PAT">
-    <input type="text" id="gh-repo" placeholder="username/repo">
-    <button class="btn" onclick="saveSettingsAndTest()">SAVE & TEST CONNECTION</button>
-    <div id="gh-diag" style="margin-top:10px; font-size:11px;"></div>
+    <h2 style="font-size:10px; color:#555; text-transform:uppercase;">GitHub Connection</h2>
+    <input type="password" id="pat" placeholder="GitHub PAT">
+    <input type="text" id="repo" placeholder="username/repository">
+    <button class="btn" onclick="saveAndTest()">SAVE & RUN DIAGNOSTIC</button>
+    <div id="gh-diag" style="display:none"></div>
 </div>
 
 <div class="card">
-    <h3 style="font-size:10px; color:#555;">PORTFOLIO IMPORT</h3>
-    <input type="file" id="f-picker" style="display:none" onchange="processFile(this)">
-    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff;" onclick="document.getElementById('f-picker').click()">UPLOAD FILE</button>
+    <h2 style="font-size:10px; color:#555; text-transform:uppercase;">Portfolio Import</h2>
+    <input type="file" id="f-in" style="display:none" onchange="handleFile(this)">
+    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff" onclick="document.getElementById('f-in').click()">SELECT FILE</button>
 </div>
 
-<div id="res-area" class="card" style="display:none">
-    <h3 style="font-size:10px; color:#00f2ff;">RESOLUTION ENGINE</h3>
+<div id="res-card" class="card" style="display:none">
+    <h2 style="font-size:10px; color:#00f2ff; text-transform:uppercase;">Resolution Engine</h2>
     <div id="res-list"></div>
 </div>
 
 <script>
-function saveSettingsAndTest() {
-    S.settings.ghToken = document.getElementById('gh-token').value;
-    S.settings.ghRepo = document.getElementById('gh-repo').value;
+function saveAndTest() {
+    S.settings.ghToken = document.getElementById('pat').value;
+    S.settings.ghRepo = document.getElementById('repo').value;
     localStorage.setItem('bm_settings', JSON.stringify(S));
     testGitHubConnection();
 }
 
-async function processFile(input) {
+async function handleFile(input) {
+    if(!input.files[0]) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
         const wb = XLSX.read(e.target.result, {type:'binary'});
-        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        document.getElementById('res-area').style.display = 'block';
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        document.getElementById('res-card').style.display = 'block';
         const list = document.getElementById('res-list');
         list.innerHTML = '';
 
-        for(let row of data) {
-            const name = row["Company Name"] || row["Security Name"] || Object.values(row)[0];
+        for(let r of rows) {
+            const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
             const res = await resolveSymbol(name);
             const div = document.createElement('div');
-            div.className = 'res-row';
+            div.className = 'row';
             div.innerHTML = `
                 <div style="flex:1">
                     <div style="font-size:10px; color:#555">${name}</div>
-                    <div style="color:${res?'#00ff88':'#ff4444'}">${res?res.symbol:'FAILED'}</div>
+                    <div style="color:${res?'#00ff88':'#ff4444'}; font-weight:700">${res?res.symbol:'FAILED'}</div>
                 </div>
-                <input type="text" placeholder="Fix" style="width:100px; margin:0; padding:5px;" 
-                    onchange="updateAlias('${name}', this.value)" value="${res?res.symbol:''}">
+                <input type="text" placeholder="Fix" style="width:100px; margin:0; padding:6px; font-size:12px;" 
+                    value="${res?res.symbol:''}" onchange="updateAlias('${name}', this.value)">
             `;
             list.appendChild(div);
         }
@@ -72,8 +73,8 @@ async function processFile(input) {
 }
 
 window.onload = () => {
-    document.getElementById('gh-token').value = S.settings.ghToken || '';
-    document.getElementById('gh-repo').value = S.settings.ghRepo || '';
+    document.getElementById('pat').value = S.settings.ghToken || '';
+    document.getElementById('repo').value = S.settings.ghRepo || '';
 };
 </script>
 </body>
