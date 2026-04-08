@@ -33,11 +33,9 @@ window.handleFileSelect = (e) => {
         const parsed = [];
 
         lines.forEach((line) => {
-            // Split by comma and clean up quotes/whitespace
             const parts = line.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
             
-            // 1. Identify a Stock Name row
-            // We look for the first part that is not empty and not a header/total row
+            // Find row by Name (Exclude headers/totals)
             const nameIdx = parts.findIndex(p => 
                 p.length > 2 && 
                 !p.includes("Details") && 
@@ -48,17 +46,18 @@ window.handleFileSelect = (e) => {
             if (nameIdx !== -1) {
                 const stockName = parts[nameIdx];
                 
-                // 2. Scan the rest of the row for the first two numeric values
-                const numbers = parts.slice(nameIdx + 1)
+                // Collect all valid numbers in the row
+                const rowNums = parts.slice(nameIdx + 1)
                     .map(p => parseFloat(p.replace(/[^0-9.-]/g, '')))
-                    .filter(n => !isNaN(n) && n > 0);
+                    .filter(n => !isNaN(n));
 
-                // 3. Extract Quantity (1st number) and Avg Price (2nd number)
-                if (numbers.length >= 2) {
+                // CDSL Mapping: [Sector, ISIN, Qty, Price...]
+                // rowNums[1] is Qty, rowNums[2] is Avg Price
+                if (rowNums.length >= 3) {
                     parsed.push({
                         sym: stockName,
-                        [span_3](start_span)qty: numbers[1], // Index 1 is typically Quantity in your CSV[span_3](end_span)
-                        [span_4](start_span)avg: numbers[2]  // Index 2 is typically Average Price in your CSV[span_4](end_span)
+                        qty: rowNums[1],
+                        avg: rowNums[2]
                     });
                 }
             }
@@ -69,7 +68,7 @@ window.handleFileSelect = (e) => {
             document.getElementById('file-status').innerHTML = `✅ Found ${parsed.length} Stocks`;
             document.getElementById('import-actions').style.display = 'grid';
         } else {
-            document.getElementById('file-status').innerHTML = `❌ No data found.`;
+            document.getElementById('file-status').innerHTML = `❌ No valid data rows.`;
         }
     };
     reader.readAsText(file);
@@ -98,7 +97,7 @@ window.commitImport = (replaceAll) => {
     }
 
     localStorage.setItem('soya_portfolio', JSON.stringify(S.portfolio));
-    toast(replaceAll ? "Portfolio Replaced" : "Portfolio Appended");
+    toast(replaceAll ? "Portfolio Reset" : "Data Appended");
     if (typeof render === 'function') render();
     closePanel();
 };
