@@ -1,13 +1,12 @@
-/** ONYX v25.0 - EXACT RESTORE FROM OLD FILES */
-window.S = JSON.parse(localStorage.getItem('bm_settings')) || { 
-    settings: { ghToken: '', ghRepo: '' },
-    watchlist: [],
-    portfolio: [] 
-};
+// Ensure S always has the required arrays to prevent "undefined is not an object"
+window.S = JSON.parse(localStorage.getItem('bm_settings')) || {};
+if (!window.S.settings) window.S.settings = { ghToken: '', ghRepo: '' };
+if (!window.S.portfolio) window.S.portfolio = [];
+if (!window.S.watchlist) window.S.watchlist = [];
+
 window.ALIAS_MAP = JSON.parse(localStorage.getItem('bm_aliases')) || {};
 window.FUND = window.FUND || {};
 
-// --- RESTORED: dataLog (From your old debug-window setup) ---
 function dataLog(msg, type = 'info') {
     const log = document.getElementById('debug-console');
     if (!log) return;
@@ -18,24 +17,23 @@ function dataLog(msg, type = 'info') {
     log.prepend(div);
 }
 
-// --- RESTORED: wlSearch Logic (From app-watchlist.js) ---
 async function resolveSymbol(val) {
-    const q = val.trim().toUpperCase();
+    const q = (val || "").toString().trim().toUpperCase();
     if(!q) return null;
 
-    // 1. Check Alias Map
     if (window.ALIAS_MAP[q]) return { symbol: window.ALIAS_MAP[q] };
 
-    // 2. Build Universe exactly as per old file
+    // Built-in safety for portfolio map
+    const portfolioSymbols = (window.S.portfolio || []).map(h => h.sym || h.symbol).filter(Boolean);
+    
     const universe = [...new Set([
         ...Object.keys(window.FUND),
-        ...S.portfolio.map(h => h.sym || h.symbol)
+        ...portfolioSymbols
     ])].map(sym => ({
         sym,
         name: (window.FUND[sym]?.name || sym).toUpperCase(),
     }));
 
-    // 3. Priority Filtering: Exact > Prefix > Partial
     const exact   = universe.filter(s => s.sym === q);
     const prefix  = universe.filter(s => s.sym !== q && s.sym.startsWith(q));
     const partial = universe.filter(s => !s.sym.startsWith(q) && (s.sym.includes(q) || s.name.includes(q)));
@@ -43,13 +41,14 @@ async function resolveSymbol(val) {
     const hit = [...exact, ...prefix, ...partial][0];
     if (hit) return { symbol: hit.sym };
 
-    // 4. External Fallback (Only if Universe fails)
     try {
         const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&region=IN`);
         const d = await res.json();
         const qts = (d.quotes || []).filter(x => x.symbol && (x.symbol.endsWith('.NS') || x.symbol.endsWith('.BO')));
         if (qts.length > 0) return { symbol: qts[0].symbol.replace('.NS','').replace('.BO','') };
-    } catch (e) { dataLog(`Network Load Failed: ${q}`, 'error'); }
+    } catch (e) { 
+        dataLog(`Network Load Failed: ${q}`, 'error'); 
+    }
 
     return { symbol: 'FAILED', error: true };
 }
@@ -60,10 +59,9 @@ function updateAlias(rawName, symbol) {
     localStorage.setItem('bm_aliases', JSON.stringify(window.ALIAS_MAP));
 }
 
-// --- RESTORED: PAT Module (From image.png-58c7ebcb-f0c3-4ab0-97e0-e24805ed3e31) ---
 async function testGitHubConnection() {
-    const token = S.settings.ghToken?.trim();
-    const repo = S.settings.ghRepo?.trim();
+    const token = window.S.settings.ghToken?.trim();
+    const repo = window.S.settings.ghRepo?.trim();
     const diag = document.getElementById('gh-diag');
     if(!diag || !token || !repo) return;
     
