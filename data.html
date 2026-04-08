@@ -9,11 +9,11 @@
     <style>
         body { background:#000; color:#fff; font-family:-apple-system, sans-serif; margin:0; padding:15px; }
         .card { background:#0a0a0a; border:1px solid #1a1a1a; padding:15px; border-radius:8px; margin-bottom:15px; }
-        .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:16px; font-weight:bold; border-radius:4px; text-transform:uppercase; font-size:12px; }
+        .btn { width:100%; background:#00f2ff; color:#000; border:none; padding:16px; font-weight:800; border-radius:4px; font-size:12px; }
         input { width:100%; background:#111; border:1px solid #333; color:#fff; padding:12px; margin-bottom:10px; box-sizing:border-box; font-size:16px; border-radius:4px; }
-        #debug-console { height:100px; background:#050505; border:1px solid #222; overflow-y:auto; margin-top:10px; padding:5px; border-radius:4px; }
+        #debug-console { height:120px; background:#050505; border:1px solid #222; overflow-y:auto; margin-top:10px; padding:5px; border-radius:4px; font-family:monospace; }
         .res-row { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #111; }
-        input.fix { width:85px; background:#111; border:1px solid #333; color:#fff; padding:8px; margin:0; font-size:13px; text-align:center; }
+        input.fix { width:90px; background:#111; border:1px solid #333; color:#fff; padding:8px; margin:0; font-size:13px; text-align:center; }
     </style>
 </head>
 <body>
@@ -22,19 +22,19 @@
     <h3 style="font-size:10px; color:#555; margin-bottom:10px;">0. CONNECTION</h3>
     <input type="password" id="p" placeholder="GitHub PAT" onchange="S.settings.ghToken=this.value">
     <input type="text" id="r" placeholder="username/repository" onchange="S.settings.ghRepo=this.value">
-    <button class="btn" onclick="testGitHubConnection()">Save & Diagnose</button>
+    <button class="btn" onclick="testGitHubConnection()">SAVE & DIAGNOSE</button>
     <div id="gh-diag"></div>
 </div>
 
 <div class="card">
-    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">1. IMPORT</h3>
-    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff" onclick="document.getElementById('fin').click()">Select Excel/CSV</button>
+    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">1. IMPORT & RESOLVE</h3>
+    <button class="btn" style="background:#111; color:#00f2ff; border:1px solid #00f2ff" onclick="document.getElementById('fin').click()">SELECT FILE</button>
     <input type="file" id="fin" style="display:none" onchange="startImport(this)">
     <div id="debug-console"></div>
 </div>
 
 <div id="res-area" class="card" style="display:none">
-    <h3 style="font-size:10px; color:#00f2ff; margin-bottom:10px;">RESOLUTION RESULTS</h3>
+    <h3 style="font-size:10px; color:#00f2ff; margin-bottom:10px;">RESOLUTION ENGINE</h3>
     <div id="res-list"></div>
 </div>
 
@@ -43,39 +43,35 @@ async function startImport(input) {
     if(!input.files[0]) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
-        try {
-            const wb = XLSX.read(e.target.result, {type:'binary'});
-            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-            const list = document.getElementById('res-list');
-            document.getElementById('res-area').style.display = 'block';
-            list.innerHTML = '';
+        const wb = XLSX.read(e.target.result, {type:'binary'});
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        const list = document.getElementById('res-list');
+        document.getElementById('res-area').style.display = 'block';
+        list.innerHTML = '';
+        
+        dataLog(`Importing ${rows.length} rows...`, 'info');
+
+        for(let r of rows) {
+            const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
+            if(!name) continue;
+
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'res-row';
+            list.appendChild(rowDiv);
+
+            const res = await resolveSymbol(name);
             
-            dataLog(`File loaded: ${rows.length} stocks found.`, 'info');
-
-            for(let r of rows) {
-                const name = r["Company Name"] || r["Security Name"] || Object.values(r)[0];
-                if(!name) continue;
-
-                const rowDiv = document.createElement('div');
-                rowDiv.className = 'res-row';
-                list.appendChild(rowDiv);
-
-                const res = await resolveSymbol(name);
-                
-                rowDiv.innerHTML = `
-                    <div style="flex:1">
-                        <div style="font-size:10px; color:#666">${name}</div>
-                        <div style="color:${res.error?'#ff4444':'#00ff88'}; font-weight:bold; font-family:monospace;">${res.symbol}</div>
-                    </div>
-                    <input type="text" class="fix" placeholder="Fix" 
-                        value="${res.error?'':res.symbol}" 
-                        onchange="updateAlias('${name}', this.value)">
-                `;
-            }
-            dataLog("All stocks processed.", "success");
-        } catch (err) {
-            dataLog("Import Error: " + err.message, "error");
+            rowDiv.innerHTML = `
+                <div style="flex:1">
+                    <div style="font-size:10px; color:#555">${name}</div>
+                    <div style="color:${res.error?'#ff4444':'#00ff88'}; font-weight:bold">${res.symbol}</div>
+                </div>
+                <input type="text" class="fix" placeholder="Fix" 
+                    value="${res.error?'':res.symbol}" 
+                    onchange="updateAlias('${name}', this.value)">
+            `;
         }
+        dataLog("Success: Resolution complete.", "success");
     };
     reader.readAsBinaryString(input.files[0]);
 }
