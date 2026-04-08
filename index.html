@@ -3,38 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Soya</title>
+  <title>Soya Debug Mode</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --bg: #000; --s1: #0a0a0a; --s2: #161616; --b2: #333;
-      --tx: #fff; --tx2: #ccc; --tx3: #888; --ac: #f97316;
-      --mono: 'JetBrains Mono', monospace;
-    }
+    :root { --bg: #000; --s1: #0a0a0a; --s2: #161616; --b2: #333; --tx: #fff; --ac: #f97316; --mono: 'JetBrains Mono', monospace; }
     body { margin: 0; background: var(--bg); color: var(--tx); font-family: -apple-system, system-ui, sans-serif; }
-    .app-header { padding: 24px 20px 12px; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 26px; }
-    .app-nav { display: flex; gap: 10px; padding: 0 20px 20px; sticky; top: 0; background: var(--bg); z-index: 100; }
-    .nb { 
-      background: var(--s2); border: none; color: var(--tx2); padding: 10px 20px; 
-      border-radius: 25px; font-size: 14px; font-weight: 700; cursor: pointer;
-    }
+    .app-header { padding: 20px; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 24px; }
+    .app-nav { display: flex; gap: 8px; padding: 0 20px 20px; }
+    .nb { background: var(--s2); border: none; color: #888; padding: 10px 18px; border-radius: 20px; font-weight: 700; }
     .nb.active { background: var(--ac); color: #000; }
     
-    /* Overlay & Panel */
-    .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); opacity: 0; visibility: hidden; transition: 0.3s; z-index: 1000; }
+    /* Live Log Window */
+    #debug-log { 
+      position: fixed; bottom: 0; left: 0; width: 100%; height: 150px; 
+      background: #111; border-top: 2px solid #444; color: #0f0; 
+      font-family: var(--mono); font-size: 10px; padding: 10px; 
+      overflow-y: auto; z-index: 9999; pointer-events: none;
+    }
+
+    .panel { position: fixed; bottom: -100%; left: 0; width: 100%; height: 85vh; background: var(--s1); border-top: 1px solid var(--b2); border-radius: 25px 25px 0 0; transition: 0.4s; z-index: 1001; padding: 20px; }
+    .panel.on { bottom: 150px; } /* Push up above log */
+    .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); opacity: 0; visibility: hidden; z-index: 1000; }
     .overlay.on { opacity: 1; visibility: visible; }
-    .panel { position: fixed; bottom: -100%; left: 0; width: 100%; height: 92vh; background: var(--s1); border-top: 1px solid var(--b2); border-radius: 30px 30px 0 0; transition: 0.4s; z-index: 1001; padding: 25px 20px; overflow-y: auto; }
-    .panel.on { bottom: 0; }
-    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-    .panel-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; }
-    .panel-close { font-size: 28px; color: var(--tx3); cursor: pointer; }
   </style>
 </head>
 <body>
 
-  <header class="app-header">SOYA</header>
-  <div id="import-status-strip"></div>
-
+  <header class="app-header">SOYA <small style="font-size:10px; color:var(--ac)">DEBUG</small></header>
+  
   <nav class="app-nav">
     <button class="nb active" id="tab-portfolio" onclick="handleTab('portfolio')">Portfolio</button>
     <button class="nb" id="tab-watchlist" onclick="handleTab('watchlist')">Watchlist</button>
@@ -42,61 +38,61 @@
   </nav>
 
   <main id="app-content">
-    <div id="dashboard-view">
-      <div id="sector-grid"></div>
-      <div id="stock-list" style="padding:20px; color:var(--tx3); font-family:var(--mono);">Initializing...</div>
-    </div>
+    <div id="sector-grid"></div>
+    <div id="stock-list" style="padding:20px; font-family:var(--mono); font-size:12px; color:#666;">Waiting for scripts...</div>
   </main>
+
+  <div id="debug-log">Log initialized...<br></div>
 
   <div id="ov" class="overlay" onclick="closePanel()"></div>
   <div id="import-panel" class="panel">
-    <div class="panel-header">
-      <div class="panel-title">Stock Intelligence Hub</div>
-      <div class="panel-close" onclick="closePanel()">✕</div>
-    </div>
     <div id="import-panel-body"></div>
   </div>
+
+  <script>
+    // 1. Immediate Logger
+    const logEl = document.getElementById('debug-log');
+    window.log = function(msg) {
+      logEl.innerHTML += `> ${msg}<br>`;
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(msg);
+    };
+
+    window.onerror = function(m, u, l) { log(`ERR: ${m} at line ${l}`); };
+
+    // 2. Global State
+    window.S = {
+      curTab: 'portfolio',
+      portfolio: JSON.parse(localStorage.getItem('soya_portfolio') || '[]')
+    };
+
+    // 3. Script Loader Verification
+    function checkScripts() {
+      log("Checking scripts...");
+      if (typeof render === 'function') log("✓ app-watchlist.js loaded");
+      else log("✗ app-watchlist.js MISSING");
+      
+      if (typeof openImport === 'function') log("✓ app-import.js loaded");
+      else log("✗ app-import.js MISSING");
+    }
+
+    window.handleTab = function(tab) {
+      log(`Switching to ${tab}`);
+      S.curTab = tab;
+      document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      if (typeof render === 'function') render();
+    };
+
+    window.onload = () => {
+      log("Window loaded.");
+      checkScripts();
+      handleTab('portfolio');
+    };
+  </script>
 
   <script src="js/app-core.js"></script>
   <script src="js/app-watchlist.js"></script>
   <script src="js/app-import.js"></script>
-
-  <script>
-    // Global State
-    window.S = {
-      curTab: 'portfolio',
-      portfolio: JSON.parse(localStorage.getItem('soya_portfolio') || '[]'),
-      settings: JSON.parse(localStorage.getItem('soya_settings') || '{}')
-    };
-
-    // Safely trigger the render from app-watchlist.js
-    window.handleTab = function(tab) {
-      console.log("Switching to:", tab);
-      S.curTab = tab;
-      document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
-      const btn = document.getElementById('tab-' + tab);
-      if(btn) btn.classList.add('active');
-      
-      if(typeof render === 'function') {
-        render(); 
-      } else {
-        document.getElementById('stock-list').innerHTML = "Error: render() not found. Check app-watchlist.js";
-      }
-    };
-
-    async function init() {
-      try {
-        const res = await fetch('symbols.json');
-        window.FUND = await res.json();
-        window.ISIN_MAP = {};
-        window.FUND.forEach(item => { if(item.isin) ISIN_MAP[item.isin] = item.sym; });
-      } catch(e) { console.error("Symbol load failed", e); }
-      
-      // Default view on load
-      handleTab('portfolio');
-    }
-
-    window.onload = init;
-  </script>
 </body>
 </html>
