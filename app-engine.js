@@ -1,7 +1,7 @@
 /**
 
 - app-engine.js - The Core Data Engine
-- GitHub Source → IndexedDB Shadow Store
+- GitHub Source to IndexedDB Shadow Store
   */
 
 // 1. Database Configuration
@@ -28,15 +28,15 @@ req.onerror = (e) => reject(e.target.error);
 });
 }
 
-// 3. The Sync Orchestrator (Requirement #3)
+// 3. The Sync Orchestrator
 async function runEngineSync() {
-showToast(“⚡ Engine Syncing…”);
+showToast(“Engine Syncing…”);
 const db = await initEngineDB();
 
 ```
 let fData, pData;
 
-// STEP 1: Try loading from local files first (fastest, most reliable)
+// STEP 1: Try loading from local files first
 try {
     const [fRes, pRes] = await Promise.all([
         fetch('./fundamentals.json'),
@@ -44,17 +44,17 @@ try {
     ]);
     
     if (!fRes.ok || !pRes.ok) {
-        throw new Error(`Local files not found: fRes=${fRes.status}, pRes=${pRes.status}`);
+        throw new Error('Local files not found');
     }
     
     fData = await fRes.json();
     pData = await pRes.json();
-    showToast("✅ Loaded from local cache");
-    console.log("✅ Local data loaded successfully");
+    showToast("Loaded from local cache");
+    console.log("Local data loaded successfully");
     
 } catch(localErr) {
-    console.warn("⚠️ Local load failed, trying GitHub:", localErr);
-    showToast("⚡ Syncing from GitHub...");
+    console.warn("Local load failed, trying GitHub:", localErr);
+    showToast("Syncing from GitHub...");
     
     try {
         // STEP 2: Fallback to GitHub if local fails
@@ -64,22 +64,22 @@ try {
         ]);
         
         if (!fRes.ok || !pRes.ok) {
-            throw new Error(`GitHub fetch failed: fRes=${fRes.status}, pRes=${pRes.status}`);
+            throw new Error('GitHub fetch failed');
         }
         
         fData = await fRes.json();
         pData = await pRes.json();
-        showToast("✅ Synced from GitHub");
-        console.log("✅ GitHub data loaded successfully");
+        showToast("Synced from GitHub");
+        console.log("GitHub data loaded successfully");
         
     } catch(githubErr) {
-        console.error("❌ Both local and GitHub failed:", { localErr, githubErr });
-        showToast("❌ Failed to load data. Check console.");
-        return;  // Exit early to prevent crash
+        console.error("Both local and GitHub failed:", { localErr, githubErr });
+        showToast("Failed to load data. Check console.");
+        return;
     }
 }
 
-// Check Exclusion Ledger (Requirement #4)
+// Check Exclusion Ledger
 const ledger = await new Promise(r => {
     const tx = db.transaction(STORES.LEDGER, 'readonly');
     tx.objectStore(STORES.LEDGER).getAll().onsuccess = (e) => r(e.target.result.map(x => x.sym));
@@ -91,7 +91,7 @@ const store = tx.objectStore(STORES.UNIFIED);
 // Handle both array and object formats for stocks
 const stocksArray = Array.isArray(fData.stocks) ? fData.stocks : Object.values(fData.stocks || {});
 
-// Calculate Global Total for Weights (1 of 11 Computed Fields)
+// Calculate Global Total for Weights
 const totalVal = stocksArray.reduce((acc, s) => {
     const sym = s.sym || s.SYM || '';
     const p = pData[sym]?.ltp || 0;
@@ -100,14 +100,14 @@ const totalVal = stocksArray.reduce((acc, s) => {
 
 stocksArray.forEach(stock => {
     const sym = stock.sym || stock.SYM || '';
-    if (ledger.includes(sym)) return; // Skip "Deep Purged" items
+    if (ledger.includes(sym)) return;
 
     const p = pData[sym] || {};
     
-    // Requirement #2: Unified Record (33 Raw + 11 Computed)
+    // Unified Record with computed fields
     const unified = {
         ...stock,
-        sym: sym,  // Ensure sym field exists
+        sym: sym,
         ltp: p.ltp || 0,
         chg: p.chg || 0,
         marketValue: (p.ltp || 0) * (stock.qty || 0),
@@ -120,15 +120,14 @@ stocksArray.forEach(stock => {
 });
 
 tx.oncomplete = () => {
-    console.log("✅ IndexedDB updated with", stocksArray.length, "stocks");
-    showToast("✅ Engine Synced");
-    // Trigger the UI refresh in app-portfolio.js
+    console.log("IndexedDB updated with", stocksArray.length, "stocks");
+    showToast("Engine Synced");
     if(typeof renderPortfolio === 'function') renderPortfolio(); 
 };
 
 tx.onerror = () => {
-    console.error("❌ IndexedDB transaction failed");
-    showToast("❌ Database error");
+    console.error("IndexedDB transaction failed");
+    showToast("Database error");
 };
 ```
 
