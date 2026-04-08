@@ -1,109 +1,942 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Soya</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-  <style>
-    :root { --bg:#000; --s1:#0a0a0a; --s2:#161616; --b2:#333; --tx:#fff; --ac:#f97316; --mono:'JetBrains Mono',monospace; }
-    body { margin:0; background:var(--bg); color:var(--tx); font-family:-apple-system, system-ui, sans-serif; padding-bottom:160px; }
-    .app-header { padding:24px 20px 12px; font-family:'Syne',sans-serif; font-weight:800; font-size:26px; }
-    .app-nav { display:flex; gap:10px; padding:0 20px 20px; position:sticky; top:0; background:var(--bg); z-index:100; }
-    .nb { background:var(--s2); border:none; color:#888; padding:10px 20px; border-radius:25px; font-size:14px; font-weight:700; outline:none; }
-    .nb.active { background:var(--ac); color:#000; }
-    
-    /* Log Window */
-    #debug-log { position:fixed; bottom:0; left:0; width:100%; height:120px; background:#111; border-top:2px solid #444; color:#0f0; font-family:var(--mono); font-size:11px; padding:10px; overflow-y:scroll; z-index:9999; pointer-events:auto; user-select:text; -webkit-user-select:text; }
-
-    /* Panel & Overlay */
-    .overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); opacity:0; visibility:hidden; z-index:1000; transition:0.3s; backdrop-filter: blur(4px); }
-    .overlay.on { opacity:1; visibility:visible; }
-    .panel { position:fixed; bottom:-100%; left:0; width:100%; height:90vh; background:var(--s1); border-top:1px solid var(--b2); border-radius:30px 30px 0 0; transition:0.4s cubic-bezier(0, 0.5, 0.5, 1); z-index:1001; padding:25px 20px; overflow-y:auto; }
-    .panel.on { bottom:0; }
-    
-    /* Toast Notification */
-    #toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--ac); color:#000; padding:12px 24px; border-radius:30px; font-weight:700; font-size:14px; z-index:10000; display:none; box-shadow:0 10px 30px rgba(0,0,0,0.5); }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<title>Onyx | Data</title>
+<link rel="stylesheet" href="app-styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="app-core.js"></script>
 </head>
 <body>
+<div id="page">
+<div id="scroll-body">
 
-  <div id="toast"></div>
-  <header class="app-header">SOYA</header>
-  
-  <nav class="app-nav">
-    <button class="nb active" id="tab-portfolio" onclick="handleTab('portfolio')">Portfolio</button>
-    <button class="nb" id="tab-watchlist" onclick="handleTab('watchlist')">Watchlist</button>
-    <button class="nb" onclick="openImport()">Stock Upload</button>
-  </nav>
+<!-- ═══ SECTION 0 — PAT & CONFIG ═══ -->
 
-  <main id="app-content">
-    <div id="sector-grid"></div>
-    <div id="stock-list"></div>
-  </main>
-
-  <div id="debug-log"></div>
-
-  <div id="ov" class="overlay" onclick="closePanel()"></div>
-  <div id="import-panel" class="panel">
-    <div id="import-panel-body"></div>
+<div class="sec">
+  <div class="sec-hdr">
+    <div><div class="sec-title">⚙ PAT &amp; Config</div><div class="sec-sub">GitHub token · repository · AI key</div></div>
+    <button class="btn btn-xs btn-ghost" onclick="toggleSec('pat-body')">▾</button>
   </div>
+  <div style="padding:8px 13px;display:flex;gap:16px;border-bottom:1px solid var(--b1);">
+    <div class="row" style="gap:4px;"><span class="dot dot-off" id="dot-token"></span><span style="font-size:9px;color:var(--tx3)">PAT</span></div>
+    <div class="row" style="gap:4px;"><span class="dot dot-off" id="dot-repo"></span><span style="font-size:9px;color:var(--tx3)">Repo</span></div>
+    <div class="row" style="gap:4px;"><span class="dot dot-off" id="dot-ai"></span><span style="font-size:9px;color:var(--tx3)">AI Key</span></div>
+    <div class="row f1" style="justify-content:flex-end;gap:6px;">
+      <span id="scope-repo" style="font-size:9px;"></span>
+      <span id="scope-workflow" style="font-size:9px;"></span>
+    </div>
+  </div>
+  <div id="pat-body" style="padding:10px 13px;display:flex;flex-direction:column;gap:10px;">
+    <div id="last-sync-strip"></div>
+    <div>
+      <div class="row-sb mb4"><span class="label">GitHub PAT</span>
+        <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=BharatMarkets" target="_blank" style="font-size:8px;color:var(--bl);text-decoration:none;">Generate ↗</a></div>
+      <div style="position:relative;">
+        <input id="gh-token-inp" type="password" autocomplete="off" class="inp" placeholder="ghp_xxxxxxxxxxxx"
+          oninput="S.settings.ghToken=this.value.trim();saveSettings();refreshPatStatus()">
+        <span onclick="toggleVis('gh-token-inp')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--tx3);">👁</span>
+      </div>
+      <div class="hint">Needs scopes: <b>repo</b> + <b>workflow</b></div>
+    </div>
+    <div>
+      <div class="label">Repository</div>
+      <input id="gh-repo-inp" class="inp" placeholder="owner/repo  e.g. Murugkan/bharatmarkets"
+        oninput="S.settings.ghRepo=this.value;saveSettings();refreshPatStatus()">
+    </div>
+    <div>
+      <div class="row-sb mb4"><span class="label">Anthropic AI Key</span>
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" style="font-size:8px;color:var(--bl);text-decoration:none;">Get key ↗</a></div>
+      <div style="position:relative;">
+        <input id="ai-key-inp" type="password" autocomplete="off" class="inp" placeholder="sk-ant-xxxxxxxxxxxx"
+          oninput="S.settings.aiKey=this.value.trim();saveSettings();refreshPatStatus()">
+        <span onclick="toggleVis('ai-key-inp')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--tx3);">👁</span>
+      </div>
+      <div class="hint">For AI Guidance · stored locally · never leaves device</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-cyan btn-sm f1" onclick="validatePAT()">🔌 Validate</button>
+      <button class="btn btn-ghost btn-sm f1" onclick="if(typeof testGitHubConnection==='function')testGitHubConnection()">🧪 Diagnostic</button>
+    </div>
+    <div id="gh-diag"></div>
+    <div id="validate-result" style="font-size:9px;margin-top:4px;"></div>
+  </div>
+</div>
 
-  <script src="app-core.js"></script>
-  <script src="app-watchlist.js"></script>
-  <script src="app-import.js"></script>
+<!-- ═══ SECTION 1 — IMPORT ═══ -->
 
-  <script>
-    const logEl = document.getElementById('debug-log');
-    window.log = (msg) => {
-      const line = document.createElement('div');
-      line.textContent = `> ${msg}`;
-      logEl.appendChild(line);
-      logEl.scrollTop = logEl.scrollHeight;
-    };
+<div class="sec">
+  <div class="sec-hdr">
+    <div><div class="sec-title">📥 Import</div><div class="sec-sub">Add new stocks to your list</div></div>
+    <button class="btn btn-xs btn-ghost" onclick="toggleSec('import-body')">▾</button>
+  </div>
+  <div id="import-body" style="padding:10px 13px;">
+    <div class="mb10">
+      <div class="label">Category (applies to entire batch)</div>
+      <div class="cat-pills">
+        <div class="cat-pill port on" id="cat-port" onclick="setImportCat('portfolio')">📊 Portfolio</div>
+        <div class="cat-pill watch" id="cat-watch" onclick="setImportCat('watchlist')">👁 Watchlist</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab on" id="itab-file" onclick="switchImpTab('file')">📁 File Upload</div>
+      <div class="tab" id="itab-manual" onclick="switchImpTab('manual')">✏ Manual</div>
+    </div>
+    <!-- File tab -->
+    <div class="tab-pane on" id="ipane-file">
+      <div style="border:2px dashed var(--b2);border-radius:10px;padding:24px 16px;text-align:center;cursor:pointer;"
+        id="drop-zone" onclick="document.getElementById('file-inp').click()"
+        ondragover="event.preventDefault();this.style.borderColor='var(--bl)'"
+        ondragleave="this.style.borderColor='var(--b2)'"
+        ondrop="handleFileDrop(event)">
+        <input type="file" id="file-inp" hidden accept=".csv,.xls,.xlsx" onchange="handleFileSelect(this.files[0])">
+        <div style="font-size:28px;margin-bottom:8px;">📂</div>
+        <div style="font-size:12px;font-weight:800;color:var(--tx);">Tap to select file</div>
+        <div class="hint mt4">CSV or XLS/XLSX · Columns: Company Name, Qty, Avg Price</div>
+      </div>
+      <div id="file-status" style="font-size:10px;color:var(--tx3);min-height:16px;margin-top:6px;"></div>
+    </div>
+    <!-- Manual tab -->
+    <div class="tab-pane" id="ipane-manual">
+      <div class="hint mb8">One per line: <span style="color:var(--bl);">Company Name, Qty, Avg</span><br>
+        e.g. <span style="color:#8eb0d0;">Tata Power Company, 100, 385</span></div>
+      <textarea class="inp" id="manual-inp" rows="6"
+        placeholder="Tata Power Company, 100, 385&#10;HDFC Bank, 50, 1600&#10;Infosys Limited, 20, 1450"
+        oninput="liveParseManual(this.value)"></textarea>
+      <div id="manual-count" style="font-size:9px;color:var(--tx3);margin-top:4px;"></div>
+    </div>
+    <button class="btn btn-warn mt10" id="btn-resolve" onclick="startResolution()" style="display:none;">⚡ Resolve Symbols</button>
+    <div id="unres-panel" style="display:none;margin-top:10px;">
+      <div style="font-size:9px;font-weight:800;color:var(--rd);margin-bottom:6px;">❌ UNRESOLVED — Enter NSE Symbol Manually</div>
+      <div id="unres-list"></div>
+    </div>
+    <div id="preview-section" style="display:none;margin-top:10px;">
+      <div class="row-sb mb8">
+        <div style="font-size:9px;font-weight:800;color:var(--tx2);" id="preview-title">Preview</div>
+        <div style="font-size:8px;color:var(--tx3);" id="preview-counts"></div>
+      </div>
+      <div id="preview-wrap">
+        <table id="preview-table">
+          <thead><tr><th>Name</th><th>Symbol</th><th>Cat</th><th>Qty</th><th>Avg</th><th>Source</th></tr></thead>
+          <tbody id="preview-body"></tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-success btn-sm f1" onclick="doImport('append')">+ Append</button>
+        <button class="btn btn-warn btn-sm f1" onclick="doImport('replace')">↺ Replace All</button>
+      </div>
+      <div id="import-result"></div>
+    </div>
+  </div>
+</div>
 
-    window.S = {
-      curTab: 'portfolio',
-      portfolio: JSON.parse(localStorage.getItem('soya_portfolio') || '[]'),
-      settings: JSON.parse(localStorage.getItem('soya_settings') || '{}')
-    };
+<!-- ═══ SECTION 2 — DQA TABLE ═══ -->
 
-    // UI HELPER FUNCTIONS
-    window.toast = (msg) => {
-      const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.style.display = 'block';
-      log(`TOAST: ${msg}`);
-      setTimeout(() => { t.style.display = 'none'; }, 3000);
-    };
+<div class="sec">
+  <div class="sec-hdr">
+    <div>
+      <div class="sec-title" id="dqa-title">📊 DQA Table</div>
+      <div class="sec-sub" id="dqa-timestamps"></div>
+    </div>
+    <button class="btn btn-xs btn-cyan" onclick="loadDQA()">↻</button>
+  </div>
+  <div id="bulk-bar" style="display:none;padding:8px 12px;margin:6px 13px;
+    background:rgba(0,242,255,.06);border:1px solid rgba(0,242,255,.25);border-radius:8px;
+    align-items:center;justify-content:space-between;">
+    <span style="font-size:10px;color:var(--bl);" id="bulk-count">0 selected</span>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-xs btn-ghost" onclick="clearSelection()">Clear</button>
+      <button class="btn btn-xs btn-danger" onclick="bulkDelete()">🗑 Delete</button>
+    </div>
+  </div>
+  <div id="dqa-body" style="padding:0 13px 10px;">
+    <div id="dqa-loading" style="padding:30px;text-align:center;color:var(--tx3);font-size:10px;">
+      <span class="spinner">⏳</span> Loading...
+    </div>
+    <div id="dqa-wrap" style="display:none;">
+      <table id="dqa-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)" style="cursor:pointer;"></th>
+            <th style="position:sticky;left:20px;z-index:30;background:#050505;">SYM</th>
+            <th>NAME</th><th>CAT</th><th>FUND</th><th>PRICE</th><th>CONCALL</th><th>INSIGHTS</th><th>QTY</th><th>AVG</th><th>✕</th>
+          </tr>
+        </thead>
+        <tbody id="dqa-tbody"></tbody>
+      </table>
+    </div>
+    <div class="note">Deleted stocks excluded from next data refresh. Fundamentals and prices regenerate on next workflow run.</div>
+  </div>
+</div>
 
-    window.closePanel = () => {
-      document.getElementById('ov').classList.remove('on');
-      document.getElementById('import-panel').classList.remove('on');
-      log("Panel Closed");
-    };
+<!-- ═══ SECTION 3 — REFRESH ═══ -->
 
-    window.handleTab = (tab) => {
-      S.curTab = tab;
-      document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
-      document.getElementById('tab-' + tab).classList.add('active');
-      if (typeof render === 'function') render();
-    };
+<div class="sec">
+  <div class="sec-hdr">
+    <div><div class="sec-title">🔄 Refresh</div><div class="sec-sub">Read DB · Trigger web extract</div></div>
+  </div>
+  <div style="padding:10px 13px;">
+    <div style="font-size:9px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">── READ (Pull from GitHub into local DB)</div>
+    <div class="ref-card">
+      <div class="row-sb"><div class="ref-card-title cyan">↻ Read Prices</div>
+        <button class="btn btn-xs btn-cyan" onclick="readJSON('prices')">Read</button></div>
+      <div class="ref-ts" id="ts-read-prices">Last read: —</div>
+    </div>
+    <div class="ref-card">
+      <div class="row-sb"><div class="ref-card-title" style="color:#ce93d8;">↻ Read Fundamentals</div>
+        <button class="btn btn-xs btn-purple" onclick="readJSON('fundamentals')">Read</button></div>
+      <div class="ref-ts" id="ts-read-fund">Last read: —</div>
+    </div>
+    <div class="ref-card">
+      <div class="row-sb"><div class="ref-card-title" style="color:#f59e0b;">↻ Read Guidance</div>
+        <button class="btn btn-xs btn-amber" onclick="readJSON('guidance')">Read</button></div>
+      <div class="ref-ts" id="ts-read-guidance">Last read: —</div>
+    </div>
+    <div class="sep"></div>
+    <div style="font-size:9px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">── WEB EXTRACT (Trigger GitHub Actions)</div>
+    <div class="ref-card">
+      <div class="row-sb">
+        <div><div class="ref-card-title cyan">⚡ Extract Prices</div><div class="ref-ts">~2 min</div></div>
+        <button class="btn btn-xs btn-cyan" id="btn-ext-prices" onclick="triggerExtract('prices_only','btn-ext-prices','ext-prices-status')">Run</button>
+      </div>
+      <div class="ref-ts" id="ts-ext-prices">Last extract: —</div>
+      <div id="ext-prices-status" style="font-size:9px;color:var(--tx3);margin-top:4px;"></div>
+    </div>
+    <div class="ref-card">
+      <div class="row-sb">
+        <div><div class="ref-card-title" style="color:#ce93d8;">⚡ Extract Fundamentals</div><div class="ref-ts">~5 min</div></div>
+        <button class="btn btn-xs btn-purple" id="btn-ext-fund" onclick="triggerExtract('fundamentals_only','btn-ext-fund','ext-fund-status')">Run</button>
+      </div>
+      <div class="ref-ts" id="ts-ext-fund">Last extract: —</div>
+      <div id="ext-fund-status" style="font-size:9px;color:var(--tx3);margin-top:4px;"></div>
+    </div>
+    <div class="ref-card">
+      <div class="row-sb">
+        <div><div class="ref-card-title amber">⚡ Extract Full</div><div class="ref-ts">Prices + Fundamentals</div></div>
+        <button class="btn btn-xs btn-warn" id="btn-ext-all" onclick="triggerExtract('all','btn-ext-all','ext-all-status')">Run</button>
+      </div>
+      <div class="ref-ts" id="ts-ext-all">Last extract: —</div>
+      <div id="ext-all-status" style="font-size:9px;color:var(--tx3);margin-top:4px;"></div>
+    </div>
+  </div>
+</div>
 
-    window.onload = async () => {
-      log("Booting system...");
+<!-- ═══ SECTION 4 — LOG TERMINAL ═══ -->
+
+<div class="sec">
+  <div class="sec-hdr">
+    <div class="sec-title">📟 Log Terminal</div>
+    <button class="btn btn-xs btn-ghost" onclick="clearLog()">Clear</button>
+  </div>
+  <div style="padding:10px 13px;"><div id="data-log"></div></div>
+</div>
+
+</div><!-- /scroll-body -->
+<footer></footer>
+</div><!-- /page -->
+
+<script>
+// ══════════════════════════════════════════════
+// PAGE-SPECIFIC JS — data.html
+// All shared utilities live in app-core.js
+// ══════════════════════════════════════════════
+
+function toggleSec(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// ── PAT ──────────────────────────────────────
+function refreshPatStatus() {
+  const setDot = (id, ok) => { const el = document.getElementById(id); if (el) el.className = 'dot ' + (ok ? 'dot-ok' : 'dot-off'); };
+  setDot('dot-token', !!S.settings.ghToken);
+  setDot('dot-repo',  !!S.settings.ghRepo);
+  setDot('dot-ai',    !!S.settings.aiKey);
+  const ti = document.getElementById('gh-token-inp'); if (ti && !ti.value && S.settings.ghToken) ti.value = S.settings.ghToken;
+  const ri = document.getElementById('gh-repo-inp');  if (ri && !ri.value && S.settings.ghRepo)  ri.value = S.settings.ghRepo;
+  const ai = document.getElementById('ai-key-inp');   if (ai && !ai.value && S.settings.aiKey)   ai.value = S.settings.aiKey;
+  const strip = document.getElementById('last-sync-strip');
+  if (strip && S.settings._lastSync) {
+    const col = S.settings._lastSyncOk ? '#00e896' : '#ff6b85';
+    const icon = S.settings._lastSyncOk ? '✅' : '❌';
+    const t = new Date(S.settings._lastSync).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    strip.innerHTML = `<div style="font-size:9px;color:${col};padding:4px 0;">${icon} Last sync: ${t} — ${S.settings._lastSyncMsg || ''}</div>`;
+  }
+}
+
+async function validatePAT() {
+  if (!S.settings.ghToken) { toast('Enter PAT first'); return; }
+  const res = document.getElementById('validate-result');
+  res.innerHTML = '<span class="amber"><span class="spinner">⏳</span> Validating...</span>';
+  dataLog('Validating PAT...', '⏳');
+  try {
+    const r = await fetch('https://api.github.com/user', { headers: ghHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const scopes = r.headers.get('x-oauth-scopes') || '';
+    const hasRepo = scopes.includes('repo');
+    const hasWorkflow = scopes.includes('workflow');
+    const user = await r.json();
+    let repoOk = false;
+    if (S.settings.ghRepo) {
+      const rr = await fetch(`https://api.github.com/repos/${S.settings.ghRepo}`, { headers: ghHeaders() });
+      repoOk = rr.ok;
+    }
+    S.settings._ghStatus = (hasRepo && repoOk) ? 'ok' : 'fail';
+    saveSettings(); refreshPatStatus();
+    document.getElementById('scope-repo').innerHTML = `<span class="${hasRepo?'scope-ok':'scope-miss'}">${hasRepo?'✅':'❌'} repo</span>`;
+    document.getElementById('scope-workflow').innerHTML = `<span class="${hasWorkflow?'scope-ok':'scope-miss'}">${hasWorkflow?'✅':'❌'} workflow</span>`;
+    res.innerHTML = `<span class="green">✅ ${user.login} · repo:${hasRepo?'✅':'❌'} workflow:${hasWorkflow?'✅':'❌'}${S.settings.ghRepo?` · Repo:${repoOk?'✅':'❌'}`:''}`;
+    dataLog(`PAT valid — ${user.login} · scopes: ${scopes}`, '✅');
+  } catch(e) {
+    S.settings._ghStatus = 'fail'; saveSettings();
+    res.innerHTML = `<span class="red">❌ ${e.message}</span>`;
+    dataLog(`PAT validation failed: ${e.message}`, '❌');
+  }
+}
+
+// ── IMPORT ────────────────────────────────────
+let importCat = 'portfolio';
+let parsedStocks = [];
+let resolvedStocks = [];
+
+function setImportCat(cat) {
+  importCat = cat;
+  document.getElementById('cat-port').classList.toggle('on', cat === 'portfolio');
+  document.getElementById('cat-watch').classList.toggle('on', cat === 'watchlist');
+}
+
+function switchImpTab(tab) {
+  ['file','manual'].forEach(t => {
+    document.getElementById('itab-'+t).classList.toggle('on', t===tab);
+    document.getElementById('ipane-'+t).classList.toggle('on', t===tab);
+  });
+  parsedStocks = []; resolvedStocks = [];
+  document.getElementById('preview-section').style.display = 'none';
+  document.getElementById('unres-panel').style.display = 'none';
+  document.getElementById('btn-resolve').style.display = 'none';
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) handleFileSelect(file);
+}
+
+function handleFileSelect(file) {
+  if (!file) return;
+  const status = document.getElementById('file-status');
+  status.innerHTML = `<span class="amber"><span class="spinner">⏳</span> Reading ${file.name}...</span>`;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'xls' || ext === 'xlsx') {
+    const reader = new FileReader();
+    reader.onload = e => {
       try {
-        const res = await fetch('symbols.json');
-        window.FUND = await res.json();
-        window.ISIN_MAP = {};
-        window.FUND.forEach(item => { if(item.isin) ISIN_MAP[item.isin] = item.sym; });
-        log("✓ Symbols loaded");
-      } catch(e) { log("! Symbols load fail"); }
-
-      if (typeof render === 'function') render();
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        parsedStocks = parseFileRows(rows);
+        status.innerHTML = `<span class="green">✅ ${file.name} — ${parsedStocks.length} detected</span>`;
+        if (parsedStocks.length) document.getElementById('btn-resolve').style.display = 'block';
+      } catch(err) { status.innerHTML = `<span class="red">❌ ${err.message}</span>`; }
     };
+    reader.readAsBinaryString(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const rows = e.target.result.split(/\r?\n/).map(l => l.split(','));
+      parsedStocks = parseFileRows(rows);
+      status.innerHTML = `<span class="green">✅ ${file.name} — ${parsedStocks.length} detected</span>`;
+      if (parsedStocks.length) document.getElementById('btn-resolve').style.display = 'block';
+    };
+    reader.readAsText(file);
+  }
+}
 
-    window.onerror = (m, u, l) => { log(`ERR: ${m} (Line ${l})`); };
-  </script>
+function parseFileRows(rows) {
+  const out = [];
+  let hi = 0;
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const r = rows[i].map(c => String(c||'').toLowerCase());
+    if (r.some(c => c.includes('name')||c.includes('company'))) { hi = i; break; }
+  }
+  const hdr = rows[hi].map(c => String(c||'').toLowerCase());
+  let nc = hdr.findIndex(h => h.includes('name')||h.includes('company'));
+  let qc = hdr.findIndex(h => h.includes('qty')||h.includes('quantity'));
+  let ac = hdr.findIndex(h => h.includes('avg')||h.includes('average')||h.includes('price')||h.includes('cost'));
+  if (nc<0) nc=0; if (qc<0) qc=1; if (ac<0) ac=2;
+  for (let i = hi+1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r||r.length<2) continue;
+    const name = String(r[nc]||'').trim();
+    const qty  = parseFloat(String(r[qc]||'').replace(/,/g,''))||0;
+    const avg  = parseFloat(String(r[ac]||'').replace(/,/g,''))||0;
+    if (name && name.length>1 && qty>0) out.push({ name, qty, avg });
+  }
+  return out;
+}
+
+function liveParseManual(text) {
+  parsedStocks = [];
+  for (const line of text.split('\n').map(l=>l.trim()).filter(Boolean)) {
+    const parts = line.split(/[,\t]+/).map(p=>p.trim());
+    if (parts.length < 2) continue;
+    const name = parts[0];
+    const nums = parts.slice(1).map(p=>parseFloat(p.replace(/[,₹]/g,''))).filter(n=>!isNaN(n)&&n>0);
+    if (!name||!nums.length) continue;
+    parsedStocks.push({ name, qty: Math.round(nums[0]), avg: nums[1]||0 });
+  }
+  const cnt = document.getElementById('manual-count');
+  if (cnt) cnt.textContent = parsedStocks.length ? `✅ ${parsedStocks.length} stocks detected` : '';
+  document.getElementById('btn-resolve').style.display = parsedStocks.length ? 'block' : 'none';
+}
+
+async function startResolution() {
+  if (!parsedStocks.length) { toast('No stocks to resolve'); return; }
+  const btn = document.getElementById('btn-resolve');
+  btn.disabled = true; btn.textContent = '⏳ Resolving...';
+  resolvedStocks = [];
+  const unresolved = [];
+  dataLog(`Resolving ${parsedStocks.length} stocks...`, '⏳');
+
+  for (const stock of parsedStocks) {
+    const dup = SYMBOLS.find(s => nameSimilarity(stock.name, s.name||'') > 75);
+    if (dup) {
+      dataLog(`DUPLICATE: ${stock.name} → ${dup.sym}`, '⚠');
+      resolvedStocks.push({ ...stock, sym: dup.sym, source: 'duplicate', confidence: 100, isDuplicate: true, cat: importCat });
+      continue;
+    }
+    dataLog(`Resolving: ${stock.name}...`, '⏳');
+    let result = await searchYahoo(stock.name);
+    if (result && result.confidence >= 40) {
+      resolvedStocks.push({ ...stock, ...result, cat: importCat, source: 'yahoo' });
+      dataLog(`${result.confidence<70?'⚠':'✅'} ${result.sym} — Yahoo (${result.confidence}%)`, result.confidence<70?'⚠':'✅');
+      continue;
+    }
+    result = await searchNSE(stock.name);
+    if (result && result.sym) {
+      resolvedStocks.push({ ...stock, ...result, cat: importCat, source: 'nse' });
+      dataLog(`✅ ${result.sym} — NSE`, '✅');
+      continue;
+    }
+    unresolved.push(stock);
+    dataLog(`❌ ${stock.name} — unresolved`, '❌');
+  }
+
+  btn.disabled = false; btn.textContent = '⚡ Re-Resolve';
+
+  if (unresolved.length) {
+    const panel = document.getElementById('unres-panel');
+    panel.style.display = 'block';
+    document.getElementById('unres-list').innerHTML = unresolved.map((s,i) => `
+      <div class="unres-item">
+        <span class="unres-name">❌ ${s.name}</span>
+        <input class="inp" style="width:100px;font-size:10px;padding:5px 8px;" placeholder="Symbol"
+          id="unres-${i}" oninput="this.value=this.value.toUpperCase()">
+        <button class="btn btn-xs btn-warn" onclick="confirmManualSym(${i},'${s.name.replace(/'/g,'')}}',${s.qty},${s.avg})">✓</button>
+      </div>`).join('');
+  }
+  renderPreview();
+}
+
+function confirmManualSym(i, name, qty, avg) {
+  const inp = document.getElementById(`unres-${i}`);
+  const sym = inp ? inp.value.trim().toUpperCase() : '';
+  if (!sym) { toast('Enter a symbol'); return; }
+  resolvedStocks.push({ name, sym, qty, avg, cat: importCat, source: 'manual', confidence: 0, isin: '', sector: '' });
+  dataLog(`Manual: ${sym} ← ${name}`, '⚠');
+  if (inp && inp.parentElement) { inp.parentElement.style.opacity='.4'; inp.parentElement.style.pointerEvents='none'; }
+  renderPreview();
+}
+
+function renderPreview() {
+  document.getElementById('preview-section').style.display = 'block';
+  const nonDup = resolvedStocks.filter(s=>!s.isDuplicate);
+  const dups = resolvedStocks.filter(s=>s.isDuplicate);
+  document.getElementById('preview-title').textContent = `Preview — ${resolvedStocks.length} stocks`;
+  document.getElementById('preview-counts').textContent = `${nonDup.length} new · ${dups.length} duplicates`;
+  document.getElementById('preview-body').innerHTML = resolvedStocks.map(s => {
+    const warn = s.confidence>0 && s.confidence<70;
+    const srcBadge = s.isDuplicate ? `<span class="badge badge-dup">dup</span>`
+      : s.source==='yahoo' ? `<span class="badge badge-yahoo">yahoo ${s.confidence}%</span>`
+      : s.source==='nse'   ? `<span class="badge badge-nse">nse</span>`
+      : `<span class="badge badge-manual">manual</span>`;
+    return `<tr class="${warn?'prev-warn':''}">
+      <td>${s.name.slice(0,18)}</td>
+      <td style="font-weight:800;color:var(--bl);">${s.sym}</td>
+      <td><span class="badge ${s.cat==='portfolio'?'badge-port':'badge-watch'}">${s.cat}</span></td>
+      <td>${s.qty}</td><td>${s.avg>0?'₹'+fmt(s.avg):'—'}</td><td>${srcBadge}</td></tr>`;
+  }).join('');
+}
+
+async function doImport(mode) {
+  if (!requirePAT()) return;
+  const toImport = resolvedStocks.filter(s => !s.isDuplicate && s.sym);
+  if (!toImport.length) { toast('No resolved stocks to import'); return; }
+  dataLog(`Importing (${mode}) — ${toImport.length} stocks`, '⏳');
+
+  dataLog('Updating symbols.json...', '⏳');
+  try {
+    let existing = migrateSymbols([...SYMBOLS]);
+    if (mode === 'replace') existing = existing.filter(s => s.category !== importCat);
+    const existingSyms = new Set(existing.map(s=>s.sym));
+    for (const s of toImport) {
+      if (!existingSyms.has(s.sym)) {
+        existing.push({ sym:s.sym, name:s.name, isin:s.isin||'', sector:s.sector||'', category:s.cat, qty:s.qty, avg:s.avg, resolved:true });
+      } else {
+        const idx = existing.findIndex(e=>e.sym===s.sym);
+        if (idx>=0) { existing[idx].qty=s.qty; existing[idx].avg=s.avg; }
+      }
+    }
+    const r = await ghPut('symbols.json', JSON.stringify(existing, null, 2), `data: import ${toImport.length} stocks`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    SYMBOLS = existing;
+    dataLog(`symbols.json updated — ${toImport.length} added`, '✅');
+  } catch(e) { dataLog(`symbols.json failed: ${e.message}`, '❌'); return; }
+
+  dataLog('Updating portfolio_symbols.txt...', '⏳');
+  try {
+    let syms = SYMBOLS.map(s=>s.sym);
+    const txt = [...new Set(syms)].join('\n');
+    const r = await ghPut('portfolio_symbols.txt', txt, 'data: update symbol list');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    dataLog('portfolio_symbols.txt updated', '✅');
+  } catch(e) { dataLog(`portfolio_symbols.txt failed: ${e.message}`, '❌'); return; }
+
+  const dups = resolvedStocks.filter(s=>s.isDuplicate).length;
+  const unres = parsedStocks.length - resolvedStocks.length;
+  document.getElementById('import-result').innerHTML = `
+    <div class="import-status">
+      <div style="font-size:10px;font-weight:800;color:var(--gr);margin-bottom:6px;">✅ Import Complete</div>
+      <div class="import-stat-row"><span>Imported</span><span class="green">${toImport.length}</span></div>
+      <div class="import-stat-row"><span>Duplicates skipped</span><span class="amber">${dups}</span></div>
+      <div class="import-stat-row"><span>Unresolved</span><span class="red">${unres}</span></div>
+    </div>`;
+  dataLog(`Done — ${toImport.length} imported · ${dups} dups · ${unres} unresolved`, '✅');
+  loadDQA();
+}
+
+// ── DQA TABLE ─────────────────────────────────
+let dqaData = [];
+let selectedSyms = new Set();
+let pendingDelete = null;
+
+async function loadDQA() {
+  if (!requirePAT()) return;
+  document.getElementById('dqa-loading').style.display = 'block';
+  document.getElementById('dqa-wrap').style.display = 'none';
+  dataLog('Loading DQA...', '⏳');
+  try {
+    let symList = [];
+    try {
+      const raw = await ghFetchRaw('portfolio_symbols.txt');
+      if (typeof raw === 'string') symList = raw.split('\n').map(s=>s.trim()).filter(Boolean);
+      else symList = SYMBOLS.map(s=>s.sym);
+    } catch(e) { symList = SYMBOLS.map(s=>s.sym); }
+
+    let fundTs = '', priceTs = '';
+    try { if (!window._fundData) { window._fundData = await ghFetchRaw('fundamentals.json'); FUND = window._fundData.stocks||{}; } fundTs = window._fundData.updated||''; } catch(e) {}
+    try { if (!window._priceData) { window._priceData = await ghFetchRaw('prices.json'); PRICES = window._priceData.quotes||{}; } priceTs = window._priceData.updated||''; } catch(e) {}
+
+    const fmtD = ts => ts ? new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}) : '—';
+    document.getElementById('dqa-timestamps').textContent = `Fund: ${fmtD(fundTs)} · Prices: ${fmtD(priceTs)}`;
+
+    const symSet = new Set(symList);
+    const orphans = new Set([...Object.keys(FUND), ...Object.keys(PRICES)].filter(s => !symSet.has(s)));
+
+    dqaData = [
+      ...symList.map(sym => buildDQARow(sym, false, fundTs, priceTs)),
+      ...[...orphans].map(sym => buildDQARow(sym, true, fundTs, priceTs))
+    ];
+
+    document.getElementById('dqa-title').textContent = `📊 DQA Table (${symList.length})`;
+    renderDQA();
+    document.getElementById('dqa-loading').style.display = 'none';
+    document.getElementById('dqa-wrap').style.display = 'block';
+    dataLog(`DQA loaded — ${symList.length} symbols · ${orphans.size} orphans`, '✅');
+  } catch(e) {
+    dataLog(`DQA failed: ${e.message}`, '❌');
+    document.getElementById('dqa-loading').textContent = '❌ Failed — check PAT & Repo';
+  }
+}
+
+function buildDQARow(sym, orphan, fundTs, priceTs) {
+  const si = SYMBOLS.find(s=>s.sym===sym)||{};
+  const g  = GUIDANCE[sym];
+  const hasConcall  = g && (g.quarter||g.revenue_guidance||g.tone);
+  const hasInsights = g && g.insights && g.insights.bullets && g.insights.bullets.length>0;
+  return {
+    sym, orphan,
+    name: si.name||sym,
+    cat:  si.category||(si.source?si.source[0]:'portfolio'),
+    qty:  si.qty||0, avg: si.avg||0,
+    hasFund:!!FUND[sym], hasPrice:!!PRICES[sym],
+    hasConcall, hasInsights,
+    concallQuarter:  g?.quarter||'',
+    concallUpdated:  g?.updated||'',
+    insightsUpdated: g?.insights?.updated||'',
+    fundTs, priceTs
+  };
+}
+
+function renderDQA() {
+  const tbody = document.getElementById('dqa-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = dqaData.map(row => {
+    const isSel = selectedSyms.has(row.sym);
+    const cd = daysSince(row.concallUpdated), id = daysSince(row.insightsUpdated);
+    const fd = daysSince(row.fundTs), pd = daysSince(row.priceTs);
+    return `<tr id="row-${row.sym}" class="${row.orphan?'dqa-orphan':''} ${isSel?'dqa-sel':''}" onclick="toggleRowSel('${row.sym}')">
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${isSel?'checked':''} onchange="toggleSel('${row.sym}',this.checked)" style="cursor:pointer;"></td>
+      <td onclick="event.stopPropagation()"><span class="dqa-sym">${row.orphan?'⚠ ':''}${row.sym}</span>${row.orphan?`<div class="dqa-sub amber">orphan</div>`:''}</td>
+      <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:var(--tx2);">${(row.name||'').slice(0,14)}</td>
+      <td onclick="event.stopPropagation()"><span class="badge ${row.cat==='portfolio'?'badge-port':'badge-watch'} dqa-tap" onclick="editCat('${row.sym}')">${row.cat}</span></td>
+      <td>${row.hasFund?'<span class="dqa-ok">✅</span>':'<span class="dqa-miss">❌</span>'}${fd!==null?`<div class="dqa-sub">${fd}d</div>`:''}</td>
+      <td>${row.hasPrice?'<span class="dqa-ok">✅</span>':'<span class="dqa-miss">❌</span>'}${pd!==null?`<div class="dqa-sub">${pd}d</div>`:''}</td>
+      <td class="dqa-tap" onclick="event.stopPropagation();openConcallSheet('${row.sym}')">
+        ${row.hasConcall?'<span class="dqa-ok">✅</span>':'<span class="dqa-miss">❌</span>'}
+        ${row.concallQuarter?`<div class="dqa-sub">${row.concallQuarter}</div>`:''}
+        ${cd!==null?`<div class="dqa-sub">${cd}d</div>`:''}
+      </td>
+      <td class="dqa-tap" onclick="event.stopPropagation();openInsightsSheet('${row.sym}')">
+        ${row.hasInsights?'<span class="dqa-ok">✅</span>':'<span class="dqa-miss">❌</span>'}
+        ${id!==null?`<div class="dqa-sub">${id}d</div>`:''}
+      </td>
+      <td onclick="event.stopPropagation()"><span id="qty-${row.sym}" class="dqa-tap" onclick="editCell('qty','${row.sym}',${row.qty})">${row.qty||'—'}</span></td>
+      <td onclick="event.stopPropagation()"><span id="avg-${row.sym}" class="dqa-tap" onclick="editCell('avg','${row.sym}',${row.avg})">${row.avg>0?'₹'+fmt(row.avg):'—'}</span></td>
+      <td onclick="event.stopPropagation()"><button class="btn btn-xs btn-danger" style="padding:4px 8px;" onclick="confirmDelete('${row.sym}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleRowSel(sym) { if(selectedSyms.has(sym))selectedSyms.delete(sym);else selectedSyms.add(sym); updateBulkBar(); renderDQA(); }
+function toggleSel(sym,checked) { if(checked)selectedSyms.add(sym);else selectedSyms.delete(sym); updateBulkBar(); }
+function toggleSelectAll(checked) { if(checked)dqaData.forEach(r=>selectedSyms.add(r.sym));else selectedSyms.clear(); updateBulkBar(); renderDQA(); }
+function clearSelection() { selectedSyms.clear(); const sa=document.getElementById('select-all');if(sa)sa.checked=false; updateBulkBar(); renderDQA(); }
+function updateBulkBar() {
+  const bar=document.getElementById('bulk-bar');
+  if(!bar)return;
+  bar.style.display = selectedSyms.size>0 ? 'flex' : 'none';
+  const cnt=document.getElementById('bulk-count');if(cnt)cnt.textContent=`${selectedSyms.size} selected`;
+}
+
+async function editCell(field, sym, cur) {
+  const el = document.getElementById(`${field}-${sym}`);
+  if (!el) return;
+  const inp = document.createElement('input');
+  inp.className = 'cell-edit'; inp.type = 'number'; inp.value = cur||'';
+  el.replaceWith(inp); inp.focus(); inp.select();
+  const save = async () => {
+    const val = parseFloat(inp.value)||0;
+    inp.replaceWith(el);
+    el.textContent = field==='avg' ? (val>0?'₹'+fmt(val):'—') : (val||'—');
+    const row = dqaData.find(r=>r.sym===sym); if(row) row[field]=val;
+    const si = SYMBOLS.findIndex(s=>s.sym===sym); if(si>=0) SYMBOLS[si][field]=val;
+    if (!requirePAT()) return;
+    dataLog(`Updating ${sym} ${field}...`, '⏳');
+    try { const r=await ghPut('symbols.json',JSON.stringify(SYMBOLS,null,2),`data: ${sym} ${field}`); if(!r.ok)throw new Error(`HTTP ${r.status}`); dataLog(`${sym} ${field} → ${val}`, '✅'); }
+    catch(e) { dataLog(`${sym} ${field} failed: ${e.message}`, '❌'); }
+  };
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', e => { if(e.key==='Enter')inp.blur(); if(e.key==='Escape')inp.replaceWith(el); });
+}
+
+async function editCat(sym) {
+  const row = dqaData.find(r=>r.sym===sym); if (!row) return;
+  row.cat = row.cat==='portfolio' ? 'watchlist' : 'portfolio';
+  const si = SYMBOLS.findIndex(s=>s.sym===sym); if(si>=0) SYMBOLS[si].category=row.cat;
+  renderDQA();
+  if (!requirePAT()) return;
+  dataLog(`Updating ${sym} category...`, '⏳');
+  try { const r=await ghPut('symbols.json',JSON.stringify(SYMBOLS,null,2),`data: ${sym} → ${row.cat}`); if(!r.ok)throw new Error(`HTTP ${r.status}`); dataLog(`${sym} → ${row.cat}`, '✅'); }
+  catch(e) { dataLog(`${sym} category failed: ${e.message}`, '❌'); }
+}
+
+function confirmDelete(sym) {
+  if (pendingDelete===sym) { doDelete([sym]); pendingDelete=null; }
+  else { pendingDelete=sym; toast(`Tap ✕ again to confirm: ${sym}`); setTimeout(()=>{pendingDelete=null;},3000); }
+}
+
+async function doDelete(syms) {
+  if (!requirePAT()) return;
+  dataLog(`Removing ${syms.join(', ')}...`, '⏳');
+  try {
+    const newList = dqaData.filter(r=>!syms.includes(r.sym)).map(r=>r.sym);
+    const r1 = await ghPut('portfolio_symbols.txt', newList.join('\n'), `data: remove ${syms.join(',')}`);
+    if (!r1.ok) throw new Error(`portfolio_symbols: HTTP ${r1.status}`);
+    dataLog('portfolio_symbols.txt updated', '✅');
+    SYMBOLS = SYMBOLS.filter(s=>!syms.includes(s.sym));
+    const r2 = await ghPut('symbols.json', JSON.stringify(SYMBOLS,null,2), `data: remove ${syms.join(',')}`);
+    if (!r2.ok) throw new Error(`symbols.json: HTTP ${r2.status}`);
+    dataLog('symbols.json updated', '✅');
+    dqaData = dqaData.filter(r=>!syms.includes(r.sym));
+    syms.forEach(s=>selectedSyms.delete(s));
+    document.getElementById('dqa-title').textContent = `📊 DQA Table (${dqaData.filter(r=>!r.orphan).length})`;
+    renderDQA(); updateBulkBar();
+    syms.forEach(s=>dataLog(`🗑 ${s} removed`, '🗑'));
+  } catch(e) { dataLog(`Delete failed: ${e.message}`, '❌'); }
+}
+
+async function bulkDelete() { if(!selectedSyms.size)return; const s=[...selectedSyms]; clearSelection(); await doDelete(s); }
+
+// ── CONCALL SHEET ──────────────────────────────
+function buildConcallPrompt(sym) {
+  const f=FUND[sym]||{}, name=f.name||sym, q=detectQuarter();
+  const qt=(f.quarterly||[]).slice(0,4).map(q=>`  ${q.d||'?'}: Rev ₹${q.rev||'—'}Cr | EPS ₹${q.eps||'—'} | OPM ${q.opm||'—'}%`).join('\n')||'  No data';
+  return `You are a senior equity research analyst. Analyse the ${q} results for ${name} (NSE: ${sym}).
+
+CONTEXT: Sector: ${f.sector||'—'} | Price: ₹${f.ltp||'—'} | P/E: ${f.pe||'—'}x | ROE: ${f.roe||'—'}% | OPM: ${f.opm_pct||'—'}% | MCap: ₹${f.mcap||'—'}Cr
+
+LAST 4 QUARTERS:
+${qt}
+
+Return ONLY in KEY: VALUE format — one per line, no markdown:
+
+Quarter: [Q? FY??]
+Action Signal: [BUY MORE/HOLD/REDUCE/EXIT] — reason
+Revenue Guidance: [target]
+Revenue Growth Target: [YoY %]
+EBITDA Margin Target: [range]
+Management Tone: [Positive/Cautious/Negative] — reason
+Confidence Level: [High/Medium/Low]
+Key Commitments: [top 3; semicolon separated]
+Key Risks: [top 3 High/Medium/Low; semicolon separated]
+Capex Plan: [amount, purpose, timeline]
+Geographic Presence: [countries/regions]
+Key Products Portfolio: [top products with %]
+Summary: [1 sentence takeaway]`;
+}
+
+function openConcallSheet(sym) {
+  const g=GUIDANCE[sym], hasConcall=g&&(g.quarter||g.revenue_guidance||g.tone);
+  const days=daysSince(g?.updated), prompt=buildConcallPrompt(sym);
+  const row=dqaData.find(r=>r.sym===sym)||{};
+  openSheet(`
+    <div class="sheet-hdr">
+      <div class="row-sb">
+        <div><div class="sheet-sym">${sym}</div><div class="sheet-name">${(FUND[sym]?.name||row.name||'').slice(0,30)}</div></div>
+        <button onclick="closeSheet()" style="background:none;border:1px solid var(--b2);border-radius:6px;padding:4px 10px;color:var(--tx3);font-size:11px;cursor:pointer;">✕</button>
+      </div>
+      <div style="margin-top:8px;font-size:9px;color:${hasConcall?'var(--gr)':'var(--tx3)'};">
+        ${hasConcall?`✅ ${g.quarter||''} · ${days!==null?days+'d ago':''}` : '❌ No concall data'}
+      </div>
+      ${g?.updated?`<div style="font-size:8px;color:var(--tx3);margin-top:2px;">${new Date(g.updated).toLocaleDateString('en-IN')}</div>`:''}
+    </div>
+    <div class="sheet-body">
+      <div class="label">STEP 1 — Copy prompt</div>
+      <div class="prompt-box" id="concall-prompt">${prompt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-cyan btn-sm f1" onclick="copyText('concall-prompt')">📋 Copy</button>
+        <a href="https://claude.ai/new" target="_blank" class="btn btn-success btn-sm f1" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🤖 Claude ↗</a>
+      </div>
+      <div class="label">STEP 2 — Paste Claude's response</div>
+      <textarea class="inp" id="concall-resp" rows="8" placeholder="Paste response here…"></textarea>
+
+```
+  <button class="btn btn-warn mt8" onclick="saveConcall('${sym}')">💾 Save Concall</button>
+  ${g?.updated?`<div class="ref-ts mt8">Last: ${new Date(g.updated).toLocaleString('en-IN')}</div>`:''}
+</div>`);
+```
+
+}
+
+async function saveConcall(sym) {
+const ta=document.getElementById(‘concall-resp’);
+if(!ta||!ta.value.trim()){toast(‘Paste response first’);return;}
+const parsed=parseConcallResponse(sym,ta.value.trim());
+GUIDANCE[sym]={…(GUIDANCE[sym]||{}),…parsed};
+saveGuidanceLocal();
+if(requirePAT()){
+dataLog(`Saving ${sym} concall...`,‘⏳’);
+try{const r=await ghPut(‘guidance.json’,JSON.stringify(guidanceForStorage(),null,2),`guidance: ${sym} concall`);if(!r.ok)throw new Error(`HTTP ${r.status}`);dataLog(`${sym} concall saved — ${parsed.quarter||''}`,‘✅’);}
+catch(e){dataLog(`guidance save failed: ${e.message}`,‘❌’);}
+}
+const row=dqaData.find(r=>r.sym===sym);
+if(row){row.hasConcall=true;row.concallQuarter=parsed.quarter||’’;row.concallUpdated=parsed.updated;}
+renderDQA();closeSheet();toast(`✅ ${sym} concall saved`);
+}
+
+function parseConcallResponse(sym,text){
+const data={};
+text.split(’\n’).forEach(line=>{
+const m=line.replace(/**/g,’’).trim().match(/^([A-Za-z][A-Za-z\s/()]+?)[\s]*[:：][\s]*(.+)$/);
+if(m&&m[1]&&m[2]){const k=m[1].trim().toLowerCase().replace(/[^a-z0-9]/g,’*’).replace(/*+/g,’*’);const v=m[2].trim();if(v&&v!==‘Not mentioned’)data[k]=v;}
+});
+const get=(…keys)=>{for(const k of keys){const nk=k.toLowerCase().replace(/[^a-z0-9]/g,’*’).replace(/*+/g,’*’);if(data[nk])return data[nk];}return null;};
+const tr=get(‘management_tone’,‘tone’)||’’;
+return{sym,updated:new Date().toISOString(),quarter:get(‘quarter’,‘period’)||detectQuarter(),
+revenue_guidance:get(‘revenue_guidance’),growth_target:get(‘revenue_growth_target’),
+margin_guidance:[get(‘ebitda_margin_target’),get(‘pat_margin_target’)].filter(Boolean).join(’ | ‘)||null,
+capex_plan:get(‘capex_plan’),geographic_presence:get(‘geographic_presence’),
+key_products_portfolio:get(‘key_products_portfolio’),
+tone:tr.match(/positive/i)?‘Positive’:tr.match(/negative/i)?‘Negative’:‘Neutral’,tone_detail:tr||null,
+key_commitments:(get(‘key_commitments’)||’’).split(/[;,]/).map(s=>s.trim()).filter(s=>s.length>3),
+risks_flagged:(get(‘key_risks’)||’’).split(/[;,]/).map(s=>s.trim()).filter(s=>s.length>3),
+confidence:get(‘confidence_level’)||‘Medium’,summary:get(‘summary’)};
+}
+
+// ── INSIGHTS SHEET ─────────────────────────────
+function buildInsightsPrompt(sym){
+const f=FUND[sym]||{},g=GUIDANCE[sym]||{},name=f.name||sym;
+const qt=(f.quarterly||[]).slice(0,4).map(q=>`  ${q.d||'?'}: Rev ₹${q.rev||'—'}Cr | EPS ₹${q.eps||'—'} | OPM ${q.opm||'—'}%`).join(’\n’)||’  No data’;
+const ctx=g.tone?`\nCONCALL (${g.quarter||''}):\n- Tone: ${g.tone} · Confidence: ${g.confidence||'—'}\n- Revenue: ${g.revenue_guidance||'—'}\n- Risks: ${(g.risks_flagged||[]).slice(0,2).join('; ')||'—'}\n- Products: ${g.key_products_portfolio||'—'}`:’’;
+return `Senior equity research analyst. Generate investment insights for ${name} (NSE: ${sym}).
+
+FINANCIALS: Price ₹${f.ltp||’—’} | P/E ${f.pe||’—’}x | P/B ${f.pb||’—’}x | ROE ${f.roe||’—’}% | OPM ${f.opm_pct||’—’}% | MCap ₹${f.mcap||’—’}Cr | Debt/Eq ${f.debt_eq||’—’} | ATH% ${f.ath_pct||’—’}%
+
+QUARTERLY:
+${qt}${ctx}
+
+Return ONLY valid JSON — no markdown, no extra text:
+
+{“bullets”:[{“cat”:“VALUATION”,“text”:“2-3 sentences with numbers vs peers”},{“cat”:“GROWTH QUALITY”,“text”:“2-3 sentences on trajectory”},{“cat”:“MARGIN RISK”,“text”:“2-3 sentences on sustainability”},{“cat”:“CATALYST”,“text”:“2-3 sentences on re-rating trigger”},{“cat”:“OPPORTUNITY”,“text”:“2-3 sentences on positioning”},{“cat”:“MOAT”,“text”:“WIDE/NARROW/NONE — 2-3 sentences”}],“action”:“BUY MORE/HOLD/REDUCE/EXIT — reason”,“trigger”:“Specific numeric trigger”,“headline”:“One line thesis under 120 chars”,“updated”:”${new Date().toISOString()}”}`;
+}
+
+function openInsightsSheet(sym){
+const g=GUIDANCE[sym],ins=g?.insights,hasIns=ins&&ins.bullets&&ins.bullets.length>0;
+const days=daysSince(ins?.updated),prompt=buildInsightsPrompt(sym),row=dqaData.find(r=>r.sym===sym)||{};
+const existing=hasIns?`<div style="background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.2);border-radius:8px;padding:10px;margin-bottom:12px;"> <div style="font-size:8px;color:var(--gr);font-weight:800;margin-bottom:6px;">📊 Current Insights</div> ${ins.bullets.map(b=>`<div style="margin-bottom:4px;"><span style="font-size:7px;font-weight:800;color:var(--ac);padding:1px 4px;background:rgba(249,115,22,.1);border-radius:3px;">${b.cat}</span><span style="font-size:9px;color:var(--tx2);margin-left:4px;">${b.text.slice(0,60)}…</span></div>`).join('')} ${ins.action?`<div style="font-size:9px;color:var(--gr);font-weight:700;margin-top:6px;">${ins.action}</div>`:’’}
+
+  </div>`:'';
+  openSheet(`
+    <div class="sheet-hdr">
+      <div class="row-sb">
+        <div><div class="sheet-sym">${sym}</div><div class="sheet-name">${(FUND[sym]?.name||row.name||'').slice(0,30)}</div></div>
+        <button onclick="closeSheet()" style="background:none;border:1px solid var(--b2);border-radius:6px;padding:4px 10px;color:var(--tx3);font-size:11px;cursor:pointer;">✕</button>
+      </div>
+      <div style="margin-top:8px;font-size:9px;color:${hasIns?'var(--gr)':'var(--tx3)'};">${hasIns?`✅ ${days!==null?days+'d ago':''}`:'❌ No insights'}</div>
+      ${ins?.updated?`<div style="font-size:8px;color:var(--tx3);margin-top:2px;">${new Date(ins.updated).toLocaleDateString('en-IN')}</div>`:''}
+    </div>
+    <div class="sheet-body">
+      ${existing}
+      <div class="label">STEP 1 — Copy prompt</div>
+      <div class="prompt-box" id="ins-prompt">${prompt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-cyan btn-sm f1" onclick="copyText('ins-prompt')">📋 Copy</button>
+        <a href="https://claude.ai/new" target="_blank" class="btn btn-success btn-sm f1" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🤖 Claude ↗</a>
+      </div>
+      <div class="label">STEP 2 — Paste Claude's JSON</div>
+      <textarea class="inp" id="ins-resp" rows="8" placeholder='{"bullets":[...],"action":"...","trigger":"...","headline":"..."}'></textarea>
+      <div id="ins-err" style="font-size:9px;color:var(--rd);margin-top:4px;display:none;"></div>
+      <button class="btn btn-warn mt8" onclick="saveInsights('${sym}')">💾 Save Insights</button>
+      ${ins?.updated?`<div class="ref-ts mt8">Last: ${new Date(ins.updated).toLocaleString('en-IN')}</div>`:''}
+    </div>`);
+}
+
+async function saveInsights(sym){
+const ta=document.getElementById(‘ins-resp’),errEl=document.getElementById(‘ins-err’);
+if(!ta||!ta.value.trim()){toast(‘Paste JSON first’);return;}
+let parsed;
+try{parsed=JSON.parse(ta.value.trim().replace(/`json|`/g,’’).trim());if(!parsed.bullets||parsed.bullets.length<4)throw new Error(‘Missing bullets’);if(!parsed.action)throw new Error(‘Missing action’);}
+catch(e){if(errEl){errEl.textContent=`❌ ${e.message} — paste JSON only`;errEl.style.display=‘block’;}return;}
+if(errEl)errEl.style.display=‘none’;
+parsed.updated=new Date().toISOString();
+if(!GUIDANCE[sym])GUIDANCE[sym]={sym};
+GUIDANCE[sym].insights=parsed;
+saveGuidanceLocal();
+if(requirePAT()){
+dataLog(`Saving ${sym} insights...`,‘⏳’);
+try{const r=await ghPut(‘guidance.json’,JSON.stringify(guidanceForStorage(),null,2),`guidance: ${sym} insights`);if(!r.ok)throw new Error(`HTTP ${r.status}`);dataLog(`${sym} insights saved`,‘✅’);}
+catch(e){dataLog(`insights save failed: ${e.message}`,‘❌’);}
+}
+const row=dqaData.find(r=>r.sym===sym);if(row){row.hasInsights=true;row.insightsUpdated=parsed.updated;}
+renderDQA();closeSheet();toast(`✅ ${sym} insights saved`);
+}
+
+// ── REFRESH ───────────────────────────────────
+function loadRefreshTimestamps(){
+document.getElementById(‘ts-read-prices’).textContent   = `Last read: ${fmtTs(localStorage.getItem('bm_prices_read'))}`;
+document.getElementById(‘ts-read-fund’).textContent     = `Last read: ${fmtTs(localStorage.getItem('bm_fund_read'))}`;
+document.getElementById(‘ts-read-guidance’).textContent = `Last read: ${fmtTs(localStorage.getItem('bm_guidance_read'))}`;
+document.getElementById(‘ts-ext-prices’).textContent    = `Last extract: ${fmtTs(localStorage.getItem('bm_ext_prices'))}`;
+document.getElementById(‘ts-ext-fund’).textContent      = `Last extract: ${fmtTs(localStorage.getItem('bm_ext_fund'))}`;
+document.getElementById(‘ts-ext-all’).textContent       = `Last extract: ${fmtTs(localStorage.getItem('bm_ext_all'))}`;
+}
+
+async function readJSON(type){
+if(!requirePAT())return;
+const t0=Date.now();
+const fileMap={prices:‘prices.json’,fundamentals:‘fundamentals.json’,guidance:‘guidance.json’};
+dataLog(`Fetching ${fileMap[type]}...`,‘⏳’);
+try{
+const data=await ghFetchRaw(fileMap[type]);
+const elapsed=((Date.now()-t0)/1000).toFixed(1);
+if(type===‘prices’){PRICES=data.quotes||{};window._priceData=data;localStorage.setItem(‘bm_prices_read’,Date.now());const c=Object.keys(PRICES).length;document.getElementById(‘ts-read-prices’).textContent=`Last read: ${fmtTs(Date.now())} · ${c} records`;dataLog(`prices.json — ${c} stocks (${elapsed}s)`,‘✅’);}
+else if(type===‘fundamentals’){FUND=data.stocks||{};window._fundData=data;localStorage.setItem(‘bm_fund_read’,Date.now());const c=Object.keys(FUND).length;document.getElementById(‘ts-read-fund’).textContent=`Last read: ${fmtTs(Date.now())} · ${c} records`;dataLog(`fundamentals.json — ${c} stocks (${elapsed}s)`,‘✅’);}
+else if(type===‘guidance’){const local={};try{const c=localStorage.getItem(‘bm_guidance’);if(c)Object.assign(local,JSON.parse(c));}catch(e){}Object.entries(data).forEach(([s,g])=>{GUIDANCE[s]={…g};if(local[s]?.raw_table)GUIDANCE[s].raw_table=local[s].raw_table;if(local[s]?.insights)GUIDANCE[s].insights=local[s].insights;});saveGuidanceLocal();localStorage.setItem(‘bm_guidance_read’,Date.now());const c=Object.keys(GUIDANCE).length;document.getElementById(‘ts-read-guidance’).textContent=`Last read: ${fmtTs(Date.now())} · ${c} records`;dataLog(`guidance.json — ${c} stocks (${elapsed}s)`,‘✅’);}
+loadRefreshTimestamps();
+}catch(e){dataLog(`Fetch failed: ${e.message}`,‘❌’);}
+}
+
+const pollTimers={};
+async function triggerExtract(type,btnId,statusId){
+if(!requirePAT())return;
+const btn=document.getElementById(btnId);
+dataLog(`Triggering workflow: ${type}...`,‘⏳’);
+if(btn){btn.disabled=true;btn.textContent=‘⏳’;}
+try{
+const inputMap={prices_only:‘prices’,fundamentals_only:‘fundamentals’,all:‘all’};
+const wfUrl=`https://api.github.com/repos/${S.settings.ghRepo}/actions/workflows/fetch-prices.yml/dispatches`;
+const r=await fetch(wfUrl,{method:‘POST’,headers:ghHeaders(),body:JSON.stringify({ref:‘main’,inputs:{fetch_type:inputMap[type]||type}})});
+if(r.status===204){
+dataLog(`Workflow triggered — ${type}`,‘✅’);
+const lsKey=type===‘prices_only’?‘bm_ext_prices’:type===‘fundamentals_only’?‘bm_ext_fund’:‘bm_ext_all’;
+localStorage.setItem(lsKey,Date.now());loadRefreshTimestamps();
+pollWorkflow(type,btn,statusId);
+}else if(r.status===403){throw new Error(‘PAT needs workflow scope’);}
+else if(r.status===422){throw new Error(‘fetch-prices.yml not found’);}
+else{const e2=await r.json().catch(()=>({}));throw new Error(`HTTP ${r.status}: ${e2.message||'unknown'}`);}
+}catch(e){dataLog(`Extract failed: ${e.message}`,‘❌’);if(btn){btn.disabled=false;btn.textContent=‘Run’;}}
+}
+
+async function pollWorkflow(type,btn,statusId){
+const t0=Date.now();const key=`poll_${type}`;clearTimeout(pollTimers[key]);
+const check=async()=>{
+try{
+const r=await fetch(`https://api.github.com/repos/${S.settings.ghRepo}/actions/runs?per_page=1`,{headers:ghHeaders()});
+if(!r.ok)return;
+const d=await r.json();const run=(d.workflow_runs||[])[0];if(!run)return;
+const el=Math.floor((Date.now()-t0)/1000);const es=`${Math.floor(el/60)}:${String(el%60).padStart(2,'0')}`;
+const sEl=document.getElementById(statusId);
+if(run.status===‘completed’){
+const ok=run.conclusion===‘success’;
+if(sEl)sEl.textContent=`${ok?'✅':'❌'} ${run.conclusion} (${es})`;
+dataLog(`Workflow ${ok?'complete':'failed'} (${es})`,ok?‘✅’:‘❌’);
+if(btn){btn.disabled=false;btn.textContent=‘Run’;}
+if(ok){if(type===‘prices_only’)await readJSON(‘prices’);else if(type===‘fundamentals_only’)await readJSON(‘fundamentals’);else{await readJSON(‘prices’);await readJSON(‘fundamentals’);}}
+return;
+}
+if(sEl)sEl.textContent=`⏳ ${run.status} (${es})`;
+dataLog(`Workflow ${run.status} (${es})`,‘⏳’);
+pollTimers[key]=setTimeout(check,10000);
+}catch(e){if(btn){btn.disabled=false;btn.textContent=‘Run’;}}
+};
+await new Promise(r=>setTimeout(r,3000));check();
+}
+
+async function loadSymbols(){
+if(!requirePAT())return;
+try{const data=await ghFetchRaw(‘symbols.json’);if(Array.isArray(data)){SYMBOLS=migrateSymbols(data);dataLog(`symbols.json — ${SYMBOLS.length} symbols`,‘✅’);}}
+catch(e){dataLog(`symbols.json load: ${e.message}`,‘⚠’);}
+}
+
+// ── INIT ──────────────────────────────────────
+async function init(){
+loadState();
+refreshPatStatus();
+loadRefreshTimestamps();
+renderFooter(‘data.html’);
+dataLog(‘DATA page ready’,‘✅’);
+if(S.settings.ghToken&&S.settings.ghRepo){
+await loadSymbols();
+loadDQA();
+}else{
+document.getElementById(‘dqa-loading’).textContent=‘⚠ Configure PAT & Repo above’;
+}
+}
+
+window.addEventListener(‘DOMContentLoaded’,init);
+</script>
+
 </body>
 </html>
