@@ -404,19 +404,29 @@ function renderStep4() {
         '• Names must MATCH company names from Step 1<br>' +
         '• ISIN: Format INE + 10 characters<br>' +
         '• No spaces around pipes (|)<br>' +
-        '• Each company on its own line<br>' +
-        '• Copy entire AI response (header + data)<br>' +
+        '• Parsing starts automatically when you paste<br>' +
         '</div>' +
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services&#10;Reliance Industries Limited|INE002A01015|Energy|Oil & Gas"></textarea>' +
-        '<div style="margin:10px 0;">' +
-        '<button onclick="parseAIResponse()" style="padding:10px 20px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">✓ Parse Response</button>' +
-        '</div>' +
+        'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services&#10;Reliance Industries Limited|INE002A01015|Energy|Oil & Gas" ' +
+        'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
         '</div>';
+}
+
+function autoParseAIResponse() {
+    var response = document.getElementById('ai-response').value;
+    if (!response.trim() || !response.includes('|')) {
+        return;  // Not ready yet
+    }
+    
+    // Only auto-parse if it looks valid (has INE codes or header row)
+    if (!response.includes('INE') && !response.toLowerCase().includes('name')) {
+        return;
+    }
+    
+    parseAIResponse();
 }
 
 function parseAIResponse() {
@@ -515,47 +525,47 @@ function renderStep5() {
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
         'Click any cell to edit. Validation: ✅ ISIN format (INE + 10 chars), no duplicates' +
         '</p>' +
-        '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
+        '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:400px;overflow-y:auto;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:10px;line-height:1.3;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:15%;">Name</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:12%;">Symbol</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:18%;">ISIN</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:15%;">Sector</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:8%;">Qty</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:8%;">Avg</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:8%;">Type</th>' +
-        '<th style="padding:8px;text-align:center;color:#00ff88;width:6%;">Del</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:15%;">Name</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:12%;">Symbol</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:18%;">ISIN</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:15%;">Sector</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Qty</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Avg</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Type</th>' +
+        '<th style="padding:4px 6px;text-align:center;color:#00ff88;width:6%;">Del</th>' +
         '</tr>';
     
     importState.stocks.forEach(function(stock, idx) {
         var statusColor = stock.status === 'matched' ? '#00ff88' : '#ffb347';
         var statusIcon = stock.status === 'matched' ? '✅' : '⚠️';
         
-        html += '<tr style="border-bottom:1px solid #111;background:#050505;" data-idx="' + idx + '">' +
-            '<td style="padding:8px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
-            stock.name + '</td>' +
-            '<td style="padding:8px;color:#00ff88;font-weight:bold;" onclick="editCell(this, ' + idx + ', \'symbol\')">' +
-            stock.symbol + '</td>' +
-            '<td style="padding:8px;color:' + statusColor + ';" onclick="editCell(this, ' + idx + ', \'isin\')">' +
+        html += '<tr style="border-bottom:0.5px solid #111;background:#050505;" data-idx="' + idx + '">' +
+            '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
+            stock.name.substring(0, 20) + '</td>' +
+            '<td style="padding:4px 6px;color:#00ff88;font-weight:bold;" onclick="editCell(this, ' + idx + ', \'symbol\')">' +
+            (stock.symbol || '-') + '</td>' +
+            '<td style="padding:4px 6px;color:' + statusColor + ';" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
-            '<td style="padding:8px;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
-            stock.sector + '</td>' +
-            '<td style="padding:8px;text-align:right;" onclick="editCell(this, ' + idx + ', \'qty\')">' +
+            '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
+            stock.sector.substring(0, 15) + '</td>' +
+            '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'qty\')">' +
             (stock.qty || '-') + '</td>' +
-            '<td style="padding:8px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
-            (stock.avg ? '₹' + stock.avg.toFixed(2) : '-') + '</td>' +
-            '<td style="padding:8px;color:' + (stock.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';" ' +
+            '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
+            (stock.avg ? '₹' + stock.avg.toFixed(0) : '-') + '</td>' +
+            '<td style="padding:4px 6px;color:' + (stock.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';" ' +
             'onclick="toggleType(' + idx + ')">' +
-            stock.type + '</td>' +
-            '<td style="padding:8px;text-align:center;">' +
+            stock.type.substring(0, 4) + '</td>' +
+            '<td style="padding:4px 6px;text-align:center;">' +
             '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;' +
-            'border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;">✕</button>' +
+            'border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:9px;">✕</button>' +
             '</td></tr>';
     });
     
     html += '</table></div>' +
-        '<div style="margin:10px 0;font-size:12px;color:#888;">' +
+        '<div style="margin:10px 0;font-size:11px;color:#888;">' +
         'Total: ' + importState.stocks.length + ' stocks | ' +
         'Portfolio: ' + importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length + ' | ' +
         'Watchlist: ' + importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length +
@@ -665,9 +675,14 @@ function saveToIndexedDB() {
             
             tx.oncomplete = function() {
                 status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + importState.stocks.length + 
-                    ' stocks to IndexedDB</span>';
-                importState.step = 7;
-                showImportUI();
+                    ' stocks to IndexedDB</span>' +
+                    '<div style="margin-top:10px;font-size:11px;color:#666;">Moving to Step 7...</div>';
+                
+                // Auto-advance after short delay
+                setTimeout(function() {
+                    importState.step = 7;
+                    showImportUI();
+                }, 800);
             };
             
             tx.onerror = function() {
