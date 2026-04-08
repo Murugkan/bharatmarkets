@@ -1,8 +1,3 @@
-/**
- * Soya Intelligence Hub - Visual Scan Parser
- * Optimized for CDSL/Broker Portfolio Exports
- */
-
 window.PENDING_DATA = null;
 
 window.openImport = () => {
@@ -13,9 +8,8 @@ window.openImport = () => {
 
     body.innerHTML = `
         <div class="upload-zone" style="border:2px dashed #444; border-radius:20px; padding:40px; text-align:center; margin-bottom:20px; cursor:pointer;" onclick="document.getElementById('file-input').click()">
-            <div style="font-size:40px; opacity:0.8; margin-bottom:10px;">📊</div>
+            <div style="font-size:40px; margin-bottom:10px;">📊</div>
             <div style="font-weight:700; color:#fff;">Select Portfolio File</div>
-            <div style="font-size:11px; color:var(--tx3); margin-top:8px;">Accepts CSV/XLS text exports</div>
             <input type="file" id="file-input" hidden onchange="handleFileSelect(event)">
         </div>
         <div id="file-status" style="font-family:var(--mono); font-size:12px; margin-bottom:20px; color:var(--ac); text-align:center;"></div>
@@ -38,35 +32,33 @@ window.handleFileSelect = (e) => {
         const lines = raw.split(/\r?\n/);
         const parsed = [];
 
-        log(`Visual Scan: Processing ${lines.length} lines...`);
-
         lines.forEach((line) => {
-            // Split by common delimiters and clean metadata artifacts
-            const cells = line.split(/,|\t/).map(c => c.trim().replace(/^"|"$/g, ''));
+            // Split by comma and clean up quotes/whitespace
+            const parts = line.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
             
-            // 1. Identify valid data rows by filtering out headers/footers
-            // We look for cells that look like an ISIN or contain valid stock names
-            const isinIdx = cells.findIndex(c => /^IN[A-Z0-9]{10}$/.test(c));
-            
-            if (isinIdx !== -1) {
-                // 2. Extract relative to the anchor (ISIN)
-                [span_1](start_span)// In your file, Name is immediately before ISIN[span_1](end_span)
-                const name = cells[isinIdx - 1]; 
-                
-                [span_2](start_span)// 3. Scan for numeric data points after the ISIN[span_2](end_span)
-                // We extract all numeric-looking values in the row
-                const rowNumbers = cells.slice(isinIdx + 1)
-                    .map(c => parseFloat(c.replace(/[^0-9.-]/g, '')))
-                    .filter(n => !isNaN(n));
+            // 1. Identify a Stock Name row
+            // We look for the first part that is not empty and not a header/total row
+            const nameIdx = parts.findIndex(p => 
+                p.length > 2 && 
+                !p.includes("Details") && 
+                !p.includes("Stock Name") && 
+                !p.includes("TOTAL")
+            );
 
-                // Mapping based on Equity_Summary structure:
-                [span_3](start_span)// After ISIN/Sector, index 1 is Quantity, index 2 is Avg Price[span_3](end_span)
-                if (rowNumbers.length >= 2) {
+            if (nameIdx !== -1) {
+                const stockName = parts[nameIdx];
+                
+                // 2. Scan the rest of the row for the first two numeric values
+                const numbers = parts.slice(nameIdx + 1)
+                    .map(p => parseFloat(p.replace(/[^0-9.-]/g, '')))
+                    .filter(n => !isNaN(n) && n > 0);
+
+                // 3. Extract Quantity (1st number) and Avg Price (2nd number)
+                if (numbers.length >= 2) {
                     parsed.push({
-                        sym: name || "Unknown",
-                        isin: cells[isinIdx],
-                        qty: rowNumbers[1], 
-                        avg: rowNumbers[2] 
+                        sym: stockName,
+                        [span_3](start_span)qty: numbers[1], // Index 1 is typically Quantity in your CSV[span_3](end_span)
+                        [span_4](start_span)avg: numbers[2]  // Index 2 is typically Average Price in your CSV[span_4](end_span)
                     });
                 }
             }
@@ -74,12 +66,10 @@ window.handleFileSelect = (e) => {
 
         if (parsed.length > 0) {
             window.PENDING_DATA = parsed;
-            document.getElementById('file-status').innerHTML = `✅ Detected ${parsed.length} Holdings`;
+            document.getElementById('file-status').innerHTML = `✅ Found ${parsed.length} Stocks`;
             document.getElementById('import-actions').style.display = 'grid';
-            log(`Scan Complete: Captured ${parsed.length} items.`);
         } else {
-            document.getElementById('file-status').innerHTML = `❌ No valid data detected.`;
-            log("Error: Visual anchor (ISIN) not found in any row.");
+            document.getElementById('file-status').innerHTML = `❌ No data found.`;
         }
     };
     reader.readAsText(file);
@@ -91,16 +81,14 @@ window.commitImport = (replaceAll) => {
     if (replaceAll) {
         S.portfolio = [...window.PENDING_DATA];
     } else {
-        // Professional Merge: Weighted Average Costing
         window.PENDING_DATA.forEach(newItem => {
-            const idx = S.portfolio.findIndex(p => p.isin === newItem.isin);
+            const idx = S.portfolio.findIndex(p => p.sym === newItem.sym);
             if (idx > -1) {
                 const oldQty = S.portfolio[idx].qty || 0;
                 const newQty = oldQty + newItem.qty;
                 if (newQty > 0) {
-                    const currentCost = oldQty * (S.portfolio[idx].avg || 0);
-                    const incomingCost = newItem.qty * newItem.avg;
-                    S.portfolio[idx].avg = (currentCost + incomingCost) / newQty;
+                    const totalCost = (oldQty * (S.portfolio[idx].avg || 0)) + (newItem.qty * newItem.avg);
+                    S.portfolio[idx].avg = totalCost / newQty;
                 }
                 S.portfolio[idx].qty = newQty;
             } else {
@@ -110,7 +98,7 @@ window.commitImport = (replaceAll) => {
     }
 
     localStorage.setItem('soya_portfolio', JSON.stringify(S.portfolio));
-    toast(replaceAll ? "Portfolio Overwritten" : "Data Appended");
+    toast(replaceAll ? "Portfolio Replaced" : "Portfolio Appended");
     if (typeof render === 'function') render();
     closePanel();
 };
