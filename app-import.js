@@ -162,30 +162,77 @@ var lines = csv.split(/\r?\n/).filter(function(l) { return l.trim(); });
 if (lines.length < 2) return;
 
 ```
-var headers = lines[0].split(',').map(function(h) { 
+// Detect if tab or comma separated
+var isTSV = lines[0].includes('\t');
+var delimiter = isTSV ? /\t/ : /,/;
+
+var headers = lines[0].split(delimiter).map(function(h) { 
     return h.trim().toLowerCase().replace(/['"]/g, ''); 
 });
 
+// Find column indices
+var nameIdx = headers.findIndex(function(h) { return h.includes('stock') && h.includes('name'); });
+if (nameIdx < 0) nameIdx = headers.findIndex(function(h) { return h === 'name'; });
+
+var symIdx = headers.findIndex(function(h) { return h.includes('symbol') || h.includes('sym'); });
+var typeIdx = headers.findIndex(function(h) { return h.includes('type'); });
+var qtyIdx = headers.findIndex(function(h) { return h.includes('qty') || h.includes('quantity'); });
+var avgIdx = headers.findIndex(function(h) { return h.includes('avg') || h.includes('price'); });
+
 var stocks = [];
+
 for (var i = 1; i < lines.length; i++) {
-    var parts = lines[i].split(',').map(function(p) { return p.trim().replace(/['"]/g, ''); });
+    var line = lines[i].trim();
+    if (!line) continue;
+    
+    var parts = line.split(delimiter).map(function(p) { return p.trim().replace(/['"]/g, ''); });
+    
+    // Skip if first column is empty
     if (!parts[0]) continue;
     
-    var nameIdx = headers.findIndex(function(h) { return h.includes('stock') || h.includes('name'); });
-    var symIdx = headers.findIndex(function(h) { return h.includes('symbol') || h.includes('sym'); });
-    var qtyIdx = headers.findIndex(function(h) { return h.includes('qty') || h.includes('quantity'); });
-    var avgIdx = headers.findIndex(function(h) { return h.includes('avg') || h.includes('price'); });
+    // Skip if this looks like a header row (duplicate)
+    if (parts[0].toLowerCase() === 'stock name' || parts[0].toLowerCase() === 'name') {
+        continue;
+    }
     
-    stocks.push({
-        name: nameIdx >= 0 ? parts[nameIdx] : parts[0],
-        symbol: symIdx >= 0 ? parts[symIdx] : parts[0].replace(/\s+/g, '').toUpperCase(),
-        qty: qtyIdx >= 0 && parts[qtyIdx] ? parseFloat(parts[qtyIdx]) : null,
-        avg: avgIdx >= 0 && parts[avgIdx] ? parseFloat(parts[avgIdx]) : null,
-        type: qtyIdx >= 0 && parts[qtyIdx] ? 'PORTFOLIO' : 'WATCHLIST',
-        isin: '',
-        sector: '',
-        industry: ''
-    });
+    var name = nameIdx >= 0 ? parts[nameIdx] : parts[0];
+    var symbol = symIdx >= 0 ? parts[symIdx] : '';
+    var type = typeIdx >= 0 ? parts[typeIdx] : '';
+    var qty = qtyIdx >= 0 && parts[qtyIdx] && parts[qtyIdx] !== '-' ? parseFloat(parts[qtyIdx]) : null;
+    var avg = avgIdx >= 0 && parts[avgIdx] && parts[avgIdx] !== '-' ? parseFloat(parts[avgIdx]) : null;
+    
+    // If symbol is same as name or not provided, generate from name
+    if (!symbol || symbol === name || symbol.length === 0) {
+        // Remove common suffixes and special chars
+        symbol = name
+            .replace(/\s*LTD\s*$/i, '')
+            .replace(/\s*LIMITED\s*$/i, '')
+            .replace(/\s*\(.*\)\s*$/i, '')
+            .replace(/[^A-Z0-9&%-]/gi, '')
+            .toUpperCase()
+            .substring(0, 20); // Limit to 20 chars
+    }
+    
+    // Auto-detect type from QTY or from Type column
+    if (type && type !== '-') {
+        type = type.toUpperCase();
+    } else {
+        type = qty ? 'PORTFOLIO' : 'WATCHLIST';
+    }
+    
+    // Only add if we have a valid symbol
+    if (symbol && symbol.length > 0) {
+        stocks.push({
+            name: name,
+            symbol: symbol,
+            qty: qty,
+            avg: avg,
+            type: type,
+            isin: '',
+            sector: '',
+            industry: ''
+        });
+    }
 }
 
 importState.stocks = stocks;
