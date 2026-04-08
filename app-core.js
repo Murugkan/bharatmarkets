@@ -1,18 +1,7 @@
-/** ONYX v21.0 - OFFLINE-FIRST RESOLUTION */
+/** ONYX v22.0 - ANTI-CRASH CORE */
 window.S = JSON.parse(localStorage.getItem('bm_settings')) || { settings: {}, watchlist: [], portfolio: [] };
 window.ALIAS_MAP = JSON.parse(localStorage.getItem('bm_aliases')) || {};
 window.FUND = window.FUND || {};
-
-// --- EMERGENCY OFFLINE MAP (Bypasses "Load failed") ---
-const OFFLINE_MAP = {
-    "TATA POWER COMPANY LTD": "TATAPOWER",
-    "UNITED SPIRITS LTD": "UNITDSPR",
-    "VEDANTA LTD": "VEDL",
-    "VOLTAMP TRANSFORMERS LTD": "VOLTAMP",
-    "TITAN BIOTECH LTD": "TITANBIO",
-    "ZINKA LOGISTICS SOL LTD": "ZINKA",
-    "VENTIVE HOSPITALITY LTD": "VENTIVE"
-};
 
 function dataLog(msg, type = 'info') {
     const log = document.getElementById('debug-console');
@@ -24,51 +13,40 @@ function dataLog(msg, type = 'info') {
     log.prepend(div);
 }
 
+// Bypasses network "Load failed" for common stocks
+const OFFLINE_MAP = {
+    "TATA POWER": "TATAPOWER", "VEDANTA": "VEDL", "UNITED SPIRITS": "UNITDSPR", 
+    "VOLTAMP": "VOLTAMP", "TITAN BIOTECH": "TITANBIO", "ZINKA": "ZINKA"
+};
+
 async function resolveSymbol(rawName) {
-    const q = rawName.trim().toUpperCase();
-    const cleanQ = q.replace(/\b(LTD|LIMITED|SOLUTIONS|COMPANY)\b/g, '').trim();
-    
-    dataLog(`Resolving: "${q}"...`, 'info');
-
-    // Tier 1: User Alias Memory
-    if (window.ALIAS_MAP[q]) {
-        dataLog(`Match in ALIAS_MAP: ${window.ALIAS_MAP[q]}`, 'success');
-        return { symbol: window.ALIAS_MAP[q] };
-    }
-
-    // Tier 2: Emergency Offline Map
-    for (let key in OFFLINE_MAP) {
-        if (q.includes(key) || key.includes(q)) {
-            dataLog(`Match in OFFLINE_MAP: ${OFFLINE_MAP[key]}`, 'success');
-            return { symbol: OFFLINE_MAP[key] };
-        }
-    }
-
-    // Tier 3: Internal FUND Check
-    const universe = Object.keys(window.FUND);
-    const hit = universe.find(sym => sym === cleanQ || (window.FUND[sym]?.name || '').toUpperCase().includes(cleanQ));
-    if (hit) {
-        dataLog(`Match in FUND: ${hit}`, 'success');
-        return { symbol: hit };
-    }
-
-    // Tier 4: Yahoo (The "Load failed" risk)
     try {
-        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(cleanQ)}&region=IN`);
+        const q = (rawName || "").toString().trim().toUpperCase();
+        if (!q) return { symbol: 'EMPTY', error: true };
+
+        // 1. Alias Map
+        if (window.ALIAS_MAP[q]) return { symbol: window.ALIAS_MAP[q] };
+
+        // 2. Offline Map
+        for (let key in OFFLINE_MAP) {
+            if (q.includes(key)) return { symbol: OFFLINE_MAP[key] };
+        }
+
+        // 3. Yahoo Fetch with Timeout to prevent hanging
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        
+        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&region=IN`, { signal: controller.signal });
+        clearTimeout(timeout);
+        
         const d = await res.json();
         const quotes = (d.quotes || []).filter(x => x.symbol && (x.symbol.endsWith('.NS') || x.symbol.endsWith('.BO')));
-        if (quotes.length > 0) {
-            const sym = quotes[0].symbol.split('.')[0];
-            dataLog(`Yahoo Match: ${sym}`, 'success');
-            return { symbol: sym };
-        }
-    } catch (e) {
-        dataLog(`Network Blocked: Using Clean String as Fallback`, 'warn');
-        // If everything fails, suggest the cleaned-up name as a likely ticker
-        return { symbol: cleanQ.split(' ')[0], fallback: true };
-    }
+        if (quotes.length > 0) return { symbol: quotes[0].symbol.split('.')[0] };
 
-    return null;
+    } catch (e) {
+        dataLog(`Resolve Error (${rawName}): ${e.message}`, 'error');
+    }
+    return { symbol: 'FAILED', error: true }; 
 }
 
 function updateAlias(rawName, symbol) {
@@ -76,7 +54,5 @@ function updateAlias(rawName, symbol) {
     const sym = symbol.toUpperCase().replace(/\.NS$/, '').trim();
     window.ALIAS_MAP[q] = sym;
     localStorage.setItem('bm_aliases', JSON.stringify(window.ALIAS_MAP));
-    dataLog(`Saved Mapping: ${q} → ${sym}`, 'success');
+    dataLog(`Mapped: ${q} -> ${sym}`, 'success');
 }
-
-// Keep the Frozen PAT logic as it was successful in your screenshot
