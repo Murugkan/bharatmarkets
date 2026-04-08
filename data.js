@@ -410,7 +410,7 @@ function renderStep4() {
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
         'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services&#10;Reliance Industries Limited|INE002A01015|Energy|Oil & Gas" ' +
-        'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)"></textarea>' +
+        'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" onchange="autoParseAIResponse()" oninput="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
         '</div>';
 }
@@ -528,9 +528,8 @@ function renderStep5() {
         '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:400px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:10px;line-height:1.3;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:15%;">Name</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:12%;">Symbol</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:18%;">ISIN</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:20%;">Name</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:20%;">ISIN</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:15%;">Sector</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Qty</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Avg</th>' +
@@ -545,8 +544,6 @@ function renderStep5() {
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;" data-idx="' + idx + '">' +
             '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
             stock.name.substring(0, 20) + '</td>' +
-            '<td style="padding:4px 6px;color:#00ff88;font-weight:bold;" onclick="editCell(this, ' + idx + ', \'symbol\')">' +
-            (stock.symbol || '-') + '</td>' +
             '<td style="padding:4px 6px;color:' + statusColor + ';" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
             '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
@@ -633,65 +630,96 @@ function saveToIndexedDB() {
     }
     
     var status = document.getElementById('step6-status');
-    status.innerHTML = '<span style="color:#ffb347;">⏳ Saving...</span>';
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Saving to GitHub...</span>';
     
-    try {
-        var request = indexedDB.open('BharatEngineDB', 1);
-        
-        request.onerror = function() {
-            status.innerHTML = '<span style="color:#ff6b85;">❌ Database error</span>';
-        };
-        
-        request.onsuccess = function(e) {
-            var db = e.target.result;
+    // Check if GitHub PAT configured
+    var token = (S && S.settings && S.settings.ghToken) ? S.settings.ghToken.trim() : '';
+    var repo = (S && S.settings && S.settings.ghRepo) ? S.settings.ghRepo.trim() : '';
+    
+    if (!token || !repo) {
+        status.innerHTML = '<span style="color:#ff6b85;">❌ GitHub PAT not configured. Go to settings.</span>';
+        return;
+    }
+    
+    // Build unified-symbols.json content
+    var unifiedData = {
+        "lastUpdated": new Date().toISOString(),
+        "symbols": importState.stocks.map(function(stock) {
+            return {
+                "sym": stock.symbol || '',
+                "name": stock.name,
+                "isin": stock.isin,
+                "sector": stock.sector,
+                "industry": stock.industry,
+                "type": stock.type,
+                "qty": stock.qty,
+                "avg": stock.avg
+            };
+        })
+    };
+    
+    // Encode file content
+    var fileContent = JSON.stringify(unifiedData, null, 2);
+    var encoded = btoa(unescape(encodeURIComponent(fileContent)));
+    
+    // GitHub API request
+    var headers = {
+        'Authorization': 'token ' + token,
+        'Content-Type': 'application/json'
+    };
+    
+    var apiUrl = 'https://api.github.com/repos/' + repo + '/contents/unified-symbols.json';
+    
+    // First, get current file SHA (for update)
+    fetch(apiUrl, { headers: headers })
+        .then(function(response) {
+            if (response.status === 404) {
+                // File doesn't exist, create new
+                return Promise.resolve(null);
+            }
+            return response.json();
+        })
+        .then(function(data) {
+            var sha = data ? data.sha : null;
             
-            // Create or update store
-            if (!db.objectStoreNames.contains('unified-symbols')) {
-                // If store doesn't exist, we need to update version
-                // For now, just save to a temp location
+            // Prepare update payload
+            var payload = {
+                message: 'data: import ' + importState.stocks.length + ' stocks to unified-symbols',
+                content: encoded,
+                branch: 'main'
+            };
+            
+            if (sha) {
+                payload.sha = sha;
             }
             
-            var tx = db.transaction('UnifiedStocks', 'readwrite');
-            var store = tx.objectStore('UnifiedStocks');
-            
-            // Clear existing
-            store.clear();
-            
-            // Save new
-            importState.stocks.forEach(function(stock) {
-                var record = {
-                    sym: stock.symbol,
-                    name: stock.name,
-                    isin: stock.isin,
-                    sector: stock.sector,
-                    industry: stock.industry,
-                    type: stock.type,
-                    qty: stock.qty,
-                    avg: stock.avg,
-                    source: 'manual'
-                };
-                store.put(record);
+            // Upload to GitHub
+            return fetch(apiUrl, {
+                method: 'PUT',
+                headers: headers,
+                body: JSON.stringify(payload)
             });
-            
-            tx.oncomplete = function() {
+        })
+        .then(function(response) {
+            if (response.ok) {
                 status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + importState.stocks.length + 
-                    ' stocks to IndexedDB</span>' +
+                    ' stocks to unified-symbols.json</span>' +
                     '<div style="margin-top:10px;font-size:11px;color:#666;">Moving to Step 7...</div>';
                 
-                // Auto-advance after short delay
+                // Auto-advance
                 setTimeout(function() {
                     importState.step = 7;
                     showImportUI();
                 }, 800);
-            };
-            
-            tx.onerror = function() {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Save failed</span>';
-            };
-        };
-    } catch(err) {
-        status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
-    }
+            } else {
+                return response.json().then(function(err) {
+                    throw new Error(err.message || 'GitHub API error');
+                });
+            }
+        })
+        .catch(function(error) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + error.message + '</span>';
+        });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
