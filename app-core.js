@@ -1,11 +1,21 @@
-/** ONYX v9.9 CORE - Preserving Comments and Line Count */
-window.S = JSON.parse(localStorage.getItem('bm_settings')) || { settings: { ghToken: '', ghRepo: '', _ghStatus: 'dim' } };
+/** ONYX v10.0 CORE - Simple Pass Version */
+window.S = JSON.parse(localStorage.getItem('bm_settings')) || { settings: { ghToken: '', ghRepo: '' } };
 window.SYMBOLS = JSON.parse(localStorage.getItem('bm_symbols')) || [];
 
-const ghHeaders = () => ({ 'Authorization': `token ${S.settings.ghToken}`, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' });
+const ghHeaders = () => ({ 
+    'Authorization': `token ${S.settings.ghToken}`, 
+    'Accept': 'application/vnd.github.v3+json', 
+    'Cache-Control': 'no-cache' 
+});
 
-function normalizeName(n) { return n.toUpperCase().replace(/LTD|LIMITED|CORP|INC|PLC/g, '').replace(/[^\w\s]/gi, '').trim(); }
-function checkDuplicate(name) { const norm = normalizeName(name); return window.SYMBOLS.find(s => normalizeName(s.name) === norm); }
+function normalizeName(n) { 
+    return n.toUpperCase().replace(/LTD|LIMITED|CORP|INC|PLC/g, '').replace(/[^\w\s]/gi, '').trim(); 
+}
+
+function checkDuplicate(name) { 
+    const norm = normalizeName(name); 
+    return window.SYMBOLS.find(s => normalizeName(s.name) === norm); 
+}
 
 async function parseFile(file) {
     return new Promise((resolve) => {
@@ -59,17 +69,6 @@ async function searchYahoo(query) {
     } catch (e) { return null; }
 }
 
-async function searchNSE(query) {
-    try {
-        const url = `https://www.nseindia.com/api/suggest?q=${encodeURIComponent(query)}`;
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const data = await res.json();
-        const firstEquity = (data.keywords || []).find(k => k.type === 'Equity');
-        return firstEquity ? firstEquity.symbol : null;
-    } catch (e) { return null; }
-}
-
 async function ghPut(path, content, message) {
     const url = `https://api.github.com/repos/${S.settings.ghRepo}/contents/${path}`;
     const getRes = await fetch(url, { headers: ghHeaders() });
@@ -79,12 +78,10 @@ async function ghPut(path, content, message) {
     return fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
 }
 
-async function validatePAT() {
-    const res = await fetch(`https://api.github.com/repos/${S.settings.ghRepo}`, { headers: ghHeaders() });
-    return res.ok;
+function saveSettings() { 
+    localStorage.setItem('bm_settings', JSON.stringify(S)); 
 }
 
-function saveSettings() { localStorage.setItem('bm_settings', JSON.stringify(S)); }
 function loadState() {
     const syms = localStorage.getItem('bm_symbols');
     if (syms) window.SYMBOLS = JSON.parse(syms);
