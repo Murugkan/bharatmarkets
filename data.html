@@ -38,19 +38,35 @@
         /* Import Modal Styles */
         #ov { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:999; display:none; }
         #ov.on { display:block; }
-        #import-panel { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#0a0a0a; border:1px solid #222; border-radius:8px; padding:20px; max-width:90vw; max-height:90vh; overflow-y:auto; z-index:1000; display:none; }
-        #import-panel.on { display:block; }
-        .import-panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+        #import-panel { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#0a0a0a; border:1px solid #222; border-radius:8px; padding:0; max-width:95vw; max-height:95vh; z-index:1000; display:none; flex-direction:column; }
+        #import-panel.on { display:flex; }
+        .import-panel-header { display:flex; justify-content:space-between; align-items:center; padding:15px 20px; border-bottom:1px solid #222; flex-shrink:0; }
         .import-panel-header-title { font-size:13px; font-weight:800; color:#00ff88; }
         .import-panel-close { background:#ff6b85; color:#fff; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold; }
         .import-panel-close:hover { opacity:0.9; }
+        #import-panel-body { flex:1; overflow-y:auto; overflow-x:auto; padding:20px; min-width:0; }
         
         .import-textarea { width:100%; padding:10px; background:#050505; border:1px solid #222; border-radius:4px; color:#fff; font-family:monospace; font-size:11px; resize:vertical; }
-        .import-preview { margin-top:15px; background:#050505; border:1px solid #222; border-radius:4px; padding:10px; display:none; }
+        .import-preview { margin-top:15px; background:#050505; border:1px solid #222; border-radius:4px; padding:10px; display:none; max-height:200px; overflow-y:auto; }
         .import-preview-title { font-size:11px; font-weight:800; color:#00ff88; margin-bottom:10px; }
         .import-err { color:#ff6b85; font-size:10px; padding:10px; background:#1a0a0a; border-left:3px solid #ff6b85; display:none; margin-bottom:10px; border-radius:2px; }
-        .import-btn { width:100%; padding:10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:10px; }
-        .import-btn:hover { opacity:0.9; }
+        .import-btn { width:100%; padding:12px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:10px; font-size:12px; }
+        .import-btn:active { transform:scale(0.98); }
+        
+        /* Import Wizard Styles */
+        .imp-tabs { display:flex; gap:0; border-bottom:2px solid var(--b1); margin-bottom:14px; flex-shrink:0; }
+        .imp-tab { flex:1; padding:9px 6px; text-align:center; font-size:11px; font-weight:700; font-family:'JetBrains Mono',monospace; cursor:pointer; color:#666; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .15s; }
+        .imp-tab.on { color:#00ff88; border-bottom-color:#00ff88; }
+        .imp-pane { display:none; overflow:auto; } 
+        .imp-pane.on { display:block; }
+        .file-drop { border:2px dashed var(--b1); border-radius:12px; padding:28px 16px; text-align:center; cursor:pointer; transition:all .2s; background:var(--s1); }
+        .file-drop:hover, .file-drop.drag { border-color:#00ff88; background:rgba(0,255,136,0.06); }
+        .file-drop input[type=file] { display:none; }
+        .file-drop-icon { font-size:32px; margin-bottom:8px; }
+        .file-drop-title { font-size:13px; font-weight:700; color:var(--tx); font-family:'JetBrains Mono',monospace; margin-bottom:4px; }
+        .file-drop-sub { font-size:10px; color:var(--tx3); line-height:1.6; }
+        .file-drop-sub b { color:#00ff88; }
+        .import-btn:active { transform:scale(0.98); }
     </style>
 </head>
 <body>
@@ -120,7 +136,11 @@
     <div class="import-panel-header-title">📁 Import Portfolio</div>
     <button class="import-panel-close" onclick="closePanel()">✕</button>
   </div>
-  <div id="import-panel-body"></div>
+  <div id="import-panel-body" style="flex:1;overflow-y:auto;overflow-x:auto;padding:20px;min-width:0;min-height:300px"></div>
+  <div style="flex-shrink:0;padding:15px 20px;border-top:1px solid #222;background:#050505">
+    <button class="import-btn" onclick="applyImport('replace')" style="margin-top:0">✓ Import (Replace All)</button>
+    <button class="import-btn" style="background:var(--s2);border:1px solid var(--b1);color:var(--tx2);margin-top:8px" onclick="applyImport('append')">+ Append to Existing</button>
+  </div>
 </div>
 
 <!-- Footer -->
