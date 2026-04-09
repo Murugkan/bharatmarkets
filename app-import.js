@@ -249,7 +249,7 @@ function processImportCSV(csv, filename) {
     importState.debugInfo += 'Header columns: ' + headerParts.length + '\n';
     importState.debugInfo += 'Headers: ' + headerParts.join(' | ') + '\n\n';
     
-    // Find column indices - ENHANCED matching
+    // Find column indices - EXPLICIT matching for YOUR exact file format
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
@@ -257,27 +257,47 @@ function processImportCSV(csv, filename) {
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
         
-        // Stock Name matching
-        if (!nameIdx && (h.includes('stock') || h.includes('name') || h.includes('symbol'))) {
-            nameIdx = i;
-        }
-        
-        // Quantity matching
-        if (!qtyIdx && (h.includes('qty') || h.includes('quantity') || h.includes('shares') || h.includes('units'))) {
-            qtyIdx = i;
-        }
-        
-        // Average/Cost price matching - FIXED for AverageCostPrice
-        if (!avgIdx && (h.includes('averagecost') || h.includes('avg') || h.includes('average') || h.includes('cost') || 
-                        h.includes('price') || h.includes('buy'))) {
-            avgIdx = i;
+        // Match EXACT column names from your file
+        if (h === 'stockname') nameIdx = i;
+        if (h === 'quantity') qtyIdx = i;
+        if (h === 'averagecostprice') avgIdx = i;
+    }
+    
+    // FALLBACK: If exact match fails, try partial matching
+    if (nameIdx === -1) {
+        for (var i = 0; i < headerParts.length; i++) {
+            var h = headerParts[i];
+            if (h.indexOf('stock') !== -1 || h.indexOf('name') !== -1) {
+                nameIdx = i;
+                break;
+            }
         }
     }
     
-    // Default to first 3 columns if headers not found
+    if (qtyIdx === -1) {
+        for (var i = 0; i < headerParts.length; i++) {
+            var h = headerParts[i];
+            if (h.indexOf('qty') !== -1 || h.indexOf('quantity') !== -1 || h.indexOf('shares') !== -1) {
+                qtyIdx = i;
+                break;
+            }
+        }
+    }
+    
+    if (avgIdx === -1) {
+        for (var i = 0; i < headerParts.length; i++) {
+            var h = headerParts[i];
+            if (h.indexOf('averagecost') !== -1 || h.indexOf('avg') !== -1 || h.indexOf('price') !== -1) {
+                avgIdx = i;
+                break;
+            }
+        }
+    }
+    
+    // Default to first 3 columns if still not found
     if (nameIdx === -1) nameIdx = 0;
-    if (qtyIdx === -1 && headerParts.length > 1) qtyIdx = 1;
-    if (avgIdx === -1 && headerParts.length > 2) avgIdx = 2;
+    if (qtyIdx === -1) qtyIdx = 1;
+    if (avgIdx === -1) avgIdx = 2;
     
     importState.debugInfo += 'Column mapping:\n' +
         '  Name: Column ' + (nameIdx + 1) + ' (' + headerParts[nameIdx] + ')\n' +
