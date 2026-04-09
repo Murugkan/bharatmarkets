@@ -25,12 +25,22 @@ function showImportUI() {
         '">';
     
     // Step indicator
-    html += '<div style="margin-bottom:20px;font-size:12px;color:#555;font-family:monospace;">' +
+    html += '<div style="margin-bottom:10px;font-size:12px;color:#555;font-family:monospace;">' +
         'Step ' + importState.step + ' of 7: ';
     
     var stepTitles = ['Upload CSV/XLS', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'GitHub Sync'];
     html += stepTitles[importState.step - 1];
     html += '</div>';
+    
+    // TOP BUTTONS (moved here to avoid scrolling) - FIX #4
+    html += '<div style="margin-bottom:15px;display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button onclick="closeImportModal()" style="padding:8px 16px;background:#333;border:none;color:#fff;' +
+        'border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button>' +
+        (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:8px 16px;background:#444;' +
+        'border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;">← Back</button>' : '') +
+        (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:8px 16px;background:#00ff88;' +
+        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Next →</button>' : '') +
+        '</div>';
     
     // Progress bar
     var progress = (importState.step / 7) * 100;
@@ -63,14 +73,6 @@ function showImportUI() {
     modal.innerHTML = '<div style="background:#000;border:1px solid #222;border-radius:12px;' +
         'padding:20px;max-height:90vh;overflow-y:auto;width:90%;max-width:900px;margin:20px;">' +
         html + 
-        '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">' +
-        '<button onclick="closeImportModal()" style="padding:10px 20px;background:#333;border:none;color:#fff;' +
-        'border-radius:6px;cursor:pointer;">Cancel</button>' +
-        (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:10px 20px;background:#444;' +
-        'border:none;color:#fff;border-radius:6px;cursor:pointer;">← Back</button>' : '') +
-        (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:10px 20px;background:#00ff88;' +
-        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;">Next →</button>' : '') +
-        '</div>' +
         '</div>';
     
     modal.style.display = 'flex';
@@ -425,7 +427,8 @@ function renderStep4() {
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
         'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services&#10;Reliance Industries Limited|INE002A01015|Energy|Oil & Gas" ' +
-        'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)"></textarea>' +
+        'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
+        'onchange="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
         '</div>';
 }
@@ -524,9 +527,13 @@ function parseAIResponse() {
     });
     
     var status = document.getElementById('step4-status');
-    status.innerHTML = '<div style="color:#00ff88;">✅ Matched ' + matched + '/' + 
-        importState.stocks.length + ' stocks</div>';
+    // FIX #1: Add visual feedback (✅ match count) with Safari compatibility
+    var feedbackHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Matched ' + matched + '/' + 
+        importState.stocks.length + ' stocks</div>' +
+        '<div style="margin-top:8px;font-size:11px;color:#666;">Ready for Step 5 → Click Next</div>';
+    status.innerHTML = feedbackHTML;
     
+    // Ensure UI updates immediately
     showImportUI();
 }
 
@@ -543,10 +550,9 @@ function renderStep5() {
         '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:400px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:10px;line-height:1.3;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:15%;">Name</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:12%;">Symbol</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:18%;">ISIN</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:15%;">Sector</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:20%;">Name</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:20%;">ISIN</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:18%;">Sector</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Qty</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Avg</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Type</th>' +
@@ -559,9 +565,7 @@ function renderStep5() {
         
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;" data-idx="' + idx + '">' +
             '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
-            stock.name.substring(0, 20) + '</td>' +
-            '<td style="padding:4px 6px;color:#00ff88;font-weight:bold;" onclick="editCell(this, ' + idx + ', \'symbol\')">' +
-            (stock.symbol || '-') + '</td>' +
+            stock.name.substring(0, 25) + '</td>' +
             '<td style="padding:4px 6px;color:' + statusColor + ';" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
             '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
@@ -715,29 +719,43 @@ function saveToIndexedDB() {
 
 function renderStep7() {
     var ghConfigured = (S && S.settings && S.settings.ghToken && S.settings.ghToken.trim()) ? true : false;
+    var portfolioCount = importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length;
+    var watchlistCount = importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length;
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">GitHub Sync (Optional)</h3>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">✅ Import Complete!</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Sync portfolio to GitHub and trigger data refresh' +
+        'Your portfolio has been saved to IndexedDB. Next: View your portfolio or sync to GitHub.' +
         '</p>' +
-        '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;' +
-        'border-left:3px solid ' + (ghConfigured ? '#00ff88' : '#ffb347') + ';color:' + 
-        (ghConfigured ? '#00ff88' : '#ffb347') + ';font-size:12px;">' +
-        (ghConfigured ? '✅ GitHub PAT configured' : '⚠️ GitHub PAT not configured') +
+        
+        // FIX #3: Add final summary card
+        '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#fff;font-size:12px;">' +
+        '<div style="margin-bottom:8px;"><b style="color:#00ff88;">📊 Import Summary</b></div>' +
+        '<div>✅ Portfolio: <b>' + portfolioCount + ' stocks</b></div>' +
+        '<div>📌 Watchlist: <b>' + watchlistCount + ' stocks</b></div>' +
+        '<div>💾 Stored in: <b>IndexedDB / BharatEngineDB</b></div>' +
         '</div>' +
+        
+        '<div style="margin:15px 0;display:flex;gap:10px;flex-wrap:wrap;">' +
+        '<a href="portfolio.html" style="padding:12px 24px;background:#00ff88;color:#000;' +
+        'text-decoration:none;border-radius:6px;font-weight:bold;text-align:center;display:inline-block;cursor:pointer;">' +
+        '📈 View Portfolio</a>' +
         (ghConfigured ? 
-            '<button onclick="syncToGitHub()" style="padding:12px 24px;background:#00ff88;' +
-            'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;">' +
+            '<button onclick="syncToGitHub()" style="padding:12px 24px;background:#444;' +
+            'color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">' +
             '🚀 Sync to GitHub</button>' :
-            '<div style="color:#888;font-size:12px;">Configure GitHub PAT in Settings to enable sync</div>'
+            ''
         ) +
+        '</div>' +
+        
         '<div id="step7-status" style="margin:15px 0;font-size:12px;"></div>' +
+        
         '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #111;border-radius:8px;' +
-        'font-size:12px;color:#888;">' +
-        '✅ Import complete!<br>' +
-        'Your portfolio data is now stored in IndexedDB.<br>' +
-        '<b style="color:#00ff88;">Next:</b> Sync market data to see prices, PE, ROE, etc.' +
+        'font-size:11px;color:#888;">' +
+        '💡 <b>Next Steps:</b><br>' +
+        '1. View portfolio to see your holdings<br>' +
+        '2. Refresh market data to get prices, PE, ROE<br>' +
+        '3. Optional: Sync to GitHub for automated updates' +
         '</div>' +
         '</div>';
 }
