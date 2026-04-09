@@ -98,7 +98,7 @@ function renderStep1() {
         '</div>' +
         '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
-        'id="drop-zone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">' +
+        'id="drop-zone" onclick="document.getElementById(\'file-input\').click();" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">' +
         '<div style="font-size:32px;margin-bottom:10px;">📁</div>' +
         '<div style="color:#fff;font-weight:bold;margin-bottom:5px;">Click to upload or drag & drop</div>' +
         '<div style="color:#666;font-size:12px;">CSV or Excel files</div>' +
@@ -232,6 +232,7 @@ function processImportCSV(csv) {
     
     var stocks = [];
     var seen = new Set();
+    var skipped = 0;
     
     for (var i = 1; i < lines.length; i++) {
         var line = lines[i].trim();
@@ -262,26 +263,31 @@ function processImportCSV(csv) {
         }
         
         // Skip duplicates
-        if (seen.has(name)) continue;
+        if (seen.has(name)) {
+            skipped++;
+            continue;
+        }
         seen.add(name);
         
-        // Add stock if has valid name and at least one of qty/avg
-        if (name && qty && avg) {
+        // Add stock if has valid name AND (qty OR avg) - more lenient
+        if (name && (qty || avg)) {
             stocks.push({
                 name: name,
                 isin: '',
-                qty: qty,
-                avg: avg,
+                qty: qty || 0,
+                avg: avg || 0,
                 sector: '',
                 industry: '',
                 type: 'PORTFOLIO',
                 status: ''
             });
+        } else {
+            skipped++;
         }
     }
     
     if (stocks.length === 0) {
-        throw new Error('No valid stocks found. Ensure file has Name, Quantity, and Average Price columns.');
+        throw new Error('No valid stocks found (skipped: ' + skipped + '). Ensure file has Stock Name column and either Quantity or Average Price.');
     }
     
     importState.stocks = stocks;
@@ -300,10 +306,13 @@ function renderStep1Preview() {
         '</tr>';
     
     importState.stocks.forEach(function(stock) {
+        var qtyDisplay = stock.qty > 0 ? stock.qty : '<span style="color:#ffb347;">—</span>';
+        var avgDisplay = stock.avg > 0 ? '₹' + stock.avg.toFixed(2) : '<span style="color:#ffb347;">—</span>';
+        
         html += '<tr style="border-bottom:1px solid #111;">' +
             '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>' +
-            '<td style="padding:6px;text-align:right;">' + stock.qty + '</td>' +
-            '<td style="padding:6px;text-align:right;">₹' + stock.avg.toFixed(2) + '</td>' +
+            '<td style="padding:6px;text-align:right;">' + qtyDisplay + '</td>' +
+            '<td style="padding:6px;text-align:right;">' + avgDisplay + '</td>' +
             '</tr>';
     });
     
