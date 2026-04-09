@@ -115,19 +115,53 @@
 <script src="app-import.js"></script>
 <script>
 function refreshPrices() {
-    alert('Refresh Prices - coming soon');
+    if (typeof refreshPortfolioData === 'function') {
+        refreshPortfolioData();
+    } else {
+        alert('Prices refresh - loading prices.json');
+    }
 }
 
 function refreshFundamentals() {
-    alert('Refresh Fundamentals - coming soon');
+    if (typeof loadFundamentals === 'function') {
+        loadFundamentals(true);
+    } else {
+        alert('Fundamentals refresh - loading fundamentals.json');
+    }
 }
 
 function fullSync() {
-    alert('Full Sync & Reload - coming soon');
+    refreshPrices();
+    refreshFundamentals();
+    location.reload();
 }
 
 function exportData() {
-    alert('Export - coming soon');
+    var portfolio = [];
+    try {
+        var data = localStorage.getItem('portfolio');
+        if (data) {
+            portfolio = JSON.parse(data);
+        }
+    } catch(e) {}
+    
+    if (portfolio.length === 0) {
+        alert('No portfolio data to export');
+        return;
+    }
+    
+    var csv = 'Symbol,Name,Type,QTY,AVG,LTP,Sector,ISIN\n';
+    for (var i = 0; i < portfolio.length; i++) {
+        var s = portfolio[i];
+        csv += (s.sym || '-') + ',' + (s.name || '-') + ',' + (s.type || 'PORTFOLIO') + ',' + (s.qty || 0) + ',' + (s.avg || 0) + ',' + (s.ltp || 0) + ',' + (s.sector || '-') + ',' + (s.isin || '-') + '\n';
+    }
+    
+    var blob = new Blob([csv], {type:'text/csv'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'portfolio.csv';
+    a.click();
 }
 
 function loadPortfolioTable() {
