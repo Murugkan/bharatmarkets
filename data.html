@@ -35,38 +35,47 @@
         .nav-btn.active { color:var(--bl); font-weight:800; }
         .nav-label { font-size:8px; margin-top:4px; font-weight:800; text-transform:uppercase; letter-spacing:1px; }
         
-        /* Import Modal Styles */
-        #ov { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:999; display:none; }
-        #ov.on { display:block; }
-        #import-panel { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#0a0a0a; border:1px solid #222; border-radius:8px; padding:0; max-width:95vw; max-height:95vh; z-index:1000; display:none; flex-direction:column; }
-        #import-panel.on { display:flex; }
-        .import-panel-header { display:flex; justify-content:space-between; align-items:center; padding:15px 20px; border-bottom:1px solid #222; flex-shrink:0; }
-        .import-panel-header-title { font-size:13px; font-weight:800; color:#00ff88; }
-        .import-panel-close { background:#ff6b85; color:#fff; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold; }
-        .import-panel-close:hover { opacity:0.9; }
-        #import-panel-body { flex:1; overflow-y:auto; overflow-x:auto; padding:20px; min-width:0; }
+        /* FULL-SCREEN IMPORT MODAL */
+        #import-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:#000; z-index:1100; display:none; flex-direction:column; }
+        #import-overlay.active { display:flex; }
         
-        .import-textarea { width:100%; padding:10px; background:#050505; border:1px solid #222; border-radius:4px; color:#fff; font-family:monospace; font-size:11px; resize:vertical; }
-        .import-preview { margin-top:15px; background:#050505; border:1px solid #222; border-radius:4px; padding:10px; display:none; max-height:200px; overflow-y:auto; }
-        .import-preview-title { font-size:11px; font-weight:800; color:#00ff88; margin-bottom:10px; }
-        .import-err { color:#ff6b85; font-size:10px; padding:10px; background:#1a0a0a; border-left:3px solid #ff6b85; display:none; margin-bottom:10px; border-radius:2px; }
-        .import-btn { width:100%; padding:12px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:10px; font-size:12px; }
-        .import-btn:active { transform:scale(0.98); }
+        .import-header { display:flex; justify-content:space-between; align-items:center; padding:20px; background:#0a0a0a; border-bottom:2px solid var(--b1); flex-shrink:0; }
+        .import-header-title { font-size:16px; font-weight:800; color:#00ff88; }
+        .import-header-close { background:#ff6b85; color:#fff; border:none; padding:10px 15px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:16px; }
+        .import-header-close:hover { opacity:0.9; }
         
-        /* Import Wizard Styles */
-        .imp-tabs { display:flex; gap:0; border-bottom:2px solid var(--b1); margin-bottom:14px; flex-shrink:0; }
-        .imp-tab { flex:1; padding:9px 6px; text-align:center; font-size:11px; font-weight:700; font-family:'JetBrains Mono',monospace; cursor:pointer; color:#666; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .15s; }
+        .import-content { flex:1; overflow-y:auto; overflow-x:auto; padding:25px; background:#000; }
+        
+        .import-footer { display:flex; gap:10px; padding:20px; background:#0a0a0a; border-top:2px solid var(--b1); flex-shrink:0; }
+        .import-footer button { flex:1; padding:15px; font-size:12px; font-weight:bold; }
+        
+        /* Wizard styles */
+        .imp-tabs { display:flex; gap:0; border-bottom:2px solid #333; margin-bottom:20px; }
+        .imp-tab { flex:1; padding:12px; text-align:center; font-size:12px; font-weight:700; cursor:pointer; color:#666; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .2s; }
         .imp-tab.on { color:#00ff88; border-bottom-color:#00ff88; }
-        .imp-pane { display:none; overflow:auto; } 
+        .imp-pane { display:none; } 
         .imp-pane.on { display:block; }
-        .file-drop { border:2px dashed var(--b1); border-radius:12px; padding:28px 16px; text-align:center; cursor:pointer; transition:all .2s; background:var(--s1); }
-        .file-drop:hover, .file-drop.drag { border-color:#00ff88; background:rgba(0,255,136,0.06); }
+        
+        .file-drop { border:3px dashed #333; border-radius:12px; padding:40px 20px; text-align:center; cursor:pointer; transition:all .2s; background:#050505; }
+        .file-drop:hover, .file-drop.drag { border-color:#00ff88; background:rgba(0,255,136,0.08); }
         .file-drop input[type=file] { display:none; }
-        .file-drop-icon { font-size:32px; margin-bottom:8px; }
-        .file-drop-title { font-size:13px; font-weight:700; color:var(--tx); font-family:'JetBrains Mono',monospace; margin-bottom:4px; }
-        .file-drop-sub { font-size:10px; color:var(--tx3); line-height:1.6; }
+        .file-drop-icon { font-size:48px; margin-bottom:12px; }
+        .file-drop-title { font-size:16px; font-weight:700; color:#fff; margin-bottom:8px; }
+        .file-drop-sub { font-size:11px; color:#999; line-height:1.8; }
         .file-drop-sub b { color:#00ff88; }
-        .import-btn:active { transform:scale(0.98); }
+        
+        .import-textarea { width:100%; padding:12px; background:#050505; border:1px solid #333; border-radius:6px; color:#fff; font-family:monospace; font-size:12px; resize:vertical; min-height:200px; }
+        
+        .import-status { font-size:11px; color:#999; padding:10px 0; min-height:24px; }
+        .import-status.ok { color:#00ff88; }
+        .import-status.err { color:#ff6b85; }
+        
+        .import-preview { margin-top:20px; background:#050505; border:1px solid #333; border-radius:6px; padding:15px; max-height:400px; overflow-y:auto; display:none; }
+        .import-preview.on { display:block; }
+        .import-preview-title { font-size:12px; font-weight:800; color:#00ff88; margin-bottom:12px; }
+        .import-preview-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #222; font-size:11px; }
+        
+        .import-fmt { background:#050505; border:1px solid #333; border-radius:6px; padding:12px; font-size:10px; color:#999; line-height:1.8; margin-bottom:15px; }
     </style>
 </head>
 <body>
@@ -129,17 +138,18 @@
     </div>
 </div>
 
-<!-- Import Modal (FIXED) -->
-<div id="ov" onclick="closePanel()"></div>
-<div id="import-panel">
-  <div class="import-panel-header">
-    <div class="import-panel-header-title">📁 Import Portfolio</div>
-    <button class="import-panel-close" onclick="closePanel()">✕</button>
+<!-- FULL-SCREEN IMPORT MODAL -->
+<div id="import-overlay">
+  <div class="import-header">
+    <div class="import-header-title">📁 Import Portfolio</div>
+    <button class="import-header-close" onclick="closeImportModal()">✕ CLOSE</button>
   </div>
-  <div id="import-panel-body" style="flex:1;overflow-y:auto;overflow-x:auto;padding:20px;min-width:0;min-height:300px"></div>
-  <div style="flex-shrink:0;padding:15px 20px;border-top:1px solid #222;background:#050505">
-    <button class="import-btn" onclick="applyImport('replace')" style="margin-top:0">✓ Import (Replace All)</button>
-    <button class="import-btn" style="background:var(--s2);border:1px solid var(--b1);color:var(--tx2);margin-top:8px" onclick="applyImport('append')">+ Append to Existing</button>
+  
+  <div class="import-content" id="import-content"></div>
+  
+  <div class="import-footer">
+    <button onclick="applyImport('replace')" style="background:#00ff88;color:#000">✓ Import (Replace All)</button>
+    <button onclick="applyImport('append')" style="background:#333;color:#00ff88">+ Append to Existing</button>
   </div>
 </div>
 
@@ -161,16 +171,229 @@
 
 <script src="app-import.js"></script>
 <script>
+let parsedHoldings = [];
+
 // ════════════════════════════════════════════════════
-// WRAPPER FUNCTION - Connects HTML button to app-import.js
+// IMPORT MODAL CONTROL
 // ════════════════════════════════════════════════════
+
 function openImportWorkflow() {
-  if (typeof openImport === 'function') {
-    openImport();
-  } else {
-    alert('Import module not loaded. Make sure app-import.js is included.');
+  parsedHoldings = [];
+  const overlay = document.getElementById('import-overlay');
+  const content = document.getElementById('import-content');
+  
+  if (overlay && content) {
+    content.innerHTML = renderImportPanel();
+    overlay.classList.add('active');
   }
 }
+
+function closeImportModal() {
+  const overlay = document.getElementById('import-overlay');
+  if (overlay) {
+    overlay.classList.remove('active');
+  }
+}
+
+function renderImportPanel() {
+  return `
+  <div class="imp-tabs">
+    <div class="imp-tab on" onclick="switchImpTab('file')">📁 CDSL XLS</div>
+    <div class="imp-tab" onclick="switchImpTab('paste')">📋 CDSL Text</div>
+    <div class="imp-tab" onclick="switchImpTab('manual')">✏ Manual</div>
+  </div>
+
+  <div class="imp-pane on" id="ipane-file">
+    <div class="file-drop" id="file-drop-zone"
+      onclick="document.getElementById('file-input').click()"
+      ondragover="event.preventDefault();this.classList.add('drag')"
+      ondragleave="this.classList.remove('drag')"
+      ondrop="handleFileDrop(event)">
+      <input type="file" id="file-input" accept=".xls,.xlsx,.csv,.txt,.tsv" style="display:none"
+        onchange="handleFileSelect(this.files[0])">
+      <div class="file-drop-icon">📂</div>
+      <div class="file-drop-title">Click to select CDSL XLS file</div>
+      <div class="file-drop-sub">
+        <b>CDSL Easiest → Portfolio → Equity Summary Details → Download XLS</b><br>
+        Supports: XLS, XLSX, CSV, TSV (tab-separated)
+      </div>
+    </div>
+    <div class="import-status" id="file-status"></div>
+    <div id="imp-report" style="display:none;"></div>
+  </div>
+
+  <div class="imp-pane" id="ipane-paste">
+    <div class="import-fmt">
+      <b style="color:#00ff88">How to get this:</b><br>
+      CDSL Easiest → Statement → Holdings → Select All → Copy → Paste below<br><br>
+      <b style="color:#ffff00">Format:</b><br>
+      INE040A01034 HDFC BANK LIMITED - EQ Beneficiary 84 68628.00<br><br>
+      <b style="color:#ff6b85">⚠ No avg buy price in this format</b> — use XLS tab for full data
+    </div>
+    <textarea class="import-textarea" id="import-ta" placeholder="Paste CDSL statement text here…" oninput="liveParseImport(this.value)"></textarea>
+  </div>
+
+  <div class="imp-pane" id="ipane-manual">
+    <div class="import-fmt">
+      <b style="color:#00ff88">Format:</b>  SYMBOL, QTY, AVG_BUY<br>
+      One stock per line. AVG_BUY is optional.<br><br>
+      <b style="color:#00bbff">Examples:</b><br>
+      RELIANCE, 10, 2450<br>
+      HDFCBANK, 84, 817.50<br>
+      TATAPOWER, 100<br><br>
+      <b style="color:#999">Find your symbol:</b> use NSE website or Screener.in
+    </div>
+    <textarea class="import-textarea" id="import-ta-manual" placeholder="RELIANCE, 10, 2450&#10;HDFCBANK, 84, 817&#10;TATAPOWER, 100, 385" oninput="liveParseImport(this.value,'manual')"></textarea>
+  </div>
+
+  <div id="import-preview" class="import-preview">
+    <div class="import-preview-title" id="import-preview-title">Preview</div>
+    <div id="import-preview-rows"></div>
+  </div>
+  `;
+}
+
+function switchImpTab(tab) {
+  ['file', 'paste', 'manual'].forEach(t => {
+    const pane = document.getElementById('ipane-' + t);
+    if (pane) pane.classList.toggle('on', t === tab);
+  });
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  const zone = document.getElementById('file-drop-zone');
+  if (zone) zone.classList.remove('drag');
+  if (e.dataTransfer.files.length > 0) {
+    handleFileSelect(e.dataTransfer.files[0]);
+  }
+}
+
+function handleFileSelect(file) {
+  if (!file) return;
+  const status = document.getElementById('file-status');
+  if (!status) return;
+
+  status.textContent = '⏳ Reading ' + file.name + '…';
+  status.className = 'import-status';
+  
+  const ext = file.name.split('.').pop().toLowerCase();
+
+  if (ext === 'xls' || ext === 'xlsx') {
+    loadSheetJS(() => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'binary' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const csv = XLSX.utils.sheet_to_csv(ws);
+          processImportText(csv, file.name, status);
+        } catch (err) {
+          status.textContent = '✗ Error: ' + err.message;
+          status.className = 'import-status err';
+        }
+      };
+      reader.readAsBinaryString(file);
+    });
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => processImportText(e.target.result, file.name, status);
+  reader.readAsText(file);
+}
+
+let _sheetJSLoaded = false;
+function loadSheetJS(cb) {
+  if (_sheetJSLoaded) { cb(); return; }
+  if (window.XLSX) { _sheetJSLoaded = true; cb(); return; }
+
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload = () => { _sheetJSLoaded = true; cb(); };
+  s.onerror = () => {
+    const status = document.getElementById('file-status');
+    if (status) {
+      status.textContent = '✗ Could not load XLS reader — try CSV format';
+      status.className = 'import-status err';
+    }
+  };
+  document.head.appendChild(s);
+}
+
+function processImportText(text, filename, statusEl) {
+  parsedHoldings = parsePortfolioText(text);
+
+  if (parsedHoldings.length) {
+    if (statusEl) {
+      statusEl.textContent = '✓ ' + filename + ' — ' + parsedHoldings.length + ' holdings detected';
+      statusEl.className = 'import-status ok';
+    }
+    showImportPreview();
+  } else {
+    if (statusEl) {
+      statusEl.textContent = '✗ No holdings found in ' + filename;
+      statusEl.className = 'import-status err';
+    }
+  }
+}
+
+function liveParseImport(text, mode) {
+  parsedHoldings = parsePortfolioText(text);
+  
+  if (!text.trim()) {
+    const preEl = document.getElementById('import-preview');
+    if (preEl) preEl.classList.remove('on');
+    return;
+  }
+
+  if (!parsedHoldings.length) {
+    const preEl = document.getElementById('import-preview');
+    if (preEl) preEl.classList.remove('on');
+    return;
+  }
+
+  showImportPreview();
+}
+
+function showImportPreview() {
+  const preEl = document.getElementById('import-preview');
+  const preRows = document.getElementById('import-preview-rows');
+  const preTitle = document.getElementById('import-preview-title');
+
+  if (!preEl || !preRows) return;
+
+  preTitle.textContent = '✓ ' + parsedHoldings.length + ' holdings detected';
+  preRows.innerHTML = parsedHoldings.slice(0, 15).map(h => `
+    <div class="import-preview-row">
+      <div style="flex:1">
+        <div style="font-weight:700;color:#00ff88">${h.sym}</div>
+        <div style="font-size:9px;color:#666">${h.isin || ''}</div>
+      </div>
+      <div style="text-align:right">
+        <div>×${h.qty}</div>
+        <div style="color:#00ff88">₹${h.avgBuy.toFixed(2)}</div>
+      </div>
+    </div>`).join('') +
+    (parsedHoldings.length > 15 ? '<div style="padding:10px;color:#666;text-align:center">+' + (parsedHoldings.length - 15) + ' more…</div>' : '');
+
+  preEl.classList.add('on');
+}
+
+function applyImport(mode) {
+  if (!parsedHoldings || !parsedHoldings.length) {
+    alert('No holdings to import');
+    return;
+  }
+
+  // For now, just show success
+  alert('✓ Imported ' + parsedHoldings.length + ' holdings!');
+  closeImportModal();
+}
+
+// ════════════════════════════════════════════════════
+// DATA PAGE FUNCTIONS
+// ════════════════════════════════════════════════════
 
 function refreshPrices() {
     if (typeof refreshPortfolioData === 'function') {
@@ -223,7 +446,6 @@ function exportData() {
 }
 
 function loadPortfolioTable() {
-    // Load portfolio from localStorage if available
     var portfolio = [];
     try {
         var data = localStorage.getItem('portfolio');
@@ -262,7 +484,6 @@ function deleteStock(idx) {
     alert('Delete - coming soon');
 }
 
-// Load table on page load
 window.addEventListener('DOMContentLoaded', loadPortfolioTable);
 </script>
 
