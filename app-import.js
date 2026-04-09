@@ -64,8 +64,9 @@ function renderImportPanel() {
       onclick="document.getElementById('file-input').click()"
       ondragover="event.preventDefault();this.classList.add('drag')"
       ondragleave="this.classList.remove('drag')"
-      ondrop="handleFileDrop(event)">
-      <input type="file" id="file-input" accept=".xls,.xlsx,.csv,.txt,.tsv"
+      ondrop="handleFileDrop(event)"
+      style="cursor:pointer">
+      <input type="file" id="file-input" accept=".xls,.xlsx,.csv,.txt,.tsv" style="display:none"
         onchange="handleFileSelect(this.files[0])">
       <div class="file-drop-icon">📂</div>
       <div class="file-drop-title">Tap to select CDSL XLS file</div>
@@ -74,7 +75,7 @@ function renderImportPanel() {
         Supports: XLS, XLSX, CSV, TSV (tab-separated)
       </div>
     </div>
-    <div id="file-status" style="margin-top:10px;font-size:10px;color:var(--tx3);font-family:var(--mono);min-height:20px"></div>
+    <div id="file-status" style="margin-top:10px;font-size:10px;color:var(--tx3);font-family:var(--mono);min-height:20px;word-wrap:break-word;overflow-wrap:break-word"></div>
     <div id="imp-report" style="display:none;margin-top:8px"></div>
   </div>
 
@@ -111,10 +112,6 @@ function renderImportPanel() {
     <div class="import-preview-title" id="import-preview-title">Preview</div>
     <div id="import-preview-rows"></div>
   </div>
-
-  <button class="import-btn" onclick="applyImport('replace')">✓ Import (Replace All)</button>
-  <button class="import-btn" style="background:var(--s2);border:1px solid var(--b2);color:var(--tx2);margin-top:6px"
-    onclick="applyImport('append')">+ Append to Existing</button>
   `;
 }
 
