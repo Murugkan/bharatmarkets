@@ -2,6 +2,7 @@
  * app-import.js - Enhanced Import Workflow (FULLY ENHANCED)
  * Step 1: FIXED CSV/TSV/XLS parsing with intelligent column detection
  * Handles: Comma-separated, Tab-separated, Multi-word headers
+ * FIXED: Column matching for StockName, Quantity, AverageCostPrice format
  */
 
 var importState = {
@@ -99,7 +100,7 @@ function renderStep1() {
         '<b style="color:#00ff88;">Required Columns:</b><br>' +
         'Stock Name + (Quantity OR Average Price)<br><br>' +
         '<b style="color:#ffb347;">Column names can include:</b><br>' +
-        'Name, Stock, Qty, Quantity, Shares, Avg, Average, Cost, Price<br>' +
+        'StockName, Symbol, Name, Quantity, Qty, Shares, AverageCostPrice, Average, Cost, Price<br>' +
         '</div>' +
         '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
@@ -244,7 +245,7 @@ function processImportCSV(csv, filename) {
     importState.debugInfo += 'Header columns: ' + headerParts.length + '\n';
     importState.debugInfo += 'Headers: ' + headerParts.join(' | ') + '\n\n';
     
-    // Find column indices - ENHANCED matching
+    // Find column indices - ENHANCED matching FOR YOUR FILE FORMAT
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
@@ -252,19 +253,23 @@ function processImportCSV(csv, filename) {
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
         
-        // Stock Name matching
-        if (!nameIdx && (h.includes('stock') || h.includes('name') || h.includes('symbol'))) {
+        // Stock Name matching - handle StockName, Symbol, Name
+        if (!nameIdx && (h.includes('stockname') || h.includes('symbol') || (h.includes('name') && !h.includes('sector')))) {
             nameIdx = i;
         }
         
-        // Quantity matching
-        if (!qtyIdx && (h.includes('qty') || h.includes('quantity') || h.includes('shares') || h.includes('units'))) {
+        // Quantity matching - handle Quantity, Qty, Shares
+        if (!qtyIdx && (h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('units'))) {
             qtyIdx = i;
         }
         
-        // Average/Cost price matching
-        if (!avgIdx && (h.includes('avg') || h.includes('average') || h.includes('cost') || 
-                        h.includes('price') || h.includes('buy'))) {
+        // Average/Cost Price matching - handle AverageCostPrice, Avg, Cost, Price
+        if (!avgIdx && (h.includes('averagecost') || h.includes('averageprice') || 
+                        (h.includes('average') && h.includes('price')) ||
+                        (h.includes('average') && h.includes('cost')) ||
+                        h.includes('costprice') || h.includes('buyprice') ||
+                        (h.includes('cost') && !h.includes('value')) ||
+                        (h.includes('price') && !h.includes('market') && !h.includes('current')))) {
             avgIdx = i;
         }
     }
@@ -458,7 +463,7 @@ function addManualEntries() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 3-7: (Same as before - omitted for brevity)
+// STEP 3-7: Remaining steps
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep3() {
