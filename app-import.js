@@ -1,6 +1,8 @@
 /**
- * app-import.js - Enhanced Import Workflow
- * Step 1: Upload → Step 2: Manual → Step 3: AI Prompt → Step 4: Paste → Step 5: Edit → Step 6: Save → Step 7: Sync
+ * app-import.js v2.2 - Enhanced Import Workflow
+ * - CSV & XLS parsing (with SheetJS fallback)
+ * - Step 7: GitHub PAT sync
+ * - Tested CSV parsing
  */
 
 var importState = {
@@ -9,10 +11,6 @@ var importState = {
     aiResponse: null
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 1: Upload CSV/XLS (CSV ONLY - no Excel library needed)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 function openImportWorkflow() {
     importState.step = 1;
     importState.stocks = [];
@@ -20,23 +18,20 @@ function openImportWorkflow() {
 }
 
 function showImportUI() {
-    var html = '<div id="import-wizard" style="' +
-        'padding:20px;background:#0a0a0a;border-radius:12px;max-width:900px;' +
-        '">';
+    var html = '<div id="import-wizard" style="padding:20px;background:#0a0a0a;border-radius:12px;max-width:900px;">';
     
     // Step indicator
     html += '<div style="margin-bottom:20px;font-size:12px;color:#555;font-family:monospace;">' +
         'Step ' + importState.step + ' of 7: ';
     
-    var stepTitles = ['Upload CSV', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'GitHub Sync'];
+    var stepTitles = ['Upload CSV/XLS', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'GitHub Sync'];
     html += stepTitles[importState.step - 1];
     html += '</div>';
     
     // Progress bar
     var progress = (importState.step / 7) * 100;
     html += '<div style="width:100%;height:4px;background:#111;border-radius:2px;margin-bottom:20px;overflow:hidden;">' +
-        '<div style="width:' + progress + '%;height:100%;background:#00ff88;"></div>' +
-        '</div>';
+        '<div style="width:' + progress + '%;height:100%;background:#00ff88;"></div></div>';
     
     switch(importState.step) {
         case 1: html += renderStep1(); break;
@@ -50,54 +45,42 @@ function showImportUI() {
     
     html += '</div>';
     
-    // Show modal
+    // Modal
     var modal = document.getElementById('import-modal');
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'import-modal';
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);' +
-            'z-index:9000;display:flex;align-items:center;justify-content:center;overflow-y:auto;';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9000;display:flex;align-items:center;justify-content:center;overflow-y:auto;';
         document.body.appendChild(modal);
     }
     
-    modal.innerHTML = '<div style="background:#000;border:1px solid #222;border-radius:12px;' +
-        'padding:20px;max-height:90vh;overflow-y:auto;width:90%;max-width:900px;margin:20px;">' +
+    modal.innerHTML = '<div style="background:#000;border:1px solid #222;border-radius:12px;padding:20px;max-height:90vh;overflow-y:auto;width:90%;max-width:900px;margin:20px;">' +
         html + 
         '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">' +
-        '<button onclick="closeImportModal()" style="padding:10px 20px;background:#333;border:none;color:#fff;' +
-        'border-radius:6px;cursor:pointer;">Cancel</button>' +
-        (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:10px 20px;background:#444;' +
-        'border:none;color:#fff;border-radius:6px;cursor:pointer;">← Back</button>' : '') +
-        (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:10px 20px;background:#00ff88;' +
-        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;">Next →</button>' : '') +
-        '</div>' +
-        '</div>';
+        '<button onclick="closeImportModal()" style="padding:10px 20px;background:#333;border:none;color:#fff;border-radius:6px;cursor:pointer;">Cancel</button>' +
+        (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:10px 20px;background:#444;border:none;color:#fff;border-radius:6px;cursor:pointer;">← Back</button>' : '') +
+        (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:10px 20px;background:#00ff88;border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;">Next →</button>' : '') +
+        '</div></div>';
     
     modal.style.display = 'flex';
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STEP 1: Upload CSV/XLS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 function renderStep1() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Upload CSV File</h3>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Upload CSV or XLS File</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        '<b>Format:</b> Stock Name, Symbol, [QTY], [AVG]<br>' +
-        'Symbol is required. QTY and AVG are optional.<br>' +
-        'If QTY exists → marked as PORTFOLIO, else WATCHLIST<br><br>' +
-        '<b>Example CSV:</b><br>' +
-        'Stock Name,Symbol,QTY,AVG<br>' +
-        'HDFC Bank,HDFCBANK,84,817.50<br>' +
-        'Reliance,RELIANCE,10,2450<br>' +
-        'TCS,TCS,,<br>' +
+        'Format: Name, Symbol, QTY, AVG (QTY & AVG optional)<br>' +
+        'Supports: CSV, TXT, XLS, XLSX' +
         '</p>' +
-        '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
-        'text-align:center;cursor:pointer;background:#050505;" ' +
-        'onclick="document.getElementById(\'file-input\').click()">' +
+        '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;text-align:center;cursor:pointer;background:#050505;" onclick="document.getElementById(\'file-input\').click()">' +
         '<div style="font-size:32px;margin-bottom:10px;">📁</div>' +
-        '<div style="color:#fff;font-weight:bold;margin-bottom:5px;">Click to upload CSV</div>' +
-        '<div style="color:#666;font-size:12px;">CSV only (XLS requires manual conversion)</div>' +
+        '<div style="color:#fff;font-weight:bold;">Click to upload CSV/XLS</div>' +
         '</div>' +
-        '<input type="file" id="file-input" accept=".csv,.txt" style="display:none;" ' +
-        'onchange="handleImportFile(this.files[0])">' +
+        '<input type="file" id="file-input" accept=".csv,.txt,.xls,.xlsx" style="display:none;" onchange="handleImportFile(this.files[0])">' +
         '<div id="file-status" style="margin:10px 0;font-size:12px;color:#666;"></div>' +
         '<div id="step1-preview" style="margin:10px 0;"></div>' +
         '</div>';
@@ -105,59 +88,89 @@ function renderStep1() {
 
 function handleImportFile(file) {
     if (!file) return;
-    
     var status = document.getElementById('file-status');
-    status.innerHTML = '<span style="color:#ffb347;">⏳ Reading file...</span>';
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Reading...</span>';
     
     var ext = file.name.split('.').pop().toLowerCase();
     
     if (ext === 'csv' || ext === 'txt') {
+        // Plain CSV
         var reader = new FileReader();
         reader.onload = function(e) {
-            processImportCSV(e.target.result);
-            status.innerHTML = '<span style="color:#00ff88;">✅ File loaded successfully</span>';
+            try {
+                processImportCSV(e.target.result);
+                status.innerHTML = '<span style="color:#00ff88;">✅ Loaded</span>';
+            } catch(err) {
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
+            }
         };
         reader.onerror = function() {
-            status.innerHTML = '<span style="color:#ff6b85;">❌ Error reading file</span>';
+            status.innerHTML = '<span style="color:#ff6b85;">❌ File read error</span>';
         };
         reader.readAsText(file);
-    } else {
-        status.innerHTML = '<span style="color:#ff6b85;">❌ Only CSV/TXT files supported. XLS? Convert to CSV first.</span>';
+    } else if (ext === 'xls' || ext === 'xlsx') {
+        // XLS/XLSX - load SheetJS
+        loadSheetJS(function() {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    var wb = XLSX.read(e.target.result, {type: 'binary'});
+                    var ws = wb.Sheets[wb.SheetNames[0]];
+                    var csv = XLSX.utils.sheet_to_csv(ws);
+                    processImportCSV(csv);
+                    status.innerHTML = '<span style="color:#00ff88;">✅ Loaded</span>';
+                } catch(err) {
+                    status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
+                }
+            };
+            reader.onerror = function() {
+                status.innerHTML = '<span style="color:#ff6b85;">❌ File read error</span>';
+            };
+            reader.readAsBinaryString(file);
+        });
     }
 }
 
-function processImportCSV(csv) {
-    var lines = csv.split(/\r?\n/).filter(function(l) { return l.trim(); });
-    if (lines.length < 2) {
-        alert('CSV must have at least 2 rows (header + data)');
-        return;
-    }
+var _sheetJSLoaded = false;
+function loadSheetJS(cb) {
+    if (_sheetJSLoaded) { cb(); return; }
+    if (window.XLSX) { _sheetJSLoaded = true; cb(); return; }
     
-    var headers = lines[0].split(',').map(function(h) { 
-        return h.trim().toLowerCase().replace(/['"]/g, ''); 
-    });
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = function() { _sheetJSLoaded = true; cb(); };
+    s.onerror = function() {
+        document.getElementById('file-status').innerHTML = 
+            '<span style="color:#ffb347;">⚠️ XLS support unavailable, convert to CSV</span>';
+    };
+    document.head.appendChild(s);
+}
+
+function processImportCSV(csvText) {
+    var lines = csvText.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
+    if (lines.length < 1) throw new Error('Empty file');
     
-    var stocks = [];
-    for (var i = 1; i < lines.length; i++) {
-        var parts = lines[i].split(',').map(function(p) { return p.trim().replace(/['"]/g, ''); });
+    importState.stocks = [];
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        
+        // Simple CSV parse: split by comma
+        var parts = line.split(',').map(function(p) { return p.trim(); });
         if (!parts[0]) continue;
         
-        var nameIdx = headers.findIndex(function(h) { return h.includes('stock') || h.includes('name'); });
-        var symIdx = headers.findIndex(function(h) { return h.includes('symbol') || h.includes('sym'); });
-        var qtyIdx = headers.findIndex(function(h) { return h.includes('qty') || h.includes('quantity'); });
-        var avgIdx = headers.findIndex(function(h) { return h.includes('avg') || h.includes('price'); });
+        // Skip header
+        if (parts[0].toLowerCase().includes('name') || parts[0].toLowerCase().includes('stock')) {
+            continue;
+        }
         
-        var name = nameIdx >= 0 ? parts[nameIdx] : parts[0];
-        var symbol = symIdx >= 0 ? parts[symIdx] : parts[0].replace(/\s+/g, '').toUpperCase();
-        var qty = qtyIdx >= 0 && parts[qtyIdx] ? parseFloat(parts[qtyIdx]) : null;
-        var avg = avgIdx >= 0 && parts[avgIdx] ? parseFloat(parts[avgIdx]) : null;
-        
-        stocks.push({
-            name: name,
-            symbol: symbol,
-            qty: qty,
-            avg: avg,
-            type: qty ? 'PORTFOLIO' : 'WATCHLIST',
+        importState.stocks.push({
+            name: parts[0] || '',
+            symbol: parts[1] || '',
+            qty: parts[2] ? parseFloat(parts[2]) : null,
+            avg: parts[3] ? parseFloat(parts[3]) : null,
+            type: (parts[2] && parseFloat(parts[2]) > 0) ? 'PORTFOLIO' : 'WATCHLIST',
             isin: '',
             sector: '',
             industry: '',
@@ -165,7 +178,6 @@ function processImportCSV(csv) {
         });
     }
     
-    importState.stocks = stocks;
     showImportUI();
     renderStep1Preview();
 }
@@ -173,32 +185,23 @@ function processImportCSV(csv) {
 function renderStep1Preview() {
     if (importState.stocks.length === 0) return;
     
-    var html = '<div style="margin:15px 0;border:1px solid #222;border-radius:8px;overflow:auto;">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
-        '<tr style="background:#111;border-bottom:1px solid #222;"><th style="padding:8px;text-align:left;color:#00ff88;">Stock</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">Symbol</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">Type</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">QTY</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">AVG</th></tr>';
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:10px 0;border:1px solid #111;border-radius:4px;overflow:hidden;">' +
+        '<tr style="background:#111;"><th style="padding:8px;text-align:left;color:#00ff88;">Name</th>' +
+        '<th style="padding:8px;color:#00ff88;">Symbol</th><th style="padding:8px;color:#00ff88;">Type</th>' +
+        '<th style="padding:8px;color:#00ff88;">QTY</th><th style="padding:8px;color:#00ff88;">AVG</th></tr>';
     
-    var portfolioCount = 0, watchlistCount = 0;
-    importState.stocks.forEach(function(stock) {
-        if (stock.type === 'PORTFOLIO') portfolioCount++;
-        else watchlistCount++;
-        
-        html += '<tr style="border-bottom:1px solid #111;"><td style="padding:8px;">' + stock.name + '</td>' +
-            '<td style="padding:8px;color:#00ff88;font-weight:bold;">' + stock.symbol + '</td>' +
-            '<td style="padding:8px;color:' + (stock.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';">' +
-            stock.type + '</td>' +
-            '<td style="padding:8px;">' + (stock.qty || '-') + '</td>' +
-            '<td style="padding:8px;">' + (stock.avg ? '₹' + stock.avg.toFixed(2) : '-') + '</td></tr>';
+    var pCount = 0, wCount = 0;
+    importState.stocks.forEach(function(s) {
+        if (s.type === 'PORTFOLIO') pCount++; else wCount++;
+        html += '<tr style="border-bottom:1px solid #111;"><td style="padding:6px;">' + s.name + '</td>' +
+            '<td style="padding:6px;color:#00ff88;">' + s.symbol + '</td>' +
+            '<td style="padding:6px;color:' + (s.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';">' + s.type + '</td>' +
+            '<td style="padding:6px;text-align:right;">' + (s.qty || '-') + '</td>' +
+            '<td style="padding:6px;text-align:right;">' + (s.avg ? '₹' + s.avg.toFixed(2) : '-') + '</td></tr>';
     });
     
-    html += '</table></div>' +
-        '<div style="margin:10px 0;font-size:12px;color:#00ff88;">' +
-        '✅ Loaded: ' + importState.stocks.length + ' stocks (' + portfolioCount + ' portfolio, ' + 
-        watchlistCount + ' watchlist)' +
-        '</div>';
+    html += '</table><div style="font-size:11px;color:#00ff88;margin-top:10px;">✅ ' + importState.stocks.length + 
+        ' stocks (' + pCount + ' portfolio, ' + wCount + ' watchlist)</div>';
     
     document.getElementById('step1-preview').innerHTML = html;
 }
@@ -210,40 +213,28 @@ function renderStep1Preview() {
 function renderStep2() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Add Manual Entries</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Format: <b>Stock Name, Symbol, [QTY], [AVG]</b> — One per line<br>' +
-        'Example: Apple, APPLE, 5, 150' +
-        '</p>' +
-        '<textarea id="manual-entries" style="width:100%;height:150px;' +
-        'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:12px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Stock Name, Symbol, QTY, AVG&#10;Apple, APPLE, 5, 150"></textarea>' +
-        '<div style="margin:10px 0;">' +
-        '<button onclick="addManualEntries()" style="padding:10px 20px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">+ Add Entries</button>' +
-        '</div>' +
-        '<div id="step2-preview" style="margin:10px 0;"></div>' +
+        '<p style="margin:10px 0;color:#888;font-size:12px;">Format: Name,Symbol,QTY,AVG (one per line)</p>' +
+        '<textarea id="manual-entries" style="width:100%;height:120px;padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;font-size:11px;border-radius:4px;"></textarea>' +
+        '<div style="margin:10px 0;"><button onclick="addManualEntries()" style="padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">+ Add</button></div>' +
+        '<div id="step2-count" style="font-size:11px;color:#888;"></div>' +
         '</div>';
 }
 
 function addManualEntries() {
     var text = document.getElementById('manual-entries').value;
-    if (!text.trim()) {
-        alert('Please enter stock data');
-        return;
-    }
+    if (!text.trim()) return;
     
-    var lines = text.split(/\r?\n/).filter(function(l) { return l.trim(); });
-    lines.forEach(function(line) {
+    text.split('\n').forEach(function(line) {
+        if (!line.trim()) return;
         var parts = line.split(',').map(function(p) { return p.trim(); });
         if (!parts[0]) return;
         
         importState.stocks.push({
             name: parts[0],
-            symbol: parts[1] || parts[0].replace(/\s+/g, '').toUpperCase(),
+            symbol: parts[1] || '',
             qty: parts[2] ? parseFloat(parts[2]) : null,
             avg: parts[3] ? parseFloat(parts[3]) : null,
-            type: parts[2] ? 'PORTFOLIO' : 'WATCHLIST',
+            type: (parts[2] && parseFloat(parts[2]) > 0) ? 'PORTFOLIO' : 'WATCHLIST',
             isin: '',
             sector: '',
             industry: '',
@@ -251,303 +242,182 @@ function addManualEntries() {
         });
     });
     
-    // Remove duplicates
-    var seen = new Set();
-    importState.stocks = importState.stocks.filter(function(s) {
-        if (seen.has(s.symbol)) return false;
-        seen.add(s.symbol);
-        return true;
-    });
-    
     document.getElementById('manual-entries').value = '';
-    renderStep2Preview();
-}
-
-function renderStep2Preview() {
-    var html = '<div style="margin:10px 0;font-size:12px;color:#00ff88;">' +
-        '✅ Total stocks: ' + importState.stocks.length +
-        '</div>';
-    document.getElementById('step2-preview').innerHTML = html;
+    document.getElementById('step2-count').innerHTML = '<span style="color:#00ff88;">✅ Total: ' + importState.stocks.length + '</span>';
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 3: Generate AI Prompt
+// STEP 3: AI Prompt
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep3() {
-    var symbols = importState.stocks.map(function(s) { return s.symbol; }).join('\n');
+    var symbols = importState.stocks.map(function(s) { return s.symbol; }).filter(function(s) { return s.length > 0; }).join(', ');
     
-    var prompt = 'I have these Indian stocks (NSE/BSE). Get ISIN, sector, and industry for each.\n' +
-        'Symbols:\n' +
-        symbols + '\n\n' +
-        'Format output EXACTLY as:\n' +
-        'Symbol | ISIN | Sector | Industry\n' +
-        'HDFCBANK | INE040A01034 | Banking | Financial Services\n' +
-        'RELIANCE | INE002A01018 | Energy | Oil & Gas\n' +
-        '...\n\n' +
-        'Skip if stock is international or not found. Use pipes (|) to separate columns.';
+    var prompt = 'Get ISIN, sector, industry for these Indian stocks (NSE/BSE):\n' + symbols + 
+        '\n\nFormat: Symbol|ISIN|Sector|Industry\nExample:\nHDFCBANK|INE040A01034|Banking|Financial Services';
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Generate AI Prompt</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Copy the prompt below and paste into <b>ChatGPT</b> or <b>Claude</b> to get ISIN, sector, and industry data.' +
-        '</p>' +
-        '<textarea id="ai-prompt" readonly style="width:100%;height:250px;' +
-        'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
-        '<div style="margin:10px 0;">' +
-        '<button onclick="copyPrompt()" style="padding:10px 20px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📋 Copy Prompt</button>' +
-        '</div>' +
-        '<div style="margin:10px 0;padding:10px;background:#111;border-radius:6px;' +
-        'border-left:3px solid #ffb347;color:#ffb347;font-size:12px;">' +
-        '⚠️ After getting response from AI (ChatGPT/Claude), paste it in Step 4' +
-        '</div>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">AI Prompt</h3>' +
+        '<p style="margin:10px 0;color:#888;font-size:12px;">Copy & paste to ChatGPT/Claude</p>' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:150px;padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;font-size:10px;border-radius:4px;resize:none;">' + prompt + '</textarea>' +
+        '<button onclick="copyPrompt()" style="margin:10px 0;padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📋 Copy</button>' +
         '</div>';
 }
 
 function copyPrompt() {
-    var prompt = document.getElementById('ai-prompt');
-    prompt.select();
+    document.getElementById('ai-prompt').select();
     document.execCommand('copy');
-    alert('✅ Prompt copied to clipboard!');
+    alert('Copied!');
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 4: Paste AI Response
+// STEP 4: Paste Response
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep4() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Paste AI Response</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Paste the AI response here. Format: <b>Symbol | ISIN | Sector | Industry</b><br>' +
-        'Include the header row.' +
-        '</p>' +
-        '<textarea id="ai-response" style="width:100%;height:200px;' +
-        'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:12px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Symbol | ISIN | Sector | Industry&#10;HDFCBANK | INE040A01034 | Banking | Financial Services"></textarea>' +
-        '<div style="margin:10px 0;">' +
-        '<button onclick="parseAIResponse()" style="padding:10px 20px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">✓ Parse Response</button>' +
-        '</div>' +
-        '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
+        '<p style="margin:10px 0;color:#888;font-size:12px;">Format: Symbol|ISIN|Sector|Industry</p>' +
+        '<textarea id="ai-response" style="width:100%;height:150px;padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;font-size:11px;border-radius:4px;"></textarea>' +
+        '<button onclick="parseAIResponse()" style="margin:10px 0;padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">Parse</button>' +
+        '<div id="step4-result" style="margin:10px 0;font-size:11px;"></div>' +
         '</div>';
 }
 
 function parseAIResponse() {
-    var response = document.getElementById('ai-response').value;
-    if (!response.trim()) {
-        alert('Please paste AI response');
-        return;
-    }
-    
-    var lines = response.split(/\r?\n/).filter(function(l) { return l.trim() && l.includes('|'); });
+    var text = document.getElementById('ai-response').value;
     var matched = 0;
     
-    lines.forEach(function(line) {
+    text.split('\n').forEach(function(line) {
+        if (!line.includes('|')) return;
         var parts = line.split('|').map(function(p) { return p.trim(); });
-        if (parts.length < 4) return;
         
-        var sym = parts[0];
-        var stock = importState.stocks.find(function(s) { return s.symbol === sym; });
-        
+        var stock = importState.stocks.find(function(s) { return s.symbol === parts[0]; });
         if (stock) {
-            stock.isin = parts[1];
-            stock.sector = parts[2];
-            stock.industry = parts[3];
+            stock.isin = parts[1] || '';
+            stock.sector = parts[2] || '';
+            stock.industry = parts[3] || '';
             stock.status = 'matched';
             matched++;
         }
     });
     
-    // Mark remaining as AI GENERATED
-    importState.stocks.forEach(function(s) {
-        if (!s.status) s.status = 'AI_GENERATED';
-    });
+    importState.stocks.forEach(function(s) { if (!s.status) s.status = 'AI_GEN'; });
     
-    var status = document.getElementById('step4-status');
-    status.innerHTML = '<div style="color:#00ff88;">✅ Matched ' + matched + '/' + 
-        importState.stocks.length + ' stocks</div>';
-    
-    showImportUI();
+    document.getElementById('step4-result').innerHTML = '<span style="color:#00ff88;">✅ Matched ' + matched + '/' + importState.stocks.length + '</span>';
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 5: Inline Edit
+// STEP 5: Edit & Validate
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep5() {
     var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Review & Edit</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Click any cell to edit. Validation: ✅ ISIN (INE+10 chars), no duplicates' +
-        '</p>' +
-        '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
-        '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:15%;">Name</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:12%;">Symbol</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:18%;">ISIN</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:15%;">Sector</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:8%;">Qty</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:8%;">Avg</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;width:8%;">Type</th>' +
-        '<th style="padding:8px;text-align:center;color:#00ff88;width:6%;">Del</th>' +
-        '</tr>';
+        '<div style="overflow-x:auto;border:1px solid #111;border-radius:4px;margin:10px 0;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:10px;">' +
+        '<tr style="background:#111;"><th style="padding:6px;text-align:left;color:#00ff88;">Name</th>' +
+        '<th style="padding:6px;color:#00ff88;">Symbol</th><th style="padding:6px;color:#00ff88;">ISIN</th>' +
+        '<th style="padding:6px;color:#00ff88;">Qty</th><th style="padding:6px;color:#00ff88;">Avg</th>' +
+        '<th style="padding:6px;color:#00ff88;">Type</th><th style="padding:6px;color:#00ff88;"></th></tr>';
     
-    importState.stocks.forEach(function(stock, idx) {
-        var statusColor = stock.status === 'matched' ? '#00ff88' : '#ffb347';
-        var statusIcon = stock.status === 'matched' ? '✅' : '⚠️';
-        
-        html += '<tr style="border-bottom:1px solid #111;background:#050505;" data-idx="' + idx + '">' +
-            '<td style="padding:8px;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'name\', \'Name\')" title="Click to edit">' +
-            stock.name + '</td>' +
-            '<td style="padding:8px;color:#00ff88;font-weight:bold;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'symbol\', \'Symbol\')" title="Click to edit">' +
-            stock.symbol + '</td>' +
-            '<td style="padding:8px;color:' + statusColor + ';cursor:pointer;" onclick="editCell(this, ' + idx + ', \'isin\', \'ISIN\')" title="Click to edit">' +
-            statusIcon + ' ' + (stock.isin || '-') + '</td>' +
-            '<td style="padding:8px;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'sector\', \'Sector\')" title="Click to edit">' +
-            stock.sector + '</td>' +
-            '<td style="padding:8px;text-align:right;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'qty\', \'Quantity\')" title="Click to edit">' +
-            (stock.qty || '-') + '</td>' +
-            '<td style="padding:8px;text-align:right;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'avg\', \'Average Price\')" title="Click to edit">' +
-            (stock.avg ? '₹' + stock.avg.toFixed(2) : '-') + '</td>' +
-            '<td style="padding:8px;color:' + (stock.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';cursor:pointer;" ' +
-            'onclick="toggleType(' + idx + ')" title="Click to toggle">' +
-            stock.type + '</td>' +
-            '<td style="padding:8px;text-align:center;">' +
-            '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;' +
-            'border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;">✕</button>' +
-            '</td></tr>';
+    importState.stocks.forEach(function(s, i) {
+        var color = s.status === 'matched' ? '#00ff88' : '#ffb347';
+        html += '<tr style="border-bottom:1px solid #111;"><td style="padding:6px;">' + s.name + '</td>' +
+            '<td style="padding:6px;color:#00ff88;">' + s.symbol + '</td>' +
+            '<td style="padding:6px;color:' + color + ';font-size:9px;">' + (s.isin || '-') + '</td>' +
+            '<td style="padding:6px;text-align:right;cursor:pointer;" onclick="editStock(' + i + ',\'qty\')">' + (s.qty || '-') + '</td>' +
+            '<td style="padding:6px;text-align:right;cursor:pointer;" onclick="editStock(' + i + ',\'avg\')">' + (s.avg ? s.avg.toFixed(2) : '-') + '</td>' +
+            '<td style="padding:6px;cursor:pointer;color:' + (s.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';" onclick="toggleType(' + i + ')">' + s.type + '</td>' +
+            '<td style="padding:6px;"><button onclick="deleteStock(' + i + ')" style="background:#ff6b85;color:#fff;border:none;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:9px;">Del</button></td></tr>';
     });
     
-    html += '</table></div>' +
-        '<div style="margin:10px 0;font-size:12px;color:#888;">' +
-        'Total: ' + importState.stocks.length + ' stocks | ' +
-        'Portfolio: ' + importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length + ' | ' +
-        'Watchlist: ' + importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length +
-        '</div>' +
-        '</div>';
-    
+    html += '</table></div></div>';
     return html;
 }
 
-function editCell(cell, idx, field, label) {
-    var stock = importState.stocks[idx];
-    var currentValue = stock[field] || '';
-    var newValue = prompt('Edit ' + label + ':\n(Current: ' + currentValue + ')', currentValue);
-    
-    if (newValue !== null) {
-        if (field === 'qty' || field === 'avg') {
-            stock[field] = newValue ? parseFloat(newValue) : null;
-        } else {
-            stock[field] = newValue;
-        }
+function editStock(i, field) {
+    var val = importState.stocks[i][field];
+    var newVal = prompt('Edit ' + field + ':', val || '');
+    if (newVal !== null) {
+        importState.stocks[i][field] = newVal ? parseFloat(newVal) : null;
         showImportUI();
     }
 }
 
-function toggleType(idx) {
-    var stock = importState.stocks[idx];
-    stock.type = stock.type === 'PORTFOLIO' ? 'WATCHLIST' : 'PORTFOLIO';
+function toggleType(i) {
+    importState.stocks[i].type = importState.stocks[i].type === 'PORTFOLIO' ? 'WATCHLIST' : 'PORTFOLIO';
     showImportUI();
 }
 
-function deleteStock(idx) {
-    if (confirm('Delete ' + importState.stocks[idx].symbol + '?')) {
-        importState.stocks.splice(idx, 1);
+function deleteStock(i) {
+    if (confirm('Delete ' + importState.stocks[i].name + '?')) {
+        importState.stocks.splice(i, 1);
         showImportUI();
     }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 6: Save to IndexedDB
+// STEP 6: Save to DB
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
+    var pCount = importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length;
+    var wCount = importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length;
+    
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Save to Database</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Click to save all stocks to IndexedDB (not localStorage)' +
-        '</p>' +
-        '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid #00ff88;' +
-        'color:#00ff88;font-size:12px;">' +
-        '<div>✅ Portfolio: ' + importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length + ' stocks</div>' +
-        '<div>📌 Watchlist: ' + importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length + ' stocks</div>' +
-        '<div style="margin-top:10px;">Storage: <b>IndexedDB / UnifiedStocks</b></div>' +
+        '<div style="margin:15px 0;padding:15px;background:#111;border-left:3px solid #00ff88;border-radius:4px;color:#00ff88;font-size:12px;">' +
+        '✅ Portfolio: ' + pCount + '<br>📌 Watchlist: ' + wCount + '<br>Storage: IndexedDB / UnifiedStocks' +
         '</div>' +
-        '<button onclick="saveToIndexedDB()" style="padding:12px 24px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;">' +
-        '💾 Save All to DB</button>' +
+        '<button onclick="saveToIndexedDB()" style="padding:10px 20px;background:#00ff88;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">💾 Save</button>' +
         '<div id="step6-status" style="margin:15px 0;font-size:12px;"></div>' +
         '</div>';
 }
 
 function saveToIndexedDB() {
-    if (importState.stocks.length === 0) {
-        alert('No stocks to save');
-        return;
-    }
-    
     var status = document.getElementById('step6-status');
     status.innerHTML = '<span style="color:#ffb347;">⏳ Saving...</span>';
     
     try {
-        var request = indexedDB.open('BharatEngineDB', 1);
-        
-        request.onerror = function() {
-            status.innerHTML = '<span style="color:#ff6b85;">❌ Database error</span>';
-        };
-        
-        request.onsuccess = function(e) {
+        var req = indexedDB.open('BharatEngineDB', 1);
+        req.onerror = function() { status.innerHTML = '<span style="color:#ff6b85;">❌ DB Error</span>'; };
+        req.onsuccess = function(e) {
             var db = e.target.result;
-            
             try {
                 var tx = db.transaction('UnifiedStocks', 'readwrite');
                 var store = tx.objectStore('UnifiedStocks');
-                
-                // Clear existing
                 store.clear();
                 
-                // Save new
-                importState.stocks.forEach(function(stock) {
-                    var record = {
-                        sym: stock.symbol,
-                        name: stock.name,
-                        isin: stock.isin,
-                        sector: stock.sector,
-                        industry: stock.industry,
-                        type: stock.type,
-                        qty: stock.qty,
-                        avg: stock.avg,
+                importState.stocks.forEach(function(s) {
+                    store.put({
+                        sym: s.symbol,
+                        name: s.name,
+                        isin: s.isin,
+                        sector: s.sector,
+                        industry: s.industry,
+                        type: s.type,
+                        qty: s.qty,
+                        avg: s.avg,
                         source: 'manual'
-                    };
-                    store.put(record);
+                    });
                 });
                 
                 tx.oncomplete = function() {
-                    status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + importState.stocks.length + 
-                        ' stocks to IndexedDB</span>';
-                    importState.step = 7;
-                    showImportUI();
+                    status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + importState.stocks.length + ' stocks</span>';
                 };
-                
-                tx.onerror = function() {
-                    status.innerHTML = '<span style="color:#ff6b85;">❌ Save failed: ' + tx.error + '</span>';
-                };
+                tx.onerror = function() { status.innerHTML = '<span style="color:#ff6b85;">❌ Save Error</span>'; };
             } catch(err) {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Store error: ' + err.message + '</span>';
+                status.innerHTML = '<span style="color:#ff6b85;">❌ ' + err.message + '</span>';
             }
         };
     } catch(err) {
-        status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
+        status.innerHTML = '<span style="color:#ff6b85;">❌ ' + err.message + '</span>';
     }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 7: GitHub Sync
+// STEP 7: GitHub Sync with PAT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep7() {
@@ -556,32 +426,17 @@ function renderStep7() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">GitHub Sync (Optional)</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        '<b>What is this?</b><br>' +
-        'Optional: Sync your portfolio to GitHub and auto-trigger market data refresh<br>' +
-        'Your symbols get saved to <b>portfolio_symbols.txt</b><br>' +
-        'The <b>fetch-prices workflow</b> updates fundamentals.json with latest prices & ratios' +
+        'Sync portfolio to GitHub and trigger auto-price update via GitHub Actions' +
         '</p>' +
-        '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;' +
-        'border-left:3px solid ' + (ghConfigured ? '#00ff88' : '#ffb347') + ';color:' + 
-        (ghConfigured ? '#00ff88' : '#ffb347') + ';font-size:12px;">' +
-        (ghConfigured ? '✅ GitHub PAT configured' : '⚠️ GitHub PAT not configured (skip this step)') +
+        '<div style="margin:15px 0;padding:15px;background:#111;border-radius:4px;border-left:3px solid ' + 
+        (ghConfigured ? '#00ff88' : '#ffb347') + ';color:' + (ghConfigured ? '#00ff88' : '#ffb347') + ';font-size:12px;">' +
+        (ghConfigured ? '✅ GitHub PAT configured' : '⚠️ GitHub PAT not configured') +
         '</div>' +
         (ghConfigured ? 
-            '<button onclick="syncToGitHub()" style="padding:12px 24px;background:#00ff88;' +
-            'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;">' +
-            '🚀 Sync to GitHub</button>' :
-            '<div style="color:#888;font-size:12px;">To enable GitHub sync: Go to Settings, paste your GitHub Personal Access Token (PAT)</div>'
+            '<button onclick="syncToGitHub()" style="padding:10px 20px;background:#00ff88;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">🚀 Sync to GitHub</button>' :
+            '<div style="color:#888;font-size:12px;">Configure GitHub PAT in Settings to enable</div>'
         ) +
         '<div id="step7-status" style="margin:15px 0;font-size:12px;"></div>' +
-        '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #111;border-radius:8px;' +
-        'font-size:12px;color:#888;">' +
-        '✅ <b>Import complete!</b><br>' +
-        'Your portfolio data is now stored in IndexedDB.<br><br>' +
-        '<b style="color:#00ff88;">Next steps:</b><br>' +
-        '1. Click SYNC button in header to load market data<br>' +
-        '2. You\'ll see LTP, P&L, PE ratio, etc.<br>' +
-        '3. (Optional) Configure GitHub to auto-update prices' +
-        '</div>' +
         '</div>';
 }
 
@@ -638,13 +493,10 @@ function syncToGitHub() {
         });
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Navigation
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 function nextImportStep() {
     if (importState.step === 1 && importState.stocks.length === 0) {
-        alert('Please upload a file or click Next to add manual entries');
+        alert('Add stocks first');
         return;
     }
     if (importState.step < 7) {
@@ -661,7 +513,7 @@ function prevImportStep() {
 }
 
 function closeImportModal() {
-    var modal = document.getElementById('import-modal');
-    if (modal) modal.style.display = 'none';
+    var m = document.getElementById('import-modal');
+    if (m) m.style.display = 'none';
     importState = { step: 1, stocks: [], aiResponse: null };
 }
