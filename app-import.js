@@ -1,6 +1,6 @@
 /**
- * app-import.js - Enhanced Import Workflow
- * Step 1: Upload → Step 2: Manual → Step 3: AI Prompt → Step 4: Paste → Step 5: Edit → Step 6: Save → Step 7: Sync
+ * app-import.js - Enhanced Import Workflow (FINAL - Step 7 AUTO WRITE via PAT)
+ * Step 1: Upload → Step 2: Manual → Step 3: AI Prompt → Step 4: Paste → Step 5: Edit → Step 6: Save to DB → Step 7: Auto-commit to GitHub
  */
 
 var importState = {
@@ -10,7 +10,7 @@ var importState = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 1: Upload CSV/XLS
+// MAIN: Open Import Workflow
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function openImportWorkflow() {
@@ -28,18 +28,20 @@ function showImportUI() {
     html += '<div style="margin-bottom:10px;font-size:12px;color:#555;font-family:monospace;">' +
         'Step ' + importState.step + ' of 7: ';
     
-    var stepTitles = ['Upload CSV/XLS', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'GitHub Sync'];
+    var stepTitles = ['Upload CSV/XLS', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'Auto-Commit'];
     html += stepTitles[importState.step - 1];
     html += '</div>';
     
-    // TOP BUTTONS (moved here to avoid scrolling) - FIX #4
+    // TOP BUTTONS - no scrolling needed
     html += '<div style="margin-bottom:15px;display:flex;gap:8px;justify-content:flex-end;">' +
         '<button onclick="closeImportModal()" style="padding:8px 16px;background:#333;border:none;color:#fff;' +
         'border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button>' +
         (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:8px 16px;background:#444;' +
         'border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;">← Back</button>' : '') +
         (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:8px 16px;background:#00ff88;' +
-        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Next →</button>' : '') +
+        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Next →</button>' : 
+        '<button onclick="closeImportModal()" style="padding:8px 16px;background:#00ff88;' +
+        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Close ✓</button>') +
         '</div>';
     
     // Progress bar
@@ -78,6 +80,10 @@ function showImportUI() {
     modal.style.display = 'flex';
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STEP 1: Upload CSV/XLS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 function renderStep1() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Upload Stock List</h3>' +
@@ -93,7 +99,6 @@ function renderStep1() {
         'HDFC Bank Limited,84,817.50<br>' +
         'Reliance Industries Limited,10,2450<br>' +
         'TCS Limited<br>' +
-        'Apple Inc,5,150<br>' +
         '</div>' +
         '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;" ' +
@@ -129,7 +134,6 @@ function handleImportFile(file) {
             var reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    // Handle both old .xls and new .xlsx formats
                     var data = new Uint8Array(e.target.result);
                     var wb = XLSX.read(data, {type: 'array'});
                     var ws = wb.Sheets[wb.SheetNames[0]];
@@ -150,50 +154,25 @@ function loadSheetJS(cb) {
     if (_sheetJSLoaded) { cb(); return; }
     if (window.XLSX) { _sheetJSLoaded = true; cb(); return; }
     
-    var s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload = function() { _sheetJSLoaded = true; cb(); };
-    s.onerror = function() {
-        document.getElementById('file-status').innerHTML = 
-            '<span style="color:#ff6b85;">❌ Could not load XLS reader</span>';
-    };
-    document.head.appendChild(s);
+    var script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js';
+    script.onload = function() { _sheetJSLoaded = true; cb(); };
+    document.head.appendChild(script);
 }
 
 function processImportCSV(csv) {
-    var lines = csv.split(/\r?\n/).filter(function(l) { return l.trim(); });
-    if (lines.length < 2) return;
+    var lines = csv.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+    if (lines.length === 0) return;
     
-    // Detect if tab or comma separated
-    var isTSV = lines[0].includes('\t');
-    var delimiter = isTSV ? /\t/ : /,/;
+    var headerLine = lines[0];
+    var delimiter = (headerLine.includes('\t') ? '\t' : (headerLine.includes(',') ? ',' : ';'));
     
-    var headers = lines[0].split(delimiter).map(function(h) { 
-        return h.trim().toLowerCase().replace(/['"]/g, ''); 
-    });
+    var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
-    // Find column indices - improved matching
-    var nameIdx = -1;
-    var isinIdx = -1;
-    var qtyIdx = -1;
-    var avgIdx = -1;
-    var sectorIdx = -1;
-    
-    for (var i = 0; i < headers.length; i++) {
-        var h = headers[i];
-        if (h.includes('stock') && h.includes('name')) nameIdx = i;
-        else if (h.includes('isin')) isinIdx = i;
-        else if (h.includes('qty') || h.includes('quantity')) qtyIdx = i;
-        else if (h.includes('avg') || h.includes('average') || h.includes('cost price')) avgIdx = i;
-        else if (h.includes('sector')) sectorIdx = i;
-    }
-    
-    // Fallback to position-based if not found
-    if (nameIdx < 0) nameIdx = 0;
-    if (isinIdx < 0) isinIdx = 1;
-    if (qtyIdx < 0) qtyIdx = 3;
-    if (avgIdx < 0) avgIdx = 4;
-    if (sectorIdx < 0) sectorIdx = 2;
+    var nameIdx = Math.max(0, headerParts.indexOf('name'), headerParts.indexOf('stock name'), headerParts.indexOf('company'));
+    var qtyIdx = Math.max(-1, headerParts.indexOf('qty'), headerParts.indexOf('quantity'));
+    var avgIdx = Math.max(-1, headerParts.indexOf('avg'), headerParts.indexOf('average'), headerParts.indexOf('price'));
+    var sectorIdx = Math.max(-1, headerParts.indexOf('sector'), headerParts.indexOf('industry'));
     
     var stocks = [];
     var seen = new Set();
@@ -204,25 +183,21 @@ function processImportCSV(csv) {
         
         var parts = line.split(delimiter).map(function(p) { return p.trim().replace(/['"]/g, ''); });
         
-        // Skip if first column is empty
         if (!parts[0]) continue;
         
-        // Skip if this looks like a header row (duplicate)
         if (parts[0].toLowerCase() === 'stock name' || parts[0].toLowerCase() === 'name') {
             continue;
         }
         
         var name = parts[nameIdx] || parts[0];
-        var isin = parts[isinIdx] || '';
+        var isin = '';
         var qty = qtyIdx >= 0 && parts[qtyIdx] && parts[qtyIdx] !== '-' ? parseFloat(parts[qtyIdx]) : null;
         var avg = avgIdx >= 0 && parts[avgIdx] && parts[avgIdx] !== '-' ? parseFloat(parts[avgIdx]) : null;
-        var sector = sectorIdx >= 0 ? parts[sectorIdx] : '-';
+        var sector = sectorIdx >= 0 ? parts[sectorIdx] : '';
         
-        // Skip duplicates
         if (seen.has(name)) continue;
         seen.add(name);
         
-        // Only add if has quantity and average price
         if (qty && avg && qty > 0 && avg > 0) {
             stocks.push({
                 name: name,
@@ -230,7 +205,9 @@ function processImportCSV(csv) {
                 qty: qty,
                 avg: avg,
                 sector: sector,
-                type: 'PORTFOLIO'
+                industry: '',
+                type: 'PORTFOLIO',
+                status: ''
             });
         }
     }
@@ -243,35 +220,25 @@ function processImportCSV(csv) {
 function renderStep1Preview() {
     if (importState.stocks.length === 0) return;
     
-    var html = '<div style="margin:15px 0;border:1px solid #222;border-radius:8px;overflow:auto;">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
-        '<tr style="background:#111;border-bottom:1px solid #222;">' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">Stock Name</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">Symbol</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">Type</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">QTY</th>' +
-        '<th style="padding:8px;text-align:left;color:#00ff88;">AVG</th>' +
+    var html = '<div style="margin:15px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:300px;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
+        '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
+        '<th style="padding:6px;text-align:left;color:#00ff88;">Stock Name</th>' +
+        '<th style="padding:6px;text-align:right;color:#00ff88;">QTY</th>' +
+        '<th style="padding:6px;text-align:right;color:#00ff88;">AVG</th>' +
         '</tr>';
     
-    var portfolioCount = 0, watchlistCount = 0;
     importState.stocks.forEach(function(stock) {
-        if (stock.type === 'PORTFOLIO') portfolioCount++;
-        else watchlistCount++;
-        
         html += '<tr style="border-bottom:1px solid #111;">' +
-            '<td style="padding:8px;">' + stock.name + '</td>' +
-            '<td style="padding:8px;color:#00ff88;font-weight:bold;">' + stock.symbol + '</td>' +
-            '<td style="padding:8px;color:' + (stock.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';">' +
-            stock.type + '</td>' +
-            '<td style="padding:8px;">' + (stock.qty || '-') + '</td>' +
-            '<td style="padding:8px;">' + (stock.avg ? '₹' + stock.avg.toFixed(2) : '-') + '</td>' +
+            '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>' +
+            '<td style="padding:6px;text-align:right;">' + (stock.qty || '-') + '</td>' +
+            '<td style="padding:6px;text-align:right;">₹' + (stock.avg ? stock.avg.toFixed(0) : '-') + '</td>' +
             '</tr>';
     });
     
     html += '</table></div>' +
-        '<div style="margin:10px 0;font-size:12px;color:#00ff88;">' +
-        '✅ Loaded: ' + importState.stocks.length + ' stocks (' + portfolioCount + ' portfolio, ' + 
-        watchlistCount + ' watchlist)' +
+        '<div style="margin:10px 0;font-size:11px;color:#00ff88;">' +
+        '✅ Loaded: ' + importState.stocks.length + ' stocks' +
         '</div>';
     
     document.getElementById('step1-preview').innerHTML = html;
@@ -284,71 +251,77 @@ function renderStep1Preview() {
 function renderStep2() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Add Manual Entries</h3>' +
-        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:12px;color:#888;border-radius:4px;">' +
-        '<b style="color:#00ff88;">Format (no extra spaces):</b><br>' +
-        'StockName,SYMBOL,QTY,AVG<br><br>' +
-        '<b style="color:#ffb347;">Important:</b><br>' +
-        '• No spaces around commas<br>' +
-        '• QTY and AVG are optional but use format<br>' +
-        '• If no QTY: StockName,SYMBOL,,<br>' +
-        '• One entry per line<br><br>' +
-        '<b style="color:#00ff88;">Examples:</b><br>' +
-        'Apple,APPLE,5,150<br>' +
-        'Google,GOOGLE,3,<br>' +
-        'Tesla,TESLA,,<br>' +
+        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
+        '<b style="color:#00ff88;">Format (one per line):</b><br>' +
+        'Stock Name, QTY, AVG<br><br>' +
+        '<b style="color:#ffb347;">Examples:</b><br>' +
+        'Apple Inc,5,150<br>' +
+        'Google LLC,3,2800<br>' +
+        'Tesla Inc,2,250<br>' +
         '</div>' +
         '<textarea id="manual-entries" style="width:100%;height:150px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:12px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Apple,APPLE,5,150&#10;Google,GOOGLE,3,&#10;Tesla,TESLA,,"></textarea>' +
+        'font-size:11px;border-radius:6px;resize:vertical;" ' +
+        'placeholder="Stock Name, QTY, AVG&#10;Apple Inc,5,150"></textarea>' +
         '<div style="margin:10px 0;">' +
         '<button onclick="addManualEntries()" style="padding:10px 20px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">+ Add Entries</button>' +
+        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Add Entries</button>' +
         '</div>' +
-        '<div id="step2-preview" style="margin:10px 0;"></div>' +
+        '<div id="step2-preview"></div>' +
         '</div>';
 }
 
 function addManualEntries() {
-    var text = document.getElementById('manual-entries').value;
-    if (!text.trim()) {
-        alert('Please enter stock data');
-        return;
-    }
+    var textarea = document.getElementById('manual-entries');
+    var entries = textarea.value.split('\n').filter(function(l) { return l.trim().length > 0; });
     
-    var lines = text.split(/\r?\n/).filter(function(l) { return l.trim(); });
-    lines.forEach(function(line) {
-        var parts = line.split(',').map(function(p) { return p.trim(); });
-        if (!parts[0]) return;
-        
-        importState.stocks.push({
-            name: parts[0],
-            symbol: parts[1] || parts[0].replace(/\s+/g, '').toUpperCase(),
-            qty: parts[2] ? parseFloat(parts[2]) : null,
-            avg: parts[3] ? parseFloat(parts[3]) : null,
-            type: parts[2] ? 'PORTFOLIO' : 'WATCHLIST',
-            isin: '',
-            sector: '',
-            industry: ''
-        });
+    entries.forEach(function(entry) {
+        var parts = entry.split(',').map(function(p) { return p.trim(); });
+        if (parts.length >= 3) {
+            var name = parts[0];
+            var qty = parseFloat(parts[1]);
+            var avg = parseFloat(parts[2]);
+            
+            if (name && qty && avg && !importState.stocks.find(function(s) { return s.name === name; })) {
+                importState.stocks.push({
+                    name: name,
+                    isin: '',
+                    qty: qty,
+                    avg: avg,
+                    sector: '',
+                    industry: '',
+                    type: 'PORTFOLIO',
+                    status: ''
+                });
+            }
+        }
     });
     
-    // Remove duplicates
-    var seen = new Set();
-    importState.stocks = importState.stocks.filter(function(s) {
-        if (seen.has(s.symbol)) return false;
-        seen.add(s.symbol);
-        return true;
-    });
-    
-    document.getElementById('manual-entries').value = '';
+    textarea.value = '';
+    showImportUI();
     renderStep2Preview();
 }
 
 function renderStep2Preview() {
-    var html = '<div style="margin:10px 0;font-size:12px;color:#00ff88;">' +
-        '✅ Total stocks: ' + importState.stocks.length +
-        '</div>';
+    if (importState.stocks.length === 0) return;
+    
+    var html = '<div style="margin:15px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:250px;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:10px;">' +
+        '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
+        '<th style="padding:4px;text-align:left;color:#00ff88;">Name</th>' +
+        '<th style="padding:4px;text-align:right;color:#00ff88;">QTY</th>' +
+        '<th style="padding:4px;text-align:right;color:#00ff88;">AVG</th>' +
+        '</tr>';
+    
+    importState.stocks.forEach(function(stock) {
+        html += '<tr style="border-bottom:1px solid #111;"><td style="padding:4px;">' + stock.name.substring(0, 20) + '</td>' +
+            '<td style="padding:4px;text-align:right;">' + stock.qty + '</td>' +
+            '<td style="padding:4px;text-align:right;">₹' + stock.avg.toFixed(0) + '</td></tr>';
+    });
+    
+    html += '</table></div><div style="margin:10px 0;font-size:11px;color:#888;">Total: ' + 
+        importState.stocks.length + ' stocks</div>';
+    
     document.getElementById('step2-preview').innerHTML = html;
 }
 
@@ -373,7 +346,6 @@ function renderStep3() {
         '• Get ISIN code (format: INE + 10 chars)\n' +
         '• No spaces around pipe (|) characters\n' +
         '• One company per line\n' +
-        '• Skip if not found\n' +
         '• Output ONLY the table, no extra text';
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
@@ -416,17 +388,11 @@ function renderStep4() {
         'HDFC Bank Limited|INE040A01034|Banking|Financial Services<br>' +
         'Reliance Industries Limited|INE002A01015|Energy|Oil & Gas<br>' +
         'TCS Limited|INE467B01029|IT|IT Services<br>' +
-        '<br>' +
-        '<b style="color:#ffb347;">Important:</b><br>' +
-        '• Names must MATCH company names from Step 1<br>' +
-        '• ISIN: Format INE + 10 characters<br>' +
-        '• No spaces around pipes (|)<br>' +
-        '• Parsing starts automatically when you paste<br>' +
         '</div>' +
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services&#10;Reliance Industries Limited|INE002A01015|Energy|Oil & Gas" ' +
+        'placeholder="Paste AI response here...&#10;Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services" ' +
         'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
         'onchange="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
@@ -436,10 +402,9 @@ function renderStep4() {
 function autoParseAIResponse() {
     var response = document.getElementById('ai-response').value;
     if (!response.trim() || !response.includes('|')) {
-        return;  // Not ready yet
+        return;
     }
     
-    // Only auto-parse if it looks valid (has INE codes or header row)
     if (!response.includes('INE') && !response.toLowerCase().includes('name')) {
         return;
     }
@@ -454,46 +419,10 @@ function parseAIResponse() {
         return;
     }
     
-    // Split by lines and reconstruct if multi-line
     var lines = response.split(/\r?\n/).filter(function(l) { return l.trim(); });
-    var processedLines = [];
-    var currentLine = '';
-    
-    // Reconstruct multi-line entries
-    lines.forEach(function(line) {
-        var pipeCount = (line.match(/\|/g) || []).length;
-        
-        if (pipeCount >= 3) {
-            // This is a complete line
-            if (currentLine) {
-                processedLines.push(currentLine);
-                currentLine = '';
-            }
-            processedLines.push(line);
-        } else if (pipeCount > 0 || currentLine) {
-            // This is part of a multi-line entry
-            if (currentLine) {
-                currentLine += ' ' + line;
-            } else {
-                currentLine = line;
-            }
-            
-            // Check if we now have enough pipes
-            var totalPipes = (currentLine.match(/\|/g) || []).length;
-            if (totalPipes >= 3) {
-                processedLines.push(currentLine);
-                currentLine = '';
-            }
-        }
-    });
-    
-    if (currentLine) {
-        processedLines.push(currentLine);
-    }
-    
     var matched = 0;
     
-    processedLines.forEach(function(line) {
+    lines.forEach(function(line) {
         if (!line.includes('|')) return;
         
         var parts = line.split('|');
@@ -504,10 +433,8 @@ function parseAIResponse() {
         var sector = parts[2].trim();
         var industry = parts[3].trim();
         
-        // Skip header row
         if (name.toLowerCase() === 'name' || name.toLowerCase() === 'symbol') return;
         
-        // Find stock by name (case-insensitive)
         var stock = importState.stocks.find(function(s) { 
             return s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
         });
@@ -521,41 +448,36 @@ function parseAIResponse() {
         }
     });
     
-    // Mark remaining as AI GENERATED
     importState.stocks.forEach(function(s) {
         if (!s.status) s.status = 'AI_GENERATED';
     });
     
     var status = document.getElementById('step4-status');
-    // FIX #1: Add visual feedback (✅ match count) with Safari compatibility
-    var feedbackHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Matched ' + matched + '/' + 
+    status.innerHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Matched ' + matched + '/' + 
         importState.stocks.length + ' stocks</div>' +
         '<div style="margin-top:8px;font-size:11px;color:#666;">Ready for Step 5 → Click Next</div>';
-    status.innerHTML = feedbackHTML;
     
-    // Ensure UI updates immediately
     showImportUI();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 5: Inline Edit
+// STEP 5: Edit & Validate
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep5() {
     var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Review & Edit</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Click any cell to edit. Validation: ✅ ISIN format (INE + 10 chars), no duplicates' +
+        'Click any cell to edit. Validation: ✅ ISIN format (INE + 10 chars)' +
         '</p>' +
         '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:400px;overflow-y:auto;">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:10px;line-height:1.3;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:20%;">Name</th>' +
+        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:22%;">Name</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:20%;">ISIN</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:18%;">Sector</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Qty</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Avg</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;width:8%;">Type</th>' +
+        '<th style="padding:4px 6px;text-align:right;color:#00ff88;width:8%;">Qty</th>' +
+        '<th style="padding:4px 6px;text-align:right;color:#00ff88;width:10%;">Avg</th>' +
         '<th style="padding:4px 6px;text-align:center;color:#00ff88;width:6%;">Del</th>' +
         '</tr>';
     
@@ -564,22 +486,19 @@ function renderStep5() {
         var statusIcon = stock.status === 'matched' ? '✅' : '⚠️';
         
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;" data-idx="' + idx + '">' +
-            '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
+            '<td style="padding:4px 6px;overflow:hidden;text-overflow:ellipsis;" onclick="editCell(this, ' + idx + ', \'name\')">' +
             stock.name.substring(0, 25) + '</td>' +
-            '<td style="padding:4px 6px;color:' + statusColor + ';" onclick="editCell(this, ' + idx + ', \'isin\')">' +
+            '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
-            '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
+            '<td style="padding:4px 6px;overflow:hidden;text-overflow:ellipsis;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
             stock.sector.substring(0, 15) + '</td>' +
             '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'qty\')">' +
             (stock.qty || '-') + '</td>' +
             '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
             (stock.avg ? '₹' + stock.avg.toFixed(0) : '-') + '</td>' +
-            '<td style="padding:4px 6px;color:' + (stock.type === 'PORTFOLIO' ? '#00ff88' : '#ffb347') + ';" ' +
-            'onclick="toggleType(' + idx + ')">' +
-            stock.type.substring(0, 4) + '</td>' +
             '<td style="padding:4px 6px;text-align:center;">' +
             '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;' +
-            'border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:9px;">✕</button>' +
+            'border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
             '</td></tr>';
     });
     
@@ -609,14 +528,8 @@ function editCell(cell, idx, field) {
     }
 }
 
-function toggleType(idx) {
-    var stock = importState.stocks[idx];
-    stock.type = stock.type === 'PORTFOLIO' ? 'WATCHLIST' : 'PORTFOLIO';
-    showImportUI();
-}
-
 function deleteStock(idx) {
-    if (confirm('Delete ' + importState.stocks[idx].symbol + '?')) {
+    if (confirm('Delete ' + importState.stocks[idx].name + '?')) {
         importState.stocks.splice(idx, 1);
         showImportUI();
     }
@@ -629,14 +542,12 @@ function deleteStock(idx) {
 function renderStep6() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Save to Database</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Click to save all stocks to IndexedDB (not localStorage)' +
-        '</p>' +
+        '<p style="margin:10px 0;color:#888;font-size:12px;">Click to save all stocks to IndexedDB</p>' +
         '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid #00ff88;' +
         'color:#00ff88;font-size:12px;">' +
         '<div>✅ Portfolio: ' + importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length + ' stocks</div>' +
         '<div>📌 Watchlist: ' + importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length + ' stocks</div>' +
-        '<div style="margin-top:10px;">Stored in: <b>IndexedDB / unified-symbols</b></div>' +
+        '<div style="margin-top:10px;">Stored in: <b>IndexedDB / BharatEngineDB</b></div>' +
         '</div>' +
         '<button onclick="saveToIndexedDB()" style="padding:12px 24px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;">' +
@@ -663,23 +574,14 @@ function saveToIndexedDB() {
         
         request.onsuccess = function(e) {
             var db = e.target.result;
-            
-            // Create or update store
-            if (!db.objectStoreNames.contains('unified-symbols')) {
-                // If store doesn't exist, we need to update version
-                // For now, just save to a temp location
-            }
-            
             var tx = db.transaction('UnifiedStocks', 'readwrite');
             var store = tx.objectStore('UnifiedStocks');
             
-            // Clear existing
             store.clear();
             
-            // Save new
             importState.stocks.forEach(function(stock) {
                 var record = {
-                    sym: stock.symbol,
+                    sym: stock.symbol || stock.name.substring(0, 10),
                     name: stock.name,
                     isin: stock.isin,
                     sector: stock.sector,
@@ -697,7 +599,6 @@ function saveToIndexedDB() {
                     ' stocks to IndexedDB</span>' +
                     '<div style="margin-top:10px;font-size:11px;color:#666;">Moving to Step 7...</div>';
                 
-                // Auto-advance after short delay
                 setTimeout(function() {
                     importState.step = 7;
                     showImportUI();
@@ -714,114 +615,169 @@ function saveToIndexedDB() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 7: GitHub Sync
+// STEP 7: Auto-Commit to GitHub via PAT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep7() {
-    var ghConfigured = (S && S.settings && S.settings.ghToken && S.settings.ghToken.trim()) ? true : false;
     var portfolioCount = importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length;
     var watchlistCount = importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length;
     
+    // Check if PAT is configured
+    var settings = JSON.parse(localStorage.getItem('bharatSettings') || '{}');
+    var ghPAT = settings.githubPAT || localStorage.getItem('githubPAT') || '';
+    var ghUser = settings.githubUser || localStorage.getItem('githubUser') || '';
+    var ghRepo = settings.githubRepo || localStorage.getItem('githubRepo') || '';
+    var isPATConfigured = ghPAT && ghUser && ghRepo;
+    
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">✅ Import Complete!</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Your portfolio has been saved to IndexedDB. Next: View your portfolio or sync to GitHub.' +
-        '</p>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;text-align:center;">🚀 Auto-Commit to GitHub</h3>' +
         
-        // FIX #3: Add final summary card
-        '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#fff;font-size:12px;">' +
-        '<div style="margin-bottom:8px;"><b style="color:#00ff88;">📊 Import Summary</b></div>' +
-        '<div>✅ Portfolio: <b>' + portfolioCount + ' stocks</b></div>' +
-        '<div>📌 Watchlist: <b>' + watchlistCount + ' stocks</b></div>' +
-        '<div>💾 Stored in: <b>IndexedDB / BharatEngineDB</b></div>' +
+        '<div style="margin:20px 0;padding:15px;background:#111;border-radius:8px;border-left:4px solid ' + 
+        (isPATConfigured ? '#00ff88' : '#ffb347') + ';color:' + (isPATConfigured ? '#00ff88' : '#ffb347') + ';font-size:12px;">' +
+        (isPATConfigured ? '✅ GitHub PAT Configured' : '⚠️ GitHub PAT Not Configured') +
         '</div>' +
         
-        '<div style="margin:15px 0;display:flex;gap:10px;flex-wrap:wrap;">' +
-        '<a href="portfolio.html" style="padding:12px 24px;background:#00ff88;color:#000;' +
-        'text-decoration:none;border-radius:6px;font-weight:bold;text-align:center;display:inline-block;cursor:pointer;">' +
-        '📈 View Portfolio</a>' +
-        (ghConfigured ? 
-            '<button onclick="syncToGitHub()" style="padding:12px 24px;background:#444;' +
-            'color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">' +
-            '🚀 Sync to GitHub</button>' :
-            ''
+        (isPATConfigured ? 
+            '<div style="margin:20px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#888;font-size:12px;">' +
+            '<b style="color:#00ff88;">📋 Data to Commit</b><br><br>' +
+            '✅ Portfolio Stocks: <b style="color:#00ff88;">' + portfolioCount + '</b><br>' +
+            '📌 Watchlist Items: <b style="color:#ffb347;">' + watchlistCount + '</b><br>' +
+            '💾 Total Records: <b style="color:#00ff88;">' + importState.stocks.length + '</b><br><br>' +
+            'File: <b>unified-symbols.json</b><br>' +
+            'Repo: <b>' + ghUser + '/' + ghRepo + '</b>' +
+            '</div>' +
+            '<div style="margin:20px 0;">' +
+            '<button onclick="autoCommitToGitHub()" style="padding:14px 28px;background:#00ff88;color:#000;' +
+            'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;">' +
+            '📤 Auto-Commit Now</button>' +
+            '</div>' :
+            '<div style="margin:20px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;color:#888;font-size:12px;">' +
+            '<b style="color:#ffb347;">Configure GitHub First</b><br><br>' +
+            'Go to Settings → GitHub Configuration and add:<br>' +
+            '• GitHub PAT (Personal Access Token)<br>' +
+            '• GitHub Username<br>' +
+            '• GitHub Repository<br><br>' +
+            'Then return to this step to auto-commit.' +
+            '</div>'
         ) +
-        '</div>' +
         
         '<div id="step7-status" style="margin:15px 0;font-size:12px;"></div>' +
-        
-        '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #111;border-radius:8px;' +
-        'font-size:11px;color:#888;">' +
-        '💡 <b>Next Steps:</b><br>' +
-        '1. View portfolio to see your holdings<br>' +
-        '2. Refresh market data to get prices, PE, ROE<br>' +
-        '3. Optional: Sync to GitHub for automated updates' +
-        '</div>' +
         '</div>';
 }
 
-function syncToGitHub() {
+function autoCommitToGitHub() {
     var status = document.getElementById('step7-status');
-    status.innerHTML = '<span style="color:#ffb347;">⏳ Syncing...</span>';
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Preparing commit...</span>';
     
-    // Generate portfolio_symbols.txt
-    var symbols = importState.stocks
-        .filter(function(s) { return s.type === 'PORTFOLIO'; })
-        .map(function(s) { return s.symbol; })
-        .join('\n');
+    // Get settings
+    var settings = JSON.parse(localStorage.getItem('bharatSettings') || '{}');
+    var ghPAT = settings.githubPAT || localStorage.getItem('githubPAT') || '';
+    var ghUser = settings.githubUser || localStorage.getItem('githubUser') || '';
+    var ghRepo = settings.githubRepo || localStorage.getItem('githubRepo') || '';
     
-    var token = S.settings.ghToken.trim();
-    var repo = S.settings.ghRepo.trim();
-    
-    if (!token || !repo) {
-        status.innerHTML = '<span style="color:#ff6b85;">❌ GitHub not configured</span>';
+    if (!ghPAT || !ghUser || !ghRepo) {
+        status.innerHTML = '<span style="color:#ff6b85;">❌ GitHub not configured. Go to Settings first.</span>';
         return;
     }
     
-    var encoded = btoa(unescape(encodeURIComponent(symbols)));
-    var headers = {
-        'Authorization': 'token ' + token,
-        'Content-Type': 'application/json'
+    // Build unified-symbols.json
+    var unifiedData = {
+        updated: new Date().toISOString(),
+        count: importState.stocks.length,
+        symbols: []
     };
-    var fileUrl = 'https://api.github.com/repos/' + repo + '/contents/portfolio_symbols.txt';
     
-    // Get current SHA
-    fetch(fileUrl, {headers: headers})
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var body = {
-                message: 'portfolio: update from import',
-                content: encoded
-            };
-            if (data.sha) body.sha = data.sha;
-            
-            return fetch(fileUrl, {
-                method: 'PUT',
-                headers: headers,
-                body: JSON.stringify(body)
-            });
-        })
-        .then(function(r) {
-            if (r.ok) {
-                status.innerHTML = '<span style="color:#00ff88;">✅ Synced to GitHub</span>';
-            } else {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Sync failed (' + r.status + ')</span>';
-            }
-        })
-        .catch(function(err) {
-            status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
+    importState.stocks.forEach(function(stock) {
+        var sym = stock.symbol || generateSymbol(stock.name);
+        unifiedData.symbols.push({
+            sym: sym,
+            name: stock.name,
+            isin: stock.isin,
+            sector: stock.sector,
+            industry: stock.industry,
+            type: stock.type.toLowerCase(),
+            source: 'import'
         });
+    });
+    
+    unifiedData.symbols.sort(function(a, b) {
+        return a.sym.localeCompare(b.sym);
+    });
+    
+    var jsonContent = JSON.stringify(unifiedData, null, 2);
+    var base64Content = btoa(unescape(encodeURIComponent(jsonContent)));
+    
+    // GitHub API call
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Connecting to GitHub...</span>';
+    
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    
+    // First, get current file SHA (if exists)
+    fetch(apiUrl, {
+        headers: {
+            'Authorization': 'token ' + ghPAT,
+            'Accept': 'application/vnd.github.v3+json'
+        }
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        var sha = data.sha || undefined;
+        
+        status.innerHTML = '<span style="color:#ffb347;">⏳ Committing to GitHub...</span>';
+        
+        // Commit file
+        return fetch(apiUrl, {
+            method: 'PUT',
+            headers: {
+                'Authorization': 'token ' + ghPAT,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: 'Import: ' + importState.stocks.length + ' stocks to unified-symbols.json',
+                content: base64Content,
+                sha: sha
+            })
+        });
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.commit) {
+            status.innerHTML = '<div style="color:#00ff88;"><b>✅ Auto-Commit Successful!</b></div>' +
+                '<div style="margin:10px 0;font-size:11px;color:#888;">' +
+                'Commit: ' + data.commit.message + '<br>' +
+                'SHA: ' + data.content.sha.substring(0, 7) + '...<br>' +
+                importState.stocks.length + ' stocks written to unified-symbols.json' +
+                '</div>';
+        } else if (data.message) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + data.message + '</span>';
+        } else {
+            status.innerHTML = '<div style="color:#00ff88;"><b>✅ File Updated!</b></div>' +
+                '<div style="margin:10px 0;font-size:11px;color:#888;">' +
+                importState.stocks.length + ' stocks committed to GitHub' +
+                '</div>';
+        }
+    })
+    .catch(function(err) {
+        status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
+    });
+}
+
+function generateSymbol(name) {
+    var words = name.split(' ');
+    var sym = '';
+    words.forEach(function(w) {
+        if (w.length > 0 && w[0] !== '&') {
+            sym += w[0].toUpperCase();
+        }
+    });
+    return sym.substring(0, 10);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Navigation
+// Navigation & Cleanup
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function nextImportStep() {
-    if (importState.step === 1 && importState.stocks.length === 0) {
-        alert('Please upload a file or continue to manual entry');
-        return;
-    }
     if (importState.step < 7) {
         importState.step++;
         showImportUI();
@@ -837,6 +793,7 @@ function prevImportStep() {
 
 function closeImportModal() {
     var modal = document.getElementById('import-modal');
-    if (modal) modal.style.display = 'none';
-    importState = { step: 1, stocks: [], aiResponse: null };
+    if (modal) {
+        modal.style.display = 'none';
+    }
 }
