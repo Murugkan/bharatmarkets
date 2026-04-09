@@ -17,6 +17,7 @@ var importState = {
 function openImportWorkflow() {
     importState.step = 1;
     importState.stocks = [];
+    document.body.classList.add('modal-open');
     showImportUI();
 }
 
@@ -98,7 +99,7 @@ function renderStep1() {
         '</div>' +
         '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
-        'id="drop-zone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">' +
+        'id="drop-zone" onclick="document.getElementById(\'file-input\').click()" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">' +
         '<div style="font-size:32px;margin-bottom:10px;">📁</div>' +
         '<div style="color:#fff;font-weight:bold;margin-bottom:5px;">Click to upload or drag & drop</div>' +
         '<div style="color:#666;font-size:12px;">CSV or Excel files</div>' +
@@ -192,9 +193,28 @@ function loadSheetJS(cb) {
     if (window.XLSX) { _sheetJSLoaded = true; cb(); return; }
     
     var script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js';
-    script.onload = function() { _sheetJSLoaded = true; cb(); };
-    script.onerror = function() { alert('Failed to load Excel library'); };
+    // Try primary CDN first
+    script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    
+    script.onload = function() { 
+        _sheetJSLoaded = true; 
+        cb(); 
+    };
+    
+    script.onerror = function() { 
+        // Fallback to secondary CDN
+        var script2 = document.createElement('script');
+        script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js';
+        script2.onload = function() { _sheetJSLoaded = true; cb(); };
+        script2.onerror = function() { 
+            var status = document.getElementById('file-status');
+            if (status) status.innerHTML = '<span style="color:#ffb347;">⚠️ Excel support unavailable - use CSV instead</span>';
+            // Still continue with CSV support
+            cb();
+        };
+        document.head.appendChild(script2);
+    };
+    
     document.head.appendChild(script);
 }
 
@@ -266,12 +286,12 @@ function processImportCSV(csv) {
         seen.add(name);
         
         // Add stock if has valid name and at least one of qty/avg
-        if (name && qty && avg) {
+        if (name && (qty || avg)) {
             stocks.push({
                 name: name,
                 isin: '',
-                qty: qty,
-                avg: avg,
+                qty: qty || 0,
+                avg: avg || 0,
                 sector: '',
                 industry: '',
                 type: 'PORTFOLIO',
@@ -281,7 +301,7 @@ function processImportCSV(csv) {
     }
     
     if (stocks.length === 0) {
-        throw new Error('No valid stocks found. Ensure file has Name, Quantity, and Average Price columns.');
+        throw new Error('No valid stocks found. Ensure file has Name and Quantity or Price.');
     }
     
     importState.stocks = stocks;
@@ -937,4 +957,5 @@ function closeImportModal() {
     if (modal) {
         modal.style.display = 'none';
     }
+    document.body.classList.remove('modal-open');
 }
