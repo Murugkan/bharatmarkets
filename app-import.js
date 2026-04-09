@@ -98,19 +98,35 @@ function parseCSV(text) {
 function parseRows(rows) {
     if (rows.length < 2) throw new Error('No data in file');
     
-    var nameIdx = 0, qtyIdx = 1, avgIdx = 2;
+    // Detect column indices from header row
+    var headerRow = rows[0].map(h => String(h).toLowerCase().trim());
+    var nameIdx = headerRow.findIndex(h => h.includes('name') || h.includes('stock'));
+    var qtyIdx = headerRow.findIndex(h => h.includes('qty') || h.includes('quantity'));
+    var avgIdx = headerRow.findIndex(h => h.includes('avg') || h.includes('price') || h.includes('cost'));
+    
+    if (nameIdx === -1) nameIdx = 0;
+    if (qtyIdx === -1) qtyIdx = 1;
+    if (avgIdx === -1) avgIdx = 2;
+    
     var stocks = [];
     
     for (var i = 1; i < rows.length; i++) {
         var r = rows[i];
-        if (!r[nameIdx]) continue;
+        if (!r || !r[nameIdx]) continue;
         
-        var qty = parseFloat(r[qtyIdx]) || 0;
-        var avg = parseFloat(r[avgIdx]) || 0;
+        var name = String(r[nameIdx]).trim();
+        if (!name || name.toLowerCase().includes('name') || name.length === 0) continue;
         
-        if (r[nameIdx] && (qty || avg)) {
+        // Remove currency symbols (₹, $, etc) and parse numbers
+        var qtyStr = String(r[qtyIdx] || '').replace(/[₹₨$€,]/g, '').trim();
+        var avgStr = String(r[avgIdx] || '').replace(/[₹₨$€,]/g, '').trim();
+        
+        var qty = parseFloat(qtyStr) || 0;
+        var avg = parseFloat(avgStr) || 0;
+        
+        if (name && (qty || avg)) {
             stocks.push({
-                name: String(r[nameIdx]),
+                name: name,
                 qty: qty,
                 avg: avg,
                 isin: '',
@@ -121,7 +137,7 @@ function parseRows(rows) {
         }
     }
     
-    if (stocks.length === 0) throw new Error('No valid stocks found');
+    if (stocks.length === 0) throw new Error('No valid stocks found. Ensure file has Stock Name, QTY, and/or Price.');
     importState.stocks = stocks;
 }
 
@@ -133,6 +149,7 @@ function renderStep1Preview() {
     });
     html += '</table>';
     document.getElementById('step1-preview').innerHTML = html;
+    document.getElementById('wizard-start').style.display = 'block';
 }
 
 function startWizardFromStep2() {
