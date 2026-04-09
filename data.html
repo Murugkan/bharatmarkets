@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
     <title>Portfolio Data</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
@@ -36,6 +37,14 @@
         .nav-btn:hover { color:var(--bl); }
         .nav-btn.active { color:var(--bl); font-weight:800; }
         .nav-label { font-size:8px; margin-top:4px; font-weight:800; text-transform:uppercase; letter-spacing:1px; }
+        
+        /* STEP 1 IMPORT SECTION */
+        #import-section { background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:20px; margin-bottom:20px; }
+        #file-drop-zone { padding:30px; border:2px dashed #333; border-radius:8px; text-align:center; cursor:pointer; background:#050505; transition:all 0.2s; }
+        #file-drop-zone:hover { border-color:#00ff88; background:rgba(0,255,136,0.08); }
+        #file-drop-zone.drag { border-color:#00ff88; background:rgba(0,255,136,0.15); }
+        #step1-preview { margin:15px 0; }
+        #wizard-modal { position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.95); z-index:9000; display:none; align-items:center; justify-content:center; overflow-y:auto; }
         
         /* FULL-SCREEN MODAL */
         #import-modal { 
@@ -78,6 +87,26 @@
         <button onclick="exportData()">📤 Export</button>
     </div>
 </header>
+
+<!-- STEP 1: UPLOAD PORTFOLIO FILE -->
+<div id="import-section" class="container">
+    <h3 style="color:#00ff88;margin-bottom:15px;">📁 Step 1: Upload Portfolio File</h3>
+    <div id="file-drop-zone" 
+         ondrop="handleDrop(event)" 
+         ondragover="handleDragOver(event)" 
+         ondragleave="handleDragLeave(event)"
+         onclick="document.getElementById('file-input').click()">
+        <div style="font-size:32px;margin-bottom:10px;">📂</div>
+        <div style="color:#fff;font-weight:bold;margin-bottom:5px;">Click or drag & drop CSV/XLS file</div>
+        <div style="color:#666;font-size:12px;">Supports: CSV, XLS, XLSX, TSV</div>
+    </div>
+    <input type="file" id="file-input" accept=".csv,.xls,.xlsx,.tsv,.txt" style="display:none;" onchange="handleFileImport(this.files[0])">
+    <div id="step1-status" style="margin:10px 0;font-size:12px;color:#666;"></div>
+    <div id="step1-preview"></div>
+    <div id="wizard-start" style="display:none;margin:15px 0;text-align:center;">
+        <button onclick="startWizardFromStep2()" style="padding:12px 24px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Continue to Step 2 →</button>
+    </div>
+</div>
 
 <div class="container">
     <div class="refresh-section">
@@ -655,8 +684,45 @@ function deleteStock(idx) {
     alert('Delete - coming soon');
 }
 
-window.addEventListener('DOMContentLoaded', loadPortfolioTable);
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STEP 1: File Drop Handlers
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.getElementById('file-drop-zone').classList.remove('drag');
+    if (e.dataTransfer.files.length > 0) {
+        handleFileImport(e.dataTransfer.files[0]);
+    }
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('file-drop-zone').classList.add('drag');
+}
+
+function handleDragLeave(e) {
+    document.getElementById('file-drop-zone').classList.remove('drag');
+}
+
+function updateWizardButton() {
+    if (importState.stocks && importState.stocks.length > 0) {
+        document.getElementById('wizard-start').style.display = 'block';
+    }
+}
+
+window.addEventListener('DOMContentLoaded', function() {
+    loadPortfolioTable();
+    // Check if importState.stocks was populated
+    if (importState && importState.stocks && importState.stocks.length > 0) {
+        updateWizardButton();
+    }
+});
 </script>
+
+<!-- Import Wizard Module -->
+<script src="app-import-COMPLETE.js"></script>
 
 </body>
 </html>
