@@ -245,7 +245,7 @@ function processImportCSV(csv, filename) {
     importState.debugInfo += 'Header columns: ' + headerParts.length + '\n';
     importState.debugInfo += 'Headers: ' + headerParts.join(' | ') + '\n\n';
     
-    // Find column indices - ENHANCED matching FOR YOUR FILE FORMAT
+    // Find column indices - ENHANCED matching
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
@@ -253,23 +253,19 @@ function processImportCSV(csv, filename) {
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
         
-        // Stock Name matching - handle StockName, Symbol, Name
-        if (!nameIdx && (h.includes('stockname') || h.includes('symbol') || (h.includes('name') && !h.includes('sector')))) {
+        // Stock Name matching
+        if (!nameIdx && (h.includes('stock') || h.includes('name') || h.includes('symbol'))) {
             nameIdx = i;
         }
         
-        // Quantity matching - handle Quantity, Qty, Shares
-        if (!qtyIdx && (h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('units'))) {
+        // Quantity matching
+        if (!qtyIdx && (h.includes('qty') || h.includes('quantity') || h.includes('shares') || h.includes('units'))) {
             qtyIdx = i;
         }
         
-        // Average/Cost Price matching - handle AverageCostPrice, Avg, Cost, Price
-        if (!avgIdx && (h.includes('averagecost') || h.includes('averageprice') || 
-                        (h.includes('average') && h.includes('price')) ||
-                        (h.includes('average') && h.includes('cost')) ||
-                        h.includes('costprice') || h.includes('buyprice') ||
-                        (h.includes('cost') && !h.includes('value')) ||
-                        (h.includes('price') && !h.includes('market') && !h.includes('current')))) {
+        // Average/Cost price matching - FIXED for AverageCostPrice
+        if (!avgIdx && (h.includes('averagecost') || h.includes('avg') || h.includes('average') || h.includes('cost') || 
+                        h.includes('price') || h.includes('buy'))) {
             avgIdx = i;
         }
     }
