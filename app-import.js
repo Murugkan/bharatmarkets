@@ -232,25 +232,6 @@ function processImportCSV(csv) {
             });
         }
     }
-        // Get QTY and AVG
-        var qty = qtyIdx >= 0 && parts[qtyIdx] && parts[qtyIdx] !== '-' ? parseFloat(parts[qtyIdx]) : null;
-        var avg = avgIdx >= 0 && parts[avgIdx] && parts[avgIdx] !== '-' ? parseFloat(parts[avgIdx]) : null;
-        
-        // Auto-detect type: if QTY exists → PORTFOLIO, else → WATCHLIST
-        var type = qty ? 'PORTFOLIO' : 'WATCHLIST';
-        
-        // Add stock with just name, qty, avg (NO symbol)
-        stocks.push({
-            name: name,
-            symbol: '',  // Empty - will be matched later
-            qty: qty,
-            avg: avg,
-            type: type,
-            isin: '',
-            sector: '',
-            industry: ''
-        });
-    }
     
     importState.stocks = stocks;
     showImportUI();
