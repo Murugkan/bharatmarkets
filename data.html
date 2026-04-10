@@ -104,6 +104,30 @@
             </tbody>
         </table>
     </div>
+
+    <!-- GitHub PAT Configuration -->
+    <div style="background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:15px; margin-top:20px;">
+        <div style="font-size:12px; color:var(--bl); font-weight:800; margin-bottom:15px;">🔑 GitHub Configuration</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:15px;">
+            <div>
+                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">GitHub Username</label>
+                <input type="text" id="ghUser" placeholder="username" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
+            </div>
+            <div>
+                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">Repository Name</label>
+                <input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
+            </div>
+            <div>
+                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">GitHub PAT (Personal Access Token)</label>
+                <input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
+            </div>
+            <div style="display:flex; gap:10px; align-items:flex-end;">
+                <button onclick="saveGitHubConfig()" style="flex:1; padding:8px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">💾 Save Config</button>
+                <button onclick="testGitHubConnection()" style="flex:1; padding:8px; background:#00f2ff; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">✓ Test</button>
+            </div>
+        </div>
+        <div id="ghConfigStatus" style="font-size:10px; color:#666; margin-top:10px;"></div>
+    </div>
 </div>
 
 <!-- Footer -->
@@ -496,6 +520,128 @@ function commitUnifiedSymbols(content, sha, sym, action) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GitHub Configuration Management
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function saveGitHubConfig() {
+    var user = document.getElementById('ghUser').value.trim();
+    var repo = document.getElementById('ghRepo').value.trim();
+    var pat = document.getElementById('ghPAT').value.trim();
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please fill all GitHub fields', 'error');
+        return;
+    }
+    
+    localStorage.setItem('ghUser', user);
+    localStorage.setItem('ghRepo', repo);
+    localStorage.setItem('ghPAT', pat);
+    
+    showStatus('✅ GitHub config saved', 'success');
+    document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+}
+
+function loadGitHubConfig() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (user) document.getElementById('ghUser').value = user;
+    if (repo) document.getElementById('ghRepo').value = repo;
+    if (pat) document.getElementById('ghPAT').value = pat;
+    
+    if (user && repo) {
+        document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+    }
+}
+
+function testGitHubConnection() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please save config first', 'error');
+        return;
+    }
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/unified-symbols.json';
+    
+    fetch(url, {
+        headers: { 'Authorization': 'token ' + pat }
+    })
+    .then(function(r) {
+        if (r.ok) {
+            showStatus('✅ GitHub connection successful', 'success');
+            document.getElementById('ghConfigStatus').textContent = '✓ Connected to ' + user + '/' + repo;
+            updateGitHubTimestamps();
+        } else if (r.status === 401) {
+            showStatus('❌ Invalid token', 'error');
+        } else if (r.status === 404) {
+            showStatus('❌ Repository not found', 'error');
+        } else {
+            showStatus('❌ GitHub error: ' + r.status, 'error');
+        }
+    })
+    .catch(function(err) {
+        showStatus('❌ Connection failed: ' + err.message, 'error');
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Get GitHub File Timestamps
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function getGitHubFileTimestamp(filename) {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    
+    if (!user || !repo) return Promise.reject('GitHub not configured');
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/commits?path=' + filename + '&per_page=1';
+    
+    return fetch(url)
+        .then(function(r) {
+            if (!r.ok) throw new Error('Failed to fetch commit info');
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.length === 0) throw new Error('No commits found');
+            var timestamp = data[0].commit.committer.date;
+            return new Date(timestamp);
+        });
+}
+
+function updateGitHubTimestamps() {
+    // Get timestamps from GitHub
+    Promise.all([
+        getGitHubFileTimestamp('prices.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('fundamentals.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('unified-symbols.json').catch(function() { return null; })
+    ])
+    .then(function(timestamps) {
+        if (timestamps[0]) {
+            var dateStr = timestamps[0].toLocaleDateString('en-IN');
+            var timeStr = timestamps[0].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('prices-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[1]) {
+            var dateStr = timestamps[1].toLocaleDateString('en-IN');
+            var timeStr = timestamps[1].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('fundamentals-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[2]) {
+            var dateStr = timestamps[2].toLocaleDateString('en-IN');
+            var timeStr = timestamps[2].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('sync-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+    })
+    .catch(function(err) {
+        console.log('Could not fetch GitHub timestamps:', err);
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TABLE RENDERING - FIXED XSS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -600,14 +746,124 @@ function deleteStockHandler(el) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Close import modal
+// GitHub Configuration
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function closeImportModal() {
-    var modal = document.getElementById('import-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        document.body.classList.remove('modal-open');
+
+function saveGitHubConfig() {
+    var user = document.getElementById('ghUser').value.trim();
+    var repo = document.getElementById('ghRepo').value.trim();
+    var pat = document.getElementById('ghPAT').value.trim();
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please fill all GitHub fields', 'error');
+        return;
     }
+    
+    localStorage.setItem('ghUser', user);
+    localStorage.setItem('ghRepo', repo);
+    localStorage.setItem('ghPAT', pat);
+    
+    showStatus('✅ GitHub config saved', 'success');
+    document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+}
+
+function loadGitHubConfig() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (user) document.getElementById('ghUser').value = user;
+    if (repo) document.getElementById('ghRepo').value = repo;
+    if (pat) document.getElementById('ghPAT').value = pat;
+    
+    if (user && repo) {
+        document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+    }
+}
+
+function testGitHubConnection() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please save config first', 'error');
+        return;
+    }
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/unified-symbols.json';
+    
+    fetch(url, {
+        headers: { 'Authorization': 'token ' + pat }
+    })
+    .then(function(r) {
+        if (r.ok) {
+            showStatus('✅ GitHub connection successful', 'success');
+            document.getElementById('ghConfigStatus').textContent = '✓ Connected to ' + user + '/' + repo;
+        } else if (r.status === 401) {
+            showStatus('❌ Invalid token', 'error');
+        } else if (r.status === 404) {
+            showStatus('❌ Repository not found', 'error');
+        } else {
+            showStatus('❌ GitHub error: ' + r.status, 'error');
+        }
+    })
+    .catch(function(err) {
+        showStatus('❌ Connection failed: ' + err.message, 'error');
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Get GitHub File Timestamps
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function getGitHubFileTimestamp(filename) {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    
+    if (!user || !repo) return Promise.reject('GitHub not configured');
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/commits?path=' + filename + '&per_page=1';
+    
+    return fetch(url)
+        .then(function(r) {
+            if (!r.ok) throw new Error('Failed to fetch commit info');
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.length === 0) throw new Error('No commits found');
+            var timestamp = data[0].commit.committer.date;
+            return new Date(timestamp);
+        });
+}
+
+function updateGitHubTimestamps() {
+    // Get timestamps from GitHub
+    Promise.all([
+        getGitHubFileTimestamp('prices.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('fundamentals.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('unified-symbols.json').catch(function() { return null; })
+    ])
+    .then(function(timestamps) {
+        if (timestamps[0]) {
+            var dateStr = timestamps[0].toLocaleDateString('en-IN');
+            var timeStr = timestamps[0].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('prices-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[1]) {
+            var dateStr = timestamps[1].toLocaleDateString('en-IN');
+            var timeStr = timestamps[1].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('fundamentals-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[2]) {
+            var dateStr = timestamps[2].toLocaleDateString('en-IN');
+            var timeStr = timestamps[2].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('sync-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+    })
+    .catch(function(err) {
+        console.log('Could not fetch GitHub timestamps:', err);
+    });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -615,15 +871,12 @@ function closeImportModal() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 window.addEventListener('DOMContentLoaded', function() {
     loadPortfolioTable();
+    loadGitHubConfig();
     
-    // Load last sync timestamps if available
-    var lastSync = localStorage.getItem('lastFullSync');
-    if (lastSync) {
-        var date = new Date(lastSync);
-        var timeStr = date.toLocaleTimeString('en-IN', { hour12: false, hour: '2-digit', minute: '2-digit' });
-        var dateStr = date.toLocaleDateString('en-IN');
-        document.getElementById('sync-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
-    }
+    // Try to fetch actual GitHub timestamps
+    setTimeout(function() {
+        updateGitHubTimestamps();
+    }, 500);
 });
 </script>
 
