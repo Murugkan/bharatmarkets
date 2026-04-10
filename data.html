@@ -47,47 +47,11 @@
 </header>
 
 <div class="container">
-    <!-- GitHub PAT Configuration (Shared) -->
-    <div style="background:#0a0a0a;border:1px solid var(--b1);border-radius:8px;padding:15px;margin-bottom:20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <h3 style="color:#00ff88;font-size:14px;margin:0;">🔐 GitHub Configuration</h3>
-            <span id="pat-status" style="font-size:11px;color:#ffb347;">⚠️ Not configured</span>
-        </div>
-        
-        <div id="pat-form" style="display:none;margin-bottom:12px;">
-            <div style="margin:8px 0;">
-                <label style="color:#888;font-size:11px;">GitHub PAT:</label><br>
-                <input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;box-sizing:border-box;">
-            </div>
-            <div style="margin:8px 0;">
-                <label style="color:#888;font-size:11px;">GitHub User:</label><br>
-                <input type="text" id="ghUser" placeholder="murugkan" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
-            </div>
-            <div style="margin:8px 0;">
-                <label style="color:#888;font-size:11px;">GitHub Repo:</label><br>
-                <input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
-            </div>
-            <button onclick="savePATConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;width:100%;">Save Config</button>
-        </div>
-        
-        <div id="pat-display" style="display:none;padding:10px;background:#050505;border:1px solid #222;border-radius:4px;font-size:11px;margin-bottom:12px;">
-            <div style="color:#00ff88;font-weight:bold;margin-bottom:8px;">✅ Configured</div>
-            <div style="color:#888;">
-                User: <b id="display-user"></b><br>
-                Repo: <b id="display-repo"></b><br>
-                PAT: <b id="display-pat"></b>
-            </div>
-        </div>
-        
-        <div style="display:flex;gap:10px;">
-            <button onclick="togglePATForm()" id="toggle-btn" style="padding:8px 12px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">Edit Config</button>
-            <button onclick="testPATConnection()" style="padding:8px 12px;background:#007bff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">🧪 Test Connection</button>
-        </div>
-        
-        <div id="pat-message" style="margin-top:10px;font-size:11px;"></div>
+    <!-- LOG WINDOW - CRITICAL FOR iPHONE -->
+    <div style="background:#000;border:2px solid var(--gr);border-radius:6px;padding:10px;margin:15px 0;">
+        <div style="color:var(--gr);font-weight:bold;font-size:10px;margin-bottom:5px;">📋 DEBUG LOG</div>
+        <div id="debug-log-window" style="color:var(--gr);font-size:9px;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;border:1px solid #333;border-radius:4px;padding:5px;">Starting...</div>
     </div>
-    
-
     
     <!-- Data Table -->
     <div class="table-wrap">
@@ -190,6 +154,24 @@
 
 <script src="app-import.js"></script>
 <script>
+
+// ===== LOG WINDOW - VISIBLE ON PAGE =====
+function addDebugLog(msg) {
+    var ts = new Date().toLocaleTimeString();
+    var logMsg = '[' + ts + '] ' + msg;
+    
+    var logDiv = document.getElementById('debug-log-window');
+    if (logDiv) {
+        logDiv.innerHTML += logMsg + '\n';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    console.log(logMsg);
+}
+
+function showToast(msg) {
+    addDebugLog('📢 ' + msg);
+}
+
 
 // ===== PAT CONFIGURATION FUNCTIONS =====
 function initPATDisplay() {
@@ -300,94 +282,26 @@ function testPATConnection() {
 }
 
 // ===== END PAT CONFIGURATION =====
-function getFileTimestamps() {
-    // Fetch metadata from all 3 files
-    Promise.all([
-        fetch('./prices.json').then(r => r.json()),
-        fetch('./fundamentals.json').then(r => r.json()),
-        fetch('./unified-symbols.json').then(r => r.json())
-    ])
-    .then(function(data) {
-        var pricesData = data[0];
-        var fundData = data[1];
-        var unifiedData = data[2];
-        
-        var pricesTime = pricesData.updated || '—';
-        var fundTime = fundData.updated || '—';
-        var unifiedTime = unifiedData.updated || '—';
-        
-        document.getElementById('prices-timestamp').innerHTML = 'Last Updated: ' + formatTime(pricesTime);
-        document.getElementById('fundamentals-timestamp').innerHTML = 'Last Updated: ' + formatTime(fundTime);
-        document.getElementById('unified-timestamp').innerHTML = 'Last Updated: ' + formatTime(unifiedTime);
-    })
-    .catch(function(e) {
-        console.error('Error fetching timestamps:', e);
-    });
-}
-
-function formatTime(timeStr) {
-    if (!timeStr || timeStr === '—') return '—';
-    try {
-        var date = new Date(timeStr);
-        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-    } catch(e) {
-        return timeStr;
-    }
-}
-
+// ===== REFRESH FUNCTIONS - SIMPLE FOR ALL BROWSERS =====
 function refreshPrices() {
-    var msg = document.getElementById('pat-message');
-    msg.innerHTML = '<span style="color:#ffb347;">⏳ Refreshing prices...</span>';
-    
-    // Just reload prices from server
-    fetch('./prices.json?t=' + Date.now())
-    .then(r => r.json())
-    .then(function(data) {
-        msg.innerHTML = '<span style="color:#00ff88;">✅ Prices refreshed!</span>';
-        getFileTimestamps();
-        loadPortfolioTable();
-    })
-    .catch(function(e) {
-        msg.innerHTML = '<span style="color:#ff6b85;">❌ Error refreshing prices</span>';
-    });
+    addDebugLog('📈 Refreshing prices...');
+    setTimeout(function() {
+        location.reload();
+    }, 500);
 }
 
 function refreshFundamentals() {
-    var msg = document.getElementById('pat-message');
-    msg.innerHTML = '<span style="color:#ffb347;">⏳ Refreshing fundamentals...</span>';
-    
-    fetch('./fundamentals.json?t=' + Date.now())
-    .then(r => r.json())
-    .then(function(data) {
-        msg.innerHTML = '<span style="color:#00ff88;">✅ Fundamentals refreshed!</span>';
-        getFileTimestamps();
-        loadPortfolioTable();
-    })
-    .catch(function(e) {
-        msg.innerHTML = '<span style="color:#ff6b85;">❌ Error refreshing fundamentals</span>';
-    });
+    addDebugLog('💹 Refreshing fundamentals...');
+    setTimeout(function() {
+        location.reload();
+    }, 500);
 }
 
 function fullSync() {
-    var msg = document.getElementById('pat-message');
-    msg.innerHTML = '<span style="color:#ffb347;">⏳ Full sync in progress...</span>';
-    
-    Promise.all([
-        fetch('./prices.json?t=' + Date.now()).then(r => r.json()),
-        fetch('./fundamentals.json?t=' + Date.now()).then(r => r.json()),
-        fetch('./unified-symbols.json?t=' + Date.now()).then(r => r.json())
-    ])
-    .then(function(data) {
-        msg.innerHTML = '<span style="color:#00ff88;">✅ Sync complete! Reloading...</span>';
-        getFileTimestamps();
-        loadPortfolioTable();
-        setTimeout(function() {
-            location.reload();
-        }, 1000);
-    })
-    .catch(function(e) {
-        msg.innerHTML = '<span style="color:#ff6b85;">❌ Sync failed</span>';
-    });
+    addDebugLog('🔗 Full sync...');
+    setTimeout(function() {
+        location.reload();
+    }, 500);
 }
 
 // Edit Quantity
@@ -644,7 +558,7 @@ function closeImportModal() {
 window.addEventListener('DOMContentLoaded', function() {
     initPATDisplay();
     loadPortfolioTable();
-    getFileTimestamps();
+    
 });
 </script>
 
