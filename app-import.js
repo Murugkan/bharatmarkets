@@ -4,11 +4,21 @@
  * Step 7: FIXED with PAT config UI, status display, JSON preview, and confirmation
  */
 
-var importState = {
-    step: 1,
-    stocks: [],
-    aiResponse: null
-};
+var debugLog = [];
+
+function addDebugLog(msg) {
+    debugLog.push(msg);
+    var el = document.getElementById('debug-log');
+    if (el) {
+        el.textContent = debugLog.join('\n');
+        el.scrollTop = el.scrollHeight;
+    }
+    console.log(msg);
+}
+
+function clearDebugLog() {
+    debugLog = [];
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MAIN: Open Import Workflow
@@ -238,7 +248,8 @@ function processImportCSV(csv) {
     var qtyIdx = -1;
     var avgIdx = -1;
     
-    console.log("CSV Headers:", headerParts);
+    clearDebugLog();
+    addDebugLog("Headers: " + headerParts.join(" | "));
     
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
@@ -246,39 +257,39 @@ function processImportCSV(csv) {
         // Stock Name - explicit match
         if (h === 'stock name' || (h.includes('stock') && h.includes('name'))) {
             nameIdx = i;
-            console.log("Found name column at index", i, ":", h);
+            addDebugLog("✓ Name @ [" + i + "]: " + h);
         }
         
         // Quantity - various forms but not "value"
         if ((h === 'quantity' || h === 'qty' || h === 'shares' || h.includes('quantity')) && 
             !h.includes('value')) {
             qtyIdx = i;
-            console.log("Found qty column at index", i, ":", h);
+            addDebugLog("✓ Qty @ [" + i + "]: " + h);
         }
         
         // Average Price - must have both average/avg AND price/cost
         if ((h.includes('average') || h.includes('avg')) && 
             (h.includes('price') || h.includes('cost'))) {
             avgIdx = i;
-            console.log("Found avg column at index", i, ":", h);
+            addDebugLog("✓ Avg @ [" + i + "]: " + h);
         }
     }
     
     // Fallback defaults ONLY if detection failed
     if (nameIdx === -1) {
         nameIdx = 0;
-        console.log("Using fallback: name column at index 0");
+        addDebugLog("Fallback: Name @ [0]");
     }
     if (qtyIdx === -1 && headerParts.length > 1) {
         qtyIdx = 1;
-        console.log("Using fallback: qty column at index 1");
+        addDebugLog("Fallback: Qty @ [1]");
     }
     if (avgIdx === -1 && headerParts.length > 2) {
         avgIdx = 2;
         console.log("Using fallback: avg column at index 2");
     }
     
-    console.log("Final indices - name[" + nameIdx + "], qty[" + qtyIdx + "], avg[" + avgIdx + "]");
+    addDebugLog("Columns: Name[" + nameIdx + "], Qty[" + qtyIdx + "], Avg[" + avgIdx + "]");
     
     var stocks = [];
     var seen = new Set();
@@ -313,7 +324,7 @@ function processImportCSV(csv) {
         
         // Log first 3 rows for debugging
         if (i <= 3) {
-            console.log("Row", i, "- name:", name, "| qty[" + qtyIdx + "]:", qty, "| avg[" + avgIdx + "]:", avg);
+            addDebugLog("Row" + i + ": " + name + " | Qty=" + qty + " | Avg=" + (avg ? avg.toFixed(2) : "null"));
         }
         
         // Skip duplicates
@@ -363,6 +374,8 @@ function renderStep1Preview() {
     });
     
     html += '</table></div>' +
+        '<div id="debug-log" style="margin:10px 0;padding:10px;background:#000;border:1px solid #333;border-radius:4px;' +
+        'font-family:monospace;font-size:10px;color:#888;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
         '<div style="margin:10px 0;font-size:11px;color:#00ff88;">' +
         '✅ Loaded: ' + importState.stocks.length + ' stocks' +
         '</div>';
@@ -458,16 +471,16 @@ function renderStep3() {
     var prompt = 'For these Indian company names, get NSE Ticker, ISIN code, Sector, and Industry.\n\n' +
         'Company Names:\n' +
         names + '\n\n' +
-        '⚠️ CRITICAL OUTPUT FORMAT (no extra spaces, pipe separated):\n\n' +
-        'Name|Ticker|ISIN|Sector|Industry\n' +
-        'HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services\n' +
-        'Reliance Industries Limited|RELIANCE|INE002A01015|Energy|Oil & Gas\n' +
+        '⚠️ CRITICAL OUTPUT FORMAT (comma-separated, no extra spaces):\n\n' +
+        'Name,Ticker,ISIN,Sector,Industry\n' +
+        'HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n' +
+        'Reliance Industries Limited,RELIANCE,INE002A01015,Energy,Oil & Gas\n' +
         '\n' +
         'Rules:\n' +
         '• Match EXACT company names (case-insensitive)\n' +
         '• Get NSE Ticker (e.g., HDFCBANK, RELIANCE, TATAPOWER)\n' +
         '• Get ISIN code (format: INE + 10 chars)\n' +
-        '• No spaces around pipe (|) characters\n' +
+        '• Use comma as delimiter - NO spaces around commas\n' +
         '• Output ONLY the table, no extra text';
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
@@ -502,7 +515,7 @@ function renderStep4() {
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Name|Ticker|ISIN|Sector|Industry&#10;HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services" ' +
+        'placeholder="Name,Ticker,ISIN,Sector,Industry&#10;HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services" ' +
         'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
         'onchange="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
@@ -511,7 +524,7 @@ function renderStep4() {
 
 function autoParseAIResponse() {
     var response = document.getElementById('ai-response').value;
-    if (!response.trim() || !response.includes('|')) return;
+    if (!response.trim() || !response.includes(',')) return;  // Changed from pipe to comma
     if (!response.includes('INE') && !response.toLowerCase().includes('name')) return;
     parseAIResponse();
 }
@@ -527,8 +540,8 @@ function parseAIResponse() {
     var matched = 0;
     
     lines.forEach(function(line) {
-        if (!line.includes('|')) return;
-        var parts = line.split('|');
+        if (!line.includes(',')) return;  // Changed from pipe to comma
+        var parts = line.split(',');  // Changed from pipe to comma
         if (parts.length < 5) return;  // Now expects 5 fields
         
         var name = parts[0].trim();
@@ -544,7 +557,7 @@ function parseAIResponse() {
         });
         
         if (stock) {
-            stock.ticker = ticker;         // NEW: Store Ticker
+            stock.ticker = ticker;         // Store Ticker
             stock.isin = isin;
             stock.sector = sector;
             stock.industry = industry;
@@ -847,9 +860,9 @@ function generateJSONPreview() {
     };
     
     importState.stocks.forEach(function(stock) {
-        var sym = stock.symbol || generateSymbol(stock.name);
+        var ticker = stock.ticker || '?';
         unifiedData.symbols.push({
-            sym: sym,
+            ticker: ticker,
             name: stock.name,
             isin: stock.isin,
             sector: stock.sector,
@@ -860,7 +873,7 @@ function generateJSONPreview() {
     });
     
     unifiedData.symbols.sort(function(a, b) {
-        return a.sym.localeCompare(b.sym);
+        return a.ticker.localeCompare(b.ticker);
     });
     
     var jsonString = JSON.stringify(unifiedData, null, 2);
@@ -904,9 +917,9 @@ function postToGitHub() {
     };
     
     importState.stocks.forEach(function(stock) {
-        var sym = stock.symbol || generateSymbol(stock.name);
+        var ticker = stock.ticker || '?';
         unifiedData.symbols.push({
-            sym: sym,
+            ticker: ticker,
             name: stock.name,
             isin: stock.isin,
             sector: stock.sector,
@@ -917,7 +930,7 @@ function postToGitHub() {
     });
     
     unifiedData.symbols.sort(function(a, b) {
-        return a.sym.localeCompare(b.sym);
+        return a.ticker.localeCompare(b.ticker);
     });
     
     var jsonContent = JSON.stringify(unifiedData, null, 2);
