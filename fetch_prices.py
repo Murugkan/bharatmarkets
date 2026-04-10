@@ -19,7 +19,7 @@ try:
 except ImportError:
     raise SystemExit("pip install yfinance")
 
-SYMBOLS_FILE   = "symbols.json"
+SYMBOLS_FILE   = "unified-symbols.json"
 SYMBOL_MAP_FILE= "symbol_map.json"
 PRICES_FILE    = "prices.json"
 CHARTS_DIR     = Path("charts")
@@ -84,6 +84,17 @@ def load_symbols():
         print(f"⚠ Cannot read {SYMBOLS_FILE}: {e}")
         return [], []
 
+    # Handle unified-symbols.json format (has "symbols" array with "ticker" field)
+    if isinstance(data, dict) and "symbols" in data:
+        data = data["symbols"]
+    
+    # Convert "ticker" field to "sym" for backward compatibility
+    for entry in data:
+        if "ticker" in entry and "sym" not in entry:
+            entry["sym"] = entry["ticker"]
+        # Mark as resolved since unified-symbols.json only has confirmed tickers
+        entry["resolved"] = True
+
     resolved_any = False
 
     for entry in data:
@@ -108,7 +119,7 @@ def load_symbols():
 
     if resolved_any:
         Path(SYMBOLS_FILE).write_text(json.dumps(data, separators=(",",":")))
-        print(f"✓ symbols.json updated with confirmed symbols")
+        print(f"✓ {SYMBOLS_FILE} updated with confirmed symbols")
 
     syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved")]
     print(f"📋 {len(syms)} resolved symbols from {SYMBOLS_FILE}")
