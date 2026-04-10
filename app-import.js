@@ -98,77 +98,89 @@ function handleFileImport(file) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function openImportWorkflow() {
-    importState.step = 1;
-    importState.stocks = [];
-    document.body.classList.add('modal-open');
-    showImportUI();
+    try {
+        importState.step = 1;
+        importState.stocks = [];
+        document.body.classList.add('modal-open');
+        showImportUI();
+    } catch(err) {
+        console.error('❌ Error in openImportWorkflow:', err.message);
+        console.error('Stack:', err.stack);
+        alert('❌ Error opening import wizard: ' + err.message);
+    }
 }
 
 function showImportUI() {
-    var html = '<div id="import-wizard" style="' +
-        'padding:20px;background:#0a0a0a;border-radius:12px;max-width:900px;' +
-        '">';
-    
-    // Step indicator
-    html += '<div style="margin-bottom:10px;font-size:12px;color:#555;font-family:monospace;">' +
-        'Step ' + importState.step + ' of 7: ';
-    
-    var stepTitles = ['Upload CSV/XLS', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'Post to GitHub'];
-    html += stepTitles[importState.step - 1];
-    html += '</div>';
-    
-    // TOP BUTTONS - no scrolling needed
-    html += '<div style="margin-bottom:15px;display:flex;gap:8px;justify-content:flex-end;">' +
-        '<button onclick="closeImportModal()" style="padding:8px 16px;background:#333;border:none;color:#fff;' +
-        'border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button>' +
-        (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:8px 16px;background:#444;' +
-        'border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;">← Back</button>' : '') +
-        (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:8px 16px;background:#00ff88;' +
-        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Next →</button>' : 
-        '<button onclick="closeImportModal()" style="padding:8px 16px;background:#00ff88;' +
-        'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Close ✓</button>') +
-        '</div>';
-    
-    // Progress bar
-    var progress = (importState.step / 7) * 100;
-    html += '<div style="width:100%;height:4px;background:#111;border-radius:2px;margin-bottom:20px;overflow:hidden;">' +
-        '<div style="width:' + progress + '%;height:100%;background:#00ff88;"></div>' +
-        '</div>';
-    
-    switch(importState.step) {
-        case 1: html += renderStep1(); break;
-        case 2: html += renderStep2(); break;
-        case 3: html += renderStep3(); break;
-        case 4: html += renderStep4(); break;
-        case 5: html += renderStep5(); break;
-        case 6: html += renderStep6(); break;
-        case 7: html += renderStep7(); break;
-    }
-    
-    html += '</div>';
-    
-    // Show modal
-    var modal = document.getElementById('import-modal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'import-modal';
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);' +
-            'z-index:9000;display:flex;align-items:center;justify-content:center;overflow-y:auto;';
-        document.body.appendChild(modal);
-    }
-    
-    modal.innerHTML = '<div style="background:#000;border:1px solid #222;border-radius:12px;' +
-        'padding:20px;max-height:90vh;overflow-y:auto;width:90%;max-width:900px;margin:20px;">' +
-        html + 
-        '</div>';
-    
-    modal.style.display = 'flex';
-    
-    // Initialize step 7 button styles if showing step 7
-    if (importState.step === 7) {
-        setTimeout(function() {
-            setImportMode(importState.importMode);
-        }, 100);
+    try {
+        var html = '<div id="import-wizard" style="' +
+            'padding:20px;background:#0a0a0a;border-radius:12px;max-width:900px;' +
+            '">';
+        
+        // Step indicator
+        html += '<div style="margin-bottom:10px;font-size:12px;color:#555;font-family:monospace;">' +
+            'Step ' + importState.step + ' of 7: ';
+        
+        var stepTitles = ['Upload CSV/XLS', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'Post to GitHub'];
+        html += stepTitles[importState.step - 1];
+        html += '</div>';
+        
+        // TOP BUTTONS - no scrolling needed
+        html += '<div style="margin-bottom:15px;display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button onclick="closeImportModal()" style="padding:8px 16px;background:#333;border:none;color:#fff;' +
+            'border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button>' +
+            (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:8px 16px;background:#444;' +
+            'border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;">← Back</button>' : '') +
+            (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:8px 16px;background:#00ff88;' +
+            'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Next →</button>' : 
+            '<button onclick="closeImportModal()" style="padding:8px 16px;background:#00ff88;' +
+            'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Close ✓</button>') +
+            '</div>';
+        
+        // Progress bar
+        var progress = (importState.step / 7) * 100;
+        html += '<div style="width:100%;height:4px;background:#111;border-radius:2px;margin-bottom:20px;overflow:hidden;">' +
+            '<div style="width:' + progress + '%;height:100%;background:#00ff88;"></div>' +
+            '</div>';
+        
+        switch(importState.step) {
+            case 1: html += renderStep1(); break;
+            case 2: html += renderStep2(); break;
+            case 3: html += renderStep3(); break;
+            case 4: html += renderStep4(); break;
+            case 5: html += renderStep5(); break;
+            case 6: html += renderStep6(); break;
+            case 7: html += renderStep7(); break;
+        }
+        
+        html += '</div>';
+        
+        // Show modal
+        var modal = document.getElementById('import-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'import-modal';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);' +
+                'z-index:9000;display:flex;align-items:center;justify-content:center;overflow-y:auto;';
+            document.body.appendChild(modal);
+        }
+        
+        modal.innerHTML = '<div style="background:#000;border:1px solid #222;border-radius:12px;' +
+            'padding:20px;max-height:90vh;overflow-y:auto;width:90%;max-width:900px;margin:20px;">' +
+            html + 
+            '</div>';
+        
+        modal.style.display = 'flex';
+        
+        // Initialize step 7 button styles if showing step 7
+        if (importState.step === 7) {
+            setTimeout(function() {
+                setImportMode(importState.importMode);
+            }, 100);
+        }
+    } catch(err) {
+        console.error('❌ Error in showImportUI:', err.message);
+        console.error('Stack:', err.stack);
+        alert('❌ Error rendering UI: ' + err.message);
     }
 }
 
@@ -718,8 +730,6 @@ function parseAIResponse(delimiter) {
     
     var status = document.getElementById('step4-status');
     status.innerHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Matched ' + matched + '/' + 
-        importState.stocks.length + ' stocks</div>';
-} 
         importState.stocks.length + ' stocks</div>';
     
     showImportUI();
