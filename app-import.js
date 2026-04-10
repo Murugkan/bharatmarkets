@@ -23,7 +23,8 @@ function clearDebugLog() {
 var importState = {
     step: 1,
     stocks: [],
-    aiResponse: null
+    aiResponse: null,
+    importMode: 'append'
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -162,6 +163,13 @@ function showImportUI() {
         '</div>';
     
     modal.style.display = 'flex';
+    
+    // Initialize step 7 button styles if showing step 7
+    if (importState.step === 7) {
+        setTimeout(function() {
+            setImportMode(importState.importMode);
+        }, 100);
+    }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -641,7 +649,7 @@ function renderStep4() {
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Name,Ticker,ISIN,Sector,Industry&#10;HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services" ' +
+        'placeholder="Paste CSV/TSV response here" ' +
         'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
         'onchange="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
@@ -650,47 +658,59 @@ function renderStep4() {
 
 function autoParseAIResponse() {
     var response = document.getElementById('ai-response').value;
-    if (!response.trim() || !response.includes(',')) return;  // Changed from pipe to comma
-    if (!response.includes('INE') && !response.toLowerCase().includes('name')) return;
-    parseAIResponse();
+    if (!response.trim()) return;
+    
+    // Better delimiter detection
+    if (response.includes('\t')) {
+        parseAIResponse('\t');
+    } else if (response.includes(',')) {
+        parseAIResponse(',');
+    } else if (response.includes(';')) {
+        parseAIResponse(';');
+    } else if (response.includes('|')) {
+        parseAIResponse('|');
+    }
 }
 
-function parseAIResponse() {
+function parseAIResponse(delimiter) {
     var response = document.getElementById('ai-response').value;
     if (!response.trim()) {
         alert('Please paste AI response');
         return;
     }
     
-    var lines = response.split(/\r?\n/).filter(function(l) { return l.trim(); });
+    // Split by newlines (handle both \r\n and \n)
+    var lines = response.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
     var matched = 0;
     
-    lines.forEach(function(line) {
-        if (!line.includes(',')) return;  // Changed from pipe to comma
-        var parts = line.split(',');  // Changed from pipe to comma
-        if (parts.length < 5) return;  // Now expects 5 fields
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line.length === 0) continue;
         
-        var name = parts[0].trim();
-        var ticker = parts[1].trim();    // NEW: Extract Ticker
-        var isin = parts[2].trim();
-        var sector = parts[3].trim();
-        var industry = parts[4].trim();
+        var parts = line.split(delimiter).map(function(p) { return p.trim(); });
+        if (parts.length < 2) continue;
         
-        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'ticker') return;
+        var name = parts[0];
         
+        // Skip header rows
+        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'stock name' || 
+            name.toLowerCase() === 'ticker' || name.toLowerCase() === 'symbol') continue;
+        
+        // Find matching stock
         var stock = importState.stocks.find(function(s) { 
-            return s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
+            return s.name && s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
         });
         
-        if (stock) {
-            stock.ticker = ticker;         // Store Ticker
-            stock.isin = isin;
-            stock.sector = sector;
-            stock.industry = industry;
+        if (stock && parts.length >= 2) {
+            // Extract available fields based on position
+            if (parts[1]) stock.ticker = parts[1];
+            if (parts[2]) stock.isin = parts[2];
+            if (parts[3]) stock.sector = parts[3];
+            if (parts[4]) stock.industry = parts[4];
             stock.status = 'matched';
             matched++;
         }
-    });
+    }
     
     importState.stocks.forEach(function(s) {
         if (!s.status) s.status = 'AI_GENERATED';
@@ -698,6 +718,8 @@ function parseAIResponse() {
     
     var status = document.getElementById('step4-status');
     status.innerHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Matched ' + matched + '/' + 
+        importState.stocks.length + ' stocks</div>';
+} 
         importState.stocks.length + ' stocks</div>';
     
     showImportUI();
@@ -904,6 +926,23 @@ function renderStep7() {
     
     html += '</div>';
     
+    // Append vs Replace Option
+    html += '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;">' +
+        '<div style="color:#00ff88;font-weight:bold;margin-bottom:10px;">📥 Import Mode</div>' +
+        '<div style="display:flex;gap:10px;">' +
+        '<button onclick="setImportMode(\'append\')" id="btn-append" style="flex:1;padding:10px;' +
+        'background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;' +
+        'font-size:12px;">➕ APPEND to Portfolio</button>' +
+        '<button onclick="setImportMode(\'replace\')" id="btn-replace" style="flex:1;padding:10px;' +
+        'background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;' +
+        'font-size:12px;">🔄 REPLACE Portfolio</button>' +
+        '</div>' +
+        '<div style="margin-top:8px;font-size:10px;color:#888;">' +
+        '<b>APPEND:</b> Add new stocks to existing portfolio<br>' +
+        '<b>REPLACE:</b> Clear portfolio and import fresh' +
+        '</div>' +
+        '</div>';
+    
     // Data Summary
     if (isPATConfigured) {
         html += '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;' +
@@ -1018,6 +1057,26 @@ function generateSymbol(name) {
     return sym.substring(0, 10);
 }
 
+function setImportMode(mode) {
+    importState.importMode = mode;
+    
+    // Update button styles
+    var btnAppend = document.getElementById('btn-append');
+    var btnReplace = document.getElementById('btn-replace');
+    
+    if (mode === 'append') {
+        btnAppend.style.background = '#00ff88';
+        btnAppend.style.color = '#000';
+        btnReplace.style.background = '#333';
+        btnReplace.style.color = '#fff';
+    } else {
+        btnAppend.style.background = '#333';
+        btnAppend.style.color = '#fff';
+        btnReplace.style.background = '#00ff88';
+        btnReplace.style.color = '#000';
+    }
+}
+
 function postToGitHub() {
     var ghPAT = localStorage.getItem('ghPAT');
     var ghUser = localStorage.getItem('ghUser');
@@ -1028,21 +1087,34 @@ function postToGitHub() {
         return;
     }
     
-    if (!confirm('Post ' + importState.stocks.length + ' stocks to unified-symbols.json?')) {
+    if (!confirm('Post ' + importState.stocks.length + ' stocks (' + importState.importMode.toUpperCase() + ' mode) to unified-symbols.json?')) {
         return;
     }
     
     var status = document.getElementById('step7-status');
     status.innerHTML = '<span style="color:#ffb347;">⏳ Preparing data...</span>';
     
-    // Build JSON
+    // Build JSON based on import mode
     var unifiedData = {
         updated: new Date().toISOString(),
         count: importState.stocks.length,
         symbols: []
     };
     
-    importState.stocks.forEach(function(stock) {
+    // In REPLACE mode, start fresh; in APPEND mode, we'll merge later
+    var stocksToSave = importState.stocks;
+    
+    if (importState.importMode === 'replace') {
+        // Clear all existing stocks - just use new stocks
+        stocksToSave = importState.stocks;
+        unifiedData.count = stocksToSave.length;
+    } else {
+        // APPEND mode - will merge with existing (handled in GitHub fetch)
+        // For now just save the new stocks
+        unifiedData.count = stocksToSave.length;
+    }
+    
+    stocksToSave.forEach(function(stock) {
         var ticker = stock.ticker || '?';
         unifiedData.symbols.push({
             ticker: ticker,
@@ -1066,7 +1138,7 @@ function postToGitHub() {
     
     var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
     
-    // Get current SHA
+    // Get current SHA and optionally existing data (for APPEND mode)
     fetch(apiUrl, {
         headers: {
             'Authorization': 'token ' + ghPAT,
@@ -1076,6 +1148,45 @@ function postToGitHub() {
     .then(function(res) { return res.json(); })
     .then(function(data) {
         var sha = data.sha || undefined;
+        var finalData = unifiedData;
+        
+        // In APPEND mode, fetch and merge existing data
+        if (importState.importMode === 'append' && data.content) {
+            try {
+                var existingContent = atob(data.content);
+                var existingData = JSON.parse(existingContent);
+                
+                if (existingData.symbols) {
+                    // Create map of new stocks by ticker
+                    var newTickers = {};
+                    unifiedData.symbols.forEach(function(s) {
+                        newTickers[s.ticker] = s;
+                    });
+                    
+                    // Keep existing stocks that aren't being replaced
+                    var mergedSymbols = existingData.symbols.filter(function(existing) {
+                        return !newTickers[existing.ticker];
+                    });
+                    
+                    // Add new stocks
+                    mergedSymbols = mergedSymbols.concat(unifiedData.symbols);
+                    
+                    // Update final data
+                    finalData.symbols = mergedSymbols;
+                    finalData.count = mergedSymbols.length;
+                }
+            } catch(e) {
+                console.log('Could not parse existing data, will replace:', e);
+            }
+        }
+        
+        // Sort by ticker
+        finalData.symbols.sort(function(a, b) {
+            return a.ticker.localeCompare(b.ticker);
+        });
+        
+        var jsonContent = JSON.stringify(finalData, null, 2);
+        var base64Content = btoa(unescape(encodeURIComponent(jsonContent)));
         
         status.innerHTML = '<span style="color:#ffb347;">⏳ Posting to GitHub...</span>';
         
@@ -1086,7 +1197,7 @@ function postToGitHub() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                message: 'Import: ' + importState.stocks.length + ' stocks',
+                message: importState.importMode.toUpperCase() + ': ' + importState.stocks.length + ' stocks',
                 content: base64Content,
                 sha: sha
             })
@@ -1097,10 +1208,11 @@ function postToGitHub() {
         if (data.commit && data.commit.sha) {
             status.innerHTML = '<div style="color:#00ff88;"><b>✅ Posted Successfully!</b></div>' +
                 '<div style="margin:10px 0;font-size:11px;color:#888;">' +
+                'Mode: <b>' + importState.importMode.toUpperCase() + '</b><br>' +
                 'Message: ' + data.commit.message + '<br>' +
                 'SHA: ' + data.commit.sha.substring(0, 10) + '...<br>' +
                 'File: ' + data.content.name + '<br><br>' +
-                '<b style="color:#00ff88;">' + importState.stocks.length + ' stocks written to GitHub</b>' +
+                '<b style="color:#00ff88;">' + importState.stocks.length + ' stocks imported</b>' +
                 '</div>';
         } else {
             status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + (data.message || 'Unknown error') + '</span>';
