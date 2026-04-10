@@ -647,6 +647,90 @@ function updateGitHubTimestamps() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Load Portfolio from IndexedDB
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function loadPortfolioTable() {
+    var DB_NAME = "OnyxPortfolioDB";
+    var STORE_NAME = "Stocks";
+    
+    try {
+        var request = indexedDB.open(DB_NAME, 8);
+        
+        request.onerror = function() {
+            console.error('Failed to open IndexedDB');
+            renderTable([]);
+        };
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readonly');
+            var store = tx.objectStore(STORE_NAME);
+            var getAll = store.getAll();
+            
+            getAll.onerror = function() {
+                console.error('Failed to get stocks from IndexedDB');
+                renderTable([]);
+            };
+            
+            getAll.onsuccess = function() {
+                var stocks = getAll.result || [];
+                renderTable(stocks);
+            };
+        };
+    } catch(e) {
+        console.error('Error accessing IndexedDB:', e);
+        renderTable([]);
+    }
+}
+
+function renderTable(portfolio) {
+    var tbody = document.getElementById('portfolio-body');
+    if (!tbody) {
+        console.error('portfolio-body element not found');
+        return;
+    }
+    
+    if (portfolio.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded. Click "Load" to import stocks or sync from GitHub.</td></tr>';
+        return;
+    }
+    
+    var html = '';
+    for (var i = 0; i < portfolio.length; i++) {
+        var s = portfolio[i];
+        // Handle both uppercase (from IndexedDB) and lowercase field names
+        var sym = s.SYM || s.sym || s.ticker || '-';
+        var name = s.name || '-';
+        var type = s.type || 'PORTFOLIO';
+        var qty = s.QTY || s.qty || 0;
+        var avg = s.AVG || s.avg || 0;
+        var sector = s.SECTOR || s.sector || '-';
+        var isin = s.ISIN || s.isin || '-';
+        
+        html += '<tr>' +
+            '<td>' + sym + '</td>' +
+            '<td>' + name + '</td>' +
+            '<td>' + type + '</td>' +
+            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editQty(\'' + sym + '\', ' + qty + ')"><u>' + qty + '</u></td>' +
+            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editAvg(\'' + sym + '\', ' + avg + ')"><u>₹' + parseFloat(avg).toFixed(2) + '</u></td>' +
+            '<td>' + sector + '</td>' +
+            '<td>' + isin + '</td>' +
+            '<td><button onclick="deleteStock(\'' + sym + '\')" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td>' +
+            '</tr>';
+    }
+    tbody.innerHTML = html;
+}
+
+function closeImportModal() {
+    var modal = document.getElementById('import-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    document.body.classList.remove('modal-open');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Initialize on page load
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 window.addEventListener('DOMContentLoaded', function() {
