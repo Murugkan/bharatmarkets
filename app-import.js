@@ -20,6 +20,78 @@ function clearDebugLog() {
     debugLog = [];
 }
 
+var importState = {
+    step: 1,
+    stocks: [],
+    aiResponse: null
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FILE IMPORT HANDLER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function handleFileImport(file) {
+    if (!file) return;
+    
+    var status = document.getElementById('step1-status');
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Reading file...</span>';
+    
+    var ext = file.name.split('.').pop().toLowerCase();
+    
+    if (ext === 'csv' || ext === 'txt' || ext === 'tsv') {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                processImportCSV(e.target.result);
+                status.innerHTML = '<span style="color:#00ff88;">✅ File parsed successfully</span>';
+                renderStep1Preview();
+                showImportUI();
+                openImportWorkflow();
+            } catch(err) {
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Parse error: ' + err.message + '</span>';
+            }
+        };
+        reader.onerror = function() {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Error reading file</span>';
+        };
+        reader.readAsText(file);
+    } else if (ext === 'xls' || ext === 'xlsx') {
+        loadSheetJS(function() {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    var data = new Uint8Array(e.target.result);
+                    var wb = XLSX.read(data, {type: 'array'});
+                    
+                    if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+                        throw new Error('No sheets found in Excel file');
+                    }
+                    
+                    var ws = wb.Sheets[wb.SheetNames[0]];
+                    if (!ws) {
+                        throw new Error('Cannot read first sheet');
+                    }
+                    
+                    var csv = XLSX.utils.sheet_to_csv(ws);
+                    processImportCSV(csv);
+                    status.innerHTML = '<span style="color:#00ff88;">✅ Excel file parsed successfully</span>';
+                    renderStep1Preview();
+                    showImportUI();
+                    openImportWorkflow();
+                } catch(err) {
+                    status.innerHTML = '<span style="color:#ff6b85;">❌ Excel error: ' + err.message + '</span>';
+                }
+            };
+            reader.onerror = function() {
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Error reading Excel file</span>';
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    } else {
+        status.innerHTML = '<span style="color:#ff6b85;">❌ Unsupported file type. Use CSV or Excel.</span>';
+    }
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MAIN: Open Import Workflow
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
