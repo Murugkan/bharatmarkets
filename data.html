@@ -47,6 +47,46 @@
 </header>
 
 <div class="container">
+    <!-- GitHub PAT Configuration (Shared) -->
+    <div style="background:#0a0a0a;border:1px solid var(--b1);border-radius:8px;padding:15px;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="color:#00ff88;font-size:14px;margin:0;">🔐 GitHub Configuration</h3>
+            <span id="pat-status" style="font-size:11px;color:#ffb347;">⚠️ Not configured</span>
+        </div>
+        
+        <div id="pat-form" style="display:none;margin-bottom:12px;">
+            <div style="margin:8px 0;">
+                <label style="color:#888;font-size:11px;">GitHub PAT:</label><br>
+                <input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div style="margin:8px 0;">
+                <label style="color:#888;font-size:11px;">GitHub User:</label><br>
+                <input type="text" id="ghUser" placeholder="murugkan" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div style="margin:8px 0;">
+                <label style="color:#888;font-size:11px;">GitHub Repo:</label><br>
+                <input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <button onclick="savePATConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;width:100%;">Save Config</button>
+        </div>
+        
+        <div id="pat-display" style="display:none;padding:10px;background:#050505;border:1px solid #222;border-radius:4px;font-size:11px;margin-bottom:12px;">
+            <div style="color:#00ff88;font-weight:bold;margin-bottom:8px;">✅ Configured</div>
+            <div style="color:#888;">
+                User: <b id="display-user"></b><br>
+                Repo: <b id="display-repo"></b><br>
+                PAT: <b id="display-pat"></b>
+            </div>
+        </div>
+        
+        <div style="display:flex;gap:10px;">
+            <button onclick="togglePATForm()" id="toggle-btn" style="padding:8px 12px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">Edit Config</button>
+            <button onclick="testPATConnection()" style="padding:8px 12px;background:#007bff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">🧪 Test Connection</button>
+        </div>
+        
+        <div id="pat-message" style="margin-top:10px;font-size:11px;"></div>
+    </div>
+    
     <!-- Refresh Controls -->
     <div class="refresh-section">
         <div class="refresh-grid">
@@ -108,6 +148,116 @@
 
 <script src="app-import.js"></script>
 <script>
+
+// ===== PAT CONFIGURATION FUNCTIONS =====
+function initPATDisplay() {
+    var ghPAT = localStorage.getItem('ghPAT');
+    var ghUser = localStorage.getItem('ghUser');
+    var ghRepo = localStorage.getItem('ghRepo');
+    var isPATConfigured = ghPAT && ghUser && ghRepo;
+    
+    var patForm = document.getElementById('pat-form');
+    var patDisplay = document.getElementById('pat-display');
+    var patStatus = document.getElementById('pat-status');
+    var toggleBtn = document.getElementById('toggle-btn');
+    
+    if (isPATConfigured) {
+        // Show configured state
+        patForm.style.display = 'none';
+        patDisplay.style.display = 'block';
+        patStatus.innerHTML = '✅ Configured';
+        patStatus.style.color = '#00ff88';
+        toggleBtn.innerHTML = 'Edit Config';
+        
+        // Display config values
+        document.getElementById('display-user').innerHTML = ghUser;
+        document.getElementById('display-repo').innerHTML = ghRepo;
+        document.getElementById('display-pat').innerHTML = ghPAT.substring(0, 10) + '...';
+    } else {
+        // Show unconfigured state
+        patForm.style.display = 'block';
+        patDisplay.style.display = 'none';
+        patStatus.innerHTML = '⚠️ Not configured';
+        patStatus.style.color = '#ffb347';
+        toggleBtn.innerHTML = 'Hide Form';
+    }
+}
+
+function togglePATForm() {
+    var patForm = document.getElementById('pat-form');
+    if (patForm.style.display === 'none') {
+        patForm.style.display = 'block';
+    } else {
+        patForm.style.display = 'none';
+    }
+}
+
+function savePATConfig() {
+    var pat = document.getElementById('ghPAT').value.trim();
+    var user = document.getElementById('ghUser').value.trim();
+    var repo = document.getElementById('ghRepo').value.trim();
+    
+    if (!pat || !user || !repo) {
+        alert('❌ Please fill all fields');
+        return;
+    }
+    
+    if (!pat.startsWith('ghp_')) {
+        alert('❌ Invalid PAT format (should start with ghp_)');
+        return;
+    }
+    
+    localStorage.setItem('ghPAT', pat);
+    localStorage.setItem('ghUser', user);
+    localStorage.setItem('ghRepo', repo);
+    
+    alert('✅ GitHub configuration saved!');
+    initPATDisplay();
+    
+    // Clear inputs
+    document.getElementById('ghPAT').value = '';
+    document.getElementById('ghUser').value = '';
+    document.getElementById('ghRepo').value = '';
+}
+
+function testPATConnection() {
+    var ghPAT = localStorage.getItem('ghPAT');
+    var ghUser = localStorage.getItem('ghUser');
+    var ghRepo = localStorage.getItem('ghRepo');
+    
+    if (!ghPAT || !ghUser || !ghRepo) {
+        alert('❌ GitHub not configured. Save config first!');
+        return;
+    }
+    
+    var message = document.getElementById('pat-message');
+    message.innerHTML = '<span style="color:#ffb347;">🧪 Testing connection...</span>';
+    
+    // Test fetch to GitHub API
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    
+    fetch(apiUrl, {
+        headers: { 'Authorization': 'token ' + ghPAT }
+    })
+    .then(function(r) {
+        if (r.status === 200) {
+            message.innerHTML = '<span style="color:#00ff88;">✅ Connection successful!</span>';
+        } else if (r.status === 401) {
+            message.innerHTML = '<span style="color:#ff6b85;">❌ Invalid PAT (401)</span>';
+        } else if (r.status === 403) {
+            message.innerHTML = '<span style="color:#ff6b85;">❌ No write permission (403)</span>';
+        } else if (r.status === 404) {
+            message.innerHTML = '<span style="color:#ff6b85;">❌ Repo not found (404)</span>';
+        } else {
+            message.innerHTML = '<span style="color:#ff6b85;">❌ Error ' + r.status + '</span>';
+        }
+    })
+    .catch(function(err) {
+        message.innerHTML = '<span style="color:#ff6b85;">❌ Connection failed</span>';
+    });
+}
+
+// ===== END PAT CONFIGURATION =====
 function refreshPrices() {
     if (typeof refreshPortfolioData === 'function') {
         refreshPortfolioData();
@@ -381,7 +531,10 @@ function closeImportModal() {
 }
 
 // Load table on page load
-window.addEventListener('DOMContentLoaded', loadPortfolioTable);
+window.addEventListener('DOMContentLoaded', function() {
+    initPATDisplay();
+    loadPortfolioTable();
+});
 </script>
 
 </body>
