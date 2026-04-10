@@ -656,15 +656,23 @@ function copyPrompt() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep4() {
+    var hasStocks = importState.stocks && importState.stocks.length > 0;
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Paste AI Response</h3>' +
-        '<textarea id="ai-response" style="width:100%;height:200px;' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Enrich Data (Optional)</h3>' +
+        '<div style="padding:10px;background:#0a2a1a;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
+        '<b style="color:#00ff88;">ℹ️ Step 1 Required:</b><br>' +
+        'Upload CSV in Step 1 first. This step adds Ticker, ISIN, Sector details.' +
+        '</div>' +
+        '<textarea id="ai-response" style="width:100%;height:180px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Paste CSV/TSV response here" ' +
+        'placeholder="Paste comma/tab-separated:\nStock Name,Ticker,ISIN,Sector\nHDFC Bank,HDFCBANK,INE040A01034,Banking" ' +
         'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
         'onchange="autoParseAIResponse()"></textarea>' +
-        '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
+        '<div id="step4-status" style="margin:10px 0;font-size:12px;">' + 
+        (hasStocks ? '<span style="color:#00ff88;">✅ ' + importState.stocks.length + ' stocks ready to enrich</span>' : 
+                     '<span style="color:#ffb347;">⚠️ Complete Step 1 first (CSV upload)</span>') +
+        '</div>' +
         '</div>';
 }
 
@@ -672,7 +680,16 @@ function autoParseAIResponse() {
     var response = document.getElementById('ai-response').value;
     if (!response.trim()) return;
     
-    // Better delimiter detection
+    // Check if we have stocks from Step 1
+    if (!importState.stocks || importState.stocks.length === 0) {
+        var status = document.getElementById('step4-status');
+        if (status) {
+            status.innerHTML = '<span style="color:#ffb347;">⚠️ No stocks. Complete Step 1 (CSV upload) first.</span>';
+        }
+        return;
+    }
+    
+    // Detect delimiter
     if (response.includes('\t')) {
         parseAIResponse('\t');
     } else if (response.includes(',')) {
@@ -686,12 +703,10 @@ function autoParseAIResponse() {
 
 function parseAIResponse(delimiter) {
     var response = document.getElementById('ai-response').value;
-    if (!response.trim()) {
-        alert('Please paste AI response');
+    if (!response.trim() || !importState.stocks || importState.stocks.length === 0) {
         return;
     }
     
-    // Split by newlines (handle both \r\n and \n)
     var lines = response.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
     var matched = 0;
     
@@ -700,7 +715,7 @@ function parseAIResponse(delimiter) {
         if (line.length === 0) continue;
         
         var parts = line.split(delimiter).map(function(p) { return p.trim(); });
-        if (parts.length < 2) continue;
+        if (parts.length < 1) continue;
         
         var name = parts[0];
         
@@ -708,29 +723,31 @@ function parseAIResponse(delimiter) {
         if (name.toLowerCase() === 'name' || name.toLowerCase() === 'stock name' || 
             name.toLowerCase() === 'ticker' || name.toLowerCase() === 'symbol') continue;
         
-        // Find matching stock
+        // Find matching stock from Step 1
         var stock = importState.stocks.find(function(s) { 
             return s.name && s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
         });
         
-        if (stock && parts.length >= 2) {
-            // Extract available fields based on position
+        if (stock) {
+            // Enrich with additional data
             if (parts[1]) stock.ticker = parts[1];
             if (parts[2]) stock.isin = parts[2];
             if (parts[3]) stock.sector = parts[3];
             if (parts[4]) stock.industry = parts[4];
-            stock.status = 'matched';
+            stock.status = 'enriched';
             matched++;
         }
     }
     
-    importState.stocks.forEach(function(s) {
-        if (!s.status) s.status = 'AI_GENERATED';
-    });
-    
     var status = document.getElementById('step4-status');
-    status.innerHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Matched ' + matched + '/' + 
-        importState.stocks.length + ' stocks</div>';
+    if (status) {
+        if (matched > 0) {
+            status.innerHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Enriched ' + matched + '/' + 
+                importState.stocks.length + ' stocks</div>';
+        } else {
+            status.innerHTML = '<div style="color:#ffb347;">⚠️ No matching stocks found</div>';
+        }
+    }
     
     showImportUI();
 }
