@@ -61,7 +61,7 @@ function runEngineSync() {
         return fetch('./unified-symbols.json')
             .then(function(res) { 
                 if (!res.ok) {
-                    console.warn("unified-symbols.json not found, will use symbol as fallback");
+                    console.warn("unified-symbols.json not found");
                     return {};
                 }
                 return res.json();
@@ -90,7 +90,7 @@ function runEngineSync() {
                 pData = data[1];
                 showToast("Loaded from local cache");
                 console.log("Local data loaded:", Object.keys(fData.stocks || {}).length, "stocks");
-                return processAndStore(db, fData, pData, tickerMap);  // Pass tickerMap
+                return processAndStore(db, fData, pData, tickerMap);
             })
             .catch(function(localErr) {
                 console.warn("Local load failed, trying GitHub:", localErr);
@@ -112,7 +112,7 @@ function runEngineSync() {
                     pData = data[1];
                     showToast("Synced from GitHub");
                     console.log("GitHub data loaded:", Object.keys(fData.stocks || {}).length, "stocks");
-                    return processAndStore(db, fData, pData, tickerMap);  // Pass tickerMap
+                    return processAndStore(db, fData, pData, tickerMap);
                 });
             });
     }).catch(function(error) {
@@ -137,7 +137,6 @@ function processAndStore(db, fData, pData, tickerMap) {
         // Calculate total for weights
         var totalVal = 0;
         stocksArray.forEach(function(s) {
-            // Get ticker from map, fallback to sym
             var ticker = (tickerMap && tickerMap[s.name.toLowerCase()]) || s.sym || s.SYM || '';
             var p = pData[ticker] || {};
             totalVal += (p.ltp || 0) * (s.qty || 0);
@@ -145,14 +144,13 @@ function processAndStore(db, fData, pData, tickerMap) {
         
         // Store each stock
         stocksArray.forEach(function(stock) {
-            // Get ticker from map, fallback to sym
             var ticker = (tickerMap && tickerMap[stock.name.toLowerCase()]) || stock.sym || stock.SYM || '';
             var p = pData[ticker] || {};
             
             var unified = Object.assign({}, stock, {
-                sym: ticker,  // Store ticker as sym for compatibility
+                sym: ticker,
                 ltp: p.ltp || 0,
-                chg: p.chg || 0,
+                chg: p.chg || p.change || 0,
                 marketValue: (p.ltp || 0) * (stock.qty || 0),
                 weight: totalVal > 0 ? (((p.ltp || 0) * (stock.qty || 0)) / totalVal) * 100 : 0,
                 athDist: stock.ath ? ((stock.ath - p.ltp) / stock.ath) * 100 : 0,
