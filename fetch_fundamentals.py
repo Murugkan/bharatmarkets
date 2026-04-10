@@ -4,13 +4,13 @@ import os
 BharatMarkets Pro — Fundamentals Fetcher v3
 ============================================
 Reads symbols from:
-  symbols.json — single source of truth (portfolio + watchlist unified)
+  unified-symbols.json — single source of truth (portfolio + watchlist unified)
 
 Sources for data:
-  1. Yahoo Finance (yfinance) — primary, most fields
-  2. Screener.in              — prom%, FII%, DII%, gap fields
+  1. Yahoo Finance (yfinance) — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
+  2. Screener.in              — prom%, FII%, DII%, gap fields (if beautifulsoup4 installed)
 
-Writes: fundamentals.json
+Outputs: fundamentals.json with 30+ fields per stock
 """
 
 import json, time, datetime, re, os
@@ -59,15 +59,15 @@ DELISTED = set()
 
 
 # NSE symbol → Yahoo Finance ticker alias map
-# Rule: only add entries where NSE symbol ≠ Yahoo symbol
-# For most stocks, SYM.NS works directly — only exceptions listed here
-# ── Load shared symbol map (replaces hardcoded NSE_TO_YAHOO) ──────────
+# Optional: symbol_map.json can override tickers for stocks where NSE ≠ Yahoo
+# For most stocks, SYM.NS works directly — only exceptions need mapping
+# ── Load optional symbol map (NSE_TO_YAHOO overrides) ──────────
 import json as _json
 try:
     _sm = _json.loads(open("symbol_map.json").read())
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
 except Exception as _e:
-    print(f"⚠ symbol_map.json not found: {_e}")
+    # symbol_map.json is optional — script runs fine without it
     NSE_TO_YAHOO = {}
 
 # Runtime alias cache — populated by yahoo_search_sym during run
