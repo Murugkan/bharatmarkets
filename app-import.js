@@ -233,14 +233,17 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
-    // Find column indices - more flexible matching
+    // Find column indices - prioritize exact matches
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
     
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
-        if (h.includes('name') || h.includes('stock')) nameIdx = i;
+        // Check for 'stock' first to avoid matching 'sector name'
+        if (h.includes('stock') && h.includes('name')) nameIdx = i;
+        else if (nameIdx === -1 && h === 'name') nameIdx = i;
+        
         if (h.includes('qty') || h.includes('quantity') || h.includes('shares')) qtyIdx = i;
         if (h.includes('avg') || h.includes('average') || h.includes('price') || h.includes('cost')) avgIdx = i;
     }
@@ -273,12 +276,12 @@ function processImportCSV(csv) {
         
         if (qtyIdx >= 0 && qtyIdx < parts.length) {
             var qtyVal = parseFloat(parts[qtyIdx]);
-            if (!isNaN(qtyVal) && qtyVal > 0) qty = qtyVal;
+            if (!isNaN(qtyVal)) qty = qtyVal;
         }
         
         if (avgIdx >= 0 && avgIdx < parts.length) {
             var avgVal = parseFloat(parts[avgIdx]);
-            if (!isNaN(avgVal) && avgVal > 0) avg = avgVal;
+            if (!isNaN(avgVal)) avg = avgVal;
         }
         
         // Skip duplicates
@@ -286,7 +289,7 @@ function processImportCSV(csv) {
         seen.add(name);
         
         // Add stock if has valid name and at least one of qty/avg
-        if (name && (qty || avg)) {
+        if (name && (qty !== null || avg !== null)) {
             stocks.push({
                 name: name,
                 isin: '',
@@ -420,40 +423,24 @@ function renderStep2Preview() {
 function renderStep3() {
     var names = importState.stocks.map(function(s) { return s.name; }).join('\n');
     
-    var prompt = 'I have a CSV file with Indian stock portfolio data.\n\n' +
-        '═══ INPUT CSV STRUCTURE ═══\n' +
-        'Columns: Stock Name | Quantity | Average Cost Price\n' +
-        'Format: Names are company full names (e.g., "Tata Power Company Limited")\n\n' +
-        '═══ STOCKS TO ENRICH ═══\n' +
+    var prompt = 'For these Indian company names, get ISIN code, Sector, and Industry.\n\n' +
+        'Company Names:\n' +
         names + '\n\n' +
-        '═══ YOUR TASK ═══\n' +
-        'For EACH stock name above, find and return:\n' +
-        '1. NSE Ticker (e.g., TATAPOWER, HDFCBANK, RELIANCE)\n' +
-        '2. ISIN Code (format: INE + 10 chars, e.g., INE020A01017)\n' +
-        '3. Sector (e.g., Utilities, Banking, Energy)\n' +
-        '4. Industry (e.g., Power, Financial Services, Oil & Gas)\n\n' +
-        '⚠️ CRITICAL OUTPUT FORMAT (pipe separated, NO spaces around pipes):\n\n' +
-        'Stock Name|Ticker|ISIN|Sector|Industry\n' +
-        'HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services\n' +
-        'Reliance Industries Limited|RELIANCE|INE002A01015|Energy|Oil & Gas\n' +
-        'Tata Power Company Limited|TATAPOWER|INE020A01017|Utilities|Power\n' +
-        'Infosys Limited|INFY|INE009A01021|Technology|IT Services\n' +
-        'State Bank of India|SBIN|INE062A01020|Financial Services|Banking\n\n' +
-        '═══ RULES (IMPORTANT) ═══\n' +
-        '• Match EXACT stock names from the input list (case-insensitive OK)\n' +
-        '• Get CORRECT NSE Ticker symbol (not initials, actual ticker)\n' +
-        '• Get proper ISIN code (always starts with INE for Indian stocks)\n' +
-        '• Get accurate Sector classification\n' +
-        '• Get specific Industry within sector\n' +
-        '• NO spaces around pipe (|) delimiters\n' +
-        '• Output ONLY the table data, NO headers, NO extra text, NO explanations\n' +
-        '• If you cannot find data for a stock, still output the row with ? for unknown fields';
+        '⚠️ CRITICAL OUTPUT FORMAT (no extra spaces, pipe separated):\n\n' +
+        'Name|ISIN|Sector|Industry\n' +
+        'HDFC Bank Limited|INE040A01034|Banking|Financial Services\n' +
+        'Reliance Industries Limited|INE002A01015|Energy|Oil & Gas\n' +
+        '\n' +
+        'Rules:\n' +
+        '• Match EXACT company names (case-insensitive)\n' +
+        '• Get ISIN code (format: INE + 10 chars)\n' +
+        '• No spaces around pipe (|) characters\n' +
+        '• Output ONLY the table, no extra text';
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Generate AI Prompt</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Copy prompt → Paste in ChatGPT/Claude → Get NSE Tickers, ISINs & Sector data<br>' +
-        '<b style="color:#00ff88;">Tip:</b> Make sure AI output matches the exact format (use pipe delimiter, no spaces)' +
+        'Copy prompt → Paste in ChatGPT/Claude → Get ISIN & Sector' +
         '</p>' +
         '<textarea id="ai-prompt" readonly style="width:100%;height:300px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
@@ -482,7 +469,7 @@ function renderStep4() {
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Stock Name|Ticker|ISIN|Sector|Industry&#10;HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services&#10;Tata Power Company Limited|TATAPOWER|INE020A01017|Utilities|Power" ' +
+        'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services" ' +
         'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
         'onchange="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
@@ -509,22 +496,20 @@ function parseAIResponse() {
     lines.forEach(function(line) {
         if (!line.includes('|')) return;
         var parts = line.split('|');
-        if (parts.length < 5) return;  // Changed from 4 to 5 (now includes Ticker)
+        if (parts.length < 4) return;
         
         var name = parts[0].trim();
-        var ticker = parts[1].trim();      // NEW: Extract Ticker
-        var isin = parts[2].trim();
-        var sector = parts[3].trim();
-        var industry = parts[4].trim();
+        var isin = parts[1].trim();
+        var sector = parts[2].trim();
+        var industry = parts[3].trim();
         
-        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'ticker') return;
+        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'symbol') return;
         
         var stock = importState.stocks.find(function(s) { 
             return s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
         });
         
         if (stock) {
-            stock.ticker = ticker;             // NEW: Store Ticker
             stock.isin = isin;
             stock.sector = sector;
             stock.industry = industry;
@@ -555,7 +540,6 @@ function renderStep5() {
         '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;">Name</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;">Ticker</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;">ISIN</th>' +
         '<th style="padding:4px 6px;text-align:left;color:#00ff88;">Sector</th>' +
         '<th style="padding:4px 6px;text-align:right;color:#00ff88;">Qty</th>' +
@@ -570,8 +554,6 @@ function renderStep5() {
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;">' +
             '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
             stock.name.substring(0, 25) + '</td>' +
-            '<td style="padding:4px 6px;color:#00ff88;font-weight:bold;" onclick="editCell(this, ' + idx + ', \'ticker\')">' +
-            (stock.ticker || '?') + '</td>' +
             '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
             '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
@@ -830,9 +812,9 @@ function generateJSONPreview() {
     };
     
     importState.stocks.forEach(function(stock) {
-        var ticker = stock.ticker || '?';  // Changed from stock.symbol
+        var sym = stock.symbol || generateSymbol(stock.name);
         unifiedData.symbols.push({
-            ticker: ticker,              // Changed from sym
+            sym: sym,
             name: stock.name,
             isin: stock.isin,
             sector: stock.sector,
@@ -843,7 +825,7 @@ function generateJSONPreview() {
     });
     
     unifiedData.symbols.sort(function(a, b) {
-        return a.ticker.localeCompare(b.ticker);  // Changed from a.sym
+        return a.sym.localeCompare(b.sym);
     });
     
     var jsonString = JSON.stringify(unifiedData, null, 2);
@@ -887,9 +869,9 @@ function postToGitHub() {
     };
     
     importState.stocks.forEach(function(stock) {
-        var ticker = stock.ticker || '?';  // Changed from stock.symbol
+        var sym = stock.symbol || generateSymbol(stock.name);
         unifiedData.symbols.push({
-            ticker: ticker,              // Changed from sym
+            sym: sym,
             name: stock.name,
             isin: stock.isin,
             sector: stock.sector,
@@ -900,7 +882,7 @@ function postToGitHub() {
     });
     
     unifiedData.symbols.sort(function(a, b) {
-        return a.ticker.localeCompare(b.ticker);  // Changed from a.sym
+        return a.sym.localeCompare(b.sym);
     });
     
     var jsonContent = JSON.stringify(unifiedData, null, 2);
