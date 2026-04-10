@@ -233,25 +233,52 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
-    // Find column indices - prioritize exact matches
+    // Find column indices - robust matching with logging
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
     
+    console.log("CSV Headers:", headerParts);
+    
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
-        // Check for 'stock' first to avoid matching 'sector name'
-        if (h.includes('stock') && h.includes('name')) nameIdx = i;
-        else if (nameIdx === -1 && h === 'name') nameIdx = i;
         
-        if (h.includes('qty') || h.includes('quantity') || h.includes('shares')) qtyIdx = i;
-        if (h.includes('avg') || h.includes('average') || h.includes('price') || h.includes('cost')) avgIdx = i;
+        // Stock Name - explicit match
+        if (h === 'stock name' || (h.includes('stock') && h.includes('name'))) {
+            nameIdx = i;
+            console.log("Found name column at index", i, ":", h);
+        }
+        
+        // Quantity - various forms but not "value"
+        if ((h === 'quantity' || h === 'qty' || h === 'shares' || h.includes('quantity')) && 
+            !h.includes('value')) {
+            qtyIdx = i;
+            console.log("Found qty column at index", i, ":", h);
+        }
+        
+        // Average Price - must have both average/avg AND price/cost
+        if ((h.includes('average') || h.includes('avg')) && 
+            (h.includes('price') || h.includes('cost'))) {
+            avgIdx = i;
+            console.log("Found avg column at index", i, ":", h);
+        }
     }
     
-    // Default to first 3 columns if headers not found
-    if (nameIdx === -1) nameIdx = 0;
-    if (qtyIdx === -1 && headerParts.length > 1) qtyIdx = 1;
-    if (avgIdx === -1 && headerParts.length > 2) avgIdx = 2;
+    // Fallback defaults ONLY if detection failed
+    if (nameIdx === -1) {
+        nameIdx = 0;
+        console.log("Using fallback: name column at index 0");
+    }
+    if (qtyIdx === -1 && headerParts.length > 1) {
+        qtyIdx = 1;
+        console.log("Using fallback: qty column at index 1");
+    }
+    if (avgIdx === -1 && headerParts.length > 2) {
+        avgIdx = 2;
+        console.log("Using fallback: avg column at index 2");
+    }
+    
+    console.log("Final indices - name[" + nameIdx + "], qty[" + qtyIdx + "], avg[" + avgIdx + "]");
     
     var stocks = [];
     var seen = new Set();
@@ -282,6 +309,11 @@ function processImportCSV(csv) {
         if (avgIdx >= 0 && avgIdx < parts.length) {
             var avgVal = parseFloat(parts[avgIdx]);
             if (!isNaN(avgVal)) avg = avgVal;
+        }
+        
+        // Log first 3 rows for debugging
+        if (i <= 3) {
+            console.log("Row", i, "- name:", name, "| qty[" + qtyIdx + "]:", qty, "| avg[" + avgIdx + "]:", avg);
         }
         
         // Skip duplicates
@@ -423,16 +455,17 @@ function renderStep2Preview() {
 function renderStep3() {
     var names = importState.stocks.map(function(s) { return s.name; }).join('\n');
     
-    var prompt = 'For these Indian company names, get ISIN code, Sector, and Industry.\n\n' +
+    var prompt = 'For these Indian company names, get NSE Ticker, ISIN code, Sector, and Industry.\n\n' +
         'Company Names:\n' +
         names + '\n\n' +
         '⚠️ CRITICAL OUTPUT FORMAT (no extra spaces, pipe separated):\n\n' +
-        'Name|ISIN|Sector|Industry\n' +
-        'HDFC Bank Limited|INE040A01034|Banking|Financial Services\n' +
-        'Reliance Industries Limited|INE002A01015|Energy|Oil & Gas\n' +
+        'Name|Ticker|ISIN|Sector|Industry\n' +
+        'HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services\n' +
+        'Reliance Industries Limited|RELIANCE|INE002A01015|Energy|Oil & Gas\n' +
         '\n' +
         'Rules:\n' +
         '• Match EXACT company names (case-insensitive)\n' +
+        '• Get NSE Ticker (e.g., HDFCBANK, RELIANCE, TATAPOWER)\n' +
         '• Get ISIN code (format: INE + 10 chars)\n' +
         '• No spaces around pipe (|) characters\n' +
         '• Output ONLY the table, no extra text';
@@ -469,7 +502,7 @@ function renderStep4() {
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Name|ISIN|Sector|Industry&#10;HDFC Bank Limited|INE040A01034|Banking|Financial Services" ' +
+        'placeholder="Name|Ticker|ISIN|Sector|Industry&#10;HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services" ' +
         'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
         'onchange="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
@@ -496,20 +529,22 @@ function parseAIResponse() {
     lines.forEach(function(line) {
         if (!line.includes('|')) return;
         var parts = line.split('|');
-        if (parts.length < 4) return;
+        if (parts.length < 5) return;  // Now expects 5 fields
         
         var name = parts[0].trim();
-        var isin = parts[1].trim();
-        var sector = parts[2].trim();
-        var industry = parts[3].trim();
+        var ticker = parts[1].trim();    // NEW: Extract Ticker
+        var isin = parts[2].trim();
+        var sector = parts[3].trim();
+        var industry = parts[4].trim();
         
-        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'symbol') return;
+        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'ticker') return;
         
         var stock = importState.stocks.find(function(s) { 
             return s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
         });
         
         if (stock) {
+            stock.ticker = ticker;         // NEW: Store Ticker
             stock.isin = isin;
             stock.sector = sector;
             stock.industry = industry;
