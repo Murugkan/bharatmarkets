@@ -204,7 +204,46 @@ function render() {
 
 function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
+
+// Debug logging
+var debugLog = [];
+function addDebugLog(msg) {
+    debugLog.push(msg);
+    var el = document.getElementById('debug-log');
+    if (el) {
+        el.textContent = debugLog.join('\n');
+        el.scrollTop = el.scrollHeight;
+    }
+    console.log(msg);
+}
+
+function showToast(msg) {
+    console.log('Toast:', msg);
+    addDebugLog(msg);
+}
+
 init();
 </script>
+
+<!-- Debug Log Window -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var logDiv = document.createElement('div');
+    logDiv.id = 'debug-log';
+    logDiv.style.cssText = 'position:fixed;bottom:100px;right:10px;width:300px;height:200px;background:#0a0a0a;border:1px solid #00ff88;border-radius:4px;padding:10px;color:#00ff88;font-size:9px;font-family:monospace;overflow-y:auto;z-index:9999;display:none;';
+    document.body.appendChild(logDiv);
+    
+    // Toggle with Ctrl+Shift+D
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+            var log = document.getElementById('debug-log');
+            log.style.display = log.style.display === 'none' ? 'block' : 'none';
+        }
+    });
+});
+</script>
+
+<!-- Import Engine -->
+<script src="app-engine.js"></script>
 </body>
 </html>
