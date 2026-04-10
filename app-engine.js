@@ -55,56 +55,73 @@ function runEngineSync() {
         showToast("Engine Syncing...");
         console.log("Starting data sync...");
         
-        var fData, pData;
+        var fData, pData, tickerMap = {};
         
-        // STEP 1: Try loading from local files first
-        return Promise.all([
-            fetch('./fundamentals.json'),
-            fetch('./prices.json')
-        ])
-        .then(function(responses) {
-            if (!responses[0].ok || !responses[1].ok) {
-                throw new Error('Local files not found');
-            }
-            return Promise.all([responses[0].json(), responses[1].json()]);
-        })
-        .then(function(data) {
-            fData = data[0];
-            pData = data[1];
-            showToast("Loaded from local cache");
-            console.log("Local data loaded:", Object.keys(fData.stocks || {}).length, "stocks");
-            return processAndStore(db, fData, pData);
-        })
-        .catch(function(localErr) {
-            console.warn("Local load failed, trying GitHub:", localErr);
-            showToast("Syncing from GitHub...");
-            
-            // STEP 2: Fallback to GitHub if local fails
-            return Promise.all([
-                fetch('https://raw.githubusercontent.com/murugkan/bharatmarkets/main/fundamentals.json'),
-                fetch('https://raw.githubusercontent.com/murugkan/bharatmarkets/main/prices.json')
-            ])
+        // STEP 0: Load unified-symbols.json to get ticker mappings
+        return fetch('./unified-symbols.json')
+            .then(function(res) { 
+                if (!res.ok) {
+                    console.warn("unified-symbols.json not found, will use symbol as fallback");
+                    return {};
+                }
+                return res.json();
+            })
+            .then(function(unifiedData) {
+                // Build map: name → ticker
+                (unifiedData.symbols || []).forEach(function(s) {
+                    tickerMap[s.name.toLowerCase()] = s.ticker;
+                });
+                console.log("Loaded ticker map with", Object.keys(tickerMap).length, "entries");
+                
+                // STEP 1: Try loading from local files first
+                return Promise.all([
+                    fetch('./fundamentals.json'),
+                    fetch('./prices.json')
+                ]);
+            })
             .then(function(responses) {
                 if (!responses[0].ok || !responses[1].ok) {
-                    throw new Error('GitHub fetch failed');
+                    throw new Error('Local files not found');
                 }
                 return Promise.all([responses[0].json(), responses[1].json()]);
             })
             .then(function(data) {
                 fData = data[0];
                 pData = data[1];
-                showToast("Synced from GitHub");
-                console.log("GitHub data loaded:", Object.keys(fData.stocks || {}).length, "stocks");
-                return processAndStore(db, fData, pData);
+                showToast("Loaded from local cache");
+                console.log("Local data loaded:", Object.keys(fData.stocks || {}).length, "stocks");
+                return processAndStore(db, fData, pData, tickerMap);  // Pass tickerMap
+            })
+            .catch(function(localErr) {
+                console.warn("Local load failed, trying GitHub:", localErr);
+                showToast("Syncing from GitHub...");
+                
+                // STEP 2: Fallback to GitHub if local fails
+                return Promise.all([
+                    fetch('https://raw.githubusercontent.com/murugkan/bharatmarkets/main/fundamentals.json'),
+                    fetch('https://raw.githubusercontent.com/murugkan/bharatmarkets/main/prices.json')
+                ])
+                .then(function(responses) {
+                    if (!responses[0].ok || !responses[1].ok) {
+                        throw new Error('GitHub fetch failed');
+                    }
+                    return Promise.all([responses[0].json(), responses[1].json()]);
+                })
+                .then(function(data) {
+                    fData = data[0];
+                    pData = data[1];
+                    showToast("Synced from GitHub");
+                    console.log("GitHub data loaded:", Object.keys(fData.stocks || {}).length, "stocks");
+                    return processAndStore(db, fData, pData, tickerMap);  // Pass tickerMap
+                });
             });
-        });
     }).catch(function(error) {
         console.error("Sync failed:", error);
         showToast("Sync failed");
     });
 }
 
-function processAndStore(db, fData, pData) {
+function processAndStore(db, fData, pData, tickerMap) {
     return new Promise(function(resolve, reject) {
         var tx = db.transaction(STORES.UNIFIED, 'readwrite');
         var store = tx.objectStore(STORES.UNIFIED);
@@ -120,18 +137,20 @@ function processAndStore(db, fData, pData) {
         // Calculate total for weights
         var totalVal = 0;
         stocksArray.forEach(function(s) {
-            var sym = s.sym || s.SYM || '';
-            var p = pData[sym] || {};
+            // Get ticker from map, fallback to sym
+            var ticker = (tickerMap && tickerMap[s.name.toLowerCase()]) || s.sym || s.SYM || '';
+            var p = pData[ticker] || {};
             totalVal += (p.ltp || 0) * (s.qty || 0);
         });
         
         // Store each stock
         stocksArray.forEach(function(stock) {
-            var sym = stock.sym || stock.SYM || '';
-            var p = pData[sym] || {};
+            // Get ticker from map, fallback to sym
+            var ticker = (tickerMap && tickerMap[stock.name.toLowerCase()]) || stock.sym || stock.SYM || '';
+            var p = pData[ticker] || {};
             
             var unified = Object.assign({}, stock, {
-                sym: sym,
+                sym: ticker,  // Store ticker as sym for compatibility
                 ltp: p.ltp || 0,
                 chg: p.chg || 0,
                 marketValue: (p.ltp || 0) * (stock.qty || 0),
