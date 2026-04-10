@@ -3,27 +3,7 @@
  * GitHub Source to IndexedDB Shadow Store
  */
 
-// Toast notification (works without external dependencies)
-function showToast(message, duration) {
-    duration = duration || 2000;
-    console.log("[TOAST]", message);
-    
-    // Create toast element if needed
-    let toast = document.getElementById('app-toast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'app-toast';
-        toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#00f2ff;color:#000;padding:12px 24px;border-radius:4px;font-size:12px;font-weight:800;z-index:9999;opacity:0.9;';
-        document.body.appendChild(toast);
-    }
-    
-    toast.textContent = message;
-    toast.style.display = 'block';
-    
-    setTimeout(function() {
-        toast.style.display = 'none';
-    }, duration);
-}
+// Note: showToast is defined in index.html
 
 // 1. Database Configuration
 var DB_NAME = 'BharatEngineDB';
