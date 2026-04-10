@@ -195,15 +195,128 @@ function render() {
 function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
 
+// ===== SYNC ENGINE (inline) =====
+function runEngineSync() {
+    addDebugLog('🔄 SYNC started...');
+    
+    Promise.all([
+        fetch('./unified-symbols.json'),
+        fetch('./fundamentals.json'),
+        fetch('./prices.json')
+    ])
+    .then(function(responses) {
+        addDebugLog('📥 All responses received');
+        
+        // Check status codes
+        if (!responses[0].ok) {
+            addDebugLog('❌ unified-symbols.json: ' + responses[0].status);
+            throw new Error('unified-symbols.json failed: ' + responses[0].status);
+        }
+        if (!responses[1].ok) {
+            addDebugLog('❌ fundamentals.json: ' + responses[1].status);
+            throw new Error('fundamentals.json failed: ' + responses[1].status);
+        }
+        if (!responses[2].ok) {
+            addDebugLog('❌ prices.json: ' + responses[2].status);
+            throw new Error('prices.json failed: ' + responses[2].status);
+        }
+        
+        addDebugLog('✅ All files OK');
+        return Promise.all([
+            responses[0].json().catch(function(e) { 
+                addDebugLog('❌ unified-symbols.json parse error');
+                throw e;
+            }),
+            responses[1].json().catch(function(e) {
+                addDebugLog('❌ fundamentals.json parse error');
+                throw e;
+            }),
+            responses[2].json().catch(function(e) {
+                addDebugLog('❌ prices.json parse error');
+                throw e;
+            })
+        ]);
+    })
+    .then(function(data) {
+        var unifiedData = data[0];
+        var fundData = data[1];
+        var priceData = data[2];
+        
+        addDebugLog('✅ All files parsed');
+        addDebugLog('📊 unified: ' + (unifiedData.symbols ? unifiedData.symbols.length : 0) + ' stocks');
+        addDebugLog('📈 prices: ' + (priceData.quotes ? Object.keys(priceData.quotes).length : 0) + ' prices');
+        
+        // Build ticker map
+        var tickerMap = {};
+        (unifiedData.symbols || []).forEach(function(s) {
+            tickerMap[s.name.toLowerCase()] = s.ticker;
+        });
+        addDebugLog('🔑 ticker map: ' + Object.keys(tickerMap).length + ' entries');
+        
+        // Open IndexedDB and store
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readwrite');
+            var store = tx.objectStore(STORE_NAME);
+            
+            // Clear old data
+            store.clear();
+            
+            // Get stocks from fundamentals
+            var stocks = fundData.stocks || {};
+            var count = 0;
+            
+            for (var ticker in stocks) {
+                var stock = stocks[ticker];
+                var priceQuotes = priceData.quotes || priceData;
+                var price = priceQuotes[ticker] || {};
+                
+                var record = {
+                    SYM: ticker,
+                    SYMBOL: ticker,
+                    TICKER: ticker,
+                    LTP: price.ltp || 0,
+                    name: stock.name || ticker,
+                    SECTOR: stock.sector || 'OTHER',
+                    PNL: stock.pnl || 0,
+                    'PNL%': stock.pnl_pct || 0,
+                    '1D%': price.changePct || 0,
+                    AVG: stock.avg || 0,
+                    INVESTED: (stock.qty || 0) * (stock.avg || 0),
+                    QTY: stock.qty || 0,
+                    MCAP: stock.mcap || 0,
+                    PE: price.pe || null,
+                    PB: price.pb || null,
+                    ROE: price.roe || null,
+                    OPM: price.opm || null,
+                    NPM: price.npm || null
+                };
+                
+                store.put(record);
+                count++;
+            }
+            
+            tx.oncomplete = function() {
+                addDebugLog('✅ Stored ' + count + ' stocks');
+                MASTER = [];
+                init();
+            };
+            tx.onerror = function() {
+                addDebugLog('❌ DB error: ' + tx.error);
+            };
+        };
+        req.onerror = function() {
+            addDebugLog('❌ Cannot open DB');
+        };
+    })
+    .catch(function(err) {
+        addDebugLog('❌ Sync error: ' + err.message);
+        console.error('Detailed error:', err);
+    });
+}
+
 init();
-</script>
-
-<!-- Load Engine -->
-<script src="app-engine.js"></script>
-
-<script>
-addDebugLog('🔧 Engine file loaded');
-addDebugLog('runEngineSync: ' + (typeof runEngineSync));
 </script>
 
 </body>
