@@ -420,26 +420,40 @@ function renderStep2Preview() {
 function renderStep3() {
     var names = importState.stocks.map(function(s) { return s.name; }).join('\n');
     
-    var prompt = 'For these Indian company names, get NSE Ticker, ISIN code, Sector, and Industry.\n\n' +
-        'Company Names:\n' +
+    var prompt = 'I have a CSV file with Indian stock portfolio data.\n\n' +
+        '═══ INPUT CSV STRUCTURE ═══\n' +
+        'Columns: Stock Name | Quantity | Average Cost Price\n' +
+        'Format: Names are company full names (e.g., "Tata Power Company Limited")\n\n' +
+        '═══ STOCKS TO ENRICH ═══\n' +
         names + '\n\n' +
-        '⚠️ CRITICAL OUTPUT FORMAT (no extra spaces, pipe separated):\n\n' +
-        'Name|Ticker|ISIN|Sector|Industry\n' +
+        '═══ YOUR TASK ═══\n' +
+        'For EACH stock name above, find and return:\n' +
+        '1. NSE Ticker (e.g., TATAPOWER, HDFCBANK, RELIANCE)\n' +
+        '2. ISIN Code (format: INE + 10 chars, e.g., INE020A01017)\n' +
+        '3. Sector (e.g., Utilities, Banking, Energy)\n' +
+        '4. Industry (e.g., Power, Financial Services, Oil & Gas)\n\n' +
+        '⚠️ CRITICAL OUTPUT FORMAT (pipe separated, NO spaces around pipes):\n\n' +
+        'Stock Name|Ticker|ISIN|Sector|Industry\n' +
         'HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services\n' +
         'Reliance Industries Limited|RELIANCE|INE002A01015|Energy|Oil & Gas\n' +
         'Tata Power Company Limited|TATAPOWER|INE020A01017|Utilities|Power\n' +
-        '\n' +
-        'Rules:\n' +
-        '• Match EXACT company names (case-insensitive)\n' +
-        '• Get NSE Ticker (e.g., HDFCBANK, RELIANCE, TATAPOWER)\n' +
-        '• Get ISIN code (format: INE + 10 chars)\n' +
-        '• No spaces around pipe (|) characters\n' +
-        '• Output ONLY the table, no extra text';
+        'Infosys Limited|INFY|INE009A01021|Technology|IT Services\n' +
+        'State Bank of India|SBIN|INE062A01020|Financial Services|Banking\n\n' +
+        '═══ RULES (IMPORTANT) ═══\n' +
+        '• Match EXACT stock names from the input list (case-insensitive OK)\n' +
+        '• Get CORRECT NSE Ticker symbol (not initials, actual ticker)\n' +
+        '• Get proper ISIN code (always starts with INE for Indian stocks)\n' +
+        '• Get accurate Sector classification\n' +
+        '• Get specific Industry within sector\n' +
+        '• NO spaces around pipe (|) delimiters\n' +
+        '• Output ONLY the table data, NO headers, NO extra text, NO explanations\n' +
+        '• If you cannot find data for a stock, still output the row with ? for unknown fields';
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Generate AI Prompt</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Copy prompt → Paste in ChatGPT/Claude → Get ISIN & Sector' +
+        'Copy prompt → Paste in ChatGPT/Claude → Get NSE Tickers, ISINs & Sector data<br>' +
+        '<b style="color:#00ff88;">Tip:</b> Make sure AI output matches the exact format (use pipe delimiter, no spaces)' +
         '</p>' +
         '<textarea id="ai-prompt" readonly style="width:100%;height:300px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
@@ -468,7 +482,7 @@ function renderStep4() {
         '<textarea id="ai-response" style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Name|Ticker|ISIN|Sector|Industry&#10;HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services" ' +
+        'placeholder="Stock Name|Ticker|ISIN|Sector|Industry&#10;HDFC Bank Limited|HDFCBANK|INE040A01034|Banking|Financial Services&#10;Tata Power Company Limited|TATAPOWER|INE020A01017|Utilities|Power" ' +
         'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
         'onchange="autoParseAIResponse()"></textarea>' +
         '<div id="step4-status" style="margin:10px 0;font-size:12px;"></div>' +
