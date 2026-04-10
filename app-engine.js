@@ -136,16 +136,17 @@ function processAndStore(db, fData, pData, tickerMap) {
         
         // Calculate total for weights
         var totalVal = 0;
+        var priceQuotes = pData.quotes || pData;
         stocksArray.forEach(function(s) {
             var ticker = (tickerMap && tickerMap[s.name.toLowerCase()]) || s.sym || s.SYM || '';
-            var p = pData[ticker] || {};
+            var p = priceQuotes[ticker] || {};
             totalVal += (p.ltp || 0) * (s.qty || 0);
         });
         
         // Store each stock
         stocksArray.forEach(function(stock) {
             var ticker = (tickerMap && tickerMap[stock.name.toLowerCase()]) || stock.sym || stock.SYM || '';
-            var p = pData[ticker] || {};
+            var p = priceQuotes[ticker] || {};
             
             var unified = Object.assign({}, stock, {
                 sym: ticker,
