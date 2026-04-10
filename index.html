@@ -49,6 +49,13 @@
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
 <div id="status">Loading Pro Engine...</div>
+
+<!-- LOG WINDOW FOR iPhone -->
+<div style="background:#000;border:2px solid #00ff88;border-radius:6px;padding:8px;margin:8px;max-height:120px;overflow-y:auto;">
+    <div style="color:#00ff88;font-weight:bold;font-size:9px;margin-bottom:5px;">📋 LOG</div>
+    <div id="debug-log-window" style="color:#00ff88;font-size:9px;font-family:monospace;white-space:pre-wrap;word-break:break-all;"></div>
+</div>
+
 <div class="view"><div id="app"></div></div>
 
 <footer>
@@ -58,14 +65,21 @@
 </footer>
 
 <script>
-// ===== DEBUG LOG (Console only) =====
+// ===== DEBUG LOG - VISIBLE ON PAGE FOR iPhone =====
 function addDebugLog(msg) {
     var ts = new Date().toLocaleTimeString();
-    console.log('[' + ts + '] ' + msg);
+    var logMsg = '[' + ts + '] ' + msg;
+    
+    var logDiv = document.getElementById('debug-log-window');
+    if (logDiv) {
+        logDiv.innerHTML += logMsg + '\n';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    console.log(logMsg);
 }
 
 function showToast(msg) {
-    console.log('📢 ' + msg);
+    addDebugLog('📢 ' + msg);
 }
 
 // ===== PORTFOLIO CODE =====
