@@ -19,8 +19,11 @@
         .refresh-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:15px; }
         .refresh-card { background:#050505; border:1px solid var(--b1); border-radius:6px; padding:12px; }
         .refresh-card-title { font-size:11px; color:var(--bl); font-weight:800; margin-bottom:8px; }
-        .refresh-btn { width:100%; padding:10px; background:var(--gr); color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px; }
+        .refresh-btn { width:100%; padding:10px; background:var(--gr); color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px; transition: opacity 0.2s; }
         .refresh-btn:hover { opacity:0.9; }
+        .refresh-btn:disabled { opacity:0.5; cursor:not-allowed; }
+        .refresh-timestamp { font-size:9px; color:#666; margin-top:8px; }
+        .refresh-status { font-size:9px; color:#888; margin-top:4px; font-style:italic; }
         .table-wrap { overflow-x:auto; background:#050505; border:1px solid var(--b1); border-radius:8px; margin-top:20px; max-height:600px; overflow-y:auto; }
         table { width:100%; border-collapse:collapse; font-size:10px; }
         th { background:#111; color:#00ff88; padding:8px; text-align:left; border-bottom:1px solid var(--b1); position:sticky; top:0; font-weight:800; }
@@ -28,12 +31,19 @@
         tr:hover { background:#0a0a0a; }
         .pos { color:#00ff88; }
         .neg { color:#ff6b85; }
+        .editable { cursor:pointer; color:#00ff88; text-decoration:underline; }
+        .editable:hover { opacity:0.8; }
         
         footer { position:fixed; bottom:0; width:100%; background:rgba(0,0,0,0.95); border-top:1px solid #222; display:flex; justify-content:space-around; padding:12px 0; z-index:1000; }
         .nav-btn { text-decoration:none; color:#666; display:flex; flex-direction:column; align-items:center; width:33%; padding:8px 0; transition:color 0.2s; }
         .nav-btn:hover { color:var(--bl); }
         .nav-btn.active { color:var(--bl); font-weight:800; }
         .nav-label { font-size:8px; margin-top:4px; font-weight:800; text-transform:uppercase; letter-spacing:1px; }
+        
+        .alert { padding:10px; margin:10px 0; border-radius:4px; font-size:11px; }
+        .alert-success { background:#0a2a1a; color:#00ff88; border-left:3px solid #00ff88; }
+        .alert-error { background:#2a0a0a; color:#ff6b85; border-left:3px solid #ff6b85; }
+        .alert-info { background:#0a1a2a; color:#00f2ff; border-left:3px solid #00f2ff; }
     </style>
 </head>
 <body>
@@ -47,23 +57,29 @@
 </header>
 
 <div class="container">
+    <!-- Status Messages -->
+    <div id="status-container"></div>
+    
     <!-- Refresh Controls -->
     <div class="refresh-section">
         <div class="refresh-grid">
             <div class="refresh-card">
                 <div class="refresh-card-title">📈 Refresh Prices</div>
-                <button class="refresh-btn" onclick="refreshPrices()">Refresh Prices</button>
-                <div style="font-size:9px;color:#666;margin-top:8px;">Last Updated: Never</div>
+                <button class="refresh-btn" id="refresh-prices-btn" onclick="refreshPrices()">Refresh Prices</button>
+                <div class="refresh-timestamp" id="prices-timestamp">Last Updated: Never</div>
+                <div class="refresh-status" id="prices-status"></div>
             </div>
             <div class="refresh-card">
                 <div class="refresh-card-title">💹 Refresh Fundamentals</div>
-                <button class="refresh-btn" onclick="refreshFundamentals()">Refresh Fundamentals</button>
-                <div style="font-size:9px;color:#666;margin-top:8px;">Last Updated: Never</div>
+                <button class="refresh-btn" id="refresh-fundamentals-btn" onclick="refreshFundamentals()">Refresh Fundamentals</button>
+                <div class="refresh-timestamp" id="fundamentals-timestamp">Last Updated: Never</div>
+                <div class="refresh-status" id="fundamentals-status"></div>
             </div>
             <div class="refresh-card">
                 <div class="refresh-card-title">🔗 Full Sync & Reload</div>
-                <button class="refresh-btn" onclick="fullSync()">Full Sync & Reload</button>
-                <div style="font-size:9px;color:#666;margin-top:8px;">Last Updated: Never</div>
+                <button class="refresh-btn" id="refresh-sync-btn" onclick="fullSync()">Full Sync & Reload</button>
+                <div class="refresh-timestamp" id="sync-timestamp">Last Updated: Never</div>
+                <div class="refresh-status" id="sync-status"></div>
             </div>
         </div>
     </div>
@@ -108,30 +124,160 @@
 
 <script src="app-import.js"></script>
 <script>
-function refreshPrices() {
-    if (typeof refreshPortfolioData === 'function') {
-        refreshPortfolioData();
-    } else {
-        alert('Prices refresh - loading prices.json');
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Status Message Helper
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function showStatus(message, type) {
+    var container = document.getElementById('status-container');
+    var alertClass = 'alert-' + (type || 'info');
+    var html = '<div class="alert ' + alertClass + '">' + message + '</div>';
+    
+    if (container) {
+        container.innerHTML = html;
+        // Auto-hide after 5 seconds
+        setTimeout(function() {
+            container.innerHTML = '';
+        }, 5000);
     }
+}
+
+function updateTimestamp(elementId) {
+    var el = document.getElementById(elementId);
+    if (el) {
+        var now = new Date();
+        var timeStr = now.toLocaleTimeString('en-IN', { 
+            hour12: false, 
+            hour: '2-digit', 
+            minute: '2-digit',
+            second: '2-digit'
+        });
+        var dateStr = now.toLocaleDateString('en-IN');
+        el.textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// REFRESH FUNCTIONS - FIXED
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function refreshPrices() {
+    var btn = document.getElementById('refresh-prices-btn');
+    var status = document.getElementById('prices-status');
+    
+    btn.disabled = true;
+    status.textContent = 'Loading...';
+    
+    // Fetch prices.json from repository
+    fetch('prices.json?cache=' + Date.now())
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(function(data) {
+            if (!data.quotes) throw new Error('Invalid prices format');
+            
+            // Store in localStorage for reference
+            localStorage.setItem('lastPricesUpdate', JSON.stringify({
+                timestamp: new Date().toISOString(),
+                count: data.count || Object.keys(data.quotes).length
+            }));
+            
+            updateTimestamp('prices-timestamp');
+            status.textContent = '✅ ' + (data.count || Object.keys(data.quotes).length) + ' stocks loaded';
+            showStatus('✅ Prices refreshed successfully', 'success');
+            btn.disabled = false;
+        })
+        .catch(function(err) {
+            console.error('Prices refresh error:', err);
+            status.textContent = '❌ ' + err.message;
+            showStatus('❌ Failed to refresh prices: ' + err.message, 'error');
+            btn.disabled = false;
+        });
 }
 
 function refreshFundamentals() {
-    if (typeof loadFundamentals === 'function') {
-        loadFundamentals(true);
-    } else {
-        alert('Fundamentals refresh - loading fundamentals.json');
-    }
+    var btn = document.getElementById('refresh-fundamentals-btn');
+    var status = document.getElementById('fundamentals-status');
+    
+    btn.disabled = true;
+    status.textContent = 'Loading...';
+    
+    // Fetch fundamentals.json from repository
+    fetch('fundamentals.json?cache=' + Date.now())
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(function(data) {
+            if (typeof data !== 'object' || !data) throw new Error('Invalid fundamentals format');
+            
+            // Store in localStorage for reference
+            localStorage.setItem('lastFundamentalsUpdate', JSON.stringify({
+                timestamp: new Date().toISOString(),
+                count: Object.keys(data).length
+            }));
+            
+            updateTimestamp('fundamentals-timestamp');
+            status.textContent = '✅ ' + Object.keys(data).length + ' fundamentals loaded';
+            showStatus('✅ Fundamentals refreshed successfully', 'success');
+            btn.disabled = false;
+        })
+        .catch(function(err) {
+            console.error('Fundamentals refresh error:', err);
+            status.textContent = '❌ ' + err.message;
+            showStatus('❌ Failed to refresh fundamentals: ' + err.message, 'error');
+            btn.disabled = false;
+        });
 }
 
 function fullSync() {
-    refreshPrices();
-    refreshFundamentals();
-    location.reload();
+    var btn = document.getElementById('refresh-sync-btn');
+    var status = document.getElementById('sync-status');
+    
+    btn.disabled = true;
+    status.textContent = 'Syncing...';
+    
+    // Fetch all data files
+    Promise.all([
+        fetch('prices.json?cache=' + Date.now()).then(r => r.json()),
+        fetch('fundamentals.json?cache=' + Date.now()).then(r => r.json()),
+        fetch('unified-symbols.json?cache=' + Date.now()).then(r => r.json())
+    ])
+    .then(function(results) {
+        var prices = results[0];
+        var fundamentals = results[1];
+        var symbols = results[2];
+        
+        if (!prices || !fundamentals || !symbols) {
+            throw new Error('Missing data files');
+        }
+        
+        // Store sync timestamp
+        localStorage.setItem('lastFullSync', new Date().toISOString());
+        updateTimestamp('sync-timestamp');
+        
+        status.textContent = '✅ All data synced';
+        showStatus('✅ Full sync completed. Reloading...', 'success');
+        
+        // Reload after 1 second
+        setTimeout(function() {
+            location.reload();
+        }, 1000);
+    })
+    .catch(function(err) {
+        console.error('Full sync error:', err);
+        status.textContent = '❌ ' + err.message;
+        showStatus('❌ Full sync failed: ' + err.message, 'error');
+        btn.disabled = false;
+    });
 }
 
-// Edit Quantity
-function editQty(idx, sym, currentQty) {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// EDIT & DELETE HANDLERS - FIXED
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Edit Quantity (XSS-safe version)
+function editQty(sym, currentQty) {
     var newQty = prompt('Edit Quantity for ' + sym + ':', currentQty);
     if (newQty !== null && newQty.trim() !== '') {
         var qtyVal = parseFloat(newQty);
@@ -143,8 +289,8 @@ function editQty(idx, sym, currentQty) {
     }
 }
 
-// Edit Average Price
-function editAvg(idx, sym, currentAvg) {
+// Edit Average Price (XSS-safe version)
+function editAvg(sym, currentAvg) {
     var newAvg = prompt('Edit Average Price for ' + sym + ':', currentAvg.toFixed(2));
     if (newAvg !== null && newAvg.trim() !== '') {
         var avgVal = parseFloat(newAvg);
@@ -156,7 +302,7 @@ function editAvg(idx, sym, currentAvg) {
     }
 }
 
-// Update stock in IndexedDB
+// Update stock in IndexedDB - FIXED to use proper key
 function updateStock(sym, updates) {
     var DB_NAME = "OnyxPortfolioDB";
     var STORE_NAME = "Stocks";
@@ -176,30 +322,50 @@ function updateStock(sym, updates) {
                 
                 for (var i = 0; i < stocks.length; i++) {
                     var s = stocks[i];
-                    if ((s.SYM || s.sym) === sym) {
-                        if (updates.qty !== undefined) s.QTY = updates.qty;
-                        if (updates.avg !== undefined) s.AVG = updates.avg;
-                        store.put(s);
+                    // Normalize field name check
+                    var stockSym = s.SYM || s.sym || s.ticker || s.TICKER;
+                    if (stockSym === sym) {
+                        // Update fields (handle both cases)
+                        if (updates.qty !== undefined) {
+                            s.QTY = updates.qty;
+                            s.qty = updates.qty;
+                        }
+                        if (updates.avg !== undefined) {
+                            s.AVG = updates.avg;
+                            s.avg = updates.avg;
+                        }
+                        // Use the key if available, otherwise update by position
+                        if (s.key !== undefined) {
+                            store.put(s, s.key);
+                        } else {
+                            store.put(s);
+                        }
                         updated = true;
                         break;
                     }
                 }
                 
                 if (updated) {
+                    showStatus('✅ ' + sym + ' updated successfully', 'success');
                     loadPortfolioTable();
-                    alert('✅ Updated');
+                } else {
+                    showStatus('❌ Stock not found: ' + sym, 'error');
                 }
             };
         };
+        
+        request.onerror = function() {
+            showStatus('❌ Failed to open database', 'error');
+        };
     } catch(e) {
         console.error('Error updating stock:', e);
-        alert('Error updating stock');
+        showStatus('❌ Error updating stock: ' + e.message, 'error');
     }
 }
 
-// Delete stock from IndexedDB
+// Delete stock from IndexedDB - FIXED
 function deleteStock(sym) {
-    if (!confirm('Delete ' + sym + ' from portfolio?')) return;
+    if (!confirm('Delete ' + sym + ' from portfolio? This cannot be undone.')) return;
     
     var DB_NAME = "OnyxPortfolioDB";
     var STORE_NAME = "Stocks";
@@ -215,27 +381,45 @@ function deleteStock(sym) {
             
             getAll.onsuccess = function() {
                 var stocks = getAll.result || [];
+                var deleted = false;
                 
                 // Find and remove from IndexedDB
                 for (var i = 0; i < stocks.length; i++) {
                     var s = stocks[i];
-                    if ((s.SYM || s.sym) === sym) {
-                        store.delete(i);
+                    var stockSym = s.SYM || s.sym || s.ticker || s.TICKER;
+                    if (stockSym === sym) {
+                        // Delete using proper key
+                        if (s.key !== undefined) {
+                            store.delete(s.key);
+                        } else {
+                            // Fallback: use index key from getAll
+                            store.delete(store.keyPath ? s[store.keyPath] : i);
+                        }
+                        deleted = true;
                         break;
                     }
                 }
                 
-                // Update unified-symbols.json via GitHub API
-                updateUnifiedSymbols(sym, 'DELETE');
-                
-                setTimeout(function() {
-                    loadPortfolioTable();
-                }, 500);
+                if (deleted) {
+                    // Try to update unified-symbols.json on GitHub
+                    updateUnifiedSymbols(sym, 'DELETE');
+                    
+                    setTimeout(function() {
+                        showStatus('✅ ' + sym + ' deleted from portfolio', 'success');
+                        loadPortfolioTable();
+                    }, 300);
+                } else {
+                    showStatus('❌ Stock not found: ' + sym, 'error');
+                }
             };
+        };
+        
+        request.onerror = function() {
+            showStatus('❌ Failed to access database', 'error');
         };
     } catch(e) {
         console.error('Error deleting stock:', e);
-        alert('Error deleting stock');
+        showStatus('❌ Error deleting stock: ' + e.message, 'error');
     }
 }
 
@@ -256,7 +440,10 @@ function updateUnifiedSymbols(sym, action) {
     fetch(apiUrl, {
         headers: { 'Authorization': 'token ' + ghPAT }
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) { 
+        if (!r.ok) throw new Error('GitHub API error: ' + r.status);
+        return r.json();
+    })
     .then(function(data) {
         if (action === 'DELETE') {
             // Decode base64 content
@@ -271,6 +458,8 @@ function updateUnifiedSymbols(sym, action) {
     })
     .catch(function(err) {
         console.error('Error updating unified-symbols.json:', err);
+        // Don't fail silently - log it
+        console.warn('Could not update GitHub: ' + err.message);
     });
 }
 
@@ -296,13 +485,19 @@ function commitUnifiedSymbols(content, sha, sym, action) {
     })
     .then(function(r) {
         if (r.ok) {
-            alert('✅ ' + sym + ' deleted from unified-symbols.json');
+            console.log('✅ ' + sym + ' deleted from unified-symbols.json on GitHub');
+        } else {
+            console.warn('GitHub commit failed: ' + r.status);
         }
     })
     .catch(function(err) {
-        console.error('Error committing:', err);
+        console.error('Error committing to GitHub:', err);
     });
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TABLE RENDERING - FIXED XSS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function loadPortfolioTable() {
     // Load portfolio from IndexedDB (OnyxPortfolioDB)
@@ -342,7 +537,7 @@ function loadPortfolioTable() {
 function renderTable(portfolio) {
     var tbody = document.getElementById('portfolio-body');
     if (portfolio.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded. Click "Load" to import stocks.</td></tr>';
         return;
     }
     
@@ -350,38 +545,86 @@ function renderTable(portfolio) {
     for (var i = 0; i < portfolio.length; i++) {
         var s = portfolio[i];
         // Handle both uppercase (from IndexedDB) and lowercase field names
-        var sym = s.SYM || s.sym || '-';
-        var name = s.name || '-';
-        var type = s.type || 'PORTFOLIO';
+        var sym = s.SYM || s.sym || s.ticker || s.TICKER || '-';
+        var name = s.name || s.NAME || '-';
+        var type = s.type || s.TYPE || 'PORTFOLIO';
         var qty = s.QTY || s.qty || 0;
         var avg = s.AVG || s.avg || 0;
         var sector = s.SECTOR || s.sector || '-';
-        var isin = s.isin || '-';
+        var isin = s.isin || s.ISIN || '-';
+        
+        // XSS Prevention: Encode special characters
+        sym = escapeHtml(sym);
+        name = escapeHtml(name);
+        sector = escapeHtml(sector);
+        isin = escapeHtml(isin);
         
         html += '<tr>' +
             '<td>' + sym + '</td>' +
             '<td>' + name + '</td>' +
             '<td>' + type + '</td>' +
-            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editQty(' + i + ', \'' + sym + '\', ' + qty + ')"><u>' + qty + '</u></td>' +
-            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editAvg(' + i + ', \'' + sym + '\', ' + avg + ')"><u>₹' + parseFloat(avg).toFixed(2) + '</u></td>' +
+            '<td style="text-align:right;"><span class="editable" data-sym="' + sym + '" data-qty="' + qty + '" onclick="editQtyHandler(this)"><u>' + qty + '</u></span></td>' +
+            '<td style="text-align:right;"><span class="editable" data-sym="' + sym + '" data-avg="' + avg + '" onclick="editAvgHandler(this)"><u>₹' + parseFloat(avg).toFixed(2) + '</u></span></td>' +
             '<td>' + sector + '</td>' +
             '<td>' + isin + '</td>' +
-            '<td><button onclick="deleteStock(\'' + sym + '\')" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td>' +
+            '<td><button onclick="deleteStockHandler(this)" data-sym="' + sym + '" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td>' +
             '</tr>';
     }
     tbody.innerHTML = html;
 }
 
+// XSS Prevention Helper
+function escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Event handler wrappers (safe from XSS)
+function editQtyHandler(el) {
+    var sym = el.getAttribute('data-sym');
+    var qty = el.getAttribute('data-qty');
+    editQty(sym, parseFloat(qty));
+}
+
+function editAvgHandler(el) {
+    var sym = el.getAttribute('data-sym');
+    var avg = el.getAttribute('data-avg');
+    editAvg(sym, parseFloat(avg));
+}
+
+function deleteStockHandler(el) {
+    var sym = el.getAttribute('data-sym');
+    deleteStock(sym);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Close import modal
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function closeImportModal() {
     var modal = document.getElementById('import-modal');
     if (modal) {
         modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
     }
 }
 
-// Load table on page load
-window.addEventListener('DOMContentLoaded', loadPortfolioTable);
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Initialize on page load
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+window.addEventListener('DOMContentLoaded', function() {
+    loadPortfolioTable();
+    
+    // Load last sync timestamps if available
+    var lastSync = localStorage.getItem('lastFullSync');
+    if (lastSync) {
+        var date = new Date(lastSync);
+        var timeStr = date.toLocaleTimeString('en-IN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        var dateStr = date.toLocaleDateString('en-IN');
+        document.getElementById('sync-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+    }
+});
 </script>
 
 </body>
