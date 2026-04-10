@@ -43,7 +43,6 @@
     <div class="header-right">
         <button onclick="openImportWorkflow()">📥 Load</button>
         <button onclick="location.reload()">🔄 Reload</button>
-        <button onclick="exportData()">📤 Export</button>
     </div>
 </header>
 
@@ -79,18 +78,13 @@
                     <th>Type</th>
                     <th>QTY</th>
                     <th>AVG</th>
-                    <th>LTP</th>
-                    <th>Invested</th>
-                    <th>Current</th>
-                    <th>P&L</th>
-                    <th>P&L%</th>
                     <th>Sector</th>
                     <th>ISIN</th>
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody id="portfolio-body">
-                <tr><td colspan="13" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>
+                <tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>
             </tbody>
         </table>
     </div>
@@ -136,7 +130,34 @@ function fullSync() {
     location.reload();
 }
 
-function exportData() {
+// Edit Quantity
+function editQty(idx, sym, currentQty) {
+    var newQty = prompt('Edit Quantity for ' + sym + ':', currentQty);
+    if (newQty !== null && newQty.trim() !== '') {
+        var qtyVal = parseFloat(newQty);
+        if (!isNaN(qtyVal) && qtyVal >= 0) {
+            updateStock(sym, { qty: qtyVal });
+        } else {
+            alert('Please enter a valid number');
+        }
+    }
+}
+
+// Edit Average Price
+function editAvg(idx, sym, currentAvg) {
+    var newAvg = prompt('Edit Average Price for ' + sym + ':', currentAvg.toFixed(2));
+    if (newAvg !== null && newAvg.trim() !== '') {
+        var avgVal = parseFloat(newAvg);
+        if (!isNaN(avgVal) && avgVal >= 0) {
+            updateStock(sym, { avg: avgVal });
+        } else {
+            alert('Please enter a valid number');
+        }
+    }
+}
+
+// Update stock in IndexedDB
+function updateStock(sym, updates) {
     var DB_NAME = "OnyxPortfolioDB";
     var STORE_NAME = "Stocks";
     
@@ -145,36 +166,142 @@ function exportData() {
         
         request.onsuccess = function(e) {
             var db = e.target.result;
-            var tx = db.transaction(STORE_NAME, 'readonly');
+            var tx = db.transaction(STORE_NAME, 'readwrite');
             var store = tx.objectStore(STORE_NAME);
             var getAll = store.getAll();
             
             getAll.onsuccess = function() {
-                var portfolio = getAll.result || [];
+                var stocks = getAll.result || [];
+                var updated = false;
                 
-                if (portfolio.length === 0) {
-                    alert('No portfolio data to export');
-                    return;
+                for (var i = 0; i < stocks.length; i++) {
+                    var s = stocks[i];
+                    if ((s.SYM || s.sym) === sym) {
+                        if (updates.qty !== undefined) s.QTY = updates.qty;
+                        if (updates.avg !== undefined) s.AVG = updates.avg;
+                        store.put(s);
+                        updated = true;
+                        break;
+                    }
                 }
                 
-                var csv = 'Symbol,Name,Type,QTY,AVG,LTP,Sector,ISIN\n';
-                for (var i = 0; i < portfolio.length; i++) {
-                    var s = portfolio[i];
-                    csv += (s.SYM || s.sym || '-') + ',' + (s.name || '-') + ',' + (s.type || 'PORTFOLIO') + ',' + (s.QTY || s.qty || 0) + ',' + (s.AVG || s.avg || 0) + ',' + (s.LTP || s.ltp || 0) + ',' + (s.SECTOR || s.sector || '-') + ',' + (s.isin || '-') + '\n';
+                if (updated) {
+                    loadPortfolioTable();
+                    alert('✅ Updated');
                 }
-                
-                var blob = new Blob([csv], {type:'text/csv'});
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = 'portfolio-' + new Date().toISOString().split('T')[0] + '.csv';
-                a.click();
             };
         };
     } catch(e) {
-        console.error('Error exporting data:', e);
-        alert('Error exporting data');
+        console.error('Error updating stock:', e);
+        alert('Error updating stock');
     }
+}
+
+// Delete stock from IndexedDB
+function deleteStock(sym) {
+    if (!confirm('Delete ' + sym + ' from portfolio?')) return;
+    
+    var DB_NAME = "OnyxPortfolioDB";
+    var STORE_NAME = "Stocks";
+    
+    try {
+        var request = indexedDB.open(DB_NAME, 8);
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readwrite');
+            var store = tx.objectStore(STORE_NAME);
+            var getAll = store.getAll();
+            
+            getAll.onsuccess = function() {
+                var stocks = getAll.result || [];
+                
+                // Find and remove from IndexedDB
+                for (var i = 0; i < stocks.length; i++) {
+                    var s = stocks[i];
+                    if ((s.SYM || s.sym) === sym) {
+                        store.delete(i);
+                        break;
+                    }
+                }
+                
+                // Update unified-symbols.json via GitHub API
+                updateUnifiedSymbols(sym, 'DELETE');
+                
+                setTimeout(function() {
+                    loadPortfolioTable();
+                }, 500);
+            };
+        };
+    } catch(e) {
+        console.error('Error deleting stock:', e);
+        alert('Error deleting stock');
+    }
+}
+
+// Update unified-symbols.json on GitHub
+function updateUnifiedSymbols(sym, action) {
+    var ghPAT = localStorage.getItem('ghPAT');
+    var ghUser = localStorage.getItem('ghUser');
+    var ghRepo = localStorage.getItem('ghRepo');
+    
+    if (!ghPAT || !ghUser || !ghRepo) {
+        console.warn('GitHub PAT not configured - skipping unified-symbols.json update');
+        return;
+    }
+    
+    // Fetch current unified-symbols.json from GitHub
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    
+    fetch(apiUrl, {
+        headers: { 'Authorization': 'token ' + ghPAT }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (action === 'DELETE') {
+            // Decode base64 content
+            var content = JSON.parse(atob(data.content));
+            // Remove stock
+            content.symbols = content.symbols.filter(function(s) { return s.ticker !== sym; });
+            // Update count
+            content.count = content.symbols.length;
+            // Commit
+            commitUnifiedSymbols(content, data.sha, sym, 'DELETE');
+        }
+    })
+    .catch(function(err) {
+        console.error('Error updating unified-symbols.json:', err);
+    });
+}
+
+// Commit unified-symbols.json to GitHub
+function commitUnifiedSymbols(content, sha, sym, action) {
+    var ghPAT = localStorage.getItem('ghPAT');
+    var ghUser = localStorage.getItem('ghUser');
+    var ghRepo = localStorage.getItem('ghRepo');
+    
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    
+    fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+            'Authorization': 'token ' + ghPAT,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: action + ' stock: ' + sym,
+            content: btoa(JSON.stringify(content)),
+            sha: sha
+        })
+    })
+    .then(function(r) {
+        if (r.ok) {
+            alert('✅ ' + sym + ' deleted from unified-symbols.json');
+        }
+    })
+    .catch(function(err) {
+        console.error('Error committing:', err);
+    });
 }
 
 function loadPortfolioTable() {
@@ -215,7 +342,7 @@ function loadPortfolioTable() {
 function renderTable(portfolio) {
     var tbody = document.getElementById('portfolio-body');
     if (portfolio.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>';
         return;
     }
     
@@ -228,25 +355,24 @@ function renderTable(portfolio) {
         var type = s.type || 'PORTFOLIO';
         var qty = s.QTY || s.qty || 0;
         var avg = s.AVG || s.avg || 0;
-        var ltp = s.LTP || s.ltp || 0;
         var sector = s.SECTOR || s.sector || '-';
         var isin = s.isin || '-';
         
-        var invested = qty * avg;
-        var current = qty * ltp;
-        var pnl = current - invested;
-        var pnlPct = invested > 0 ? ((pnl / invested) * 100) : 0;
-        var pnlClass = pnl >= 0 ? 'pos' : 'neg';
-        
-        html += '<tr><td>' + sym + '</td><td>' + name + '</td><td>' + type + '</td><td>' + qty + '</td><td>₹' + parseFloat(avg).toFixed(2) + '</td><td>₹' + parseFloat(ltp).toFixed(2) + '</td><td>₹' + invested.toFixed(2) + '</td><td>₹' + current.toFixed(2) + '</td><td class="' + pnlClass + '">₹' + pnl.toFixed(2) + '</td><td class="' + pnlClass + '">' + pnlPct.toFixed(2) + '%</td><td>' + sector + '</td><td>' + isin + '</td><td><button onclick="deleteStock(' + i + ')" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td></tr>';
+        html += '<tr>' +
+            '<td>' + sym + '</td>' +
+            '<td>' + name + '</td>' +
+            '<td>' + type + '</td>' +
+            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editQty(' + i + ', \'' + sym + '\', ' + qty + ')"><u>' + qty + '</u></td>' +
+            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editAvg(' + i + ', \'' + sym + '\', ' + avg + ')"><u>₹' + parseFloat(avg).toFixed(2) + '</u></td>' +
+            '<td>' + sector + '</td>' +
+            '<td>' + isin + '</td>' +
+            '<td><button onclick="deleteStock(\'' + sym + '\')" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td>' +
+            '</tr>';
     }
     tbody.innerHTML = html;
 }
 
-function deleteStock(idx) {
-    alert('Delete - coming soon');
-}
-
+// Close import modal
 function closeImportModal() {
     var modal = document.getElementById('import-modal');
     if (modal) {
