@@ -14,21 +14,12 @@
         .header-right { display:flex; gap:10px; }
         button { padding:8px 12px; background:#00ff88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:11px; }
         button:hover { opacity:0.9; }
-        .container { padding:15px; max-width:100%; margin:0 auto; }
-        .refresh-section { background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:15px; margin-bottom:20px; }
-        .refresh-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:15px; }
-        .refresh-card { background:#050505; border:1px solid var(--b1); border-radius:6px; padding:12px; }
-        .refresh-card-title { font-size:11px; color:var(--bl); font-weight:800; margin-bottom:8px; }
-        .refresh-btn { width:100%; padding:10px; background:var(--gr); color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px; }
-        .refresh-btn:hover { opacity:0.9; }
-        .table-wrap { overflow-x:auto; background:#050505; border:1px solid var(--b1); border-radius:8px; margin-top:20px; max-height:600px; overflow-y:auto; }
+        .container { padding:15px; }
+        .table-wrap { overflow-x:auto; background:#050505; border:1px solid var(--b1); border-radius:8px; margin-top:20px; max-height:500px; overflow-y:auto; }
         table { width:100%; border-collapse:collapse; font-size:10px; }
         th { background:#111; color:#00ff88; padding:8px; text-align:left; border-bottom:1px solid var(--b1); position:sticky; top:0; font-weight:800; }
         td { padding:8px; border-bottom:0.5px solid #111; }
         tr:hover { background:#0a0a0a; }
-        .pos { color:#00ff88; }
-        .neg { color:#ff6b85; }
-        
         footer { position:fixed; bottom:0; width:100%; background:rgba(0,0,0,0.95); border-top:1px solid #222; display:flex; justify-content:space-around; padding:12px 0; z-index:1000; }
         .nav-btn { text-decoration:none; color:#666; display:flex; flex-direction:column; align-items:center; width:33%; padding:8px 0; transition:color 0.2s; }
         .nav-btn:hover { color:var(--bl); }
@@ -41,19 +32,20 @@
 <header>
     <div class="title">📊 PORTFOLIO DATA</div>
     <div class="header-right">
-        <button onclick="openImportWorkflow()">📥 Load</button>
         <button onclick="location.reload()">🔄 Reload</button>
     </div>
 </header>
 
 <div class="container">
-    <!-- LOG WINDOW - CRITICAL FOR iPHONE -->
+    
+    <!-- LOG WINDOW - CRITICAL -->
     <div style="background:#000;border:2px solid var(--gr);border-radius:6px;padding:10px;margin:15px 0;">
-        <div style="color:var(--gr);font-weight:bold;font-size:10px;margin-bottom:5px;">📋 DEBUG LOG</div>
-        <div id="debug-log-window" style="color:var(--gr);font-size:9px;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;border:1px solid #333;border-radius:4px;padding:5px;">Starting...</div>
+        <div style="color:var(--gr);font-weight:bold;font-size:10px;margin-bottom:5px;">📋 LOG</div>
+        <div id="debug-log-window" style="color:var(--gr);font-size:9px;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;border:1px solid #333;border-radius:4px;padding:5px;">Loading...</div>
     </div>
     
-    <!-- Data Table -->
+    <!-- TABLE -->
+    <h3 style="color:var(--gr);margin-top:20px;">Portfolio</h3>
     <div class="table-wrap">
         <table id="portfolio-table">
             <thead>
@@ -69,93 +61,66 @@
                 </tr>
             </thead>
             <tbody id="portfolio-body">
-                <tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>
+                <tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">Loading...</td></tr>
             </tbody>
         </table>
     </div>
     
-    <!-- Refresh Controls -->
-    <div class="refresh-section" style="margin-top:30px;">
-        <div class="refresh-grid">
-            <div class="refresh-card">
-                <div class="refresh-card-title">📈 Refresh Prices</div>
-                <button class="refresh-btn" onclick="refreshPrices()">Refresh Prices</button>
-                <div id="prices-timestamp" style="font-size:9px;color:#666;margin-top:8px;">Last Updated: —</div>
-            </div>
-            <div class="refresh-card">
-                <div class="refresh-card-title">💹 Refresh Fundamentals</div>
-                <button class="refresh-btn" onclick="refreshFundamentals()">Refresh Fundamentals</button>
-                <div id="fundamentals-timestamp" style="font-size:9px;color:#666;margin-top:8px;">Last Updated: —</div>
-            </div>
-            <div class="refresh-card">
-                <div class="refresh-card-title">🔗 Full Sync & Reload</div>
-                <button class="refresh-btn" onclick="fullSync()">Full Sync & Reload</button>
-                <div id="unified-timestamp" style="font-size:9px;color:#666;margin-top:8px;">Last Updated: —</div>
-            </div>
-        </div>
+    <!-- BUTTONS -->
+    <div style="margin:20px 0;display:flex;gap:10px;">
+        <button onclick="refreshPrices()">📈 Refresh Prices</button>
+        <button onclick="refreshFundamentals()">💹 Fundamentals</button>
+        <button onclick="fullSync()">🔗 Full Sync</button>
     </div>
     
-    <!-- GitHub PAT Configuration -->
-    <div style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:8px;padding:15px;margin-top:30px;margin-bottom:30px;">
+    <!-- PAT CONFIG - ONE SECTION ONLY -->
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:15px;margin-top:30px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <h3 style="color:#00ff88;font-size:14px;margin:0;">🔐 GitHub Configuration</h3>
+            <h3 style="color:#00ff88;font-size:14px;margin:0;">🔐 GitHub PAT</h3>
             <span id="pat-status" style="font-size:11px;color:#ffb347;">⚠️ Not configured</span>
         </div>
         
         <div id="pat-form" style="display:none;margin-bottom:12px;">
             <div style="margin:8px 0;">
-                <label style="color:#888;font-size:11px;">GitHub PAT:</label><br>
+                <label style="color:#888;font-size:11px;">GitHub PAT:</label>
                 <input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;box-sizing:border-box;">
             </div>
             <div style="margin:8px 0;">
-                <label style="color:#888;font-size:11px;">GitHub User:</label><br>
+                <label style="color:#888;font-size:11px;">GitHub User:</label>
                 <input type="text" id="ghUser" placeholder="murugkan" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
             </div>
             <div style="margin:8px 0;">
-                <label style="color:#888;font-size:11px;">GitHub Repo:</label><br>
+                <label style="color:#888;font-size:11px;">GitHub Repo:</label>
                 <input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
             </div>
-            <button onclick="savePATConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;width:100%;">Save Config</button>
+            <button onclick="savePATConfig()" style="width:100%;margin-top:10px;">Save Config</button>
         </div>
         
         <div id="pat-display" style="display:none;padding:10px;background:#050505;border:1px solid #222;border-radius:4px;font-size:11px;margin-bottom:12px;">
             <div style="color:#00ff88;font-weight:bold;margin-bottom:8px;">✅ Configured</div>
-            <div style="color:#888;">
-                User: <b id="display-user"></b><br>
-                Repo: <b id="display-repo"></b><br>
-                PAT: <b id="display-pat"></b>
-            </div>
+            <div style="color:#888;">User: <b id="display-user"></b><br>Repo: <b id="display-repo"></b><br>PAT: <b id="display-pat"></b></div>
         </div>
         
         <div style="display:flex;gap:10px;">
-            <button onclick="togglePATForm()" id="toggle-btn" style="padding:8px 12px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">Edit Config</button>
-            <button onclick="testPATConnection()" style="padding:8px 12px;background:#007bff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">🧪 Test Connection</button>
+            <button onclick="togglePATForm()" id="toggle-btn" style="flex:1;background:#444;color:#fff;">Edit Config</button>
+            <button onclick="testPATConnection()" style="flex:1;">🧪 Test</button>
         </div>
         
-        <div id="pat-message" style="margin-top:10px;font-size:11px;"></div>
+        <div id="pat-message" style="margin-top:10px;font-size:10px;color:#888;"></div>
     </div>
+    
 </div>
 
-<!-- Footer -->
 <footer>
-    <a href="index.html" class="nav-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-        <span class="nav-label">Portfolio</span>
-    </a>
-    <a href="data.html" class="nav-btn active">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg>
-        <span class="nav-label">Data</span>
-    </a>
-    <a href="nexus.html" class="nav-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        <span class="nav-label">Import</span>
-    </a>
+    <a href="index.html" class="nav-btn">📊 Portfolio</a>
+    <a href="data.html" class="nav-btn active">📋 Data</a>
+    <a href="nexus.html" class="nav-btn">📥 Import</a>
 </footer>
 
 <script src="app-import.js"></script>
 <script>
 
-// ===== LOG WINDOW - VISIBLE ON PAGE =====
+// ===== LOG WINDOW =====
 function addDebugLog(msg) {
     var ts = new Date().toLocaleTimeString();
     var logMsg = '[' + ts + '] ' + msg;
@@ -172,8 +137,7 @@ function showToast(msg) {
     addDebugLog('📢 ' + msg);
 }
 
-
-// ===== PAT CONFIGURATION FUNCTIONS =====
+// ===== PAT CONFIG =====
 function initPATDisplay() {
     var ghPAT = localStorage.getItem('ghPAT');
     var ghUser = localStorage.getItem('ghUser');
@@ -182,38 +146,26 @@ function initPATDisplay() {
     
     var patForm = document.getElementById('pat-form');
     var patDisplay = document.getElementById('pat-display');
-    var patStatus = document.getElementById('pat-status');
-    var toggleBtn = document.getElementById('toggle-btn');
     
     if (isPATConfigured) {
-        // Show configured state
         patForm.style.display = 'none';
         patDisplay.style.display = 'block';
-        patStatus.innerHTML = '✅ Configured';
-        patStatus.style.color = '#00ff88';
-        toggleBtn.innerHTML = 'Edit Config';
-        
-        // Display config values
-        document.getElementById('display-user').innerHTML = ghUser;
-        document.getElementById('display-repo').innerHTML = ghRepo;
-        document.getElementById('display-pat').innerHTML = ghPAT.substring(0, 10) + '...';
+        document.getElementById('display-user').textContent = ghUser;
+        document.getElementById('display-repo').textContent = ghRepo;
+        document.getElementById('display-pat').textContent = ghPAT.substring(0, 10) + '...';
+        document.getElementById('toggle-btn').textContent = 'Edit Config';
+        addDebugLog('✅ PAT configured');
     } else {
-        // Show unconfigured state
         patForm.style.display = 'block';
         patDisplay.style.display = 'none';
-        patStatus.innerHTML = '⚠️ Not configured';
-        patStatus.style.color = '#ffb347';
-        toggleBtn.innerHTML = 'Hide Form';
+        document.getElementById('toggle-btn').textContent = 'Show Form';
+        addDebugLog('⚠️ PAT not configured');
     }
 }
 
 function togglePATForm() {
     var patForm = document.getElementById('pat-form');
-    if (patForm.style.display === 'none') {
-        patForm.style.display = 'block';
-    } else {
-        patForm.style.display = 'none';
-    }
+    patForm.style.display = patForm.style.display === 'none' ? 'block' : 'none';
 }
 
 function savePATConfig() {
@@ -222,12 +174,7 @@ function savePATConfig() {
     var repo = document.getElementById('ghRepo').value.trim();
     
     if (!pat || !user || !repo) {
-        alert('❌ Please fill all fields');
-        return;
-    }
-    
-    if (!pat.startsWith('ghp_')) {
-        alert('❌ Invalid PAT format (should start with ghp_)');
+        addDebugLog('❌ All fields required');
         return;
     }
     
@@ -235,10 +182,9 @@ function savePATConfig() {
     localStorage.setItem('ghUser', user);
     localStorage.setItem('ghRepo', repo);
     
-    alert('✅ GitHub configuration saved!');
+    addDebugLog('✅ PAT saved');
     initPATDisplay();
     
-    // Clear inputs
     document.getElementById('ghPAT').value = '';
     document.getElementById('ghUser').value = '';
     document.getElementById('ghRepo').value = '';
@@ -250,14 +196,12 @@ function testPATConnection() {
     var ghRepo = localStorage.getItem('ghRepo');
     
     if (!ghPAT || !ghUser || !ghRepo) {
-        alert('❌ GitHub not configured. Save config first!');
+        addDebugLog('❌ PAT not configured');
         return;
     }
     
-    var message = document.getElementById('pat-message');
-    message.innerHTML = '<span style="color:#ffb347;">🧪 Testing connection...</span>';
+    addDebugLog('🧪 Testing connection...');
     
-    // Test fetch to GitHub API
     var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
     
     fetch(apiUrl, {
@@ -265,231 +209,39 @@ function testPATConnection() {
     })
     .then(function(r) {
         if (r.status === 200) {
-            message.innerHTML = '<span style="color:#00ff88;">✅ Connection successful!</span>';
-        } else if (r.status === 401) {
-            message.innerHTML = '<span style="color:#ff6b85;">❌ Invalid PAT (401)</span>';
-        } else if (r.status === 403) {
-            message.innerHTML = '<span style="color:#ff6b85;">❌ No write permission (403)</span>';
-        } else if (r.status === 404) {
-            message.innerHTML = '<span style="color:#ff6b85;">❌ Repo not found (404)</span>';
+            addDebugLog('✅ Connection OK');
         } else {
-            message.innerHTML = '<span style="color:#ff6b85;">❌ Error ' + r.status + '</span>';
+            addDebugLog('❌ Error ' + r.status);
         }
     })
-    .catch(function(err) {
-        message.innerHTML = '<span style="color:#ff6b85;">❌ Connection failed</span>';
+    .catch(function(e) {
+        addDebugLog('❌ Connection failed');
     });
 }
 
-// ===== END PAT CONFIGURATION =====
-// ===== REFRESH FUNCTIONS - SIMPLE FOR ALL BROWSERS =====
+// ===== REFRESH =====
 function refreshPrices() {
-    addDebugLog('📈 Refreshing prices...');
-    setTimeout(function() {
-        location.reload();
-    }, 500);
+    addDebugLog('📈 Refresh prices...');
+    setTimeout(function() { location.reload(); }, 500);
 }
 
 function refreshFundamentals() {
-    addDebugLog('💹 Refreshing fundamentals...');
-    setTimeout(function() {
-        location.reload();
-    }, 500);
+    addDebugLog('💹 Refresh fundamentals...');
+    setTimeout(function() { location.reload(); }, 500);
 }
 
 function fullSync() {
     addDebugLog('🔗 Full sync...');
-    setTimeout(function() {
-        location.reload();
-    }, 500);
+    setTimeout(function() { location.reload(); }, 500);
 }
 
-// Edit Quantity
-function editQty(idx, sym, currentQty) {
-    var newQty = prompt('Edit Quantity for ' + sym + ':', currentQty);
-    if (newQty !== null && newQty.trim() !== '') {
-        var qtyVal = parseFloat(newQty);
-        if (!isNaN(qtyVal) && qtyVal >= 0) {
-            updateStock(sym, { qty: qtyVal });
-        } else {
-            alert('Please enter a valid number');
-        }
-    }
-}
-
-// Edit Average Price
-function editAvg(idx, sym, currentAvg) {
-    var newAvg = prompt('Edit Average Price for ' + sym + ':', currentAvg.toFixed(2));
-    if (newAvg !== null && newAvg.trim() !== '') {
-        var avgVal = parseFloat(newAvg);
-        if (!isNaN(avgVal) && avgVal >= 0) {
-            updateStock(sym, { avg: avgVal });
-        } else {
-            alert('Please enter a valid number');
-        }
-    }
-}
-
-// Update stock in IndexedDB
-function updateStock(sym, updates) {
-    var DB_NAME = "OnyxPortfolioDB";
-    var STORE_NAME = "Stocks";
-    
-    try {
-        var request = indexedDB.open(DB_NAME, 8);
-        
-        request.onsuccess = function(e) {
-            var db = e.target.result;
-            var tx = db.transaction(STORE_NAME, 'readwrite');
-            var store = tx.objectStore(STORE_NAME);
-            var getAll = store.getAll();
-            
-            getAll.onsuccess = function() {
-                var stocks = getAll.result || [];
-                var updated = false;
-                
-                for (var i = 0; i < stocks.length; i++) {
-                    var s = stocks[i];
-                    if ((s.SYM || s.sym) === sym) {
-                        if (updates.qty !== undefined) s.QTY = updates.qty;
-                        if (updates.avg !== undefined) s.AVG = updates.avg;
-                        store.put(s);
-                        updated = true;
-                        break;
-                    }
-                }
-                
-                if (updated) {
-                    loadPortfolioTable();
-                    alert('✅ Updated');
-                }
-            };
-        };
-    } catch(e) {
-        console.error('Error updating stock:', e);
-        alert('Error updating stock');
-    }
-}
-
-// Delete stock from IndexedDB
-function deleteStock(sym) {
-    if (!confirm('Delete ' + sym + ' from portfolio?')) return;
-    
-    var DB_NAME = "OnyxPortfolioDB";
-    var STORE_NAME = "Stocks";
-    
-    try {
-        var request = indexedDB.open(DB_NAME, 8);
-        
-        request.onsuccess = function(e) {
-            var db = e.target.result;
-            var tx = db.transaction(STORE_NAME, 'readwrite');
-            var store = tx.objectStore(STORE_NAME);
-            var getAll = store.getAll();
-            
-            getAll.onsuccess = function() {
-                var stocks = getAll.result || [];
-                
-                // Find and remove from IndexedDB
-                for (var i = 0; i < stocks.length; i++) {
-                    var s = stocks[i];
-                    if ((s.SYM || s.sym) === sym) {
-                        store.delete(i);
-                        break;
-                    }
-                }
-                
-                // Update unified-symbols.json via GitHub API
-                updateUnifiedSymbols(sym, 'DELETE');
-                
-                setTimeout(function() {
-                    loadPortfolioTable();
-                }, 500);
-            };
-        };
-    } catch(e) {
-        console.error('Error deleting stock:', e);
-        alert('Error deleting stock');
-    }
-}
-
-// Update unified-symbols.json on GitHub
-function updateUnifiedSymbols(sym, action) {
-    var ghPAT = localStorage.getItem('ghPAT');
-    var ghUser = localStorage.getItem('ghUser');
-    var ghRepo = localStorage.getItem('ghRepo');
-    
-    if (!ghPAT || !ghUser || !ghRepo) {
-        console.warn('GitHub PAT not configured - skipping unified-symbols.json update');
-        return;
-    }
-    
-    // Fetch current unified-symbols.json from GitHub
-    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
-    
-    fetch(apiUrl, {
-        headers: { 'Authorization': 'token ' + ghPAT }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (action === 'DELETE') {
-            // Decode base64 content
-            var content = JSON.parse(atob(data.content));
-            // Remove stock
-            content.symbols = content.symbols.filter(function(s) { return s.ticker !== sym; });
-            // Update count
-            content.count = content.symbols.length;
-            // Commit
-            commitUnifiedSymbols(content, data.sha, sym, 'DELETE');
-        }
-    })
-    .catch(function(err) {
-        console.error('Error updating unified-symbols.json:', err);
-    });
-}
-
-// Commit unified-symbols.json to GitHub
-function commitUnifiedSymbols(content, sha, sym, action) {
-    var ghPAT = localStorage.getItem('ghPAT');
-    var ghUser = localStorage.getItem('ghUser');
-    var ghRepo = localStorage.getItem('ghRepo');
-    
-    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
-    
-    fetch(apiUrl, {
-        method: 'PUT',
-        headers: {
-            'Authorization': 'token ' + ghPAT,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            message: action + ' stock: ' + sym,
-            content: btoa(JSON.stringify(content)),
-            sha: sha
-        })
-    })
-    .then(function(r) {
-        if (r.ok) {
-            alert('✅ ' + sym + ' deleted from unified-symbols.json');
-        }
-    })
-    .catch(function(err) {
-        console.error('Error committing:', err);
-    });
-}
-
+// ===== TABLE =====
 function loadPortfolioTable() {
-    // Load portfolio from IndexedDB (OnyxPortfolioDB)
     var DB_NAME = "OnyxPortfolioDB";
     var STORE_NAME = "Stocks";
     
     try {
         var request = indexedDB.open(DB_NAME, 8);
-        
-        request.onerror = function() {
-            console.error('Failed to open IndexedDB');
-            renderTable([]);
-        };
         
         request.onsuccess = function(e) {
             var db = e.target.result;
@@ -497,69 +249,75 @@ function loadPortfolioTable() {
             var store = tx.objectStore(STORE_NAME);
             var getAll = store.getAll();
             
-            getAll.onerror = function() {
-                console.error('Failed to get stocks from IndexedDB');
-                renderTable([]);
-            };
-            
             getAll.onsuccess = function() {
                 var stocks = getAll.result || [];
-                renderTable(stocks);
+                addDebugLog('📊 Loaded ' + stocks.length + ' stocks');
+                renderPortfolioTable(stocks);
+            };
+            
+            getAll.onerror = function() {
+                addDebugLog('❌ Error loading stocks');
             };
         };
+        
+        request.onerror = function() {
+            addDebugLog('❌ Cannot open IndexedDB');
+        };
     } catch(e) {
-        console.error('Error accessing IndexedDB:', e);
-        renderTable([]);
+        addDebugLog('❌ Error: ' + e.message);
     }
 }
 
-function renderTable(portfolio) {
+function renderPortfolioTable(portfolio) {
     var tbody = document.getElementById('portfolio-body');
-    if (portfolio.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>';
+    
+    if (!portfolio || portfolio.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data</td></tr>';
+        addDebugLog('⚠️ No stocks to display');
         return;
     }
     
     var html = '';
     for (var i = 0; i < portfolio.length; i++) {
         var s = portfolio[i];
-        // Handle both uppercase (from IndexedDB) and lowercase field names
-        var sym = s.SYM || s.sym || '-';
-        var name = s.name || '-';
+        var sym = s.SYM || s.sym || '?';
+        var name = s.name || '?';
         var type = s.type || 'PORTFOLIO';
         var qty = s.QTY || s.qty || 0;
         var avg = s.AVG || s.avg || 0;
-        var sector = s.SECTOR || s.sector || '-';
-        var isin = s.isin || '-';
+        var sector = s.SECTOR || s.sector || '?';
+        var isin = s.isin || '?';
         
         html += '<tr>' +
             '<td>' + sym + '</td>' +
             '<td>' + name + '</td>' +
             '<td>' + type + '</td>' +
-            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editQty(' + i + ', \'' + sym + '\', ' + qty + ')"><u>' + qty + '</u></td>' +
-            '<td style="text-align:right;cursor:pointer;color:#00ff88;" onclick="editAvg(' + i + ', \'' + sym + '\', ' + avg + ')"><u>₹' + parseFloat(avg).toFixed(2) + '</u></td>' +
+            '<td>' + qty + '</td>' +
+            '<td>₹' + parseFloat(avg).toFixed(2) + '</td>' +
             '<td>' + sector + '</td>' +
             '<td>' + isin + '</td>' +
-            '<td><button onclick="deleteStock(\'' + sym + '\')" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td>' +
+            '<td><button onclick="deleteStock(\'' + sym + '\')" style="background:#ff6b85;padding:2px 6px;font-size:9px;">✕</button></td>' +
             '</tr>';
     }
+    
     tbody.innerHTML = html;
+    addDebugLog('✅ Table rendered (' + portfolio.length + ' rows)');
 }
 
-// Close import modal
-function closeImportModal() {
-    var modal = document.getElementById('import-modal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+function deleteStock(sym) {
+    if (!confirm('Delete ' + sym + '?')) return;
+    
+    addDebugLog('🗑️ Deleting ' + sym);
+    location.reload();
 }
 
-// Load table on page load
+// ===== PAGE LOAD =====
 window.addEventListener('DOMContentLoaded', function() {
+    addDebugLog('🚀 Page loaded');
     initPATDisplay();
     loadPortfolioTable();
-    
 });
+
 </script>
 
 </body>
