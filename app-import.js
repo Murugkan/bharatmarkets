@@ -275,6 +275,7 @@ function loadSheetJS(cb) {
     if (window.XLSX) { _sheetJSLoaded = true; cb(); return; }
     
     var script = document.createElement('script');
+    // Try primary CDN first
     script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
     
     script.onload = function() { 
@@ -283,12 +284,14 @@ function loadSheetJS(cb) {
     };
     
     script.onerror = function() { 
+        // Fallback to secondary CDN
         var script2 = document.createElement('script');
         script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js';
         script2.onload = function() { _sheetJSLoaded = true; cb(); };
         script2.onerror = function() { 
             var status = document.getElementById('file-status');
             if (status) status.innerHTML = '<span style="color:#ffb347;">⚠️ Excel support unavailable - use CSV instead</span>';
+            // Still continue with CSV support
             cb();
         };
         document.head.appendChild(script2);
@@ -312,6 +315,7 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
+    // Find column indices - robust matching with logging
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
@@ -321,24 +325,41 @@ function processImportCSV(csv) {
     
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
+        
+        // Stock Name - explicit match
         if (h === 'stock name' || (h.includes('stock') && h.includes('name'))) {
             nameIdx = i;
             addDebugLog("✓ Name @ [" + i + "]: " + h);
         }
-        if ((h === 'quantity' || h === 'qty' || h === 'shares' || h.includes('quantity')) && !h.includes('value')) {
+        
+        // Quantity - various forms but not "value"
+        if ((h === 'quantity' || h === 'qty' || h === 'shares' || h.includes('quantity')) && 
+            !h.includes('value')) {
             qtyIdx = i;
             addDebugLog("✓ Qty @ [" + i + "]: " + h);
         }
-        if ((h.includes('average') || h.includes('avg')) && (h.includes('price') || h.includes('cost'))) {
+        
+        // Average Price - must have both average/avg AND price/cost
+        if ((h.includes('average') || h.includes('avg')) && 
+            (h.includes('price') || h.includes('cost'))) {
             avgIdx = i;
             addDebugLog("✓ Avg @ [" + i + "]: " + h);
         }
     }
     
-    // Fallback defaults
-    if (nameIdx === -1) nameIdx = 0;
-    if (qtyIdx === -1 && headerParts.length > 1) qtyIdx = 1;
-    if (avgIdx === -1 && headerParts.length > 2) avgIdx = 2;
+    // Fallback defaults ONLY if detection failed
+    if (nameIdx === -1) {
+        nameIdx = 0;
+        addDebugLog("Fallback: Name @ [0]");
+    }
+    if (qtyIdx === -1 && headerParts.length > 1) {
+        qtyIdx = 1;
+        addDebugLog("Fallback: Qty @ [1]");
+    }
+    if (avgIdx === -1 && headerParts.length > 2) {
+        avgIdx = 2;
+        console.log("Using fallback: avg column at index 2");
+    }
     
     addDebugLog("Columns: Name[" + nameIdx + "], Qty[" + qtyIdx + "], Avg[" + avgIdx + "]");
     
@@ -357,34 +378,32 @@ function processImportCSV(csv) {
         
         var name = parts[nameIdx] || parts[0];
         
-        // Skip header lines - strictly checking for actual header values
-        var lowerName = name.toLowerCase();
-        if (lowerName === 'stock name' || lowerName === 'name' || lowerName === 'company name') continue;
+        // Skip header rows
+        if (name.toLowerCase().includes('name') || name.toLowerCase().includes('stock')) continue;
         
         var qty = null;
         var avg = null;
         
-        // FIX: Robust number parsing for quantities with commas (e.g., "1,000")
         if (qtyIdx >= 0 && qtyIdx < parts.length) {
-            var rawQty = parts[qtyIdx].replace(/,/g, ''); 
-            var qtyVal = parseFloat(rawQty);
+            var qtyVal = parseFloat(parts[qtyIdx]);
             if (!isNaN(qtyVal)) qty = qtyVal;
         }
         
-        // FIX: Robust number parsing for average price with commas
         if (avgIdx >= 0 && avgIdx < parts.length) {
-            var rawAvg = parts[avgIdx].replace(/,/g, '');
-            var avgVal = parseFloat(rawAvg);
+            var avgVal = parseFloat(parts[avgIdx]);
             if (!isNaN(avgVal)) avg = avgVal;
         }
         
+        // Log first 3 rows for debugging
         if (i <= 3) {
             addDebugLog("Row" + i + ": " + name + " | Qty=" + qty + " | Avg=" + (avg ? avg.toFixed(2) : "null"));
         }
         
+        // Skip duplicates
         if (seen.has(name)) continue;
         seen.add(name);
         
+        // Add stock if has valid name and at least one of qty/avg
         if (name && (qty !== null || avg !== null)) {
             stocks.push({
                 name: name,
@@ -470,10 +489,10 @@ function addManualEntries() {
         var parts = entry.split(',').map(function(p) { return p.trim(); });
         if (parts.length >= 3) {
             var name = parts[0];
-            var qty = parseFloat(parts[1].replace(/,/g, ''));
-            var avg = parseFloat(parts[2].replace(/,/g, ''));
+            var qty = parseFloat(parts[1]);
+            var avg = parseFloat(parts[2]);
             
-            if (name && !isNaN(qty) && !isNaN(avg) && !importState.stocks.find(function(s) { return s.name === name; })) {
+            if (name && qty && avg && !importState.stocks.find(function(s) { return s.name === name; })) {
                 importState.stocks.push({
                     name: name,
                     isin: '',
@@ -490,6 +509,28 @@ function addManualEntries() {
     
     textarea.value = '';
     showImportUI();
+    renderStep2Preview();
+}
+
+function renderStep2Preview() {
+    if (importState.stocks.length === 0) return;
+    
+    var html = '<div style="margin:15px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:250px;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:10px;">' +
+        '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
+        '<th style="padding:4px;text-align:left;color:#00ff88;">Name</th>' +
+        '<th style="padding:4px;text-align:right;color:#00ff88;">QTY</th>' +
+        '<th style="padding:4px;text-align:right;color:#00ff88;">AVG</th>' +
+        '</tr>';
+    
+    importState.stocks.forEach(function(stock) {
+        html += '<tr style="border-bottom:1px solid #111;"><td style="padding:4px;">' + stock.name.substring(0, 20) + '</td>' +
+            '<td style="padding:4px;text-align:right;">' + stock.qty + '</td>' +
+            '<td style="padding:4px;text-align:right;">₹' + stock.avg.toFixed(2) + '</td></tr>';
+    });
+    
+    html += '</table></div>';
+    document.getElementById('step2-preview').innerHTML = html;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -555,7 +596,7 @@ function renderStep4() {
 
 function autoParseAIResponse() {
     var response = document.getElementById('ai-response').value;
-    if (!response.trim() || !response.includes(',')) return;
+    if (!response.trim() || !response.includes(',')) return;  // Changed from pipe to comma
     if (!response.includes('INE') && !response.toLowerCase().includes('name')) return;
     parseAIResponse();
 }
@@ -571,12 +612,12 @@ function parseAIResponse() {
     var matched = 0;
     
     lines.forEach(function(line) {
-        if (!line.includes(',')) return;
-        var parts = line.split(',');
-        if (parts.length < 5) return;
+        if (!line.includes(',')) return;  // Changed from pipe to comma
+        var parts = line.split(',');  // Changed from pipe to comma
+        if (parts.length < 5) return;  // Now expects 5 fields
         
         var name = parts[0].trim();
-        var ticker = parts[1].trim();
+        var ticker = parts[1].trim();    // NEW: Extract Ticker
         var isin = parts[2].trim();
         var sector = parts[3].trim();
         var industry = parts[4].trim();
@@ -588,7 +629,7 @@ function parseAIResponse() {
         });
         
         if (stock) {
-            stock.ticker = ticker;
+            stock.ticker = ticker;         // Store Ticker
             stock.isin = isin;
             stock.sector = sector;
             stock.industry = industry;
@@ -662,7 +703,7 @@ function editCell(cell, idx, field) {
     
     if (newValue !== null) {
         if (field === 'qty' || field === 'avg') {
-            stock[field] = newValue ? parseFloat(newValue.replace(/,/g, '')) : null;
+            stock[field] = newValue ? parseFloat(newValue) : null;
         } else {
             stock[field] = newValue;
         }
@@ -721,7 +762,7 @@ function saveToIndexedDB() {
             
             importState.stocks.forEach(function(stock) {
                 var record = {
-                    sym: stock.ticker || stock.name.substring(0, 10).toUpperCase().replace(/\s/g, ''),
+                    sym: stock.symbol || stock.name.substring(0, 10),
                     name: stock.name,
                     isin: stock.isin,
                     sector: stock.sector,
@@ -736,10 +777,15 @@ function saveToIndexedDB() {
             
             tx.oncomplete = function() {
                 status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + importState.stocks.length + ' stocks</span>';
+                
                 setTimeout(function() {
                     importState.step = 7;
                     showImportUI();
                 }, 800);
+            };
+            
+            tx.onerror = function() {
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Save failed</span>';
             };
         };
     } catch(err) {
@@ -748,7 +794,7 @@ function saveToIndexedDB() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 7: Post to GitHub
+// STEP 7: Post to GitHub - PROPER UI WITH CONFIG & CONFIRMATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep7() {
@@ -760,6 +806,7 @@ function renderStep7() {
     var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;">🚀 Post to GitHub</h3>';
     
+    // PAT Configuration Section
     html += '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
         (isPATConfigured ? '#00ff88' : '#ffb347') + ';">' +
         '<div style="color:' + (isPATConfigured ? '#00ff88' : '#ffb347') + ';font-weight:bold;margin-bottom:10px;">' +
@@ -778,46 +825,91 @@ function renderStep7() {
         html += '<div id="github-config" style="display:none;margin-bottom:10px;">';
         html += '<div style="margin:8px 0;">' +
             '<label style="color:#888;font-size:11px;">GitHub PAT:</label><br>' +
-            '<input type="password" id="ghPAT" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;">' +
-            '</div>' +
-            '<div style="margin:8px 0;">' +
+            '<input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;' +
+            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;' +
+            'box-sizing:border-box;">' +
+            '</div>';
+        html += '<div style="margin:8px 0;">' +
             '<label style="color:#888;font-size:11px;">GitHub User:</label><br>' +
-            '<input type="text" id="ghUser" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;">' +
-            '</div>' +
-            '<div style="margin:8px 0;">' +
+            '<input type="text" id="ghUser" placeholder="murugkan" style="width:100%;padding:8px;' +
+            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
+            'box-sizing:border-box;">' +
+            '</div>';
+        html += '<div style="margin:8px 0;">' +
             '<label style="color:#888;font-size:11px;">GitHub Repo:</label><br>' +
-            '<input type="text" id="ghRepo" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;">' +
+            '<input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%;padding:8px;' +
+            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
+            'box-sizing:border-box;">' +
+            '</div>';
+        html += '<button onclick="saveGitHubConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;' +
+            'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">Save Config</button>' +
             '</div>' +
-            '<button onclick="saveGitHubConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">Save Config</button>' +
-            '</div>' +
-            '<button onclick="toggleGitHubConfig()" style="padding:8px 16px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;">Configure GitHub</button>';
+            '<button onclick="toggleGitHubConfig()" style="padding:8px 16px;background:#444;color:#fff;' +
+            'border:none;border-radius:6px;cursor:pointer;font-size:11px;">Configure GitHub</button>';
     }
     
     html += '</div>';
     
+    // Data Summary
     if (isPATConfigured) {
-        html += '<button onclick="toggleJSONPreview()" style="padding:10px 20px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:10px;">📋 Preview JSON</button>' +
-            '<div id="json-preview" style="display:none;margin:10px 0;padding:10px;background:#000;border:1px solid #222;border-radius:6px;max-height:300px;overflow-y:auto;font-size:9px;font-family:monospace;color:#0f0;"></div>' +
-            '<button onclick="postToGitHub()" style="padding:12px 24px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;margin-top:15px;">📤 Post to GitHub</button>';
+        html += '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;' +
+            'font-size:12px;color:#888;">' +
+            '<b style="color:#00ff88;">📊 Data to Post:</b><br><br>' +
+            '<div style="display:flex;justify-content:space-around;margin:10px 0;">' +
+            '<div>✅ Portfolio<br><b style="color:#00ff88;font-size:14px;">' + 
+            importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length + '</b></div>' +
+            '<div>📌 Watchlist<br><b style="color:#ffb347;font-size:14px;">' + 
+            importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length + '</b></div>' +
+            '<div>💾 Total<br><b style="color:#00ff88;font-size:14px;">' + importState.stocks.length + '</b></div>' +
+            '</div>' +
+            '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #333;font-size:11px;">' +
+            'File: <b>unified-symbols.json</b><br>' +
+            'Each stock includes: sym, name, isin, sector, industry, type, source' +
+            '</div>' +
+            '</div>';
+        
+        // JSON Preview
+        html += '<button onclick="toggleJSONPreview()" style="padding:10px 20px;background:#444;color:#fff;' +
+            'border:none;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:10px;">' +
+            '📋 Preview JSON</button>';
+        
+        html += '<div id="json-preview" style="display:none;margin:10px 0;padding:10px;background:#000;' +
+            'border:1px solid #222;border-radius:6px;max-height:300px;overflow-y:auto;font-size:9px;' +
+            'font-family:monospace;color:#0f0;"></div>';
+        
+        // Post Button
+        html += '<button onclick="postToGitHub()" style="padding:12px 24px;background:#00ff88;color:#000;' +
+            'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;' +
+            'margin-top:15px;">📤 Post to GitHub</button>';
     }
     
-    html += '<div id="step7-status" style="margin:15px 0;font-size:12px;"></div></div>';
+    html += '<div id="step7-status" style="margin:15px 0;font-size:12px;"></div>';
+    html += '</div>';
+    
     return html;
 }
 
 function toggleGitHubConfig() {
     var configDiv = document.getElementById('github-config');
-    if (configDiv) configDiv.style.display = configDiv.style.display === 'none' ? 'block' : 'none';
+    if (configDiv) {
+        configDiv.style.display = configDiv.style.display === 'none' ? 'block' : 'none';
+    }
 }
 
 function saveGitHubConfig() {
     var pat = document.getElementById('ghPAT').value;
     var user = document.getElementById('ghUser').value;
     var repo = document.getElementById('ghRepo').value;
-    if (!pat || !user || !repo) { alert('Please fill all fields'); return; }
+    
+    if (!pat || !user || !repo) {
+        alert('Please fill all fields');
+        return;
+    }
+    
     localStorage.setItem('ghPAT', pat);
     localStorage.setItem('ghUser', user);
     localStorage.setItem('ghRepo', repo);
+    
     alert('✅ GitHub configuration saved!');
     showImportUI();
 }
@@ -833,10 +925,16 @@ function toggleJSONPreview() {
 }
 
 function generateJSONPreview() {
-    var unifiedData = { updated: new Date().toISOString(), count: importState.stocks.length, symbols: [] };
+    var unifiedData = {
+        updated: new Date().toISOString(),
+        count: importState.stocks.length,
+        symbols: []
+    };
+    
     importState.stocks.forEach(function(stock) {
+        var ticker = stock.ticker || '?';
         unifiedData.symbols.push({
-            ticker: stock.ticker || '?',
+            ticker: ticker,
             name: stock.name,
             isin: stock.isin,
             sector: stock.sector,
@@ -845,24 +943,55 @@ function generateJSONPreview() {
             source: 'import'
         });
     });
-    unifiedData.symbols.sort(function(a, b) { return a.ticker.localeCompare(b.ticker); });
-    document.getElementById('json-preview').innerHTML = JSON.stringify(unifiedData, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
+    unifiedData.symbols.sort(function(a, b) {
+        return a.ticker.localeCompare(b.ticker);
+    });
+    
+    var jsonString = JSON.stringify(unifiedData, null, 2);
+    var preview = document.getElementById('json-preview');
+    preview.innerHTML = jsonString.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function generateSymbol(name) {
+    var words = name.split(' ');
+    var sym = '';
+    words.forEach(function(w) {
+        if (w.length > 0 && w[0] !== '&') {
+            sym += w[0].toUpperCase();
+        }
+    });
+    return sym.substring(0, 10);
 }
 
 function postToGitHub() {
     var ghPAT = localStorage.getItem('ghPAT');
     var ghUser = localStorage.getItem('ghUser');
     var ghRepo = localStorage.getItem('ghRepo');
-    if (!ghPAT || !ghUser || !ghRepo) { alert('GitHub not configured'); return; }
-    if (!confirm('Post ' + importState.stocks.length + ' stocks to unified-symbols.json?')) return;
+    
+    if (!ghPAT || !ghUser || !ghRepo) {
+        alert('GitHub not configured');
+        return;
+    }
+    
+    if (!confirm('Post ' + importState.stocks.length + ' stocks to unified-symbols.json?')) {
+        return;
+    }
     
     var status = document.getElementById('step7-status');
     status.innerHTML = '<span style="color:#ffb347;">⏳ Preparing data...</span>';
     
-    var unifiedData = { updated: new Date().toISOString(), count: importState.stocks.length, symbols: [] };
+    // Build JSON
+    var unifiedData = {
+        updated: new Date().toISOString(),
+        count: importState.stocks.length,
+        symbols: []
+    };
+    
     importState.stocks.forEach(function(stock) {
+        var ticker = stock.ticker || '?';
         unifiedData.symbols.push({
-            ticker: stock.ticker || '?',
+            ticker: ticker,
             name: stock.name,
             isin: stock.isin,
             sector: stock.sector,
@@ -871,31 +1000,61 @@ function postToGitHub() {
             source: 'import'
         });
     });
-    unifiedData.symbols.sort(function(a, b) { return a.ticker.localeCompare(b.ticker); });
+    
+    unifiedData.symbols.sort(function(a, b) {
+        return a.ticker.localeCompare(b.ticker);
+    });
     
     var jsonContent = JSON.stringify(unifiedData, null, 2);
     var base64Content = btoa(unescape(encodeURIComponent(jsonContent)));
+    
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Connecting to GitHub...</span>';
+    
     var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
     
-    fetch(apiUrl, { headers: { 'Authorization': 'token ' + ghPAT, 'Accept': 'application/vnd.github.v3+json' } })
+    // Get current SHA
+    fetch(apiUrl, {
+        headers: {
+            'Authorization': 'token ' + ghPAT,
+            'Accept': 'application/vnd.github.v3+json'
+        }
+    })
     .then(function(res) { return res.json(); })
     .then(function(data) {
         var sha = data.sha || undefined;
+        
+        status.innerHTML = '<span style="color:#ffb347;">⏳ Posting to GitHub...</span>';
+        
         return fetch(apiUrl, {
             method: 'PUT',
-            headers: { 'Authorization': 'token ' + ghPAT, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: 'Import: ' + importState.stocks.length + ' stocks', content: base64Content, sha: sha })
+            headers: {
+                'Authorization': 'token ' + ghPAT,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: 'Import: ' + importState.stocks.length + ' stocks',
+                content: base64Content,
+                sha: sha
+            })
         });
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
-        if (data.commit) {
-            status.innerHTML = '<div style="color:#00ff88;"><b>✅ Posted Successfully!</b></div>';
+        if (data.commit && data.commit.sha) {
+            status.innerHTML = '<div style="color:#00ff88;"><b>✅ Posted Successfully!</b></div>' +
+                '<div style="margin:10px 0;font-size:11px;color:#888;">' +
+                'Message: ' + data.commit.message + '<br>' +
+                'SHA: ' + data.commit.sha.substring(0, 10) + '...<br>' +
+                'File: ' + data.content.name + '<br><br>' +
+                '<b style="color:#00ff88;">' + importState.stocks.length + ' stocks written to GitHub</b>' +
+                '</div>';
         } else {
             status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + (data.message || 'Unknown error') + '</span>';
         }
     })
-    .catch(function(err) { status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>'; });
+    .catch(function(err) {
+        status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
+    });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -903,15 +1062,23 @@ function postToGitHub() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function nextImportStep() {
-    if (importState.step < 7) { importState.step++; showImportUI(); }
+    if (importState.step < 7) {
+        importState.step++;
+        showImportUI();
+    }
 }
 
 function prevImportStep() {
-    if (importState.step > 1) { importState.step--; showImportUI(); }
+    if (importState.step > 1) {
+        importState.step--;
+        showImportUI();
+    }
 }
 
 function closeImportModal() {
     var modal = document.getElementById('import-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+    }
     document.body.classList.remove('modal-open');
 }
