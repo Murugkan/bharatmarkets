@@ -87,26 +87,7 @@
         <div id="pat-message" style="margin-top:10px;font-size:11px;"></div>
     </div>
     
-    <!-- Refresh Controls -->
-    <div class="refresh-section">
-        <div class="refresh-grid">
-            <div class="refresh-card">
-                <div class="refresh-card-title">📈 Refresh Prices</div>
-                <button class="refresh-btn" onclick="refreshPrices()">Refresh Prices</button>
-                <div style="font-size:9px;color:#666;margin-top:8px;">Last Updated: Never</div>
-            </div>
-            <div class="refresh-card">
-                <div class="refresh-card-title">💹 Refresh Fundamentals</div>
-                <button class="refresh-btn" onclick="refreshFundamentals()">Refresh Fundamentals</button>
-                <div style="font-size:9px;color:#666;margin-top:8px;">Last Updated: Never</div>
-            </div>
-            <div class="refresh-card">
-                <div class="refresh-card-title">🔗 Full Sync & Reload</div>
-                <button class="refresh-btn" onclick="fullSync()">Full Sync & Reload</button>
-                <div style="font-size:9px;color:#666;margin-top:8px;">Last Updated: Never</div>
-            </div>
-        </div>
-    </div>
+
     
     <!-- Data Table -->
     <div class="table-wrap">
@@ -127,6 +108,67 @@
                 <tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>
             </tbody>
         </table>
+    </div>
+    
+    <!-- Refresh Controls -->
+    <div class="refresh-section" style="margin-top:30px;">
+        <div class="refresh-grid">
+            <div class="refresh-card">
+                <div class="refresh-card-title">📈 Refresh Prices</div>
+                <button class="refresh-btn" onclick="refreshPrices()">Refresh Prices</button>
+                <div id="prices-timestamp" style="font-size:9px;color:#666;margin-top:8px;">Last Updated: —</div>
+            </div>
+            <div class="refresh-card">
+                <div class="refresh-card-title">💹 Refresh Fundamentals</div>
+                <button class="refresh-btn" onclick="refreshFundamentals()">Refresh Fundamentals</button>
+                <div id="fundamentals-timestamp" style="font-size:9px;color:#666;margin-top:8px;">Last Updated: —</div>
+            </div>
+            <div class="refresh-card">
+                <div class="refresh-card-title">🔗 Full Sync & Reload</div>
+                <button class="refresh-btn" onclick="fullSync()">Full Sync & Reload</button>
+                <div id="unified-timestamp" style="font-size:9px;color:#666;margin-top:8px;">Last Updated: —</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- GitHub PAT Configuration -->
+    <div style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:8px;padding:15px;margin-top:30px;margin-bottom:30px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="color:#00ff88;font-size:14px;margin:0;">🔐 GitHub Configuration</h3>
+            <span id="pat-status" style="font-size:11px;color:#ffb347;">⚠️ Not configured</span>
+        </div>
+        
+        <div id="pat-form" style="display:none;margin-bottom:12px;">
+            <div style="margin:8px 0;">
+                <label style="color:#888;font-size:11px;">GitHub PAT:</label><br>
+                <input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div style="margin:8px 0;">
+                <label style="color:#888;font-size:11px;">GitHub User:</label><br>
+                <input type="text" id="ghUser" placeholder="murugkan" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div style="margin:8px 0;">
+                <label style="color:#888;font-size:11px;">GitHub Repo:</label><br>
+                <input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%;padding:8px;background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <button onclick="savePATConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;width:100%;">Save Config</button>
+        </div>
+        
+        <div id="pat-display" style="display:none;padding:10px;background:#050505;border:1px solid #222;border-radius:4px;font-size:11px;margin-bottom:12px;">
+            <div style="color:#00ff88;font-weight:bold;margin-bottom:8px;">✅ Configured</div>
+            <div style="color:#888;">
+                User: <b id="display-user"></b><br>
+                Repo: <b id="display-repo"></b><br>
+                PAT: <b id="display-pat"></b>
+            </div>
+        </div>
+        
+        <div style="display:flex;gap:10px;">
+            <button onclick="togglePATForm()" id="toggle-btn" style="padding:8px 12px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">Edit Config</button>
+            <button onclick="testPATConnection()" style="padding:8px 12px;background:#007bff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;flex:1;">🧪 Test Connection</button>
+        </div>
+        
+        <div id="pat-message" style="margin-top:10px;font-size:11px;"></div>
     </div>
 </div>
 
@@ -258,26 +300,94 @@ function testPATConnection() {
 }
 
 // ===== END PAT CONFIGURATION =====
-function refreshPrices() {
-    if (typeof refreshPortfolioData === 'function') {
-        refreshPortfolioData();
-    } else {
-        alert('Prices refresh - loading prices.json');
+function getFileTimestamps() {
+    // Fetch metadata from all 3 files
+    Promise.all([
+        fetch('./prices.json').then(r => r.json()),
+        fetch('./fundamentals.json').then(r => r.json()),
+        fetch('./unified-symbols.json').then(r => r.json())
+    ])
+    .then(function(data) {
+        var pricesData = data[0];
+        var fundData = data[1];
+        var unifiedData = data[2];
+        
+        var pricesTime = pricesData.updated || '—';
+        var fundTime = fundData.updated || '—';
+        var unifiedTime = unifiedData.updated || '—';
+        
+        document.getElementById('prices-timestamp').innerHTML = 'Last Updated: ' + formatTime(pricesTime);
+        document.getElementById('fundamentals-timestamp').innerHTML = 'Last Updated: ' + formatTime(fundTime);
+        document.getElementById('unified-timestamp').innerHTML = 'Last Updated: ' + formatTime(unifiedTime);
+    })
+    .catch(function(e) {
+        console.error('Error fetching timestamps:', e);
+    });
+}
+
+function formatTime(timeStr) {
+    if (!timeStr || timeStr === '—') return '—';
+    try {
+        var date = new Date(timeStr);
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    } catch(e) {
+        return timeStr;
     }
+}
+
+function refreshPrices() {
+    var msg = document.getElementById('pat-message');
+    msg.innerHTML = '<span style="color:#ffb347;">⏳ Refreshing prices...</span>';
+    
+    // Just reload prices from server
+    fetch('./prices.json?t=' + Date.now())
+    .then(r => r.json())
+    .then(function(data) {
+        msg.innerHTML = '<span style="color:#00ff88;">✅ Prices refreshed!</span>';
+        getFileTimestamps();
+        loadPortfolioTable();
+    })
+    .catch(function(e) {
+        msg.innerHTML = '<span style="color:#ff6b85;">❌ Error refreshing prices</span>';
+    });
 }
 
 function refreshFundamentals() {
-    if (typeof loadFundamentals === 'function') {
-        loadFundamentals(true);
-    } else {
-        alert('Fundamentals refresh - loading fundamentals.json');
-    }
+    var msg = document.getElementById('pat-message');
+    msg.innerHTML = '<span style="color:#ffb347;">⏳ Refreshing fundamentals...</span>';
+    
+    fetch('./fundamentals.json?t=' + Date.now())
+    .then(r => r.json())
+    .then(function(data) {
+        msg.innerHTML = '<span style="color:#00ff88;">✅ Fundamentals refreshed!</span>';
+        getFileTimestamps();
+        loadPortfolioTable();
+    })
+    .catch(function(e) {
+        msg.innerHTML = '<span style="color:#ff6b85;">❌ Error refreshing fundamentals</span>';
+    });
 }
 
 function fullSync() {
-    refreshPrices();
-    refreshFundamentals();
-    location.reload();
+    var msg = document.getElementById('pat-message');
+    msg.innerHTML = '<span style="color:#ffb347;">⏳ Full sync in progress...</span>';
+    
+    Promise.all([
+        fetch('./prices.json?t=' + Date.now()).then(r => r.json()),
+        fetch('./fundamentals.json?t=' + Date.now()).then(r => r.json()),
+        fetch('./unified-symbols.json?t=' + Date.now()).then(r => r.json())
+    ])
+    .then(function(data) {
+        msg.innerHTML = '<span style="color:#00ff88;">✅ Sync complete! Reloading...</span>';
+        getFileTimestamps();
+        loadPortfolioTable();
+        setTimeout(function() {
+            location.reload();
+        }, 1000);
+    })
+    .catch(function(e) {
+        msg.innerHTML = '<span style="color:#ff6b85;">❌ Sync failed</span>';
+    });
 }
 
 // Edit Quantity
@@ -534,6 +644,7 @@ function closeImportModal() {
 window.addEventListener('DOMContentLoaded', function() {
     initPATDisplay();
     loadPortfolioTable();
+    getFileTimestamps();
 });
 </script>
 
