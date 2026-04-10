@@ -326,22 +326,27 @@ function processImportCSV(csv) {
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
         
-        // Stock Name - explicit match
-        if (h === 'stock name' || (h.includes('stock') && h.includes('name'))) {
+        // Stock Name - symbol, ticker, stock, or compound
+        if (h === 'symbol' || h === 'ticker' || h === 'stock' || 
+            h === 'stock name' || (h.includes('stock') && h.includes('name'))) {
             nameIdx = i;
             addDebugLog("✓ Name @ [" + i + "]: " + h);
         }
         
-        // Quantity - various forms but not "value"
-        if ((h === 'quantity' || h === 'qty' || h === 'shares' || h.includes('quantity')) && 
+        // Quantity - multiple forms: qty, quantity, shares, no. of shares, etc.
+        if ((h === 'quantity' || h === 'qty' || h === 'shares' || 
+             h.includes('qty') || h.includes('quantity') || 
+             h.includes('shares') || h === 'no' || h === 'no. of shares') && 
             !h.includes('value')) {
             qtyIdx = i;
             addDebugLog("✓ Qty @ [" + i + "]: " + h);
         }
         
-        // Average Price - must have both average/avg AND price/cost
-        if ((h.includes('average') || h.includes('avg')) && 
-            (h.includes('price') || h.includes('cost'))) {
+        // Average Price - multiple forms: avg price, average price, cost, etc.
+        if ((h === 'avg' || h === 'average' || h === 'cost' || h === 'purchase' ||
+             h.includes('average price') || h.includes('avg price') || 
+             h.includes('cost price') || h.includes('purchase price')) && 
+            !h.includes('total')) {
             avgIdx = i;
             addDebugLog("✓ Avg @ [" + i + "]: " + h);
         }
@@ -385,18 +390,24 @@ function processImportCSV(csv) {
         var avg = null;
         
         if (qtyIdx >= 0 && qtyIdx < parts.length) {
-            var qtyVal = parseFloat(parts[qtyIdx]);
-            if (!isNaN(qtyVal)) qty = qtyVal;
+            var qtyStr = parts[qtyIdx].trim();
+            if (qtyStr && qtyStr !== '0' && qtyStr !== '-') {
+                var qtyVal = parseFloat(qtyStr);
+                if (!isNaN(qtyVal) && qtyVal > 0) qty = qtyVal;
+            }
         }
         
         if (avgIdx >= 0 && avgIdx < parts.length) {
-            var avgVal = parseFloat(parts[avgIdx]);
-            if (!isNaN(avgVal)) avg = avgVal;
+            var avgStr = parts[avgIdx].trim();
+            if (avgStr && avgStr !== '0' && avgStr !== '-') {
+                var avgVal = parseFloat(avgStr);
+                if (!isNaN(avgVal) && avgVal > 0) avg = avgVal;
+            }
         }
         
-        // Log first 3 rows for debugging
-        if (i <= 3) {
-            addDebugLog("Row" + i + ": " + name + " | Qty=" + qty + " | Avg=" + (avg ? avg.toFixed(2) : "null"));
+        // Log first 5 rows for debugging - show parts array too
+        if (i <= 5) {
+            addDebugLog("Row" + i + ": " + name + " | Parts[" + parts.length + "]:" + parts.slice(0, 3).join("|") + " | Qty=" + qty + " | Avg=" + (avg ? avg.toFixed(2) : "null"));
         }
         
         // Skip duplicates
