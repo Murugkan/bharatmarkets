@@ -120,7 +120,7 @@ function showImportUI() {
         html += '<div style="margin-bottom:10px;font-size:12px;color:#555;font-family:monospace;">' +
             'Step ' + importState.step + ' of 7: ';
         
-        var stepTitles = ['Upload CSV/XLS', 'Manual Entries', 'AI Prompt', 'Paste Response', 'Edit & Validate', 'Save to DB', 'Post to GitHub'];
+        var stepTitles = ['Upload CSV/XLS', 'Manual Entries (Opt)', 'AI Prompt (Opt)', 'Paste Response', 'Edit & Validate', 'Save to DB (Opt)', 'Post to GitHub'];
         html += stepTitles[importState.step - 1];
         html += '</div>';
         
@@ -535,7 +535,7 @@ function renderStep1Preview() {
 
 function renderStep2() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Add Manual Entries</h3>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Add Manual Entries (OPTIONAL)</h3>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format (one per line):</b><br>' +
         'Stock Name, QTY, AVG<br><br>' +
@@ -630,7 +630,7 @@ function renderStep3() {
         '• Output ONLY the table, no extra text';
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Generate AI Prompt</h3>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Generate AI Prompt (OPTIONAL)</h3>' +
         '<p style="margin:10px 0;color:#888;font-size:12px;">' +
         'Copy prompt → Paste in ChatGPT/Claude → Get ISIN & Sector' +
         '</p>' +
@@ -658,34 +658,46 @@ function copyPrompt() {
 function renderStep4() {
     var hasStocks = importState.stocks && importState.stocks.length > 0;
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Enrich Data (Optional)</h3>' +
-        '<div style="padding:10px;background:#0a2a1a;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
-        '<b style="color:#00ff88;">ℹ️ Step 1 Required:</b><br>' +
-        'Upload CSV in Step 1 first. This step adds Ticker, ISIN, Sector details.' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">📋 Paste Additional Data (MANDATORY)</h3>' +
+        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
+        '<b style="color:#ffb347;">⚠️ REQUIRED:</b><br>' +
+        'Paste data with Ticker, ISIN, Sector for each stock from Step 1.' +
         '</div>' +
+        
+        '<div style="margin:10px 0;font-size:11px;color:#666;">' +
+        '<b>Format (any delimiter):</b><br>' +
+        '&bull; Comma: Stock Name,Ticker,ISIN,Sector<br>' +
+        '&bull; Tab: Stock Name\tTicker\tISIN\tSector<br>' +
+        '<b>Example:</b><br>' +
+        'HDFC Bank,HDFCBANK,INE040A01034,Banking<br>' +
+        'Reliance,RIL,INE002A01018,Oil & Gas' +
+        '</div>' +
+        
         '<textarea id="ai-response" style="width:100%;height:180px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Paste comma/tab-separated:\nStock Name,Ticker,ISIN,Sector\nHDFC Bank,HDFCBANK,INE040A01034,Banking" ' +
-        'onpaste="setTimeout(function() { autoParseAIResponse(); }, 100)" ' +
-        'onchange="autoParseAIResponse()"></textarea>' +
+        'placeholder="Paste data here - copy from Excel/CSV/AI response"></textarea>' +
+        
+        '<button onclick="manuallyParseStep4()" style="margin-top:10px;padding:8px 16px;background:#ffb347;' +
+        'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Pasted Data</button>' +
+        
         '<div id="step4-status" style="margin:10px 0;font-size:12px;">' + 
-        (hasStocks ? '<span style="color:#00ff88;">✅ ' + importState.stocks.length + ' stocks ready to enrich</span>' : 
-                     '<span style="color:#ffb347;">⚠️ Complete Step 1 first (CSV upload)</span>') +
+        (hasStocks ? '<span style="color:#00ff88;">✅ ' + importState.stocks.length + ' stocks from Step 1</span>' : 
+                     '<span style="color:#ff6b85;">❌ No stocks from Step 1 - Go back to Step 1</span>') +
         '</div>' +
         '</div>';
 }
 
-function autoParseAIResponse() {
+function manuallyParseStep4() {
     var response = document.getElementById('ai-response').value;
-    if (!response.trim()) return;
     
-    // Check if we have stocks from Step 1
     if (!importState.stocks || importState.stocks.length === 0) {
-        var status = document.getElementById('step4-status');
-        if (status) {
-            status.innerHTML = '<span style="color:#ffb347;">⚠️ No stocks. Complete Step 1 (CSV upload) first.</span>';
-        }
+        alert('❌ No stocks from Step 1. Go back and upload CSV file first.');
+        return;
+    }
+    
+    if (!response.trim()) {
+        alert('❌ Please paste data in the textarea first');
         return;
     }
     
@@ -698,7 +710,15 @@ function autoParseAIResponse() {
         parseAIResponse(';');
     } else if (response.includes('|')) {
         parseAIResponse('|');
+    } else {
+        alert('❌ Could not detect delimiter. Use comma, tab, semicolon, or pipe.');
+        return;
     }
+}
+
+function autoParseAIResponse() {
+    // This won't be called - user uses the button instead
+    // Kept for compatibility
 }
 
 function parseAIResponse(delimiter) {
