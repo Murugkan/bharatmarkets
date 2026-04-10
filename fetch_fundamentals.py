@@ -34,7 +34,7 @@ except ImportError:
     HAS_BS4 = False
     print("⚠ beautifulsoup4 not installed — Screener.in disabled (pip install beautifulsoup4 lxml)")
 
-SYMBOLS_FILE    = "symbols.json"
+SYMBOLS_FILE    = "unified-symbols.json"
 PRICES_FILE     = "prices.json"
 FUND_FILE       = "fundamentals.json"
 YF_DELAY        = 0.15
@@ -161,45 +161,31 @@ def search_yahoo_symbol(name, isin=""):
     return None
 
 def load_symbols():
-    """Read symbols.json — resolve unconfirmed symbols only when RESOLVE=true."""
+    """Read unified-symbols.json — extract ticker symbols for fetching fundamentals."""
     global CDSL_NAMES
     syms, seen = [], set()
     try:
         data = _json.loads(Path(SYMBOLS_FILE).read_text())
-        resolved_any = False
-        for entry in data:
-            if entry.get("resolved") is True:
-                sym = entry.get("sym","").strip().upper()
-                if sym and sym not in SKIP and sym not in seen:
-                    syms.append(sym); seen.add(sym)
-                    if entry.get("name"): CDSL_NAMES[sym] = entry["name"]
-                continue
-            # Not yet resolved
-            if not DO_RESOLVE:
-                # Scheduled run — skip unresolved entries silently
-                sym = entry.get("sym","").strip().upper()
-                if sym and sym not in SKIP and sym not in seen:
-                    syms.append(sym); seen.add(sym)
-                continue
-            # RESOLVE=true — confirm via Yahoo
-            name = entry.get("name","")
-            isin = entry.get("isin","")
-            sym  = yahoo_search_sym("", cdsl_name=name) if name else ""
-            sym  = sym.replace(".NS","").replace(".BO","") if sym else entry.get("sym","").strip().upper()
-            if sym:
-                entry["sym"]      = sym
-                entry["resolved"] = True
-                resolved_any = True
-                if name: CDSL_NAMES[sym] = name
-            else:
-                entry["resolved"] = True
-                print(f"  ⚠ Unresolvable: '{name}'")
-            if sym and sym not in SKIP and sym not in seen:
-                syms.append(sym); seen.add(sym)
-        if resolved_any:
-            Path(SYMBOLS_FILE).write_text(_json.dumps(data, separators=(",",":")))
-            print(f"✓ symbols.json updated")
-        print(f"📋 {len(syms)} symbols | RESOLVE={DO_RESOLVE} CLEAN={DO_CLEAN}\n")
+        
+        # Handle unified-symbols.json format: {symbols: [...]}
+        symbols_list = data.get("symbols", []) if isinstance(data, dict) else data
+        
+        for entry in symbols_list:
+            # unified-symbols.json uses "ticker" field instead of "sym"
+            ticker = entry.get("ticker", "").strip().upper()
+            if not ticker:
+                # Fallback to sym field if ticker not present
+                ticker = entry.get("sym", "").strip().upper()
+            
+            name = entry.get("name", "")
+            
+            if ticker and ticker not in SKIP and ticker not in seen:
+                syms.append(ticker)
+                seen.add(ticker)
+                if name:
+                    CDSL_NAMES[ticker] = name
+        
+        print(f"📋 {len(syms)} symbols from {SYMBOLS_FILE} | RESOLVE={DO_RESOLVE} CLEAN={DO_CLEAN}\n")
     except Exception as e:
         print(f"⚠ Cannot read {SYMBOLS_FILE}: {e}")
     return syms
