@@ -137,46 +137,79 @@ function fullSync() {
 }
 
 function exportData() {
-    var portfolio = [];
+    var DB_NAME = "OnyxPortfolioDB";
+    var STORE_NAME = "Stocks";
+    
     try {
-        var data = localStorage.getItem('portfolio');
-        if (data) {
-            portfolio = JSON.parse(data);
-        }
-    } catch(e) {}
-    
-    if (portfolio.length === 0) {
-        alert('No portfolio data to export');
-        return;
+        var request = indexedDB.open(DB_NAME, 8);
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readonly');
+            var store = tx.objectStore(STORE_NAME);
+            var getAll = store.getAll();
+            
+            getAll.onsuccess = function() {
+                var portfolio = getAll.result || [];
+                
+                if (portfolio.length === 0) {
+                    alert('No portfolio data to export');
+                    return;
+                }
+                
+                var csv = 'Symbol,Name,Type,QTY,AVG,LTP,Sector,ISIN\n';
+                for (var i = 0; i < portfolio.length; i++) {
+                    var s = portfolio[i];
+                    csv += (s.SYM || s.sym || '-') + ',' + (s.name || '-') + ',' + (s.type || 'PORTFOLIO') + ',' + (s.QTY || s.qty || 0) + ',' + (s.AVG || s.avg || 0) + ',' + (s.LTP || s.ltp || 0) + ',' + (s.SECTOR || s.sector || '-') + ',' + (s.isin || '-') + '\n';
+                }
+                
+                var blob = new Blob([csv], {type:'text/csv'});
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'portfolio-' + new Date().toISOString().split('T')[0] + '.csv';
+                a.click();
+            };
+        };
+    } catch(e) {
+        console.error('Error exporting data:', e);
+        alert('Error exporting data');
     }
-    
-    var csv = 'Symbol,Name,Type,QTY,AVG,LTP,Sector,ISIN\n';
-    for (var i = 0; i < portfolio.length; i++) {
-        var s = portfolio[i];
-        csv += (s.sym || '-') + ',' + (s.name || '-') + ',' + (s.type || 'PORTFOLIO') + ',' + (s.qty || 0) + ',' + (s.avg || 0) + ',' + (s.ltp || 0) + ',' + (s.sector || '-') + ',' + (s.isin || '-') + '\n';
-    }
-    
-    var blob = new Blob([csv], {type:'text/csv'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'portfolio.csv';
-    a.click();
 }
 
 function loadPortfolioTable() {
-    // Load portfolio from localStorage if available
-    var portfolio = [];
-    try {
-        var data = localStorage.getItem('portfolio');
-        if (data) {
-            portfolio = JSON.parse(data);
-        }
-    } catch(e) {
-        console.error('Error loading portfolio:', e);
-    }
+    // Load portfolio from IndexedDB (OnyxPortfolioDB)
+    var DB_NAME = "OnyxPortfolioDB";
+    var STORE_NAME = "Stocks";
     
-    renderTable(portfolio);
+    try {
+        var request = indexedDB.open(DB_NAME, 8);
+        
+        request.onerror = function() {
+            console.error('Failed to open IndexedDB');
+            renderTable([]);
+        };
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readonly');
+            var store = tx.objectStore(STORE_NAME);
+            var getAll = store.getAll();
+            
+            getAll.onerror = function() {
+                console.error('Failed to get stocks from IndexedDB');
+                renderTable([]);
+            };
+            
+            getAll.onsuccess = function() {
+                var stocks = getAll.result || [];
+                renderTable(stocks);
+            };
+        };
+    } catch(e) {
+        console.error('Error accessing IndexedDB:', e);
+        renderTable([]);
+    }
 }
 
 function renderTable(portfolio) {
@@ -189,13 +222,23 @@ function renderTable(portfolio) {
     var html = '';
     for (var i = 0; i < portfolio.length; i++) {
         var s = portfolio[i];
-        var invested = (s.qty || 0) * (s.avg || 0);
-        var current = (s.qty || 0) * (s.ltp || 0);
+        // Handle both uppercase (from IndexedDB) and lowercase field names
+        var sym = s.SYM || s.sym || '-';
+        var name = s.name || '-';
+        var type = s.type || 'PORTFOLIO';
+        var qty = s.QTY || s.qty || 0;
+        var avg = s.AVG || s.avg || 0;
+        var ltp = s.LTP || s.ltp || 0;
+        var sector = s.SECTOR || s.sector || '-';
+        var isin = s.isin || '-';
+        
+        var invested = qty * avg;
+        var current = qty * ltp;
         var pnl = current - invested;
         var pnlPct = invested > 0 ? ((pnl / invested) * 100) : 0;
         var pnlClass = pnl >= 0 ? 'pos' : 'neg';
         
-        html += '<tr><td>' + (s.sym || '-') + '</td><td>' + (s.name || '-') + '</td><td>' + (s.type || '-') + '</td><td>' + (s.qty || 0) + '</td><td>₹' + (s.avg || 0).toFixed(2) + '</td><td>₹' + (s.ltp || 0).toFixed(2) + '</td><td>₹' + invested.toFixed(2) + '</td><td>₹' + current.toFixed(2) + '</td><td class="' + pnlClass + '">₹' + pnl.toFixed(2) + '</td><td class="' + pnlClass + '">' + pnlPct.toFixed(2) + '%</td><td>' + (s.sector || '-') + '</td><td>' + (s.isin || '-') + '</td><td><button onclick="deleteStock(' + i + ')" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td></tr>';
+        html += '<tr><td>' + sym + '</td><td>' + name + '</td><td>' + type + '</td><td>' + qty + '</td><td>₹' + parseFloat(avg).toFixed(2) + '</td><td>₹' + parseFloat(ltp).toFixed(2) + '</td><td>₹' + invested.toFixed(2) + '</td><td>₹' + current.toFixed(2) + '</td><td class="' + pnlClass + '">₹' + pnl.toFixed(2) + '</td><td class="' + pnlClass + '">' + pnlPct.toFixed(2) + '%</td><td>' + sector + '</td><td>' + isin + '</td><td><button onclick="deleteStock(' + i + ')" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td></tr>';
     }
     tbody.innerHTML = html;
 }
