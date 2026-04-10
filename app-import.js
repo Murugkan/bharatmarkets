@@ -315,10 +315,12 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
-    // Find column indices - robust matching with logging
+    // Find column indices - robust matching
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
+    var isinIdx = -1;
+    var sectorIdx = -1;
     
     clearDebugLog();
     addDebugLog("Headers: " + headerParts.join(" | "));
@@ -326,42 +328,79 @@ function processImportCSV(csv) {
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
         
-        // Stock Name - explicit match
-        if (h === 'stock name' || (h.includes('stock') && h.includes('name'))) {
+        // Stock Name / Symbol / Ticker
+        if (!nameIdx && (h === 'stock name' || h === 'symbol' || h === 'ticker' || 
+            h === 'name' || (h.includes('stock') && h.includes('name')))) {
             nameIdx = i;
             addDebugLog("✓ Name @ [" + i + "]: " + h);
         }
         
         // Quantity - various forms but not "value"
-        if ((h === 'quantity' || h === 'qty' || h === 'shares' || h.includes('quantity')) && 
-            !h.includes('value')) {
+        if (qtyIdx === -1 && (h === 'quantity' || h === 'qty' || h === 'shares' || 
+            h.includes('quantity') || h.includes('qty')) && !h.includes('value')) {
             qtyIdx = i;
             addDebugLog("✓ Qty @ [" + i + "]: " + h);
         }
         
-        // Average Price - must have both average/avg AND price/cost
-        if ((h.includes('average') || h.includes('avg')) && 
-            (h.includes('price') || h.includes('cost'))) {
+        // Average Price / Cost Price - flexible matching
+        if (avgIdx === -1 && ((h.includes('average') || h.includes('avg') || h.includes('cost')) && 
+            (h.includes('price') || h.includes('cost')))) {
             avgIdx = i;
             addDebugLog("✓ Avg @ [" + i + "]: " + h);
         }
+        
+        // ISIN
+        if (isinIdx === -1 && h === 'isin') {
+            isinIdx = i;
+            addDebugLog("✓ ISIN @ [" + i + "]: " + h);
+        }
+        
+        // Sector
+        if (sectorIdx === -1 && (h === 'sector' || h === 'sector name' || h.includes('sector'))) {
+            sectorIdx = i;
+            addDebugLog("✓ Sector @ [" + i + "]: " + h);
+        }
     }
     
-    // Fallback defaults ONLY if detection failed
+    // Smarter fallback detection based on column count
     if (nameIdx === -1) {
         nameIdx = 0;
         addDebugLog("Fallback: Name @ [0]");
     }
-    if (qtyIdx === -1 && headerParts.length > 1) {
-        qtyIdx = 1;
-        addDebugLog("Fallback: Qty @ [1]");
-    }
-    if (avgIdx === -1 && headerParts.length > 2) {
-        avgIdx = 2;
-        console.log("Using fallback: avg column at index 2");
+    
+    // If Qty not found, look for numeric columns after name
+    if (qtyIdx === -1) {
+        for (var i = nameIdx + 1; i < headerParts.length; i++) {
+            var h = headerParts[i];
+            if (h.includes('qty') || h.includes('quantity') || h.includes('shares')) {
+                qtyIdx = i;
+                addDebugLog("Fallback: Found Qty @ [" + i + "]");
+                break;
+            }
+        }
+        if (qtyIdx === -1 && headerParts.length > 3) {
+            qtyIdx = 3;  // Common position in broker exports
+            addDebugLog("Fallback: Qty @ [3]");
+        }
     }
     
-    addDebugLog("Columns: Name[" + nameIdx + "], Qty[" + qtyIdx + "], Avg[" + avgIdx + "]");
+    // If Avg not found, look after Qty
+    if (avgIdx === -1) {
+        for (var i = nameIdx + 1; i < headerParts.length; i++) {
+            var h = headerParts[i];
+            if (h.includes('average') || h.includes('avg') || (h.includes('cost') && h.includes('price'))) {
+                avgIdx = i;
+                addDebugLog("Fallback: Found Avg @ [" + i + "]");
+                break;
+            }
+        }
+        if (avgIdx === -1 && headerParts.length > 4) {
+            avgIdx = 4;  // Common position in broker exports
+            addDebugLog("Fallback: Avg @ [4]");
+        }
+    }
+    
+    addDebugLog("Final: Name[" + nameIdx + "], Qty[" + qtyIdx + "], Avg[" + avgIdx + "]");
     
     var stocks = [];
     var seen = new Set();
@@ -378,20 +417,35 @@ function processImportCSV(csv) {
         
         var name = parts[nameIdx] || parts[0];
         
-        // Skip header rows
-        if (name.toLowerCase().includes('name') || name.toLowerCase().includes('stock')) continue;
+        // Skip header rows and empty names
+        if (name.toLowerCase().includes('name') || name.toLowerCase().includes('stock') || 
+            name.toLowerCase().includes('symbol') || name.length === 0) continue;
         
         var qty = null;
         var avg = null;
+        var isin = null;
+        var sector = null;
         
+        // Extract Quantity
         if (qtyIdx >= 0 && qtyIdx < parts.length) {
             var qtyVal = parseFloat(parts[qtyIdx]);
-            if (!isNaN(qtyVal)) qty = qtyVal;
+            if (!isNaN(qtyVal) && qtyVal > 0) qty = qtyVal;
         }
         
+        // Extract Average Price
         if (avgIdx >= 0 && avgIdx < parts.length) {
             var avgVal = parseFloat(parts[avgIdx]);
-            if (!isNaN(avgVal)) avg = avgVal;
+            if (!isNaN(avgVal) && avgVal > 0) avg = avgVal;
+        }
+        
+        // Extract ISIN if available
+        if (isinIdx >= 0 && isinIdx < parts.length) {
+            isin = parts[isinIdx] || null;
+        }
+        
+        // Extract Sector if available
+        if (sectorIdx >= 0 && sectorIdx < parts.length) {
+            sector = parts[sectorIdx] || null;
         }
         
         // Log first 3 rows for debugging
@@ -407,12 +461,12 @@ function processImportCSV(csv) {
         if (name && (qty !== null || avg !== null)) {
             stocks.push({
                 name: name,
-                isin: '',
+                isin: isin || '',
                 qty: qty || 0,
                 avg: avg || 0,
-                sector: '',
+                sector: sector || '',
                 industry: '',
-                type: 'PORTFOLIO',
+                type: qty !== null ? 'PORTFOLIO' : 'WATCHLIST',
                 status: ''
             });
         }
