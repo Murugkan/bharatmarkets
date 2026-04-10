@@ -806,11 +806,11 @@ function renderStep7() {
     var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;">🚀 Post to GitHub</h3>';
     
-    // PAT Configuration Section
+    // Status Section
     html += '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
         (isPATConfigured ? '#00ff88' : '#ffb347') + ';">' +
         '<div style="color:' + (isPATConfigured ? '#00ff88' : '#ffb347') + ';font-weight:bold;margin-bottom:10px;">' +
-        (isPATConfigured ? '✅ GitHub Configured' : '⚠️ Configure GitHub') +
+        (isPATConfigured ? '✅ GitHub Configured' : '⚠️ Configure in DATA tab') +
         '</div>';
     
     if (isPATConfigured) {
@@ -818,34 +818,11 @@ function renderStep7() {
             'User: <b>' + ghUser + '</b><br>' +
             'Repo: <b>' + ghRepo + '</b><br>' +
             'PAT: <b>' + ghPAT.substring(0, 10) + '...</b>' +
-            '</div>' +
-            '<button onclick="toggleGitHubConfig()" style="margin-top:10px;padding:8px 16px;background:#444;' +
-            'color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;">Edit Config</button>';
+            '</div>';
     } else {
-        html += '<div id="github-config" style="display:none;margin-bottom:10px;">';
-        html += '<div style="margin:8px 0;">' +
-            '<label style="color:#888;font-size:11px;">GitHub PAT:</label><br>' +
-            '<input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;' +
-            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;' +
-            'box-sizing:border-box;">' +
+        html += '<div style="font-size:11px;color:#ffb347;">' +
+            '⚠️ Go to DATA tab → Configure GitHub PAT first' +
             '</div>';
-        html += '<div style="margin:8px 0;">' +
-            '<label style="color:#888;font-size:11px;">GitHub User:</label><br>' +
-            '<input type="text" id="ghUser" placeholder="murugkan" style="width:100%;padding:8px;' +
-            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
-            'box-sizing:border-box;">' +
-            '</div>';
-        html += '<div style="margin:8px 0;">' +
-            '<label style="color:#888;font-size:11px;">GitHub Repo:</label><br>' +
-            '<input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%;padding:8px;' +
-            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
-            'box-sizing:border-box;">' +
-            '</div>';
-        html += '<button onclick="saveGitHubConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;' +
-            'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">Save Config</button>' +
-            '</div>' +
-            '<button onclick="toggleGitHubConfig()" style="padding:8px 16px;background:#444;color:#fff;' +
-            'border:none;border-radius:6px;cursor:pointer;font-size:11px;">Configure GitHub</button>';
     }
     
     html += '</div>';
@@ -863,24 +840,24 @@ function renderStep7() {
             '<div>💾 Total<br><b style="color:#00ff88;font-size:14px;">' + importState.stocks.length + '</b></div>' +
             '</div>' +
             '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #333;font-size:11px;">' +
-            'File: <b>unified-symbols.json</b><br>' +
-            'Each stock includes: sym, name, isin, sector, industry, type, source' +
+            'File: <b>unified-symbols.json</b>' +
             '</div>' +
             '</div>';
         
-        // JSON Preview
-        html += '<button onclick="toggleJSONPreview()" style="padding:10px 20px;background:#444;color:#fff;' +
-            'border:none;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:10px;">' +
-            '📋 Preview JSON</button>';
-        
-        html += '<div id="json-preview" style="display:none;margin:10px 0;padding:10px;background:#000;' +
-            'border:1px solid #222;border-radius:6px;max-height:300px;overflow-y:auto;font-size:9px;' +
-            'font-family:monospace;color:#0f0;"></div>';
-        
-        // Post Button
-        html += '<button onclick="postToGitHub()" style="padding:12px 24px;background:#00ff88;color:#000;' +
-            'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;width:100%;' +
-            'margin-top:15px;">📤 Post to GitHub</button>';
+        // Test & Post Buttons
+        html += '<div style="display:flex;gap:10px;margin-top:15px;">' +
+            '<button onclick="testPATFromWizard()" style="padding:12px 24px;background:#007bff;color:#fff;' +
+            'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;flex:1;">' +
+            '🧪 Test Connection</button>' +
+            '<button onclick="postToGitHub()" style="padding:12px 24px;background:#00ff88;color:#000;' +
+            'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;flex:1;">' +
+            '📤 Post to GitHub</button>' +
+            '</div>';
+    } else {
+        html += '<div style="padding:15px;background:#1a1a1a;border:1px dashed #ffb347;border-radius:8px;' +
+            'text-align:center;color:#ffb347;font-size:12px;">' +
+            '📍 Configure GitHub PAT in the DATA tab first' +
+            '</div>';
     }
     
     html += '<div id="step7-status" style="margin:15px 0;font-size:12px;"></div>';
@@ -889,29 +866,40 @@ function renderStep7() {
     return html;
 }
 
-function toggleGitHubConfig() {
-    var configDiv = document.getElementById('github-config');
-    if (configDiv) {
-        configDiv.style.display = configDiv.style.display === 'none' ? 'block' : 'none';
-    }
-}
-
-function saveGitHubConfig() {
-    var pat = document.getElementById('ghPAT').value;
-    var user = document.getElementById('ghUser').value;
-    var repo = document.getElementById('ghRepo').value;
+function testPATFromWizard() {
+    var ghPAT = localStorage.getItem('ghPAT');
+    var ghUser = localStorage.getItem('ghUser');
+    var ghRepo = localStorage.getItem('ghRepo');
     
-    if (!pat || !user || !repo) {
-        alert('Please fill all fields');
+    if (!ghPAT || !ghUser || !ghRepo) {
+        alert('❌ GitHub not configured. Go to DATA tab first!');
         return;
     }
     
-    localStorage.setItem('ghPAT', pat);
-    localStorage.setItem('ghUser', user);
-    localStorage.setItem('ghRepo', repo);
+    var status = document.getElementById('step7-status');
+    status.innerHTML = '<span style="color:#ffb347;">🧪 Testing connection...</span>';
     
-    alert('✅ GitHub configuration saved!');
-    showImportUI();
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    
+    fetch(apiUrl, {
+        headers: { 'Authorization': 'token ' + ghPAT }
+    })
+    .then(function(r) {
+        if (r.status === 200) {
+            status.innerHTML = '<span style="color:#00ff88;">✅ Connection successful! Ready to post.</span>';
+        } else if (r.status === 401) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Invalid PAT (401 - Check DATA tab)</span>';
+        } else if (r.status === 403) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ No write permission (403)</span>';
+        } else if (r.status === 404) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Repo not found (404 - Check DATA tab)</span>';
+        } else {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Error ' + r.status + '</span>';
+        }
+    })
+    .catch(function(err) {
+        status.innerHTML = '<span style="color:#ff6b85;">❌ Connection failed</span>';
+    });
 }
 
 function toggleJSONPreview() {
