@@ -268,29 +268,69 @@ function runEngineSync() {
             var count = 0;
             
             for (var ticker in stocks) {
-                var stock = stocks[ticker];
+                var fundStock = stocks[ticker];
                 var priceQuotes = priceData.quotes || priceData;
-                var price = priceQuotes[ticker] || {};
+                var priceData_stock = priceQuotes[ticker] || {};
                 
                 var record = {
+                    // Identifiers
                     SYM: ticker,
                     SYMBOL: ticker,
                     TICKER: ticker,
-                    LTP: price.ltp || 0,
-                    name: stock.name || ticker,
-                    SECTOR: stock.sector || 'OTHER',
-                    PNL: stock.pnl || 0,
-                    'PNL%': stock.pnl_pct || 0,
-                    '1D%': price.changePct || 0,
-                    AVG: stock.avg || 0,
-                    INVESTED: (stock.qty || 0) * (stock.avg || 0),
-                    QTY: stock.qty || 0,
-                    MCAP: stock.mcap || 0,
-                    PE: price.pe || null,
-                    PB: price.pb || null,
-                    ROE: price.roe || null,
-                    OPM: price.opm || null,
-                    NPM: price.npm || null
+                    name: fundStock.name || ticker,
+                    SECTOR: fundStock.sector || 'OTHER',
+                    
+                    // Prices & Changes
+                    LTP: priceData_stock.ltp || fundStock.ltp || 0,
+                    '1D%': priceData_stock.changePct || fundStock.chg1d || 0,
+                    
+                    // Portfolio Values
+                    QTY: fundStock.qty || 0,
+                    AVG: fundStock.avg || 0,
+                    INVESTED: (fundStock.qty || 0) * (fundStock.avg || 0),
+                    PNL: fundStock.pnl || 0,
+                    'PNL%': fundStock.pnl_pct || 0,
+                    
+                    // Valuation Metrics
+                    PE: fundStock.pe || priceData_stock.pe || 0,
+                    PB: fundStock.pb || priceData_stock.pb || 0,
+                    EPS: fundStock.eps || priceData_stock.eps || 0,
+                    BV: fundStock.bv || 0,
+                    
+                    // Returns & Profitability
+                    ROE: fundStock.roe || priceData_stock.roe || 0,
+                    'ROE%': fundStock.roe || priceData_stock.roe || 0,
+                    'OPM%': fundStock.opm_pct || priceData_stock.opm || 0,
+                    'NPM%': fundStock.npm_pct || priceData_stock.npm || 0,
+                    
+                    // Size Metrics
+                    MCAP: fundStock.mcap || 0,
+                    SALES: fundStock.sales || 0,
+                    EBITDA: fundStock.ebitda || 0,
+                    CFO: fundStock.cfo || 0,
+                    
+                    // Performance Metrics
+                    '52WH': fundStock.w52h || 0,
+                    '52WL': fundStock.w52l || 0,
+                    '52W%': fundStock.w52_pct || 0,
+                    'ATH%': fundStock.ath_pct || 0,
+                    
+                    // Risk Metrics
+                    BETA: fundStock.beta || 0,
+                    'DIV%': fundStock.div_yield || 0,
+                    
+                    // Placeholders for signals (need calculation)
+                    SIGNAL: '—',
+                    POS: 0,
+                    NEG: 0,
+                    ROCE: 0,
+                    'ROCE%': 0,
+                    PROM: 0,
+                    'PROM%': 0,
+                    FII: 0,
+                    'FII%': 0,
+                    DII: 0,
+                    'DII%': 0
                 };
                 
                 store.put(record);
