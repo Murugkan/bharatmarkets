@@ -68,7 +68,7 @@ try:
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
 except Exception as _e:
     print(f"⚠ symbol_map.json not found: {_e}")
-    YF_ALIAS_CACHE = {}
+    NSE_TO_YAHOO = {}
 
 # Runtime alias cache — populated by yahoo_search_sym during run
 YF_ALIAS_CACHE = {}
