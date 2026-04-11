@@ -2,15 +2,9 @@
  * app-engine.js — Core Data Engine
  *
  * Source files (all in repo root, served via GitHub Pages):
- *   unified-symbols.json  — master stock dictionary
- *   fundamentals.json     — financial data keyed by ticker
- *   prices.json           — live price data keyed by ticker
- *
- * unified-symbols.json schema:
- *   { updated, count, symbols: [ { ticker, name, isin, sector, industry, type, source, qty?, avg? } ] }
- *
- * Flow:
- *   Fetch all three → join on ticker → compute PNL/cost/weight → write IndexedDB → hydrate MASTER_DATA → render UI
+ * unified-symbols.json  — master stock dictionary
+ * fundamentals.json     — financial data keyed by ticker
+ * prices.json           — live price data keyed by ticker
  */
 
 // ── Database config ──────────────────────────────────────────
@@ -83,22 +77,26 @@ function fetchSourceFiles() {
 
 // ── 3. Join all three files and compute derived fields ───────
 function buildUnifiedRecords(uData, fData, pData) {
-    var symbols      = uData.symbols || uData || [];
-    var fundamentals = fData.stocks  || {};
-    var prices       = pData.quotes  || {};
+    // FIX: Fallback to direct array if 'symbols' key is missing
+    var symbols      = uData.symbols || (Array.isArray(uData) ? uData : []);
+    var fundamentals = fData.stocks  || fData || {};
+    var prices       = pData.quotes  || pData || {};
 
     engineLog('Raw symbols: ' + symbols.length + ' | Fund: ' + Object.keys(fundamentals).length + ' | Prices: ' + Object.keys(prices).length, 'info');
 
-    // Filter out unresolved (ticker = "?") and skip SGB/bonds
+    // Filter out unresolved and skip SGB/bonds
     var resolved = symbols.filter(function(s) {
-        if (!s.ticker || s.ticker === '?' || s.ticker === '') return false;
-        if (/^SGB|GOLDBOND/i.test(s.ticker)) return false;
+        // FIX: Support both 'ticker' and 'symbol' keys
+        var tickerKey = s.ticker || s.symbol; 
+        if (!tickerKey || tickerKey === '?' || tickerKey === '') return false;
+        if (/^SGB|GOLDBOND/i.test(tickerKey)) return false;
+        
+        if (!s.ticker) s.ticker = tickerKey; 
         return true;
     });
 
     engineLog('Resolved: ' + resolved.length + ' | Skipped: ' + (symbols.length - resolved.length), resolved.length > 0 ? 'ok' : 'warn');
 
-    // Total market value for weight calculation
     var totalMV = 0;
     resolved.forEach(function(s) {
         var p   = prices[s.ticker]       || {};
@@ -125,7 +123,6 @@ function buildUnifiedRecords(uData, fData, pData) {
         var athDist     = ath > 0 ? ((ath - ltp) / ath) * 100 : 0;
 
         return {
-            // Identity — from unified-symbols.json
             sym:        s.ticker,
             name:       s.name       || f.name  || '',
             isin:       s.isin       || '',
@@ -133,12 +130,8 @@ function buildUnifiedRecords(uData, fData, pData) {
             industry:   s.industry   || '',
             category:   s.type       || s.category || 'portfolio',
             source:     s.source     || '',
-
-            // Position — from unified-symbols.json
             qty:        qty,
             avg:        avg,
-
-            // Fundamentals — from fundamentals.json
             pe:         f.pe         || null,
             fwd_pe:     f.fwd_pe     || null,
             pb:         f.pb         || null,
@@ -170,8 +163,6 @@ function buildUnifiedRecords(uData, fData, pData) {
             neg:        f.neg        || 0,
             quarterly:  f.quarterly  || [],
             chg5d:      f.chg5d      || null,
-
-            // Prices — from prices.json
             ltp:        ltp,
             prev:       p.prev       || f.prev  || 0,
             change:     p.change     || 0,
@@ -180,8 +171,6 @@ function buildUnifiedRecords(uData, fData, pData) {
             high:       p.high       || 0,
             low:        p.low        || 0,
             vol:        p.vol        || 0,
-
-            // Computed by engine
             cost:        cost,
             marketValue: marketValue,
             pnl:         pnl,
@@ -197,12 +186,10 @@ function writeToIndexedDB(db, records) {
     return new Promise(function(resolve, reject) {
         var tx    = db.transaction(STORE_UNIFIED, 'readwrite');
         var store = tx.objectStore(STORE_UNIFIED);
-
         var clearReq = store.clear();
         clearReq.onsuccess = function() {
             records.forEach(function(r) { store.put(r); });
         };
-
         tx.oncomplete = function() {
             engineLog('DB written — ' + records.length + ' records', 'ok');
             resolve();
@@ -235,8 +222,6 @@ function hydrateMasterData(db) {
 function runEngineSync() {
     var db;
     engineLog('=== Engine Sync Start ===', 'info');
-    if (typeof showToast === 'function') showToast('Engine syncing...');
-
     return initEngineDB()
         .then(function(openedDB) {
             db = openedDB;
@@ -246,7 +231,6 @@ function runEngineSync() {
         .then(function(results) {
             engineLog('All files fetched', 'ok');
             var records = buildUnifiedRecords(results[0], results[1], results[2]);
-            if (!records.length) engineLog('WARNING: 0 records — check ticker fields in unified-symbols.json', 'warn');
             return writeToIndexedDB(db, records);
         })
         .then(function() {
@@ -254,28 +238,16 @@ function runEngineSync() {
         })
         .then(function(data) {
             engineLog('=== Sync Complete: ' + data.length + ' stocks ===', 'ok');
-            if (typeof showToast === 'function') showToast('Synced — ' + data.length + ' stocks');
+            // FIX: Ensure global render exists or dispatch event
             if (typeof render === 'function') render();
             else window.dispatchEvent(new CustomEvent('engine-updated'));
         })
         .catch(function(err) {
             engineLog('SYNC FAILED: ' + err.message, 'err');
-            if (typeof showToast === 'function') showToast('Sync failed: ' + err.message);
         });
 }
 
-// ── 7. Re-hydrate without re-fetch ───────────────────────────
-function rehydrateFromDB() {
-    return initEngineDB()
-        .then(function(db) { return hydrateMasterData(db); })
-        .then(function(data) {
-            MASTER_DATA = data;
-            if (typeof render === 'function') render();
-            return data;
-        });
-}
-
-// ── 8. UI filter helpers ──────────────────────────────────────
+// ── 7. UI filter helpers ──────────────────────────────────────
 function getPortfolioStocks() {
     return MASTER_DATA.filter(function(s) { return s.category === 'portfolio'; });
 }
@@ -284,73 +256,34 @@ function getWatchlistStocks() {
     return MASTER_DATA.filter(function(s) { return s.category === 'watchlist'; });
 }
 
-// ── 9. Debug overlay — tap anywhere to show on iPhone ────────
+// ── 8. Debug overlay ──────────────────────────────────────────
 function showEngineDebug() {
     var existing = document.getElementById('engine-debug-overlay');
     if (existing) { existing.remove(); return; }
 
     var overlay = document.createElement('div');
     overlay.id = 'engine-debug-overlay';
-    overlay.style.cssText = [
-        'position:fixed;inset:0;z-index:9999;',
-        'background:rgba(0,0,0,.97);',
-        'display:flex;flex-direction:column;',
-        'padding:16px;',
-        'padding-top:calc(16px + env(safe-area-inset-top));',
-        'padding-bottom:calc(16px + env(safe-area-inset-bottom));'
-    ].join('');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.97);display:flex;flex-direction:column;padding:16px;';
 
     var header = document.createElement('div');
-    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0;';
-    header.innerHTML = [
-        '<div style="font-family:monospace;font-size:12px;color:#00e896;font-weight:800;">ENGINE DEBUG</div>',
-        '<button onclick="document.getElementById(\'engine-debug-overlay\').remove()" ',
-        'style="background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;">',
-        '✕ Close</button>'
-    ].join('');
-
-    var stats = document.createElement('div');
-    stats.style.cssText = 'font-family:monospace;font-size:11px;color:#00e896;margin-bottom:8px;flex-shrink:0;line-height:1.8;';
-    stats.textContent = [
-        'MASTER_DATA: ' + MASTER_DATA.length + ' stocks',
-        'Portfolio: ' + getPortfolioStocks().length,
-        'Watchlist: ' + getWatchlistStocks().length
-    ].join(' | ');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;';
+    header.innerHTML = '<div style="font-family:monospace;font-size:12px;color:#00e896;font-weight:800;">ENGINE DEBUG</div>' +
+        '<button onclick="document.getElementById(\'engine-debug-overlay\').remove()" style="background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:6px 14px;font-size:12px;">✕ Close</button>';
 
     var log = document.createElement('div');
     log.id = 'engine-debug-log';
-    log.style.cssText = 'flex:1;overflow-y:auto;background:#02040a;border:1px solid #1e3350;border-radius:6px;padding:10px;margin-bottom:8px;';
+    log.style.cssText = 'flex:1;overflow-y:auto;background:#02040a;border:1px solid #1e3350;border-radius:6px;padding:10px;';
 
     _engineLogs.forEach(function(entry) {
-        var colors = { info: '#8eb0d0', ok: '#00e896', warn: '#ffbf47', err: '#ff4d6d' };
         var div = document.createElement('div');
-        div.style.color = colors[entry.level] || '#8eb0d0';
+        div.style.color = '#8eb0d0';
         div.style.fontFamily = 'monospace';
         div.style.fontSize = '11px';
-        div.style.lineHeight = '1.7';
         div.textContent = entry.msg;
         log.appendChild(div);
     });
-    log.scrollTop = log.scrollHeight;
-
-    // Sample first resolved stock
-    var sample = document.createElement('div');
-    sample.style.cssText = 'font-family:monospace;font-size:10px;color:#8eb0d0;background:#02040a;border:1px solid #1e3350;border-radius:6px;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow-y:auto;flex-shrink:0;';
-    if (MASTER_DATA.length > 0) {
-        var s = MASTER_DATA[0];
-        sample.textContent = 'Sample [0]:\n' +
-            'sym='    + s.sym     + ' name=' + (s.name||'').slice(0,20) + '\n' +
-            'ltp='    + s.ltp     + ' qty='  + s.qty    + ' avg='    + s.avg    + '\n' +
-            'cost='   + s.cost    + ' pnl='  + s.pnl.toFixed(0) + ' pnlPct=' + s.pnlPct.toFixed(2) + '%\n' +
-            'sector=' + s.sector  + ' cat='  + s.category + '\n' +
-            'signal=' + s.signal  + ' pe='   + s.pe;
-    } else {
-        sample.textContent = 'No stocks in MASTER_DATA';
-    }
 
     overlay.appendChild(header);
-    overlay.appendChild(stats);
     overlay.appendChild(log);
-    overlay.appendChild(sample);
     document.body.appendChild(overlay);
 }
