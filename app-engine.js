@@ -1,10 +1,6 @@
 /**
  * app-engine.js — Core Data Engine
- *
- * Source files (all in repo root, served via GitHub Pages):
- * unified-symbols.json  — master stock dictionary
- * fundamentals.json     — financial data keyed by ticker
- * prices.json           — live price data keyed by ticker
+ * * Sources: unified-symbols.json, fundamentals.json, prices.json
  */
 
 // ── Database config ──────────────────────────────────────────
@@ -77,20 +73,20 @@ function fetchSourceFiles() {
 
 // ── 3. Join all three files and compute derived fields ───────
 function buildUnifiedRecords(uData, fData, pData) {
-    // FIX: Fallback to direct array if 'symbols' key is missing
+    // FIX: Support flat arrays or objects with 'symbols' key
     var symbols      = uData.symbols || (Array.isArray(uData) ? uData : []);
     var fundamentals = fData.stocks  || fData || {};
     var prices       = pData.quotes  || pData || {};
 
     engineLog('Raw symbols: ' + symbols.length + ' | Fund: ' + Object.keys(fundamentals).length + ' | Prices: ' + Object.keys(prices).length, 'info');
 
-    // Filter out unresolved and skip SGB/bonds
+    // Filter out unresolved tickers and skip specific bond types
     var resolved = symbols.filter(function(s) {
-        // FIX: Support both 'ticker' and 'symbol' keys
         var tickerKey = s.ticker || s.symbol; 
         if (!tickerKey || tickerKey === '?' || tickerKey === '') return false;
         if (/^SGB|GOLDBOND/i.test(tickerKey)) return false;
         
+        // Normalize the key to 'ticker' for internal consistency
         if (!s.ticker) s.ticker = tickerKey; 
         return true;
     });
@@ -176,7 +172,7 @@ function buildUnifiedRecords(uData, fData, pData) {
             pnl:         pnl,
             pnlPct:      pnlPct,
             weight:      weight,
-            athDist:     athDist,
+            athDist:     athDist
         };
     });
 }
@@ -186,10 +182,12 @@ function writeToIndexedDB(db, records) {
     return new Promise(function(resolve, reject) {
         var tx    = db.transaction(STORE_UNIFIED, 'readwrite');
         var store = tx.objectStore(STORE_UNIFIED);
+
         var clearReq = store.clear();
         clearReq.onsuccess = function() {
             records.forEach(function(r) { store.put(r); });
         };
+
         tx.oncomplete = function() {
             engineLog('DB written — ' + records.length + ' records', 'ok');
             resolve();
@@ -222,6 +220,8 @@ function hydrateMasterData(db) {
 function runEngineSync() {
     var db;
     engineLog('=== Engine Sync Start ===', 'info');
+    if (typeof showToast === 'function') showToast('Engine syncing...');
+
     return initEngineDB()
         .then(function(openedDB) {
             db = openedDB;
@@ -231,6 +231,7 @@ function runEngineSync() {
         .then(function(results) {
             engineLog('All files fetched', 'ok');
             var records = buildUnifiedRecords(results[0], results[1], results[2]);
+            if (!records.length) engineLog('WARNING: 0 records — check ticker fields', 'warn');
             return writeToIndexedDB(db, records);
         })
         .then(function() {
@@ -238,7 +239,6 @@ function runEngineSync() {
         })
         .then(function(data) {
             engineLog('=== Sync Complete: ' + data.length + ' stocks ===', 'ok');
-            // FIX: Ensure global render exists or dispatch event
             if (typeof render === 'function') render();
             else window.dispatchEvent(new CustomEvent('engine-updated'));
         })
@@ -267,8 +267,7 @@ function showEngineDebug() {
 
     var header = document.createElement('div');
     header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;';
-    header.innerHTML = '<div style="font-family:monospace;font-size:12px;color:#00e896;font-weight:800;">ENGINE DEBUG</div>' +
-        '<button onclick="document.getElementById(\'engine-debug-overlay\').remove()" style="background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:6px 14px;font-size:12px;">✕ Close</button>';
+    header.innerHTML = '<div style="font-family:monospace;font-size:12px;color:#00e896;font-weight:800;">ENGINE DEBUG</div><button onclick="document.getElementById(\'engine-debug-overlay\').remove()" style="background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:6px 14px;font-size:12px;">✕ Close</button>';
 
     var log = document.createElement('div');
     log.id = 'engine-debug-log';
