@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DB Viewer</title>
+
+<style>
+body{background:#000;color:#0f0;font-family:monospace;margin:0}
+header{padding:10px;border-bottom:1px solid #222}
+button{background:#00ff88;border:none;padding:6px 10px;margin-right:5px}
+pre{padding:10px;white-space:pre-wrap;word-break:break-word}
+</style>
+</head>
+
+<body>
+
+<header>
+<button onclick="loadDB()">🔄 Load DB</button>
+<button onclick="clearDB()">🗑 Clear DB</button>
+<span id="status"></span>
+</header>
+
+<pre id="output">Click Load DB</pre>
+
+<script>
+
+var DB = "BharatEngineDB";
+var STORE = "UnifiedStocks";
+
+/* ================= LOAD ================= /
+function loadDB(){
+
+log("Opening DB...");
+
+var req = indexedDB.open(DB,2);
+
+req.onupgradeneeded = function(e){
+var db = e.target.result;
+
+if(!db.objectStoreNames.contains(STORE)){
+db.createObjectStore(STORE,{keyPath:"sym"});
+log("Store created");
+}
+};
+
+req.onsuccess = function(e){
+
+var db = e.target.result;
+
+log("DB opened");
+
+log("Stores: " + JSON.stringify(Array.from(db.objectStoreNames)));
+
+var tx = db.transaction(STORE,"readonly");
+var store = tx.objectStore(STORE);
+
+var req2 = store.getAll();
+
+req2.onsuccess = function(){
+
+var data = req2.result || [];
+
+log("Records: " + data.length);
+
+document.getElementById("output").textContent =
+JSON.stringify(data, null, 2);
+};
+
+};
+
+req.onerror = function(){
+log("DB error");
+};
+}
+
+/ ================= CLEAR ================= /
+function clearDB(){
+
+var req = indexedDB.open(DB,2);
+
+req.onsuccess = function(e){
+var db = e.target.result;
+
+var tx = db.transaction(STORE,"readwrite");
+tx.objectStore(STORE).clear();
+
+tx.oncomplete = function(){
+log("DB cleared");
+document.getElementById("output").textContent = "";
+};
+};
+}
+
+/ ================= LOG ================= */
+function log(msg){
+document.getElementById("status").textContent = msg;
+console.log(msg);
+}
+
+</script>
+
+</body>
+</html>
