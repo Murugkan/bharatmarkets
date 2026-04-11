@@ -121,13 +121,6 @@
         .dqa-cat.watchlist { background:#330066; color:#ff00ff; }
         .dqa-cat:hover { opacity:0.8; }
         
-        .dqa-status { display:flex; align-items:center; gap:4px; }
-        .dqa-check { color:var(--gr); }
-        .dqa-cross { color:var(--rd); }
-        
-        .dqa-edit { cursor:pointer; color:var(--bl); text-decoration:underline; transition:opacity 0.2s; }
-        .dqa-edit:hover { opacity:0.7; }
-        
         .dqa-delete-btn { color:var(--rd); cursor:pointer; font-weight:bold; transition:opacity 0.2s; }
         .dqa-delete-btn:hover { opacity:0.7; }
 
@@ -141,11 +134,6 @@
           font-size:10px;
           width:70px;
         }
-
-        .input-edit:focus {
-          outline:none;
-          box-shadow:0 0 8px var(--bl);
-        }
     </style>
 </head>
 <body>
@@ -153,7 +141,7 @@
 <header>
     <div class="title">📊 PORTFOLIO DATA</div>
     <div class="header-right">
-        <button onclick="openImportWorkflow()">📥 Load</button>
+        <button onclick="window.location.href='nexus.html'">📥 Load</button>
         <button onclick="location.reload()">🔄 Reload</button>
     </div>
 </header>
@@ -167,19 +155,15 @@
                 <div class="refresh-card-title">📈 Refresh Prices</div>
                 <button class="refresh-btn" id="refresh-prices-btn" onclick="refreshPrices()">Refresh Prices</button>
                 <div class="refresh-timestamp" id="prices-timestamp">Last Updated: Never</div>
-                <div class="refresh-status" id="prices-status"></div>
             </div>
             <div class="refresh-card">
                 <div class="refresh-card-title">💹 Refresh Fundamentals</div>
                 <button class="refresh-btn" id="refresh-fundamentals-btn" onclick="refreshFundamentals()">Refresh Fundamentals</button>
                 <div class="refresh-timestamp" id="fundamentals-timestamp">Last Updated: Never</div>
-                <div class="refresh-status" id="fundamentals-status"></div>
             </div>
             <div class="refresh-card">
                 <div class="refresh-card-title">🔗 Full Sync & Reload</div>
                 <button class="refresh-btn" id="refresh-sync-btn" onclick="fullSync()">Full Sync & Reload</button>
-                <div class="refresh-timestamp" id="sync-timestamp">Last Updated: Never</div>
-                <div class="refresh-status" id="sync-status"></div>
             </div>
         </div>
     </div>
@@ -212,40 +196,15 @@
                     <th>CAT</th>
                     <th>FUND</th>
                     <th>PRICE</th>
-                    <th>CONCALL</th>
-                    <th>INSIGHTS</th>
                     <th>QTY</th>
                     <th>AVG</th>
                     <th>✕</th>
                 </tr>
             </thead>
             <tbody id="dqa-tbody">
-                <tr><td colspan="10" style="text-align:center;padding:20px;color:#666;">Loading data...</td></tr>
+                <tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">Loading data from BharatEngineDB...</td></tr>
             </tbody>
         </table>
-    </div>
-
-    <div style="background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:15px; margin-top:20px;">
-        <div style="font-size:12px; color:var(--bl); font-weight:800; margin-bottom:15px;">🔑 GitHub Configuration</div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:15px;">
-            <div>
-                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">GitHub Username</label>
-                <input type="text" id="ghUser" placeholder="username" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
-            </div>
-            <div>
-                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">Repository Name</label>
-                <input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
-            </div>
-            <div>
-                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">GitHub PAT (Personal Access Token)</label>
-                <input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
-            </div>
-            <div style="display:flex; gap:10px; align-items:flex-end;">
-                <button onclick="saveGitHubConfig()" style="flex:1; padding:8px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">💾 Save Config</button>
-                <button onclick="testGitHubConnection()" style="flex:1; padding:8px; background:#00f2ff; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">✓ Test</button>
-            </div>
-        </div>
-        <div id="ghConfigStatus" style="font-size:10px; color:#666; margin-top:10px;"></div>
     </div>
 </div>
 
@@ -258,145 +217,126 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg>
         <span class="nav-label">Data</span>
     </a>
-    <a href="nexus.html" class="nav-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke="width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        <span class="nav-label">Import</span>
-    </a>
 </footer>
 
 <script src="app-engine 4.js"></script>
-<script src="app-import.js"></script>
 
 <script>
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Option 4: Direct Engine Integration
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 var dqaState = {
     symbols: [],
     prices: null,
     fundamentals: null
 };
 
-// Use the engine's built-in rehydration to populate the table
-function loadDQAData() {
-    if (typeof rehydrateFromDB === 'function') {
-        rehydrateFromDB().then(function() {
-            // After database hydration, MASTER_DATA is our source of truth
-            dqaState.symbols = MASTER_DATA.map(function(s) {
-                return {
-                    ticker: s.sym || s.ticker,
-                    name: s.name || '-',
-                    type: s.type || 'portfolio',
-                    qty: s.qty || 0,
-                    avg: s.avg || 0
-                };
-            });
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Option 4: Integration Logic
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-            // Load static JSON snapshots for audit status
+async function loadDQAData() {
+    try {
+        // 1. Rehydrate the engine's MASTER_DATA from IndexedDB
+        if (typeof rehydrateFromDB === 'function') {
+            await rehydrateFromDB();
+            
+            // 2. Map MASTER_DATA to our local state
+            dqaState.symbols = MASTER_DATA.map(s => ({
+                ticker: s.sym || s.ticker,
+                name: s.name || '-',
+                type: s.type || 'portfolio',
+                qty: s.qty || 0,
+                avg: s.avg || 0
+            }));
+
+            // 3. Check JSON snapshots in localStorage for "Audit" status icons
             try {
-                var p = localStorage.getItem('prices-json');
-                var f = localStorage.getItem('fundamentals-json');
+                const p = localStorage.getItem('prices-json');
+                const f = localStorage.getItem('fundamentals-json');
                 if (p) dqaState.prices = JSON.parse(p);
                 if (f) dqaState.fundamentals = JSON.parse(f);
-            } catch(e) { console.error("JSON parse error", e); }
+            } catch(e) { console.warn("Cache parse error", e); }
 
             updateDQADisplay();
-        });
-    } else {
-        showStatus('❌ Engine not found', 'error');
+        } else {
+            document.getElementById('dqa-tbody').innerHTML = '<tr><td colspan="8" style="color:var(--rd);">Error: Engine script not loaded.</td></tr>';
+        }
+    } catch (err) {
+        console.error("DQA Load Error:", err);
     }
 }
 
 function updateDQADisplay() {
     document.getElementById('dqa-holdings').textContent = dqaState.symbols.length;
     
-    // Display dates from JSON metadata if available
-    if (dqaState.fundamentals && dqaState.fundamentals.updated) {
-        document.getElementById('dqa-fund-date').textContent = formatDQADate(new Date(dqaState.fundamentals.updated));
+    if (dqaState.fundamentals?.updated) {
+        document.getElementById('dqa-fund-date').textContent = new Date(dqaState.fundamentals.updated).toLocaleDateString();
     }
-    if (dqaState.prices && dqaState.prices.updated) {
-        document.getElementById('dqa-price-date').textContent = formatDQADate(new Date(dqaState.prices.updated));
+    if (dqaState.prices?.updated) {
+        document.getElementById('dqa-price-date').textContent = new Date(dqaState.prices.updated).toLocaleDateString();
     }
     
     populateDQATable();
 }
 
 function populateDQATable() {
-    var tbody = document.getElementById('dqa-tbody');
+    const tbody = document.getElementById('dqa-tbody');
     tbody.innerHTML = '';
     
     if (dqaState.symbols.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#666;">No holdings found in DB.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No holdings found in BharatEngineDB.</td></tr>';
         return;
     }
 
-    var now = new Date();
-    dqaState.symbols.forEach(function(s) {
-        var row = document.createElement('tr');
+    dqaState.symbols.forEach(s => {
+        const row = document.createElement('tr');
         
-        // Match against loaded JSON caches for "Audit" icons
-        var hasFund = dqaState.fundamentals && dqaState.fundamentals[s.ticker];
-        var hasPrice = dqaState.prices && dqaState.prices.quotes && dqaState.prices.quotes[s.ticker];
+        // Audit checks against cached JSON
+        const hasFund = dqaState.fundamentals && dqaState.fundamentals[s.ticker];
+        const hasPrice = dqaState.prices?.quotes && dqaState.prices.quotes[s.ticker];
         
         row.innerHTML = `
-            <td class="dqa-sym">${escapeHtml(s.ticker)}</td>
-            <td class="dqa-name">${escapeHtml(s.name)}</td>
+            <td class="dqa-sym">${s.ticker}</td>
+            <td class="dqa-name">${s.name}</td>
             <td><span class="dqa-cat ${s.type}">${s.type}</span></td>
             <td>${hasFund ? '✅' : '❌'}</td>
             <td>${hasPrice ? '✅' : '❌'}</td>
-            <td>—</td>
-            <td>—</td>
-            <td class="dqa-edit" onclick="editDQAValue(this, 'qty', '${s.ticker}')">${s.qty}</td>
-            <td class="dqa-edit" onclick="editDQAValue(this, 'avg', '${s.ticker}')">${s.avg}</td>
-            <td class="dqa-delete-btn" onclick="deleteDQASymbol('${s.ticker}')">✕</td>
+            <td class="editable" onclick="editValue(this, '${s.ticker}', 'qty')">${s.qty}</td>
+            <td class="editable" onclick="editValue(this, '${s.ticker}', 'avg')">${s.avg}</td>
+            <td class="dqa-delete-btn" onclick="deleteSymbol('${s.ticker}')">✕</td>
         `;
         tbody.appendChild(row);
     });
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Utilities & Global Actions
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function editValue(el, ticker, field) {
+    const current = el.textContent;
+    const input = document.createElement('input');
+    input.className = 'input-edit';
+    input.type = 'number';
+    input.value = current;
+    
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    
+    input.onblur = () => {
+        const newVal = parseFloat(input.value) || 0;
+        const sym = dqaState.symbols.find(s => s.ticker === ticker);
+        if (sym) sym[field] = newVal;
+        el.textContent = newVal;
+        // In a real app, you'd trigger a DB update here
+    };
+}
 
-function showStatus(m, t) {
-    var c = document.getElementById('status-container');
-    if (c) {
-        c.innerHTML = `<div class="alert alert-${t || 'info'}">${m}</div>`;
-        setTimeout(() => c.innerHTML = '', 5000);
+function deleteSymbol(ticker) {
+    if (confirm(`Remove ${ticker}?`)) {
+        dqaState.symbols = dqaState.symbols.filter(s => s.ticker !== ticker);
+        populateDQATable();
     }
-}
-
-function escapeHtml(str) {
-    var d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
-}
-
-function formatDQADate(d) {
-    return d.toLocaleDateString('en-IN') + ' ' + d.toLocaleTimeString('en-IN', {hour12:false});
-}
-
-function saveGitHubConfig() {
-    localStorage.setItem('ghUser', document.getElementById('ghUser').value);
-    localStorage.setItem('ghRepo', document.getElementById('ghRepo').value);
-    localStorage.setItem('ghPAT', document.getElementById('ghPAT').value);
-    showStatus('✅ Config Saved', 'success');
-}
-
-function loadGitHubConfig() {
-    document.getElementById('ghUser').value = localStorage.getItem('ghUser') || '';
-    document.getElementById('ghRepo').value = localStorage.getItem('ghRepo') || '';
-    document.getElementById('ghPAT').value = localStorage.getItem('ghPAT') || '';
 }
 
 function reloadDQA() { loadDQAData(); }
 
-window.addEventListener('DOMContentLoaded', function() {
-    loadGitHubConfig();
-    loadDQAData(); 
-});
-
+window.addEventListener('DOMContentLoaded', loadDQAData);
 </script>
 </body>
 </html>
