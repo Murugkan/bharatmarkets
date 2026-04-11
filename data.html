@@ -3,88 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Portfolio Data</title>
+<title>DQA</title>
 
 <style>
-:root {
-  --bg:#000; --card:#0a0a0a; --border:#222;
-  --green:#00ff88; --blue:#00f2ff; --red:#ff4d6d;
-}
+body{margin:0;background:#000;color:#fff;font-family:monospace}
+header{padding:12px;background:#0a0a0a;border-bottom:1px solid #222;display:flex;justify-content:space-between}
+button{background:#00ff88;border:none;padding:8px 12px;font-weight:bold;border-radius:6px}
 
-body { margin:0; background:var(--bg); color:#fff; font-family:monospace; }
+.table-wrap{margin:10px;border:1px solid #222;border-radius:8px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{background:#111;color:#00ff88;padding:8px;text-align:left}
+td{padding:8px;border-bottom:1px solid #111;vertical-align:middle}
 
-/* HEADER /
-header {
-  padding:12px;
-  background:#0a0a0a;
-  border-bottom:1px solid var(--border);
-  display:flex;
-  justify-content:space-between;
+/* DEBUG /
+#debug-panel{
+position:fixed;bottom:0;left:0;right:0;
+max-height:40%;background:#000;border-top:2px solid #00ff88;
+overflow:auto;display:none;font-size:10px;
 }
-
-button {
-  background:var(--green);
-  border:none;
-  padding:8px 12px;
-  font-weight:bold;
-  cursor:pointer;
-}
-
-/ DQA TABLE /
-.table-wrap {
-  margin:15px;
-  border:1px solid var(--border);
-  border-radius:8px;
-  overflow:auto;
-}
-
-table {
-  width:100%;
-  border-collapse:collapse;
-  font-size:11px;
-}
-
-th {
-  background:#111;
-  color:var(--green);
-  padding:8px;
-  text-align:left;
-}
-
-td {
-  padding:8px;
-  border-bottom:1px solid #111;
-  vertical-align:middle;   / ✅ FIXED /
-}
-
-/ DEBUG PANEL /
-#debug-panel {
-  position:fixed;
-  bottom:0;
-  left:0;
-  right:0;
-  max-height:40%;
-  background:#000;
-  border-top:2px solid var(--green);
-  overflow:auto;
-  font-size:10px;
-  display:none;
-}
-
-#debug-log {
-  padding:10px;
-  white-space:pre-wrap;
-  color:#0f0;
-}
-
-.debug-btn {
-  position:fixed;
-  bottom:10px;
-  right:10px;
-  background:#00f2ff;
-  color:#000;
-  font-size:10px;
-}
+#debug-log{padding:10px;color:#0f0;white-space:pre-wrap}
+.debug-btn{position:fixed;bottom:10px;right:10px;background:#00f2ff;color:#000}
 </style>
 </head>
 
@@ -93,7 +31,6 @@ td {
 <header>
 <div>📊 DATA QUALITY AUDIT (DQA)</div>
 <div>
-<button onclick="openImportWorkflow()">📥 Load</button>
 <button onclick="loadDQA()">🔄 Reload</button>
 </div>
 </header>
@@ -117,138 +54,116 @@ td {
 </table>
 </div>
 
-<!-- DEBUG -->
-<button class="debug-btn" onclick="toggleDebug()">🐞 Debug</button>
+<button class="debug-btn" onclick="toggleDebug()">🐞</button>
 
 <div id="debug-panel">
 <div id="debug-log"></div>
 </div>
 
-<script src="app-import.js"></script>
-
 <script>
 
-/ ===============================
-   DEBUG LOGGER
-=============================== /
-var logs = [];
-
-function log(msg){
-  logs.push(msg);
-  document.getElementById("debug-log").textContent = logs.join("\n");
-}
-
+/ ================= DEBUG ================= /
+var logs=[];
+function log(m){logs.push(m);document.getElementById("debug-log").textContent=logs.join("\n")}
 function toggleDebug(){
-  var panel = document.getElementById("debug-panel");
-  panel.style.display = panel.style.display === "none" ? "block" : "none";
+var p=document.getElementById("debug-panel");
+p.style.display=p.style.display==="none"?"block":"none";
 }
 
-/ ===============================
-   DB CONFIG (FIXED)
-=============================== /
-var DB_NAME = "BharatEngineDB";
-var STORE = "UnifiedStocks";
+/ ================= DB ================= /
+var DB="BharatEngineDB";
+var STORE="UnifiedStocks";
 
-/ ===============================
-   LOAD DATA (FIXED)
-=============================== /
+function openDB(cb){
+
+var req=indexedDB.open(DB,2);
+
+req.onupgradeneeded=function(e){
+var db=e.target.result;
+log("DB upgrade");
+
+if(!db.objectStoreNames.contains(STORE)){
+db.createObjectStore(STORE,{keyPath:"sym"});
+log("Store created");
+}
+};
+
+req.onerror=function(){log("DB error")};
+
+req.onsuccess=function(e){
+log("DB ready");
+cb(e.target.result);
+};
+}
+
+/ ================= LOAD ================= /
 function loadDQA(){
 
-  log("Opening DB...");
+log("Loading...");
 
-  var req = indexedDB.open(DB_NAME,1);
+openDB(function(db){
 
-  req.onerror = function(){
-    log("❌ DB open failed");
-    render([]);
-  };
+try{
+var tx=db.transaction(STORE,"readonly");
+var store=tx.objectStore(STORE);
+var req=store.getAll();
 
-  req.onsuccess = function(e){
+req.onsuccess=function(){
 
-    log("✅ DB opened");
+var data=req.result||[];
+log("Stocks: "+data.length);
 
-    var db = e.target.result;
-    var tx = db.transaction(STORE,"readonly");
-    var store = tx.objectStore(STORE);
+render(data);
+};
 
-    var getAll = store.getAll();
-
-    getAll.onerror = function(){
-      log("❌ Read failed");
-      render([]);
-    };
-
-    getAll.onsuccess = function(){
-
-      var stocks = getAll.result || [];
-
-      log("Loaded stocks: " + stocks.length);
-
-      var mapped = stocks.map(function(s){
-        return {
-          ticker: s.sym,                       // ✅ FIXED
-          name: s.name,
-          type: (s.type || "portfolio").toLowerCase(),
-          qty: s.qty || 0,
-          avg: s.avg || 0,
-          sector: s.sector || "",
-          isin: s.isin || ""
-        };
-      });
-
-      render(mapped);
-    };
-  };
+}catch(err){
+log("TX error: "+err.message);
 }
 
-/ ===============================
-   RENDER
-=============================== /
+});
+}
+
+/ ================= RENDER ================= /
 function render(data){
 
-  var tbody = document.getElementById("tbody");
+var tbody=document.getElementById("tbody");
 
-  if(!data.length){
-    tbody.innerHTML = "<tr><td colspan='7'>No Data</td></tr>";
-    return;
-  }
-
-  var html = "";
-
-  data.forEach(function(s){
-
-    html += "<tr>"+
-      "<td>"+safe(s.ticker)+"</td>"+
-      "<td>"+safe(s.name)+"</td>"+
-      "<td>"+s.type+"</td>"+
-      "<td>"+s.qty+"</td>"+
-      "<td>"+Number(s.avg).toFixed(2)+"</td>"+
-      "<td>"+safe(s.sector)+"</td>"+
-      "<td>"+safe(s.isin)+"</td>"+
-    "</tr>";
-  });
-
-  tbody.innerHTML = html;
-
-  log("Rendered rows: " + data.length);
+if(!data.length){
+tbody.innerHTML="<tr><td colspan='7'>No Data</td></tr>";
+return;
 }
 
-/ ===============================
-   SAFE HTML
-=============================== /
-function safe(str){
-  if(!str) return "";
-  var d=document.createElement("div");
-  d.textContent=str;
-  return d.innerHTML;
+var html="";
+
+data.forEach(function(s){
+
+html+="<tr>"+
+"<td>"+safe(s.sym)+"</td>"+
+"<td>"+safe(s.name)+"</td>"+
+"<td>"+(s.type||"portfolio")+"</td>"+
+"<td>"+(s.qty||0)+"</td>"+
+"<td>"+Number(s.avg||0).toFixed(2)+"</td>"+
+"<td>"+safe(s.sector)+"</td>"+
+"<td>"+safe(s.isin)+"</td>"+
+"</tr>";
+
+});
+
+tbody.innerHTML=html;
+log("Rendered: "+data.length);
 }
 
-/ ===============================
-   INIT
-=============================== */
-window.onload = function(){
-  log("Page loaded");
-  loadDQA();
+/ ================= SAFE ================= /
+function safe(v){
+var d=document.createElement("div");
+d.textContent=v||"";
+return d.innerHTML;
+}
+
+/ ================= INIT ================= */
+window.onload=function(){
+log("Init");
+loadDQA();
 };
 
 </script>
