@@ -644,17 +644,7 @@ def main():
     print(f"📊 BharatMarkets Fundamentals v3 | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
-    if Path(FUND_FILE).exists():
-        try:
-            d = json.loads(Path(FUND_FILE).read_text())
-            existing = d.get("stocks", {})
-            for sym in d.get("delisted", []):
-                DELISTED.add(sym)
-            print(f"♻  {len(existing)} existing | {len(DELISTED)} known-delisted\n")
-        except:
-            pass
-
-
+    
     prices = {}
     if Path(PRICES_FILE).exists():
         try:
@@ -756,8 +746,8 @@ def main():
         print(f"{sig}({pos}B/{neg}S) {filled}f")
 
     # Merge new results into existing — preserves all other stocks
-    existing.update(result)
-    final_result = existing
+    
+    final_result = result
 
     output = {
         "updated":  ts.isoformat(),
