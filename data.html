@@ -101,31 +101,27 @@
     <a href="nexus.html" class="nav-btn">IMPORT</a>
 </footer>
 
-<script src="app-engine 4.js"></script>
+<script src="app-engine.Js"></script>
 
 <script>
-// State management
 var dqaState = {
     symbols: [],
     prices: null,
     fundamentals: null
 };
 
-// Main function to load data using the Engine's rehydrateFromDB
 async function loadDQAData() {
     const tbody = document.getElementById('dqa-tbody');
     
-    // Check if engine script is actually loaded and available
+    // Check for engine functions
     if (typeof rehydrateFromDB !== 'function') {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--rd);">Error: Engine script (app-engine 4.js) not found or failed to load.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--rd);">Error: Engine script (app-engine.Js) failed to load. Ensure filename matches exactly.</td></tr>';
         return;
     }
 
     try {
-        // Sync with IndexedDB (BharatEngineDB)
         await rehydrateFromDB();
         
-        // Map global MASTER_DATA from engine to local state
         dqaState.symbols = (window.MASTER_DATA || []).map(function(s) {
             return {
                 ticker: s.sym || s.ticker,
@@ -136,17 +132,16 @@ async function loadDQAData() {
             };
         });
 
-        // Load metadata snapshots from localStorage
         try {
             var p = localStorage.getItem('prices-json');
             var f = localStorage.getItem('fundamentals-json');
             if (p) dqaState.prices = JSON.parse(p);
             if (f) dqaState.fundamentals = JSON.parse(f);
-        } catch(e) { console.warn("Cache parse error", e); }
+        } catch(e) {}
 
         renderTable();
     } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--rd);">Error accessing Database: ' + err.message + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--rd);">DB Sync Error: ' + err.message + '</td></tr>';
     }
 }
 
@@ -154,7 +149,6 @@ function renderTable() {
     var tbody = document.getElementById('dqa-tbody');
     document.getElementById('dqa-holdings').textContent = dqaState.symbols.length;
     
-    // Update timestamps
     if (dqaState.fundamentals && dqaState.fundamentals.updated) {
         document.getElementById('dqa-fund-date').textContent = new Date(dqaState.fundamentals.updated).toLocaleDateString();
     }
@@ -165,7 +159,7 @@ function renderTable() {
     tbody.innerHTML = '';
     
     if (dqaState.symbols.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data found. Go to Import to add stocks.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data found in BharatEngineDB.</td></tr>';
         return;
     }
 
@@ -179,28 +173,4 @@ function renderTable() {
             <td>${s.name}</td>
             <td><span class="dqa-cat ${s.type}">${s.type}</span></td>
             <td>${hasFund ? '✅' : '❌'}</td>
-            <td>${hasPrice ? '✅' : '❌'}</td>
-            <td>${s.qty}</td>
-            <td>${s.avg}</td>
-            <td style="color:var(--rd); cursor:pointer;" onclick="deleteItem('${s.ticker}')">✕</td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function deleteItem(ticker) {
-    if(confirm('Delete ' + ticker + '?')) {
-        // Logic to delete from DB would go here
-        dqaState.symbols = dqaState.symbols.filter(s => s.ticker !== ticker);
-        renderTable();
-    }
-}
-
-// Start load when DOM is ready
-window.addEventListener('DOMContentLoaded', function() {
-    // Small delay to ensure engine globals are registered
-    setTimeout(loadDQAData, 100);
-});
-</script>
-</body>
-</html>
+            <td>${hasPrice ? '✅' : '
