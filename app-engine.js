@@ -1,5 +1,5 @@
 /**
- * app-engine.js — Final Version with Forced Debug Window
+ * app-engine.js — Final Sync & Debug Version
  */
 
 var DB_NAME       = 'BharatEngineDB';
@@ -8,24 +8,21 @@ var STORE_UNIFIED = 'UnifiedStocks';
 var MASTER_DATA   = [];
 var _engineLogs   = [];
 
-// ── 1. Forced Debug Window (Created immediately on script load) ──
+// ── 1. Forced Debug Monitor ──────────────────────────────────
 function createDebugWindow() {
     if (document.getElementById('engine-debug-window')) return;
-    
     var win = document.createElement('div');
     win.id = 'engine-debug-window';
-    // Style forced to be visible over all other elements
+    // Forces the window to stay on top of the "No holdings" message
     win.style.cssText = 'position:fixed; bottom:0; left:0; right:0; height:30vh; background:#050505; color:#00e896; z-index:999999; border-top:2px solid #00e896; display:flex; flex-direction:column; font-family:monospace;';
-    
     win.innerHTML = `
         <div style="background:#111; padding:10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333;">
-            <span style="font-weight:bold; letter-spacing:1px;">ENGINE MONITOR ACTIVE</span>
+            <span style="font-weight:bold;">ENGINE STATUS MONITOR</span>
             <button onclick="this.parentElement.parentElement.style.display='none'" style="background:#333; color:#fff; border:1px solid #555; padding:4px 10px; border-radius:4px; font-size:10px;">Hide</button>
         </div>
-        <div id="engine-debug-content" style="flex:1; overflow-y:auto; padding:12px; font-size:11px; line-height:1.5;"></div>
+        <div id="engine-debug-content" style="flex:1; overflow-y:auto; padding:12px; font-size:11px;"></div>
     `;
     document.body.appendChild(win);
-    engineLog('Monitor initialized.', 'ok');
 }
 
 function engineLog(msg, level) {
@@ -33,26 +30,24 @@ function engineLog(msg, level) {
     var lvl = level || 'info';
     var entry = '[' + ts + '] ' + msg;
     _engineLogs.push({ msg: entry, level: lvl });
-
     var panel = document.getElementById('engine-debug-content');
     if (panel) {
         var div = document.createElement('div');
         var colors = { info: '#8eb0d0', ok: '#00e896', warn: '#ffbf47', err: '#ff4d6d' };
         div.style.color = colors[lvl] || '#8eb0d0';
-        div.style.marginBottom = '4px';
         div.textContent = entry;
         panel.appendChild(div);
         panel.scrollTop = panel.scrollHeight;
     }
 }
 
-// ── 2. Data Logic ───────────────────────────────────────────
+// ── 2. Data Mapping (Supports 'ticker' or 'symbol') ───────────
 function buildUnifiedRecords(uData, fData, pData) {
     var symbols      = uData.symbols || (Array.isArray(uData) ? uData : []);
     var fundamentals = fData.stocks  || fData || {};
     var prices       = pData.quotes  || pData || {};
 
-    engineLog('Mapping data for ' + symbols.length + ' symbols...');
+    engineLog('Mapping ' + symbols.length + ' potential holdings...');
 
     return symbols.filter(function(s) {
         var tk = s.ticker || s.symbol;
@@ -76,10 +71,10 @@ function buildUnifiedRecords(uData, fData, pData) {
     });
 }
 
-// ── 3. Orchestrator ─────────────────────────────────────────
+// ── 3. The Orchestrator (Auto-Sync) ──────────────────────────
 function runEngineSync() {
     createDebugWindow();
-    engineLog('Starting engine sync...', 'info');
+    engineLog('Initializing Sync...', 'info');
 
     var req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = function(e) {
@@ -105,15 +100,18 @@ function runEngineSync() {
             };
 
             tx.oncomplete = function() {
-                engineLog('Sync Complete: ' + MASTER_DATA.length + ' stocks.', 'ok');
+                engineLog('Sync Success: ' + MASTER_DATA.length + ' holdings loaded.', 'ok');
                 if (typeof render === 'function') render();
                 window.dispatchEvent(new CustomEvent('engine-updated'));
             };
-        }).catch(err => engineLog('Fetch Error: ' + err.message, 'err'));
+        }).catch(err => {
+            engineLog('Critical Error: Check if JSON files exist in root.', 'err');
+            engineLog('Error Details: ' + err.message, 'err');
+        });
     };
 }
 
-// Ensure execution
+// Ensure the engine starts immediately
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', runEngineSync);
 } else {
