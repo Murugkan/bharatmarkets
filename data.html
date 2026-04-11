@@ -44,6 +44,111 @@
         .alert-success { background:#0a2a1a; color:#00ff88; border-left:3px solid #00ff88; }
         .alert-error { background:#2a0a0a; color:#ff6b85; border-left:3px solid #ff6b85; }
         .alert-info { background:#0a1a2a; color:#00f2ff; border-left:3px solid #00f2ff; }
+
+        /* DQA Styles */
+        .dqa-header { background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:15px; margin-bottom:20px; }
+        .dqa-title { font-size:14px; font-weight:800; color:var(--bl); margin-bottom:12px; }
+        .dqa-info { display:flex; gap:20px; flex-wrap:wrap; font-size:11px; align-items:center; }
+        .dqa-stat { display:flex; flex-direction:column; }
+        .dqa-label { color:#666; font-size:9px; margin-bottom:3px; }
+        .dqa-value { color:var(--gr); font-weight:800; font-size:12px; }
+        .dqa-reload { background:var(--gr); color:#000; border:none; padding:8px 12px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px; }
+        .dqa-reload:hover { opacity:0.9; }
+
+        .dqa-table-container { 
+          overflow-x:auto; 
+          overflow-y:auto; 
+          background:#050505; 
+          border:1px solid var(--b1); 
+          border-radius:8px; 
+          max-height:65vh;
+          -webkit-overflow-scrolling:touch;
+          margin-top:20px;
+        }
+
+        .dqa-table { 
+          width:100%; 
+          border-collapse:collapse; 
+          font-size:10px;
+          position:relative;
+        }
+
+        .dqa-table thead tr {
+          position:sticky;
+          top:0;
+          z-index:10;
+          background:#111;
+        }
+
+        .dqa-table th {
+          background:#111;
+          color:var(--gr);
+          padding:8px;
+          text-align:left;
+          border-bottom:2px solid var(--b1);
+          font-weight:800;
+          white-space:nowrap;
+        }
+
+        .dqa-table td {
+          padding:8px;
+          border-bottom:1px solid #111;
+          min-height:44px;
+          display:flex;
+          align-items:center;
+        }
+
+        .dqa-sym {
+          position:sticky;
+          left:0;
+          background:#0a0a0a;
+          z-index:5;
+          font-weight:800;
+          color:var(--bl);
+          font-family:'JetBrains Mono',monospace;
+          min-width:70px;
+          padding:8px !important;
+        }
+
+        .dqa-table thead .dqa-sym {
+          background:#111;
+          z-index:11;
+        }
+
+        .dqa-table tr:hover td { background:#0a0a0a; }
+        .dqa-table tr:hover .dqa-sym { background:#111; }
+
+        .dqa-name { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .dqa-cat { display:inline-block; padding:3px 8px; border-radius:3px; font-size:9px; font-weight:800; cursor:pointer; transition:opacity 0.2s; }
+        .dqa-cat.portfolio { background:#003366; color:#00f2ff; }
+        .dqa-cat.watchlist { background:#330066; color:#ff00ff; }
+        .dqa-cat:hover { opacity:0.8; }
+        
+        .dqa-status { display:flex; align-items:center; gap:4px; }
+        .dqa-check { color:var(--gr); }
+        .dqa-cross { color:var(--rd); }
+        
+        .dqa-edit { cursor:pointer; color:var(--bl); text-decoration:underline; transition:opacity 0.2s; }
+        .dqa-edit:hover { opacity:0.7; }
+        
+        .dqa-delete-btn { color:var(--rd); cursor:pointer; font-weight:bold; transition:opacity 0.2s; }
+        .dqa-delete-btn:hover { opacity:0.7; }
+
+        .input-edit {
+          background:#111;
+          border:1px solid var(--bl);
+          color:var(--bl);
+          padding:4px 6px;
+          border-radius:3px;
+          font-family:'JetBrains Mono',monospace;
+          font-size:10px;
+          width:70px;
+        }
+
+        .input-edit:focus {
+          outline:none;
+          box-shadow:0 0 8px var(--bl);
+        }
     </style>
 </head>
 <body>
@@ -84,8 +189,51 @@
         </div>
     </div>
     
-    <!-- Data Table -->
-    <div class="table-wrap">
+    <!-- DQA Header -->
+    <div class="dqa-header">
+        <div class="dqa-title">📊 DATA QUALITY AUDIT (DQA)</div>
+        <div class="dqa-info">
+            <div class="dqa-stat">
+                <div class="dqa-label">Holdings</div>
+                <div class="dqa-value" id="dqa-holdings">0</div>
+            </div>
+            <div class="dqa-stat">
+                <div class="dqa-label">Fundamentals</div>
+                <div class="dqa-value" id="dqa-fund-date">—</div>
+            </div>
+            <div class="dqa-stat">
+                <div class="dqa-label">Prices</div>
+                <div class="dqa-value" id="dqa-price-date">—</div>
+            </div>
+            <button class="dqa-reload" onclick="reloadDQA()">↻ Reload</button>
+        </div>
+    </div>
+
+    <!-- DQA Table -->
+    <div class="dqa-table-container">
+        <table class="dqa-table" id="dqa-table">
+            <thead>
+                <tr>
+                    <th class="dqa-sym">SYM</th>
+                    <th class="dqa-name">NAME</th>
+                    <th>CAT</th>
+                    <th>FUND</th>
+                    <th>PRICE</th>
+                    <th>CONCALL</th>
+                    <th>INSIGHTS</th>
+                    <th>QTY</th>
+                    <th>AVG</th>
+                    <th>✕</th>
+                </tr>
+            </thead>
+            <tbody id="dqa-tbody">
+                <tr><td colspan="10" style="text-align:center;padding:20px;color:#666;">Loading data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Legacy Portfolio Table (hidden) -->
+    <div class="table-wrap" style="display:none;">
         <table id="portfolio-table">
             <thead>
                 <tr>
@@ -100,7 +248,6 @@
                 </tr>
             </thead>
             <tbody id="portfolio-body">
-                <tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded</td></tr>
             </tbody>
         </table>
     </div>
@@ -867,11 +1014,189 @@ function updateGitHubTimestamps() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DQA Table Functions
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var dqaState = {
+    symbols: [],
+    prices: null,
+    fundamentals: null
+};
+
+function loadDQAData() {
+    // Open IndexedDB and load data
+    var dbRequest = indexedDB.open('OnyxPortfolioDB', 8);
+    
+    dbRequest.onsuccess = function(event) {
+        var db = event.target.result;
+        var tx = db.transaction('Stocks', 'readonly');
+        var store = tx.objectStore('Stocks');
+        var getAllRequest = store.getAll();
+        
+        getAllRequest.onsuccess = function() {
+            var stocks = getAllRequest.result;
+            
+            // Transform to symbol format
+            dqaState.symbols = stocks.map(function(stock) {
+                return {
+                    ticker: stock.symbol,
+                    name: stock.name,
+                    type: stock.type || 'portfolio',
+                    qty: stock.qty || 0,
+                    avg: stock.avg || 0,
+                    isin: stock.isin || '',
+                    sector: stock.sector || ''
+                };
+            });
+            
+            // Try to load prices and fundamentals from localStorage
+            try {
+                var pricesStr = localStorage.getItem('prices-json');
+                if (pricesStr) {
+                    dqaState.prices = JSON.parse(pricesStr);
+                }
+            } catch(e) {
+                console.log('Could not load prices');
+            }
+            
+            try {
+                var fundsStr = localStorage.getItem('fundamentals-json');
+                if (fundsStr) {
+                    dqaState.fundamentals = JSON.parse(fundsStr);
+                }
+            } catch(e) {
+                console.log('Could not load fundamentals');
+            }
+            
+            updateDQADisplay();
+        };
+    };
+}
+
+function updateDQADisplay() {
+    // Update header
+    document.getElementById('dqa-holdings').textContent = dqaState.symbols.length || 0;
+    
+    if (dqaState.fundamentals && dqaState.fundamentals.updated) {
+        var fundDate = new Date(dqaState.fundamentals.updated);
+        document.getElementById('dqa-fund-date').textContent = formatDQADate(fundDate);
+    }
+    
+    if (dqaState.prices && dqaState.prices.updated) {
+        var priceDate = new Date(dqaState.prices.updated);
+        document.getElementById('dqa-price-date').textContent = formatDQADate(priceDate);
+    }
+    
+    // Populate table
+    populateDQATable();
+}
+
+function formatDQADate(date) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var day = date.getDate();
+    var month = months[date.getMonth()];
+    var year = date.getFullYear().toString().slice(-2);
+    var hours = ('0' + date.getHours()).slice(-2);
+    var mins = ('0' + date.getMinutes()).slice(-2);
+    return month + ' ' + day + ' ' + year + ' ' + hours + ':' + mins;
+}
+
+function populateDQATable() {
+    var tbody = document.getElementById('dqa-tbody');
+    tbody.innerHTML = '';
+    
+    var fundDate = dqaState.fundamentals && dqaState.fundamentals.updated ? new Date(dqaState.fundamentals.updated) : null;
+    var priceDate = dqaState.prices && dqaState.prices.updated ? new Date(dqaState.prices.updated) : null;
+    var now = new Date();
+    
+    dqaState.symbols.forEach(function(symbol) {
+        var row = document.createElement('tr');
+        
+        // Check data existence
+        var hasFund = dqaState.fundamentals && dqaState.fundamentals.stocks && dqaState.fundamentals.stocks[symbol.ticker];
+        var hasPrice = dqaState.prices && dqaState.prices.quotes && dqaState.prices.quotes[symbol.ticker];
+        
+        // Calculate days
+        var fundDays = fundDate ? Math.floor((now - fundDate) / (1000*60*60*24)) : '-';
+        var priceDays = priceDate ? Math.floor((now - priceDate) / (1000*60*60*24)) : '-';
+        
+        var catClass = (symbol.type || 'portfolio').toLowerCase();
+        
+        row.innerHTML = '<td class="dqa-sym">' + escapeHtml(symbol.ticker) + '</td>' +
+            '<td class="dqa-name" title="' + escapeHtml(symbol.name) + '">' + escapeHtml(symbol.name.substring(0, 14)) + '</td>' +
+            '<td><span class="dqa-cat ' + catClass + '" onclick="toggleDQACAT(this, \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.type || 'portfolio') + '</span></td>' +
+            '<td><span class="dqa-status">' + (hasFund ? '<span class="dqa-check">✅</span>' : '<span class="dqa-cross">❌</span>') + ' ' + fundDays + 'd</span></td>' +
+            '<td><span class="dqa-status">' + (hasPrice ? '<span class="dqa-check">✅</span>' : '<span class="dqa-cross">❌</span>') + ' ' + priceDays + 'd</span></td>' +
+            '<td>❌ — (TBD)</td>' +
+            '<td>❌ — (TBD)</td>' +
+            '<td class="dqa-edit" onclick="editDQAValue(this, \'qty\', \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.qty || 0) + '</td>' +
+            '<td class="dqa-edit" onclick="editDQAValue(this, \'avg\', \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.avg || 0) + '</td>' +
+            '<td class="dqa-delete-btn" onclick="deleteDQASymbol(\'' + escapeHtml(symbol.ticker) + '\')">✕</td>';
+        
+        tbody.appendChild(row);
+    });
+    
+    if (dqaState.symbols.length === 0) {
+        var row = document.createElement('tr');
+        row.innerHTML = '<td colspan="10" style="text-align:center;padding:20px;color:#666;">No holdings loaded. Click "Load" to import data.</td>';
+        tbody.appendChild(row);
+    }
+}
+
+function toggleDQACAT(el, ticker) {
+    var current = el.textContent.trim();
+    var newCat = current === 'portfolio' ? 'watchlist' : 'portfolio';
+    el.textContent = newCat;
+    el.className = 'dqa-cat ' + newCat;
+    
+    // Update state
+    var sym = dqaState.symbols.find(function(s) { return s.ticker === ticker; });
+    if (sym) sym.type = newCat;
+}
+
+function editDQAValue(el, field, ticker) {
+    var current = el.textContent;
+    var input = document.createElement('input');
+    input.className = 'input-edit';
+    input.type = 'number';
+    input.step = field === 'qty' ? '1' : '0.01';
+    input.value = current;
+    
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    
+    function save() {
+        var sym = dqaState.symbols.find(function(s) { return s.ticker === ticker; });
+        if (sym) sym[field] = parseFloat(input.value) || 0;
+        el.textContent = input.value;
+        el.classList.add('dqa-edit');
+    }
+    
+    input.onblur = save;
+    input.onkeypress = function(e) {
+        if (e.key === 'Enter') save();
+    };
+}
+
+function deleteDQASymbol(ticker) {
+    if (confirm('Delete ' + ticker + ' from DQA?')) {
+        dqaState.symbols = dqaState.symbols.filter(function(s) { return s.ticker !== ticker; });
+        populateDQATable();
+    }
+}
+
+function reloadDQA() {
+    loadDQAData();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Initialize on page load
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 window.addEventListener('DOMContentLoaded', function() {
     loadPortfolioTable();
     loadGitHubConfig();
+    loadDQAData();
     
     // Try to fetch actual GitHub timestamps
     setTimeout(function() {
