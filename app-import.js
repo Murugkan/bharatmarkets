@@ -1170,7 +1170,9 @@ function postToGitHub() {
             sector: stock.sector,
             industry: stock.industry,
             type: stock.type.toLowerCase(),
-            source: 'import'
+            source: 'import',
+            qty: stock.qty || 0,
+            avg: stock.avg || 0
         });
     });
     
