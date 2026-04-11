@@ -1,50 +1,41 @@
 /**
- * app-engine.js — Emergency Recovery Version
+ * app-engine.js — Recovery Mode
  */
 
-// 1. Force the Debug Window to appear IMMEDIATELY
-(function createImmediateDebug() {
-    var win = document.createElement('div');
-    win.id = 'engine-debug-window';
-    win.style.cssText = 'position:fixed; bottom:0; left:0; right:0; height:30vh; background:#000; color:#0f0; z-index:999999; border-top:2px solid #0f0; font-family:monospace; padding:10px; overflow-y:auto; font-size:12px;';
-    win.innerHTML = '<b>--- ENGINE LOGS ---</b><div id="debug-inner"></div>';
-    document.body.appendChild(win);
-})();
+// 1. ABSOLUTE FORCE DEBUG (Runs first, no dependencies)
+var debugDiv = document.createElement('div');
+debugDiv.id = 'emergency-log';
+debugDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:150px;background:red;color:white;z-index:1000000;overflow:auto;font-family:monospace;padding:10px;font-size:12px;display:block !important;';
+debugDiv.innerHTML = '<b>ENGINE STATUS: SCRIPT DETECTED</b><br>';
+document.body.appendChild(debugDiv);
 
-function log(m) {
+function quickLog(m) {
+    debugDiv.innerHTML += '<div>> ' + m + '</div>';
     console.log(m);
-    var target = document.getElementById('debug-inner');
-    if(target) target.innerHTML += '<div>' + m + '</div>';
 }
 
-log("Script loaded successfully.");
-
-// 2. Global State
+// 2. CORE DATA
 var MASTER_DATA = [];
 
-// 3. The Core Logic
-async function runEngineSync() {
-    log("Starting Sync...");
-    try {
-        const t = "?v=" + Date.now();
-        log("Fetching files...");
+function runSync() {
+    quickLog("Starting Fetch...");
+    var t = "?v=" + Date.now();
+    
+    Promise.all([
+        fetch('./unified-symbols.json' + t).then(function(r){ return r.json(); }),
+        fetch('./fundamentals.json' + t).then(function(r){ return r.json(); }),
+        fetch('./prices.json' + t).then(function(r){ return r.json(); })
+    ]).then(function(res) {
+        quickLog("Files loaded.");
         
-        const [uRes, fRes, pRes] = await Promise.all([
-            fetch('./unified-symbols.json' + t).then(r => r.json()),
-            fetch('./fundamentals.json' + t).then(r => r.json()),
-            fetch('./prices.json' + t).then(r => r.json())
-        ]);
+        var symbols = res[0].symbols || res[0];
+        var funds = res[1].stocks || res[1];
+        var prices = res[2].quotes || res[2];
 
-        log("Files received. Processing...");
-
-        const symbols = uRes.symbols || uRes;
-        const fundamentals = fRes.stocks || fRes;
-        const prices = pRes.quotes || pRes;
-
-        MASTER_DATA = symbols.map(s => {
-            const tk = s.ticker || s.symbol;
-            const f = fundamentals[tk] || {};
-            const p = prices[tk] || {};
+        MASTER_DATA = symbols.map(function(s) {
+            var tk = s.ticker || s.symbol;
+            var f = funds[tk] || {};
+            var p = prices[tk] || {};
             return {
                 sym: tk,
                 name: s.name || tk,
@@ -55,20 +46,22 @@ async function runEngineSync() {
             };
         });
 
-        log("Sync Complete: " + MASTER_DATA.length + " stocks.");
+        quickLog("Total Stocks: " + MASTER_DATA.length);
         
-        // Trigger the table update
         if (typeof render === 'function') {
             render();
-            log("UI Render triggered.");
+            quickLog("Table updated.");
         } else {
-            log("Warning: render() function not found in other scripts.");
+            quickLog("UI Error: render() missing.");
         }
+        
+        // Hide red box if successful after 5 seconds
+        setTimeout(function(){ debugDiv.style.background = 'black'; }, 5000);
 
-    } catch (e) {
-        log("CRITICAL ERROR: " + e.message);
-    }
+    }).catch(function(err) {
+        quickLog("CRITICAL ERROR: " + err.message);
+    });
 }
 
-// Start
-runEngineSync();
+// 3. START
+runSync();
