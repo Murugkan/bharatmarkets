@@ -1,21 +1,16 @@
 /**
  * app-engine.js — Core Data Engine
- * * Sources: unified-symbols.json, fundamentals.json, prices.json
  */
 
-// ── Database config ──────────────────────────────────────────
 var DB_NAME       = 'BharatEngineDB';
 var DB_VER        = 1;
 var STORE_UNIFIED = 'UnifiedStocks';
 var STORE_LEDGER  = 'ExclusionLedger';
+var MASTER_DATA   = [];
+var _engineLogs   = [];
 
-// ── Global in-memory array (source of truth for UI) ─────────
-var MASTER_DATA = [];
-
-// ── Debug log (visible in UI — essential for iPhone/no devtools) ──
-var _engineLogs = [];
 function engineLog(msg, level) {
-    var ts  = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    var ts = new Date().toLocaleTimeString('en-IN', { hour12: false });
     var lvl = level || 'info';
     var entry = '[' + ts + '] ' + msg;
     _engineLogs.push({ msg: entry, level: lvl });
@@ -27,262 +22,117 @@ function engineLog(msg, level) {
         var div = document.createElement('div');
         div.style.color = colors[lvl] || '#8eb0d0';
         div.style.fontFamily = 'monospace';
-        div.style.fontSize   = '11px';
-        div.style.lineHeight = '1.6';
+        div.style.fontSize = '11px';
         div.textContent = entry;
         panel.appendChild(div);
         panel.scrollTop = panel.scrollHeight;
     }
 }
 
-// ── 1. Open IndexedDB ────────────────────────────────────────
 function initEngineDB() {
     return new Promise(function(resolve, reject) {
         var req = indexedDB.open(DB_NAME, DB_VER);
         req.onupgradeneeded = function(e) {
             var db = e.target.result;
-            if (!db.objectStoreNames.contains(STORE_UNIFIED))
-                db.createObjectStore(STORE_UNIFIED, { keyPath: 'sym' });
-            if (!db.objectStoreNames.contains(STORE_LEDGER))
-                db.createObjectStore(STORE_LEDGER, { keyPath: 'sym' });
+            if (!db.objectStoreNames.contains(STORE_UNIFIED)) db.createObjectStore(STORE_UNIFIED, { keyPath: 'sym' });
+            if (!db.objectStoreNames.contains(STORE_LEDGER)) db.createObjectStore(STORE_LEDGER, { keyPath: 'sym' });
         };
         req.onsuccess = function(e) { resolve(e.target.result); };
-        req.onerror   = function(e) { reject(e.target.error); };
+        req.onerror = function(e) { reject(e.target.error); };
     });
 }
 
-// ── 2. Fetch all three source files ─────────────────────────
 function fetchSourceFiles() {
     engineLog('Fetching source files...', 'info');
     var t = '?t=' + Date.now();
     return Promise.all([
-        fetch('./unified-symbols.json' + t).then(function(r) {
-            if (!r.ok) throw new Error('unified-symbols.json HTTP ' + r.status);
-            return r.json();
-        }),
-        fetch('./fundamentals.json' + t).then(function(r) {
-            if (!r.ok) throw new Error('fundamentals.json HTTP ' + r.status);
-            return r.json();
-        }),
-        fetch('./prices.json' + t).then(function(r) {
-            if (!r.ok) throw new Error('prices.json HTTP ' + r.status);
-            return r.json();
-        })
+        fetch('./unified-symbols.json' + t).then(function(r) { if (!r.ok) throw new Error('Symbols fetch failed'); return r.json(); }),
+        fetch('./fundamentals.json' + t).then(function(r) { if (!r.ok) throw new Error('Fund fetch failed'); return r.json(); }),
+        fetch('./prices.json' + t).then(function(r) { if (!r.ok) throw new Error('Prices fetch failed'); return r.json(); })
     ]);
 }
 
-// ── 3. Join all three files and compute derived fields ───────
 function buildUnifiedRecords(uData, fData, pData) {
-    // FIX: Support flat arrays or objects with 'symbols' key
-    var symbols      = uData.symbols || (Array.isArray(uData) ? uData : []);
-    var fundamentals = fData.stocks  || fData || {};
-    var prices       = pData.quotes  || pData || {};
+    // Fix for blank table: Support both 'symbols' key and direct arrays
+    var symbols = uData.symbols || (Array.isArray(uData) ? uData : []);
+    var fundamentals = fData.stocks || fData || {};
+    var prices = pData.quotes || pData || {};
 
-    engineLog('Raw symbols: ' + symbols.length + ' | Fund: ' + Object.keys(fundamentals).length + ' | Prices: ' + Object.keys(prices).length, 'info');
+    engineLog('Raw symbols: ' + symbols.length, 'info');
 
-    // Filter out unresolved tickers and skip specific bond types
     var resolved = symbols.filter(function(s) {
         var tickerKey = s.ticker || s.symbol; 
         if (!tickerKey || tickerKey === '?' || tickerKey === '') return false;
         if (/^SGB|GOLDBOND/i.test(tickerKey)) return false;
-        
-        // Normalize the key to 'ticker' for internal consistency
         if (!s.ticker) s.ticker = tickerKey; 
         return true;
     });
 
-    engineLog('Resolved: ' + resolved.length + ' | Skipped: ' + (symbols.length - resolved.length), resolved.length > 0 ? 'ok' : 'warn');
-
     var totalMV = 0;
     resolved.forEach(function(s) {
-        var p   = prices[s.ticker]       || {};
-        var f   = fundamentals[s.ticker] || {};
-        var ltp = p.ltp || f.ltp || 0;
+        var p = prices[s.ticker] || {};
+        var ltp = p.ltp || 0;
         totalMV += ltp * (s.qty || 0);
     });
 
-    engineLog('Total MV: Rs ' + (totalMV / 100000).toFixed(2) + 'L', 'info');
-
     return resolved.map(function(s) {
-        var f   = fundamentals[s.ticker] || {};
-        var p   = prices[s.ticker]       || {};
-
-        var ltp         = p.ltp  || f.ltp  || 0;
-        var qty         = s.qty  || 0;
-        var avg         = s.avg  || 0;
-        var cost        = qty * avg;
-        var marketValue = qty * ltp;
-        var pnl         = marketValue - cost;
-        var pnlPct      = cost > 0 ? (pnl / cost) * 100 : 0;
-        var weight      = totalMV > 0 ? (marketValue / totalMV) * 100 : 0;
-        var ath         = f.ath || p.w52h || 0;
-        var athDist     = ath > 0 ? ((ath - ltp) / ath) * 100 : 0;
+        var f = fundamentals[s.ticker] || {};
+        var p = prices[s.ticker] || {};
+        var ltp = p.ltp || f.ltp || 0;
+        var cost = (s.qty || 0) * (s.avg || 0);
+        var marketValue = (s.qty || 0) * ltp;
 
         return {
-            sym:        s.ticker,
-            name:       s.name       || f.name  || '',
-            isin:       s.isin       || '',
-            sector:     s.sector     || f.sector || s.industry || '',
-            industry:   s.industry   || '',
-            category:   s.type       || s.category || 'portfolio',
-            source:     s.source     || '',
-            qty:        qty,
-            avg:        avg,
-            pe:         f.pe         || null,
-            fwd_pe:     f.fwd_pe     || null,
-            pb:         f.pb         || null,
-            eps:        f.eps        || null,
-            bv:         f.bv         || null,
-            roe:        f.roe        || null,
-            roce:       f.roce       || null,
-            opm_pct:    f.opm_pct    || null,
-            npm_pct:    f.npm_pct    || null,
-            gpm_pct:    f.gpm_pct    || null,
-            mcap:       f.mcap       || null,
-            sales:      f.sales      || null,
-            ebitda:     f.ebitda     || null,
-            cfo:        f.cfo        || null,
-            debt_eq:    f.debt_eq    || null,
-            div_yield:  f.div_yield  || null,
-            beta:       f.beta       || null,
-            prom_pct:   f.prom_pct   || null,
-            fii_pct:    f.fii_pct    || null,
-            dii_pct:    f.dii_pct    || null,
-            public_pct: f.public_pct || null,
-            w52h:       f.w52h       || p.w52h  || null,
-            w52l:       f.w52l       || p.w52l  || null,
-            w52_pct:    f.w52_pct    || null,
-            ath:        ath          || null,
-            ath_pct:    f.ath_pct    || null,
-            signal:     f.signal     || '',
-            pos:        f.pos        || 0,
-            neg:        f.neg        || 0,
-            quarterly:  f.quarterly  || [],
-            chg5d:      f.chg5d      || null,
-            ltp:        ltp,
-            prev:       p.prev       || f.prev  || 0,
-            change:     p.change     || 0,
-            chg1d:      p.changePct  || f.chg1d || 0,
-            open:       p.open       || 0,
-            high:       p.high       || 0,
-            low:        p.low        || 0,
-            vol:        p.vol        || 0,
-            cost:        cost,
+            sym: s.ticker,
+            name: s.name || f.name || '',
+            sector: s.sector || f.sector || '',
+            category: s.type || s.category || 'portfolio',
+            qty: s.qty || 0,
+            avg: s.avg || 0,
+            ltp: ltp,
+            cost: cost,
             marketValue: marketValue,
-            pnl:         pnl,
-            pnlPct:      pnlPct,
-            weight:      weight,
-            athDist:     athDist
+            pnl: marketValue - cost,
+            pnlPct: cost > 0 ? ((marketValue - cost) / cost) * 100 : 0,
+            weight: totalMV > 0 ? (marketValue / totalMV) * 100 : 0
         };
     });
 }
 
-// ── 4. Write to IndexedDB ────────────────────────────────────
 function writeToIndexedDB(db, records) {
     return new Promise(function(resolve, reject) {
-        var tx    = db.transaction(STORE_UNIFIED, 'readwrite');
+        var tx = db.transaction(STORE_UNIFIED, 'readwrite');
         var store = tx.objectStore(STORE_UNIFIED);
-
-        var clearReq = store.clear();
-        clearReq.onsuccess = function() {
+        store.clear().onsuccess = function() {
             records.forEach(function(r) { store.put(r); });
         };
-
-        tx.oncomplete = function() {
-            engineLog('DB written — ' + records.length + ' records', 'ok');
-            resolve();
-        };
-        tx.onerror = function() {
-            engineLog('DB write error: ' + tx.error, 'err');
-            reject(tx.error);
-        };
+        tx.oncomplete = function() { resolve(); };
+        tx.onerror = function() { reject(tx.error); };
     });
 }
 
-// ── 5. Hydrate MASTER_DATA from IndexedDB ────────────────────
-function hydrateMasterData(db) {
-    return new Promise(function(resolve, reject) {
-        var tx  = db.transaction(STORE_UNIFIED, 'readonly');
-        var req = tx.objectStore(STORE_UNIFIED).getAll();
-        req.onsuccess = function(e) {
-            MASTER_DATA = e.target.result || [];
-            engineLog('MASTER_DATA: ' + MASTER_DATA.length + ' stocks', 'ok');
-            resolve(MASTER_DATA);
-        };
-        req.onerror = function(e) {
-            engineLog('Hydration error: ' + e.target.error, 'err');
-            reject(e.target.error);
-        };
-    });
-}
-
-// ── 6. Main Sync Orchestrator ─────────────────────────────────
 function runEngineSync() {
-    var db;
-    engineLog('=== Engine Sync Start ===', 'info');
-    if (typeof showToast === 'function') showToast('Engine syncing...');
-
+    engineLog('=== Sync Start ===', 'info');
     return initEngineDB()
-        .then(function(openedDB) {
-            db = openedDB;
-            engineLog('IndexedDB ready', 'ok');
-            return fetchSourceFiles();
+        .then(function(db) {
+            return fetchSourceFiles().then(function(res) {
+                var records = buildUnifiedRecords(res[0], res[1], res[2]);
+                return writeToIndexedDB(db, records).then(function() {
+                    MASTER_DATA = records;
+                    engineLog('Sync Complete: ' + records.length + ' stocks', 'ok');
+                    if (typeof render === 'function') render();
+                });
+            });
         })
-        .then(function(results) {
-            engineLog('All files fetched', 'ok');
-            var records = buildUnifiedRecords(results[0], results[1], results[2]);
-            if (!records.length) engineLog('WARNING: 0 records — check ticker fields', 'warn');
-            return writeToIndexedDB(db, records);
-        })
-        .then(function() {
-            return hydrateMasterData(db);
-        })
-        .then(function(data) {
-            engineLog('=== Sync Complete: ' + data.length + ' stocks ===', 'ok');
-            if (typeof render === 'function') render();
-            else window.dispatchEvent(new CustomEvent('engine-updated'));
-        })
-        .catch(function(err) {
-            engineLog('SYNC FAILED: ' + err.message, 'err');
-        });
+        .catch(function(err) { engineLog('Error: ' + err.message, 'err'); });
 }
 
-// ── 7. UI filter helpers ──────────────────────────────────────
-function getPortfolioStocks() {
-    return MASTER_DATA.filter(function(s) { return s.category === 'portfolio'; });
-}
-
-function getWatchlistStocks() {
-    return MASTER_DATA.filter(function(s) { return s.category === 'watchlist'; });
-}
-
-// ── 8. Debug overlay ──────────────────────────────────────────
 function showEngineDebug() {
-    var existing = document.getElementById('engine-debug-overlay');
-    if (existing) { existing.remove(); return; }
-
     var overlay = document.createElement('div');
-    overlay.id = 'engine-debug-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.97);display:flex;flex-direction:column;padding:16px;';
-
-    var header = document.createElement('div');
-    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;';
-    header.innerHTML = '<div style="font-family:monospace;font-size:12px;color:#00e896;font-weight:800;">ENGINE DEBUG</div><button onclick="document.getElementById(\'engine-debug-overlay\').remove()" style="background:#222;color:#fff;border:1px solid #444;border-radius:6px;padding:6px 14px;font-size:12px;">✕ Close</button>';
-
-    var log = document.createElement('div');
-    log.id = 'engine-debug-log';
-    log.style.cssText = 'flex:1;overflow-y:auto;background:#02040a;border:1px solid #1e3350;border-radius:6px;padding:10px;';
-
-    _engineLogs.forEach(function(entry) {
-        var div = document.createElement('div');
-        div.style.color = '#8eb0d0';
-        div.style.fontFamily = 'monospace';
-        div.style.fontSize = '11px';
-        div.textContent = entry.msg;
-        log.appendChild(div);
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.9);padding:20px;color:white;overflow:y-auto;';
+    overlay.innerHTML = '<h3>Engine Logs</h3><button onclick="this.parentElement.remove()">Close</button><hr>';
+    _engineLogs.forEach(function(l) {
+        overlay.innerHTML += '<div style="font-family:monospace;margin-bottom:5px;">' + l.msg + '</div>';
     });
-
-    overlay.appendChild(header);
-    overlay.appendChild(log);
     document.body.appendChild(overlay);
 }
