@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Portfolio Analysis</title>
+
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f5f5f5;
+    padding: 16px;
+}
+
+h1 {
+    margin-bottom: 10px;
+}
+
+.summary {
+    background: #ffffff;
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+th, td {
+    padding: 10px;
+    text-align: left;
+}
+
+th {
+    background: #222;
+    color: white;
+}
+
+tr:nth-child(even) {
+    background: #f2f2f2;
+}
+
+.gain {
+    color: green;
+}
+
+.loss {
+    color: red;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Portfolio Analysis</h1>
+
+<div class="summary" id="summary"></div>
+
+<table>
+<thead>
+<tr>
+<th>Stock</th>
+<th>Qty</th>
+<th>Avg Price</th>
+<th>LTP</th>
+<th>Value</th>
+<th>P/L</th>
+</tr>
+</thead>
+<tbody id="table-body"></tbody>
+</table>
+
+<!-- Load existing app data -->
+<script src="data.js"></script>
+
+<script>
+
+// 🔹 YOUR PORTFOLIO (EDIT THIS)
+const portfolio = [
+    { symbol: "RELIANCE", qty: 10, avg: 2500 },
+    { symbol: "TCS", qty: 5, avg: 3500 },
+    { symbol: "INFY", qty: 8, avg: 1400 }
+];
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const prices = window.pricesData || {};
+    const tbody = document.getElementById("table-body");
+
+    let totalValue = 0;
+    let totalCost = 0;
+
+    portfolio.forEach(stock => {
+
+        const ltp = prices[stock.symbol] || 0;
+        const value = ltp * stock.qty;
+        const cost = stock.avg * stock.qty;
+        const pl = value - cost;
+
+        totalValue += value;
+        totalCost += cost;
+
+        const row = `
+            <tr>
+                <td>${stock.symbol}</td>
+                <td>${stock.qty}</td>
+                <td>₹${stock.avg}</td>
+                <td>₹${ltp}</td>
+                <td>₹${value.toFixed(0)}</td>
+                <td class="${pl >= 0 ? 'gain' : 'loss'}">
+                    ₹${pl.toFixed(0)}
+                </td>
+            </tr>
+        `;
+
+        tbody.innerHTML += row;
+    });
+
+    const totalPL = totalValue - totalCost;
+
+    document.getElementById("summary").innerHTML = `
+        <b>Total Value:</b> ₹${totalValue.toFixed(0)} <br>
+        <b>Total Cost:</b> ₹${totalCost.toFixed(0)} <br>
+        <b>P/L:</b> 
+        <span class="${totalPL >= 0 ? 'gain' : 'loss'}">
+            ₹${totalPL.toFixed(0)}
+        </span>
+    `;
+});
+
+</script>
+
+</body>
+</html>
