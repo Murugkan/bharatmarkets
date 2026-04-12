@@ -171,6 +171,11 @@ function showImportUI() {
         
         modal.style.display = 'flex';
         
+        // Attach delete button listeners if on step 5
+        if (importState.step === 5) {
+            attachDeleteListeners();
+        }
+        
         // Initialize step 7 button styles if showing step 7
         if (importState.step === 7) {
             setTimeout(function() {
@@ -806,13 +811,17 @@ function renderStep5() {
             '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
             '₹' + stock.avg.toFixed(2) + '</td>' +
             '<td style="padding:4px 6px;text-align:center;">' +
-            '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
+            '<button class="step5-delete-btn" data-idx="' + idx + '" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
             '</td></tr>';
     });
     
     html += '</table></div>' +
-        '<div style="margin:10px 0;font-size:11px;color:#888;">' +
+        '<div style="margin:15px 0;font-size:11px;color:#888;">' +
         'Total: ' + importState.stocks.length + ' stocks' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;margin-top:15px;">' +
+        '<button onclick="importState.step = 4; showImportUI();" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;">← Back</button>' +
+        '<button onclick="saveAndContinue();" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Save & Continue →</button>' +
         '</div>' +
         '</div>';
     
@@ -838,25 +847,42 @@ function deleteStock(idx) {
     // Validate index
     if (typeof idx !== 'number' || idx < 0 || idx >= importState.stocks.length) {
         console.error('Invalid stock index:', idx);
-        alert('❌ Invalid row index');
         return;
     }
     
     var stock = importState.stocks[idx];
     if (!stock || !stock.name) {
-        alert('❌ Stock not found');
+        console.error('Stock not found at index', idx);
         return;
     }
     
     if (confirm('🗑️ Delete: ' + stock.name + '?')) {
-        // Remove from array
         importState.stocks.splice(idx, 1);
         
-        // Force UI refresh with slight delay to ensure state update
+        // Force UI refresh
         setTimeout(function() {
             showImportUI();
-        }, 100);
+            attachDeleteListeners();
+        }, 50);
     }
+}
+
+// Attach event listeners to delete buttons
+function attachDeleteListeners() {
+    setTimeout(function() {
+        var deleteButtons = document.querySelectorAll('.step5-delete-btn');
+        deleteButtons.forEach(function(btn) {
+            btn.removeEventListener('click', handleDeleteClick);
+            btn.addEventListener('click', handleDeleteClick);
+        });
+    }, 100);
+}
+
+function handleDeleteClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var idx = parseInt(this.getAttribute('data-idx'));
+    deleteStock(idx);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -864,35 +890,24 @@ function deleteStock(idx) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
-    return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Save to Database</h3>' +
-        '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid #00ff88;' +
-        'color:#00ff88;font-size:12px;">' +
-        '<div>✅ Portfolio: ' + importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length + ' stocks</div>' +
-        '<div>📌 Watchlist: ' + importState.stocks.filter(function(s) { return s.type === 'WATCHLIST'; }).length + ' stocks</div>' +
-        '</div>' +
-        '<button onclick="saveToIndexedDB()" style="padding:12px 24px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;">' +
-        '💾 Save All to DB</button>' +
-        '<div id="step6-status" style="margin:15px 0;font-size:12px;"></div>' +
-        '</div>';
+    // Step 6 removed - save happens automatically in Step 5
+    return '';
 }
 
-function saveToIndexedDB() {
+function saveToIndexedDB(callback) {
+    // Save to IndexedDB with callback for chaining
     if (importState.stocks.length === 0) {
-        alert('No stocks to save');
+        if (callback) callback(false);
         return;
     }
-    
-    var status = document.getElementById('step6-status');
-    status.innerHTML = '<span style="color:#ffb347;">⏳ Saving to database...</span>';
     
     try {
         // Use correct database that index.html uses
         var request = indexedDB.open('OnyxPortfolioDB', 8);
         
         request.onerror = function() {
-            status.innerHTML = '<span style="color:#ff6b85;">❌ Database error: ' + (request.error ? request.error.name : 'unknown') + '</span>';
+            console.error('❌ Database error');
+            if (callback) callback(false);
         };
         
         request.onsuccess = function(e) {
@@ -900,9 +915,7 @@ function saveToIndexedDB() {
             var tx = db.transaction('Stocks', 'readwrite');
             var store = tx.objectStore('Stocks');
             
-            // Don't clear - append to existing data
-            // store.clear();
-            
+            // Append to existing data (don't clear)
             var savedCount = 0;
             importState.stocks.forEach(function(stock) {
                 var record = {
@@ -911,7 +924,7 @@ function saveToIndexedDB() {
                     ISIN: stock.isin || '',
                     SECTOR: stock.sector || '',
                     INDUSTRY: stock.industry || '',
-                    TYPE: stock.type || 'PORTFOLIO',
+                    TYPE: (stock.type || 'PORTFOLIO').toUpperCase(),
                     QTY: parseFloat(stock.qty) || 0,
                     AVG: parseFloat(stock.avg) || 0,
                     source: 'import'
@@ -921,21 +934,39 @@ function saveToIndexedDB() {
             });
             
             tx.oncomplete = function() {
-                status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + savedCount + ' stocks to database!</span>';
-                
-                setTimeout(function() {
-                    importState.step = 7;
-                    showImportUI();
-                }, 1000);
+                console.log('✅ Saved ' + savedCount + ' stocks to OnyxPortfolioDB');
+                if (callback) callback(true);
             };
             
             tx.onerror = function() {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Save error: ' + (tx.error ? tx.error.name : 'unknown') + '</span>';
+                console.error('❌ Transaction error:', tx.error);
+                if (callback) callback(false);
             };
         };
     } catch(err) {
-        status.innerHTML = '<span style="color:#ff6b85;">❌ Error: ' + err.message + '</span>';
+        console.error('Error:', err.message);
+        if (callback) callback(false);
     }
+}
+
+// New function: Save and continue to Step 7
+function saveAndContinue() {
+    var btn = document.querySelector('button[onclick="saveAndContinue()"]');
+    if (btn) btn.disabled = true;
+    
+    console.log('📝 Saving ' + importState.stocks.length + ' stocks...');
+    
+    saveToIndexedDB(function(success) {
+        if (success) {
+            console.log('✅ Save successful, moving to Step 7');
+            importState.step = 7;
+            showImportUI();
+            attachDeleteListeners();
+        } else {
+            alert('❌ Failed to save. Please try again.');
+            if (btn) btn.disabled = false;
+        }
+    });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -948,8 +979,34 @@ function renderStep7() {
     var ghRepo = localStorage.getItem('ghRepo') || '';
     var isPATConfigured = ghPAT && ghUser && ghRepo;
     
+    // Calculate counts
+    var portfolioCount = importState.stocks.filter(function(s) { 
+        return (s.type || '').toUpperCase() === 'PORTFOLIO'; 
+    }).length;
+    var watchlistCount = importState.stocks.filter(function(s) { 
+        return (s.type || '').toUpperCase() === 'WATCHLIST'; 
+    }).length;
+    
     var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;">🚀 Post to GitHub</h3>';
+        '<h3 style="margin:0 0 15px 0;color:#00ff88;font-size:16px;">✅ Saved to Database</h3>';
+    
+    // Add counts display
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:15px 0;">' +
+        '<div style="background:#001a00;padding:15px;border-radius:8px;border:1px solid #00ff88;text-align:center;">' +
+            '<div style="font-size:28px;color:#00ff88;font-weight:bold;">' + portfolioCount + '</div>' +
+            '<div style="font-size:12px;color:#888;margin-top:8px;">Portfolio Stocks</div>' +
+        '</div>' +
+        '<div style="background:#1a0000;padding:15px;border-radius:8px;border:1px solid #ff6b85;text-align:center;">' +
+            '<div style="font-size:28px;color:#ff6b85;font-weight:bold;">' + watchlistCount + '</div>' +
+            '<div style="font-size:12px;color:#888;margin-top:8px;">Watchlist Stocks</div>' +
+        '</div>' +
+    '</div>';
+    
+    html += '<div style="margin:15px 0;padding:12px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#00ff88;font-size:12px;">' +
+        '✅ Data saved to IndexedDB. Ready for portfolio view!' +
+    '</div>';
+    
+    html += '<h4 style="margin:20px 0 10px 0;color:#ffb347;font-size:14px;">📤 Optional: Backup to GitHub</h4>';
     
     // PAT Configuration Section
     html += '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
