@@ -972,20 +972,21 @@ function loadDQAData() {
         getAllRequest.onsuccess = function() {
             var stocks = getAllRequest.result;
             
-            // Transform to DQA format
+            // Transform to DQA format - handle both uppercase and lowercase
             dqaState.symbols = stocks.map(function(stock) {
                 return {
-                    ticker: stock.symbol || stock.sym || '?',
-                    name: stock.name || '',
-                    type: stock.type || 'portfolio',
-                    qty: stock.qty || 0,
-                    avg: stock.avg || 0,
-                    isin: stock.isin || '',
-                    sector: stock.sector || ''
+                    ticker: stock.SYM || stock.sym || stock.SYMBOL || stock.symbol || '?',
+                    name: stock.NAME || stock.name || '',
+                    type: stock.TYPE || stock.type || 'portfolio',
+                    qty: stock.QTY || stock.qty || 0,
+                    avg: stock.AVG || stock.avg || 0,
+                    isin: stock.ISIN || stock.isin || '',
+                    sector: stock.SECTOR || stock.sector || ''
                 };
             });
             
-            console.log('✅ Loaded ' + dqaState.symbols.length + ' stocks from IndexedDB');
+            console.log('✅ Loaded ' + dqaState.symbols.length + ' stocks');
+            console.log('Sample:', dqaState.symbols[0]);
             updateDQADisplay();
         };
         
