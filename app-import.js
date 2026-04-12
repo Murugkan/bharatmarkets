@@ -806,7 +806,7 @@ function renderStep5() {
             '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
             '₹' + stock.avg.toFixed(2) + '</td>' +
             '<td style="padding:4px 6px;text-align:center;">' +
-            '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;border:1px solid #ff4d5d;padding:3px 6px;border-radius:3px;cursor:pointer;font-size:9px;font-weight:bold;transition:all 0.2s;">✕ Delete</button>' +
+            '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
             '</td></tr>';
     });
     
@@ -835,18 +835,27 @@ function editCell(cell, idx, field) {
 }
 
 function deleteStock(idx) {
-    if (idx < 0 || idx >= importState.stocks.length) {
-        alert('❌ Invalid row');
+    // Validate index
+    if (typeof idx !== 'number' || idx < 0 || idx >= importState.stocks.length) {
+        console.error('Invalid stock index:', idx);
+        alert('❌ Invalid row index');
         return;
     }
     
-    var stockName = importState.stocks[idx].name;
-    if (confirm('🗑️ Delete: ' + stockName + '?')) {
+    var stock = importState.stocks[idx];
+    if (!stock || !stock.name) {
+        alert('❌ Stock not found');
+        return;
+    }
+    
+    if (confirm('🗑️ Delete: ' + stock.name + '?')) {
+        // Remove from array
         importState.stocks.splice(idx, 1);
-        // Force UI refresh
+        
+        // Force UI refresh with slight delay to ensure state update
         setTimeout(function() {
             showImportUI();
-        }, 50);
+        }, 100);
     }
 }
 
@@ -876,48 +885,52 @@ function saveToIndexedDB() {
     }
     
     var status = document.getElementById('step6-status');
-    status.innerHTML = '<span style="color:#ffb347;">⏳ Saving...</span>';
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Saving to database...</span>';
     
     try {
-        var request = indexedDB.open('BharatEngineDB', 1);
+        // Use correct database that index.html uses
+        var request = indexedDB.open('OnyxPortfolioDB', 8);
         
         request.onerror = function() {
-            status.innerHTML = '<span style="color:#ff6b85;">❌ Database error</span>';
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Database error: ' + (request.error ? request.error.name : 'unknown') + '</span>';
         };
         
         request.onsuccess = function(e) {
             var db = e.target.result;
-            var tx = db.transaction('UnifiedStocks', 'readwrite');
-            var store = tx.objectStore('UnifiedStocks');
+            var tx = db.transaction('Stocks', 'readwrite');
+            var store = tx.objectStore('Stocks');
             
-            store.clear();
+            // Don't clear - append to existing data
+            // store.clear();
             
+            var savedCount = 0;
             importState.stocks.forEach(function(stock) {
                 var record = {
-                    sym: stock.symbol || stock.name.substring(0, 10),
-                    name: stock.name,
-                    isin: stock.isin,
-                    sector: stock.sector,
-                    industry: stock.industry,
-                    type: stock.type,
-                    qty: stock.qty,
-                    avg: stock.avg,
-                    source: 'manual'
+                    SYM: stock.ticker || stock.symbol || stock.name.substring(0, 10),
+                    NAME: stock.name,
+                    ISIN: stock.isin || '',
+                    SECTOR: stock.sector || '',
+                    INDUSTRY: stock.industry || '',
+                    TYPE: stock.type || 'PORTFOLIO',
+                    QTY: parseFloat(stock.qty) || 0,
+                    AVG: parseFloat(stock.avg) || 0,
+                    source: 'import'
                 };
                 store.put(record);
+                savedCount++;
             });
             
             tx.oncomplete = function() {
-                status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + importState.stocks.length + ' stocks</span>';
+                status.innerHTML = '<span style="color:#00ff88;">✅ Saved ' + savedCount + ' stocks to database!</span>';
                 
                 setTimeout(function() {
                     importState.step = 7;
                     showImportUI();
-                }, 800);
+                }, 1000);
             };
             
             tx.onerror = function() {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Save failed</span>';
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Save error: ' + (tx.error ? tx.error.name : 'unknown') + '</span>';
             };
         };
     } catch(err) {
