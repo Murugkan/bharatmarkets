@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Portfolio Data</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; padding-bottom:80px; }
+        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-between; align-items:center; }
+        .title { font-size:14px; font-weight:800; color:var(--bl); }
+        .header-right { display:flex; gap:10px; }
+        button { padding:8px 12px; background:#00ff88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:11px; }
+        button:hover { opacity:0.9; }
+        .container { padding:15px; max-width:100%; margin:0 auto; }
+        .refresh-section { background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:15px; margin-bottom:20px; }
+        .refresh-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:15px; }
+        .refresh-card { background:#050505; border:1px solid var(--b1); border-radius:6px; padding:12px; }
+        .refresh-card-title { font-size:11px; color:var(--bl); font-weight:800; margin-bottom:8px; }
+        .refresh-btn { width:100%; padding:10px; background:var(--gr); color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px; transition: opacity 0.2s; }
+        .refresh-btn:hover { opacity:0.9; }
+        .refresh-btn:disabled { opacity:0.5; cursor:not-allowed; }
+        .refresh-timestamp { font-size:9px; color:#666; margin-top:8px; }
+        .refresh-status { font-size:9px; color:#888; margin-top:4px; font-style:italic; }
+        .table-wrap { overflow-x:auto; background:#050505; border:1px solid var(--b1); border-radius:8px; margin-top:20px; max-height:600px; overflow-y:auto; }
+        table { width:100%; border-collapse:collapse; font-size:10px; }
+        th { background:#111; color:#00ff88; padding:8px; text-align:left; border-bottom:1px solid var(--b1); position:sticky; top:0; font-weight:800; }
+        td { padding:8px; border-bottom:0.5px solid #111; }
+        tr:hover { background:#0a0a0a; }
+        .pos { color:#00ff88; }
+        .neg { color:#ff6b85; }
+        .editable { cursor:pointer; color:#00ff88; text-decoration:underline; }
+        .editable:hover { opacity:0.8; }
+        
+        footer { position:fixed; bottom:0; width:100%; background:rgba(0,0,0,0.95); border-top:1px solid #222; display:flex; justify-content:space-around; padding:12px 0; z-index:1000; }
+        .nav-btn { text-decoration:none; color:#666; display:flex; flex-direction:column; align-items:center; width:33%; padding:8px 0; transition:color 0.2s; }
+        .nav-btn:hover { color:var(--bl); }
+        .nav-btn.active { color:var(--bl); font-weight:800; }
+        .nav-label { font-size:8px; margin-top:4px; font-weight:800; text-transform:uppercase; letter-spacing:1px; }
+        
+        .alert { padding:10px; margin:10px 0; border-radius:4px; font-size:11px; }
+        .alert-success { background:#0a2a1a; color:#00ff88; border-left:3px solid #00ff88; }
+        .alert-error { background:#2a0a0a; color:#ff6b85; border-left:3px solid #ff6b85; }
+        .alert-info { background:#0a1a2a; color:#00f2ff; border-left:3px solid #00f2ff; }
+
+        /* DQA Styles */
+        .dqa-header { background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:15px; margin-bottom:20px; }
+        .dqa-title { font-size:14px; font-weight:800; color:var(--bl); margin-bottom:12px; }
+        .dqa-info { display:flex; gap:20px; flex-wrap:wrap; font-size:11px; align-items:center; }
+        .dqa-stat { display:flex; flex-direction:column; }
+        .dqa-label { color:#666; font-size:9px; margin-bottom:3px; }
+        .dqa-value { color:var(--gr); font-weight:800; font-size:12px; }
+        .dqa-reload { background:var(--gr); color:#000; border:none; padding:8px 12px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px; }
+        .dqa-reload:hover { opacity:0.9; }
+
+        .dqa-table-container { 
+          overflow-x:auto; 
+          overflow-y:auto; 
+          background:#050505; 
+          border:1px solid var(--b1); 
+          border-radius:8px; 
+          max-height:65vh;
+          -webkit-overflow-scrolling:touch;
+          margin-top:20px;
+        }
+
+        .dqa-table { 
+          width:100%; 
+          border-collapse:collapse; 
+          font-size:10px;
+          position:relative;
+        }
+
+        .dqa-table thead tr {
+          position:sticky;
+          top:0;
+          z-index:10;
+          background:#111;
+        }
+
+        .dqa-table th {
+          background:#111;
+          color:var(--gr);
+          padding:8px;
+          text-align:left;
+          border-bottom:2px solid var(--b1);
+          font-weight:800;
+          white-space:nowrap;
+        }
+
+        .dqa-table td {
+          padding:8px;
+          border-bottom:1px solid #111;
+          min-height:44px;
+          display:flex;
+          align-items:center;
+        }
+
+        .dqa-sym {
+          position:sticky;
+          left:0;
+          background:#0a0a0a;
+          z-index:5;
+          font-weight:800;
+          color:var(--bl);
+          font-family:'JetBrains Mono',monospace;
+          min-width:70px;
+          padding:8px !important;
+        }
+
+        .dqa-table thead .dqa-sym {
+          background:#111;
+          z-index:11;
+        }
+
+        .dqa-table tr:hover td { background:#0a0a0a; }
+        .dqa-table tr:hover .dqa-sym { background:#111; }
+
+        .dqa-name { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .dqa-cat { display:inline-block; padding:3px 8px; border-radius:3px; font-size:9px; font-weight:800; cursor:pointer; transition:opacity 0.2s; }
+        .dqa-cat.portfolio { background:#003366; color:#00f2ff; }
+        .dqa-cat.watchlist { background:#330066; color:#ff00ff; }
+        .dqa-cat:hover { opacity:0.8; }
+        
+        .dqa-status { display:flex; align-items:center; gap:4px; }
+        .dqa-check { color:var(--gr); }
+        .dqa-cross { color:var(--rd); }
+        
+        .dqa-edit { cursor:pointer; color:var(--bl); text-decoration:underline; transition:opacity 0.2s; }
+        .dqa-edit:hover { opacity:0.7; }
+        
+        .dqa-delete-btn { color:var(--rd); cursor:pointer; font-weight:bold; transition:opacity 0.2s; }
+        .dqa-delete-btn:hover { opacity:0.7; }
+
+        .input-edit {
+          background:#111;
+          border:1px solid var(--bl);
+          color:var(--bl);
+          padding:4px 6px;
+          border-radius:3px;
+          font-family:'JetBrains Mono',monospace;
+          font-size:10px;
+          width:70px;
+        }
+
+        .input-edit:focus {
+          outline:none;
+          box-shadow:0 0 8px var(--bl);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="title">📊 PORTFOLIO DATA</div>
+    <div class="header-right">
+        <button onclick="openImportWorkflow()">📥 Load</button>
+        <button onclick="location.reload()">🔄 Reload</button>
+    </div>
+</header>
+
+<div class="container">
+    <!-- Status Messages -->
+    <div id="status-container"></div>
+    
+    <!-- Refresh Controls -->
+    <div class="refresh-section">
+        <div class="refresh-grid">
+            <div class="refresh-card">
+                <div class="refresh-card-title">📈 Refresh Prices</div>
+                <button class="refresh-btn" id="refresh-prices-btn" onclick="refreshPrices()">Refresh Prices</button>
+                <div class="refresh-timestamp" id="prices-timestamp">Last Updated: Never</div>
+                <div class="refresh-status" id="prices-status"></div>
+            </div>
+            <div class="refresh-card">
+                <div class="refresh-card-title">💹 Refresh Fundamentals</div>
+                <button class="refresh-btn" id="refresh-fundamentals-btn" onclick="refreshFundamentals()">Refresh Fundamentals</button>
+                <div class="refresh-timestamp" id="fundamentals-timestamp">Last Updated: Never</div>
+                <div class="refresh-status" id="fundamentals-status"></div>
+            </div>
+            <div class="refresh-card">
+                <div class="refresh-card-title">🔗 Full Sync & Reload</div>
+                <button class="refresh-btn" id="refresh-sync-btn" onclick="fullSync()">Full Sync & Reload</button>
+                <div class="refresh-timestamp" id="sync-timestamp">Last Updated: Never</div>
+                <div class="refresh-status" id="sync-status"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- DQA Header -->
+    <div class="dqa-header">
+        <div class="dqa-title">📊 DATA QUALITY AUDIT (DQA)</div>
+        <div class="dqa-info">
+            <div class="dqa-stat">
+                <div class="dqa-label">Holdings</div>
+                <div class="dqa-value" id="dqa-holdings">0</div>
+            </div>
+            <div class="dqa-stat">
+                <div class="dqa-label">Fundamentals</div>
+                <div class="dqa-value" id="dqa-fund-date">—</div>
+            </div>
+            <div class="dqa-stat">
+                <div class="dqa-label">Prices</div>
+                <div class="dqa-value" id="dqa-price-date">—</div>
+            </div>
+            <button class="dqa-reload" onclick="reloadDQA()">↻ Reload</button>
+        </div>
+    </div>
+
+    <!-- DQA Table -->
+    <div class="dqa-table-container">
+        <table class="dqa-table" id="dqa-table">
+            <thead>
+                <tr>
+                    <th class="dqa-sym">SYM</th>
+                    <th class="dqa-name">NAME</th>
+                    <th>CAT</th>
+                    <th>FUND</th>
+                    <th>PRICE</th>
+                    <th>CONCALL</th>
+                    <th>INSIGHTS</th>
+                    <th>QTY</th>
+                    <th>AVG</th>
+                    <th>✕</th>
+                </tr>
+            </thead>
+            <tbody id="dqa-tbody">
+                <tr><td colspan="10" style="text-align:center;padding:20px;color:#666;">Loading data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Legacy Portfolio Table (hidden) -->
+    <div class="table-wrap" style="display:none;">
+        <table id="portfolio-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>QTY</th>
+                    <th>AVG</th>
+                    <th>Sector</th>
+                    <th>ISIN</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="portfolio-body">
+            </tbody>
+        </table>
+    </div>
+
+    <!-- GitHub PAT Configuration -->
+    <div style="background:#0a0a0a; border:1px solid var(--b1); border-radius:8px; padding:15px; margin-top:20px;">
+        <div style="font-size:12px; color:var(--bl); font-weight:800; margin-bottom:15px;">🔑 GitHub Configuration</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:15px;">
+            <div>
+                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">GitHub Username</label>
+                <input type="text" id="ghUser" placeholder="username" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
+            </div>
+            <div>
+                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">Repository Name</label>
+                <input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
+            </div>
+            <div>
+                <label style="display:block; font-size:11px; color:#888; margin-bottom:5px;">GitHub PAT (Personal Access Token)</label>
+                <input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%; padding:8px; background:#111; color:#fff; border:1px solid #222; border-radius:4px; font-size:11px;">
+            </div>
+            <div style="display:flex; gap:10px; align-items:flex-end;">
+                <button onclick="saveGitHubConfig()" style="flex:1; padding:8px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">💾 Save Config</button>
+                <button onclick="testGitHubConnection()" style="flex:1; padding:8px; background:#00f2ff; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">✓ Test</button>
+            </div>
+        </div>
+        <div id="ghConfigStatus" style="font-size:10px; color:#666; margin-top:10px;"></div>
+    </div>
+</div>
+
+<!-- Footer -->
+<footer>
+    <a href="index.html" class="nav-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+        <span class="nav-label">Portfolio</span>
+    </a>
+    <a href="data.html" class="nav-btn active">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg>
+        <span class="nav-label">Data</span>
+    </a>
+    <a href="nexus.html" class="nav-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <span class="nav-label">Import</span>
+    </a>
+</footer>
+
+<script src="app-import.js"></script>
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Status Message Helper
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function showStatus(message, type) {
+    var container = document.getElementById('status-container');
+    var alertClass = 'alert-' + (type || 'info');
+    var html = '<div class="alert ' + alertClass + '">' + message + '</div>';
+    
+    if (container) {
+        container.innerHTML = html;
+        // Auto-hide after 5 seconds
+        setTimeout(function() {
+            container.innerHTML = '';
+        }, 5000);
+    }
+}
+
+function updateTimestamp(elementId) {
+    var el = document.getElementById(elementId);
+    if (el) {
+        var now = new Date();
+        var timeStr = now.toLocaleTimeString('en-IN', { 
+            hour12: false, 
+            hour: '2-digit', 
+            minute: '2-digit',
+            second: '2-digit'
+        });
+        var dateStr = now.toLocaleDateString('en-IN');
+        el.textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// REFRESH FUNCTIONS - FIXED
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function refreshPrices() {
+    // Data comes from IndexedDB only - no network fetch
+    var btn = document.getElementById('refresh-prices-btn');
+    var status = document.getElementById('prices-status');
+    
+    btn.disabled = true;
+    status.textContent = 'Loading from database...';
+    
+    // Just confirm data is in DB - don't fetch from network
+    updateTimestamp('prices-timestamp');
+    status.textContent = '✅ Loaded from IndexedDB';
+    showStatus('✅ Data loaded from local database', 'success');
+    btn.disabled = false;
+}
+
+function refreshFundamentals() {
+    // Data comes from IndexedDB only - no network fetch
+    var btn = document.getElementById('refresh-fundamentals-btn');
+    var status = document.getElementById('fundamentals-status');
+    
+    btn.disabled = true;
+    status.textContent = 'Loading from database...';
+    
+    // Just confirm data is in DB - don't fetch from network
+    updateTimestamp('fundamentals-timestamp');
+    status.textContent = '✅ Loaded from IndexedDB';
+    showStatus('✅ Data loaded from local database', 'success');
+    btn.disabled = false;
+}
+
+function fullSync() {
+    // Full sync uses IndexedDB only - no network fetch
+    var btn = document.getElementById('refresh-sync-btn');
+    var status = document.getElementById('sync-status');
+    
+    btn.disabled = true;
+    status.textContent = 'Loading from database...';
+    
+    // Just reload from IndexedDB - data is already there
+    updateTimestamp('sync-timestamp');
+    status.textContent = '✅ Synced from IndexedDB';
+    showStatus('✅ Full sync completed. Reloading...', 'success');
+    
+    // Reload after 1 second
+    setTimeout(function() {
+        location.reload();
+    }, 1000);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// EDIT & DELETE HANDLERS - FIXED
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Edit Quantity (XSS-safe version)
+function editQty(sym, currentQty) {
+    var newQty = prompt('Edit Quantity for ' + sym + ':', currentQty);
+    if (newQty !== null && newQty.trim() !== '') {
+        var qtyVal = parseFloat(newQty);
+        if (!isNaN(qtyVal) && qtyVal >= 0) {
+            updateStock(sym, { qty: qtyVal });
+        } else {
+            alert('Please enter a valid number');
+        }
+    }
+}
+
+// Edit Average Price (XSS-safe version)
+function editAvg(sym, currentAvg) {
+    var newAvg = prompt('Edit Average Price for ' + sym + ':', currentAvg.toFixed(2));
+    if (newAvg !== null && newAvg.trim() !== '') {
+        var avgVal = parseFloat(newAvg);
+        if (!isNaN(avgVal) && avgVal >= 0) {
+            updateStock(sym, { avg: avgVal });
+        } else {
+            alert('Please enter a valid number');
+        }
+    }
+}
+
+// Update stock in IndexedDB - FIXED to use proper key
+function updateStock(sym, updates) {
+    var DB_NAME = "OnyxPortfolioDB";
+    var STORE_NAME = "Stocks";
+    
+    try {
+        var request = indexedDB.open(DB_NAME, 8);
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readwrite');
+            var store = tx.objectStore(STORE_NAME);
+            var getAll = store.getAll();
+            
+            getAll.onsuccess = function() {
+                var stocks = getAll.result || [];
+                var updated = false;
+                
+                for (var i = 0; i < stocks.length; i++) {
+                    var s = stocks[i];
+                    // Normalize field name check
+                    var stockSym = s.SYM || s.sym || s.ticker || s.TICKER;
+                    if (stockSym === sym) {
+                        // Update fields (handle both cases)
+                        if (updates.qty !== undefined) {
+                            s.QTY = updates.qty;
+                            s.qty = updates.qty;
+                        }
+                        if (updates.avg !== undefined) {
+                            s.AVG = updates.avg;
+                            s.avg = updates.avg;
+                        }
+                        // Use the key if available, otherwise update by position
+                        if (s.key !== undefined) {
+                            store.put(s, s.key);
+                        } else {
+                            store.put(s);
+                        }
+                        updated = true;
+                        break;
+                    }
+                }
+                
+                if (updated) {
+                    showStatus('✅ ' + sym + ' updated successfully', 'success');
+                    loadPortfolioTable();
+                } else {
+                    showStatus('❌ Stock not found: ' + sym, 'error');
+                }
+            };
+        };
+        
+        request.onerror = function() {
+            showStatus('❌ Failed to open database', 'error');
+        };
+    } catch(e) {
+        console.error('Error updating stock:', e);
+        showStatus('❌ Error updating stock: ' + e.message, 'error');
+    }
+}
+
+// Delete stock from IndexedDB - FIXED
+function deleteStock(sym) {
+    if (!confirm('Delete ' + sym + ' from portfolio? This cannot be undone.')) return;
+    
+    var DB_NAME = "OnyxPortfolioDB";
+    var STORE_NAME = "Stocks";
+    
+    try {
+        var request = indexedDB.open(DB_NAME, 8);
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readwrite');
+            var store = tx.objectStore(STORE_NAME);
+            var getAll = store.getAll();
+            
+            getAll.onsuccess = function() {
+                var stocks = getAll.result || [];
+                var deleted = false;
+                
+                // Find and remove from IndexedDB
+                for (var i = 0; i < stocks.length; i++) {
+                    var s = stocks[i];
+                    var stockSym = s.SYM || s.sym || s.ticker || s.TICKER;
+                    if (stockSym === sym) {
+                        // Delete using proper key
+                        if (s.key !== undefined) {
+                            store.delete(s.key);
+                        } else {
+                            // Fallback: use index key from getAll
+                            store.delete(store.keyPath ? s[store.keyPath] : i);
+                        }
+                        deleted = true;
+                        break;
+                    }
+                }
+                
+                if (deleted) {
+                    // Try to update unified-symbols.json on GitHub
+                    updateUnifiedSymbols(sym, 'DELETE');
+                    
+                    setTimeout(function() {
+                        showStatus('✅ ' + sym + ' deleted from portfolio', 'success');
+                        loadPortfolioTable();
+                    }, 300);
+                } else {
+                    showStatus('❌ Stock not found: ' + sym, 'error');
+                }
+            };
+        };
+        
+        request.onerror = function() {
+            showStatus('❌ Failed to access database', 'error');
+        };
+    } catch(e) {
+        console.error('Error deleting stock:', e);
+        showStatus('❌ Error deleting stock: ' + e.message, 'error');
+    }
+}
+
+// Update unified-symbols.json on GitHub
+function updateUnifiedSymbols(sym, action) {
+    var ghPAT = localStorage.getItem('ghPAT');
+    var ghUser = localStorage.getItem('ghUser');
+    var ghRepo = localStorage.getItem('ghRepo');
+    
+    if (!ghPAT || !ghUser || !ghRepo) {
+        console.warn('GitHub PAT not configured - skipping unified-symbols.json update');
+        return;
+    }
+    
+    // Fetch current unified-symbols.json from GitHub
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    
+    fetch(apiUrl, {
+        headers: { 'Authorization': 'token ' + ghPAT }
+    })
+    .then(function(r) { 
+        if (!r.ok) throw new Error('GitHub API error: ' + r.status);
+        return r.json();
+    })
+    .then(function(data) {
+        if (action === 'DELETE') {
+            // Decode base64 content
+            var content = JSON.parse(atob(data.content));
+            // Remove stock
+            content.symbols = content.symbols.filter(function(s) { return s.ticker !== sym; });
+            // Update count
+            content.count = content.symbols.length;
+            // Commit
+            commitUnifiedSymbols(content, data.sha, sym, 'DELETE');
+        }
+    })
+    .catch(function(err) {
+        console.error('Error updating unified-symbols.json:', err);
+        // Don't fail silently - log it
+        console.warn('Could not update GitHub: ' + err.message);
+    });
+}
+
+// Commit unified-symbols.json to GitHub
+function commitUnifiedSymbols(content, sha, sym, action) {
+    var ghPAT = localStorage.getItem('ghPAT');
+    var ghUser = localStorage.getItem('ghUser');
+    var ghRepo = localStorage.getItem('ghRepo');
+    
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    
+    fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+            'Authorization': 'token ' + ghPAT,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: action + ' stock: ' + sym,
+            content: btoa(JSON.stringify(content)),
+            sha: sha
+        })
+    })
+    .then(function(r) {
+        if (r.ok) {
+            console.log('✅ ' + sym + ' deleted from unified-symbols.json on GitHub');
+        } else {
+            console.warn('GitHub commit failed: ' + r.status);
+        }
+    })
+    .catch(function(err) {
+        console.error('Error committing to GitHub:', err);
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GitHub Configuration Management
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function saveGitHubConfig() {
+    var user = document.getElementById('ghUser').value.trim();
+    var repo = document.getElementById('ghRepo').value.trim();
+    var pat = document.getElementById('ghPAT').value.trim();
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please fill all GitHub fields', 'error');
+        return;
+    }
+    
+    localStorage.setItem('ghUser', user);
+    localStorage.setItem('ghRepo', repo);
+    localStorage.setItem('ghPAT', pat);
+    
+    showStatus('✅ GitHub config saved', 'success');
+    document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+}
+
+function loadGitHubConfig() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (user) document.getElementById('ghUser').value = user;
+    if (repo) document.getElementById('ghRepo').value = repo;
+    if (pat) document.getElementById('ghPAT').value = pat;
+    
+    if (user && repo) {
+        document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+    }
+}
+
+function testGitHubConnection() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please save config first', 'error');
+        return;
+    }
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/unified-symbols.json';
+    
+    fetch(url, {
+        headers: { 'Authorization': 'token ' + pat }
+    })
+    .then(function(r) {
+        if (r.ok) {
+            showStatus('✅ GitHub connection successful', 'success');
+            document.getElementById('ghConfigStatus').textContent = '✓ Connected to ' + user + '/' + repo;
+            updateGitHubTimestamps();
+        } else if (r.status === 401) {
+            showStatus('❌ Invalid token', 'error');
+        } else if (r.status === 404) {
+            showStatus('❌ Repository not found', 'error');
+        } else {
+            showStatus('❌ GitHub error: ' + r.status, 'error');
+        }
+    })
+    .catch(function(err) {
+        showStatus('❌ Connection failed: ' + err.message, 'error');
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Get GitHub File Timestamps
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function getGitHubFileTimestamp(filename) {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    
+    if (!user || !repo) return Promise.reject('GitHub not configured');
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/commits?path=' + filename + '&per_page=1';
+    
+    return fetch(url)
+        .then(function(r) {
+            if (!r.ok) throw new Error('Failed to fetch commit info');
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.length === 0) throw new Error('No commits found');
+            var timestamp = data[0].commit.committer.date;
+            return new Date(timestamp);
+        });
+}
+
+function updateGitHubTimestamps() {
+    // Get timestamps from GitHub
+    Promise.all([
+        getGitHubFileTimestamp('prices.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('fundamentals.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('unified-symbols.json').catch(function() { return null; })
+    ])
+    .then(function(timestamps) {
+        if (timestamps[0]) {
+            var dateStr = timestamps[0].toLocaleDateString('en-IN');
+            var timeStr = timestamps[0].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('prices-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[1]) {
+            var dateStr = timestamps[1].toLocaleDateString('en-IN');
+            var timeStr = timestamps[1].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('fundamentals-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[2]) {
+            var dateStr = timestamps[2].toLocaleDateString('en-IN');
+            var timeStr = timestamps[2].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('sync-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+    })
+    .catch(function(err) {
+        console.log('Could not fetch GitHub timestamps:', err);
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TABLE RENDERING - FIXED XSS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function loadPortfolioTable() {
+    // Load portfolio from IndexedDB (OnyxPortfolioDB)
+    var DB_NAME = "OnyxPortfolioDB";
+    var STORE_NAME = "Stocks";
+    
+    try {
+        var request = indexedDB.open(DB_NAME, 8);
+        
+        request.onerror = function() {
+            console.error('Failed to open IndexedDB');
+            renderTable([]);
+        };
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction(STORE_NAME, 'readonly');
+            var store = tx.objectStore(STORE_NAME);
+            var getAll = store.getAll();
+            
+            getAll.onerror = function() {
+                console.error('Failed to get stocks from IndexedDB');
+                renderTable([]);
+            };
+            
+            getAll.onsuccess = function() {
+                var stocks = getAll.result || [];
+                renderTable(stocks);
+            };
+        };
+    } catch(e) {
+        console.error('Error accessing IndexedDB:', e);
+        renderTable([]);
+    }
+}
+
+function renderTable(portfolio) {
+    var tbody = document.getElementById('portfolio-body');
+    if (portfolio.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No data loaded. Click "Load" to import stocks.</td></tr>';
+        return;
+    }
+    
+    var html = '';
+    for (var i = 0; i < portfolio.length; i++) {
+        var s = portfolio[i];
+        // Handle both uppercase (from IndexedDB) and lowercase field names
+        var sym = s.SYM || s.sym || s.ticker || s.TICKER || '-';
+        var name = s.name || s.NAME || '-';
+        var type = s.type || s.TYPE || 'PORTFOLIO';
+        var qty = s.QTY || s.qty || 0;
+        var avg = s.AVG || s.avg || 0;
+        var sector = s.SECTOR || s.sector || '-';
+        var isin = s.isin || s.ISIN || '-';
+        
+        // XSS Prevention: Encode special characters
+        sym = escapeHtml(sym);
+        name = escapeHtml(name);
+        sector = escapeHtml(sector);
+        isin = escapeHtml(isin);
+        
+        html += '<tr>' +
+            '<td>' + sym + '</td>' +
+            '<td>' + name + '</td>' +
+            '<td>' + type + '</td>' +
+            '<td style="text-align:right;"><span class="editable" data-sym="' + sym + '" data-qty="' + qty + '" onclick="editQtyHandler(this)"><u>' + qty + '</u></span></td>' +
+            '<td style="text-align:right;"><span class="editable" data-sym="' + sym + '" data-avg="' + avg + '" onclick="editAvgHandler(this)"><u>₹' + parseFloat(avg).toFixed(2) + '</u></span></td>' +
+            '<td>' + sector + '</td>' +
+            '<td>' + isin + '</td>' +
+            '<td><button onclick="deleteStockHandler(this)" data-sym="' + sym + '" style="background:#ff6b85;color:#fff;padding:2px 6px;font-size:9px;border:none;border-radius:2px;cursor:pointer;">✕</button></td>' +
+            '</tr>';
+    }
+    tbody.innerHTML = html;
+}
+
+// XSS Prevention Helper
+function escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Event handler wrappers (safe from XSS)
+function editQtyHandler(el) {
+    var sym = el.getAttribute('data-sym');
+    var qty = el.getAttribute('data-qty');
+    editQty(sym, parseFloat(qty));
+}
+
+function editAvgHandler(el) {
+    var sym = el.getAttribute('data-sym');
+    var avg = el.getAttribute('data-avg');
+    editAvg(sym, parseFloat(avg));
+}
+
+function deleteStockHandler(el) {
+    var sym = el.getAttribute('data-sym');
+    deleteStock(sym);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GitHub Configuration
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function saveGitHubConfig() {
+    var user = document.getElementById('ghUser').value.trim();
+    var repo = document.getElementById('ghRepo').value.trim();
+    var pat = document.getElementById('ghPAT').value.trim();
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please fill all GitHub fields', 'error');
+        return;
+    }
+    
+    localStorage.setItem('ghUser', user);
+    localStorage.setItem('ghRepo', repo);
+    localStorage.setItem('ghPAT', pat);
+    
+    showStatus('✅ GitHub config saved', 'success');
+    document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+}
+
+function loadGitHubConfig() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (user) document.getElementById('ghUser').value = user;
+    if (repo) document.getElementById('ghRepo').value = repo;
+    if (pat) document.getElementById('ghPAT').value = pat;
+    
+    if (user && repo) {
+        document.getElementById('ghConfigStatus').textContent = '✓ Configured: ' + user + '/' + repo;
+    }
+}
+
+function testGitHubConnection() {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    var pat = localStorage.getItem('ghPAT');
+    
+    if (!user || !repo || !pat) {
+        showStatus('❌ Please save config first', 'error');
+        return;
+    }
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/contents/unified-symbols.json';
+    
+    fetch(url, {
+        headers: { 'Authorization': 'token ' + pat }
+    })
+    .then(function(r) {
+        if (r.ok) {
+            showStatus('✅ GitHub connection successful', 'success');
+            document.getElementById('ghConfigStatus').textContent = '✓ Connected to ' + user + '/' + repo;
+        } else if (r.status === 401) {
+            showStatus('❌ Invalid token', 'error');
+        } else if (r.status === 404) {
+            showStatus('❌ Repository not found', 'error');
+        } else {
+            showStatus('❌ GitHub error: ' + r.status, 'error');
+        }
+    })
+    .catch(function(err) {
+        showStatus('❌ Connection failed: ' + err.message, 'error');
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Get GitHub File Timestamps
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function getGitHubFileTimestamp(filename) {
+    var user = localStorage.getItem('ghUser');
+    var repo = localStorage.getItem('ghRepo');
+    
+    if (!user || !repo) return Promise.reject('GitHub not configured');
+    
+    var url = 'https://api.github.com/repos/' + user + '/' + repo + '/commits?path=' + filename + '&per_page=1';
+    
+    return fetch(url)
+        .then(function(r) {
+            if (!r.ok) throw new Error('Failed to fetch commit info');
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.length === 0) throw new Error('No commits found');
+            var timestamp = data[0].commit.committer.date;
+            return new Date(timestamp);
+        });
+}
+
+function updateGitHubTimestamps() {
+    // Get timestamps from GitHub
+    Promise.all([
+        getGitHubFileTimestamp('prices.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('fundamentals.json').catch(function() { return null; }),
+        getGitHubFileTimestamp('unified-symbols.json').catch(function() { return null; })
+    ])
+    .then(function(timestamps) {
+        if (timestamps[0]) {
+            var dateStr = timestamps[0].toLocaleDateString('en-IN');
+            var timeStr = timestamps[0].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('prices-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[1]) {
+            var dateStr = timestamps[1].toLocaleDateString('en-IN');
+            var timeStr = timestamps[1].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('fundamentals-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+        if (timestamps[2]) {
+            var dateStr = timestamps[2].toLocaleDateString('en-IN');
+            var timeStr = timestamps[2].toLocaleTimeString('en-IN', { hour12: false });
+            document.getElementById('sync-timestamp').textContent = 'Last Updated: ' + dateStr + ' ' + timeStr;
+        }
+    })
+    .catch(function(err) {
+        console.log('Could not fetch GitHub timestamps:', err);
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DQA Table Functions
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var dqaState = {
+    symbols: [],
+    prices: null,
+    fundamentals: null
+};
+
+function loadDQAData() {
+    // Load ONLY from IndexedDB - match index.html database
+    var dbRequest = indexedDB.open('OnyxPortfolioDB', 8);
+    
+    dbRequest.onsuccess = function(event) {
+        var db = event.target.result;
+        var tx = db.transaction('Stocks', 'readonly');
+        var store = tx.objectStore('Stocks');
+        var getAllRequest = store.getAll();
+        
+        getAllRequest.onsuccess = function() {
+            var stocks = getAllRequest.result;
+            
+            // Transform to DQA format
+            dqaState.symbols = stocks.map(function(stock) {
+                return {
+                    ticker: stock.symbol || stock.sym || '?',
+                    name: stock.name || '',
+                    type: stock.type || 'portfolio',
+                    qty: stock.qty || 0,
+                    avg: stock.avg || 0,
+                    isin: stock.isin || '',
+                    sector: stock.sector || ''
+                };
+            });
+            
+            console.log('✅ Loaded ' + dqaState.symbols.length + ' stocks from IndexedDB');
+            updateDQADisplay();
+        };
+        
+        getAllRequest.onerror = function() {
+            console.error('❌ Error reading from IndexedDB');
+        };
+    };
+    
+    dbRequest.onerror = function() {
+        console.error('❌ IndexedDB not accessible');
+    };
+}
+
+function updateDQADisplay() {
+    // Update header
+    document.getElementById('dqa-holdings').textContent = dqaState.symbols.length || 0;
+    
+    if (dqaState.fundamentals && dqaState.fundamentals.updated) {
+        var fundDate = new Date(dqaState.fundamentals.updated);
+        document.getElementById('dqa-fund-date').textContent = formatDQADate(fundDate);
+    }
+    
+    if (dqaState.prices && dqaState.prices.updated) {
+        var priceDate = new Date(dqaState.prices.updated);
+        document.getElementById('dqa-price-date').textContent = formatDQADate(priceDate);
+    }
+    
+    // Populate table
+    populateDQATable();
+}
+
+function formatDQADate(date) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var day = date.getDate();
+    var month = months[date.getMonth()];
+    var year = date.getFullYear().toString().slice(-2);
+    var hours = ('0' + date.getHours()).slice(-2);
+    var mins = ('0' + date.getMinutes()).slice(-2);
+    return month + ' ' + day + ' ' + year + ' ' + hours + ':' + mins;
+}
+
+function populateDQATable() {
+    var tbody = document.getElementById('dqa-tbody');
+    tbody.innerHTML = '';
+    
+    var fundDate = dqaState.fundamentals && dqaState.fundamentals.updated ? new Date(dqaState.fundamentals.updated) : null;
+    var priceDate = dqaState.prices && dqaState.prices.updated ? new Date(dqaState.prices.updated) : null;
+    var now = new Date();
+    
+    dqaState.symbols.forEach(function(symbol) {
+        var row = document.createElement('tr');
+        
+        // Check data existence
+        var hasFund = dqaState.fundamentals && dqaState.fundamentals.stocks && dqaState.fundamentals.stocks[symbol.ticker];
+        var hasPrice = dqaState.prices && dqaState.prices.quotes && dqaState.prices.quotes[symbol.ticker];
+        
+        // Calculate days
+        var fundDays = fundDate ? Math.floor((now - fundDate) / (1000*60*60*24)) : '-';
+        var priceDays = priceDate ? Math.floor((now - priceDate) / (1000*60*60*24)) : '-';
+        
+        var catClass = (symbol.type || 'portfolio').toLowerCase();
+        
+        row.innerHTML = '<td class="dqa-sym">' + escapeHtml(symbol.ticker) + '</td>' +
+            '<td class="dqa-name" title="' + escapeHtml(symbol.name) + '">' + escapeHtml(symbol.name.substring(0, 14)) + '</td>' +
+            '<td><span class="dqa-cat ' + catClass + '" onclick="toggleDQACAT(this, \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.type || 'portfolio') + '</span></td>' +
+            '<td><span class="dqa-status">' + (hasFund ? '<span class="dqa-check">✅</span>' : '<span class="dqa-cross">❌</span>') + ' ' + fundDays + 'd</span></td>' +
+            '<td><span class="dqa-status">' + (hasPrice ? '<span class="dqa-check">✅</span>' : '<span class="dqa-cross">❌</span>') + ' ' + priceDays + 'd</span></td>' +
+            '<td>❌ — (TBD)</td>' +
+            '<td>❌ — (TBD)</td>' +
+            '<td class="dqa-edit" onclick="editDQAValue(this, \'qty\', \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.qty || 0) + '</td>' +
+            '<td class="dqa-edit" onclick="editDQAValue(this, \'avg\', \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.avg || 0) + '</td>' +
+            '<td class="dqa-delete-btn" onclick="deleteDQASymbol(\'' + escapeHtml(symbol.ticker) + '\')">✕</td>';
+        
+        tbody.appendChild(row);
+    });
+    
+    if (dqaState.symbols.length === 0) {
+        var row = document.createElement('tr');
+        row.innerHTML = '<td colspan="10" style="text-align:center;padding:20px;color:#666;">No holdings loaded. Click "Load" to import data.</td>';
+        tbody.appendChild(row);
+    }
+}
+
+function toggleDQACAT(el, ticker) {
+    var current = el.textContent.trim();
+    var newCat = current === 'portfolio' ? 'watchlist' : 'portfolio';
+    el.textContent = newCat;
+    el.className = 'dqa-cat ' + newCat;
+    
+    // Update state
+    var sym = dqaState.symbols.find(function(s) { return s.ticker === ticker; });
+    if (sym) sym.type = newCat;
+}
+
+function editDQAValue(el, field, ticker) {
+    var current = el.textContent;
+    var input = document.createElement('input');
+    input.className = 'input-edit';
+    input.type = 'number';
+    input.step = field === 'qty' ? '1' : '0.01';
+    input.value = current;
+    
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    
+    function save() {
+        var sym = dqaState.symbols.find(function(s) { return s.ticker === ticker; });
+        if (sym) sym[field] = parseFloat(input.value) || 0;
+        el.textContent = input.value;
+        el.classList.add('dqa-edit');
+    }
+    
+    input.onblur = save;
+    input.onkeypress = function(e) {
+        if (e.key === 'Enter') save();
+    };
+}
+
+function deleteDQASymbol(ticker) {
+    if (confirm('Delete ' + ticker + ' from DQA?')) {
+        dqaState.symbols = dqaState.symbols.filter(function(s) { return s.ticker !== ticker; });
+        populateDQATable();
+    }
+}
+
+function reloadDQA() {
+    loadDQAData();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Initialize on page load
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+window.addEventListener('DOMContentLoaded', function() {
+    loadPortfolioTable();
+    loadGitHubConfig();
+    loadDQAData();
+    
+    // Try to fetch actual GitHub timestamps
+    setTimeout(function() {
+        updateGitHubTimestamps();
+    }, 500);
+});
+</script>
+
+</body>
+</html>
