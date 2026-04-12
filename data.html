@@ -1076,14 +1076,104 @@ function loadFundamentals() {
         .then(data => {
             dqaState.fundamentals = data;
             addDebugLog('✅ fundamentals.json loaded: ' + (data.count || 0) + ' stocks');
-            addDebugLog('🎯 All data loaded - rendering table...');
-            updateDQADisplay();
+            addDebugLog('🔀 Merging all data sources...');
+            mergeAllDataSources();
+            addDebugLog('💾 Saving merged data to IndexedDB...');
+            saveMergedToIndexedDB(function() {
+                addDebugLog('✅ IndexedDB updated with merged data');
+                updateDQADisplay();
+            });
         })
         .catch(e => {
             addDebugLog('❌ fundamentals.json FAILED: ' + e.message);
             addDebugLog('⚠ Rendering with partial data...');
             updateDQADisplay();
         });
+}
+
+function mergeAllDataSources() {
+    addDebugLog('🔀 Starting merge: unified-symbols + prices + fundamentals');
+    
+    dqaState.merged = {};
+    var mergedCount = 0;
+    
+    // Iterate through all symbols from unified-symbols (via IndexedDB)
+    dqaState.symbols.forEach(function(symbol) {
+        var ticker = symbol.ticker;
+        
+        // Start with symbol base data
+        dqaState.merged[ticker] = {
+            ticker: ticker,
+            name: symbol.name || '',
+            isin: symbol.isin || '',
+            sector: symbol.sector || '',
+            industry: symbol.industry || '',
+            type: symbol.type || 'portfolio',
+            qty: symbol.qty || 0,
+            avg: symbol.avg || 0
+        };
+        
+        // Merge prices.json
+        if (dqaState.prices && dqaState.prices.quotes && dqaState.prices.quotes[ticker]) {
+            var priceData = dqaState.prices.quotes[ticker];
+            Object.keys(priceData).forEach(function(key) {
+                if (key !== 'ticker') {
+                    dqaState.merged[ticker][key] = priceData[key];
+                }
+            });
+        }
+        
+        // Merge fundamentals.json
+        if (dqaState.fundamentals && dqaState.fundamentals.stocks && dqaState.fundamentals.stocks[ticker]) {
+            var fundData = dqaState.fundamentals.stocks[ticker];
+            Object.keys(fundData).forEach(function(key) {
+                if (key !== 'ticker') {
+                    dqaState.merged[ticker][key] = fundData[key];
+                }
+            });
+        }
+        
+        mergedCount++;
+    });
+    
+    addDebugLog('✅ Merged ' + mergedCount + ' records');
+}
+
+function saveMergedToIndexedDB(callback) {
+    try {
+        var request = indexedDB.open('OnyxPortfolioDB', 8);
+        
+        request.onsuccess = function(e) {
+            var db = e.target.result;
+            var tx = db.transaction('Stocks', 'readwrite');
+            var store = tx.objectStore('Stocks');
+            
+            var savedCount = 0;
+            Object.keys(dqaState.merged).forEach(function(ticker) {
+                var record = dqaState.merged[ticker];
+                store.put(record);
+                savedCount++;
+            });
+            
+            tx.oncomplete = function() {
+                addDebugLog('✅ IndexedDB saved: ' + savedCount + ' merged records');
+                if (callback) callback(true);
+            };
+            
+            tx.onerror = function() {
+                addDebugLog('❌ IndexedDB save error: ' + tx.error);
+                if (callback) callback(false);
+            };
+        };
+        
+        request.onerror = function() {
+            addDebugLog('❌ Cannot open DB');
+            if (callback) callback(false);
+        };
+    } catch(err) {
+        addDebugLog('❌ saveMergedToIndexedDB error: ' + err.message);
+        if (callback) callback(false);
+    }
 }
 
 function updateDQADisplay() {
