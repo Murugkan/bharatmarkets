@@ -1141,18 +1141,27 @@ function mergeAllDataSources() {
 
 function saveMergedToIndexedDB(callback) {
     try {
+        addDebugLog('🔓 Opening DB for save...');
         var request = indexedDB.open('OnyxPortfolioDB', 8);
         
         request.onsuccess = function(e) {
+            addDebugLog('✅ DB opened for save');
             var db = e.target.result;
             var tx = db.transaction('Stocks', 'readwrite');
             var store = tx.objectStore('Stocks');
             
             var savedCount = 0;
-            Object.keys(dqaState.merged).forEach(function(ticker) {
+            var tickers = Object.keys(dqaState.merged);
+            addDebugLog('📝 Saving ' + tickers.length + ' records...');
+            
+            tickers.forEach(function(ticker) {
                 var record = dqaState.merged[ticker];
-                store.put(record);
-                savedCount++;
+                try {
+                    store.put(record);
+                    savedCount++;
+                } catch(putErr) {
+                    addDebugLog('⚠️ Put error for ' + ticker + ': ' + putErr.message);
+                }
             });
             
             tx.oncomplete = function() {
@@ -1161,17 +1170,17 @@ function saveMergedToIndexedDB(callback) {
             };
             
             tx.onerror = function() {
-                addDebugLog('❌ IndexedDB save error: ' + tx.error);
+                addDebugLog('❌ IndexedDB transaction error: ' + (tx.error ? tx.error.name : 'unknown'));
                 if (callback) callback(false);
             };
         };
         
         request.onerror = function() {
-            addDebugLog('❌ Cannot open DB');
+            addDebugLog('❌ DB open error: ' + (request.error ? request.error.name : 'unknown'));
             if (callback) callback(false);
         };
     } catch(err) {
-        addDebugLog('❌ saveMergedToIndexedDB error: ' + err.message);
+        addDebugLog('❌ saveMergedToIndexedDB exception: ' + err.message);
         if (callback) callback(false);
     }
 }
