@@ -9,7 +9,7 @@
 
 /**
  * Extract array from any nested JSON structure
- * Works with: array, {data: [...]}, {stocks: [...]}, {result: {items: [...]}}
+ * Works with: array, {data: [...]}, {stocks: [...]}, {quotes: {TICKER: {...}}}, {stocks: {TICKER: {...}}}
  */
 function extractArray(data) {
     if (!data) return [];
@@ -17,12 +17,41 @@ function extractArray(data) {
     // If already an array, return it
     if (Array.isArray(data)) return data;
     
-    // If object, find first array value
+    // If object, find array or object-of-records
     if (typeof data === 'object') {
+        // Check for common array keys first
         for (var key in data) {
+            if (key === 'stocks' || key === 'data' || key === 'items' || key === 'records') {
+                if (Array.isArray(data[key])) {
+                    return data[key];
+                }
+            }
+            // Check if value is array
             if (Array.isArray(data[key])) {
                 return data[key];
             }
+        }
+        
+        // Handle quotes object pattern (prices.json has {quotes: {TICKER: {...}}})
+        if (data.quotes && typeof data.quotes === 'object') {
+            var quotesArray = Object.values(data.quotes);
+            if (quotesArray.length > 0) {
+                return quotesArray;
+            }
+        }
+        
+        // Handle stocks object pattern (fundamentals.json has {stocks: {TICKER: {...}}})
+        if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
+            var stocksArray = Object.values(data.stocks);
+            if (stocksArray.length > 0) {
+                return stocksArray;
+            }
+        }
+        
+        // Last resort: convert any object values to array
+        var allValues = Object.values(data);
+        if (allValues.length > 0 && typeof allValues[0] === 'object') {
+            return allValues;
         }
     }
     
