@@ -336,6 +336,21 @@
 <script src="app-import.js"></script>
 <script>
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DATABASE CONFIGURATION (CENTRALIZED)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Database Schema:
+//   Name: OnyxPortfolioDB (v8)
+//   Store: Stocks
+//   KeyPath: ticker (MUST match index.html & app-import.js)
+//   Data source: 5 JSON files merged by ticker
+//     1. unified-symbols.json (ticker, name, isin, sector, industry, type, source, qty, avg)
+//     2. prices.json (ticker, ltp, change, pe, eps, w52h, w52l, beta, ...)
+//     3. fundamentals.json (ticker, roe, divYield, signal, pos, neg, quarterly, ...)
+//     4. guidance.json (ticker, guidance fields)
+//     5. macro_data.json (macro economic indicators)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Status Message Helper
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function showStatus(message, type) {
@@ -1133,7 +1148,7 @@ function loadDQAData() {
     
     clearIndexedDB(function() {
         addDebugLog('✅ IndexedDB cleared');
-        addDebugLog('📥 Fetching 3 data sources...');
+        addDebugLog('📥 Fetching 5 data sources...');
         
         Promise.all([
             fetch('unified-symbols.json').then(r => {
@@ -1147,6 +1162,20 @@ function loadDQAData() {
             fetch('fundamentals.json').then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
+            }),
+            fetch('guidance.json').then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).catch(e => {
+                addDebugLog('⚠️ guidance.json not found (optional): ' + e.message);
+                return { stocks: [] };
+            }),
+            fetch('macro_data.json').then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).catch(e => {
+                addDebugLog('⚠️ macro_data.json not found (optional): ' + e.message);
+                return { data: [] };
             })
         ])
         .then(function(results) {
@@ -1156,16 +1185,22 @@ function loadDQAData() {
             var symbolsArray = extractArray(results[0]);
             var pricesArray = extractArray(results[1]);
             var fundamentalsArray = extractArray(results[2]);
+            var guidanceArray = extractArray(results[3]);
+            var macroArray = extractArray(results[4]);
             
             // Store extracted data
             dqaState.symbols = symbolsArray;
             dqaState.prices = pricesArray;
             dqaState.fundamentals = fundamentalsArray;
+            dqaState.guidance = guidanceArray;
+            dqaState.macro = macroArray;
             
             addDebugLog('✅ unified-symbols.json: ' + symbolsArray.length + ' stocks');
             addDebugLog('✅ prices.json: ' + pricesArray.length + ' quotes');
             addDebugLog('✅ fundamentals.json: ' + fundamentalsArray.length + ' stocks');
-            addDebugLog('🔀 Merging all data sources...');
+            addDebugLog('✅ guidance.json: ' + guidanceArray.length + ' records');
+            addDebugLog('✅ macro_data.json: ' + macroArray.length + ' records');
+            addDebugLog('🔀 Merging all 5 data sources...');
             
             mergeAllDataSources();
             
@@ -1209,7 +1244,7 @@ function clearIndexedDB(callback) {
 }
 
 function mergeAllDataSources() {
-    addDebugLog('🔀 Starting merge: unified-symbols + prices + fundamentals');
+    addDebugLog('🔀 Starting merge: 5 sources (symbols + prices + fundamentals + guidance + macro)');
     
     dqaState.merged = {};
     var mergedCount = 0;
@@ -1219,9 +1254,13 @@ function mergeAllDataSources() {
     // Build lookup tables (O(1) merge)
     var pricesLookup = buildLookup(dqaState.prices, 'ticker');
     var fundamentalsLookup = buildLookup(dqaState.fundamentals, 'ticker');
+    var guidanceLookup = buildLookup(dqaState.guidance, 'ticker');
+    var macroLookup = buildLookup(dqaState.macro, 'ticker');
     
     addDebugLog('🔑 Price lookup: ' + Object.keys(pricesLookup).length + ' keys');
     addDebugLog('🔑 Fundamentals lookup: ' + Object.keys(fundamentalsLookup).length + ' keys');
+    addDebugLog('🔑 Guidance lookup: ' + Object.keys(guidanceLookup).length + ' keys');
+    addDebugLog('🔑 Macro lookup: ' + Object.keys(macroLookup).length + ' keys');
     
     // Merge all symbols
     dqaState.symbols.forEach(function(symbol) {
@@ -1253,6 +1292,16 @@ function mergeAllDataSources() {
             dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], fundamentalsLookup[ticker]);
         }
         
+        // Merge guidance
+        if (guidanceLookup[ticker]) {
+            dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], guidanceLookup[ticker]);
+        }
+        
+        // Merge macro data
+        if (macroLookup[ticker]) {
+            dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], macroLookup[ticker]);
+        }
+        
         mergedCount++;
     });
     
@@ -1261,7 +1310,7 @@ function mergeAllDataSources() {
         addDebugLog('📋 Invalid: ' + skipped.join(', '));
     }
     
-    addDebugLog('✅ Merged ' + mergedCount + ' valid records');
+    addDebugLog('✅ Merged ' + mergedCount + ' valid records from 5 sources');
 }
 
 function saveMergedToIndexedDB(callback) {
@@ -1278,14 +1327,11 @@ function saveMergedToIndexedDB(callback) {
             var savedCount = 0;
             var errorCount = 0;
             var tickers = Object.keys(dqaState.merged);
-            
-            // LIMIT TO 10 FOR TESTING
-            var testTickers = tickers.slice(0, 10);
-            addDebugLog('📝 Testing with ' + testTickers.length + ' records (of ' + tickers.length + ' total)');
+            addDebugLog('📝 Saving all ' + tickers.length + ' records...');
             
             // Show first record structure
-            if (testTickers.length > 0) {
-                var firstTicker = testTickers[0];
+            if (tickers.length > 0) {
+                var firstTicker = tickers[0];
                 var firstRecord = dqaState.merged[firstTicker];
                 addDebugLog('📋 FIRST RECORD STRUCTURE:');
                 addDebugLog('Ticker: ' + firstTicker);
@@ -1303,7 +1349,7 @@ function saveMergedToIndexedDB(callback) {
                 }
             }
             
-            testTickers.forEach(function(ticker) {
+            tickers.forEach(function(ticker) {
                 var record = dqaState.merged[ticker];
                 
                 // Validate record exists
@@ -1352,7 +1398,7 @@ function saveMergedToIndexedDB(callback) {
             });
             
             tx.oncomplete = function() {
-                addDebugLog('✅ Test save complete: ' + savedCount + ' records, ' + errorCount + ' errors');
+                addDebugLog('✅ IndexedDB save complete: ' + savedCount + ' records' + (errorCount > 0 ? ', ' + errorCount + ' errors' : ''));
                 if (callback) callback(true);
             };
             
