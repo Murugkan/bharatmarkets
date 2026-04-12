@@ -1320,12 +1320,17 @@ function mergeAllDataSources() {
         
         // Merge prices
         if (pricesLookup[ticker]) {
+            addDebugLog('  → Merging prices for ' + ticker + ' (' + Object.keys(pricesLookup[ticker]).length + ' fields)');
             dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], pricesLookup[ticker]);
         }
         
-        // Merge fundamentals
+        // Merge fundamentals - WITH DETAILED LOGGING
         if (fundamentalsLookup[ticker]) {
+            var fundFields = Object.keys(fundamentalsLookup[ticker]);
+            addDebugLog('  → Merging fundamentals for ' + ticker + ' (' + fundFields.length + ' fields): ' + fundFields.join(', '));
             dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], fundamentalsLookup[ticker]);
+        } else {
+            addDebugLog('  ⚠️ NO FUNDAMENTALS for ' + ticker + ' (lookup size: ' + Object.keys(fundamentalsLookup).length + ')');
         }
         
         // Merge guidance
