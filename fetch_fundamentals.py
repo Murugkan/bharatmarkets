@@ -700,7 +700,7 @@ def main():
             print(f"↷ known delisted — skipped")
             continue
 
-        stock = {}
+        stock = {"ticker": sym}
 
         yf_data = yf_results.get(sym, {})
         if yf_data:
@@ -761,6 +761,8 @@ def main():
 
     output = {
         "updated":  ts.isoformat(),
+        "lastLoadedAt": ts.isoformat(),
+        "source": "yfinance_screener",
         "count":    len(final_result),
         "sources":  stats,
         "delisted": sorted(DELISTED),
