@@ -1096,10 +1096,21 @@ function mergeAllDataSources() {
     
     dqaState.merged = {};
     var mergedCount = 0;
+    var skippedCount = 0;
+    var skipped = [];
     
     // Iterate through all symbols from unified-symbols (via IndexedDB)
     dqaState.symbols.forEach(function(symbol) {
-        var ticker = symbol.ticker;
+        // Handle multiple ticker field name variations
+        var ticker = symbol.ticker || symbol.sym || symbol.SYM;
+        
+        // Validate ticker
+        if (!ticker || ticker === '' || ticker === '?') {
+            skipped.push(symbol.name || 'unknown');
+            skippedCount++;
+            addDebugLog('⚠️ Skipping: Invalid ticker for ' + (symbol.name || 'unnamed'));
+            return;  // Skip invalid
+        }
         
         // Start with symbol base data
         dqaState.merged[ticker] = {
@@ -1136,7 +1147,12 @@ function mergeAllDataSources() {
         mergedCount++;
     });
     
-    addDebugLog('✅ Merged ' + mergedCount + ' records');
+    if (skippedCount > 0) {
+        addDebugLog('⚠️ Integrity check: Skipped ' + skippedCount + ' invalid records');
+        addDebugLog('📋 Invalid: ' + skipped.join(', '));
+    }
+    
+    addDebugLog('✅ Merged ' + mergedCount + ' valid records');
 }
 
 function saveMergedToIndexedDB(callback) {
