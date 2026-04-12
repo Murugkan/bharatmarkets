@@ -1073,83 +1073,80 @@ function addDebugLog(msg) {
 }
 
 function loadDQAData() {
-    addDebugLog('📱 Page mounted - loadDQAData() started');
+    addDebugLog('🔄 Starting DQA data load...');
+    addDebugLog('🗑️ Clearing IndexedDB...');
     
-    var dbRequest = indexedDB.open('OnyxPortfolioDB', 8);
-    
-    dbRequest.onsuccess = function(event) {
-        addDebugLog('✅ IndexedDB opened');
-        var db = event.target.result;
-        var tx = db.transaction('Stocks', 'readonly');
-        var store = tx.objectStore('Stocks');
-        var getAllRequest = store.getAll();
+    clearIndexedDB(function() {
+        addDebugLog('✅ IndexedDB cleared');
+        addDebugLog('📥 Fetching 3 data sources...');
         
-        getAllRequest.onsuccess = function() {
-            var stocks = getAllRequest.result;
-            addDebugLog('✅ IndexedDB read: ' + stocks.length + ' stocks');
+        Promise.all([
+            fetch('unified-symbols.json').then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }),
+            fetch('prices.json').then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }),
+            fetch('fundamentals.json').then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+        ])
+        .then(function(results) {
+            var symbols = results[0];
+            var prices = results[1];
+            var fundamentals = results[2];
             
-            dqaState.symbols = stocks.map(function(stock) {
-                return {
-                    ticker: stock.ticker || stock.sym || '?',
-                    name: stock.name || '',
-                    type: stock.type || 'portfolio',
-                    qty: stock.qty || 0,
-                    avg: stock.avg || 0,
-                    isin: stock.isin || '',
-                    sector: stock.sector || ''
-                };
-            });
+            dqaState.symbols = symbols.stocks || [];
+            dqaState.prices = prices;
+            dqaState.fundamentals = fundamentals;
             
-            addDebugLog('🔄 Fetching prices.json...');
-            fetch('prices.json')
-                .then(r => {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
-                .then(data => {
-                    dqaState.prices = data;
-                    addDebugLog('✅ prices.json loaded: ' + (data.count || 0) + ' quotes');
-                    loadFundamentals();
-                })
-                .catch(e => {
-                    addDebugLog('❌ prices.json FAILED: ' + e.message);
-                    loadFundamentals();
-                });
-        };
-        
-        getAllRequest.onerror = function() {
-            addDebugLog('❌ IndexedDB read FAILED');
-        };
-    };
-    
-    dbRequest.onerror = function() {
-        addDebugLog('❌ IndexedDB open FAILED: ' + dbRequest.error);
-    };
-}
-
-function loadFundamentals() {
-    addDebugLog('🔄 Fetching fundamentals.json...');
-    fetch('fundamentals.json')
-        .then(r => {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(data => {
-            dqaState.fundamentals = data;
-            addDebugLog('✅ fundamentals.json loaded: ' + (data.count || 0) + ' stocks');
+            addDebugLog('✅ unified-symbols.json: ' + dqaState.symbols.length + ' stocks');
+            addDebugLog('✅ prices.json loaded: ' + (prices.count || prices.quotes ? Object.keys(prices.quotes).length : 0) + ' quotes');
+            addDebugLog('✅ fundamentals.json loaded: ' + (fundamentals.count || fundamentals.stocks ? Object.keys(fundamentals.stocks).length : 0) + ' stocks');
             addDebugLog('🔀 Merging all data sources...');
+            
             mergeAllDataSources();
+            
             addDebugLog('💾 Saving merged data to IndexedDB...');
             saveMergedToIndexedDB(function() {
-                addDebugLog('✅ IndexedDB updated with merged data');
+                addDebugLog('✅ All data ready');
                 updateDQADisplay();
             });
         })
         .catch(e => {
-            addDebugLog('❌ fundamentals.json FAILED: ' + e.message);
-            addDebugLog('⚠ Rendering with partial data...');
+            addDebugLog('❌ Load failed: ' + e.message);
             updateDQADisplay();
         });
+    });
+}
+
+function clearIndexedDB(callback) {
+    var request = indexedDB.open('OnyxPortfolioDB', 8);
+    
+    request.onsuccess = function(e) {
+        var db = e.target.result;
+        var tx = db.transaction('Stocks', 'readwrite');
+        var store = tx.objectStore('Stocks');
+        var clearReq = store.clear();
+        
+        clearReq.onsuccess = function() {
+            addDebugLog('✅ Cleared old IndexedDB records');
+            if (callback) callback();
+        };
+        
+        clearReq.onerror = function() {
+            addDebugLog('⚠️ Clear error: ' + (clearReq.error ? clearReq.error.name : 'unknown'));
+            if (callback) callback();
+        };
+    };
+    
+    request.onerror = function() {
+        addDebugLog('❌ Cannot open DB: ' + (request.error ? request.error.name : 'unknown'));
+        if (callback) callback();
+    };
 }
 
 function mergeAllDataSources() {
