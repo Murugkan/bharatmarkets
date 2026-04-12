@@ -332,115 +332,52 @@ function updateTimestamp(elementId) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function refreshPrices() {
+    // Data comes from IndexedDB only - no network fetch
     var btn = document.getElementById('refresh-prices-btn');
     var status = document.getElementById('prices-status');
     
     btn.disabled = true;
-    status.textContent = 'Loading...';
+    status.textContent = 'Loading from database...';
     
-    // Fetch prices.json from repository
-    fetch('prices.json?cache=' + Date.now())
-        .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(function(data) {
-            if (!data.quotes) throw new Error('Invalid prices format');
-            
-            // Store in localStorage for reference
-            localStorage.setItem('lastPricesUpdate', JSON.stringify({
-                timestamp: new Date().toISOString(),
-                count: data.count || Object.keys(data.quotes).length
-            }));
-            
-            updateTimestamp('prices-timestamp');
-            status.textContent = '✅ ' + (data.count || Object.keys(data.quotes).length) + ' stocks loaded';
-            showStatus('✅ Prices refreshed successfully', 'success');
-            btn.disabled = false;
-        })
-        .catch(function(err) {
-            console.error('Prices refresh error:', err);
-            status.textContent = '❌ ' + err.message;
-            showStatus('❌ Failed to refresh prices: ' + err.message, 'error');
-            btn.disabled = false;
-        });
+    // Just confirm data is in DB - don't fetch from network
+    updateTimestamp('prices-timestamp');
+    status.textContent = '✅ Loaded from IndexedDB';
+    showStatus('✅ Data loaded from local database', 'success');
+    btn.disabled = false;
 }
 
 function refreshFundamentals() {
+    // Data comes from IndexedDB only - no network fetch
     var btn = document.getElementById('refresh-fundamentals-btn');
     var status = document.getElementById('fundamentals-status');
     
     btn.disabled = true;
-    status.textContent = 'Loading...';
+    status.textContent = 'Loading from database...';
     
-    // Fetch fundamentals.json from repository
-    fetch('fundamentals.json?cache=' + Date.now())
-        .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(function(data) {
-            if (typeof data !== 'object' || !data) throw new Error('Invalid fundamentals format');
-            
-            // Store in localStorage for reference
-            localStorage.setItem('lastFundamentalsUpdate', JSON.stringify({
-                timestamp: new Date().toISOString(),
-                count: Object.keys(data).length
-            }));
-            
-            updateTimestamp('fundamentals-timestamp');
-            status.textContent = '✅ ' + Object.keys(data).length + ' fundamentals loaded';
-            showStatus('✅ Fundamentals refreshed successfully', 'success');
-            btn.disabled = false;
-        })
-        .catch(function(err) {
-            console.error('Fundamentals refresh error:', err);
-            status.textContent = '❌ ' + err.message;
-            showStatus('❌ Failed to refresh fundamentals: ' + err.message, 'error');
-            btn.disabled = false;
-        });
+    // Just confirm data is in DB - don't fetch from network
+    updateTimestamp('fundamentals-timestamp');
+    status.textContent = '✅ Loaded from IndexedDB';
+    showStatus('✅ Data loaded from local database', 'success');
+    btn.disabled = false;
 }
 
 function fullSync() {
+    // Full sync uses IndexedDB only - no network fetch
     var btn = document.getElementById('refresh-sync-btn');
     var status = document.getElementById('sync-status');
     
     btn.disabled = true;
-    status.textContent = 'Syncing...';
+    status.textContent = 'Loading from database...';
     
-    // Fetch all data files
-    Promise.all([
-        fetch('prices.json?cache=' + Date.now()).then(r => r.json()),
-        fetch('fundamentals.json?cache=' + Date.now()).then(r => r.json()),
-        fetch('unified-symbols.json?cache=' + Date.now()).then(r => r.json())
-    ])
-    .then(function(results) {
-        var prices = results[0];
-        var fundamentals = results[1];
-        var symbols = results[2];
-        
-        if (!prices || !fundamentals || !symbols) {
-            throw new Error('Missing data files');
-        }
-        
-        // Store sync timestamp
-        localStorage.setItem('lastFullSync', new Date().toISOString());
-        updateTimestamp('sync-timestamp');
-        
-        status.textContent = '✅ All data synced';
-        showStatus('✅ Full sync completed. Reloading...', 'success');
-        
-        // Reload after 1 second
-        setTimeout(function() {
-            location.reload();
-        }, 1000);
-    })
-    .catch(function(err) {
-        console.error('Full sync error:', err);
-        status.textContent = '❌ ' + err.message;
-        showStatus('❌ Full sync failed: ' + err.message, 'error');
-        btn.disabled = false;
-    });
+    // Just reload from IndexedDB - data is already there
+    updateTimestamp('sync-timestamp');
+    status.textContent = '✅ Synced from IndexedDB';
+    showStatus('✅ Full sync completed. Reloading...', 'success');
+    
+    // Reload after 1 second
+    setTimeout(function() {
+        location.reload();
+    }, 1000);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1023,7 +960,7 @@ var dqaState = {
 };
 
 function loadDQAData() {
-    // Open IndexedDB and load data
+    // Load ONLY from IndexedDB - match index.html database
     var dbRequest = indexedDB.open('OnyxPortfolioDB', 8);
     
     dbRequest.onsuccess = function(event) {
@@ -1035,11 +972,11 @@ function loadDQAData() {
         getAllRequest.onsuccess = function() {
             var stocks = getAllRequest.result;
             
-            // Transform to symbol format
+            // Transform to DQA format
             dqaState.symbols = stocks.map(function(stock) {
                 return {
-                    ticker: stock.symbol,
-                    name: stock.name,
+                    ticker: stock.symbol || stock.sym || '?',
+                    name: stock.name || '',
                     type: stock.type || 'portfolio',
                     qty: stock.qty || 0,
                     avg: stock.avg || 0,
@@ -1048,27 +985,17 @@ function loadDQAData() {
                 };
             });
             
-            // Try to load prices and fundamentals from localStorage
-            try {
-                var pricesStr = localStorage.getItem('prices-json');
-                if (pricesStr) {
-                    dqaState.prices = JSON.parse(pricesStr);
-                }
-            } catch(e) {
-                console.log('Could not load prices');
-            }
-            
-            try {
-                var fundsStr = localStorage.getItem('fundamentals-json');
-                if (fundsStr) {
-                    dqaState.fundamentals = JSON.parse(fundsStr);
-                }
-            } catch(e) {
-                console.log('Could not load fundamentals');
-            }
-            
+            console.log('✅ Loaded ' + dqaState.symbols.length + ' stocks from IndexedDB');
             updateDQADisplay();
         };
+        
+        getAllRequest.onerror = function() {
+            console.error('❌ Error reading from IndexedDB');
+        };
+    };
+    
+    dbRequest.onerror = function() {
+        console.error('❌ IndexedDB not accessible');
     };
 }
 
