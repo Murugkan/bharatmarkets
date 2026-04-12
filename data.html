@@ -1072,6 +1072,61 @@ function addDebugLog(msg) {
     console.log(msg);
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DYNAMIC DATA EXTRACTION (works with any JSON structure)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function extractArray(data) {
+    // If it's already an array, return it
+    if (Array.isArray(data)) return data;
+    
+    // If it's an object, find the first array value
+    if (typeof data === 'object' && data !== null) {
+        for (var key in data) {
+            if (Array.isArray(data[key])) {
+                addDebugLog('📋 Found array at key: ' + key + ' (' + data[key].length + ' items)');
+                return data[key];
+            }
+        }
+    }
+    
+    addDebugLog('⚠️ No array found in data');
+    return [];
+}
+
+function buildLookup(records, keyField) {
+    // Create object indexed by ticker for O(1) merging
+    var lookup = {};
+    if (!Array.isArray(records)) return lookup;
+    
+    records.forEach(function(rec) {
+        if (!rec) return;
+        
+        // Find the ticker field (try common names)
+        var key = rec[keyField] || rec.ticker || rec.sym || rec.SYM || rec.symbol;
+        
+        if (key) {
+            lookup[key] = rec;
+        }
+    });
+    
+    addDebugLog('🔑 Built lookup: ' + Object.keys(lookup).length + ' keys');
+    return lookup;
+}
+
+function mergeRecords(baseRecord, sourceRecord) {
+    // Merge all fields from source into base
+    if (!sourceRecord) return baseRecord;
+    
+    for (var field in sourceRecord) {
+        if (field !== 'ticker' && field !== 'sym' && sourceRecord[field] !== null && sourceRecord[field] !== undefined) {
+            baseRecord[field] = sourceRecord[field];
+        }
+    }
+    
+    return baseRecord;
+}
+
 function loadDQAData() {
     addDebugLog('🔄 Starting DQA data load...');
     addDebugLog('🗑️ Clearing IndexedDB...');
@@ -1095,17 +1150,21 @@ function loadDQAData() {
             })
         ])
         .then(function(results) {
-            var symbols = results[0];
-            var prices = results[1];
-            var fundamentals = results[2];
+            addDebugLog('🔍 Extracting data structures...');
             
-            dqaState.symbols = symbols.stocks || [];
-            dqaState.prices = prices;
-            dqaState.fundamentals = fundamentals;
+            // Dynamically extract arrays from JSON structures
+            var symbolsArray = extractArray(results[0]);
+            var pricesArray = extractArray(results[1]);
+            var fundamentalsArray = extractArray(results[2]);
             
-            addDebugLog('✅ unified-symbols.json: ' + dqaState.symbols.length + ' stocks');
-            addDebugLog('✅ prices.json loaded: ' + (prices.count || prices.quotes ? Object.keys(prices.quotes).length : 0) + ' quotes');
-            addDebugLog('✅ fundamentals.json loaded: ' + (fundamentals.count || fundamentals.stocks ? Object.keys(fundamentals.stocks).length : 0) + ' stocks');
+            // Store extracted data
+            dqaState.symbols = symbolsArray;
+            dqaState.prices = pricesArray;
+            dqaState.fundamentals = fundamentalsArray;
+            
+            addDebugLog('✅ unified-symbols.json: ' + symbolsArray.length + ' stocks');
+            addDebugLog('✅ prices.json: ' + pricesArray.length + ' quotes');
+            addDebugLog('✅ fundamentals.json: ' + fundamentalsArray.length + ' stocks');
             addDebugLog('🔀 Merging all data sources...');
             
             mergeAllDataSources();
@@ -1157,49 +1216,41 @@ function mergeAllDataSources() {
     var skippedCount = 0;
     var skipped = [];
     
-    // Iterate through all symbols from unified-symbols (via IndexedDB)
+    // Build lookup tables (O(1) merge)
+    var pricesLookup = buildLookup(dqaState.prices, 'ticker');
+    var fundamentalsLookup = buildLookup(dqaState.fundamentals, 'ticker');
+    
+    addDebugLog('🔑 Price lookup: ' + Object.keys(pricesLookup).length + ' keys');
+    addDebugLog('🔑 Fundamentals lookup: ' + Object.keys(fundamentalsLookup).length + ' keys');
+    
+    // Merge all symbols
     dqaState.symbols.forEach(function(symbol) {
-        // Handle multiple ticker field name variations
-        var ticker = symbol.ticker || symbol.sym || symbol.SYM;
+        // Find ticker (handles field name variations)
+        var ticker = symbol.ticker || symbol.sym || symbol.SYM || symbol.symbol;
         
-        // Validate ticker
+        // Validate
         if (!ticker || ticker === '' || ticker === '?') {
             skipped.push(symbol.name || 'unknown');
             skippedCount++;
-            addDebugLog('⚠️ Skipping: Invalid ticker for ' + (symbol.name || 'unnamed'));
             return;  // Skip invalid
         }
         
-        // Start with symbol base data
+        // Start with base record
         dqaState.merged[ticker] = {
-            ticker: ticker,
-            name: symbol.name || '',
-            isin: symbol.isin || '',
-            sector: symbol.sector || '',
-            industry: symbol.industry || '',
-            type: symbol.type || 'portfolio',
-            qty: symbol.qty || 0,
-            avg: symbol.avg || 0
+            ticker: ticker
         };
         
-        // Merge prices.json
-        if (dqaState.prices && dqaState.prices.quotes && dqaState.prices.quotes[ticker]) {
-            var priceData = dqaState.prices.quotes[ticker];
-            Object.keys(priceData).forEach(function(key) {
-                if (key !== 'ticker') {
-                    dqaState.merged[ticker][key] = priceData[key];
-                }
-            });
+        // Copy all fields from symbol
+        dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], symbol);
+        
+        // Merge prices
+        if (pricesLookup[ticker]) {
+            dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], pricesLookup[ticker]);
         }
         
-        // Merge fundamentals.json
-        if (dqaState.fundamentals && dqaState.fundamentals.stocks && dqaState.fundamentals.stocks[ticker]) {
-            var fundData = dqaState.fundamentals.stocks[ticker];
-            Object.keys(fundData).forEach(function(key) {
-                if (key !== 'ticker') {
-                    dqaState.merged[ticker][key] = fundData[key];
-                }
-            });
+        // Merge fundamentals
+        if (fundamentalsLookup[ticker]) {
+            dqaState.merged[ticker] = mergeRecords(dqaState.merged[ticker], fundamentalsLookup[ticker]);
         }
         
         mergedCount++;
