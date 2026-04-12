@@ -1276,21 +1276,30 @@ function saveMergedToIndexedDB(callback) {
             var store = tx.objectStore('Stocks');
             
             var savedCount = 0;
+            var errorCount = 0;
             var tickers = Object.keys(dqaState.merged);
             addDebugLog('📝 Saving ' + tickers.length + ' records...');
             
             tickers.forEach(function(ticker) {
                 var record = dqaState.merged[ticker];
+                
+                // CRITICAL: Ensure ticker field exists (required by keyPath)
+                if (!record.ticker) {
+                    record.ticker = ticker;
+                    addDebugLog('⚠️ Added missing ticker field: ' + ticker);
+                }
+                
                 try {
                     store.put(record);
                     savedCount++;
                 } catch(putErr) {
-                    addDebugLog('⚠️ Put error for ' + ticker + ': ' + putErr.message);
+                    errorCount++;
+                    addDebugLog('❌ Put error for ' + ticker + ': ' + putErr.message);
                 }
             });
             
             tx.oncomplete = function() {
-                addDebugLog('✅ IndexedDB saved: ' + savedCount + ' merged records');
+                addDebugLog('✅ IndexedDB saved: ' + savedCount + ' records' + (errorCount > 0 ? ', ' + errorCount + ' errors' : ''));
                 if (callback) callback(true);
             };
             
