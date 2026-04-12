@@ -1435,9 +1435,17 @@ function saveMergedToIndexedDB(callback) {
                     for (var field in record) {
                         cleanRecord[field] = record[field];
                     }
-                    // Ensure ticker is always present as keyPath
-                    if (!cleanRecord.ticker) {
-                        cleanRecord.ticker = ticker;
+                    
+                    // CRITICAL: Ensure ticker is a valid non-empty string
+                    if (typeof cleanRecord.ticker !== 'string' || cleanRecord.ticker.trim() === '') {
+                        cleanRecord.ticker = ticker;  // Use parameter as fallback
+                    }
+                    
+                    // Double-check before saving
+                    if (!cleanRecord.ticker || cleanRecord.ticker.trim() === '') {
+                        addDebugLog('❌ SKIP ' + ticker + ': No valid ticker value!');
+                        errorCount++;
+                        return;
                     }
                     
                     addDebugLog('✅ Saving clean record for ' + ticker + ' (' + Object.keys(cleanRecord).length + ' fields)');
