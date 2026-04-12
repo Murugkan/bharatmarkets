@@ -991,6 +991,67 @@ function updateGitHubTimestamps() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// UI FIELD MAPPING (Database fields → Display names)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var UI_FIELDS = {
+    // Identity
+    ticker: 'Symbol',
+    name: 'Company Name',
+    isin: 'ISIN',
+    type: 'Category',
+    source: 'Source',
+    
+    // Classification
+    sector: 'Sector',
+    industry: 'Industry',
+    
+    // Portfolio Data
+    qty: 'Qty',
+    avg: 'Avg Price',
+    
+    // Price Data
+    ltp: 'LTP (₹)',
+    open: 'Open',
+    high: 'High',
+    low: 'Low',
+    prev: 'Prev Close',
+    change: 'Change (₹)',
+    changePct: 'Change %',
+    vol: 'Volume',
+    
+    // Valuation
+    pe: 'P/E',
+    pb: 'P/B',
+    eps: 'EPS',
+    
+    // Performance
+    w52h: '52W High',
+    w52l: '52W Low',
+    
+    // Margins
+    opm: 'OPM %',
+    npm: 'NPM %',
+    opmPct: 'OPM %',
+    npmPct: 'NPM %',
+    
+    // Fundamentals
+    roe: 'ROE %',
+    beta: 'Beta',
+    divYield: 'Div Yield',
+    
+    // Analysis
+    signal: 'Signal',
+    pos: 'Positive',
+    neg: 'Negative',
+    quarterly: 'Quarterly',
+    
+    // Metadata
+    pricesUpdatedAt: 'Prices Updated',
+    fundamentalsUpdatedAt: 'Fundamentals Updated',
+    userDataUpdatedAt: 'Portfolio Updated'
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DQA Table Functions
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var dqaState = {
@@ -1233,42 +1294,54 @@ function populateDQATable() {
     var tbody = document.getElementById('dqa-tbody');
     tbody.innerHTML = '';
     
-    var fundDate = dqaState.fundamentals && dqaState.fundamentals.updated ? new Date(dqaState.fundamentals.updated) : null;
-    var priceDate = dqaState.prices && dqaState.prices.updated ? new Date(dqaState.prices.updated) : null;
-    var now = new Date();
+    // Use merged data from IndexedDB
+    var records = dqaState.merged ? Object.values(dqaState.merged) : dqaState.symbols || [];
     
-    dqaState.symbols.forEach(function(symbol) {
-        var row = document.createElement('tr');
-        
-        // Check data existence
-        var hasFund = dqaState.fundamentals && dqaState.fundamentals.stocks && dqaState.fundamentals.stocks[symbol.ticker];
-        var hasPrice = dqaState.prices && dqaState.prices.quotes && dqaState.prices.quotes[symbol.ticker];
-        
-        // Calculate days
-        var fundDays = fundDate ? Math.floor((now - fundDate) / (1000*60*60*24)) : '-';
-        var priceDays = priceDate ? Math.floor((now - priceDate) / (1000*60*60*24)) : '-';
-        
-        var catClass = (symbol.type || 'portfolio').toLowerCase();
-        
-        row.innerHTML = '<td class="dqa-sym">' + escapeHtml(symbol.ticker) + '</td>' +
-            '<td class="dqa-name" title="' + escapeHtml(symbol.name) + '">' + escapeHtml(symbol.name.substring(0, 14)) + '</td>' +
-            '<td><span class="dqa-cat ' + catClass + '" onclick="toggleDQACAT(this, \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.type || 'portfolio') + '</span></td>' +
-            '<td><span class="dqa-status">' + (hasFund ? '<span class="dqa-check">✅</span>' : '<span class="dqa-cross">❌</span>') + ' ' + fundDays + 'd</span></td>' +
-            '<td><span class="dqa-status">' + (hasPrice ? '<span class="dqa-check">✅</span>' : '<span class="dqa-cross">❌</span>') + ' ' + priceDays + 'd</span></td>' +
-            '<td>❌ — (TBD)</td>' +
-            '<td>❌ — (TBD)</td>' +
-            '<td class="dqa-edit" onclick="editDQAValue(this, \'qty\', \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.qty || 0) + '</td>' +
-            '<td class="dqa-edit" onclick="editDQAValue(this, \'avg\', \'' + escapeHtml(symbol.ticker) + '\')">' + (symbol.avg || 0) + '</td>' +
-            '<td class="dqa-delete-btn" onclick="deleteDQASymbol(\'' + escapeHtml(symbol.ticker) + '\')">✕</td>';
-        
-        tbody.appendChild(row);
-    });
-    
-    if (dqaState.symbols.length === 0) {
+    if (!records || records.length === 0) {
         var row = document.createElement('tr');
         row.innerHTML = '<td colspan="10" style="text-align:center;padding:20px;color:#666;">No holdings loaded. Click "Load" to import data.</td>';
         tbody.appendChild(row);
+        return;
     }
+    
+    records.forEach(function(record) {
+        if (!record.ticker || record.ticker === '?') {
+            addDebugLog('⚠️ Skipping invalid record: ' + (record.name || 'unnamed'));
+            return;  // Skip invalid
+        }
+        
+        var row = document.createElement('tr');
+        var catClass = (record.type || 'portfolio').toLowerCase();
+        
+        // Core columns with UI mapping
+        var html = '<td class="dqa-sym">' + escapeHtml(record.ticker) + '</td>' +
+            '<td class="dqa-name" title="' + escapeHtml(record.name) + '">' + escapeHtml((record.name || '').substring(0, 14)) + '</td>' +
+            '<td><span class="dqa-cat ' + catClass + '" onclick="toggleDQACAT(this, \'' + escapeHtml(record.ticker) + '\')">' + (record.type || 'portfolio') + '</span></td>';
+        
+        // Price columns (with values from merged data)
+        html += '<td class="dqa-value">' + (record.ltp ? '₹' + formatNumber(record.ltp, 2) : '—') + '</td>' +
+                '<td class="dqa-value ' + (record.changePct && record.changePct >= 0 ? 'pos' : 'neg') + '">' + 
+                (record.changePct !== undefined ? (record.changePct >= 0 ? '+' : '') + formatNumber(record.changePct, 2) + '%' : '—') + '</td>';
+        
+        // Valuation columns
+        html += '<td class="dqa-value">' + (record.pe ? formatNumber(record.pe, 1) : '—') + '</td>' +
+                '<td class="dqa-value">' + (record.signal ? record.signal : '—') + '</td>';
+        
+        // Portfolio columns (editable)
+        html += '<td class="dqa-edit editable" onclick="editDQAValue(this, \'qty\', \'' + escapeHtml(record.ticker) + '\')">' + 
+                (record.qty || 0) + '</td>' +
+                '<td class="dqa-edit editable" onclick="editDQAValue(this, \'avg\', \'' + escapeHtml(record.ticker) + '\')">' + 
+                (record.avg || 0) + '</td>' +
+                '<td class="dqa-delete-btn" onclick="deleteDQASymbol(\'' + escapeHtml(record.ticker) + '\')">✕</td>';
+        
+        row.innerHTML = html;
+        tbody.appendChild(row);
+    });
+}
+
+function formatNumber(num, decimals) {
+    if (num === null || num === undefined) return '—';
+    return parseFloat(num).toFixed(decimals);
 }
 
 function toggleDQACAT(el, ticker) {
