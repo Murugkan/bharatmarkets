@@ -1425,26 +1425,15 @@ function saveMergedToIndexedDB(callback) {
                 }
                 
                 try {
-                    // Create clean object with only essential fields for IndexedDB
-                    var cleanRecord = {
-                        ticker: record.ticker,
-                        name: record.name || '',
-                        isin: record.isin || '',
-                        sector: record.sector || '',
-                        industry: record.industry || '',
-                        type: record.type || 'portfolio',
-                        qty: parseFloat(record.qty) || 0,
-                        avg: parseFloat(record.avg) || 0,
-                        source: record.source || 'merge'
-                    };
-                    
-                    // Copy price fields if present
-                    if (record.ltp !== undefined) cleanRecord.ltp = record.ltp;
-                    if (record.change !== undefined) cleanRecord.change = record.change;
-                    if (record.changePct !== undefined) cleanRecord.changePct = record.changePct;
-                    if (record.pe !== undefined) cleanRecord.pe = record.pe;
-                    if (record.roe !== undefined) cleanRecord.roe = record.roe;
-                    if (record.signal !== undefined) cleanRecord.signal = record.signal;
+                    // Copy ALL fields from merged record (not just selected ones)
+                    var cleanRecord = {};
+                    for (var field in record) {
+                        cleanRecord[field] = record[field];
+                    }
+                    // Ensure ticker is always present as keyPath
+                    if (!cleanRecord.ticker) {
+                        cleanRecord.ticker = ticker;
+                    }
                     
                     addDebugLog('✅ Saving clean record for ' + ticker + ' (' + Object.keys(cleanRecord).length + ' fields)');
                     store.put(cleanRecord);
