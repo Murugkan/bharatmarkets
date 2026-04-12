@@ -51,7 +51,7 @@
             bottom: 80px;
             left: 0;
             right: 0;
-            height: 200px;
+            height: 500px;
             background: #000;
             color: #0f0;
             border-top: 2px solid #0f0;
@@ -1081,8 +1081,8 @@ function addDebugLog(msg) {
     debugLog.push('[' + ts + '] ' + msg);
     var el = document.getElementById('debug-log');
     if (el) {
-        el.textContent = debugLog.slice(-25).join('\n');
-        el.scrollTop = el.scrollHeight;
+        el.textContent = debugLog.slice(-100).join('\n');  // Show last 100 logs (was 25)
+        el.scrollTop = el.scrollHeight;  // Auto-scroll to bottom
     }
     console.log(msg);
 }
@@ -1346,16 +1346,29 @@ function mergeAllDataSources() {
         addDebugLog('📋 Invalid: ' + skipped.join(', '));
     }
     
-    // Final summary (won't scroll away)
-    addDebugLog('═══════════════════════════════════════');
-    addDebugLog('📊 MERGE SUMMARY:');
-    addDebugLog('  Symbols: ' + dqaState.symbols.length);
-    addDebugLog('  Prices: ' + dqaState.prices.length + ' → ' + Object.keys(pricesLookup).length + ' keys');
-    addDebugLog('  Fundamentals: ' + dqaState.fundamentals.length + ' → ' + Object.keys(fundamentalsLookup).length + ' keys');
-    addDebugLog('  Guidance: ' + dqaState.guidance.length + ' → ' + Object.keys(guidanceLookup).length + ' keys');
-    addDebugLog('  Macro: ' + dqaState.macro.length + ' → ' + Object.keys(macroLookup).length + ' keys');
-    addDebugLog('  ✅ Merged: ' + mergedCount + ' valid records');
-    addDebugLog('═══════════════════════════════════════');
+    // Console logs for debugging (visible in browser console)
+    console.log('═══════════════════════════════════════');
+    console.log('📊 MERGE SUMMARY:');
+    console.log('  Symbols: ' + dqaState.symbols.length);
+    console.log('  Prices: ' + dqaState.prices.length + ' extracted → ' + Object.keys(pricesLookup).length + ' keys in lookup');
+    console.log('  Fundamentals: ' + dqaState.fundamentals.length + ' extracted → ' + Object.keys(fundamentalsLookup).length + ' keys in lookup');
+    console.log('  Guidance: ' + dqaState.guidance.length + ' extracted → ' + Object.keys(guidanceLookup).length + ' keys in lookup');
+    console.log('  Macro: ' + dqaState.macro.length + ' extracted → ' + Object.keys(macroLookup).length + ' keys in lookup');
+    console.log('  ✅ Merged: ' + mergedCount + ' valid records');
+    console.log('═══════════════════════════════════════');
+    
+    // Also show first fundamentals record for inspection
+    if (dqaState.fundamentals.length > 0) {
+        console.log('First fundamentals record:', dqaState.fundamentals[0]);
+        console.log('First fundamentals keys:', Object.keys(dqaState.fundamentals[0]));
+    } else {
+        console.log('⚠️ NO FUNDAMENTALS RECORDS EXTRACTED!');
+    }
+    
+    // Show first prices record
+    if (dqaState.prices.length > 0) {
+        console.log('First prices record:', dqaState.prices[0]);
+    }
 }
 
 function saveMergedToIndexedDB(callback) {
