@@ -1280,13 +1280,34 @@ function saveMergedToIndexedDB(callback) {
             var tickers = Object.keys(dqaState.merged);
             addDebugLog('📝 Saving ' + tickers.length + ' records...');
             
+            // Show first record structure
+            if (tickers.length > 0) {
+                var firstTicker = tickers[0];
+                var firstRecord = dqaState.merged[firstTicker];
+                addDebugLog('🔍 First record (' + firstTicker + '): ticker=' + (firstRecord ? firstRecord.ticker : 'undefined'));
+            }
+            
             tickers.forEach(function(ticker) {
                 var record = dqaState.merged[ticker];
                 
-                // CRITICAL: Ensure ticker field exists (required by keyPath)
+                // Validate record exists
+                if (!record) {
+                    addDebugLog('❌ Record is null/undefined for ' + ticker);
+                    errorCount++;
+                    return;
+                }
+                
+                // Ensure ticker field exists
                 if (!record.ticker) {
                     record.ticker = ticker;
-                    addDebugLog('⚠️ Added missing ticker field: ' + ticker);
+                    addDebugLog('⚠️ Added missing ticker field to ' + ticker);
+                }
+                
+                // Validate ticker value
+                if (typeof record.ticker !== 'string' || record.ticker === '') {
+                    addDebugLog('❌ Invalid ticker value for key ' + ticker + ': ' + JSON.stringify(record.ticker));
+                    errorCount++;
+                    return;
                 }
                 
                 try {
@@ -1294,7 +1315,7 @@ function saveMergedToIndexedDB(callback) {
                     savedCount++;
                 } catch(putErr) {
                     errorCount++;
-                    addDebugLog('❌ Put error for ' + ticker + ': ' + putErr.message);
+                    addDebugLog('❌ Put error for ' + ticker + ': ' + putErr.message + ' | ticker=' + record.ticker);
                 }
             });
             
