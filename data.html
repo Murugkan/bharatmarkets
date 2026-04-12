@@ -1346,7 +1346,16 @@ function mergeAllDataSources() {
         addDebugLog('📋 Invalid: ' + skipped.join(', '));
     }
     
-    addDebugLog('✅ Merged ' + mergedCount + ' valid records from 5 sources');
+    // Final summary (won't scroll away)
+    addDebugLog('═══════════════════════════════════════');
+    addDebugLog('📊 MERGE SUMMARY:');
+    addDebugLog('  Symbols: ' + dqaState.symbols.length);
+    addDebugLog('  Prices: ' + dqaState.prices.length + ' → ' + Object.keys(pricesLookup).length + ' keys');
+    addDebugLog('  Fundamentals: ' + dqaState.fundamentals.length + ' → ' + Object.keys(fundamentalsLookup).length + ' keys');
+    addDebugLog('  Guidance: ' + dqaState.guidance.length + ' → ' + Object.keys(guidanceLookup).length + ' keys');
+    addDebugLog('  Macro: ' + dqaState.macro.length + ' → ' + Object.keys(macroLookup).length + ' keys');
+    addDebugLog('  ✅ Merged: ' + mergedCount + ' valid records');
+    addDebugLog('═══════════════════════════════════════');
 }
 
 function saveMergedToIndexedDB(callback) {
