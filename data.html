@@ -1313,23 +1313,38 @@ function saveMergedToIndexedDB(callback) {
                     return;
                 }
                 
-                // Ensure ticker field exists
-                if (!record.ticker) {
-                    record.ticker = ticker;
-                    addDebugLog('⚠️ Added missing ticker field to ' + ticker);
-                }
-                
                 // Validate ticker value
                 if (typeof record.ticker !== 'string' || record.ticker === '') {
-                    addDebugLog('❌ Invalid ticker value for key ' + ticker + ': ' + JSON.stringify(record.ticker));
+                    addDebugLog('❌ Invalid ticker value for key ' + ticker);
                     errorCount++;
                     return;
                 }
                 
                 try {
-                    store.put(record);
+                    // Create clean object with only essential fields for IndexedDB
+                    var cleanRecord = {
+                        ticker: record.ticker,
+                        name: record.name || '',
+                        isin: record.isin || '',
+                        sector: record.sector || '',
+                        industry: record.industry || '',
+                        type: record.type || 'portfolio',
+                        qty: parseFloat(record.qty) || 0,
+                        avg: parseFloat(record.avg) || 0,
+                        source: record.source || 'merge'
+                    };
+                    
+                    // Copy price fields if present
+                    if (record.ltp !== undefined) cleanRecord.ltp = record.ltp;
+                    if (record.change !== undefined) cleanRecord.change = record.change;
+                    if (record.changePct !== undefined) cleanRecord.changePct = record.changePct;
+                    if (record.pe !== undefined) cleanRecord.pe = record.pe;
+                    if (record.roe !== undefined) cleanRecord.roe = record.roe;
+                    if (record.signal !== undefined) cleanRecord.signal = record.signal;
+                    
+                    addDebugLog('✅ Saving clean record for ' + ticker + ' (' + Object.keys(cleanRecord).length + ' fields)');
+                    store.put(cleanRecord);
                     savedCount++;
-                    addDebugLog('✅ Saved: ' + ticker);
                 } catch(putErr) {
                     errorCount++;
                     addDebugLog('❌ Put error for ' + ticker + ': ' + putErr.message);
