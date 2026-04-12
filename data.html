@@ -1095,17 +1095,53 @@ function extractArray(data) {
     // If it's already an array, return it
     if (Array.isArray(data)) return data;
     
-    // If it's an object, find the first array value
+    // If it's an object, find array or object-of-records
     if (typeof data === 'object' && data !== null) {
+        // First look for array at top level or specific keys
         for (var key in data) {
+            // Check for common array patterns
+            if (key === 'stocks' || key === 'data' || key === 'items' || key === 'records') {
+                if (Array.isArray(data[key])) {
+                    addDebugLog('📋 Found array at key: ' + key + ' (' + data[key].length + ' items)');
+                    return data[key];
+                }
+            }
+            
+            // Check if value itself is an array
             if (Array.isArray(data[key])) {
                 addDebugLog('📋 Found array at key: ' + key + ' (' + data[key].length + ' items)');
                 return data[key];
             }
         }
+        
+        // Check for quotes object pattern (like prices.json)
+        if (data.quotes && typeof data.quotes === 'object') {
+            var quotesArray = Object.values(data.quotes);
+            if (quotesArray.length > 0) {
+                addDebugLog('📋 Found quotes object with ' + quotesArray.length + ' records');
+                return quotesArray;
+            }
+        }
+        
+        // Check for stocks object pattern (like fundamentals.json)
+        if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
+            var stocksArray = Object.values(data.stocks);
+            if (stocksArray.length > 0) {
+                addDebugLog('📋 Found stocks object with ' + stocksArray.length + ' records');
+                return stocksArray;
+            }
+        }
+        
+        // Last resort: if object looks like {ticker: {...}, ticker: {...}}
+        // Convert all values to array
+        var allValues = Object.values(data);
+        if (allValues.length > 0 && typeof allValues[0] === 'object') {
+            addDebugLog('📋 Converting object to array: ' + allValues.length + ' records');
+            return allValues;
+        }
     }
     
-    addDebugLog('⚠️ No array found in data');
+    addDebugLog('⚠️ No array or records object found in data');
     return [];
 }
 
