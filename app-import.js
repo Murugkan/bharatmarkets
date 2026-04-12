@@ -984,28 +984,59 @@ function saveToIndexedDB(callback) {
             
             // Append to existing data (don't clear)
             var savedCount = 0;
+            var skippedCount = 0;
+            var skipped = [];
+            
             importState.stocks.forEach(function(stock, idx) {
+                // Validate ticker
+                var ticker = stock.ticker || stock.symbol;
+                if (!ticker || ticker === '') {
+                    ticker = stock.name ? stock.name.substring(0, 10) : null;
+                }
+                
+                if (!ticker || ticker === '' || ticker === '?') {
+                    skipped.push(stock.name || 'unnamed');
+                    skippedCount++;
+                    showDebugLog('⚠️ Skipping stock #' + (idx + 1) + ': No ticker - ' + (stock.name || 'unnamed'));
+                    return;  // Skip invalid record
+                }
+                
                 var record = {
-                    ticker: stock.ticker || stock.symbol || stock.name.substring(0, 10),
-                    name: stock.name,
+                    ticker: ticker,
+                    name: stock.name || '',
                     isin: stock.isin || '',
                     sector: stock.sector || '',
                     industry: stock.industry || '',
                     type: (stock.type || 'portfolio').toLowerCase(),
                     qty: parseFloat(stock.qty) || 0,
                     avg: parseFloat(stock.avg) || 0,
-                    source: 'import'
+                    source: 'import',
+                    userDataUpdatedAt: new Date().toISOString()
                 };
                 
-                if (idx === 0) {
-                    showDebugLog('First record to save: ticker=' + record.ticker + ', qty=' + record.qty + ', avg=' + record.avg);
+                // Final validation
+                if (!record.ticker) {
+                    skipped.push(record.name || 'unnamed');
+                    skippedCount++;
+                    showDebugLog('⚠️ Validation failed for: ' + record.name);
+                    return;
+                }
+                
+                if (idx === 0 || skippedCount === 0) {
+                    showDebugLog('✅ Valid record: ticker=' + record.ticker + ', name=' + record.name + ', qty=' + record.qty);
                 }
                 
                 store.put(record);
                 savedCount++;
             });
             
-            showDebugLog('📤 Queued ' + savedCount + ' records for save');
+            if (skippedCount > 0) {
+                showDebugLog('⚠️ Integrity check: ' + skippedCount + ' invalid records skipped');
+                showDebugLog('📋 Skipped: ' + skipped.join(', '));
+                showDebugLog('💾 Saving ' + savedCount + ' valid records...');
+            } else {
+                showDebugLog('📤 Queued ' + savedCount + ' records for save');
+            }
             
             tx.oncomplete = function() {
                 showDebugLog('✅ Transaction complete - ' + savedCount + ' stocks saved!');
