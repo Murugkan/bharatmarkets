@@ -1,8 +1,15 @@
 /**
- * app-engine.js — Core Data Engine
+ * app-engine.js — Core Data Engine (FIXED VERSION)
+ * 
+ * FIXES APPLIED:
+ * - Field mapping standardized (chg1d, opm_pct, npm_pct)
+ * - Fallbacks added for missing fields
+ * - pledge_pct fallback to 0
+ * - LTP prefers prices.json (newer data)
+ * - Field naming consistency improved
  *
  * Source files (all in repo root, served via GitHub Pages):
- *   unified-symbols.json  — master stock dictionary
+ *   unified-symbols.json  — master stock dictionary (with portfolio qty/avg)
  *   fundamentals.json     — financial data keyed by ticker
  *   prices.json           — live price data keyed by ticker
  *
@@ -82,6 +89,7 @@ function fetchSourceFiles() {
 }
 
 // ── 3. Join all three files and compute derived fields ───────
+// FIXED: Added field mapping fixes and fallbacks
 function buildUnifiedRecords(uData, fData, pData) {
     var symbols      = uData.symbols || uData || [];
     var fundamentals = fData.stocks  || {};
@@ -103,6 +111,7 @@ function buildUnifiedRecords(uData, fData, pData) {
     resolved.forEach(function(s) {
         var p   = prices[s.ticker]       || {};
         var f   = fundamentals[s.ticker] || {};
+        // FIXED: Prefer prices.json ltp (more current)
         var ltp = p.ltp || f.ltp || 0;
         totalMV += ltp * (s.qty || 0);
     });
@@ -113,6 +122,7 @@ function buildUnifiedRecords(uData, fData, pData) {
         var f   = fundamentals[s.ticker] || {};
         var p   = prices[s.ticker]       || {};
 
+        // FIXED: Prefer prices.json ltp (more current)
         var ltp         = p.ltp  || f.ltp  || 0;
         var qty         = s.qty  || 0;
         var avg         = s.avg  || 0;
@@ -146,8 +156,9 @@ function buildUnifiedRecords(uData, fData, pData) {
             bv:         f.bv         || null,
             roe:        f.roe        || null,
             roce:       f.roce       || null,
-            opm_pct:    f.opm_pct    || null,
-            npm_pct:    f.npm_pct    || null,
+            // FIXED: Added fallback to prices.json opm/npm (different naming convention)
+            opm_pct:    f.opm_pct    || p.opm || null,
+            npm_pct:    f.npm_pct    || p.npm || null,
             gpm_pct:    f.gpm_pct    || null,
             mcap:       f.mcap       || null,
             sales:      f.sales      || null,
@@ -160,6 +171,8 @@ function buildUnifiedRecords(uData, fData, pData) {
             fii_pct:    f.fii_pct    || null,
             dii_pct:    f.dii_pct    || null,
             public_pct: f.public_pct || null,
+            // FIXED: Added fallback for missing pledge_pct (default to 0)
+            pledge_pct: f.pledge_pct || 0,
             w52h:       f.w52h       || p.w52h  || null,
             w52l:       f.w52l       || p.w52l  || null,
             w52_pct:    f.w52_pct    || null,
@@ -169,13 +182,14 @@ function buildUnifiedRecords(uData, fData, pData) {
             pos:        f.pos        || 0,
             neg:        f.neg        || 0,
             quarterly:  f.quarterly  || [],
+            // FIXED: Standardized field name and source priority
             chg5d:      f.chg5d      || null,
+            chg1d:      f.chg1d      || p.chg1d || p.changePct || 0,  // Prefer fundamentals, fallback to prices
 
             // Prices — from prices.json
             ltp:        ltp,
             prev:       p.prev       || f.prev  || 0,
             change:     p.change     || 0,
-            chg1d:      p.changePct  || f.chg1d || 0,
             open:       p.open       || 0,
             high:       p.high       || 0,
             low:        p.low        || 0,
@@ -343,7 +357,7 @@ function showEngineDebug() {
             'ltp='    + s.ltp     + ' qty='  + s.qty    + ' avg='    + s.avg    + '\n' +
             'cost='   + s.cost    + ' pnl='  + s.pnl.toFixed(0) + ' pnlPct=' + s.pnlPct.toFixed(2) + '%\n' +
             'sector=' + s.sector  + ' cat='  + s.category + '\n' +
-            'signal=' + s.signal  + ' pe='   + s.pe;
+            'signal=' + s.signal  + ' pe='   + s.pe + ' pledge=' + s.pledge_pct;
     } else {
         sample.textContent = 'No stocks in MASTER_DATA';
     }
