@@ -811,7 +811,7 @@ function renderStep5() {
             '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
             '₹' + stock.avg.toFixed(2) + '</td>' +
             '<td style="padding:4px 6px;text-align:center;">' +
-            '<button class="step5-delete-btn" data-idx="' + idx + '" onclick="deleteStock(' + idx + '); return false;" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
+            '<button class="step5-delete-btn" data-idx="' + idx + '" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
             '</td></tr>';
     });
     
@@ -863,21 +863,56 @@ function deleteStock(idx) {
     var stockName = stock.name;
     showDebugLog('🗑️ Deleting: ' + stockName);
     
-    if (confirm('🗑️ Delete: ' + stockName + '?')) {
-        showDebugLog('✅ User confirmed delete');
-        importState.stocks.splice(idx, 1);
-        showDebugLog('✅ Removed from array. Remaining: ' + importState.stocks.length);
-        
-        // Force UI refresh
-        setTimeout(function() {
-            showDebugLog('🔄 Re-rendering UI...');
-            showImportUI();
-            attachDeleteListeners();
-            showDebugLog('✅ UI refreshed');
-        }, 50);
-    } else {
-        showDebugLog('⚠️ User cancelled delete');
-    }
+    // Use custom confirmation instead of confirm() (works better on mobile)
+    showCustomConfirm('Delete: ' + stockName + '?', function(confirmed) {
+        if (confirmed) {
+            showDebugLog('✅ User confirmed delete');
+            importState.stocks.splice(idx, 1);
+            showDebugLog('✅ Removed from array. Remaining: ' + importState.stocks.length);
+            
+            // Force UI refresh
+            setTimeout(function() {
+                showDebugLog('🔄 Re-rendering UI...');
+                showImportUI();
+                attachDeleteListeners();
+                showDebugLog('✅ UI refreshed');
+            }, 50);
+        } else {
+            showDebugLog('⚠️ User cancelled delete');
+        }
+    });
+}
+
+// Custom confirmation dialog (works on mobile)
+function showCustomConfirm(message, callback) {
+    var dialogDiv = document.createElement('div');
+    dialogDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' +
+        'background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    
+    var contentDiv = document.createElement('div');
+    contentDiv.style.cssText = 'background:#0a0a0a;border:2px solid #00ff88;border-radius:8px;' +
+        'padding:20px;max-width:300px;text-align:center;color:#fff;';
+    
+    contentDiv.innerHTML = '<div style="margin-bottom:15px;font-size:14px;color:#00ff88;">' + message + '</div>' +
+        '<div style="display:flex;gap:10px;">' +
+            '<button id="confirm-yes" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;' +
+                'border-radius:6px;font-weight:bold;cursor:pointer;">Yes, Delete</button>' +
+            '<button id="confirm-no" style="flex:1;padding:10px;background:#444;color:#fff;border:none;' +
+                'border-radius:6px;cursor:pointer;">Cancel</button>' +
+        '</div>';
+    
+    dialogDiv.appendChild(contentDiv);
+    document.body.appendChild(dialogDiv);
+    
+    document.getElementById('confirm-yes').onclick = function() {
+        document.body.removeChild(dialogDiv);
+        callback(true);
+    };
+    
+    document.getElementById('confirm-no').onclick = function() {
+        document.body.removeChild(dialogDiv);
+        callback(false);
+    };
 }
 
 // Attach event listeners to delete buttons
