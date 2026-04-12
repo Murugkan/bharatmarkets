@@ -1278,16 +1278,32 @@ function saveMergedToIndexedDB(callback) {
             var savedCount = 0;
             var errorCount = 0;
             var tickers = Object.keys(dqaState.merged);
-            addDebugLog('📝 Saving ' + tickers.length + ' records...');
+            
+            // LIMIT TO 10 FOR TESTING
+            var testTickers = tickers.slice(0, 10);
+            addDebugLog('📝 Testing with ' + testTickers.length + ' records (of ' + tickers.length + ' total)');
             
             // Show first record structure
-            if (tickers.length > 0) {
-                var firstTicker = tickers[0];
+            if (testTickers.length > 0) {
+                var firstTicker = testTickers[0];
                 var firstRecord = dqaState.merged[firstTicker];
-                addDebugLog('🔍 First record (' + firstTicker + '): ticker=' + (firstRecord ? firstRecord.ticker : 'undefined'));
+                addDebugLog('📋 FIRST RECORD STRUCTURE:');
+                addDebugLog('Ticker: ' + firstTicker);
+                
+                // Show all fields
+                var fields = Object.keys(firstRecord);
+                addDebugLog('Fields (' + fields.length + '): ' + fields.join(', '));
+                
+                // Show values
+                for (var i = 0; i < Math.min(5, fields.length); i++) {
+                    var field = fields[i];
+                    var value = firstRecord[field];
+                    var valueStr = typeof value === 'object' ? JSON.stringify(value).substring(0, 50) : value;
+                    addDebugLog('  ' + field + ' = ' + valueStr);
+                }
             }
             
-            tickers.forEach(function(ticker) {
+            testTickers.forEach(function(ticker) {
                 var record = dqaState.merged[ticker];
                 
                 // Validate record exists
@@ -1313,14 +1329,15 @@ function saveMergedToIndexedDB(callback) {
                 try {
                     store.put(record);
                     savedCount++;
+                    addDebugLog('✅ Saved: ' + ticker);
                 } catch(putErr) {
                     errorCount++;
-                    addDebugLog('❌ Put error for ' + ticker + ': ' + putErr.message + ' | ticker=' + record.ticker);
+                    addDebugLog('❌ Put error for ' + ticker + ': ' + putErr.message);
                 }
             });
             
             tx.oncomplete = function() {
-                addDebugLog('✅ IndexedDB saved: ' + savedCount + ' records' + (errorCount > 0 ? ', ' + errorCount + ' errors' : ''));
+                addDebugLog('✅ Test save complete: ' + savedCount + ' records, ' + errorCount + ' errors');
                 if (callback) callback(true);
             };
             
