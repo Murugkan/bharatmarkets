@@ -811,7 +811,7 @@ function renderStep5() {
             '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
             '₹' + stock.avg.toFixed(2) + '</td>' +
             '<td style="padding:4px 6px;text-align:center;">' +
-            '<button class="step5-delete-btn" data-idx="' + idx + '" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
+            '<button class="step5-delete-btn" data-idx="' + idx + '" onclick="deleteStock(' + idx + '); return false;" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
             '</td></tr>';
     });
     
@@ -844,26 +844,39 @@ function editCell(cell, idx, field) {
 }
 
 function deleteStock(idx) {
+    showDebugLog('🗑️ deleteStock(' + idx + ') called');
+    
     // Validate index
     if (typeof idx !== 'number' || idx < 0 || idx >= importState.stocks.length) {
+        showDebugLog('❌ Invalid stock index: ' + idx);
         console.error('Invalid stock index:', idx);
         return;
     }
     
     var stock = importState.stocks[idx];
     if (!stock || !stock.name) {
+        showDebugLog('❌ Stock not found at index ' + idx);
         console.error('Stock not found at index', idx);
         return;
     }
     
-    if (confirm('🗑️ Delete: ' + stock.name + '?')) {
+    var stockName = stock.name;
+    showDebugLog('🗑️ Deleting: ' + stockName);
+    
+    if (confirm('🗑️ Delete: ' + stockName + '?')) {
+        showDebugLog('✅ User confirmed delete');
         importState.stocks.splice(idx, 1);
+        showDebugLog('✅ Removed from array. Remaining: ' + importState.stocks.length);
         
         // Force UI refresh
         setTimeout(function() {
+            showDebugLog('🔄 Re-rendering UI...');
             showImportUI();
             attachDeleteListeners();
+            showDebugLog('✅ UI refreshed');
         }, 50);
+    } else {
+        showDebugLog('⚠️ User cancelled delete');
     }
 }
 
@@ -871,9 +884,18 @@ function deleteStock(idx) {
 function attachDeleteListeners() {
     setTimeout(function() {
         var deleteButtons = document.querySelectorAll('.step5-delete-btn');
-        deleteButtons.forEach(function(btn) {
+        showDebugLog('📌 Found ' + deleteButtons.length + ' delete buttons');
+        
+        deleteButtons.forEach(function(btn, i) {
+            // Remove old listener
             btn.removeEventListener('click', handleDeleteClick);
+            
+            // Add new listener
             btn.addEventListener('click', handleDeleteClick);
+            
+            if (i === 0) {
+                showDebugLog('✅ Attached listeners to delete buttons');
+            }
         });
     }, 100);
 }
@@ -881,7 +903,9 @@ function attachDeleteListeners() {
 function handleDeleteClick(e) {
     e.preventDefault();
     e.stopPropagation();
+    
     var idx = parseInt(this.getAttribute('data-idx'));
+    showDebugLog('🖱️ Delete button clicked: index=' + idx);
     deleteStock(idx);
 }
 
@@ -896,7 +920,10 @@ function renderStep6() {
 
 function saveToIndexedDB(callback) {
     // Save to IndexedDB with callback for chaining
+    showDebugLog('💾 saveToIndexedDB() - Saving ' + importState.stocks.length + ' stocks');
+    
     if (importState.stocks.length === 0) {
+        showDebugLog('⚠️ No stocks to save');
         if (callback) callback(false);
         return;
     }
@@ -904,20 +931,25 @@ function saveToIndexedDB(callback) {
     try {
         // Use correct database that index.html uses
         var request = indexedDB.open('OnyxPortfolioDB', 8);
+        showDebugLog('📂 Opening database: OnyxPortfolioDB v8');
         
         request.onerror = function() {
             console.error('❌ Database error');
+            showDebugLog('❌ Database open error: ' + request.error);
             if (callback) callback(false);
         };
         
         request.onsuccess = function(e) {
             var db = e.target.result;
+            showDebugLog('✅ Database opened');
+            
             var tx = db.transaction('Stocks', 'readwrite');
             var store = tx.objectStore('Stocks');
+            showDebugLog('📝 Transaction started on Stocks store');
             
             // Append to existing data (don't clear)
             var savedCount = 0;
-            importState.stocks.forEach(function(stock) {
+            importState.stocks.forEach(function(stock, idx) {
                 var record = {
                     SYM: stock.ticker || stock.symbol || stock.name.substring(0, 10),
                     NAME: stock.name,
@@ -929,44 +961,75 @@ function saveToIndexedDB(callback) {
                     AVG: parseFloat(stock.avg) || 0,
                     source: 'import'
                 };
+                
+                if (idx === 0) {
+                    showDebugLog('First record to save: SYM=' + record.SYM + ', QTY=' + record.QTY + ', AVG=' + record.AVG);
+                }
+                
                 store.put(record);
                 savedCount++;
             });
             
+            showDebugLog('📤 Queued ' + savedCount + ' records for save');
+            
             tx.oncomplete = function() {
-                console.log('✅ Saved ' + savedCount + ' stocks to OnyxPortfolioDB');
+                showDebugLog('✅ Transaction complete - ' + savedCount + ' stocks saved!');
                 if (callback) callback(true);
             };
             
             tx.onerror = function() {
                 console.error('❌ Transaction error:', tx.error);
+                showDebugLog('❌ Transaction error: ' + (tx.error ? tx.error.name : 'unknown'));
                 if (callback) callback(false);
             };
         };
     } catch(err) {
         console.error('Error:', err.message);
+        showDebugLog('❌ Exception: ' + err.message);
         if (callback) callback(false);
     }
 }
 
 // New function: Save and continue to Step 7
 function saveAndContinue() {
+    console.log('🔵 saveAndContinue() called');
+    console.log('Stocks to save:', importState.stocks);
+    console.log('First stock:', importState.stocks[0]);
+    
     var btn = document.querySelector('button[onclick="saveAndContinue()"]');
     if (btn) btn.disabled = true;
     
-    console.log('📝 Saving ' + importState.stocks.length + ' stocks...');
+    showDebugLog('📝 Saving ' + importState.stocks.length + ' stocks...');
     
     saveToIndexedDB(function(success) {
         if (success) {
-            console.log('✅ Save successful, moving to Step 7');
+            console.log('✅ Save successful');
+            showDebugLog('✅ Save successful! Moving to Step 7...');
             importState.step = 7;
             showImportUI();
             attachDeleteListeners();
         } else {
-            alert('❌ Failed to save. Please try again.');
+            console.error('❌ Save failed');
+            showDebugLog('❌ Save failed - check first stock:' + JSON.stringify(importState.stocks[0]));
             if (btn) btn.disabled = false;
         }
     });
+}
+
+// Add debug log to page
+function showDebugLog(message) {
+    var debugDiv = document.getElementById('debug-log');
+    if (!debugDiv) {
+        debugDiv = document.createElement('div');
+        debugDiv.id = 'debug-log';
+        debugDiv.style.cssText = 'position:fixed;bottom:80px;left:10px;right:10px;background:#111;' +
+            'border:1px solid #00ff88;color:#00ff88;padding:10px;font-size:11px;' +
+            'max-height:200px;overflow-y:auto;z-index:10000;border-radius:6px;font-family:monospace;';
+        document.body.appendChild(debugDiv);
+    }
+    var timestamp = new Date().toLocaleTimeString();
+    debugDiv.innerHTML += '[' + timestamp + '] ' + message + '<br>';
+    debugDiv.scrollTop = debugDiv.scrollHeight;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
