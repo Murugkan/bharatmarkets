@@ -90,7 +90,7 @@ const fmt = (val, field) => {
 
 const resolve = (obj, field) => {
     const f = field.toUpperCase();
-    const mappings = { 'SYM':['SYM','SYMBOL','TICKER'], 'AVG':['AVG','AVGBUY'], 'PNL':['PNL','P/L'], 'PNL%':['PNL%','PNL_PCT'], '1D%':['1D%','CHANGE_1D'], 'ROE%':['ROE%','ROE'], 'SIGNAL':['SIGNAL','TECH_SIGNAL'] };
+    const mappings = { 'SYM':['ticker','SYM','SYMBOL','TICKER'], 'AVG':['avg','AVG','AVGBUY'], 'PNL':['PNL','P/L'], 'PNL%':['PNL%','PNL_PCT'], '1D%':['changePct','1D%','CHANGE_1D'], 'ROE%':['roe','ROE%','ROE'], 'SIGNAL':['signal','SIGNAL','TECH_SIGNAL'] };
     const targets = mappings[f] || [f];
     for (let t of targets) {
         if (obj[t] !== undefined) return obj[t];
@@ -107,7 +107,7 @@ async function init() {
         req.onupgradeneeded = e => {
             const d = e.target.result;
             if (d.objectStoreNames.contains(STORE_NAME)) d.deleteObjectStore(STORE_NAME);
-            d.createObjectStore(STORE_NAME, { keyPath: "SYM" });
+            d.createObjectStore(STORE_NAME, { keyPath: "ticker" });
         };
         req.onsuccess = () => res(req.result);
     });
