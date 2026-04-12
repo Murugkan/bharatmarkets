@@ -986,19 +986,19 @@ function saveToIndexedDB(callback) {
             var savedCount = 0;
             importState.stocks.forEach(function(stock, idx) {
                 var record = {
-                    SYM: stock.ticker || stock.symbol || stock.name.substring(0, 10),
-                    NAME: stock.name,
-                    ISIN: stock.isin || '',
-                    SECTOR: stock.sector || '',
-                    INDUSTRY: stock.industry || '',
-                    TYPE: (stock.type || 'PORTFOLIO').toUpperCase(),
-                    QTY: parseFloat(stock.qty) || 0,
-                    AVG: parseFloat(stock.avg) || 0,
+                    ticker: stock.ticker || stock.symbol || stock.name.substring(0, 10),
+                    name: stock.name,
+                    isin: stock.isin || '',
+                    sector: stock.sector || '',
+                    industry: stock.industry || '',
+                    type: (stock.type || 'portfolio').toLowerCase(),
+                    qty: parseFloat(stock.qty) || 0,
+                    avg: parseFloat(stock.avg) || 0,
                     source: 'import'
                 };
                 
                 if (idx === 0) {
-                    showDebugLog('First record to save: SYM=' + record.SYM + ', QTY=' + record.QTY + ', AVG=' + record.AVG);
+                    showDebugLog('First record to save: ticker=' + record.ticker + ', qty=' + record.qty + ', avg=' + record.avg);
                 }
                 
                 store.put(record);
