@@ -174,19 +174,20 @@ def build_quote(sym, info, hist):
     pct  = round(chg / prev * 100, 3) if prev else 0
     roe_raw = info.get("returnOnEquity")
     return {
-        "sym":sym, "name":info.get("longName") or info.get("shortName") or sym,
-        "sector":info.get("sector") or info.get("industryDisp") or "",
-        "ltp":ltp, "change":chg, "changePct":pct,
-        "open":safe(info.get("open") or ltp), "high":safe(info.get("dayHigh") or ltp),
-        "low":safe(info.get("dayLow") or ltp), "prev":prev,
-        "vol":int(info.get("volume") or 0),
-        "pe":safe(info.get("trailingPE")), "pb":safe(info.get("priceToBook")),
-        "eps":safe(info.get("trailingEps")),
-        "roe":safe(roe_raw, mult=100) if roe_raw is not None else None,
-        "w52h":safe(info.get("fiftyTwoWeekHigh")), "w52l":safe(info.get("fiftyTwoWeekLow")),
-        "beta":safe(info.get("beta")),
-        "opm":safe(info.get("operatingMargins"), mult=100),
-        "npm":safe(info.get("profitMargins"),    mult=100),
+        "ticker": sym,
+        "name": info.get("longName") or info.get("shortName") or sym,
+        "sector": info.get("sector") or info.get("industryDisp") or "",
+        "ltp": ltp, "change": chg, "changePct": pct,
+        "open": safe(info.get("open") or ltp), "high": safe(info.get("dayHigh") or ltp),
+        "low": safe(info.get("dayLow") or ltp), "prev": prev,
+        "vol": int(info.get("volume") or 0),
+        "pe": safe(info.get("trailingPE")), "pb": safe(info.get("priceToBook")),
+        "eps": safe(info.get("trailingEps")),
+        "roe": safe(roe_raw, mult=100) if roe_raw is not None else None,
+        "w52h": safe(info.get("fiftyTwoWeekHigh")), "w52l": safe(info.get("fiftyTwoWeekLow")),
+        "beta": safe(info.get("beta")),
+        "opm": safe(info.get("operatingMargins"), mult=100),
+        "npm": safe(info.get("profitMargins"), mult=100),
     }
 
 def build_chart(sym, hist):
@@ -281,8 +282,13 @@ def main():
         else:       print(f"  ✓ prices already clean")
 
     Path(PRICES_FILE).write_text(
-        json.dumps({"updated":now_utc().isoformat(),"count":len(quotes),"quotes":quotes},
-                   separators=(",",":")))
+        json.dumps({
+            "updated": now_utc().isoformat(),
+            "lastLoadedAt": now_utc().isoformat(),
+            "source": "yahoo_finance",
+            "count": len(quotes),
+            "quotes": quotes
+        }, separators=(",",":")))
     print(f"\n✓ prices.json → {len(quotes)} quotes")
     if errors: print(f"⚠  Failed: {', '.join(errors)}")
     print(f"\n✅ Done {now_utc().strftime('%H:%M UTC')}\n")
