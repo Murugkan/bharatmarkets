@@ -791,8 +791,8 @@ function renderStep5() {
         '</tr>';
     
     importState.stocks.forEach(function(stock, idx) {
-        var statusColor = stock.status === 'matched' ? '#00ff88' : '#ffb347';
-        var statusIcon = stock.status === 'matched' ? '✅' : '⚠️';
+        var statusColor = stock.status === 'enriched' ? '#00ff88' : '#ffb347';
+        var statusIcon = stock.status === 'enriched' ? '✅' : '⚠️';
         
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;">' +
             '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
@@ -806,7 +806,7 @@ function renderStep5() {
             '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
             '₹' + stock.avg.toFixed(2) + '</td>' +
             '<td style="padding:4px 6px;text-align:center;">' +
-            '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
+            '<button onclick="deleteStock(' + idx + ')" style="background:#ff6b85;color:#fff;border:1px solid #ff4d5d;padding:3px 6px;border-radius:3px;cursor:pointer;font-size:9px;font-weight:bold;transition:all 0.2s;">✕ Delete</button>' +
             '</td></tr>';
     });
     
@@ -835,9 +835,18 @@ function editCell(cell, idx, field) {
 }
 
 function deleteStock(idx) {
-    if (confirm('Delete ' + importState.stocks[idx].name + '?')) {
+    if (idx < 0 || idx >= importState.stocks.length) {
+        alert('❌ Invalid row');
+        return;
+    }
+    
+    var stockName = importState.stocks[idx].name;
+    if (confirm('🗑️ Delete: ' + stockName + '?')) {
         importState.stocks.splice(idx, 1);
-        showImportUI();
+        // Force UI refresh
+        setTimeout(function() {
+            showImportUI();
+        }, 50);
     }
 }
 
