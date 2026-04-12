@@ -844,27 +844,27 @@ function editCell(cell, idx, field) {
 }
 
 function deleteStock(idx) {
-    try {
-        showDebugLog('🗑️ deleteStock(' + idx + ') called');
-        
-        // Validate index
-        if (typeof idx !== 'number' || idx < 0 || idx >= importState.stocks.length) {
-            showDebugLog('❌ Invalid stock index: ' + idx);
-            return;
-        }
-        
-        var stock = importState.stocks[idx];
-        if (!stock || !stock.name) {
-            showDebugLog('❌ Stock not found at index ' + idx);
-            return;
-        }
-        
-        var stockName = stock.name;
-        showDebugLog('🗑️ Deleting: ' + stockName);
-        
-        // Simple confirmation
-        var confirmed = confirm('Delete: ' + stockName + '?');
-        
+    showDebugLog('🗑️ deleteStock(' + idx + ') called');
+    
+    // Validate index
+    if (typeof idx !== 'number' || idx < 0 || idx >= importState.stocks.length) {
+        showDebugLog('❌ Invalid stock index: ' + idx);
+        console.error('Invalid stock index:', idx);
+        return;
+    }
+    
+    var stock = importState.stocks[idx];
+    if (!stock || !stock.name) {
+        showDebugLog('❌ Stock not found at index ' + idx);
+        console.error('Stock not found at index', idx);
+        return;
+    }
+    
+    var stockName = stock.name;
+    showDebugLog('🗑️ Deleting: ' + stockName);
+    
+    // Use custom confirmation instead of confirm() (works better on mobile)
+    showCustomConfirm('Delete: ' + stockName + '?', function(confirmed) {
         if (confirmed) {
             showDebugLog('✅ User confirmed delete');
             importState.stocks.splice(idx, 1);
@@ -880,10 +880,7 @@ function deleteStock(idx) {
         } else {
             showDebugLog('⚠️ User cancelled delete');
         }
-    } catch(err) {
-        showDebugLog('❌ Exception in deleteStock: ' + err.message);
-        console.error('deleteStock exception:', err);
-    }
+    });
 }
 
 // Custom confirmation dialog (works on mobile)
@@ -939,24 +936,12 @@ function attachDeleteListeners() {
 }
 
 function handleDeleteClick(e) {
-    try {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        var idx = parseInt(this.getAttribute('data-idx'));
-        showDebugLog('🖱️ Delete button clicked: index=' + idx);
-        
-        // Call deleteStock with error handling
-        try {
-            deleteStock(idx);
-        } catch(err) {
-            showDebugLog('❌ deleteStock error: ' + err.message);
-            console.error('deleteStock error:', err);
-        }
-    } catch(e) {
-        showDebugLog('❌ handleDeleteClick error: ' + e.message);
-        console.error('handleDeleteClick error:', e);
-    }
+    e.preventDefault();
+    e.stopPropagation();
+    
+    var idx = parseInt(this.getAttribute('data-idx'));
+    showDebugLog('🖱️ Delete button clicked: index=' + idx);
+    deleteStock(idx);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
