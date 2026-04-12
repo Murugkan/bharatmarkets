@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 BharatMarkets Pro — Price & Chart Fetcher
-Reads:  symbols.json  (source of truth)
-        symbol_map.json (shared exchange overrides)
+Reads:  unified-symbols.json  (source of truth)
+        unified-symbols.json (shared exchange overrides)
 Writes: prices.json, charts/*.json
-        symbols.json (resolved sym+yf written back when RESOLVE=true)
+        unified-symbols.json (resolved sym+yf written back when RESOLVE=true)
 
 ENV vars (set by workflow):
   RESOLVE=true     → resolve unconfirmed symbols via Yahoo search (import/add only)
-  CLEAN_STALE=true → wipe data for symbols not in symbols.json (delete/clear only)
+  CLEAN_STALE=true → wipe data for symbols not in unified-symbols.json (delete/clear only)
 """
 
 import json, time, datetime, os
