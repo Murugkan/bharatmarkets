@@ -165,8 +165,8 @@
         ]).then(([symbolsData, pricesData, fundamentalsData]) => {
             log('✅ JSONs loaded');
             
-            // Extract arrays
-            var symbols = symbolsData || [];
+            // Extract arrays (handle nested structures)
+            var symbols = Array.isArray(symbolsData) ? symbolsData : (symbolsData.symbols ? symbolsData.symbols : []);
             var prices = Array.isArray(pricesData) ? pricesData : (pricesData.quotes ? Object.values(pricesData.quotes) : []);
             var fundamentals = Array.isArray(fundamentalsData) ? fundamentalsData : (fundamentalsData.stocks ? Object.values(fundamentalsData.stocks) : []);
             
