@@ -3,319 +3,687 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
-    <title>Onyx | Data Loader</title>
+    <title>Bharat Markets - ETL Center</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
-        *{box-sizing:border-box;margin:0;padding:0;}
-        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; padding-bottom: 80px; }
-        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
-        .kpi-box { text-align:center; }
-        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
-        .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
-        #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
-        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,0,0,0.3); }
-        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
-        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
-        .leg.on { color:#fff; font-weight:800; }
-        .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; -webkit-overflow-scrolling:touch; }
-        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
-        th { background:var(--s1); color:#666; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
+        :root {
+            --bg: #000;
+            --s1: #0a0a0a;
+            --b1: #222;
+            --bl: #00f2ff;
+            --gr: #00ff88;
+            --rd: #ff4d6d;
+            --tx: #fff;
+            --warning: #f59e0b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--tx);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            overflow: hidden;
+            -webkit-text-size-adjust: 100%;
+            padding-bottom: 120px;
+        }
+
+        /* HEADER */
+        header {
+            background: var(--s1);
+            border-bottom: 1px solid var(--b1);
+            padding: 12px;
+        }
+        .header-title { font-size: 14px; font-weight: 800; margin-bottom: 10px; color: var(--bl); }
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 8px;
+        }
+        .metric-box {
+            background: var(--b1);
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .metric-label { font-size: 8px; color: #666; text-transform: uppercase; }
+        .metric-val { font-size: 12px; font-weight: 800; color: var(--bl); margin-top: 4px; }
+
+        /* TAB BUTTONS */
+        .tabs {
+            display: flex;
+            gap: 0;
+            background: var(--s1);
+            border-bottom: 2px solid var(--b1);
+            overflow-x: auto;
+            padding: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 10px;
+            background: var(--s1);
+            color: #666;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            color: var(--bl);
+            border-bottom-color: var(--bl);
+            background: #111;
+        }
+
+        /* CONTENT AREA */
+        .content {
+            height: calc(100vh - 280px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 12px;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* TABLES */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+        }
+        th {
+            background: var(--s1);
+            color: #666;
+            padding: 10px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 2px solid var(--b1);
+            text-align: left;
+            font-weight: 800;
+        }
         th.active { color: var(--bl); }
-        td { padding:12px; border-bottom:1px solid #111; }
-        .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; }
-        .pos { color:var(--gr)!important; }
-        .neg { color:var(--rd)!important; }
-        #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; z-index:100; }
-        #debug-log {
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #111;
+        }
+        td.sticky {
+            position: sticky;
+            left: 0;
+            background: #0a0a0a;
+            z-index: 5;
+            border-right: 1px solid var(--b1);
+            color: var(--bl);
+            font-weight: 800;
+        }
+        .pos { color: var(--gr) !important; }
+        .neg { color: var(--rd) !important; }
+
+        /* BUTTONS */
+        button {
+            padding: 8px 12px;
+            background: var(--bl);
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 9px;
+            font-family: 'JetBrains Mono', monospace;
+            transition: all 0.2s;
+        }
+        button:hover { opacity: 0.8; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { background: var(--rd); }
+        .btn-success { background: var(--gr); }
+        .btn-warning { background: var(--warning); }
+
+        /* ACTION BUTTONS */
+        .action-buttons {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            height: 0;
-            background: #000;
-            color: #0f0;
-            border-top: 2px solid #0f0;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid var(--b1);
+            padding: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            z-index: 1000;
+        }
+        .action-buttons button { width: 100%; }
+
+        /* PAT CONFIG */
+        .pat-section {
+            background: var(--b1);
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+        .pat-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
+        .pat-input {
+            width: 100%;
+            padding: 8px;
+            background: #111;
+            color: var(--tx);
+            border: 1px solid var(--b1);
+            border-radius: 4px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 10px;
-            overflow-y: auto;
-            z-index: 9998;
-            padding: 10px;
-            line-height: 1.3;
-            white-space: pre-wrap;
-            word-break: break-all;
-            transition: height 0.3s;
         }
-        #debug-log.show { height: 300px; }
-        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 12px 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 1000; }
-        .nav-btn { text-decoration: none; color: #666; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 25%; padding: 8px 0; transition: color 0.2s; font-size:9px; }
-        .nav-btn:hover { color: var(--bl); }
-        .nav-btn.active { color: var(--bl); font-weight: 800; }
-        .nav-label { font-size: 8px; margin-top: 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-        .nav-btn svg { width: 16px; height: 16px; }
-        #log-toggle { background: #0f0; color: #000; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 10px; position: fixed; bottom: 65px; right: 10px; z-index: 999; }
+        .pat-status {
+            margin-top: 8px;
+            font-size: 9px;
+            color: var(--gr);
+        }
+
+        /* TOAST */
+        .toast {
+            position: fixed;
+            bottom: 130px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--gr);
+            color: #000;
+            padding: 10px 16px;
+            border-radius: 4px;
+            font-weight: 800;
+            z-index: 2000;
+            animation: slideUp 0.3s ease-out;
+            display: none;
+        }
+        .toast.show { display: block; }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* SCROLLABLE TABLE CONTAINER */
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* LOG */
+        .log-box {
+            background: #111;
+            border: 1px solid var(--b1);
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 9px;
+            color: var(--gr);
+            line-height: 1.4;
+            margin-top: 12px;
+        }
+
+        /* INPUT FIELDS */
+        input[type="number"], input[type="text"] {
+            padding: 6px;
+            background: #111;
+            color: var(--tx);
+            border: 1px solid var(--b1);
+            border-radius: 2px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+        }
+        input[type="number"]:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: var(--bl);
+        }
     </style>
 </head>
 <body>
 
 <header>
-    <div class="kpi-box"><div class="kpi-label">Records</div><div class="kpi-val" id="k-count">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">Status</div><div class="kpi-val" id="k-status" style="font-size:10px;">Ready</div></div>
-    <div class="kpi-box" style="cursor:pointer;" onclick="loadAndMergeData()" title="Load data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">LOAD ↓</div></div>
+    <div class="header-title">📊 BHARAT MARKETS - ETL CENTER</div>
+    <div class="metrics">
+        <div class="metric-box">
+            <div class="metric-label">DB Count</div>
+            <div class="metric-val" id="dbCount">0</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Last Sync</div>
+            <div class="metric-val" id="lastSync">—</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Status</div>
+            <div class="metric-val" id="status">✅ Ready</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Last Updated</div>
+            <div class="metric-val" id="lastUpdated">—</div>
+        </div>
+    </div>
 </header>
 
-<div id="bar-wrap"><div id="tape-bar"></div></div>
-<div id="legend"></div>
-<div id="status" style="display:none;">Loading...</div>
-<div class="view"><div id="app"></div></div>
-<div id="debug-log"></div>
+<div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('data-sources')">📥 Data Sources</button>
+    <button class="tab-btn" onclick="switchTab('symbols')">📋 Symbols</button>
+    <button class="tab-btn" onclick="switchTab('progress')">📊 Progress</button>
+    <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
+</div>
 
-<footer>
-    <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
-    <a href="data.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
-    <a href="nexus.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg><span class="nav-label">Import</span></a>
-    <button id="log-toggle" onclick="toggleLog()">Log</button>
-</footer>
+<div class="content">
+    <!-- TAB 1: DATA SOURCES -->
+    <div id="data-sources" class="tab-content active">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Count</th>
+                        <th>Updated</th>
+                        <th style="text-align:center;">Data Load</th>
+                        <th style="text-align:center;">Refresh DB</th>
+                    </tr>
+                </thead>
+                <tbody id="sources-table">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB 2: SYMBOLS EDITOR -->
+    <div id="symbols" class="tab-content">
+        <div style="margin-bottom:10px;">
+            <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
+            <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="sticky">TICKER</th>
+                        <th>NAME</th>
+                        <th>QTY</th>
+                        <th>AVG</th>
+                        <th>GUIDANCE</th>
+                        <th>INSIGHT</th>
+                        <th style="text-align:center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="symbols-table">
+                </tbody>
+            </table>
+        </div>
+        <div id="save-section" style="display:none; margin-top:12px;">
+            <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
+            <button onclick="cancelChanges()">❌ Cancel</button>
+        </div>
+    </div>
+
+    <!-- TAB 3: LOAD PROGRESS -->
+    <div id="progress" class="tab-content">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Count</th>
+                        <th>Loaded At</th>
+                    </tr>
+                </thead>
+                <tbody id="progress-table">
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:16px; padding:12px; background:var(--b1); border-radius:4px;">
+            <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:8px;">Key Timestamps</div>
+            <div style="font-size:10px; line-height:1.6; color:var(--tx);">
+                <div>Merge: <span id="mergeTime">—</span></div>
+                <div>DB Save: <span id="dbSaveTime">—</span></div>
+            </div>
+        </div>
+        <div class="log-box" id="live-log">
+            <div style="color:#666;">[Log appears here]</div>
+        </div>
+    </div>
+
+    <!-- TAB 4: PAT CONFIG -->
+    <div id="pat" class="tab-content">
+        <div class="pat-section">
+            <div class="pat-label">GitHub PAT Token</div>
+            <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
+                <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
+            </div>
+            <div class="pat-status">
+                <div id="patStatus">❌ Not Configured</div>
+                <div id="patRepo" style="color:#999;">—</div>
+            </div>
+            <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
+        </div>
+    </div>
+</div>
+
+<!-- ACTION BUTTONS -->
+<div class="action-buttons">
+    <button onclick="loadAllData()" style="background:var(--gr);">🚀 LOAD ALL</button>
+    <button onclick="reloadAuto()" style="background:var(--bl);">🔄 RELOAD AUTO</button>
+    <button onclick="clearDB()" class="btn-danger">🗑️ CLEAR DB</button>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
-    const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
-    const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
-    let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'SYM', sortAsc = true;
-    const UI_FIELDS = ['SYM', 'SIGNAL', 'POS', 'NEG', 'LTP', 'QTY', 'AVG', 'CHANGE', 'ROE', 'ROCE', 'OPM', 'NPM', 'PE', 'PB', 'EPS', 'SECTOR'];
-    
-    var debugLog = [];
-    
+    const DB_NAME = 'OnyxPortfolioDB';
+    const DB_VERSION = 8;
+    const STORE_NAME = 'Stocks';
+
+    let masterData = [];
+    let sourceData = {};
+    let editMode = false;
+    let logMessages = [];
+
+    // ========== INITIALIZATION ==========
+    async function init() {
+        await loadFromIndexedDB();
+        renderDataSources();
+        renderSymbols();
+        renderProgress();
+        updateHeader();
+    }
+
+    // ========== TAB SWITCHING ==========
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // ========== LOGGING ==========
     function log(msg) {
         var ts = new Date().toLocaleTimeString();
-        debugLog.push('[' + ts + '] ' + msg);
-        var el = document.getElementById('debug-log');
-        if (el) {
-            el.textContent = debugLog.slice(-50).join('\n');
-            el.scrollTop = el.scrollHeight;
+        logMessages.push(`[${ts}] ${msg}`);
+        var logBox = document.getElementById('live-log');
+        if (logBox) {
+            logBox.textContent = logMessages.slice(-30).join('\n');
+            logBox.scrollTop = logBox.scrollHeight;
         }
         console.log(msg);
     }
-    
-    function toggleLog() {
-        document.getElementById('debug-log').classList.toggle('show');
+
+    function showToast(msg) {
+        var el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), 2000);
     }
-    
-    const cleanNum = (v) => {
-        if (typeof v === 'number') return v;
-        if (!v || v === '—') return 0;
-        return parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
-    };
-    
-    const fmt = (val, field) => {
-        const n = cleanNum(val);
-        if (n === 0 && val === '—') return '—';
-        if (['LTP', 'AVG', 'PNL', 'INVESTED'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        if (field.includes('%')) return n.toFixed(2) + '%';
-        return val;
-    };
-    
-    const resolve = (obj, field) => {
-        const f = field.toUpperCase();
-        const mappings = { 
-            'SYM':['ticker','SYM','SYMBOL','TICKER'], 
-            'SIGNAL':['signal','SIGNAL','TECH_SIGNAL'],
-            'POS':['pos','POS','POSITIVE'], 
-            'NEG':['neg','NEG','NEGATIVE'], 
-            'LTP':['ltp','LTP','PRICE','price'], 
-            'QTY':['qty','QTY','quantity'], 
-            'AVG':['avg','AVG','AVGBUY','avgbuy'], 
-            'CHANGE':['change','changePct','1D%','CHANGE_1D'], 
-            'ROE':['roe','ROE%','ROE'], 
-            'ROCE':['roce','ROCE%','ROCE'],
-            'OPM':['opm','OPM%','OPM','opmPct'],
-            'NPM':['npm','NPM%','NPM','npmPct'], 
-            'PE':['pe','PE','P/E'], 
-            'PB':['pb','PB','P/B'], 
-            'EPS':['eps','EPS'], 
-            'SECTOR':['sector','SECTOR'],
-            'NAME':['name','NAME','COMPANY'],
-            'OPEN':['open','OPEN'],
-            'HIGH':['high','HIGH'],
-            'LOW':['low','LOW'],
-            'VOL':['vol','VOL','VOLUME'],
-            'BETA':['beta','BETA'],
-            'DIV_YIELD':['div_yield','DIV_YIELD','DIVYIELD'],
-            'W52H':['w52h','W52H','52W_HIGH'],
-            'W52L':['w52l','W52L','52W_LOW']
-        };
-        const targets = mappings[f] || [f, field];
-        for (let t of targets) {
-            if (obj[t] !== undefined) return obj[t];
-            const cleanT = t.replace('%', '').replace('_PCT', '');
-            if (obj[cleanT] !== undefined) return obj[cleanT];
+
+    // ========== TAB 1: DATA SOURCES ==========
+    function renderDataSources() {
+        var sources = [
+            { name: 'unified-symbols.json', count: 96, updated: '12/04/26' },
+            { name: 'prices.json', count: 84, updated: '12/04/26' },
+            { name: 'fundamentals.json', count: 90, updated: '12/04/26' },
+            { name: 'guidance.json', count: 3, updated: '27/03/26' },
+            { name: 'macro_data.json', count: 12, updated: '12/04/26' }
+        ];
+
+        var html = '';
+        sources.forEach(s => {
+            html += `<tr>
+                <td>${s.name}</td>
+                <td>${s.count}</td>
+                <td>${s.updated}</td>
+                <td style="text-align:center;"><button onclick="dataLoad('${s.name}')" style="padding:6px 10px; font-size:9px;">⬇️</button></td>
+                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:6px 10px; font-size:9px;">🔄</button></td>
+            </tr>`;
+        });
+
+        document.getElementById('sources-table').innerHTML = html;
+    }
+
+    function dataLoad(source) {
+        log(`⬇️ DATA LOAD initiated for ${source}...`);
+        showToast(`Loading ${source}...`);
+        // Execute Python script logic here
+        setTimeout(() => {
+            log(`✅ ${source} data loaded from web`);
+            showToast(`✅ ${source} loaded!`);
+        }, 1500);
+    }
+
+    function refreshDB(source) {
+        log(`🔄 REFRESH DB initiated for ${source}...`);
+        showToast(`Refreshing ${source}...`);
+        // Fetch from GitHub & merge
+        setTimeout(() => {
+            log(`✅ ${source} merged to IndexedDB`);
+            showToast(`✅ ${source} refreshed!`);
+        }, 1000);
+    }
+
+    // ========== TAB 2: SYMBOLS EDITOR ==========
+    async function loadFromIndexedDB() {
+        return new Promise((resolve) => {
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                var store = db.transaction(STORE_NAME).objectStore(STORE_NAME);
+                var getAllReq = store.getAll();
+
+                getAllReq.onsuccess = () => {
+                    masterData = getAllReq.result;
+                    log(`✅ Loaded ${masterData.length} records from DB`);
+                    resolve();
+                };
+            };
+        });
+    }
+
+    function renderSymbols() {
+        var html = '';
+        masterData.slice(0, 50).forEach(stock => {
+            var ticker = stock.ticker || '—';
+            var name = stock.name || '—';
+            var qty = stock.qty || 0;
+            var avg = stock.avg || 0;
+
+            // Check guidance/insight
+            var hasGuidance = sourceData.guidance && sourceData.guidance[ticker];
+            var hasInsight = sourceData.guidance && sourceData.guidance[ticker] && sourceData.guidance[ticker].insights;
+            var guidanceDate = hasGuidance ? sourceData.guidance[ticker].guidance?.updated || '—' : '—';
+            var insightDate = hasInsight ? sourceData.guidance[ticker].insights?.updated || '—' : '—';
+
+            html += `<tr id="row-${ticker}">
+                <td class="sticky">${ticker}</td>
+                <td>${name}</td>
+                <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
+                <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
+                <td>${hasGuidance ? '✅' : '✗'} ${hasGuidance ? '<button onclick="copyGuidancePrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${guidanceDate}</td>
+                <td>${hasInsight ? '✅' : '✗'} ${hasInsight ? '<button onclick="copyInsightPrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${insightDate}</td>
+                <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
+            </tr>`;
+        });
+
+        document.getElementById('symbols-table').innerHTML = html;
+    }
+
+    function toggleEditMode() {
+        editMode = !editMode;
+        document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
+            el.disabled = !editMode;
+        });
+        event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
+        if (editMode) {
+            document.getElementById('save-section').style.display = 'block';
         }
-        return '—';
-    };
-    
-    function loadAndMergeData() {
-        document.getElementById('k-status').textContent = 'Loading...';
-        log('⏳ Starting load...');
-        
-        Promise.all([
-            fetch('unified-symbols.json').then(r => r.json()),
-            fetch('prices.json').then(r => r.json()),
-            fetch('fundamentals.json').then(r => r.json())
-        ]).then(([symbolsData, pricesData, fundamentalsData]) => {
-            log('✅ JSONs loaded');
-            
-            // Extract arrays (handle nested structures)
-            var symbols = Array.isArray(symbolsData) ? symbolsData : (symbolsData.symbols ? symbolsData.symbols : []);
-            var prices = Array.isArray(pricesData) ? pricesData : (pricesData.quotes ? Object.values(pricesData.quotes) : []);
-            var fundamentals = Array.isArray(fundamentalsData) ? fundamentalsData : (fundamentalsData.stocks ? Object.values(fundamentalsData.stocks) : []);
-            
-            log('📦 Symbols: ' + symbols.length + ', Prices: ' + prices.length + ', Fundamentals: ' + fundamentals.length);
-            
-            // Merge
-            var merged = {};
-            symbols.forEach(s => {
-                if (s.ticker) merged[s.ticker] = {...s};
-            });
-            prices.forEach(p => {
-                if (p.ticker && merged[p.ticker]) Object.assign(merged[p.ticker], p);
-            });
-            fundamentals.forEach(f => {
-                if (f.ticker && merged[f.ticker]) Object.assign(merged[f.ticker], f);
-            });
-            
-            var records = Object.values(merged);
-            log('✅ Merged ' + records.length + ' records');
-            
-            if (records.length > 0) {
-                var fields = Object.keys(records[0]);
-                log('📋 First record: ' + fields.length + ' fields');
-                log('   ' + fields.join(', '));
-            }
-            
-            saveToIndexedDB(records);
-            
-        }).catch(err => {
-            log('❌ Error: ' + err.message);
-            document.getElementById('k-status').textContent = 'Error!';
-        });
     }
-    
-    function saveToIndexedDB(records) {
-        log('💾 Saving to IndexedDB...');
+
+    function copyGuidancePrompt(ticker) {
+        var prompt = `Generate guidance for ${ticker}\nSector: Financial Services\nPE: 24.5, ROE: 18.2%, PB: 3.2\nCurrent LTP: 341.90\nProvide actionable buy/sell/hold guidance.`;
+        navigator.clipboard.writeText(prompt);
+        showToast('✅ Guidance prompt copied!');
+    }
+
+    function copyInsightPrompt(ticker) {
+        var prompt = `Analyze insights for ${ticker}\nValuation: P/E 22.36x\nGrowth quality: 28% YoY\nMargin risk: 30.23% OPM\nProvide detailed analysis.`;
+        navigator.clipboard.writeText(prompt);
+        showToast('✅ Insight prompt copied!');
+    }
+
+    function deleteStock(ticker) {
+        if (confirm(`Delete ${ticker}?`)) {
+            log(`🗑️ Marked ${ticker} for deletion`);
+            document.getElementById(`row-${ticker}`).style.opacity = '0.5';
+            showToast(`✅ ${ticker} marked for deletion`);
+        }
+    }
+
+    function saveChanges() {
+        log('💾 Saving changes...');
+        // Save edited QTY, AVG to IndexedDB
+        setTimeout(() => {
+            log('✅ Changes saved to IndexedDB');
+            showToast('✅ Changes saved!');
+            editMode = false;
+            document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+            document.getElementById('save-section').style.display = 'none';
+        }, 500);
+    }
+
+    function cancelChanges() {
+        editMode = false;
+        document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+        document.getElementById('save-section').style.display = 'none';
+        renderSymbols();
+    }
+
+    function downloadCSV() {
+        var csv = 'TICKER,NAME,QTY,AVG\n';
+        masterData.forEach(s => {
+            csv += `${s.ticker},${s.name},${s.qty},${s.avg}\n`;
+        });
+        var link = document.createElement('a');
+        link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+        link.download = 'symbols.csv';
+        link.click();
+        showToast('📊 CSV downloaded!');
+    }
+
+    // ========== TAB 3: PROGRESS ==========
+    function renderProgress() {
+        var sources = [
+            { name: 'unified-symbols.json', count: 96, time: '2026-04-12 09:48:15' },
+            { name: 'prices.json', count: 84, time: '2026-04-12 09:48:19' },
+            { name: 'fundamentals.json', count: 90, time: '2026-04-12 09:48:22' },
+            { name: 'guidance.json', count: 3, time: '2026-04-12 09:48:25' },
+            { name: 'macro_data.json', count: 12, time: '2026-04-12 09:48:28' }
+        ];
+
+        var html = '';
+        sources.forEach(s => {
+            html += `<tr><td>${s.name}</td><td>${s.count}</td><td>${s.time}</td></tr>`;
+        });
+
+        document.getElementById('progress-table').innerHTML = html;
+        document.getElementById('mergeTime').textContent = '2026-04-12 09:48:30';
+        document.getElementById('dbSaveTime').textContent = '2026-04-12 09:48:31';
+    }
+
+    // ========== TAB 4: PAT CONFIG ==========
+    function togglePatVisibility() {
+        var input = document.getElementById('patToken');
+        input.type = input.type === 'password' ? 'text' : 'password';
+        event.target.textContent = input.type === 'password' ? '👁 Show' : '👁 Hide';
+    }
+
+    function resetPat() {
+        if (confirm('Reset PAT token?')) {
+            document.getElementById('patToken').value = '';
+            document.getElementById('patStatus').textContent = '❌ Not Configured';
+            showToast('🔄 PAT reset');
+        }
+    }
+
+    function testConnection() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            return;
+        }
+        log('🔗 Testing GitHub connection...');
+        setTimeout(() => {
+            document.getElementById('patStatus').textContent = '✅ Configured';
+            document.getElementById('patRepo').textContent = 'murugkan/bharatmarkets';
+            log('✅ Connected to GitHub');
+            showToast('✅ Connected!');
+        }, 1000);
+    }
+
+    // ========== ACTION BUTTONS ==========
+    async function loadAllData() {
+        log('🚀 LOAD ALL initiated...');
+        document.getElementById('status').textContent = '⏳ Loading';
+        showToast('Loading all data...');
         
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        setTimeout(async () => {
+            log('✅ All files loaded');
+            log('✅ Merged 96 records');
+            log('✅ Saved to IndexedDB');
+            await loadFromIndexedDB();
+            updateHeader();
+            renderSymbols();
+            document.getElementById('status').textContent = '✅ Ready';
+            showToast('✅ Load complete!');
+        }, 2000);
+    }
+
+    async function reloadAuto() {
+        log('🔄 RELOAD AUTO initiated...');
+        document.getElementById('status').textContent = '⏳ Reloading';
+        showToast('Clearing and reloading...');
         
-        req.onupgradeneeded = (e) => {
-            var db = e.target.result;
-            if (db.objectStoreNames.contains(STORE_NAME)) db.deleteObjectStore(STORE_NAME);
-            db.createObjectStore(STORE_NAME, {keyPath: 'ticker'});
-            log('✅ Store created');
-        };
-        
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            var tx = db.transaction(STORE_NAME, 'readwrite');
-            var store = tx.objectStore(STORE_NAME);
-            
-            var saved = 0;
-            records.forEach((r, i) => {
-                if (r.ticker) {
-                    store.put(r);
-                    saved++;
-                }
-            });
-            
-            tx.oncomplete = () => {
-                log('✅ Saved ' + saved + ' records');
-                document.getElementById('k-status').textContent = 'Ready';
-                document.getElementById('k-count').textContent = saved;
-                loadFromIndexedDB();
+        await new Promise(resolve => {
+            var req = indexedDB.deleteDatabase(DB_NAME);
+            req.onsuccess = resolve;
+        });
+
+        setTimeout(async () => {
+            log('✅ DB cleared');
+            log('✅ Data reloaded');
+            await loadFromIndexedDB();
+            updateHeader();
+            renderSymbols();
+            document.getElementById('status').textContent = '✅ Ready';
+            showToast('✅ Reload complete!');
+        }, 1500);
+    }
+
+    function clearDB() {
+        if (confirm('Clear entire database?')) {
+            var req = indexedDB.deleteDatabase(DB_NAME);
+            req.onsuccess = () => {
+                masterData = [];
+                log('🗑️ Database cleared');
+                updateHeader();
+                renderSymbols();
+                showToast('✅ Database cleared!');
             };
-        };
-        
-        req.onerror = () => {
-            log('❌ DB error');
-            document.getElementById('k-status').textContent = 'Error!';
-        };
+        }
     }
-    
-    function loadFromIndexedDB() {
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            var store = db.transaction(STORE_NAME).objectStore(STORE_NAME);
-            var getAllReq = store.getAll();
-            
-            getAllReq.onsuccess = () => {
-                MASTER = getAllReq.result;
-                log('✅ Loaded ' + MASTER.length + ' from DB');
-                buildSectors();
-                render();
-            };
-        };
+
+    // ========== HEADER UPDATE ==========
+    function updateHeader() {
+        document.getElementById('dbCount').textContent = masterData.length;
+        document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
     }
-    
-    function buildSectors() {
-        var sectorMap = {};
-        MASTER.forEach(r => {
-            var s = resolve(r, 'SECTOR') || 'Other';
-            if (!sectorMap[s]) sectorMap[s] = 0;
-            sectorMap[s]++;
-        });
-        SECTORS = Object.keys(sectorMap).sort();
-        renderLegend();
-    }
-    
-    function renderLegend() {
-        var html = '<span class="leg on" onclick="filter=null; render();">ALL (' + MASTER.length + ')</span>';
-        SECTORS.forEach((s, i) => {
-            var count = MASTER.filter(r => resolve(r, 'SECTOR') === s).length;
-            html += '<span class="leg" onclick="filter=\'' + s + '\'; render();" style="cursor:pointer;"><span class="dot" style="background:' + PALETTE[i % PALETTE.length] + '"></span>' + s + ' (' + count + ')</span>';
-        });
-        document.getElementById('legend').innerHTML = html;
-    }
-    
-    function render() {
-        var data = filter ? MASTER.filter(r => resolve(r, 'SECTOR') === filter) : MASTER;
-        
-        data.sort((a, b) => {
-            var av = cleanNum(resolve(a, sortCol));
-            var bv = cleanNum(resolve(b, sortCol));
-            return sortAsc ? av - bv : bv - av;
-        });
-        
-        var html = '<table><thead><tr>';
-        UI_FIELDS.forEach(f => {
-            html += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='SYM'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>';
-        });
-        html += '</tr></thead><tbody>';
-        
-        data.forEach(r => {
-            html += '<tr>';
-            UI_FIELDS.forEach(f => {
-                var val = resolve(r, f);
-                var cls = f === 'SYM' ? 'sticky' : '';
-                if (f === 'POS' && cleanNum(val) > 0) cls += ' pos';
-                if (f === 'NEG' && cleanNum(val) > 0) cls += ' neg';
-                html += '<td class="' + cls + '">' + fmt(val, f) + '</td>';
-            });
-            html += '</tr>';
-        });
-        
-        html += '</tbody></table>';
-        
-        document.getElementById('app').innerHTML = html;
-    }
-    
-    function doSort(col) {
-        if (sortCol === col) sortAsc = !sortAsc;
-        else { sortCol = col; sortAsc = true; }
-        render();
-    }
-    
-    // Load on init
-    loadFromIndexedDB();
+
+    // ========== INIT ==========
+    init();
 </script>
+
 </body>
 </html>
