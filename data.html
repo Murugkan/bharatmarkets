@@ -1005,6 +1005,32 @@
         const guidanceData = results[3] || {};
         const macroData = results[4] || {};
         
+        // Extract ticker maps from each source (handling different wrappers)
+        const priceMap = pricesData.quotes || pricesData.prices || pricesData;
+        const fundMap = fundamentalsData.stocks || fundamentalsData.fundamentals || fundamentalsData;
+        
+        // Guidance has _metadata, so skip it when getting ticker data
+        const guidMap = {};
+        Object.keys(guidanceData).forEach(key => {
+            if (key !== '_metadata' && guidanceData[key]) {
+                guidMap[key] = guidanceData[key];
+            }
+        });
+        
+        // Macro has indicators array, so extract from it
+        const macroMap = {};
+        if (macroData.indicators && Array.isArray(macroData.indicators)) {
+            // Don't merge macro data (it's for dashboard, not per-stock)
+            log('ℹ️ Macro indicators loaded (not merged per-stock)');
+        } else {
+            const macroObj = macroData.macro || macroData;
+            Object.keys(macroObj).forEach(key => {
+                if (key !== '_metadata') {
+                    macroMap[key] = macroObj[key];
+                }
+            });
+        }
+        
         // Merge all data sources into enriched records
         let mergedStocks = [];
         
@@ -1013,10 +1039,10 @@
             if (!ticker) return;
             
             // Get data from each source for this ticker
-            const priceInfo = pricesData.quotes ? (pricesData.quotes[ticker] || {}) : (pricesData[ticker] || {});
-            const fundInfo = fundamentalsData.stocks ? (fundamentalsData.stocks[ticker] || {}) : (fundamentalsData[ticker] || {});
-            const guidInfo = guidanceData[ticker] || {};
-            const macroInfo = macroData[ticker] || {};
+            const priceInfo = priceMap[ticker] || {};
+            const fundInfo = fundMap[ticker] || {};
+            const guidInfo = guidMap[ticker] || {};
+            const macroInfo = macroMap[ticker] || {};
             
             // Merge all data into single record
             const merged = {
