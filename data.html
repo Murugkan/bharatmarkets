@@ -24,7 +24,7 @@
             font-size: 11px;
             overflow: hidden;
             -webkit-text-size-adjust: 100%;
-            padding-bottom: 120px;
+            padding-bottom: 75px;
         }
 
         /* HEADER */
@@ -81,7 +81,7 @@
 
         /* CONTENT AREA */
         .content {
-            height: calc(100vh - 280px);
+            height: calc(100vh - 260px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 12px;
@@ -148,16 +148,50 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(0, 0, 0, 0.95);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid var(--b1);
-            padding: 10px;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.99) 100%);
+            backdrop-filter: blur(15px);
+            border-top: 3px solid var(--bl);
+            padding: 14px 12px;
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 8px;
+            gap: 12px;
             z-index: 1000;
+            box-shadow: 0 -8px 24px rgba(0, 242, 255, 0.15);
         }
-        .action-buttons button { width: 100%; }
+        .action-buttons button { 
+            width: 100%; 
+            padding: 14px 8px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .action-buttons button:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            transition: left 0.3s;
+        }
+        .action-buttons button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            opacity: 1 !important;
+        }
+        .action-buttons button:hover:before {
+            left: 100%;
+        }
+        .action-buttons button:active {
+            transform: translateY(-1px);
+        }
 
         /* PAT CONFIG */
         .pat-section {
@@ -367,9 +401,9 @@
 
 <!-- ACTION BUTTONS -->
 <div class="action-buttons">
-    <button onclick="loadAllData()" style="background:var(--gr);">🚀 LOAD ALL</button>
-    <button onclick="reloadAuto()" style="background:var(--bl);">🔄 RELOAD AUTO</button>
-    <button onclick="clearDB()" class="btn-danger">🗑️ CLEAR DB</button>
+    <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);"><span style="font-size:16px; margin-right:4px;">🚀</span>LOAD ALL</button>
+    <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; box-shadow: 0 4px 15px rgba(0, 242, 255, 0.3);"><span style="font-size:16px; margin-right:4px;">🔄</span>RELOAD</button>
+    <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; box-shadow: 0 4px 15px rgba(255, 77, 109, 0.3);"><span style="font-size:16px; margin-right:4px;">🗑️</span>CLEAR DB</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -384,9 +418,92 @@
     let editMode = false;
     let logMessages = [];
 
+    // GitHub configuration
+    const GITHUB_OWNER = 'murugkan';
+    const GITHUB_REPO = 'bharatmarkets';
+    const GITHUB_BRANCH = 'main';
+    const RAW_GITHUB_URL = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
+    
+    const DATA_SOURCES = [
+        { name: 'unified-symbols.json', path: 'data/unified-symbols.json' },
+        { name: 'prices.json', path: 'data/prices.json' },
+        { name: 'fundamentals.json', path: 'data/fundamentals.json' },
+        { name: 'guidance.json', path: 'data/guidance.json' },
+        { name: 'macro_data.json', path: 'data/macro_data.json' }
+    ];
+
+    // ========== FETCH REAL DATA FROM GITHUB ==========
+    async function fetchGitHubData(filePath) {
+        try {
+            const url = `${RAW_GITHUB_URL}/${filePath}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+        } catch (e) {
+            log(`⚠️ Failed to fetch ${filePath}: ${e.message}`);
+            return null;
+        }
+    }
+
+    async function initializeFromGitHub() {
+        log('🚀 Fetching real data from GitHub...');
+        
+        // Fetch unified-symbols.json
+        const symbolsData = await fetchGitHubData(DATA_SOURCES[0].path);
+        if (symbolsData && Array.isArray(symbolsData)) {
+            masterData = symbolsData;
+            log(`✅ Loaded ${masterData.length} symbols from GitHub`);
+            
+            // Save to IndexedDB
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                try {
+                    var transaction = db.transaction(STORE_NAME, 'readwrite');
+                    var store = transaction.objectStore(STORE_NAME);
+                    store.clear();
+                    
+                    masterData.forEach(stock => {
+                        store.add(stock);
+                    });
+                    
+                    log(`✅ Saved ${masterData.length} records to IndexedDB`);
+                } catch (err) {
+                    log(`⚠️ IndexedDB error: ${err.message}`);
+                }
+            };
+        } else {
+            log('❌ Could not load symbols from GitHub');
+        }
+    }
+
     // ========== INITIALIZATION ==========
     async function init() {
-        await loadFromIndexedDB();
+        document.getElementById('status').textContent = '⏳ Initializing...';
+        log('🚀 ETL Center starting up...');
+        log('📡 Fetching real data from GitHub...');
+        
+        try {
+            // Fetch real data from GitHub on startup
+            await initializeFromGitHub();
+            
+            // Wait a moment for IndexedDB writes
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Load from IndexedDB
+            await loadFromIndexedDB();
+            if (masterData.length > 0) {
+                log(`📊 Successfully loaded: ${masterData.length} records`);
+                document.getElementById('status').textContent = '✅ Ready';
+            } else {
+                log('⚠️ No data loaded. Use 🚀 LOAD ALL button to fetch from GitHub');
+                document.getElementById('status').textContent = '⚠️ Click LOAD ALL';
+            }
+        } catch (e) {
+            log(`⚠️ Error during initialization: ${e.message}`);
+            document.getElementById('status').textContent = '⚠️ Error';
+        }
+        
         renderDataSources();
         renderSymbols();
         renderProgress();
@@ -422,20 +539,14 @@
 
     // ========== TAB 1: DATA SOURCES ==========
     function renderDataSources() {
-        var sources = [
-            { name: 'unified-symbols.json', count: 96, updated: '12/04/26' },
-            { name: 'prices.json', count: 84, updated: '12/04/26' },
-            { name: 'fundamentals.json', count: 90, updated: '12/04/26' },
-            { name: 'guidance.json', count: 3, updated: '27/03/26' },
-            { name: 'macro_data.json', count: 12, updated: '12/04/26' }
-        ];
-
         var html = '';
-        sources.forEach(s => {
+        DATA_SOURCES.forEach(s => {
+            var count = masterData.length > 0 ? masterData.length : '—';
+            var updated = new Date().toLocaleDateString('en-GB');
             html += `<tr>
                 <td>${s.name}</td>
-                <td>${s.count}</td>
-                <td>${s.updated}</td>
+                <td>${count}</td>
+                <td>${updated}</td>
                 <td style="text-align:center;"><button onclick="dataLoad('${s.name}')" style="padding:6px 10px; font-size:9px;">⬇️</button></td>
                 <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:6px 10px; font-size:9px;">🔄</button></td>
             </tr>`;
@@ -447,65 +558,139 @@
     function dataLoad(source) {
         log(`⬇️ DATA LOAD initiated for ${source}...`);
         showToast(`Loading ${source}...`);
-        // Execute Python script logic here
-        setTimeout(() => {
-            log(`✅ ${source} data loaded from web`);
-            showToast(`✅ ${source} loaded!`);
-        }, 1500);
+        
+        // Find the source path
+        const sourceObj = DATA_SOURCES.find(s => s.name === source);
+        if (!sourceObj) {
+            log(`❌ Unknown source: ${source}`);
+            return;
+        }
+        
+        // Fetch from GitHub
+        fetchGitHubData(sourceObj.path).then(data => {
+            if (data) {
+                log(`✅ ${source} loaded from GitHub (${Array.isArray(data) ? data.length : Object.keys(data).length} items)`);
+                showToast(`✅ ${source} loaded!`);
+                
+                // Store in sourceData for reference
+                sourceData[source] = data;
+            } else {
+                log(`❌ Failed to load ${source}`);
+                showToast(`❌ Failed to load ${source}`);
+            }
+        });
     }
 
     function refreshDB(source) {
         log(`🔄 REFRESH DB initiated for ${source}...`);
         showToast(`Refreshing ${source}...`);
-        // Fetch from GitHub & merge
-        setTimeout(() => {
-            log(`✅ ${source} merged to IndexedDB`);
-            showToast(`✅ ${source} refreshed!`);
-        }, 1000);
+        
+        // Find the source path
+        const sourceObj = DATA_SOURCES.find(s => s.name === source);
+        if (!sourceObj) {
+            log(`❌ Unknown source: ${source}`);
+            return;
+        }
+        
+        // Fetch from GitHub and merge to IndexedDB
+        fetchGitHubData(sourceObj.path).then(data => {
+            if (data && Array.isArray(data) && source === 'unified-symbols.json') {
+                // Save to IndexedDB
+                var req = indexedDB.open(DB_NAME, DB_VERSION);
+                req.onsuccess = (e) => {
+                    var db = e.target.result;
+                    try {
+                        var transaction = db.transaction(STORE_NAME, 'readwrite');
+                        var store = transaction.objectStore(STORE_NAME);
+                        store.clear();
+                        
+                        masterData = data;
+                        data.forEach(stock => {
+                            store.add(stock);
+                        });
+                        
+                        log(`✅ ${source} merged to IndexedDB (${data.length} records)`);
+                        showToast(`✅ ${source} refreshed!`);
+                        renderSymbols();
+                        updateHeader();
+                    } catch (err) {
+                        log(`⚠️ IndexedDB error: ${err.message}`);
+                    }
+                };
+            } else {
+                sourceData[source] = data;
+                log(`✅ ${source} refreshed from GitHub`);
+                showToast(`✅ ${source} refreshed!`);
+            }
+        });
     }
 
     // ========== TAB 2: SYMBOLS EDITOR ==========
     async function loadFromIndexedDB() {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
+            
+            req.onerror = () => {
+                log(`❌ IndexedDB error: ${req.error}`);
+                reject(req.error);
+            };
+            
             req.onsuccess = (e) => {
                 var db = e.target.result;
-                var store = db.transaction(STORE_NAME).objectStore(STORE_NAME);
-                var getAllReq = store.getAll();
+                try {
+                    var store = db.transaction(STORE_NAME).objectStore(STORE_NAME);
+                    var getAllReq = store.getAll();
 
-                getAllReq.onsuccess = () => {
-                    masterData = getAllReq.result;
-                    log(`✅ Loaded ${masterData.length} records from DB`);
+                    getAllReq.onsuccess = () => {
+                        masterData = getAllReq.result || [];
+                        log(`✅ Loaded ${masterData.length} records from DB`);
+                        resolve();
+                    };
+                    
+                    getAllReq.onerror = () => {
+                        log(`⚠️ Store read error, DB may be empty`);
+                        masterData = [];
+                        resolve();
+                    };
+                } catch (e) {
+                    log(`⚠️ Store access error: ${e.message} - DB may need initialization`);
+                    masterData = [];
                     resolve();
-                };
+                }
             };
         });
     }
 
     function renderSymbols() {
         var html = '';
-        masterData.slice(0, 50).forEach(stock => {
-            var ticker = stock.ticker || '—';
-            var name = stock.name || '—';
-            var qty = stock.qty || 0;
-            var avg = stock.avg || 0;
+        
+        // Check if masterData is empty
+        if (!masterData || masterData.length === 0) {
+            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
+        } else {
+            masterData.slice(0, 50).forEach(stock => {
+                var ticker = stock.ticker || '—';
+                var name = stock.name || '—';
+                var qty = stock.qty || 0;
+                var avg = stock.avg || 0;
 
-            // Check guidance/insight
-            var hasGuidance = sourceData.guidance && sourceData.guidance[ticker];
-            var hasInsight = sourceData.guidance && sourceData.guidance[ticker] && sourceData.guidance[ticker].insights;
-            var guidanceDate = hasGuidance ? sourceData.guidance[ticker].guidance?.updated || '—' : '—';
-            var insightDate = hasInsight ? sourceData.guidance[ticker].insights?.updated || '—' : '—';
+                // Check guidance/insight
+                var hasGuidance = sourceData.guidance && sourceData.guidance[ticker];
+                var hasInsight = sourceData.guidance && sourceData.guidance[ticker] && sourceData.guidance[ticker].insights;
+                var guidanceDate = hasGuidance ? sourceData.guidance[ticker].guidance?.updated || '—' : '—';
+                var insightDate = hasInsight ? sourceData.guidance[ticker].insights?.updated || '—' : '—';
 
-            html += `<tr id="row-${ticker}">
-                <td class="sticky">${ticker}</td>
-                <td>${name}</td>
-                <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
-                <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                <td>${hasGuidance ? '✅' : '✗'} ${hasGuidance ? '<button onclick="copyGuidancePrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${guidanceDate}</td>
-                <td>${hasInsight ? '✅' : '✗'} ${hasInsight ? '<button onclick="copyInsightPrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${insightDate}</td>
-                <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
-            </tr>`;
-        });
+                html += `<tr id="row-${ticker}">
+                    <td class="sticky">${ticker}</td>
+                    <td>${name}</td>
+                    <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
+                    <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
+                    <td>${hasGuidance ? '✅' : '✗'} ${hasGuidance ? '<button onclick="copyGuidancePrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${guidanceDate}</td>
+                    <td>${hasInsight ? '✅' : '✗'} ${hasInsight ? '<button onclick="copyInsightPrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${insightDate}</td>
+                    <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
+                </tr>`;
+            });
+        }
 
         document.getElementById('symbols-table').innerHTML = html;
     }
@@ -626,39 +811,73 @@
     async function loadAllData() {
         log('🚀 LOAD ALL initiated...');
         document.getElementById('status').textContent = '⏳ Loading';
-        showToast('Loading all data...');
+        showToast('Loading all data from GitHub...');
         
-        setTimeout(async () => {
-            log('✅ All files loaded');
-            log('✅ Merged 96 records');
-            log('✅ Saved to IndexedDB');
-            await loadFromIndexedDB();
-            updateHeader();
-            renderSymbols();
-            document.getElementById('status').textContent = '✅ Ready';
-            showToast('✅ Load complete!');
-        }, 2000);
+        // Fetch all data sources
+        const results = await Promise.all(
+            DATA_SOURCES.map(source => fetchGitHubData(source.path))
+        );
+        
+        log('✅ All files loaded from GitHub');
+        
+        // Save symbols data to IndexedDB
+        const symbolsData = results[0]; // unified-symbols.json
+        if (symbolsData && Array.isArray(symbolsData)) {
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                try {
+                    var transaction = db.transaction(STORE_NAME, 'readwrite');
+                    var store = transaction.objectStore(STORE_NAME);
+                    store.clear();
+                    
+                    masterData = symbolsData;
+                    symbolsData.forEach(stock => {
+                        store.add(stock);
+                    });
+                    
+                    log(`✅ Merged ${symbolsData.length} records to IndexedDB`);
+                    log('✅ Saved to IndexedDB');
+                    
+                    // Store other data
+                    if (results[3]) sourceData.guidance = results[3];
+                    
+                    updateHeader();
+                    renderSymbols();
+                    renderDataSources();
+                    document.getElementById('status').textContent = '✅ Ready';
+                    showToast('✅ Load complete!');
+                } catch (err) {
+                    log(`⚠️ IndexedDB error: ${err.message}`);
+                    document.getElementById('status').textContent = '⚠️ Error';
+                }
+            };
+        } else {
+            log('❌ Could not load symbols data');
+            document.getElementById('status').textContent = '❌ Failed';
+        }
     }
 
     async function reloadAuto() {
         log('🔄 RELOAD AUTO initiated...');
         document.getElementById('status').textContent = '⏳ Reloading';
-        showToast('Clearing and reloading...');
+        showToast('Clearing and reloading from GitHub...');
         
         await new Promise(resolve => {
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = resolve;
         });
 
-        setTimeout(async () => {
-            log('✅ DB cleared');
-            log('✅ Data reloaded');
-            await loadFromIndexedDB();
-            updateHeader();
-            renderSymbols();
-            document.getElementById('status').textContent = '✅ Ready';
-            showToast('✅ Reload complete!');
-        }, 1500);
+        log('✅ DB cleared');
+        
+        // Re-fetch from GitHub
+        await initializeFromGitHub();
+        await loadFromIndexedDB();
+        updateHeader();
+        renderSymbols();
+        renderDataSources();
+        document.getElementById('status').textContent = '✅ Ready';
+        showToast('✅ Reload complete!');
     }
 
     function clearDB() {
