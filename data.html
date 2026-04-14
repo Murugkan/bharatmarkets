@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
     <title>ETL Data Center</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
@@ -14,11 +14,11 @@
         .title { font-size:13px; font-weight:800; color:var(--bl); margin-bottom:8px; }
         .metrics { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; }
         .metric { background:var(--b1); padding:8px; border-radius:3px; text-align:center; }
-        .metric-label { font-size:8px; color:#666; text-transform:uppercase; }
+        .metric-label { font-size:8px; color:#666; }
         .metric-val { font-size:13px; font-weight:800; color:var(--bl); margin-top:3px; }
         
         .tabs { display:flex; background:var(--s1); border-bottom:2px solid var(--b1); }
-        .tab { flex:1; min-width:70px; padding:10px; color:#666; border:none; border-bottom:3px solid transparent; cursor:pointer; font-size:8px; font-weight:800; background:var(--s1); }
+        .tab { flex:1; padding:10px; color:#666; border:none; border-bottom:3px solid transparent; cursor:pointer; font-size:8px; font-weight:800; background:var(--s1); }
         .tab.active { color:var(--bl); border-bottom-color:var(--bl); background:#111; }
         
         .content { height:calc(100vh - 320px); overflow-y:auto; padding:12px; }
@@ -26,7 +26,7 @@
         .tab-content.active { display:block; }
         
         table { width:100%; border-collapse:collapse; font-size:10px; }
-        th { background:var(--s1); color:#666; padding:10px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; font-weight:800; }
+        th { background:var(--s1); color:#666; padding:10px; position:sticky; top:0; border-bottom:2px solid var(--b1); text-align:left; font-weight:800; }
         td { padding:10px; border-bottom:1px solid #111; }
         td.sticky { position:sticky; left:0; background:#0a0a0a; z-index:5; border-right:1px solid var(--b1); color:var(--bl); font-weight:800; }
         
@@ -38,14 +38,14 @@
         .action-btns { position:fixed; bottom:55px; left:0; right:0; background:rgba(0,0,0,0.95); border-top:1px solid var(--b1); padding:10px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; z-index:999; }
         .action-btns button { width:100%; }
         
-        footer { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.95); border-top:1px solid var(--b1); display:flex; justify-content:space-around; padding:10px 0; z-index:1001; }
+        footer { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.95); border-top:1px solid var(--b1); display:flex; z-index:1001; }
         .nav-link { flex:1; text-align:center; padding:10px; color:#666; text-decoration:none; font-size:8px; font-weight:800; }
         .nav-link.active { color:var(--bl); border-bottom:2px solid var(--bl); }
         
         .toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:var(--gr); color:#000; padding:10px 16px; border-radius:3px; font-weight:800; z-index:2000; display:none; }
         .toast.show { display:block; }
         
-        input[type="number"], input[type="text"] { padding:6px; background:#111; color:var(--tx); border:1px solid var(--b1); border-radius:2px; font-family:'JetBrains Mono',monospace; font-size:10px; }
+        input { padding:6px; background:#111; color:var(--tx); border:1px solid var(--b1); border-radius:2px; font-family:'JetBrains Mono',monospace; font-size:10px; }
         
         .log { background:#111; border:1px solid var(--b1); border-radius:3px; padding:10px; max-height:150px; overflow-y:auto; font-size:9px; color:var(--gr); line-height:1.4; margin-top:12px; }
     </style>
@@ -72,19 +72,17 @@
 <div class="content">
     <!-- TAB 0: DATA SOURCES -->
     <div class="tab-content active">
-        <div class="table-container" style="overflow-x:auto;">
-            <table>
-                <thead><tr><th>Source</th><th>Count</th><th>Updated</th><th style="text-align:center;">⬇️ DATA</th><th style="text-align:center;">🔄 REFRESH</th></tr></thead>
-                <tbody id="sourcesTable"></tbody>
-            </table>
-        </div>
+        <table>
+            <thead><tr><th>Source</th><th>Count</th><th>Last Loaded</th><th>⬇️ LOAD</th><th>🔄 REFRESH</th></tr></thead>
+            <tbody id="sourcesTable"></tbody>
+        </table>
     </div>
     
     <!-- TAB 1: SYMBOLS -->
     <div class="tab-content">
         <div style="margin-bottom:10px;">
-            <button id="editBtn" onclick="toggleEdit()" style="background:#f59e0b;">🔧 Edit: OFF</button>
-            <button onclick="downloadCSV()" style="background:var(--bl);">📊 CSV</button>
+            <button onclick="toggleEdit()" style="background:#f59e0b;">🔧 Edit: OFF</button>
+            <button onclick="downloadCSV()">📊 CSV</button>
         </div>
         <div style="overflow-x:auto;">
             <table>
@@ -93,7 +91,7 @@
             </table>
         </div>
         <div id="editSection" style="display:none; margin-top:12px;">
-            <button onclick="saveEdits()" class="success">💾 SAVE CHANGES</button>
+            <button onclick="saveEdits()" class="success">💾 SAVE</button>
             <button onclick="cancelEdits()" style="background:#666;">❌ CANCEL</button>
         </div>
     </div>
@@ -104,20 +102,13 @@
             <thead><tr><th>Source</th><th>Count</th><th>Loaded At</th></tr></thead>
             <tbody id="progressTable"></tbody>
         </table>
-        <div style="margin-top:16px; padding:12px; background:var(--b1); border-radius:3px;">
-            <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:8px;">Key Timestamps</div>
-            <div style="font-size:10px; line-height:1.6;">
-                <div>Merge: <span id="mergeTime">—</span></div>
-                <div>DB Save: <span id="dbSaveTime">—</span></div>
-            </div>
-        </div>
         <div class="log" id="liveLog"></div>
     </div>
     
     <!-- TAB 3: PAT -->
     <div class="tab-content">
         <div style="background:var(--b1); padding:12px; border-radius:3px;">
-            <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:8px;">GitHub PAT</div>
+            <div style="font-size:9px; color:#666; margin-bottom:8px;">GitHub PAT</div>
             <input type="password" id="patToken" placeholder="ghp_••••••••••••••••••••••••••••••••" style="margin-bottom:8px; width:100%;">
             <div style="display:flex; gap:8px; margin-bottom:12px;">
                 <button onclick="togglePat()" style="flex:1;">👁 SHOW</button>
@@ -146,16 +137,22 @@
 <script>
     const DB_NAME = 'OnyxPortfolioDB';
     const STORE_NAME = 'Stocks';
-    const DB_VERSION = 8;
+    const META_STORE = 'FileMetadata';
+    const DB_VERSION = 9;
     
-    let data = { records: [], logs: [], fileTimestamps: {}, editMode: false };
+    let state = { 
+        records: [], 
+        metadata: {}, 
+        logs: [], 
+        editMode: false 
+    };
     
     function log(msg) {
         var ts = new Date().toLocaleTimeString();
-        data.logs.push(`[${ts}] ${msg}`);
+        state.logs.push(`[${ts}] ${msg}`);
         var el = document.getElementById('liveLog');
         if (el) {
-            el.textContent = data.logs.slice(-20).join('\n');
+            el.textContent = state.logs.slice(-20).join('\n');
             el.scrollTop = el.scrollHeight;
         }
     }
@@ -178,24 +175,111 @@
         return dd+'/'+mm+'/'+yy+' '+h+':'+m;
     }
     
-    function getLatestTimestamp(key) {
-        if (!data.logs) return '—';
-        var relevant = data.logs.filter(l => l.includes(key));
-        if (relevant.length === 0) return '—';
-        var last = relevant[relevant.length - 1];
-        var match = last.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-        if (!match) return '—';
-        var now = new Date();
-        var time = match[1].split(':');
-        var d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), time[0], time[1], time[2]);
-        return formatTime(d);
-    }
-    
     function switchTab(n) {
         document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
         document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
         document.querySelectorAll('.tab-content')[n].classList.add('active');
         document.querySelectorAll('.tab')[n].classList.add('active');
+    }
+    
+    // ===== INDEXEDDB =====
+    function initDB() {
+        return new Promise((resolve) => {
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            
+            req.onupgradeneeded = (e) => {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, {keyPath:'ticker'});
+                }
+                if (!db.objectStoreNames.contains(META_STORE)) {
+                    db.createObjectStore(META_STORE, {keyPath:'file'});
+                }
+                log('📦 DB initialized');
+            };
+            
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                log('✅ DB ready');
+                resolve(db);
+            };
+        });
+    }
+    
+    function saveMetadata(file, count) {
+        return new Promise((resolve) => {
+            indexedDB.open(DB_NAME, DB_VERSION).onsuccess = (e) => {
+                var db = e.target.result;
+                var meta = {
+                    file: file,
+                    count: count,
+                    lastLoadedAt: new Date().toISOString()
+                };
+                var tx = db.transaction(META_STORE, 'readwrite');
+                var store = tx.objectStore(META_STORE);
+                store.put(meta);
+                tx.oncomplete = () => {
+                    state.metadata[file] = meta;
+                    resolve(meta);
+                };
+            };
+        });
+    }
+    
+    function loadMetadata() {
+        return new Promise((resolve) => {
+            indexedDB.open(DB_NAME, DB_VERSION).onsuccess = (e) => {
+                var db = e.target.result;
+                var tx = db.transaction(META_STORE);
+                var store = tx.objectStore(META_STORE);
+                var getAllReq = store.getAll();
+                
+                getAllReq.onsuccess = () => {
+                    state.metadata = {};
+                    getAllReq.result.forEach(m => {
+                        state.metadata[m.file] = m;
+                    });
+                    log(`✅ Loaded ${Object.keys(state.metadata).length} file metadata`);
+                    resolve();
+                };
+            };
+        });
+    }
+    
+    function saveRecords(records) {
+        return new Promise((resolve) => {
+            indexedDB.open(DB_NAME, DB_VERSION).onsuccess = (e) => {
+                var db = e.target.result;
+                var tx = db.transaction(STORE_NAME, 'readwrite');
+                var store = tx.objectStore(STORE_NAME);
+                
+                store.clear();
+                records.forEach(r => store.put(r));
+                
+                tx.oncomplete = () => {
+                    state.records = records;
+                    log(`✅ Saved ${records.length} records to DB`);
+                    resolve();
+                };
+            };
+        });
+    }
+    
+    function loadRecords() {
+        return new Promise((resolve) => {
+            indexedDB.open(DB_NAME, DB_VERSION).onsuccess = (e) => {
+                var db = e.target.result;
+                var tx = db.transaction(STORE_NAME);
+                var store = tx.objectStore(STORE_NAME);
+                var getAllReq = store.getAll();
+                
+                getAllReq.onsuccess = () => {
+                    state.records = getAllReq.result || [];
+                    log(`✅ Loaded ${state.records.length} records from DB`);
+                    resolve();
+                };
+            };
+        });
     }
     
     // ===== TAB 0: DATA SOURCES =====
@@ -210,35 +294,42 @@
         
         var html = '';
         files.forEach(f => {
-            var updated = getLatestTimestamp(f.key);
+            var meta = state.metadata[f.key];
+            var loaded = meta ? formatTime(meta.lastLoadedAt) : '—';
             html += `<tr>
                 <td>${f.name}</td>
                 <td>${f.count}</td>
-                <td>${updated}</td>
-                <td style="text-align:center;"><button onclick="dataLoad('${f.key}','${f.name}')" style="padding:6px 10px; font-size:9px;">⬇️</button></td>
-                <td style="text-align:center;"><button onclick="refreshDB('${f.key}','${f.name}')" style="padding:6px 10px; font-size:9px;">🔄</button></td>
+                <td>${loaded}</td>
+                <td><button onclick="dataLoad('${f.key}',${f.count},'${f.name}')" style="padding:6px 10px;">⬇️</button></td>
+                <td><button onclick="refreshDB('${f.key}',${f.count},'${f.name}')" style="padding:6px 10px;">🔄</button></td>
             </tr>`;
         });
         document.getElementById('sourcesTable').innerHTML = html;
     }
     
-    function dataLoad(key, name) {
+    async function dataLoad(key, count, name) {
         log(`⬇️ DATA LOAD: ${key}...`);
         document.getElementById('status').textContent = '⏳ Loading';
-        setTimeout(() => {
-            log(`✅ ${key} loaded from web (${name})`);
+        
+        setTimeout(async () => {
+            await saveMetadata(key, count);
+            log(`✅ ${key} loaded from web (${count} records)`);
             renderSources();
+            renderProgress();
             toast(`✅ ${name} loaded!`);
             document.getElementById('status').textContent = '✅ Ready';
         }, 800);
     }
     
-    function refreshDB(key, name) {
+    async function refreshDB(key, count, name) {
         log(`🔄 REFRESH DB: ${key}...`);
         document.getElementById('status').textContent = '⏳ Merging';
-        setTimeout(() => {
-            log(`✅ ${key} merged to IndexedDB`);
+        
+        setTimeout(async () => {
+            await saveMetadata(key, count);
+            log(`✅ ${key} merged to IndexedDB (${count} records)`);
             renderSources();
+            renderProgress();
             updateHeader();
             toast(`✅ ${name} refreshed!`);
             document.getElementById('status').textContent = '✅ Ready';
@@ -247,18 +338,18 @@
     
     // ===== TAB 1: SYMBOLS =====
     function renderSymbols() {
-        if (data.records.length === 0) {
+        if (state.records.length === 0) {
             document.getElementById('symbolsTable').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#666;">Click LOAD ALL to load data</td></tr>';
             return;
         }
         
         var html = '';
-        data.records.forEach(r => {
+        state.records.forEach(r => {
             html += `<tr>
                 <td class="sticky">${r.ticker}</td>
                 <td>${r.name}</td>
-                <td><input type="number" class="qty" value="${r.qty||0}" data-ticker="${r.ticker}" style="width:60px;"></td>
-                <td><input type="number" class="avg" value="${r.avg||0}" step="0.01" data-ticker="${r.ticker}" style="width:80px;"></td>
+                <td><input type="number" class="qty" value="${r.qty||0}" data-ticker="${r.ticker}" style="width:50px;" disabled></td>
+                <td><input type="number" class="avg" value="${r.avg||0}" step="0.01" data-ticker="${r.ticker}" style="width:70px;" disabled></td>
                 <td>✅ 📋<br>27/03/26</td>
                 <td>✅ 📋<br>27/03/26</td>
             </tr>`;
@@ -267,18 +358,18 @@
     }
     
     function toggleEdit() {
-        data.editMode = !data.editMode;
-        document.querySelectorAll('.qty, .avg').forEach(el => el.disabled = !data.editMode);
-        document.getElementById('editBtn').textContent = `🔧 Edit: ${data.editMode ? 'ON' : 'OFF'}`;
-        document.getElementById('editSection').style.display = data.editMode ? 'block' : 'none';
+        state.editMode = !state.editMode;
+        document.querySelectorAll('.qty, .avg').forEach(el => el.disabled = !state.editMode);
+        document.getElementById('editBtn').textContent = `🔧 Edit: ${state.editMode ? 'ON' : 'OFF'}`;
+        document.getElementById('editSection').style.display = state.editMode ? 'block' : 'none';
     }
     
     function saveEdits() {
         log('💾 SAVE CHANGES...');
         setTimeout(() => {
-            log('✅ Changes saved to IndexedDB');
+            log('✅ Changes saved');
             toast('✅ Changes saved!');
-            data.editMode = false;
+            state.editMode = false;
             document.querySelectorAll('.qty, .avg').forEach(el => el.disabled = true);
             document.getElementById('editBtn').textContent = '🔧 Edit: OFF';
             document.getElementById('editSection').style.display = 'none';
@@ -286,7 +377,7 @@
     }
     
     function cancelEdits() {
-        data.editMode = false;
+        state.editMode = false;
         document.querySelectorAll('.qty, .avg').forEach(el => el.disabled = true);
         document.getElementById('editBtn').textContent = '🔧 Edit: OFF';
         document.getElementById('editSection').style.display = 'none';
@@ -295,7 +386,7 @@
     
     function downloadCSV() {
         var csv = 'TICKER,NAME,QTY,AVG\n';
-        data.records.forEach(r => csv += `${r.ticker},${r.name},${r.qty},${r.avg}\n`);
+        state.records.forEach(r => csv += `${r.ticker},${r.name},${r.qty},${r.avg}\n`);
         var link = document.createElement('a');
         link.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
         link.download = 'symbols.csv';
@@ -315,7 +406,8 @@
         
         var html = '';
         files.forEach(f => {
-            var time = getLatestTimestamp(f.key);
+            var meta = state.metadata[f.key];
+            var time = meta ? formatTime(meta.lastLoadedAt) : '—';
             html += `<tr><td>${f.name}</td><td>${f.count}</td><td>${time}</td></tr>`;
         });
         document.getElementById('progressTable').innerHTML = html;
@@ -339,7 +431,7 @@
     function testPat() {
         var pat = document.getElementById('patToken').value;
         if (!pat) { toast('❌ Enter PAT'); return; }
-        log('🔗 Testing connection...');
+        log('🔗 Testing GitHub...');
         setTimeout(() => {
             document.getElementById('patStatus').textContent = '✅ Configured - murugkan/bharatmarkets';
             log('✅ Connected to GitHub');
@@ -348,52 +440,71 @@
     }
     
     // ===== ACTION BUTTONS =====
-    function loadAll() {
+    async function loadAll() {
         log('🚀 LOAD ALL...');
         document.getElementById('status').textContent = '⏳ Loading';
-        setTimeout(() => {
-            data.records = [
-                {ticker:'ABCAPI',name:'Aditya Birla Capital',qty:80,avg:161.59},
-                {ticker:'ABFRL',name:'Aditya Birla Fashion',qty:300,avg:83.62},
-                {ticker:'ACMESOLAR',name:'Acme Solar',qty:205,avg:224.21},
-                {ticker:'AFCONS',name:'Afcons Infra',qty:115,avg:478.43},
-                {ticker:'APOLLOHOSP',name:'Apollo Hospitals',qty:4,avg:4340.59}
-            ];
+        
+        setTimeout(async () => {
+            var stocks = [];
+            for (var i = 0; i < 96; i++) {
+                stocks.push({
+                    ticker: 'SYM' + i,
+                    name: 'Stock ' + i,
+                    qty: Math.floor(Math.random() * 500),
+                    avg: (Math.random() * 500).toFixed(2)
+                });
+            }
             
-            log('✅ Loaded all files');
-            log('✅ Merged 96 records');
-            log('✅ Saved to IndexedDB');
+            await saveRecords(stocks);
+            await saveMetadata('unified-symbols', 96);
+            await saveMetadata('prices', 84);
+            await saveMetadata('fundamentals', 90);
+            await saveMetadata('guidance', 45);
+            await saveMetadata('macro_data', 12);
+            
+            renderSources();
             renderSymbols();
             renderProgress();
             updateHeader();
+            log('✅ Loaded all files');
+            log('✅ Merged 96 records');
+            log('✅ Saved to IndexedDB');
             toast('✅ Load complete!');
             document.getElementById('status').textContent = '✅ Ready';
         }, 1000);
     }
     
-    function reloadAuto() {
+    async function reloadAuto() {
         log('🔄 RELOAD AUTO...');
         document.getElementById('status').textContent = '⏳ Reloading';
-        setTimeout(() => {
-            log('🗑️ DB cleared');
+        
+        setTimeout(async () => {
+            indexedDB.deleteDatabase(DB_NAME);
+            await initDB();
+            await loadMetadata();
             log('✅ Data reloaded fresh');
+            renderSources();
             updateHeader();
             toast('✅ Reload complete!');
             document.getElementById('status').textContent = '✅ Ready';
         }, 1000);
     }
     
-    function clearDB() {
+    async function clearDB() {
         if (!confirm('Clear DB?')) return;
-        data.records = [];
+        indexedDB.deleteDatabase(DB_NAME);
+        await initDB();
+        state.records = [];
+        state.metadata = {};
         log('🗑️ Database cleared');
+        renderSources();
         renderSymbols();
         updateHeader();
         toast('✅ Cleared!');
     }
     
     function updateHeader() {
-        document.getElementById('dbCount').textContent = data.records.length;
+        document.getElementById('dbCount').textContent = state.records.length;
         document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         document.getElementById('lastUpdated').textContent = formatTime(new Date()).split(' ')[0];
     }
@@ -401,6 +512,9 @@
     // ===== INIT =====
     async function init() {
         log('🚀 ETL initializing...');
+        await initDB();
+        await loadMetadata();
+        await loadRecords();
         renderSources();
         renderSymbols();
         renderProgress();
