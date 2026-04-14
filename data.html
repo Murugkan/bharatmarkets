@@ -751,11 +751,76 @@
     }
 
     function deleteStock(ticker) {
-        if (confirm(`Delete ${ticker}?`)) {
-            log(`🗑️ Marked ${ticker} for deletion`);
-            document.getElementById(`row-${ticker}`).style.opacity = '0.5';
-            showToast(`✅ ${ticker} marked for deletion`);
+        if (confirm(`Delete ${ticker} from unified-symbols.json?`)) {
+            var pat = document.getElementById('patToken').value;
+            if (!pat) {
+                showToast('❌ PAT token required to delete');
+                log('❌ PAT token missing');
+                return;
+            }
+            
+            log(`🗑️ Deleting ${ticker}...`);
+            
+            // Remove from masterData
+            masterData = masterData.filter(s => s.ticker !== ticker);
+            
+            // Upload to GitHub
+            uploadToGitHub(pat, 'unified-symbols.json', { symbols: masterData }, `Delete ${ticker}`);
         }
+    }
+    
+    function uploadToGitHub(pat, filename, data, message) {
+        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filename}`;
+        
+        // First get the current file SHA
+        fetch(url, {
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        })
+        .then(r => r.json())
+        .then(fileInfo => {
+            if (!fileInfo.sha) {
+                showToast('❌ Could not get file info from GitHub');
+                log('❌ File info error: ' + (fileInfo.message || 'Unknown'));
+                return;
+            }
+            
+            const content = btoa(JSON.stringify(data, null, 2));
+            
+            // Upload with SHA
+            return fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    content: content,
+                    sha: fileInfo.sha
+                })
+            });
+        })
+        .then(r => {
+            if (r.ok) {
+                log(`✅ ${filename} updated on GitHub`);
+                showToast(`✅ Deleted!`);
+                updateHeader();
+                renderSymbols();
+            } else {
+                return r.json().then(err => {
+                    log(`❌ GitHub error: ${err.message}`);
+                    showToast(`❌ Upload failed`);
+                });
+            }
+        })
+        .catch(e => {
+            log(`❌ Error: ${e.message}`);
+            showToast(`❌ Error uploading`);
+        });
     }
 
     function saveChanges() {
