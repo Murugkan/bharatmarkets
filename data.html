@@ -361,8 +361,6 @@
                     </tbody>
                 </table>
             </div>
-        </div>
-
         <!-- SECTION 2: LIVE LOG -->
         <div class="section-box">
             <div class="section-header">📋 Live Log</div>
@@ -547,18 +545,19 @@
         log('🚀 ETL Center starting up...');
         
         try {
-            // Just load from IndexedDB - don't fetch from GitHub
+            await initializeFromGitHub();
+            await new Promise(resolve => setTimeout(resolve, 300));
             await loadFromIndexedDB();
             
             if (masterData.length > 0) {
-                log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
+                log(`📊 Successfully loaded: ${masterData.length} records`);
                 document.getElementById('status').textContent = '✅ Ready';
             } else {
-                log('⚠️ No data. Click 🚀 LOAD ALL to fetch from GitHub');
+                log('⚠️ No data loaded. Use 🚀 LOAD ALL button to fetch from GitHub');
                 document.getElementById('status').textContent = '⚠️ Click LOAD ALL';
             }
         } catch (e) {
-            log(`⚠️ Error: ${e.message}`);
+            log(`⚠️ Error during initialization: ${e.message}`);
             document.getElementById('status').textContent = '⚠️ Error';
         }
         
@@ -629,16 +628,16 @@
     }
 
     function dataLoad(source) {
-        log(`⬇️ Loading ${source}...`);
-        showToast(`Fetching ${source}...`);
+        log(`⬇️ DATA LOAD initiated for ${source}...`);
+        showToast(`Loading ${source}...`);
         const sourceObj = DATA_SOURCES.find(s => s.name === source);
         if (!sourceObj) return;
         
         fetchGitHubData(sourceObj.path).then(data => {
             if (data) {
-                log(`✅ Fetched ${source} from GitHub`);
-                mergeAndSaveData(source, data);
-                showToast(`✅ ${source} loaded & merged!`);
+                log(`✅ ${source} loaded from GitHub`);
+                showToast(`✅ ${source} loaded!`);
+                sourceData[source] = data;
             } else {
                 log(`❌ Failed to load ${source}`);
                 showToast(`❌ Failed to load ${source}`);
@@ -654,46 +653,11 @@
         
         fetchGitHubData(sourceObj.path).then(data => {
             if (data) {
+                sourceData[source] = data;
                 log(`✅ ${source} refreshed from GitHub`);
-                mergeAndSaveData(source, data);
+                showToast(`✅ ${source} refreshed!`);
             }
         });
-    }
-
-    function mergeAndSaveData(source, data) {
-        let priceMap = {}, fundMap = {};
-        
-        if (source === 'prices.json') {
-            priceMap = data.quotes && typeof data.quotes === 'object' ? data.quotes : data;
-            masterData.forEach((stock, i) => {
-                if (priceMap[stock.ticker]) {
-                    masterData[i] = {...masterData[i], ...priceMap[stock.ticker]};
-                }
-            });
-        } else if (source === 'fundamentals.json') {
-            fundMap = data.stocks && typeof data.stocks === 'object' ? data.stocks : data;
-            masterData.forEach((stock, i) => {
-                if (fundMap[stock.ticker]) {
-                    masterData[i] = {...masterData[i], ...fundMap[stock.ticker]};
-                }
-            });
-        }
-        
-        // Save to IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            var transaction = db.transaction(STORE_NAME, 'readwrite');
-            var store = transaction.objectStore(STORE_NAME);
-            store.clear();
-            masterData.forEach(stock => store.put(stock));
-            transaction.oncomplete = () => {
-                log(`✅ Merged ${source} to IndexedDB`);
-                renderSymbols();
-                renderDataSources();
-                showToast(`✅ ${source} saved!`);
-            };
-        };
     }
 
     async function loadFromIndexedDB() {
@@ -754,23 +718,17 @@
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
                 
-                // Check if guidance exists
+                // Check guidance data
                 var hasGuidance = guidanceData[ticker] ? '✅' : '—';
                 var guidanceDate = guidanceData[ticker]?.guidance?.updated || '—';
-                var guidanceBtn = guidanceData[ticker] ? `<button onclick="openGuidanceModal('${ticker}')" style="padding:2px 4px; font-size:8px; background:#00f2ff; color:#000; border:none; border-radius:2px; cursor:pointer;">📋</button>` : '';
-                
-                // Check if insight exists
-                var hasInsight = guidanceData[ticker] ? '✅' : '—';
-                var insightDate = guidanceData[ticker]?.insights?.updated || '—';
-                var insightBtn = guidanceData[ticker] ? `<button onclick="openInsightModal('${ticker}')" style="padding:2px 4px; font-size:8px; background:#00f2ff; color:#000; border:none; border-radius:2px; cursor:pointer;">📋</button>` : '';
 
                 html += `<tr id="row-${ticker}">
                     <td class="sticky">${ticker}</td>
                     <td>${name}</td>
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                    <td style="font-size:9px;">${hasGuidance} ${guidanceDate}<br>${guidanceBtn}</td>
-                    <td style="font-size:9px;">${hasInsight} ${insightDate}<br>${insightBtn}</td>
+                    <td style="font-size:9px;">${hasGuidance}<br>${guidanceDate}</td>
+                    <td>—</td>
                     <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
                 </tr>`;
             });
@@ -791,173 +749,14 @@
     }
 
     function deleteStock(ticker) {
-        if (confirm(`Delete ${ticker} from unified-symbols.json?`)) {
-            var pat = document.getElementById('patToken').value;
-            if (!pat) {
-                showToast('❌ PAT required to delete');
-                return;
-            }
-            
-            // Remove from masterData
-            masterData = masterData.filter(s => s.ticker !== ticker);
-            
-            // Upload to GitHub
-            uploadToGitHub(pat, 'unified-symbols.json', masterData, `Delete ${ticker}`);
-            
-            log(`🗑️ ${ticker} deleted from unified-symbols.json`);
-            updateHeader();
-            renderSymbols();
+        if (confirm(`Delete ${ticker}?`)) {
+            log(`🗑️ Marked ${ticker} for deletion`);
+            document.getElementById(`row-${ticker}`).style.opacity = '0.5';
+            showToast(`✅ ${ticker} marked for deletion`);
         }
-    }
-    
-    function uploadToGitHub(pat, filename, data, message) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filename}`;
-        
-        // Get current file to get sha
-        fetch(`${RAW_GITHUB_URL}/${filename}`)
-            .then(r => r.json())
-            .then(currentData => {
-                // Get sha from GitHub API
-                fetch(url, {
-                    headers: { 'Authorization': `token ${pat}` }
-                })
-                .then(r => r.json())
-                .then(fileInfo => {
-                    const content = btoa(JSON.stringify(data, null, 2));
-                    
-                    return fetch(url, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `token ${pat}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            message: message,
-                            content: content,
-                            sha: fileInfo.sha
-                        })
-                    });
-                })
-                .then(r => {
-                    if (r.ok) {
-                        log(`✅ ${filename} uploaded to GitHub`);
-                        showToast(`✅ ${filename} updated!`);
-                    } else {
-                        log(`❌ Failed to upload ${filename}`);
-                        showToast(`❌ Upload failed`);
-                    }
-                });
-            })
-            .catch(e => {
-                log(`❌ Upload error: ${e.message}`);
-                showToast(`❌ Error uploading`);
-            });
     }
 
-    function openGuidanceModal(ticker) {
-        var guidance = guidanceData[ticker]?.guidance;
-        if (!guidance) return;
-        
-        var modal = document.createElement('div');
-        modal.style.cssText = `
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.95); z-index: 9999;
-            display: flex; align-items: center; justify-content: center;
-        `;
-        
-        modal.innerHTML = `
-            <div style="background: #0a0a0a; border: 2px solid #00f2ff; border-radius: 8px; padding: 20px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; color: #fff;">
-                <div style="font-size: 14px; color: #00f2ff; margin-bottom: 15px; font-weight: bold;">🧙 Guidance: ${ticker}</div>
-                <textarea id="guidance-text" style="width: 100%; height: 300px; padding: 10px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-family: monospace; font-size: 11px;">${JSON.stringify(guidance, null, 2)}</textarea>
-                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                    <button onclick="saveGuidance('${ticker}')" style="flex:1; padding: 10px; background: #00ff88; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">💾 SAVE</button>
-                    <button onclick="closeModal()" style="flex:1; padding: 10px; background: #666; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">❌ CLOSE</button>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        window.currentGuidanceModal = modal;
-    }
-    
-    function openInsightModal(ticker) {
-        var insight = guidanceData[ticker]?.insights;
-        if (!insight) return;
-        
-        var modal = document.createElement('div');
-        modal.style.cssText = `
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.95); z-index: 9999;
-            display: flex; align-items: center; justify-content: center;
-        `;
-        
-        modal.innerHTML = `
-            <div style="background: #0a0a0a; border: 2px solid #00f2ff; border-radius: 8px; padding: 20px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; color: #fff;">
-                <div style="font-size: 14px; color: #00f2ff; margin-bottom: 15px; font-weight: bold;">💡 Insight: ${ticker}</div>
-                <textarea id="insight-text" style="width: 100%; height: 300px; padding: 10px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-family: monospace; font-size: 11px;">${JSON.stringify(insight, null, 2)}</textarea>
-                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                    <button onclick="saveInsight('${ticker}')" style="flex:1; padding: 10px; background: #00ff88; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">💾 SAVE</button>
-                    <button onclick="closeModal()" style="flex:1; padding: 10px; background: #666; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">❌ CLOSE</button>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        window.currentInsightModal = modal;
-    }
-    
-    function closeModal() {
-        if (window.currentGuidanceModal) {
-            window.currentGuidanceModal.remove();
-            window.currentGuidanceModal = null;
-        }
-        if (window.currentInsightModal) {
-            window.currentInsightModal.remove();
-            window.currentInsightModal = null;
-        }
-    }
-    
-    function saveGuidance(ticker) {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT required');
-            return;
-        }
-        
-        try {
-            var updated = JSON.parse(document.getElementById('guidance-text').value);
-            guidanceData[ticker].guidance = updated;
-            uploadGuidanceToGitHub(pat);
-            closeModal();
-            log(`✅ Guidance saved for ${ticker}`);
-            showToast(`✅ Saved!`);
-        } catch(e) {
-            showToast('❌ Invalid JSON');
-        }
-    }
-    
-    function saveInsight(ticker) {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT required');
-            return;
-        }
-        
-        try {
-            var updated = JSON.parse(document.getElementById('insight-text').value);
-            guidanceData[ticker].insights = updated;
-            uploadGuidanceToGitHub(pat);
-            closeModal();
-            log(`✅ Insight saved for ${ticker}`);
-            showToast(`✅ Saved!`);
-        } catch(e) {
-            showToast('❌ Invalid JSON');
-        }
-    }
-    
-    function uploadGuidanceToGitHub(pat) {
-        uploadToGitHub(pat, 'guidance.json', guidanceData, 'Update guidance/insights');
-    }
+    function saveChanges() {
         log('💾 Saving changes...');
         setTimeout(() => {
             log('✅ Changes saved to IndexedDB');
@@ -1090,13 +889,13 @@
         const fundamentalsData = results[2] || {};
         const newGuidanceData = results[3] || {};
         
-        log('📦 Parsing results...');
-        
-        // Store guidance data globally
+        // Store guidance globally
         if (newGuidanceData && typeof newGuidanceData === 'object') {
             guidanceData = newGuidanceData;
             log('✅ Loaded guidance data');
         }
+        
+        log('📦 Parsing results...');
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
