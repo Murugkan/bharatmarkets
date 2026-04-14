@@ -338,9 +338,9 @@
         
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
-            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000;"><span style="font-size:14px;">🚀</span>LOAD ALL</button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000;"><span style="font-size:14px;">🔄</span>RELOAD</button>
-            <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff;"><span style="font-size:14px;">🗑️</span>CLEAR DB</button>
+            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🚀</span>LOAD ALL</button>
+            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>RELOAD</button>
+            <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px;"><span style="font-size:12px;">🗑️</span>CLEAR DB</button>
         </div>
 
         <!-- SECTION 1: DATA SOURCES -->
@@ -352,7 +352,7 @@
                         <tr>
                             <th>Source</th>
                             <th>Count</th>
-                            <th>Updated</th>
+                            <th>Updated (IST)</th>
                             <th style="text-align:center;">Data Load</th>
                             <th style="text-align:center;">Refresh DB</th>
                         </tr>
@@ -360,49 +360,6 @@
                     <tbody id="sources-table">
                     </tbody>
                 </table>
-            </div>
-        </div>
-
-        <!-- SECTION 2: JSON METADATA TIMES -->
-        <div class="section-box">
-            <div class="section-header success">📦 Data Updated Times (from JSON)</div>
-            <div id="fetch-times" style="font-size:11px; line-height:1.8; color:var(--tx);">
-                <div style="color:#666;">No data loaded yet. Click LOAD ALL to fetch.</div>
-            </div>
-        </div>
-
-        <!-- SECTION 3: LOAD PROGRESS TABLE -->
-        <div class="section-box">
-            <div class="section-header">📊 Load Progress</div>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Source</th>
-                            <th>Count</th>
-                            <th>Loaded At</th>
-                        </tr>
-                    </thead>
-                    <tbody id="progress-table">
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- SECTION 4: COMMON DB REFRESH -->
-        <div class="section-box">
-            <div class="section-header success">🗄️ Common DB Refresh (all files)</div>
-            <div style="font-size:11px; line-height:1.8; color:var(--tx);">
-                <div>Merge Time: <span id="mergeTime" style="color:var(--gr); font-weight:bold;">—</span></div>
-                <div>DB Save Time: <span id="dbSaveTime" style="color:var(--gr); font-weight:bold;">—</span></div>
-            </div>
-        </div>
-
-        <!-- SECTION 5: LIVE LOG -->
-        <div class="section-box">
-            <div class="section-header">📋 Live Log</div>
-            <div class="log-box" id="live-log">
-                <div style="color:#666;">[Logs appear here]</div>
             </div>
         </div>
 
@@ -475,7 +432,6 @@
     let editMode = false;
     let logMessages = [];
     let dataUpdatedTimes = {};
-    let dbRefreshTime = null;
 
     const GITHUB_CONFIG = {
         OWNER: 'murugkan',
@@ -495,9 +451,7 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
-        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals },
-        { name: 'guidance.json', path: GITHUB_CONFIG.PATHS.guidance },
-        { name: 'macro_data.json', path: GITHUB_CONFIG.PATHS.macro }
+        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
     ];
 
     async function fetchGitHubData(filePath) {
@@ -602,7 +556,6 @@
         
         renderDataSources();
         renderSymbols();
-        renderProgress();
         updateHeader();
     }
 
@@ -633,15 +586,35 @@
 
     function renderDataSources() {
         var html = '';
-        DATA_SOURCES.forEach(s => {
+        DATA_SOURCES.forEach((s, index) => {
             var count = masterData.length > 0 ? masterData.length : '—';
-            var updated = new Date().toLocaleDateString('en-GB');
+            var jsonTime = dataUpdatedTimes[s.path] || '—';
+            
+            // Convert ISO to IST (UTC+5:30)
+            var istTime = '—';
+            if (jsonTime && jsonTime !== '—' && !jsonTime.includes('❌')) {
+                try {
+                    var date = new Date(jsonTime);
+                    istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                } catch(e) {
+                    istTime = jsonTime;
+                }
+            }
+            
+            // First file (unified-symbols) opens wizard, others load data
+            var loadButton = '';
+            if (index === 0) {
+                loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
+            } else {
+                loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
+            }
+            
             html += `<tr>
                 <td>${s.name}</td>
                 <td>${count}</td>
-                <td>${updated}</td>
-                <td style="text-align:center;"><button onclick="dataLoad('${s.name}')" style="padding:6px 10px; font-size:9px;">⬇️</button></td>
-                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:6px 10px; font-size:9px;">🔄</button></td>
+                <td style="font-size:9px;">${istTime}</td>
+                <td style="text-align:center;">${loadButton}</td>
+                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:4px 8px; font-size:8px;">🔄</button></td>
             </tr>`;
         });
         document.getElementById('sources-table').innerHTML = html;
@@ -802,34 +775,17 @@
         showToast('📊 CSV downloaded!');
     }
 
-    function renderProgress() {
-        var updateHTML = '';
-        DATA_SOURCES.forEach(source => {
-            const updateTime = dataUpdatedTimes[source.path] || '—';
-            updateHTML += `<div>📦 ${source.name}: <b style="color:var(--gr);">${updateTime}</b></div>`;
-        });
-        
-        document.getElementById('fetch-times').innerHTML = updateHTML || '<div style="color:#666;">No data loaded yet. Click LOAD ALL to fetch.</div>';
 
-        var sources = [
-            { name: 'unified-symbols.json', count: masterData.length || '—', time: dataUpdatedTimes[DATA_SOURCES[0].path] || '—' },
-            { name: 'prices.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[1].path] || '—' },
-            { name: 'fundamentals.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[2].path] || '—' },
-            { name: 'guidance.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[3].path] || '—' },
-            { name: 'macro_data.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[4].path] || '—' }
-        ];
-
-        var html = '';
-        sources.forEach(s => {
-            html += `<tr><td>${s.name}</td><td>${s.count}</td><td>${s.time}</td></tr>`;
-        });
-
-        document.getElementById('progress-table').innerHTML = html;
-        
-        if (dbRefreshTime) {
-            document.getElementById('mergeTime').textContent = dbRefreshTime.mergeTime;
-            document.getElementById('dbSaveTime').textContent = dbRefreshTime.dbSaveTime;
+    function openWizard() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required to open wizard');
+            switchTab('pat');
+            return;
         }
+        
+        // Pass PAT and current data to wizard
+        window.location.href = 'nexus.html?pat=' + encodeURIComponent(pat) + '&mode=edit';
     }
 
     function togglePatVisibility() {
@@ -866,6 +822,7 @@
         document.getElementById('status').textContent = '⏳ Loading';
         showToast('Loading all data from GitHub...');
         
+        // Fetch only 3 core data sources
         const results = await Promise.all(
             DATA_SOURCES.map(source => fetchGitHubData(source.path))
         );
@@ -893,8 +850,6 @@
         
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
-        const guidanceData = results[3] || {};
-        const macroData = results[4] || {};
         
         log('📦 Parsing results...');
         
@@ -914,15 +869,6 @@
             fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
         }
         
-        const guidMap = {};
-        Object.keys(guidanceData).forEach(key => {
-            if (key !== '_metadata' && guidanceData[key]) {
-                guidMap[key] = guidanceData[key];
-            }
-        });
-        
-        const mergeTs = new Date().toLocaleTimeString();
-        
         let mergedStocks = [];
         symbolsList.forEach(symbol => {
             const ticker = symbol.ticker || symbol.TICKER || symbol.name;
@@ -932,7 +878,6 @@
                 ...symbol,
                 ...(priceMap[ticker] || {}),
                 ...(fundMap[ticker] || {}),
-                ...(guidMap[ticker] || {}),
                 ticker: ticker
             };
             
@@ -955,21 +900,11 @@
                 });
                 
                 transaction.oncomplete = () => {
-                    const dbSaveTs = new Date().toLocaleTimeString();
-                    
-                    dbRefreshTime = {
-                        mergeTime: mergeTs,
-                        dbSaveTime: dbSaveTs
-                    };
-                    
                     log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
-                    
-                    sourceData.guidance = guidanceData;
                     
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
-                    renderProgress();
                     document.getElementById('status').textContent = '✅ Ready';
                     showToast('✅ Load complete!');
                 };
@@ -1007,7 +942,6 @@
         updateHeader();
         renderSymbols();
         renderDataSources();
-        renderProgress();
         document.getElementById('status').textContent = '✅ Ready';
         showToast('✅ Reload complete!');
     }
