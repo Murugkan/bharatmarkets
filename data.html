@@ -541,23 +541,22 @@
     }
 
     async function init() {
-        document.getElementById('status').textContent = '⏳ Initializing...';
-        log('🚀 ETL Center starting up...');
+        document.getElementById('status').textContent = '⏳ Loading...';
+        log('🚀 ETL Center starting...');
         
         try {
-            await initializeFromGitHub();
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // Load from IndexedDB only - don't clear!
             await loadFromIndexedDB();
             
             if (masterData.length > 0) {
-                log(`📊 Successfully loaded: ${masterData.length} records`);
+                log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
                 document.getElementById('status').textContent = '✅ Ready';
             } else {
-                log('⚠️ No data loaded. Use 🚀 LOAD ALL button to fetch from GitHub');
+                log('⚠️ No data. Click 🚀 LOAD ALL to fetch from GitHub');
                 document.getElementById('status').textContent = '⚠️ Click LOAD ALL';
             }
         } catch (e) {
-            log(`⚠️ Error during initialization: ${e.message}`);
+            log(`⚠️ Error: ${e.message}`);
             document.getElementById('status').textContent = '⚠️ Error';
         }
         
@@ -628,16 +627,15 @@
     }
 
     function dataLoad(source) {
-        log(`⬇️ DATA LOAD initiated for ${source}...`);
+        log(`⬇️ Loading ${source}...`);
         showToast(`Loading ${source}...`);
         const sourceObj = DATA_SOURCES.find(s => s.name === source);
         if (!sourceObj) return;
         
         fetchGitHubData(sourceObj.path).then(data => {
             if (data) {
-                log(`✅ ${source} loaded from GitHub`);
-                showToast(`✅ ${source} loaded!`);
-                sourceData[source] = data;
+                log(`✅ ${source} fetched from GitHub`);
+                mergeAndSaveData(source, data);
             } else {
                 log(`❌ Failed to load ${source}`);
                 showToast(`❌ Failed to load ${source}`);
@@ -646,18 +644,58 @@
     }
 
     function refreshDB(source) {
-        log(`🔄 REFRESH DB initiated for ${source}...`);
+        log(`🔄 Refreshing ${source}...`);
         showToast(`Refreshing ${source}...`);
         const sourceObj = DATA_SOURCES.find(s => s.name === source);
         if (!sourceObj) return;
         
         fetchGitHubData(sourceObj.path).then(data => {
             if (data) {
-                sourceData[source] = data;
-                log(`✅ ${source} refreshed from GitHub`);
-                showToast(`✅ ${source} refreshed!`);
+                log(`✅ ${source} fetched from GitHub`);
+                mergeAndSaveData(source, data);
+            } else {
+                log(`❌ Failed to refresh ${source}`);
+                showToast(`❌ Failed to refresh ${source}`);
             }
         });
+    }
+    
+    function mergeAndSaveData(source, data) {
+        let priceMap = {}, fundMap = {};
+        
+        if (source === 'prices.json') {
+            priceMap = data.quotes && typeof data.quotes === 'object' ? data.quotes : data;
+            masterData.forEach((stock, i) => {
+                if (priceMap[stock.ticker]) {
+                    masterData[i] = {...masterData[i], ...priceMap[stock.ticker]};
+                }
+            });
+            log(`✅ Merged prices into ${masterData.length} stocks`);
+        } else if (source === 'fundamentals.json') {
+            fundMap = data.stocks && typeof data.stocks === 'object' ? data.stocks : data;
+            masterData.forEach((stock, i) => {
+                if (fundMap[stock.ticker]) {
+                    masterData[i] = {...masterData[i], ...fundMap[stock.ticker]};
+                }
+            });
+            log(`✅ Merged fundamentals into ${masterData.length} stocks`);
+        }
+        
+        // Save to IndexedDB
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = (e) => {
+            var db = e.target.result;
+            var transaction = db.transaction(STORE_NAME, 'readwrite');
+            var store = transaction.objectStore(STORE_NAME);
+            store.clear();
+            masterData.forEach(stock => store.put(stock));
+            transaction.oncomplete = () => {
+                log(`✅ Saved to IndexedDB`);
+                renderSymbols();
+                renderDataSources();
+                showToast(`✅ ${source} merged & saved!`);
+            };
+        };
     }
 
     async function loadFromIndexedDB() {
