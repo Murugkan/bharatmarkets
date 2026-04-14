@@ -24,7 +24,7 @@
             font-size: 11px;
             overflow: hidden;
             -webkit-text-size-adjust: 100%;
-            padding-bottom: 140px;
+            padding-bottom: 80px;
         }
 
         /* HEADER */
@@ -81,7 +81,7 @@
 
         /* CONTENT AREA */
         .content {
-            height: calc(100vh - 240px);
+            height: calc(100vh - 180px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 12px;
@@ -142,21 +142,19 @@
         .btn-success { background: var(--gr); }
         .btn-warning { background: var(--warning); }
 
-        /* ACTION BUTTONS */
-        .action-buttons {
-            position: fixed;
-            bottom: 80px;
-            left: 0;
-            right: 0;
-            background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.99) 100%);
-            backdrop-filter: blur(15px);
-            border-top: 3px solid var(--bl);
-            padding: 14px 12px;
+        /* INLINE BUTTONS */
+        .inline-buttons {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 12px;
-            z-index: 1000;
-            box-shadow: 0 -8px 24px rgba(0, 242, 255, 0.15);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .inline-buttons button {
+            width: 100%;
+            padding: 10px 8px;
+            font-size: 11px;
+            border-radius: 6px;
         }
 
         /* NAVIGATION FOOTER */
@@ -203,45 +201,6 @@
             letter-spacing: 1px;
         }
 
-        .action-buttons button {
-            width: 100%; 
-            padding: 14px 8px;
-            font-size: 12px;
-            font-weight: 800;
-            letter-spacing: 0.8px;
-            transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .action-buttons button:before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.1);
-            transition: left 0.3s;
-        }
-
-        .action-buttons button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
-            opacity: 1 !important;
-        }
-
-        .action-buttons button:hover:before {
-            left: 100%;
-        }
-
-        .action-buttons button:active {
-            transform: translateY(-1px);
-        }
-
         /* PAT CONFIG */
         .pat-section {
             background: var(--b1);
@@ -269,7 +228,7 @@
         /* TOAST */
         .toast {
             position: fixed;
-            bottom: 130px;
+            bottom: 100px;
             left: 50%;
             transform: translateX(-50%);
             background: var(--gr);
@@ -304,7 +263,6 @@
             font-size: 9px;
             color: var(--gr);
             line-height: 1.4;
-            margin-top: 12px;
         }
 
         /* INPUT FIELDS */
@@ -320,6 +278,27 @@
         input[type="number"]:focus, input[type="text"]:focus {
             outline: none;
             border-color: var(--bl);
+        }
+
+        /* SECTION HEADERS */
+        .section-header {
+            font-size: 12px;
+            font-weight: 800;
+            margin-bottom: 10px;
+            color: var(--bl);
+        }
+
+        .section-header.success {
+            color: var(--gr);
+        }
+
+        /* SECTION BOX */
+        .section-box {
+            margin: 15px 0;
+            padding: 12px;
+            background: var(--s1);
+            border-radius: 8px;
+            border: 1px solid var(--b1);
         }
     </style>
 </head>
@@ -348,30 +327,85 @@
 </header>
 
 <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('data-sources')">📥 Data Sources</button>
+    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">⚙️ ETL Pipeline</button>
     <button class="tab-btn" onclick="switchTab('symbols')">📋 Symbols</button>
-    <button class="tab-btn" onclick="switchTab('progress')">📊 Progress</button>
     <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
 </div>
 
 <div class="content">
-    <!-- TAB 1: DATA SOURCES -->
-    <div id="data-sources" class="tab-content active">
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Source</th>
-                        <th>Count</th>
-                        <th>Updated</th>
-                        <th style="text-align:center;">Data Load</th>
-                        <th style="text-align:center;">Refresh DB</th>
-                    </tr>
-                </thead>
-                <tbody id="sources-table">
-                </tbody>
-            </table>
+    <!-- TAB 1: COMBINED ETL PIPELINE -->
+    <div id="etl-pipeline" class="tab-content active">
+        
+        <!-- ACTION BUTTONS -->
+        <div class="inline-buttons">
+            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000;"><span style="font-size:14px;">🚀</span>LOAD ALL</button>
+            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000;"><span style="font-size:14px;">🔄</span>RELOAD</button>
+            <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff;"><span style="font-size:14px;">🗑️</span>CLEAR DB</button>
         </div>
+
+        <!-- SECTION 1: DATA SOURCES -->
+        <div class="section-box">
+            <div class="section-header">📥 Data Sources</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Count</th>
+                            <th>Updated</th>
+                            <th style="text-align:center;">Data Load</th>
+                            <th style="text-align:center;">Refresh DB</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sources-table">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECTION 2: JSON METADATA TIMES -->
+        <div class="section-box">
+            <div class="section-header success">📦 Data Updated Times (from JSON)</div>
+            <div id="fetch-times" style="font-size:11px; line-height:1.8; color:var(--tx);">
+                <div style="color:#666;">No data loaded yet. Click LOAD ALL to fetch.</div>
+            </div>
+        </div>
+
+        <!-- SECTION 3: LOAD PROGRESS TABLE -->
+        <div class="section-box">
+            <div class="section-header">📊 Load Progress</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Count</th>
+                            <th>Loaded At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="progress-table">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECTION 4: COMMON DB REFRESH -->
+        <div class="section-box">
+            <div class="section-header success">🗄️ Common DB Refresh (all files)</div>
+            <div style="font-size:11px; line-height:1.8; color:var(--tx);">
+                <div>Merge Time: <span id="mergeTime" style="color:var(--gr); font-weight:bold;">—</span></div>
+                <div>DB Save Time: <span id="dbSaveTime" style="color:var(--gr); font-weight:bold;">—</span></div>
+            </div>
+        </div>
+
+        <!-- SECTION 5: LIVE LOG -->
+        <div class="section-box">
+            <div class="section-header">📋 Live Log</div>
+            <div class="log-box" id="live-log">
+                <div style="color:#666;">[Logs appear here]</div>
+            </div>
+        </div>
+
     </div>
 
     <!-- TAB 2: SYMBOLS EDITOR -->
@@ -403,34 +437,7 @@
         </div>
     </div>
 
-    <!-- TAB 3: LOAD PROGRESS -->
-    <div id="progress" class="tab-content">
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Source</th>
-                        <th>Count</th>
-                        <th>Loaded At</th>
-                    </tr>
-                </thead>
-                <tbody id="progress-table">
-                </tbody>
-            </table>
-        </div>
-        <div style="margin-top:16px; padding:12px; background:var(--b1); border-radius:4px;">
-            <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:8px;">Key Timestamps</div>
-            <div style="font-size:10px; line-height:1.6; color:var(--tx);">
-                <div>Merge: <span id="mergeTime">—</span></div>
-                <div>DB Save: <span id="dbSaveTime">—</span></div>
-            </div>
-        </div>
-        <div class="log-box" id="live-log">
-            <div style="color:#666;">[Log appears here]</div>
-        </div>
-    </div>
-
-    <!-- TAB 4: PAT CONFIG -->
+    <!-- TAB 3: PAT CONFIG -->
     <div id="pat" class="tab-content">
         <div class="pat-section">
             <div class="pat-label">GitHub PAT Token</div>
@@ -446,16 +453,10 @@
             <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
         </div>
     </div>
+
 </div>
 
-<!-- ACTION BUTTONS -->
-<div class="action-buttons">
-    <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);"><span style="font-size:16px; margin-right:4px;">🚀</span>LOAD ALL</button>
-    <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; box-shadow: 0 4px 15px rgba(0, 242, 255, 0.3);"><span style="font-size:16px; margin-right:4px;">🔄</span>RELOAD</button>
-    <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; box-shadow: 0 4px 15px rgba(255, 77, 109, 0.3);"><span style="font-size:16px; margin-right:4px;">🗑️</span>CLEAR DB</button>
-</div>
-
-<!-- NAVIGATION FOOTER (From Index) -->
+<!-- NAVIGATION FOOTER -->
 <footer class="nav-footer">
     <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
     <a href="data.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
@@ -473,13 +474,13 @@
     let sourceData = {};
     let editMode = false;
     let logMessages = [];
+    let dataUpdatedTimes = {};
+    let dbRefreshTime = null;
 
-    // ========== GITHUB CONFIGURATION (CUSTOMIZE THESE!) ==========
     const GITHUB_CONFIG = {
         OWNER: 'murugkan',
         REPO: 'bharatmarkets',
         BRANCH: 'main',
-        // All files are in the root folder of the repository
         PATHS: {
             symbols: 'unified-symbols.json',
             prices: 'prices.json',
@@ -499,77 +500,57 @@
         { name: 'macro_data.json', path: GITHUB_CONFIG.PATHS.macro }
     ];
 
-    // ========== FETCH REAL DATA FROM GITHUB ==========
     async function fetchGitHubData(filePath) {
         try {
             const url = `${RAW_GITHUB_URL}/${filePath}`;
-            log(`📡 Fetching: ${url}`);
+            
+            log(`📡 Fetching: ${filePath}`);
             const response = await fetch(url);
+            
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status} - File not found at: ${filePath}`);
+                throw new Error(`HTTP ${response.status}`);
             }
+            
             const data = await response.json();
-            log(`✅ Fetched ${filePath} successfully`);
+            
+            if (data && data.updated) {
+                dataUpdatedTimes[filePath] = data.updated;
+                log(`✅ Fetched ${filePath} - Data updated: ${data.updated}`);
+            } else if (data && data.lastLoadedAt) {
+                dataUpdatedTimes[filePath] = data.lastLoadedAt;
+                log(`✅ Fetched ${filePath} - Last loaded: ${data.lastLoadedAt}`);
+            } else {
+                dataUpdatedTimes[filePath] = '—';
+                log(`✅ Fetched ${filePath} - No timestamp in metadata`);
+            }
+            
             return data;
         } catch (e) {
             log(`❌ GitHub fetch failed: ${filePath}`);
-            log(`   Error: ${e.message}`);
-            log(`   Full URL: ${RAW_GITHUB_URL}/${filePath}`);
+            dataUpdatedTimes[filePath] = '❌ Error';
             return null;
         }
     }
 
     async function initializeFromGitHub() {
         log('🚀 Initializing from GitHub...');
-        log(`📍 Repo: ${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}`);
-        
-        // Fetch symbols data
         const symbolsData = await fetchGitHubData(DATA_SOURCES[0].path);
         
-        if (!symbolsData) {
-            log(`❌ No data received from GitHub`);
-            return Promise.resolve();
-        }
+        if (!symbolsData) return Promise.resolve();
         
-        // Handle different data formats
         let stocks = null;
-        
-        // Check if it's already an array
         if (Array.isArray(symbolsData)) {
             stocks = symbolsData;
-            log(`✅ Data is array format (${stocks.length} records)`);
-        }
-        // Check if it has a 'symbols' property
-        else if (symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
+        } else if (symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
             stocks = symbolsData.symbols;
-            log(`✅ Data has 'symbols' property (${stocks.length} records)`);
-        }
-        // Check if it has a 'stocks' property
-        else if (symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
-            stocks = symbolsData.stocks;
-            log(`✅ Data has 'stocks' property (${stocks.length} records)`);
-        }
-        // Check if it's an object with ticker keys (convert to array)
-        else if (typeof symbolsData === 'object' && !Array.isArray(symbolsData)) {
+        } else if (typeof symbolsData === 'object') {
             stocks = Object.values(symbolsData);
-            log(`✅ Data is object format (${stocks.length} records)`);
-        }
-        else {
-            log(`❌ Cannot parse data structure`);
-            log(`Data type: ${typeof symbolsData}`);
-            log(`Is array: ${Array.isArray(symbolsData)}`);
-            return Promise.resolve();
         }
         
-        if (!stocks || stocks.length === 0) {
-            log(`❌ No stocks found in data`);
-            return Promise.resolve();
-        }
+        if (!stocks || stocks.length === 0) return Promise.resolve();
         
         masterData = stocks;
-        log(`✅ Loaded ${masterData.length} symbols from GitHub`);
         
-        // Save to IndexedDB
         return new Promise((resolve) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             
@@ -585,50 +566,28 @@
                 try {
                     var transaction = db.transaction(STORE_NAME, 'readwrite');
                     var store = transaction.objectStore(STORE_NAME);
-                    
-                    // Clear and add new data
                     store.clear();
-                    masterData.forEach(stock => {
-                        store.put(stock);
-                    });
-                    
-                    transaction.oncomplete = () => {
-                        log(`✅ Saved ${masterData.length} records to IndexedDB`);
-                        resolve();
-                    };
-                    
-                    transaction.onerror = () => {
-                        log(`⚠️ IndexedDB transaction error: ${transaction.error}`);
-                        resolve();
-                    };
+                    masterData.forEach(stock => store.put(stock));
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = () => resolve();
                 } catch (err) {
-                    log(`⚠️ IndexedDB error: ${err.message}`);
                     resolve();
                 }
             };
             
-            req.onerror = () => {
-                log(`⚠️ Could not open IndexedDB`);
-                resolve();
-            };
+            req.onerror = () => resolve();
         });
     }
 
-    // ========== INITIALIZATION ==========
     async function init() {
         document.getElementById('status').textContent = '⏳ Initializing...';
         log('🚀 ETL Center starting up...');
-        log('📡 Fetching real data from GitHub...');
         
         try {
-            // Fetch real data from GitHub on startup
             await initializeFromGitHub();
-            
-            // Wait a moment for IndexedDB writes
             await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Load from IndexedDB
             await loadFromIndexedDB();
+            
             if (masterData.length > 0) {
                 log(`📊 Successfully loaded: ${masterData.length} records`);
                 document.getElementById('status').textContent = '✅ Ready';
@@ -647,7 +606,6 @@
         updateHeader();
     }
 
-    // ========== TAB SWITCHING ==========
     function switchTab(tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -655,7 +613,6 @@
         event.target.classList.add('active');
     }
 
-    // ========== LOGGING ==========
     function log(msg) {
         var ts = new Date().toLocaleTimeString();
         logMessages.push(`[${ts}] ${msg}`);
@@ -674,7 +631,6 @@
         setTimeout(() => el.classList.remove('show'), 2000);
     }
 
-    // ========== TAB 1: DATA SOURCES ==========
     function renderDataSources() {
         var html = '';
         DATA_SOURCES.forEach(s => {
@@ -688,28 +644,19 @@
                 <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:6px 10px; font-size:9px;">🔄</button></td>
             </tr>`;
         });
-
         document.getElementById('sources-table').innerHTML = html;
     }
 
     function dataLoad(source) {
         log(`⬇️ DATA LOAD initiated for ${source}...`);
         showToast(`Loading ${source}...`);
-        
-        // Find the source path
         const sourceObj = DATA_SOURCES.find(s => s.name === source);
-        if (!sourceObj) {
-            log(`❌ Unknown source: ${source}`);
-            return;
-        }
+        if (!sourceObj) return;
         
-        // Fetch from GitHub
         fetchGitHubData(sourceObj.path).then(data => {
             if (data) {
-                log(`✅ ${source} loaded from GitHub (${Array.isArray(data) ? data.length : Object.keys(data).length} items)`);
+                log(`✅ ${source} loaded from GitHub`);
                 showToast(`✅ ${source} loaded!`);
-                
-                // Store in sourceData for reference
                 sourceData[source] = data;
             } else {
                 log(`❌ Failed to load ${source}`);
@@ -721,40 +668,11 @@
     function refreshDB(source) {
         log(`🔄 REFRESH DB initiated for ${source}...`);
         showToast(`Refreshing ${source}...`);
-        
-        // Find the source path
         const sourceObj = DATA_SOURCES.find(s => s.name === source);
-        if (!sourceObj) {
-            log(`❌ Unknown source: ${source}`);
-            return;
-        }
+        if (!sourceObj) return;
         
-        // Fetch from GitHub and merge to IndexedDB
         fetchGitHubData(sourceObj.path).then(data => {
-            if (data && Array.isArray(data) && source === 'unified-symbols.json') {
-                // Save to IndexedDB
-                var req = indexedDB.open(DB_NAME, DB_VERSION);
-                req.onsuccess = (e) => {
-                    var db = e.target.result;
-                    try {
-                        var transaction = db.transaction(STORE_NAME, 'readwrite');
-                        var store = transaction.objectStore(STORE_NAME);
-                        store.clear();
-                        
-                        masterData = data;
-                        data.forEach(stock => {
-                            store.add(stock);
-                        });
-                        
-                        log(`✅ ${source} merged to IndexedDB (${data.length} records)`);
-                        showToast(`✅ ${source} refreshed!`);
-                        renderSymbols();
-                        updateHeader();
-                    } catch (err) {
-                        log(`⚠️ IndexedDB error: ${err.message}`);
-                    }
-                };
-            } else {
+            if (data) {
                 sourceData[source] = data;
                 log(`✅ ${source} refreshed from GitHub`);
                 showToast(`✅ ${source} refreshed!`);
@@ -762,13 +680,11 @@
         });
     }
 
-    // ========== TAB 2: SYMBOLS EDITOR ==========
     async function loadFromIndexedDB() {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             
             req.onerror = () => {
-                log(`❌ IndexedDB error: ${req.error}`);
                 masterData = [];
                 resolve();
             };
@@ -777,16 +693,13 @@
                 var db = e.target.result;
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
                     db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                    log(`✅ Created IndexedDB store: ${STORE_NAME}`);
                 }
             };
             
             req.onsuccess = (e) => {
                 var db = e.target.result;
                 try {
-                    // Check if store exists
                     if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        log(`⚠️ Store '${STORE_NAME}' not found, will be created on next load`);
                         masterData = [];
                         resolve();
                         return;
@@ -798,21 +711,14 @@
 
                     getAllReq.onsuccess = () => {
                         masterData = getAllReq.result || [];
-                        if (masterData.length > 0) {
-                            log(`✅ Loaded ${masterData.length} records from IndexedDB`);
-                        } else {
-                            log(`ℹ️ IndexedDB is empty - use LOAD ALL to populate`);
-                        }
                         resolve();
                     };
                     
                     getAllReq.onerror = () => {
-                        log(`⚠️ Failed to read from store`);
                         masterData = [];
                         resolve();
                     };
                 } catch (e) {
-                    log(`⚠️ IndexedDB access error: ${e.message}`);
                     masterData = [];
                     resolve();
                 }
@@ -823,7 +729,6 @@
     function renderSymbols() {
         var html = '';
         
-        // Check if masterData is empty
         if (!masterData || masterData.length === 0) {
             html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
         } else {
@@ -833,19 +738,13 @@
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
 
-                // Check guidance/insight
-                var hasGuidance = sourceData.guidance && sourceData.guidance[ticker];
-                var hasInsight = sourceData.guidance && sourceData.guidance[ticker] && sourceData.guidance[ticker].insights;
-                var guidanceDate = hasGuidance ? sourceData.guidance[ticker].guidance?.updated || '—' : '—';
-                var insightDate = hasInsight ? sourceData.guidance[ticker].insights?.updated || '—' : '—';
-
                 html += `<tr id="row-${ticker}">
                     <td class="sticky">${ticker}</td>
                     <td>${name}</td>
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                    <td>${hasGuidance ? '✅' : '✗'} ${hasGuidance ? '<button onclick="copyGuidancePrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${guidanceDate}</td>
-                    <td>${hasInsight ? '✅' : '✗'} ${hasInsight ? '<button onclick="copyInsightPrompt(\'' + ticker + '\')" style="padding:4px 6px; font-size:8px;">📋</button>' : '—'} ${insightDate}</td>
+                    <td>—</td>
+                    <td>—</td>
                     <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
                 </tr>`;
             });
@@ -865,18 +764,6 @@
         }
     }
 
-    function copyGuidancePrompt(ticker) {
-        var prompt = `Generate guidance for ${ticker}\nSector: Financial Services\nPE: 24.5, ROE: 18.2%, PB: 3.2\nCurrent LTP: 341.90\nProvide actionable buy/sell/hold guidance.`;
-        navigator.clipboard.writeText(prompt);
-        showToast('✅ Guidance prompt copied!');
-    }
-
-    function copyInsightPrompt(ticker) {
-        var prompt = `Analyze insights for ${ticker}\nValuation: P/E 22.36x\nGrowth quality: 28% YoY\nMargin risk: 30.23% OPM\nProvide detailed analysis.`;
-        navigator.clipboard.writeText(prompt);
-        showToast('✅ Insight prompt copied!');
-    }
-
     function deleteStock(ticker) {
         if (confirm(`Delete ${ticker}?`)) {
             log(`🗑️ Marked ${ticker} for deletion`);
@@ -887,7 +774,6 @@
 
     function saveChanges() {
         log('💾 Saving changes...');
-        // Save edited QTY, AVG to IndexedDB
         setTimeout(() => {
             log('✅ Changes saved to IndexedDB');
             showToast('✅ Changes saved!');
@@ -916,14 +802,21 @@
         showToast('📊 CSV downloaded!');
     }
 
-    // ========== TAB 3: PROGRESS ==========
     function renderProgress() {
+        var updateHTML = '';
+        DATA_SOURCES.forEach(source => {
+            const updateTime = dataUpdatedTimes[source.path] || '—';
+            updateHTML += `<div>📦 ${source.name}: <b style="color:var(--gr);">${updateTime}</b></div>`;
+        });
+        
+        document.getElementById('fetch-times').innerHTML = updateHTML || '<div style="color:#666;">No data loaded yet. Click LOAD ALL to fetch.</div>';
+
         var sources = [
-            { name: 'unified-symbols.json', count: 96, time: '2026-04-12 09:48:15' },
-            { name: 'prices.json', count: 84, time: '2026-04-12 09:48:19' },
-            { name: 'fundamentals.json', count: 90, time: '2026-04-12 09:48:22' },
-            { name: 'guidance.json', count: 3, time: '2026-04-12 09:48:25' },
-            { name: 'macro_data.json', count: 12, time: '2026-04-12 09:48:28' }
+            { name: 'unified-symbols.json', count: masterData.length || '—', time: dataUpdatedTimes[DATA_SOURCES[0].path] || '—' },
+            { name: 'prices.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[1].path] || '—' },
+            { name: 'fundamentals.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[2].path] || '—' },
+            { name: 'guidance.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[3].path] || '—' },
+            { name: 'macro_data.json', count: '—', time: dataUpdatedTimes[DATA_SOURCES[4].path] || '—' }
         ];
 
         var html = '';
@@ -932,11 +825,13 @@
         });
 
         document.getElementById('progress-table').innerHTML = html;
-        document.getElementById('mergeTime').textContent = '2026-04-12 09:48:30';
-        document.getElementById('dbSaveTime').textContent = '2026-04-12 09:48:31';
+        
+        if (dbRefreshTime) {
+            document.getElementById('mergeTime').textContent = dbRefreshTime.mergeTime;
+            document.getElementById('dbSaveTime').textContent = dbRefreshTime.dbSaveTime;
+        }
     }
 
-    // ========== TAB 4: PAT CONFIG ==========
     function togglePatVisibility() {
         var input = document.getElementById('patToken');
         input.type = input.type === 'password' ? 'text' : 'password';
@@ -966,20 +861,17 @@
         }, 1000);
     }
 
-    // ========== ACTION BUTTONS ==========
     async function loadAllData() {
         log('🚀 LOAD ALL initiated...');
         document.getElementById('status').textContent = '⏳ Loading';
         showToast('Loading all data from GitHub...');
         
-        // Fetch all data sources
         const results = await Promise.all(
             DATA_SOURCES.map(source => fetchGitHubData(source.path))
         );
         
         log('✅ All files loaded from GitHub');
         
-        // Parse symbols data
         let symbolsData = results[0];
         let symbolsList = null;
         
@@ -999,100 +891,48 @@
             return;
         }
         
-        // Parse other data sources (fix index order based on fetch sequence)
-        const pricesData = results[1] || {};          // ← Changed from results[2]
-        const fundamentalsData = results[2] || {};    // ← Changed from results[1]
+        const pricesData = results[1] || {};
+        const fundamentalsData = results[2] || {};
         const guidanceData = results[3] || {};
         const macroData = results[4] || {};
         
         log('📦 Parsing results...');
-        log('  - Prices data keys:', Object.keys(pricesData).slice(0, 5));
-        log('  - Fundamentals data keys:', Object.keys(fundamentalsData).slice(0, 5));
-        log('  - Guidance data keys:', Object.keys(guidanceData).slice(0, 5));
-        log('  - Macro data keys:', Object.keys(macroData).slice(0, 5));
         
-        // Extract ticker maps from each source (handling different wrappers)
-        // Prices: Look for 'quotes' or 'stocks' wrapper
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
             priceMap = pricesData.quotes;
             log('✅ Found prices in "quotes" wrapper');
-        } else if (pricesData.stocks && typeof pricesData.stocks === 'object' && !Array.isArray(pricesData.stocks)) {
-            priceMap = pricesData.stocks;
-            log('✅ Found prices in "stocks" wrapper');
-        } else if (pricesData.prices && typeof pricesData.prices === 'object' && !Array.isArray(pricesData.prices)) {
-            priceMap = pricesData.prices;
-            log('✅ Found prices in "prices" wrapper');
         } else {
-            // Last resort: if object has ticker-like keys (all caps, no metadata)
-            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase() && k !== 'QUOTES' && k !== 'STOCKS') 
-                ? pricesData 
-                : {};
-            log('⚠️ No wrapper found for prices, using direct keys or empty');
+            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
         }
         
-        // Fundamentals: Look for 'stocks' or 'fundamentals' wrapper
         let fundMap = {};
         if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
             fundMap = fundamentalsData.stocks;
             log('✅ Found fundamentals in "stocks" wrapper');
-        } else if (fundamentalsData.fundamentals && typeof fundamentalsData.fundamentals === 'object' && !Array.isArray(fundamentalsData.fundamentals)) {
-            fundMap = fundamentalsData.fundamentals;
-            log('✅ Found fundamentals in "fundamentals" wrapper');
         } else {
-            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase() && k !== 'STOCKS') 
-                ? fundamentalsData 
-                : {};
-            log('⚠️ No wrapper found for fundamentals, using direct keys or empty');
+            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
         }
         
-        log(`✅ Price map has ${Object.keys(priceMap).length} tickers: ${Object.keys(priceMap).filter(k => k === k.toUpperCase()).slice(0, 3).join(', ')}`);
-        log(`✅ Fund map has ${Object.keys(fundMap).length} tickers: ${Object.keys(fundMap).filter(k => k === k.toUpperCase()).slice(0, 3).join(', ')}`);
-        
-        // Guidance has _metadata, so skip it when getting ticker data
         const guidMap = {};
         Object.keys(guidanceData).forEach(key => {
             if (key !== '_metadata' && guidanceData[key]) {
                 guidMap[key] = guidanceData[key];
             }
         });
-        log(`✅ Guidance map has ${Object.keys(guidMap).length} tickers: ${Object.keys(guidMap).slice(0, 3).join(', ')}`);
         
-        // Macro has indicators array, so extract from it
-        const macroMap = {};
-        if (macroData.indicators && Array.isArray(macroData.indicators)) {
-            // Don't merge macro data (it's for dashboard, not per-stock)
-            log('ℹ️ Macro indicators loaded (not merged per-stock)');
-        } else {
-            const macroObj = macroData.macro || macroData;
-            Object.keys(macroObj).forEach(key => {
-                if (key !== '_metadata') {
-                    macroMap[key] = macroObj[key];
-                }
-            });
-            log(`✅ Macro map has ${Object.keys(macroMap).length} records`);
-        }
+        const mergeTs = new Date().toLocaleTimeString();
         
-        // Merge all data sources into enriched records
         let mergedStocks = [];
-        
         symbolsList.forEach(symbol => {
             const ticker = symbol.ticker || symbol.TICKER || symbol.name;
             if (!ticker) return;
             
-            // Get data from each source for this ticker
-            const priceInfo = priceMap[ticker] || {};
-            const fundInfo = fundMap[ticker] || {};
-            const guidInfo = guidMap[ticker] || {};
-            const macroInfo = macroMap[ticker] || {};
-            
-            // Merge all data into single record
             const merged = {
                 ...symbol,
-                ...priceInfo,
-                ...fundInfo,
-                ...guidInfo,
-                ...macroInfo,
+                ...(priceMap[ticker] || {}),
+                ...(fundMap[ticker] || {}),
+                ...(guidMap[ticker] || {}),
                 ticker: ticker
             };
             
@@ -1101,21 +941,6 @@
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         
-        // Log sample merged record to verify fields
-        if (mergedStocks.length > 0) {
-            const sample = mergedStocks[0];
-            log('📋 Sample merged record:', {
-                ticker: sample.ticker,
-                ltp: sample.ltp,
-                pe: sample.pe,
-                roe: sample.roe,
-                roce: sample.roce,
-                opm: sample.opm_pct || sample.opm,
-                npm: sample.npm_pct || sample.npm
-            });
-        }
-        
-        // Save to IndexedDB
         var req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onsuccess = (e) => {
             var db = e.target.result;
@@ -1130,15 +955,21 @@
                 });
                 
                 transaction.oncomplete = () => {
-                    log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
-                    log('✅ Saved to IndexedDB');
+                    const dbSaveTs = new Date().toLocaleTimeString();
                     
-                    // Store other data
+                    dbRefreshTime = {
+                        mergeTime: mergeTs,
+                        dbSaveTime: dbSaveTs
+                    };
+                    
+                    log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
+                    
                     sourceData.guidance = guidanceData;
                     
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
+                    renderProgress();
                     document.getElementById('status').textContent = '✅ Ready';
                     showToast('✅ Load complete!');
                 };
@@ -1171,12 +1002,12 @@
 
         log('✅ DB cleared');
         
-        // Re-fetch from GitHub
         await initializeFromGitHub();
         await loadFromIndexedDB();
         updateHeader();
         renderSymbols();
         renderDataSources();
+        renderProgress();
         document.getElementById('status').textContent = '✅ Ready';
         showToast('✅ Reload complete!');
     }
@@ -1194,14 +1025,12 @@
         }
     }
 
-    // ========== HEADER UPDATE ==========
     function updateHeader() {
         document.getElementById('dbCount').textContent = masterData.length;
         document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
     }
 
-    // ========== INIT ==========
     init();
 </script>
 
