@@ -113,11 +113,11 @@ const resolve = (obj, field) => {
         'EBITDA':['ebitda','EBITDA'], 
         'CFO':['cfo','CFO'], 
         'EPS':['eps','EPS'], 
-        'PROM%':['prom','PROM%'], 
-        'FII%':['fii','FII%'], 
-        'DII%':['dii','DII%'], 
-        'ATH%':['ath','ATH%'], 
-        '52W%':['w52','52W%','52WEEK'], 
+        'PROM%':['prom','PROM%','prom_pct'], 
+        'FII%':['fii','FII%','fii_pct'], 
+        'DII%':['dii','DII%','dii_pct'], 
+        'ATH%':['ath','ATH%','ath_pct'], 
+        '52W%':['w52','52W%','52WEEK','w52_pct'], 
         'SECTOR':['sector','SECTOR'],
         'NAME':['name','NAME','COMPANY'],
         'OPEN':['open','OPEN'],
@@ -165,7 +165,32 @@ async function init() {
     render();
 }
 
+function enrichStock(stock) {
+    // Calculate INVESTED = QTY * AVG
+    const qty = cleanNum(resolve(stock, 'QTY'));
+    const avg = cleanNum(resolve(stock, 'AVG'));
+    if (qty && avg && !stock.invested) {
+        stock.invested = qty * avg;
+    }
+    
+    // Calculate PNL = (LTP - AVG) * QTY
+    const ltp = cleanNum(resolve(stock, 'LTP'));
+    if (qty && avg && ltp && !stock.pnl) {
+        stock.pnl = (ltp - avg) * qty;
+    }
+    
+    // Calculate PNL% = ((LTP - AVG) / AVG) * 100
+    if (avg && ltp && !stock.pnlPct) {
+        stock.pnlPct = ((ltp - avg) / avg) * 100;
+    }
+    
+    return stock;
+}
+
 function render() {
+    // Enrich each stock with calculated fields
+    MASTER.forEach(s => enrichStock(s));
+    
     let sumPnl = 0, sumInv = 0, sc = {};
     MASTER.forEach(s => { 
         const sec = resolve(s, 'SECTOR') || 'OTHER';
