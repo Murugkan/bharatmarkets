@@ -778,24 +778,24 @@
     function openWizard() {
         var pat = document.getElementById('patToken').value;
         if (!pat) {
-            showToast('❌ PAT token required to open wizard');
+            showToast('❌ PAT token required');
             switchTab('pat');
             return;
         }
         
         log('🧙 Opening symbol wizard...');
         
-        // Load import.js if not already loaded
-        if (!window.importWizardLoaded) {
+        // Load app-import.js if not already loaded
+        if (!window.appImportLoaded) {
             var script = document.createElement('script');
-            script.src = 'import.js';  // Load wizard from import.js
+            script.src = 'app-import.js';
             script.onload = () => {
-                window.importWizardLoaded = true;
+                window.appImportLoaded = true;
                 triggerWizard(pat);
             };
             script.onerror = () => {
                 showToast('❌ Failed to load wizard');
-                log('❌ Could not load import.js');
+                log('❌ Could not load app-import.js');
             };
             document.head.appendChild(script);
         } else {
@@ -804,28 +804,25 @@
     }
     
     function triggerWizard(pat) {
-        // Pass PAT and symbols to wizard from import.js
-        var wizardConfig = {
-            pat: pat,
-            symbols: masterData,
-            dataSource: 'etl-center',
-            onSave: (updatedSymbols) => {
-                log('✅ Wizard saved changes');
-                masterData = updatedSymbols;
-                updateHeader();
-                renderSymbols();
-                showToast('✅ Symbols updated!');
-            }
-        };
-        
-        // Call wizard function from import.js
+        // Call wizard from app-import.js
         if (typeof window.openSymbolWizard === 'function') {
-            window.openSymbolWizard(wizardConfig);
+            window.openSymbolWizard({
+                pat: pat,
+                symbols: masterData,
+                onSave: (updated) => {
+                    masterData = updated;
+                    updateHeader();
+                    renderSymbols();
+                    renderDataSources();
+                    log('✅ Wizard saved changes');
+                    showToast('✅ Symbols updated!');
+                }
+            });
         } else if (typeof window.showWizard === 'function') {
-            window.showWizard(wizardConfig);
+            window.showWizard({pat, symbols: masterData});
         } else {
-            showToast('❌ Wizard function not found in import.js');
-            log('❌ Wizard function not available');
+            showToast('❌ Wizard function not found');
+            log('❌ Wizard not available in app-import.js');
         }
     }
 
