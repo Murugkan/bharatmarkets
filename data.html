@@ -526,58 +526,92 @@
         // Fetch symbols data
         const symbolsData = await fetchGitHubData(DATA_SOURCES[0].path);
         
-        if (symbolsData && Array.isArray(symbolsData) && symbolsData.length > 0) {
-            masterData = symbolsData;
-            log(`✅ Loaded ${masterData.length} symbols from GitHub`);
-            
-            // Save to IndexedDB
-            return new Promise((resolve) => {
-                var req = indexedDB.open(DB_NAME, DB_VERSION);
-                
-                req.onupgradeneeded = (e) => {
-                    var db = e.target.result;
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                    }
-                };
-                
-                req.onsuccess = (e) => {
-                    var db = e.target.result;
-                    try {
-                        var transaction = db.transaction(STORE_NAME, 'readwrite');
-                        var store = transaction.objectStore(STORE_NAME);
-                        
-                        // Clear and add new data
-                        store.clear();
-                        masterData.forEach(stock => {
-                            store.add(stock);
-                        });
-                        
-                        transaction.oncomplete = () => {
-                            log(`✅ Saved ${masterData.length} records to IndexedDB`);
-                            resolve();
-                        };
-                        
-                        transaction.onerror = () => {
-                            log(`⚠️ IndexedDB transaction error`);
-                            resolve();
-                        };
-                    } catch (err) {
-                        log(`⚠️ IndexedDB error: ${err.message}`);
-                        resolve();
-                    }
-                };
-                
-                req.onerror = () => {
-                    log(`⚠️ Could not open IndexedDB`);
-                    resolve();
-                };
-            });
-        } else {
-            log(`❌ GitHub data invalid or empty`);
-            log(`   Check file path: ${DATA_SOURCES[0].path}`);
+        if (!symbolsData) {
+            log(`❌ No data received from GitHub`);
             return Promise.resolve();
         }
+        
+        // Handle different data formats
+        let stocks = null;
+        
+        // Check if it's already an array
+        if (Array.isArray(symbolsData)) {
+            stocks = symbolsData;
+            log(`✅ Data is array format (${stocks.length} records)`);
+        }
+        // Check if it has a 'symbols' property
+        else if (symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
+            stocks = symbolsData.symbols;
+            log(`✅ Data has 'symbols' property (${stocks.length} records)`);
+        }
+        // Check if it has a 'stocks' property
+        else if (symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
+            stocks = symbolsData.stocks;
+            log(`✅ Data has 'stocks' property (${stocks.length} records)`);
+        }
+        // Check if it's an object with ticker keys (convert to array)
+        else if (typeof symbolsData === 'object' && !Array.isArray(symbolsData)) {
+            stocks = Object.values(symbolsData);
+            log(`✅ Data is object format (${stocks.length} records)`);
+        }
+        else {
+            log(`❌ Cannot parse data structure`);
+            log(`Data type: ${typeof symbolsData}`);
+            log(`Is array: ${Array.isArray(symbolsData)}`);
+            return Promise.resolve();
+        }
+        
+        if (!stocks || stocks.length === 0) {
+            log(`❌ No stocks found in data`);
+            return Promise.resolve();
+        }
+        
+        masterData = stocks;
+        log(`✅ Loaded ${masterData.length} symbols from GitHub`);
+        
+        // Save to IndexedDB
+        return new Promise((resolve) => {
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            
+            req.onupgradeneeded = (e) => {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                }
+            };
+            
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                try {
+                    var transaction = db.transaction(STORE_NAME, 'readwrite');
+                    var store = transaction.objectStore(STORE_NAME);
+                    
+                    // Clear and add new data
+                    store.clear();
+                    masterData.forEach(stock => {
+                        store.put(stock);
+                    });
+                    
+                    transaction.oncomplete = () => {
+                        log(`✅ Saved ${masterData.length} records to IndexedDB`);
+                        resolve();
+                    };
+                    
+                    transaction.onerror = () => {
+                        log(`⚠️ IndexedDB transaction error: ${transaction.error}`);
+                        resolve();
+                    };
+                } catch (err) {
+                    log(`⚠️ IndexedDB error: ${err.message}`);
+                    resolve();
+                }
+            };
+            
+            req.onerror = () => {
+                log(`⚠️ Could not open IndexedDB`);
+                resolve();
+            };
+        });
     }
 
     // ========== INITIALIZATION ==========
@@ -945,9 +979,21 @@
         
         log('✅ All files loaded from GitHub');
         
-        // Save symbols data to IndexedDB
-        const symbolsData = results[0]; // unified-symbols.json
-        if (symbolsData && Array.isArray(symbolsData)) {
+        // Process symbols data with flexible parsing
+        let symbolsData = results[0];
+        let stocks = null;
+        
+        if (Array.isArray(symbolsData)) {
+            stocks = symbolsData;
+        } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
+            stocks = symbolsData.symbols;
+        } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
+            stocks = symbolsData.stocks;
+        } else if (symbolsData && typeof symbolsData === 'object') {
+            stocks = Object.values(symbolsData);
+        }
+        
+        if (stocks && stocks.length > 0) {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onsuccess = (e) => {
                 var db = e.target.result;
@@ -956,12 +1002,12 @@
                     var store = transaction.objectStore(STORE_NAME);
                     store.clear();
                     
-                    masterData = symbolsData;
-                    symbolsData.forEach(stock => {
-                        store.add(stock);
+                    masterData = stocks;
+                    stocks.forEach(stock => {
+                        store.put(stock);
                     });
                     
-                    log(`✅ Merged ${symbolsData.length} records to IndexedDB`);
+                    log(`✅ Merged ${stocks.length} records to IndexedDB`);
                     log('✅ Saved to IndexedDB');
                     
                     // Store other data
@@ -978,7 +1024,7 @@
                 }
             };
         } else {
-            log('❌ Could not load symbols data');
+            log('❌ Could not parse symbols data');
             document.getElementById('status').textContent = '❌ Failed';
         }
     }
