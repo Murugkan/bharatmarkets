@@ -630,40 +630,18 @@
         log(`⬇️ Loading ${source}...`);
         showToast(`Loading ${source}...`);
         
-        // Try both local path and full GitHub raw URL
-        const localPath = `${source}?cache=${Date.now()}`;
-        const githubRawPath = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${source}?cache=${Date.now()}`;
-        
-        log(`📍 Trying local: ${localPath}`);
-        
-        fetch(localPath)
-            .then(r => {
-                log(`Local response status: ${r.status}`);
-                if (!r.ok) throw new Error(`Local fetch failed: ${r.status}`);
-                return r.json();
-            })
+        fetch(`${source}?cache=${Date.now()}`)
+            .then(r => r.json())
             .then(data => {
-                log(`✅ ${source} loaded from local`);
-                mergeAndSaveData(source, data);
+                log(`✅ ${source} loaded`);
+                showToast(`✅ Reloading...`);
+                setTimeout(() => {
+                    location.reload();
+                }, 500);
             })
             .catch(e => {
-                log(`❌ Local failed: ${e.message}`);
-                log(`📍 Trying GitHub raw URL...`);
-                
-                // Fallback to GitHub raw URL
-                fetch(githubRawPath)
-                    .then(r => {
-                        if (!r.ok) throw new Error(`GitHub fetch failed: ${r.status}`);
-                        return r.json();
-                    })
-                    .then(data => {
-                        log(`✅ ${source} loaded from GitHub`);
-                        mergeAndSaveData(source, data);
-                    })
-                    .catch(err => {
-                        log(`❌ Both failed: ${err.message}`);
-                        showToast(`❌ Could not load ${source}`);
-                    });
+                log(`❌ Error: ${e.message}`);
+                showToast(`❌ Failed`);
             });
     }
 
