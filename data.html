@@ -630,21 +630,40 @@
         log(`⬇️ Loading ${source}...`);
         showToast(`Loading ${source}...`);
         
-        // Fetch from local GitHub Pages (cache busted)
-        fetch(`${source}?cache=${Date.now()}`)
-            .then(r => r.json())
+        // Try both local path and full GitHub raw URL
+        const localPath = `${source}?cache=${Date.now()}`;
+        const githubRawPath = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${source}?cache=${Date.now()}`;
+        
+        log(`📍 Trying local: ${localPath}`);
+        
+        fetch(localPath)
+            .then(r => {
+                log(`Local response status: ${r.status}`);
+                if (!r.ok) throw new Error(`Local fetch failed: ${r.status}`);
+                return r.json();
+            })
             .then(data => {
-                if (data) {
-                    log(`✅ ${source} loaded`);
-                    mergeAndSaveData(source, data);
-                } else {
-                    log(`❌ Failed to load ${source}`);
-                    showToast(`❌ Failed`);
-                }
+                log(`✅ ${source} loaded from local`);
+                mergeAndSaveData(source, data);
             })
             .catch(e => {
-                log(`❌ Error: ${e.message}`);
-                showToast(`❌ Error loading ${source}`);
+                log(`❌ Local failed: ${e.message}`);
+                log(`📍 Trying GitHub raw URL...`);
+                
+                // Fallback to GitHub raw URL
+                fetch(githubRawPath)
+                    .then(r => {
+                        if (!r.ok) throw new Error(`GitHub fetch failed: ${r.status}`);
+                        return r.json();
+                    })
+                    .then(data => {
+                        log(`✅ ${source} loaded from GitHub`);
+                        mergeAndSaveData(source, data);
+                    })
+                    .catch(err => {
+                        log(`❌ Both failed: ${err.message}`);
+                        showToast(`❌ Could not load ${source}`);
+                    });
             });
     }
 
