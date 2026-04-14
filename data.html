@@ -979,54 +979,102 @@
         
         log('✅ All files loaded from GitHub');
         
-        // Process symbols data with flexible parsing
+        // Parse symbols data
         let symbolsData = results[0];
-        let stocks = null;
+        let symbolsList = null;
         
         if (Array.isArray(symbolsData)) {
-            stocks = symbolsData;
+            symbolsList = symbolsData;
         } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
-            stocks = symbolsData.symbols;
+            symbolsList = symbolsData.symbols;
         } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
-            stocks = symbolsData.stocks;
+            symbolsList = symbolsData.stocks;
         } else if (symbolsData && typeof symbolsData === 'object') {
-            stocks = Object.values(symbolsData);
+            symbolsList = Object.values(symbolsData);
         }
         
-        if (stocks && stocks.length > 0) {
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                try {
-                    var transaction = db.transaction(STORE_NAME, 'readwrite');
-                    var store = transaction.objectStore(STORE_NAME);
-                    store.clear();
-                    
-                    masterData = stocks;
-                    stocks.forEach(stock => {
-                        store.put(stock);
-                    });
-                    
-                    log(`✅ Merged ${stocks.length} records to IndexedDB`);
+        if (!symbolsList || symbolsList.length === 0) {
+            log('❌ Could not parse symbols data');
+            document.getElementById('status').textContent = '❌ Failed';
+            return;
+        }
+        
+        // Parse other data sources
+        const pricesData = results[2] || {};
+        const fundamentalsData = results[1] || {};
+        const guidanceData = results[3] || {};
+        const macroData = results[4] || {};
+        
+        // Merge all data sources into enriched records
+        let mergedStocks = [];
+        
+        symbolsList.forEach(symbol => {
+            const ticker = symbol.ticker || symbol.TICKER || symbol.name;
+            if (!ticker) return;
+            
+            // Get data from each source for this ticker
+            const priceInfo = pricesData.quotes ? (pricesData.quotes[ticker] || {}) : (pricesData[ticker] || {});
+            const fundInfo = fundamentalsData.stocks ? (fundamentalsData.stocks[ticker] || {}) : (fundamentalsData[ticker] || {});
+            const guidInfo = guidanceData[ticker] || {};
+            const macroInfo = macroData[ticker] || {};
+            
+            // Merge all data into single record
+            const merged = {
+                ...symbol,
+                ...priceInfo,
+                ...fundInfo,
+                ...guidInfo,
+                ...macroInfo,
+                ticker: ticker
+            };
+            
+            mergedStocks.push(merged);
+        });
+        
+        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
+        
+        // Save to IndexedDB
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = (e) => {
+            var db = e.target.result;
+            try {
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
+                store.clear();
+                
+                masterData = mergedStocks;
+                mergedStocks.forEach(stock => {
+                    store.put(stock);
+                });
+                
+                transaction.oncomplete = () => {
+                    log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
                     log('✅ Saved to IndexedDB');
                     
                     // Store other data
-                    if (results[3]) sourceData.guidance = results[3];
+                    sourceData.guidance = guidanceData;
                     
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
                     document.getElementById('status').textContent = '✅ Ready';
                     showToast('✅ Load complete!');
-                } catch (err) {
-                    log(`⚠️ IndexedDB error: ${err.message}`);
+                };
+                
+                transaction.onerror = () => {
+                    log(`⚠️ IndexedDB error: ${transaction.error}`);
                     document.getElementById('status').textContent = '⚠️ Error';
-                }
-            };
-        } else {
-            log('❌ Could not parse symbols data');
-            document.getElementById('status').textContent = '❌ Failed';
-        }
+                };
+            } catch (err) {
+                log(`⚠️ Error: ${err.message}`);
+                document.getElementById('status').textContent = '⚠️ Error';
+            }
+        };
+        
+        req.onerror = () => {
+            log(`⚠️ Could not open IndexedDB`);
+            document.getElementById('status').textContent = '⚠️ Error';
+        };
     }
 
     async function reloadAuto() {
@@ -1062,6 +1110,13 @@
                 showToast('✅ Database cleared!');
             };
         }
+    }
+
+    // ========== HEADER UPDATE ==========
+    function updateHeader() {
+        document.getElementById('dbCount').textContent = masterData.length;
+        document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
     }
 
     // ========== INIT ==========
