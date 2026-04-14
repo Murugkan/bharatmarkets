@@ -723,13 +723,21 @@
                 // Check guidance data
                 var hasGuidance = guidanceData[ticker] ? '✅' : '—';
                 var guidanceDate = guidanceData[ticker]?.guidance?.updated || '—';
+                var guidanceButtons = '';
+                
+                if (guidanceData[ticker]) {
+                    guidanceButtons = `
+                        <button onclick="copyGuidancePrompt('${ticker}')" style="padding:2px 4px; margin:2px 1px; font-size:8px; background:#00ff88; color:#000; border:none; border-radius:2px; cursor:pointer;">✅</button>
+                        <button onclick="openGuidanceModal('${ticker}')" style="padding:2px 4px; margin:2px 1px; font-size:8px; background:#00f2ff; color:#000; border:none; border-radius:2px; cursor:pointer;">📋</button>
+                    `;
+                }
 
                 html += `<tr id="row-${ticker}">
                     <td class="sticky">${ticker}</td>
                     <td>${name}</td>
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                    <td style="font-size:9px;">${hasGuidance}<br>${guidanceDate}</td>
+                    <td style="font-size:9px;">${hasGuidance}<br>${guidanceDate}<br>${guidanceButtons}</td>
                     <td>—</td>
                     <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
                 </tr>`;
@@ -750,23 +758,169 @@
         }
     }
 
-    function deleteStock(ticker) {
-        if (confirm(`Delete ${ticker} from unified-symbols.json?`)) {
-            var pat = document.getElementById('patToken').value;
-            if (!pat) {
-                showToast('❌ PAT token required to delete');
-                log('❌ PAT token missing');
-                return;
-            }
-            
-            log(`🗑️ Deleting ${ticker}...`);
-            
-            // Remove from masterData
-            masterData = masterData.filter(s => s.ticker !== ticker);
+    function generateGuidancePrompt(ticker) {
+        // TODO: Add your logic here to generate stock-specific AI prompt
+        // For now, return placeholder
+        return `Generate guidance for ${ticker}. Include: revenue, growth targets, margins, expansion plans, risks, confidence level.`;
+    }
+    
+    function copyGuidancePrompt(ticker) {
+        var prompt = generateGuidancePrompt(ticker);
+        navigator.clipboard.writeText(prompt).then(() => {
+            log(`✅ Copied ${ticker} guidance prompt`);
+            showToast('✅ Copied!');
+        }).catch(err => {
+            log(`❌ Copy failed: ${err}`);
+        });
+    }
+    
+    function openGuidanceModal(ticker) {
+        var guidance = guidanceData[ticker]?.guidance;
+        if (!guidance) {
+            showToast('No guidance data');
+            return;
+        }
+        
+        var modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.95); z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+        `;
+        
+        modal.innerHTML = `
+            <div style="background: #0a0a0a; border: 2px solid #00f2ff; border-radius: 8px; padding: 20px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; color: #fff;">
+                <div style="font-size: 14px; color: #00f2ff; margin-bottom: 15px; font-weight: bold;">📋 Guidance: ${ticker}</div>
+                <textarea id="guidance-json" style="width: 100%; height: 300px; padding: 10px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-family: monospace; font-size: 11px;">${JSON.stringify(guidance, null, 2)}</textarea>
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button onclick="saveGuidanceModal('${ticker}')" style="flex:1; padding: 10px; background: #00ff88; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">💾 SAVE</button>
+                    <button onclick="closeGuidanceModal()" style="flex:1; padding: 10px; background: #666; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">❌ CLOSE</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        window.guidanceModal = modal;
+    }
+    
+    function saveGuidanceModal(ticker) {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT required');
+            return;
+        }
+        
+        try {
+            var updated = JSON.parse(document.getElementById('guidance-json').value);
+            guidanceData[ticker].guidance = updated;
             
             // Upload to GitHub
-            uploadToGitHub(pat, 'unified-symbols.json', { symbols: masterData }, `Delete ${ticker}`);
+            uploadToGitHub(pat, 'guidance.json', guidanceData, `Update guidance for ${ticker}`);
+            
+            closeGuidanceModal();
+            log(`✅ Saved guidance for ${ticker}`);
+            showToast('✅ Saved!');
+        } catch(e) {
+            showToast('❌ Invalid JSON');
         }
+    }
+    
+    function closeGuidanceModal() {
+        if (window.guidanceModal) {
+            window.guidanceModal.remove();
+            window.guidanceModal = null;
+        }
+    }
+        var choice = confirm(`${ticker}:\n\n✅ OK = Delete completely\n❌ Cancel = Update avg/qty only`);
+        
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            return;
+        }
+        
+        if (choice) {
+            // Delete completely
+            deleteStockCompletely(ticker, pat);
+        } else {
+            // Update avg/qty only
+            updateStockValues(ticker, pat);
+        }
+    }
+    
+    function deleteStockCompletely(ticker, pat) {
+        log(`🗑️ Deleting ${ticker} completely...`);
+        
+        // Fetch current file from GitHub
+        fetchGitHubData(GITHUB_CONFIG.PATHS.symbols)
+            .then(data => {
+                // Get symbols array
+                let symbols = data.symbols || Object.values(data);
+                
+                // Remove the ticker
+                symbols = symbols.filter(s => s.ticker !== ticker);
+                
+                // Upload back with same structure
+                const uploadData = data.symbols ? { symbols: symbols } : symbols;
+                uploadToGitHub(pat, 'unified-symbols.json', uploadData, `Delete ${ticker}`);
+                
+                // Update local data
+                masterData = masterData.filter(s => s.ticker !== ticker);
+                updateHeader();
+                renderSymbols();
+            })
+            .catch(e => {
+                log(`❌ Error: ${e.message}`);
+                showToast(`❌ Failed to delete`);
+            });
+    }
+    
+    function updateStockValues(ticker, pat) {
+        log(`✏️ Updating ${ticker} avg/qty...`);
+        
+        // Get updated values from inputs
+        var qtyInput = document.querySelector(`input.qty-input[data-ticker="${ticker}"]`);
+        var avgInput = document.querySelector(`input.avg-input[data-ticker="${ticker}"]`);
+        
+        if (!qtyInput || !avgInput) {
+            showToast('❌ Stock not found in table');
+            return;
+        }
+        
+        var newQty = parseFloat(qtyInput.value) || 0;
+        var newAvg = parseFloat(avgInput.value) || 0;
+        
+        // Fetch current file from GitHub
+        fetchGitHubData(GITHUB_CONFIG.PATHS.symbols)
+            .then(data => {
+                // Get symbols array
+                let symbols = data.symbols || Object.values(data);
+                
+                // Find and update the stock
+                symbols = symbols.map(s => {
+                    if (s.ticker === ticker) {
+                        return { ...s, qty: newQty, avg: newAvg };
+                    }
+                    return s;
+                });
+                
+                // Upload back
+                const uploadData = data.symbols ? { symbols: symbols } : symbols;
+                uploadToGitHub(pat, 'unified-symbols.json', uploadData, `Update ${ticker}: qty=${newQty}, avg=${newAvg}`);
+                
+                // Update local data
+                masterData = masterData.map(s => {
+                    if (s.ticker === ticker) {
+                        return { ...s, qty: newQty, avg: newAvg };
+                    }
+                    return s;
+                });
+                renderSymbols();
+            })
+            .catch(e => {
+                log(`❌ Error: ${e.message}`);
+                showToast(`❌ Failed to update`);
+            });
     }
     
     function uploadToGitHub(pat, filename, data, message) {
