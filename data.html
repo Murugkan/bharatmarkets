@@ -1012,11 +1012,42 @@
         log('  - Macro data keys:', Object.keys(macroData).slice(0, 5));
         
         // Extract ticker maps from each source (handling different wrappers)
-        const priceMap = pricesData.quotes || pricesData.prices || pricesData;
-        const fundMap = fundamentalsData.stocks || fundamentalsData.fundamentals || fundamentalsData;
+        // Prices: Look for 'quotes' or 'stocks' wrapper
+        let priceMap = {};
+        if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
+            priceMap = pricesData.quotes;
+            log('✅ Found prices in "quotes" wrapper');
+        } else if (pricesData.stocks && typeof pricesData.stocks === 'object' && !Array.isArray(pricesData.stocks)) {
+            priceMap = pricesData.stocks;
+            log('✅ Found prices in "stocks" wrapper');
+        } else if (pricesData.prices && typeof pricesData.prices === 'object' && !Array.isArray(pricesData.prices)) {
+            priceMap = pricesData.prices;
+            log('✅ Found prices in "prices" wrapper');
+        } else {
+            // Last resort: if object has ticker-like keys (all caps, no metadata)
+            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase() && k !== 'QUOTES' && k !== 'STOCKS') 
+                ? pricesData 
+                : {};
+            log('⚠️ No wrapper found for prices, using direct keys or empty');
+        }
         
-        log(`✅ Price map keys: ${Object.keys(priceMap).slice(0, 3).join(', ')}... (${Object.keys(priceMap).length} total)`);
-        log(`✅ Fund map keys: ${Object.keys(fundMap).slice(0, 3).join(', ')}... (${Object.keys(fundMap).length} total)`);
+        // Fundamentals: Look for 'stocks' or 'fundamentals' wrapper
+        let fundMap = {};
+        if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
+            fundMap = fundamentalsData.stocks;
+            log('✅ Found fundamentals in "stocks" wrapper');
+        } else if (fundamentalsData.fundamentals && typeof fundamentalsData.fundamentals === 'object' && !Array.isArray(fundamentalsData.fundamentals)) {
+            fundMap = fundamentalsData.fundamentals;
+            log('✅ Found fundamentals in "fundamentals" wrapper');
+        } else {
+            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase() && k !== 'STOCKS') 
+                ? fundamentalsData 
+                : {};
+            log('⚠️ No wrapper found for fundamentals, using direct keys or empty');
+        }
+        
+        log(`✅ Price map has ${Object.keys(priceMap).length} tickers: ${Object.keys(priceMap).filter(k => k === k.toUpperCase()).slice(0, 3).join(', ')}`);
+        log(`✅ Fund map has ${Object.keys(fundMap).length} tickers: ${Object.keys(fundMap).filter(k => k === k.toUpperCase()).slice(0, 3).join(', ')}`);
         
         // Guidance has _metadata, so skip it when getting ticker data
         const guidMap = {};
@@ -1025,7 +1056,7 @@
                 guidMap[key] = guidanceData[key];
             }
         });
-        log(`✅ Guidance map keys: ${Object.keys(guidMap).slice(0, 3).join(', ')}... (${Object.keys(guidMap).length} total)`);
+        log(`✅ Guidance map has ${Object.keys(guidMap).length} tickers: ${Object.keys(guidMap).slice(0, 3).join(', ')}`);
         
         // Macro has indicators array, so extract from it
         const macroMap = {};
@@ -1039,7 +1070,7 @@
                     macroMap[key] = macroObj[key];
                 }
             });
-            log(`✅ Macro map keys: ${Object.keys(macroMap).slice(0, 3).join(', ')}... (${Object.keys(macroMap).length} total)`);
+            log(`✅ Macro map has ${Object.keys(macroMap).length} records`);
         }
         
         // Merge all data sources into enriched records
