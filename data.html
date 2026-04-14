@@ -24,7 +24,7 @@
             font-size: 11px;
             overflow: hidden;
             -webkit-text-size-adjust: 100%;
-            padding-bottom: 75px;
+            padding-bottom: 140px;
         }
 
         /* HEADER */
@@ -81,7 +81,7 @@
 
         /* CONTENT AREA */
         .content {
-            height: calc(100vh - 260px);
+            height: calc(100vh - 240px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 12px;
@@ -145,7 +145,7 @@
         /* ACTION BUTTONS */
         .action-buttons {
             position: fixed;
-            bottom: 0;
+            bottom: 80px;
             left: 0;
             right: 0;
             background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.99) 100%);
@@ -158,7 +158,52 @@
             z-index: 1000;
             box-shadow: 0 -8px 24px rgba(0, 242, 255, 0.15);
         }
-        .action-buttons button { 
+
+        /* NAVIGATION FOOTER */
+        .nav-footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid var(--b1);
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+            z-index: 999;
+        }
+
+        .nav-btn {
+            text-decoration: none;
+            color: #666;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 33%;
+            padding: 8px 0;
+            transition: color 0.2s;
+        }
+
+        .nav-btn:hover {
+            color: var(--bl);
+        }
+
+        .nav-btn.active {
+            color: var(--bl);
+            font-weight: 800;
+        }
+
+        .nav-label {
+            font-size: 8px;
+            margin-top: 4px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .action-buttons button {
             width: 100%; 
             padding: 14px 8px;
             font-size: 12px;
@@ -171,6 +216,7 @@
             position: relative;
             overflow: hidden;
         }
+
         .action-buttons button:before {
             content: '';
             position: absolute;
@@ -181,14 +227,17 @@
             background: rgba(255, 255, 255, 0.1);
             transition: left 0.3s;
         }
+
         .action-buttons button:hover {
             transform: translateY(-3px);
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
             opacity: 1 !important;
         }
+
         .action-buttons button:hover:before {
             left: 100%;
         }
+
         .action-buttons button:active {
             transform: translateY(-1px);
         }
@@ -406,6 +455,13 @@
     <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; box-shadow: 0 4px 15px rgba(255, 77, 109, 0.3);"><span style="font-size:16px; margin-right:4px;">🗑️</span>CLEAR DB</button>
 </div>
 
+<!-- NAVIGATION FOOTER (From Index) -->
+<footer class="nav-footer">
+    <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
+    <a href="data.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
+    <a href="nexus.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg><span class="nav-label">Import</span></a>
+</footer>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -418,62 +474,109 @@
     let editMode = false;
     let logMessages = [];
 
-    // GitHub configuration
-    const GITHUB_OWNER = 'murugkan';
-    const GITHUB_REPO = 'bharatmarkets';
-    const GITHUB_BRANCH = 'main';
-    const RAW_GITHUB_URL = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
+    // ========== GITHUB CONFIGURATION (CUSTOMIZE THESE!) ==========
+    const GITHUB_CONFIG = {
+        OWNER: 'murugkan',
+        REPO: 'bharatmarkets',
+        BRANCH: 'main',
+        // All files are in the root folder of the repository
+        PATHS: {
+            symbols: 'unified-symbols.json',
+            prices: 'prices.json',
+            fundamentals: 'fundamentals.json',
+            guidance: 'guidance.json',
+            macro: 'macro_data.json'
+        }
+    };
+    
+    const RAW_GITHUB_URL = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}`;
     
     const DATA_SOURCES = [
-        { name: 'unified-symbols.json', path: 'data/unified-symbols.json' },
-        { name: 'prices.json', path: 'data/prices.json' },
-        { name: 'fundamentals.json', path: 'data/fundamentals.json' },
-        { name: 'guidance.json', path: 'data/guidance.json' },
-        { name: 'macro_data.json', path: 'data/macro_data.json' }
+        { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
+        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
+        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals },
+        { name: 'guidance.json', path: GITHUB_CONFIG.PATHS.guidance },
+        { name: 'macro_data.json', path: GITHUB_CONFIG.PATHS.macro }
     ];
 
     // ========== FETCH REAL DATA FROM GITHUB ==========
     async function fetchGitHubData(filePath) {
         try {
             const url = `${RAW_GITHUB_URL}/${filePath}`;
+            log(`📡 Fetching: ${url}`);
             const response = await fetch(url);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return await response.json();
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} - File not found at: ${filePath}`);
+            }
+            const data = await response.json();
+            log(`✅ Fetched ${filePath} successfully`);
+            return data;
         } catch (e) {
-            log(`⚠️ Failed to fetch ${filePath}: ${e.message}`);
+            log(`❌ GitHub fetch failed: ${filePath}`);
+            log(`   Error: ${e.message}`);
+            log(`   Full URL: ${RAW_GITHUB_URL}/${filePath}`);
             return null;
         }
     }
 
     async function initializeFromGitHub() {
-        log('🚀 Fetching real data from GitHub...');
+        log('🚀 Initializing from GitHub...');
+        log(`📍 Repo: ${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}`);
         
-        // Fetch unified-symbols.json
+        // Fetch symbols data
         const symbolsData = await fetchGitHubData(DATA_SOURCES[0].path);
-        if (symbolsData && Array.isArray(symbolsData)) {
+        
+        if (symbolsData && Array.isArray(symbolsData) && symbolsData.length > 0) {
             masterData = symbolsData;
             log(`✅ Loaded ${masterData.length} symbols from GitHub`);
             
             // Save to IndexedDB
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                try {
-                    var transaction = db.transaction(STORE_NAME, 'readwrite');
-                    var store = transaction.objectStore(STORE_NAME);
-                    store.clear();
-                    
-                    masterData.forEach(stock => {
-                        store.add(stock);
-                    });
-                    
-                    log(`✅ Saved ${masterData.length} records to IndexedDB`);
-                } catch (err) {
-                    log(`⚠️ IndexedDB error: ${err.message}`);
-                }
-            };
+            return new Promise((resolve) => {
+                var req = indexedDB.open(DB_NAME, DB_VERSION);
+                
+                req.onupgradeneeded = (e) => {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                    }
+                };
+                
+                req.onsuccess = (e) => {
+                    var db = e.target.result;
+                    try {
+                        var transaction = db.transaction(STORE_NAME, 'readwrite');
+                        var store = transaction.objectStore(STORE_NAME);
+                        
+                        // Clear and add new data
+                        store.clear();
+                        masterData.forEach(stock => {
+                            store.add(stock);
+                        });
+                        
+                        transaction.oncomplete = () => {
+                            log(`✅ Saved ${masterData.length} records to IndexedDB`);
+                            resolve();
+                        };
+                        
+                        transaction.onerror = () => {
+                            log(`⚠️ IndexedDB transaction error`);
+                            resolve();
+                        };
+                    } catch (err) {
+                        log(`⚠️ IndexedDB error: ${err.message}`);
+                        resolve();
+                    }
+                };
+                
+                req.onerror = () => {
+                    log(`⚠️ Could not open IndexedDB`);
+                    resolve();
+                };
+            });
         } else {
-            log('❌ Could not load symbols from GitHub');
+            log(`❌ GitHub data invalid or empty`);
+            log(`   Check file path: ${DATA_SOURCES[0].path}`);
+            return Promise.resolve();
         }
     }
 
@@ -632,28 +735,50 @@
             
             req.onerror = () => {
                 log(`❌ IndexedDB error: ${req.error}`);
-                reject(req.error);
+                masterData = [];
+                resolve();
+            };
+            
+            req.onupgradeneeded = (e) => {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                    log(`✅ Created IndexedDB store: ${STORE_NAME}`);
+                }
             };
             
             req.onsuccess = (e) => {
                 var db = e.target.result;
                 try {
-                    var store = db.transaction(STORE_NAME).objectStore(STORE_NAME);
+                    // Check if store exists
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        log(`⚠️ Store '${STORE_NAME}' not found, will be created on next load`);
+                        masterData = [];
+                        resolve();
+                        return;
+                    }
+                    
+                    var transaction = db.transaction(STORE_NAME, 'readonly');
+                    var store = transaction.objectStore(STORE_NAME);
                     var getAllReq = store.getAll();
 
                     getAllReq.onsuccess = () => {
                         masterData = getAllReq.result || [];
-                        log(`✅ Loaded ${masterData.length} records from DB`);
+                        if (masterData.length > 0) {
+                            log(`✅ Loaded ${masterData.length} records from IndexedDB`);
+                        } else {
+                            log(`ℹ️ IndexedDB is empty - use LOAD ALL to populate`);
+                        }
                         resolve();
                     };
                     
                     getAllReq.onerror = () => {
-                        log(`⚠️ Store read error, DB may be empty`);
+                        log(`⚠️ Failed to read from store`);
                         masterData = [];
                         resolve();
                     };
                 } catch (e) {
-                    log(`⚠️ Store access error: ${e.message} - DB may need initialization`);
+                    log(`⚠️ IndexedDB access error: ${e.message}`);
                     masterData = [];
                     resolve();
                 }
@@ -891,13 +1016,6 @@
                 showToast('✅ Database cleared!');
             };
         }
-    }
-
-    // ========== HEADER UPDATE ==========
-    function updateHeader() {
-        document.getElementById('dbCount').textContent = masterData.length;
-        document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
     }
 
     // ========== INIT ==========
