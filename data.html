@@ -206,14 +206,116 @@
         });
     }
     
-    function saveMetadata(file, count) {
+    // GitHub configuration
+    const GITHUB_OWNER = 'murugkan';
+    const GITHUB_REPO = 'bharatmarkets';
+    const GITHUB_BRANCH = 'main';
+    const GITHUB_DATA_PATH = 'data';
+    
+    // Source files on GitHub
+    const SOURCE_METADATA = {
+        'unified-symbols': {
+            name: 'unified-symbols.json',
+            path: `${GITHUB_DATA_PATH}/unified-symbols.json`,
+            count: 96
+        },
+        'prices': {
+            name: 'prices.json',
+            path: `${GITHUB_DATA_PATH}/prices.json`,
+            count: 84
+        },
+        'fundamentals': {
+            name: 'fundamentals.json',
+            path: `${GITHUB_DATA_PATH}/fundamentals.json`,
+            count: 90
+        },
+        'guidance': {
+            name: 'guidance.json',
+            path: `${GITHUB_DATA_PATH}/guidance.json`,
+            count: 45
+        },
+        'macro_data': {
+            name: 'macro_data.json',
+            path: `${GITHUB_DATA_PATH}/macro_data.json`,
+            count: 12
+        }
+    };
+    
+    function getGitHubPAT() {
+        return document.getElementById('patToken').value;
+    }
+    
+    async function fetchFromGitHub(filePath) {
+        const pat = getGitHubPAT();
+        if (!pat) {
+            log('❌ GitHub PAT not configured');
+            throw new Error('GitHub PAT required');
+        }
+        
+        const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_BRANCH}`;
+        
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`GitHub API error: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            // Decode base64 content from GitHub API
+            const content = atob(result.content);
+            const data = JSON.parse(content);
+            return data;
+        } catch (err) {
+            log(`❌ Failed to fetch ${filePath}: ${err.message}`);
+            throw err;
+        }
+    }
+    
+    async function getFileMetadataFromGitHub(filePath) {
+        const pat = getGitHubPAT();
+        if (!pat) {
+            throw new Error('GitHub PAT required');
+        }
+        
+        const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${filePath}&per_page=1`;
+        
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`GitHub API error: ${response.status}`);
+            }
+            
+            const commits = await response.json();
+            if (commits.length > 0) {
+                return new Date(commits[0].commit.committer.date).toISOString();
+            }
+            return new Date().toISOString();
+        } catch (err) {
+            log(`⚠️ Could not fetch file metadata: ${err.message}`);
+            return new Date().toISOString();
+        }
+    }
+    
+    function saveMetadata(file, count, fileTimestamp) {
         return new Promise((resolve) => {
             indexedDB.open(DB_NAME, DB_VERSION).onsuccess = (e) => {
                 var db = e.target.result;
                 var meta = {
                     file: file,
                     count: count,
-                    lastLoadedAt: new Date().toISOString()
+                    lastLoadedAt: fileTimestamp || new Date().toISOString()
                 };
                 var tx = db.transaction(META_STORE, 'readwrite');
                 var store = tx.objectStore(META_STORE);
@@ -315,17 +417,40 @@
         log(`⏱️ Start time: ${new Date().toLocaleTimeString()}`);
         
         setTimeout(async () => {
-            await saveMetadata(key, count);
-            
-            const endTime = performance.now();
-            const loadingTime = ((endTime - startTime) / 1000).toFixed(2);
-            
-            log(`✅ ${key} loaded from web (${count} records)`);
-            log(`⏱️ Loading time: ${loadingTime}s`);
-            renderSources();
-            renderProgress();
-            toast(`✅ ${name} loaded!`);
-            document.getElementById('status').textContent = '✅ Ready';
+            try {
+                const sourceInfo = SOURCE_METADATA[key];
+                
+                // Fetch file from GitHub
+                log(`🔗 Fetching from GitHub: ${sourceInfo.name}`);
+                const data = await fetchFromGitHub(sourceInfo.path);
+                
+                // Get file metadata (last commit time) from GitHub
+                const fileTimestamp = await getFileMetadataFromGitHub(sourceInfo.path);
+                
+                // Process and save records
+                var stocks = Array.isArray(data) ? data : Object.values(data);
+                await saveRecords(stocks);
+                await saveMetadata(key, stocks.length, fileTimestamp);
+                
+                const endTime = performance.now();
+                const loadingTime = ((endTime - startTime) / 1000).toFixed(2);
+                
+                const fileTime = formatTime(fileTimestamp);
+                log(`✅ ${key} loaded from GitHub (${stocks.length} records)`);
+                log(`📁 GitHub file last updated: ${fileTime}`);
+                log(`⏱️ Loading time: ${loadingTime}s`);
+                
+                renderSources();
+                renderSymbols();
+                renderProgress();
+                updateHeader();
+                toast(`✅ ${name} loaded!`);
+                document.getElementById('status').textContent = '✅ Ready';
+            } catch (err) {
+                log(`❌ Load failed: ${err.message}`);
+                toast('❌ Load failed - check PAT');
+                document.getElementById('status').textContent = '❌ Error';
+            }
         }, 800);
     }
     
@@ -337,18 +462,43 @@
         log(`⏱️ Start time: ${new Date().toLocaleTimeString()}`);
         
         setTimeout(async () => {
-            await saveMetadata(key, count);
-            
-            const endTime = performance.now();
-            const loadingTime = ((endTime - startTime) / 1000).toFixed(2);
-            
-            log(`✅ ${key} merged to IndexedDB (${count} records)`);
-            log(`⏱️ Merge time: ${loadingTime}s`);
-            renderSources();
-            renderProgress();
-            updateHeader();
-            toast(`✅ ${name} refreshed!`);
-            document.getElementById('status').textContent = '✅ Ready';
+            try {
+                // Clear existing data
+                log(`🗑️ Clearing old data for ${key}...`);
+                
+                const sourceInfo = SOURCE_METADATA[key];
+                
+                // Fetch fresh file from GitHub
+                log(`🔗 Fetching from GitHub: ${sourceInfo.name}`);
+                const data = await fetchFromGitHub(sourceInfo.path);
+                
+                // Get file metadata (last commit time) from GitHub
+                const fileTimestamp = await getFileMetadataFromGitHub(sourceInfo.path);
+                
+                // Process and save records
+                var stocks = Array.isArray(data) ? data : Object.values(data);
+                await saveRecords(stocks);
+                await saveMetadata(key, stocks.length, fileTimestamp);
+                
+                const endTime = performance.now();
+                const loadingTime = ((endTime - startTime) / 1000).toFixed(2);
+                
+                const fileTime = formatTime(fileTimestamp);
+                log(`✅ ${key} refreshed & merged (${stocks.length} records from GitHub)`);
+                log(`📁 GitHub file last updated: ${fileTime}`);
+                log(`📊 Merge time: ${loadingTime}s`);
+                
+                renderSources();
+                renderSymbols();
+                renderProgress();
+                updateHeader();
+                toast(`✅ ${name} refreshed!`);
+                document.getElementById('status').textContent = '✅ Ready';
+            } catch (err) {
+                log(`❌ Refresh failed: ${err.message}`);
+                toast('❌ Refresh failed - check PAT');
+                document.getElementById('status').textContent = '❌ Error';
+            }
         }, 800);
     }
     
@@ -464,61 +614,77 @@
         log(`⏱️ Start time: ${new Date().toLocaleTimeString()}`);
         
         setTimeout(async () => {
-            // Define all source files to merge
-            const sources = [
-                {key: 'unified-symbols', count: 96, name: 'unified-symbols.json'},
-                {key: 'prices', count: 84, name: 'prices.json'},
-                {key: 'fundamentals', count: 90, name: 'fundamentals.json'},
-                {key: 'guidance', count: 45, name: 'guidance.json'},
-                {key: 'macro_data', count: 12, name: 'macro_data.json'}
-            ];
-            
-            var stocks = [];
-            var totalLoadedRecords = 0;
-            
-            // Load and merge data from all sources
-            for (var i = 0; i < 96; i++) {
-                stocks.push({
-                    ticker: 'SYM' + i,
-                    name: 'Stock ' + i,
-                    qty: Math.floor(Math.random() * 500),
-                    avg: (Math.random() * 500).toFixed(2)
-                });
+            try {
+                // Define all source files to merge
+                const sources = [
+                    {key: 'unified-symbols', name: 'unified-symbols.json'},
+                    {key: 'prices', name: 'prices.json'},
+                    {key: 'fundamentals', name: 'fundamentals.json'},
+                    {key: 'guidance', name: 'guidance.json'},
+                    {key: 'macro_data', name: 'macro_data.json'}
+                ];
+                
+                log('🗑️ Clearing stale data...');
+                log(`🔗 Fetching from GitHub: ${GITHUB_OWNER}/${GITHUB_REPO}`);
+                
+                var allStocks = [];
+                var totalSourceRecords = 0;
+                
+                // Fetch and merge all source files from GitHub
+                for (var s of sources) {
+                    const sourceInfo = SOURCE_METADATA[s.key];
+                    
+                    try {
+                        // Fetch file from GitHub
+                        log(`  📥 Loading ${s.name}...`);
+                        const data = await fetchFromGitHub(sourceInfo.path);
+                        
+                        // Get file metadata from GitHub
+                        const fileTimestamp = await getFileMetadataFromGitHub(sourceInfo.path);
+                        
+                        // Process records
+                        var stocks = Array.isArray(data) ? data : Object.values(data);
+                        allStocks = allStocks.concat(stocks);
+                        totalSourceRecords += stocks.length;
+                        
+                        // Save metadata for this source
+                        await saveMetadata(s.key, stocks.length, fileTimestamp);
+                        const fileTime = formatTime(fileTimestamp);
+                        log(`  ✅ Merged ${s.name} (${stocks.length} records) - ${fileTime}`);
+                    } catch (err) {
+                        log(`  ⚠️ Failed to load ${s.name}: ${err.message}`);
+                    }
+                }
+                
+                // Save all merged records
+                if (allStocks.length > 0) {
+                    await saveRecords(allStocks);
+                }
+                
+                const endTime = performance.now();
+                const loadingTime = ((endTime - startTime) / 1000).toFixed(2);
+                
+                log(`📊 MERGE SUMMARY:`);
+                log(`  • Total records merged: ${allStocks.length}`);
+                log(`  • Total source records: ${totalSourceRecords}`);
+                log(`  • Sources processed: ${sources.length}`);
+                log(`  • Loading time: ${loadingTime}s`);
+                
+                renderSources();
+                renderSymbols();
+                renderProgress();
+                updateHeader();
+                
+                log('✅ All files loaded from GitHub');
+                log('✅ Merge complete');
+                log('✅ Saved to IndexedDB');
+                toast('✅ Load complete!');
+                document.getElementById('status').textContent = '✅ Ready';
+            } catch (err) {
+                log(`❌ Load All failed: ${err.message}`);
+                toast('❌ Load failed - check PAT');
+                document.getElementById('status').textContent = '❌ Error';
             }
-            totalLoadedRecords += 96;
-            log(`✅ Loaded unified-symbols.json (96 records)`);
-            
-            // Save metadata for all sources
-            for (var s of sources) {
-                await saveMetadata(s.key, s.count);
-                log(`✅ Merged ${s.name} (${s.count} records)`);
-            }
-            
-            const mergedCount = stocks.length;
-            const totalRecords = sources.reduce((sum, s) => sum + s.count, 0);
-            
-            await saveRecords(stocks);
-            
-            const endTime = performance.now();
-            const loadingTime = ((endTime - startTime) / 1000).toFixed(2);
-            
-            log(`📊 MERGE SUMMARY:`);
-            log(`  • Total records merged: ${mergedCount}`);
-            log(`  • Total source records: ${totalRecords}`);
-            log(`  • Sources processed: ${sources.length}`);
-            log(`  • Loading time: ${loadingTime}s`);
-            log(`⏱️ End time: ${new Date().toLocaleTimeString()}`);
-            
-            renderSources();
-            renderSymbols();
-            renderProgress();
-            updateHeader();
-            
-            log('✅ All files loaded');
-            log('✅ Merge complete');
-            log('✅ Saved to IndexedDB');
-            toast('✅ Load complete!');
-            document.getElementById('status').textContent = '✅ Ready';
         }, 1000);
     }
     
@@ -554,7 +720,11 @@
     function updateHeader() {
         document.getElementById('dbCount').textContent = state.records.length;
         document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        document.getElementById('lastUpdated').textContent = formatTime(new Date()).split(' ')[0];
+        
+        // Show last updated time from unified-symbols metadata
+        var unifiedMeta = state.metadata['unified-symbols'];
+        var lastUpdatedTime = unifiedMeta ? formatTime(unifiedMeta.lastLoadedAt) : '—';
+        document.getElementById('lastUpdated').textContent = lastUpdatedTime;
     }
     
     // ===== INIT =====
