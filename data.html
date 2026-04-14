@@ -627,39 +627,45 @@
     }
 
     function dataLoad(source) {
+        var sourceObj = DATA_SOURCES.find(s => s.name === source);
+        if (!sourceObj) return;
+        
         log(`⬇️ Loading ${source}...`);
         showToast(`Loading ${source}...`);
         
         fetch(`${source}?cache=${Date.now()}`)
             .then(r => r.json())
             .then(data => {
-                log(`✅ ${source} loaded`);
+                if (!data) throw new Error('No data');
+                log(`✅ ${source} loaded. Reloading...`);
                 showToast(`✅ Reloading...`);
-                setTimeout(() => {
-                    location.reload();
-                }, 500);
+                setTimeout(() => location.reload(), 1000);
             })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
+            .catch(err => {
+                log(`❌ Error: ${err.message}`);
                 showToast(`❌ Failed`);
             });
     }
 
     function refreshDB(source) {
-        log(`🔄 Refreshing ${source}...`);
-        showToast(`Refreshing ${source}...`);
-        const sourceObj = DATA_SOURCES.find(s => s.name === source);
+        var sourceObj = DATA_SOURCES.find(s => s.name === source);
         if (!sourceObj) return;
         
-        fetchGitHubData(sourceObj.path).then(data => {
-            if (data) {
-                log(`✅ ${source} fetched from GitHub`);
-                mergeAndSaveData(source, data);
-            } else {
-                log(`❌ Failed to refresh ${source}`);
-                showToast(`❌ Failed to refresh ${source}`);
-            }
-        });
+        log(`🔄 Refreshing ${source}...`);
+        showToast(`Refreshing ${source}...`);
+        
+        fetch(`${source}?cache=${Date.now()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data) throw new Error('No data');
+                log(`✅ ${source} refreshed. Reloading...`);
+                showToast(`✅ Reloading...`);
+                setTimeout(() => location.reload(), 1000);
+            })
+            .catch(err => {
+                log(`❌ Error: ${err.message}`);
+                showToast(`❌ Failed`);
+            });
     }
     
     function mergeAndSaveData(source, data) {
