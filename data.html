@@ -627,45 +627,74 @@
     }
 
     function dataLoad(source) {
-        var sourceObj = DATA_SOURCES.find(s => s.name === source);
-        if (!sourceObj) return;
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            log('❌ PAT required in 🔐 PAT tab');
+            showToast('❌ Configure PAT first');
+            return;
+        }
         
-        log(`⬇️ Loading ${source}...`);
-        showToast(`Loading ${source}...`);
+        let fetchType = source === 'prices.json' ? 'prices_only' : 'fundamentals_only';
+        log(`⏳ Triggering workflow: ${fetchType}`);
+        showToast('⏳ Starting workflow...');
         
+        triggerWorkflow(pat, fetchType, source);
+    }
+
+    function triggerWorkflow(pat, fetchType, source) {
+        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch.yml/dispatches`;
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json'
+            },
+            body: JSON.stringify({
+                ref: GITHUB_CONFIG.BRANCH,
+                inputs: { fetch_type: fetchType }
+            })
+        })
+        .then(r => {
+            if (r.ok) {
+                log(`✅ Workflow triggered! Waiting...`);
+                showToast('⏳ Workflow running (30 sec)...');
+                setTimeout(() => fetchUpdated(source), 30000);
+            } else {
+                return r.json().then(e => {
+                    log(`❌ Workflow trigger failed: ${e.message}`);
+                    showToast('❌ Failed');
+                });
+            }
+        })
+        .catch(e => {
+            log(`❌ Error: ${e.message}`);
+            showToast('❌ Error');
+        });
+    }
+
+    function fetchUpdated(source) {
+        log(`📥 Fetching updated ${source}...`);
         fetch(`${source}?cache=${Date.now()}`)
             .then(r => r.json())
             .then(data => {
-                if (!data) throw new Error('No data');
-                log(`✅ ${source} loaded. Reloading...`);
-                showToast(`✅ Reloading...`);
-                setTimeout(() => location.reload(), 1000);
+                if (data) {
+                    log(`✅ ${source} updated! Reloading...`);
+                    showToast('✅ Reloading...');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    log(`❌ Fetch failed`);
+                    showToast('❌ Failed');
+                }
             })
-            .catch(err => {
-                log(`❌ Error: ${err.message}`);
-                showToast(`❌ Failed`);
+            .catch(e => {
+                log(`❌ Error: ${e.message}`);
+                showToast('❌ Error');
             });
     }
 
     function refreshDB(source) {
-        var sourceObj = DATA_SOURCES.find(s => s.name === source);
-        if (!sourceObj) return;
-        
-        log(`🔄 Refreshing ${source}...`);
-        showToast(`Refreshing ${source}...`);
-        
-        fetch(`${source}?cache=${Date.now()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data) throw new Error('No data');
-                log(`✅ ${source} refreshed. Reloading...`);
-                showToast(`✅ Reloading...`);
-                setTimeout(() => location.reload(), 1000);
-            })
-            .catch(err => {
-                log(`❌ Error: ${err.message}`);
-                showToast(`❌ Failed`);
-            });
+        dataLoad(source);  // Same as dataLoad
     }
     
     function mergeAndSaveData(source, data) {
