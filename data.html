@@ -804,25 +804,12 @@
     }
     
     function triggerWizard(pat) {
-        // Call wizard from app-import.js
-        if (typeof window.openSymbolWizard === 'function') {
-            window.openSymbolWizard({
-                pat: pat,
-                symbols: masterData,
-                onSave: (updated) => {
-                    masterData = updated;
-                    updateHeader();
-                    renderSymbols();
-                    renderDataSources();
-                    log('✅ Wizard saved changes');
-                    showToast('✅ Symbols updated!');
-                }
-            });
-        } else if (typeof window.showWizard === 'function') {
-            window.showWizard({pat, symbols: masterData});
+        // Call app-import.js workflow
+        if (typeof window.openImportWorkflow === 'function') {
+            window.openImportWorkflow();
+            log('✅ Import workflow opened');
         } else {
-            showToast('❌ Wizard function not found');
-            log('❌ Wizard not available in app-import.js');
+            showToast('❌ Workflow not found');
         }
     }
 
