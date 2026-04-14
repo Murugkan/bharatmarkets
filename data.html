@@ -1005,9 +1005,18 @@
         const guidanceData = results[3] || {};
         const macroData = results[4] || {};
         
+        log('📦 Parsing results...');
+        log('  - Prices data keys:', Object.keys(pricesData).slice(0, 5));
+        log('  - Fundamentals data keys:', Object.keys(fundamentalsData).slice(0, 5));
+        log('  - Guidance data keys:', Object.keys(guidanceData).slice(0, 5));
+        log('  - Macro data keys:', Object.keys(macroData).slice(0, 5));
+        
         // Extract ticker maps from each source (handling different wrappers)
         const priceMap = pricesData.quotes || pricesData.prices || pricesData;
         const fundMap = fundamentalsData.stocks || fundamentalsData.fundamentals || fundamentalsData;
+        
+        log(`✅ Price map keys: ${Object.keys(priceMap).slice(0, 3).join(', ')}... (${Object.keys(priceMap).length} total)`);
+        log(`✅ Fund map keys: ${Object.keys(fundMap).slice(0, 3).join(', ')}... (${Object.keys(fundMap).length} total)`);
         
         // Guidance has _metadata, so skip it when getting ticker data
         const guidMap = {};
@@ -1016,6 +1025,7 @@
                 guidMap[key] = guidanceData[key];
             }
         });
+        log(`✅ Guidance map keys: ${Object.keys(guidMap).slice(0, 3).join(', ')}... (${Object.keys(guidMap).length} total)`);
         
         // Macro has indicators array, so extract from it
         const macroMap = {};
@@ -1029,6 +1039,7 @@
                     macroMap[key] = macroObj[key];
                 }
             });
+            log(`✅ Macro map keys: ${Object.keys(macroMap).slice(0, 3).join(', ')}... (${Object.keys(macroMap).length} total)`);
         }
         
         // Merge all data sources into enriched records
@@ -1058,6 +1069,20 @@
         });
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
+        
+        // Log sample merged record to verify fields
+        if (mergedStocks.length > 0) {
+            const sample = mergedStocks[0];
+            log('📋 Sample merged record:', {
+                ticker: sample.ticker,
+                ltp: sample.ltp,
+                pe: sample.pe,
+                roe: sample.roe,
+                roce: sample.roce,
+                opm: sample.opm_pct || sample.opm,
+                npm: sample.npm_pct || sample.npm
+            });
+        }
         
         // Save to IndexedDB
         var req = indexedDB.open(DB_NAME, DB_VERSION);
