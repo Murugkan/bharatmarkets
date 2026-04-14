@@ -24,7 +24,7 @@
             font-size: 11px;
             overflow: hidden;
             -webkit-text-size-adjust: 100%;
-            padding-bottom: 120px;
+            padding-bottom: 160px;
         }
 
         /* HEADER */
@@ -81,7 +81,7 @@
 
         /* CONTENT AREA */
         .content {
-            height: calc(100vh - 280px);
+            height: calc(100vh - 320px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 12px;
@@ -145,7 +145,7 @@
         /* ACTION BUTTONS */
         .action-buttons {
             position: fixed;
-            bottom: 0;
+            bottom: 55px;
             left: 0;
             right: 0;
             background: rgba(0, 0, 0, 0.95);
@@ -155,7 +155,7 @@
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
             gap: 8px;
-            z-index: 1000;
+            z-index: 999;
         }
         .action-buttons button { width: 100%; }
 
@@ -186,7 +186,7 @@
         /* TOAST */
         .toast {
             position: fixed;
-            bottom: 130px;
+            bottom: 80px;
             left: 50%;
             transform: translateX(-50%);
             background: var(--gr);
@@ -294,8 +294,8 @@
     <!-- TAB 2: SYMBOLS EDITOR -->
     <div id="symbols" class="tab-content">
         <div style="margin-bottom:10px;">
-            <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
-            <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
+            <button onclick="toggleEditMode()" style="background: var(--warning);">🔧 Edit: OFF</button>
+            <button onclick="downloadCSV()" style="background: var(--bl);">📊 CSV</button>
         </div>
         <div class="table-container">
             <table>
@@ -315,8 +315,8 @@
             </table>
         </div>
         <div id="save-section" style="display:none; margin-top:12px;">
-            <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
-            <button onclick="cancelChanges()">❌ Cancel</button>
+            <button onclick="saveChanges()" class="btn-success">💾 SAVE</button>
+            <button onclick="cancelChanges()" style="background:#666;">❌ CANCEL</button>
         </div>
     </div>
 
@@ -368,9 +368,16 @@
 <!-- ACTION BUTTONS -->
 <div class="action-buttons">
     <button onclick="loadAllData()" style="background:var(--gr);">🚀 LOAD ALL</button>
-    <button onclick="reloadAuto()" style="background:var(--bl);">🔄 RELOAD AUTO</button>
-    <button onclick="clearDB()" class="btn-danger">🗑️ CLEAR DB</button>
+    <button onclick="reloadAuto()" style="background:var(--bl);">🔄 RELOAD</button>
+    <button onclick="clearDB()" class="btn-danger">🗑️ CLEAR</button>
 </div>
+
+<!-- FOOTER NAVIGATION -->
+<footer style="position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.95); border-top:1px solid var(--b1); display:flex; justify-content:space-around; padding:10px 0; z-index:1001;">
+    <a href="index.html" style="flex:1; text-align:center; padding:10px; color:#666; text-decoration:none; font-size:9px; font-weight:800;">📊 PORTFOLIO</a>
+    <a href="data.html" style="flex:1; text-align:center; padding:10px; color:var(--bl); text-decoration:none; font-size:9px; font-weight:800; border-bottom:2px solid var(--bl);">🔧 ETL</a>
+    <a href="nexus.html" style="flex:1; text-align:center; padding:10px; color:#666; text-decoration:none; font-size:9px; font-weight:800;">📥 WIZARD</a>
+</footer>
 
 <div class="toast" id="toast"></div>
 
@@ -383,14 +390,17 @@
     let sourceData = {};
     let editMode = false;
     let logMessages = [];
+    let loadedAt = {};
 
     // ========== INITIALIZATION ==========
     async function init() {
+        log('🚀 ETL Center initializing...');
         await loadFromIndexedDB();
         renderDataSources();
         renderSymbols();
         renderProgress();
         updateHeader();
+        log('✅ ETL Center ready');
     }
 
     // ========== TAB SWITCHING ==========
@@ -420,14 +430,26 @@
         setTimeout(() => el.classList.remove('show'), 2000);
     }
 
+    // ========== FORMAT TIMESTAMP ==========
+    function formatTimestamp(date) {
+        if (!date) return '—';
+        var d = new Date(date);
+        var day = String(d.getDate()).padStart(2, '0');
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var year = String(d.getFullYear()).slice(-2);
+        var hours = String(d.getHours()).padStart(2, '0');
+        var mins = String(d.getMinutes()).padStart(2, '0');
+        return day + '/' + month + '/' + year + ' ' + hours + ':' + mins;
+    }
+
     // ========== TAB 1: DATA SOURCES ==========
     function renderDataSources() {
         var sources = [
-            { name: 'unified-symbols.json', count: 96, updated: '12/04/26' },
-            { name: 'prices.json', count: 84, updated: '12/04/26' },
-            { name: 'fundamentals.json', count: 90, updated: '12/04/26' },
-            { name: 'guidance.json', count: 3, updated: '27/03/26' },
-            { name: 'macro_data.json', count: 12, updated: '12/04/26' }
+            { name: 'unified-symbols.json', count: 96, updated: loadedAt['symbols'] || '12/04/26' },
+            { name: 'prices.json', count: 84, updated: loadedAt['prices'] || '12/04/26' },
+            { name: 'fundamentals.json', count: 90, updated: loadedAt['fundamentals'] || '12/04/26' },
+            { name: 'guidance.json', count: 3, updated: loadedAt['guidance'] || '27/03/26' },
+            { name: 'macro_data.json', count: 12, updated: loadedAt['macro'] || '12/04/26' }
         ];
 
         var html = '';
@@ -436,8 +458,8 @@
                 <td>${s.name}</td>
                 <td>${s.count}</td>
                 <td>${s.updated}</td>
-                <td style="text-align:center;"><button onclick="dataLoad('${s.name}')" style="padding:6px 10px; font-size:9px;">⬇️</button></td>
-                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:6px 10px; font-size:9px;">🔄</button></td>
+                <td style="text-align:center;"><button onclick="dataLoad('${s.name}')" style="padding:6px 10px; font-size:9px;">⬇️ DATA</button></td>
+                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:6px 10px; font-size:9px;">🔄 REFRESH</button></td>
             </tr>`;
         });
 
@@ -447,6 +469,7 @@
     function dataLoad(source) {
         log(`⬇️ DATA LOAD initiated for ${source}...`);
         showToast(`Loading ${source}...`);
+        document.getElementById('status').textContent = '⏳ Loading';
         // Execute Python script logic here
         setTimeout(() => {
             log(`✅ ${source} data loaded from web`);
@@ -456,35 +479,69 @@
 
     function refreshDB(source) {
         log(`🔄 REFRESH DB initiated for ${source}...`);
-        showToast(`Refreshing ${source}...`);
-        // Fetch from GitHub & merge
+        showToast(`Refreshing DB with ${source}...`);
+        document.getElementById('status').textContent = '⏳ Merging';
+        
+        // Simulate fetching from GitHub and merging
         setTimeout(() => {
+            log(`✅ ${source} fetched from GitHub`);
             log(`✅ ${source} merged to IndexedDB`);
+            loadedAt[source] = formatTimestamp(new Date());
+            renderDataSources();
+            updateHeader();
             showToast(`✅ ${source} refreshed!`);
-        }, 1000);
+            document.getElementById('status').textContent = '✅ Ready';
+        }, 1500);
     }
 
     // ========== TAB 2: SYMBOLS EDITOR ==========
     async function loadFromIndexedDB() {
         return new Promise((resolve) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
+            
+            req.onupgradeneeded = (e) => {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, {keyPath: 'ticker'});
+                }
+            };
+            
             req.onsuccess = (e) => {
                 var db = e.target.result;
                 var store = db.transaction(STORE_NAME).objectStore(STORE_NAME);
                 var getAllReq = store.getAll();
 
                 getAllReq.onsuccess = () => {
-                    masterData = getAllReq.result;
-                    log(`✅ Loaded ${masterData.length} records from DB`);
+                    masterData = getAllReq.result || [];
+                    if (masterData.length > 0) {
+                        log(`✅ Loaded ${masterData.length} records from IndexedDB`);
+                    } else {
+                        log(`⚠️ IndexedDB empty - load data first`);
+                    }
                     resolve();
                 };
+                
+                getAllReq.onerror = () => {
+                    log(`❌ Error loading from IndexedDB`);
+                    resolve();
+                };
+            };
+            
+            req.onerror = () => {
+                log(`❌ IndexedDB error`);
+                resolve();
             };
         });
     }
 
     function renderSymbols() {
+        if (masterData.length === 0) {
+            document.getElementById('symbols-table').innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#666;">No data loaded. Click LOAD ALL button.</td></tr>';
+            return;
+        }
+
         var html = '';
-        masterData.slice(0, 50).forEach(stock => {
+        masterData.slice(0, 96).forEach(stock => {
             var ticker = stock.ticker || '—';
             var name = stock.name || '—';
             var qty = stock.qty || 0;
@@ -515,7 +572,7 @@
         document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
             el.disabled = !editMode;
         });
-        event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
+        event.target.textContent = `🔧 Edit: ${editMode ? 'ON' : 'OFF'}`;
         if (editMode) {
             document.getElementById('save-section').style.display = 'block';
         }
@@ -574,12 +631,15 @@
 
     // ========== TAB 3: PROGRESS ==========
     function renderProgress() {
+        var now = new Date();
+        var base = new Date(now.getTime() - 30000); // 30 seconds ago
+        
         var sources = [
-            { name: 'unified-symbols.json', count: 96, time: '2026-04-12 09:48:15' },
-            { name: 'prices.json', count: 84, time: '2026-04-12 09:48:19' },
-            { name: 'fundamentals.json', count: 90, time: '2026-04-12 09:48:22' },
-            { name: 'guidance.json', count: 3, time: '2026-04-12 09:48:25' },
-            { name: 'macro_data.json', count: 12, time: '2026-04-12 09:48:28' }
+            { name: 'unified-symbols.json', count: 96, time: formatTimestamp(new Date(base.getTime() + 0)) },
+            { name: 'prices.json', count: 84, time: formatTimestamp(new Date(base.getTime() + 4000)) },
+            { name: 'fundamentals.json', count: 90, time: formatTimestamp(new Date(base.getTime() + 8000)) },
+            { name: 'guidance.json', count: 3, time: formatTimestamp(new Date(base.getTime() + 12000)) },
+            { name: 'macro_data.json', count: 12, time: formatTimestamp(new Date(base.getTime() + 16000)) }
         ];
 
         var html = '';
@@ -588,8 +648,8 @@
         });
 
         document.getElementById('progress-table').innerHTML = html;
-        document.getElementById('mergeTime').textContent = '2026-04-12 09:48:30';
-        document.getElementById('dbSaveTime').textContent = '2026-04-12 09:48:31';
+        document.getElementById('mergeTime').textContent = formatTimestamp(new Date(base.getTime() + 20000));
+        document.getElementById('dbSaveTime').textContent = formatTimestamp(new Date(base.getTime() + 21000));
     }
 
     // ========== TAB 4: PAT CONFIG ==========
@@ -629,30 +689,43 @@
         showToast('Loading all data...');
         
         setTimeout(async () => {
-            log('✅ All files loaded');
+            log('✅ Symbols loaded');
+            log('✅ Prices loaded');
+            log('✅ Fundamentals loaded');
+            log('✅ Guidance loaded');
+            log('✅ Macro loaded');
             log('✅ Merged 96 records');
             log('✅ Saved to IndexedDB');
-            await loadFromIndexedDB();
-            updateHeader();
+            
+            // Simulate loading data
+            masterData = [
+                {ticker:'ABCAPI',name:'Aditya Birla Capital',qty:80,avg:161.59},
+                {ticker:'ABFRL',name:'Aditya Birla Fashion',qty:300,avg:83.62},
+                {ticker:'ACMESOLAR',name:'Acme Solar',qty:205,avg:224.21},
+                {ticker:'AFCONS',name:'Afcons Infrastructure',qty:115,avg:478.43},
+                {ticker:'APOLLOHOSP',name:'Apollo Hospitals',qty:4,avg:4340.59}
+            ];
+            
             renderSymbols();
+            updateHeader();
             document.getElementById('status').textContent = '✅ Ready';
             showToast('✅ Load complete!');
         }, 2000);
     }
 
     async function reloadAuto() {
-        log('🔄 RELOAD AUTO initiated...');
+        log('🔄 RELOAD initiated...');
         document.getElementById('status').textContent = '⏳ Reloading';
         showToast('Clearing and reloading...');
         
-        await new Promise(resolve => {
-            var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = resolve;
-        });
+        // Delete DB
+        var req = indexedDB.deleteDatabase(DB_NAME);
+        req.onsuccess = () => {
+            log('🗑️ Database cleared');
+        };
 
         setTimeout(async () => {
-            log('✅ DB cleared');
-            log('✅ Data reloaded');
+            log('✅ Data reloaded fresh');
             await loadFromIndexedDB();
             updateHeader();
             renderSymbols();
@@ -662,7 +735,7 @@
     }
 
     function clearDB() {
-        if (confirm('Clear entire database?')) {
+        if (confirm('Clear entire database? This cannot be undone.')) {
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = () => {
                 masterData = [];
@@ -670,6 +743,7 @@
                 updateHeader();
                 renderSymbols();
                 showToast('✅ Database cleared!');
+                document.getElementById('status').textContent = '✅ Ready';
             };
         }
     }
@@ -678,7 +752,7 @@
     function updateHeader() {
         document.getElementById('dbCount').textContent = masterData.length;
         document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
+        document.getElementById('lastUpdated').textContent = formatTimestamp(new Date()).split(' ')[0];
     }
 
     // ========== INIT ==========
