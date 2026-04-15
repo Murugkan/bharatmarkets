@@ -310,7 +310,7 @@
 
 <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('etl-pipeline')">📊 Data status</button>
-    <button class="tab-btn" onclick="switchTab('symbols')">📋 Symbols</button>
+    <button class="tab-btn" onclick="switchTab('symbols')">📋 Stock list</button>
     <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
 </div>
 
@@ -1329,20 +1329,123 @@
         updateStatusButton('⏳ Reloading');
         showToast('Complete wipe & rebuild of database and UI...');
         
+        // Step 1: Delete old database
         await new Promise(resolve => {
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = resolve;
         });
-
         log('✅ Database completely wiped');
         
-        await initializeFromGitHub();
-        await loadFromIndexedDB();
-        updateHeader();
-        renderSymbols();
-        renderDataSources();
-        updateStatusButton('✅ Ready');
-        showToast('✅ Refresh complete! DB & UI rebuilt!');
+        // Step 2: Fetch all three files from GitHub
+        log('📡 Fetching all data from GitHub...');
+        const results = await Promise.all(
+            DATA_SOURCES.map(source => fetchGitHubData(source.path))
+        );
+        
+        let symbolsData = results[0];
+        let symbolsList = null;
+        
+        if (Array.isArray(symbolsData)) {
+            symbolsList = symbolsData;
+        } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
+            symbolsList = symbolsData.symbols;
+        } else if (symbolsData && typeof symbolsData === 'object') {
+            symbolsList = Object.values(symbolsData);
+        }
+        
+        if (!symbolsList || symbolsList.length === 0) {
+            log('❌ Could not parse symbols data');
+            updateStatusButton('❌ Failed');
+            return;
+        }
+        
+        const pricesData = results[1] || {};
+        const fundamentalsData = results[2] || {};
+        
+        log('📦 Parsing results...');
+        
+        let priceMap = {};
+        if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
+            priceMap = pricesData.quotes;
+            log('✅ Found prices in "quotes" wrapper');
+        } else {
+            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
+        }
+        
+        let fundMap = {};
+        if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
+            fundMap = fundamentalsData.stocks;
+            log('✅ Found fundamentals in "stocks" wrapper');
+        } else {
+            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
+        }
+        
+        let mergedStocks = [];
+        symbolsList.forEach(symbol => {
+            const ticker = symbol.ticker || symbol.TICKER || symbol.name;
+            if (!ticker) return;
+            
+            const merged = {
+                ...symbol,
+                ...(priceMap[ticker] || {}),
+                ...(fundMap[ticker] || {}),
+                ticker: ticker
+            };
+            
+            mergedStocks.push(merged);
+        });
+        
+        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
+        
+        // Step 3: Save to IndexedDB
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        
+        req.onupgradeneeded = (e) => {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                log('✅ Object store created');
+            }
+        };
+        
+        req.onsuccess = (e) => {
+            var db = e.target.result;
+            try {
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
+                store.clear();
+                
+                masterData = mergedStocks;
+                const now = new Date().toLocaleTimeString();
+                mergedStocks.forEach(stock => {
+                    stock.updated = now;
+                    store.put(stock);
+                });
+                
+                transaction.oncomplete = () => {
+                    log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
+                    
+                    updateHeader();
+                    renderSymbols();
+                    renderDataSources();
+                    updateStatusButton('✅ Ready');
+                    showToast('✅ Refresh complete! DB & UI rebuilt!');
+                };
+                
+                transaction.onerror = () => {
+                    log(`⚠️ IndexedDB error: ${transaction.error}`);
+                    updateStatusButton('⚠️ Error');
+                };
+            } catch (err) {
+                log(`⚠️ Error: ${err.message}`);
+                updateStatusButton('⚠️ Error');
+            }
+        };
+        
+        req.onerror = () => {
+            log(`⚠️ Could not open IndexedDB`);
+            updateStatusButton('⚠️ Error');
+        };
     }
 
     function updateHeader() {
