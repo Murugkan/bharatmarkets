@@ -321,7 +321,7 @@
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>RELOAD</button>
+            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
             <div style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px; border-radius:4px; text-align:center; font-weight:800; font-size:11px;">db <span id="dbCountBox">0</span></div>
         </div>
 
@@ -1275,6 +1275,15 @@
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         
         var req = indexedDB.open(DB_NAME, DB_VERSION);
+        
+        req.onupgradeneeded = (e) => {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                log('✅ Object store created');
+            }
+        };
+        
         req.onsuccess = (e) => {
             var db = e.target.result;
             try {
@@ -1316,16 +1325,16 @@
     }
 
     async function reloadAuto() {
-        log('🔄 RELOAD AUTO initiated...');
+        log('🔄 REFRESH initiated - complete DB & UI wipe & rebuild...');
         updateStatusButton('⏳ Reloading');
-        showToast('Clearing and reloading from GitHub...');
+        showToast('Complete wipe & rebuild of database and UI...');
         
         await new Promise(resolve => {
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = resolve;
         });
 
-        log('✅ DB cleared');
+        log('✅ Database completely wiped');
         
         await initializeFromGitHub();
         await loadFromIndexedDB();
@@ -1333,7 +1342,7 @@
         renderSymbols();
         renderDataSources();
         updateStatusButton('✅ Ready');
-        showToast('✅ Reload complete!');
+        showToast('✅ Refresh complete! DB & UI rebuilt!');
     }
 
     function updateHeader() {
