@@ -327,7 +327,7 @@
 </header>
 
 <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">⚙️ ETL Pipeline</button>
+    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">📊 Data status</button>
     <button class="tab-btn" onclick="switchTab('symbols')">📋 Symbols</button>
     <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
 </div>
@@ -345,7 +345,6 @@
 
         <!-- SECTION 1: DATA SOURCES -->
         <div class="section-box">
-            <div class="section-header">📥 Data Sources</div>
             <div class="table-container">
                 <table>
                     <thead>
@@ -354,7 +353,6 @@
                             <th>Count</th>
                             <th>Updated (IST)</th>
                             <th style="text-align:center;">Data Load</th>
-                            <th style="text-align:center;">Refresh DB</th>
                         </tr>
                     </thead>
                     <tbody id="sources-table">
@@ -607,7 +605,35 @@
     function renderDataSources() {
         var html = '';
         DATA_SOURCES.forEach((s, index) => {
-            var count = masterData.length > 0 ? masterData.length : '—';
+            // Fetch count from the actual JSON file
+            var count = '⏳ Loading...';
+            fetch(s.path + '?cache=' + Date.now())
+                .then(r => r.json())
+                .then(data => {
+                    if (data.count !== undefined) {
+                        // For prices.json which has "count" field
+                        count = data.count;
+                    } else if (data.symbols && Array.isArray(data.symbols)) {
+                        // For unified-symbols.json with symbols array
+                        count = data.symbols.length;
+                    } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
+                        // For fundamentals.json with stocks object
+                        count = Object.keys(data.stocks).length;
+                    } else if (Array.isArray(data)) {
+                        // If it's a direct array
+                        count = data.length;
+                    } else {
+                        count = '—';
+                    }
+                    // Update the count in the table cell
+                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
+                    if (countCell) countCell.textContent = count;
+                })
+                .catch(e => {
+                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
+                    if (countCell) countCell.textContent = '❌';
+                });
+            
             var jsonTime = dataUpdatedTimes[s.path] || '—';
             
             // Convert ISO to IST (UTC+5:30)
@@ -629,12 +655,11 @@
                 loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
             }
             
-            html += `<tr>
+            html += `<tr data-source="${s.name}">
                 <td>${s.name}</td>
-                <td>${count}</td>
+                <td class="count-cell">${count}</td>
                 <td style="font-size:9px;">${istTime}</td>
                 <td style="text-align:center;">${loadButton}</td>
-                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:4px 8px; font-size:8px;">🔄</button></td>
             </tr>`;
         });
         document.getElementById('sources-table').innerHTML = html;
@@ -707,12 +732,6 @@
             });
     }
 
-    function refreshDB(source) {
-        // ⚠️ NOTE: Both 'Load' (⬇️) and 'Refresh' (🔄) buttons do the same thing
-        // They both trigger the GitHub workflow to fetch updated data
-        dataLoad(source);
-    }
-    
     function mergeAndSaveData(source, data) {
         let priceMap = {}, fundMap = {};
         
