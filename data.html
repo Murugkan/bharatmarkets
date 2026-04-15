@@ -409,6 +409,7 @@
             <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
             <div style="display:flex; gap:8px; margin-top:8px;">
                 <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
+                <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
                 <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
             </div>
             <div class="pat-status">
@@ -485,10 +486,14 @@
                 log(`✅ Fetched ${filePath} - No timestamp in metadata`);
             }
             
+            // Save to localStorage
+            localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
+            
             return data;
         } catch (e) {
             log(`❌ GitHub fetch failed: ${filePath}`);
             dataUpdatedTimes[filePath] = '❌ Error';
+            localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
             return null;
         }
     }
@@ -543,6 +548,15 @@
     async function init() {
         document.getElementById('status').textContent = '⏳ Loading...';
         log('🚀 ETL Center starting...');
+        
+        // Load PAT from storage
+        loadPatFromStorage();
+        
+        // Load updated times from storage
+        const savedTimes = localStorage.getItem('dataUpdatedTimes');
+        if (savedTimes) {
+            dataUpdatedTimes = JSON.parse(savedTimes);
+        }
         
         try {
             // Load from IndexedDB only - don't clear!
@@ -905,6 +919,12 @@
     }
 
     function saveChanges() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT required to save');
+            return;
+        }
+        
         log('💾 Saving changes...');
         
         // Get all edited values
@@ -922,6 +942,9 @@
             if (stock) stock.avg = newAvg;
         });
         
+        // Upload to GitHub
+        uploadUnifiedSymbols(pat);
+        
         // Save to IndexedDB
         var req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onsuccess = (e) => {
@@ -933,13 +956,74 @@
             
             transaction.oncomplete = () => {
                 log('✅ Changes saved to IndexedDB');
-                showToast('✅ Changes saved!');
                 editMode = false;
                 document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
                 document.getElementById('save-section').style.display = 'none';
                 updateHeader();
+                showToast('✅ Saved!');
             };
         };
+    }
+    
+    function uploadUnifiedSymbols(pat) {
+        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
+        
+        // Fetch current file first
+        fetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
+            .then(r => r.json())
+            .then(currentData => {
+                let symbols = currentData.symbols || [];
+                
+                // Update only changed stocks in the array
+                symbols = symbols.map(stock => {
+                    const updated = masterData.find(m => m.ticker === stock.ticker);
+                    if (updated) {
+                        // Only update QTY and AVG, keep other fields
+                        return {
+                            ...stock,
+                            qty: updated.qty,
+                            avg: updated.avg
+                        };
+                    }
+                    return stock;
+                });
+                
+                // Get SHA and upload
+                fetch(url, {
+                    headers: { 'Authorization': `token ${pat}` }
+                })
+                .then(r => r.json())
+                .then(fileInfo => {
+                    const fileContent = JSON.stringify({ symbols }, null, 2);
+                    const encodedContent = btoa(fileContent);
+                    
+                    return fetch(url, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `token ${pat}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            message: 'Update QTY/AVG via ETL Center',
+                            content: encodedContent,
+                            sha: fileInfo.sha
+                        })
+                    });
+                })
+                .then(r => {
+                    if (r.ok) {
+                        log('✅ Updated unified-symbols.json on GitHub');
+                    } else {
+                        log('❌ Upload failed');
+                    }
+                })
+                .catch(e => {
+                    log(`❌ Upload error: ${e.message}`);
+                });
+            })
+            .catch(e => {
+                log(`❌ Error: ${e.message}`);
+            });
     }
 
     function cancelChanges() {
@@ -1006,11 +1090,35 @@
         event.target.textContent = input.type === 'password' ? '👁 Show' : '👁 Hide';
     }
 
+    function savePat() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ Enter PAT token first');
+            return;
+        }
+        localStorage.setItem('github_pat', pat);
+        log('✅ PAT saved to localStorage');
+        showToast('✅ PAT saved!');
+        testConnection();
+    }
+    
+    function loadPatFromStorage() {
+        var pat = localStorage.getItem('github_pat');
+        if (pat) {
+            document.getElementById('patToken').value = pat;
+            log('✅ PAT loaded from storage');
+            testConnection();
+        }
+    }
+    
     function resetPat() {
         if (confirm('Reset PAT token?')) {
             document.getElementById('patToken').value = '';
+            localStorage.removeItem('github_pat');
             document.getElementById('patStatus').textContent = '❌ Not Configured';
+            document.getElementById('patRepo').textContent = '—';
             showToast('🔄 PAT reset');
+            log('🔄 PAT cleared');
         }
     }
 
