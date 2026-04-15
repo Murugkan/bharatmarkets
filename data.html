@@ -311,15 +311,14 @@
         <div class="inline-buttons" style="gap: 8px; margin-bottom: 12px;">
             <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:4px 8px; font-size:10px; height:32px; display:flex; align-items:center; gap:4px;"><span>🚀</span>Load JSON</button>
             <button onclick="refreshSession()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:4px 8px; font-size:10px; height:32px; display:flex; align-items:center; gap:4px;"><span>🔄</span>Refresh</button>
-            <div style="background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color:#fff; padding:4px 10px; border-radius:4px; text-align:center; font-weight:800; height:32px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-                <div style="font-size:8px; color:#e0e7ff; text-transform:uppercase;">DB</div>
-                <div style="font-size:13px; font-weight:800;" id="dbCountBox">0</div>
+            <div style="background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color:#fff; padding:8px 12px; border-radius:4px; font-weight:800; height:32px; display:flex; align-items:center; gap:8px;">
+                <span style="font-size:10px;">DB:</span>
+                <span style="font-size:14px; font-weight:800;" id="dbCountBox">0</span>
             </div>
         </div>
 
         <!-- SECTION 1: DATA SOURCES -->
         <div class="section-box">
-            <div class="section-header">📥 Data Sources</div>
             <div class="table-container">
                 <table>
                     <thead>
@@ -374,8 +373,8 @@
             <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
             <button onclick="cancelChanges()">❌ Cancel</button>
         </div>
-        <div class="table-container">
-            <table>
+        <div class="table-container" style="border: 1px solid var(--b1); border-radius:4px;">
+            <table style="background:#0a0a0a;">
                 <thead>
                     <tr>
                         <th class="sticky">TICKER</th>
@@ -387,6 +386,7 @@
                     </tr>
                 </thead>
                 <tbody id="symbols-table">
+                    <tr><td colspan="6" style="text-align:center; color:#666; padding:40px;">📭 Loading stocks...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -408,6 +408,7 @@
 
     let masterData = [];
     let sourceData = {};
+    let sourceCounts = {};
     let editMode = false;
     let logMessages = [];
     let dataUpdatedTimes = {};
@@ -573,7 +574,8 @@
     function renderDataSources() {
         var html = '';
         DATA_SOURCES.forEach((s, index) => {
-            var count = masterData.length > 0 ? masterData.length : '—';
+            // Get count from sourceCounts or show dash
+            var count = sourceCounts[s.name] || '—';
             var jsonTime = dataUpdatedTimes[s.path] || '—';
             
             // Convert ISO to IST (UTC+5:30)
@@ -761,7 +763,7 @@
         var html = '';
         
         if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="6" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
+            html = '<tr><td colspan="6" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 Load JSON" in Data Stats tab to load data.</td></tr>';
         } else {
             masterData.slice(0, 50).forEach(stock => {
                 var ticker = stock.ticker || '—';
@@ -1133,6 +1135,10 @@
             return;
         }
         
+        // Track symbols count
+        sourceCounts['unified-symbols.json'] = symbolsList.length;
+        log(`📊 unified-symbols.json: ${symbolsList.length} records`);
+        
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
         
@@ -1145,6 +1151,7 @@
         } else {
             priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
         }
+        sourceCounts['prices.json'] = Object.keys(priceMap).length;
         
         let fundMap = {};
         if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
@@ -1153,6 +1160,7 @@
         } else {
             fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
         }
+        sourceCounts['fundamentals.json'] = Object.keys(fundMap).length;
         
         let mergedStocks = [];
         symbolsList.forEach(symbol => {
