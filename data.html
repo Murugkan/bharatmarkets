@@ -820,11 +820,86 @@
     }
 
     function deleteStock(ticker) {
-        if (confirm(`Delete ${ticker}?`)) {
-            log(`🗑️ Marked ${ticker} for deletion`);
-            document.getElementById(`row-${ticker}`).style.opacity = '0.5';
-            showToast(`✅ ${ticker} marked for deletion`);
+        if (!confirm(`Delete ${ticker} permanently?`)) return;
+        
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            log('❌ PAT required to delete');
+            showToast('❌ Configure PAT first');
+            return;
         }
+        
+        log(`🗑️ Deleting ${ticker}...`);
+        showToast(`Deleting ${ticker}...`);
+        
+        // Remove from display immediately
+        var row = document.getElementById(`row-${ticker}`);
+        if (row) row.remove();
+        
+        // Remove from masterData
+        masterData = masterData.filter(s => s.ticker !== ticker);
+        
+        // Fetch current unified-symbols.json
+        fetch('unified-symbols.json?cache=' + Date.now())
+            .then(r => r.json())
+            .then(data => {
+                // Remove ticker from symbols array
+                let symbols = data.symbols || Object.values(data);
+                symbols = symbols.filter(s => s.ticker !== ticker);
+                
+                // Prepare upload data
+                const uploadData = data.symbols ? { symbols: symbols } : symbols;
+                
+                // Upload back to GitHub
+                uploadToGitHub(pat, 'unified-symbols.json', uploadData, `Delete ${ticker}`);
+            })
+            .catch(e => {
+                log(`❌ Error: ${e.message}`);
+                showToast('❌ Failed to delete');
+            });
+    }
+    
+    function uploadToGitHub(pat, filename, content, message) {
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filename}`;
+        
+        // Step 1: GET current file to get SHA
+        fetch(apiUrl, {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => r.json())
+        .then(fileData => {
+            // Step 2: PUT updated content with SHA
+            const encodedContent = btoa(JSON.stringify(content, null, 2));
+            
+            return fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    content: encodedContent,
+                    sha: fileData.sha,
+                    branch: GITHUB_CONFIG.BRANCH
+                })
+            });
+        })
+        .then(r => {
+            if (r.ok) {
+                log(`✅ Deleted from GitHub`);
+                showToast('✅ Deleted!');
+            } else {
+                return r.json().then(e => {
+                    log(`❌ Upload failed: ${e.message}`);
+                    showToast('❌ Failed');
+                });
+            }
+        })
+        .catch(e => {
+            log(`❌ Error: ${e.message}`);
+            showToast('❌ Error');
+        });
     }
 
     function saveChanges() {
