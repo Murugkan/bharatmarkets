@@ -74,7 +74,7 @@
             padding: 12px;
         }
         .tab-content { display: none; }
-        .tab-content.active { display: block; }
+        .tab-content.active { display: block !important; }
 
         /* TABLES */
         table {
@@ -237,6 +237,7 @@
         .table-container {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
+            min-height: 300px;
         }
 
         /* LOG */
@@ -364,29 +365,27 @@
     </div>
 
     <!-- TAB 2: SYMBOLS EDITOR -->
-    <div id="symbols" class="tab-content">
-        <div style="margin-bottom:10px;">
-            <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
-            <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
-        </div>
-        <div id="save-section" style="display:none; margin-bottom:12px;">
-            <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
-            <button onclick="cancelChanges()">❌ Cancel</button>
-        </div>
-        <div class="table-container" style="border: 1px solid var(--b1); border-radius:4px;">
-            <table style="background:#0a0a0a;">
+    <div id="symbols" class="tab-content" data-display-active="block">
+        TEST CONTENT - If you see this, tab switching works!
+        <br><br>
+        <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
+        <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
+        
+        <div style="margin-top:20px; border:2px solid var(--bl); padding:20px;">
+            <table style="width:100%; border-collapse:collapse;">
                 <thead>
-                    <tr>
-                        <th class="sticky">TICKER</th>
-                        <th>QTY</th>
-                        <th>AVG</th>
-                        <th>UPDATED</th>
-                        <th>INSIGHT</th>
-                        <th style="text-align:center;">Actions</th>
+                    <tr style="background:#222;">
+                        <th style="border:1px solid var(--b1); padding:8px;">TICKER</th>
+                        <th style="border:1px solid var(--b1); padding:8px;">QTY</th>
+                        <th style="border:1px solid var(--b1); padding:8px;">AVG</th>
                     </tr>
                 </thead>
                 <tbody id="symbols-table">
-                    <tr><td colspan="6" style="text-align:center; color:#666; padding:40px;">📭 Loading stocks...</td></tr>
+                    <tr style="background:#111;">
+                        <td style="border:1px solid var(--b1); padding:8px;">No data loaded</td>
+                        <td style="border:1px solid var(--b1); padding:8px;">—</td>
+                        <td style="border:1px solid var(--b1); padding:8px;">—</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -547,10 +546,26 @@
     }
 
     function switchTab(tabName) {
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-        document.getElementById(tabName).classList.add('active');
-        event.target.classList.add('active');
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(el => {
+            el.style.display = 'none';
+        });
+        
+        // Remove active from all buttons
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('active');
+        });
+        
+        // Show target tab
+        var targetTab = document.getElementById(tabName);
+        if (targetTab) {
+            targetTab.style.display = 'block';
+        }
+        
+        // Highlight clicked button
+        if (event && event.target) {
+            event.target.classList.add('active');
+        }
     }
 
     function log(msg) {
@@ -1252,7 +1267,12 @@
 
 
 
-    init();
+    // Initialize on page load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 </script>
 
 </body>
