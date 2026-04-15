@@ -598,7 +598,8 @@
     function renderDataSources() {
         var html = '';
         DATA_SOURCES.forEach((s, index) => {
-            var count = masterData.length > 0 ? masterData.length : '—';
+            // Use sourceCounts for per-file counts
+            var count = (window.sourceCounts && window.sourceCounts[s.name]) || '—';
             var jsonTime = dataUpdatedTimes[s.path] || '—';
             
             // Convert ISO to IST (UTC+5:30)
@@ -1092,12 +1093,16 @@
     }
 
     function savePat() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat || pat.length < 10) {
-            showToast('❌ Invalid PAT');
-            log('❌ PAT too short');
+        var pat = document.getElementById('patToken').value.trim();
+        
+        // GitHub PAT must start with ghp_ and be 36+ chars total
+        if (!pat.startsWith('ghp_') || pat.length < 36) {
+            document.getElementById('patStatus').textContent = '❌ Invalid format';
+            log('❌ Invalid PAT: must be ghp_XXXXXXXX... (36+ chars)');
+            showToast('❌ Invalid GitHub PAT format');
             return;
         }
+        
         localStorage.setItem('github_pat', pat);
         document.getElementById('patStatus').textContent = '✅ Saved';
         log('✅ PAT saved to localStorage');
@@ -1125,20 +1130,40 @@
     }
 
     function testConnection() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT token required');
+        var pat = document.getElementById('patToken').value.trim();
+        
+        if (!pat.startsWith('ghp_') || pat.length < 36) {
+            document.getElementById('patStatus').textContent = '❌ Invalid format';
+            log('❌ Invalid PAT format');
+            showToast('❌ Invalid GitHub PAT');
             return;
         }
-        log('✓ PAT format OK');
         
-        // Just mark as configured without API call
-        try {
-            document.getElementById('patStatus').textContent = '✅ Configured';
-            document.getElementById('patRepo').textContent = 'murugkan/bharatmarkets';
-        } catch (e) {}
+        log('🔗 Verifying PAT with GitHub...');
+        showToast('Checking PAT...');
+        document.getElementById('patStatus').textContent = '⏳ Verifying...';
         
-        showToast('✅ PAT ready!');
+        // Actually verify with GitHub API
+        fetch('https://api.github.com/user', {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => {
+            if (r.ok) {
+                return r.json();
+            } else {
+                throw new Error(`HTTP ${r.status}`);
+            }
+        })
+        .then(data => {
+            document.getElementById('patStatus').textContent = `✅ Valid (${data.login})`;
+            log(`✅ PAT verified for: ${data.login}`);
+            showToast(`✅ Valid PAT!`);
+        })
+        .catch(e => {
+            document.getElementById('patStatus').textContent = '❌ Invalid PAT';
+            log(`❌ PAT rejected by GitHub: ${e.message}`);
+            showToast('❌ Invalid PAT');
+        });
     }
 
     async function loadAllData() {
@@ -1169,6 +1194,8 @@
         if (!symbolsList || symbolsList.length === 0) {
             log('❌ Could not parse symbols data');
             document.getElementById('status').textContent = '❌ Failed';
+            renderDataSources();
+            renderSymbols();
             return;
         }
         
@@ -1210,6 +1237,31 @@
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         
+        // Store source counts
+        window.sourceCounts = {
+            'unified-symbols.json': symbolsList.length,
+            'prices.json': Object.keys(priceMap).length,
+            'fundamentals.json': Object.keys(fundMap).length
+        };
+        log(`📊 Source counts: Symbols=${window.sourceCounts['unified-symbols.json']}, Prices=${window.sourceCounts['prices.json']}, Fundamentals=${window.sourceCounts['fundamentals.json']}`);
+        
+        // UPDATE UI IMMEDIATELY
+        masterData = mergedStocks;
+        const now = new Date().toLocaleTimeString();
+        masterData.forEach(stock => {
+            stock.updated = now;
+        });
+        
+        renderSymbols();
+        renderDataSources();
+        document.getElementById('status').textContent = '✅ Ready';
+        showToast('✅ Load complete!');
+        
+        // Save to IndexedDB in background (non-blocking)
+        saveToIndexedDB(mergedStocks, now);
+    }
+    
+    function saveToIndexedDB(stocks, timestamp) {
         var req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onsuccess = (e) => {
             var db = e.target.result;
@@ -1218,36 +1270,16 @@
                 var store = transaction.objectStore(STORE_NAME);
                 store.clear();
                 
-                masterData = mergedStocks;
-                const now = new Date().toLocaleTimeString();
-                mergedStocks.forEach(stock => {
-                    stock.updated = now;
+                stocks.forEach(stock => {
                     store.put(stock);
                 });
                 
                 transaction.oncomplete = () => {
-                    log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
-                    
-                    updateHeader();
-                    renderSymbols();
-                    renderDataSources();
-                    document.getElementById('status').textContent = '✅ Ready';
-                    showToast('✅ Load complete!');
-                };
-                
-                transaction.onerror = () => {
-                    log(`⚠️ IndexedDB error: ${transaction.error}`);
-                    document.getElementById('status').textContent = '⚠️ Error';
+                    log(`💾 Saved ${stocks.length} to IndexedDB`);
                 };
             } catch (err) {
-                log(`⚠️ Error: ${err.message}`);
-                document.getElementById('status').textContent = '⚠️ Error';
+                log(`⚠️ DB Error: ${err.message}`);
             }
-        };
-        
-        req.onerror = () => {
-            log(`⚠️ Could not open IndexedDB`);
-            document.getElementById('status').textContent = '⚠️ Error';
         };
     }
 
