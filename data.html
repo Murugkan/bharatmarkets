@@ -86,6 +86,13 @@
             -webkit-overflow-scrolling: touch;
             padding: 12px;
         }
+        
+        /* EDIT MODE - FULL HEIGHT */
+        .content.edit-mode {
+            height: calc(100vh - 140px);
+            overflow: auto;
+        }
+        
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
@@ -98,18 +105,20 @@
         th {
             background: var(--s1);
             color: #666;
-            padding: 10px;
+            padding: 8px;
             position: sticky;
             top: 0;
             z-index: 10;
             border-bottom: 2px solid var(--b1);
             text-align: left;
             font-weight: 800;
+            height: 32px;
         }
         th.active { color: var(--bl); }
         td {
-            padding: 10px;
+            padding: 6px 8px;
             border-bottom: 1px solid #111;
+            height: 28px;
         }
         td.sticky {
             position: sticky;
@@ -142,33 +151,35 @@
         .btn-success { background: var(--gr); }
         .btn-warning { background: var(--warning); }
 
-        /* INLINE BUTTONS */
-        .inline-buttons {
+        /* ACTION BUTTONS */
+        .action-buttons {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.99) 100%);
+            backdrop-filter: blur(15px);
+            border-top: 3px solid var(--bl);
+            padding: 14px 12px;
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 15px;
-        }
-
-        .inline-buttons button {
-            width: 100%;
-            padding: 10px 8px;
-            font-size: 11px;
-            border-radius: 6px;
+            gap: 12px;
+            z-index: 1000;
+            box-shadow: 0 -8px 24px rgba(0, 242, 255, 0.15);
         }
 
         /* NAVIGATION FOOTER */
         .nav-footer {
             position: fixed;
-            bottom: 0;
+            bottom: 80px;
             width: 100%;
             background: rgba(0, 0, 0, 0.95);
             backdrop-filter: blur(10px);
             border-top: 1px solid var(--b1);
+            border-bottom: 1px solid var(--b1);
             display: flex;
             justify-content: space-around;
             padding: 12px 0;
-            padding-bottom: calc(12px + env(safe-area-inset-bottom));
             z-index: 999;
         }
 
@@ -179,7 +190,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            width: 50%;
+            width: 33%;
             padding: 8px 0;
             transition: color 0.2s;
         }
@@ -199,6 +210,60 @@
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 1px;
+        }
+
+        .action-buttons button {
+            width: 100%; 
+            padding: 14px 8px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-buttons button:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            transition: left 0.3s;
+        }
+
+        .action-buttons button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            opacity: 1 !important;
+        }
+
+        .action-buttons button:hover:before {
+            left: 100%;
+        }
+
+        .action-buttons button:active {
+            transform: translateY(-1px);
+        }
+
+        /* INLINE BUTTONS */
+        .inline-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .inline-buttons button {
+            width: 100%;
+            padding: 10px 8px;
+            font-size: 11px;
+            border-radius: 6px;
         }
 
         /* PAT CONFIG */
@@ -263,42 +328,23 @@
             font-size: 9px;
             color: var(--gr);
             line-height: 1.4;
+            margin-top: 12px;
         }
 
         /* INPUT FIELDS */
         input[type="number"], input[type="text"] {
-            padding: 6px;
+            padding: 4px 6px;
             background: #111;
             color: var(--tx);
             border: 1px solid var(--b1);
             border-radius: 2px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 10px;
+            height: 24px;
         }
         input[type="number"]:focus, input[type="text"]:focus {
             outline: none;
             border-color: var(--bl);
-        }
-
-        /* SECTION HEADERS */
-        .section-header {
-            font-size: 12px;
-            font-weight: 800;
-            margin-bottom: 10px;
-            color: var(--bl);
-        }
-
-        .section-header.success {
-            color: var(--gr);
-        }
-
-        /* SECTION BOX */
-        .section-box {
-            margin: 15px 0;
-            padding: 12px;
-            background: var(--s1);
-            border-radius: 8px;
-            border: 1px solid var(--b1);
         }
     </style>
 </head>
@@ -327,61 +373,51 @@
 </header>
 
 <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">⚙️ ETL Pipeline</button>
+    <button class="tab-btn active" onclick="switchTab('data-sources')">📥 Data Sources</button>
     <button class="tab-btn" onclick="switchTab('symbols')">📋 Symbols</button>
+    <button class="tab-btn" onclick="switchTab('progress')">📊 Progress</button>
     <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
 </div>
 
-<div class="content">
-    <!-- TAB 1: COMBINED ETL PIPELINE -->
-    <div id="etl-pipeline" class="tab-content active">
-        
-        <!-- ACTION BUTTONS -->
+<div class="content" id="content-area">
+    <!-- TAB 1: DATA SOURCES -->
+    <div id="data-sources" class="tab-content active">
+        <!-- ACTION BUTTONS MOVED HERE -->
         <div class="inline-buttons">
-            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🚀</span>LOAD ALL</button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>RELOAD</button>
-            <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px;"><span style="font-size:12px;">🗑️</span>CLEAR DB</button>
+            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000;"><span style="font-size:14px;">🚀</span>LOAD ALL</button>
+            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000;"><span style="font-size:14px;">🔄</span>RELOAD</button>
+            <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff;"><span style="font-size:14px;">🗑️</span>CLEAR DB</button>
         </div>
 
-        <!-- SECTION 1: DATA SOURCES -->
-        <div class="section-box">
-            <div class="section-header">📥 Data Sources</div>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Source</th>
-                            <th>Count</th>
-                            <th>Updated (IST)</th>
-                            <th style="text-align:center;">Data Load</th>
-                            <th style="text-align:center;">Refresh DB</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sources-table">
-                    </tbody>
-                </table>
-            </div>
+        <div style="font-size:9px; color:#666; margin:8px 0 8px 0; text-transform:uppercase;">
+            <b style="color:var(--bl);">🔹 LOAD ALL</b> = Fetch all 5 files from GitHub + merge + save to IndexedDB
+        </div>
+        <div style="font-size:9px; color:#666; margin:0 0 12px 0; text-transform:uppercase;">
+            <b style="color:var(--bl);">🔹 RELOAD</b> = Clear DB + fetch + merge (same as LOAD ALL but clears first)
         </div>
 
-        <!-- SECTION 2: LIVE LOG -->
-        <div class="section-box">
-            <div class="section-header">📋 Live Log</div>
-            <div class="log-box" id="live-log">
-                <div style="color:#666;">[Logs appear here]</div>
-            </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Count</th>
+                        <th>Updated</th>
+                        <th style="text-align:center;">Data Load</th>
+                        <th style="text-align:center;">Refresh DB</th>
+                    </tr>
+                </thead>
+                <tbody id="sources-table">
+                </tbody>
+            </table>
         </div>
-
     </div>
 
     <!-- TAB 2: SYMBOLS EDITOR -->
     <div id="symbols" class="tab-content">
         <div style="margin-bottom:10px;">
-            <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
+            <button onclick="toggleEditMode()" id="edit-mode-btn">🔧 Edit Mode: OFF</button>
             <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
-        </div>
-        <div id="save-section" style="display:none; margin-bottom:12px;">
-            <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
-            <button onclick="cancelChanges()">❌ Cancel</button>
         </div>
         <div class="table-container">
             <table>
@@ -391,8 +427,7 @@
                         <th>NAME</th>
                         <th>QTY</th>
                         <th>AVG</th>
-                        <th>GUIDANCE</th>
-                        <th>INSIGHT</th>
+                        <th>Last Updated</th>
                         <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
@@ -400,16 +435,55 @@
                 </tbody>
             </table>
         </div>
+        <div id="save-section" style="display:none; margin-top:12px;">
+            <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
+            <button onclick="cancelChanges()">❌ Cancel</button>
+        </div>
     </div>
 
-    <!-- TAB 3: PAT CONFIG -->
+    <!-- TAB 3: PROGRESS -->
+    <div id="progress" class="tab-content">
+        <div style="margin-bottom:12px; padding:12px; background:var(--b1); border-radius:4px;">
+            <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:8px;">📥 Individual File Fetch Times</div>
+            <div id="fetch-times" style="font-size:11px; line-height:1.8; color:var(--tx);">
+                <div style="color:#666;">Waiting for data fetch...</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Count</th>
+                        <th>Fetched At</th>
+                    </tr>
+                </thead>
+                <tbody id="progress-table">
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:16px; padding:12px; background:var(--b1); border-radius:4px;">
+            <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:8px;">⏱️ Key Timestamps</div>
+            <div style="font-size:10px; line-height:1.6; color:var(--tx);">
+                <div>Start: <span id="startTime" style="color:var(--gr);">—</span></div>
+                <div>Merge: <span id="mergeTime" style="color:var(--gr);">—</span></div>
+                <div>DB Save: <span id="dbSaveTime" style="color:var(--gr);">—</span></div>
+                <div>End: <span id="endTime" style="color:var(--gr);">—</span></div>
+            </div>
+        </div>
+        <div class="log-box" id="live-log">
+            <div style="color:#666;">[Log appears here]</div>
+        </div>
+    </div>
+
+    <!-- TAB 4: PAT CONFIG -->
     <div id="pat" class="tab-content">
         <div class="pat-section">
             <div class="pat-label">GitHub PAT Token</div>
             <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
             <div style="display:flex; gap:8px; margin-top:8px;">
                 <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
-                <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
                 <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
             </div>
             <div class="pat-status">
@@ -419,14 +493,19 @@
             <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
         </div>
     </div>
-
 </div>
 
 <!-- NAVIGATION FOOTER -->
 <footer class="nav-footer">
     <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
     <a href="data.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
+    <a href="nexus.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg><span class="nav-label">Import</span></a>
 </footer>
+
+<!-- ACTION BUTTONS NOW AT BOTTOM -->
+<div class="action-buttons" style="display:none;">
+    <!-- Buttons moved to Data Sources tab -->
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -439,8 +518,11 @@
     let sourceData = {};
     let editMode = false;
     let logMessages = [];
-    let dataUpdatedTimes = {};
+    let fetchTimestamps = {};
+    let startTime = null;
+    let lastDataUpdateTime = null;  // Track when data was last updated
 
+    // ========== GITHUB CONFIGURATION ==========
     const GITHUB_CONFIG = {
         OWNER: 'murugkan',
         REPO: 'bharatmarkets',
@@ -459,63 +541,80 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
-        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
+        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals },
+        { name: 'guidance.json', path: GITHUB_CONFIG.PATHS.guidance },
+        { name: 'macro_data.json', path: GITHUB_CONFIG.PATHS.macro }
     ];
 
+    // ========== FETCH REAL DATA FROM GITHUB ==========
     async function fetchGitHubData(filePath) {
         try {
             const url = `${RAW_GITHUB_URL}/${filePath}`;
+            const fetchStart = new Date();
             
             log(`📡 Fetching: ${filePath}`);
             const response = await fetch(url);
             
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                throw new Error(`HTTP ${response.status} - File not found at: ${filePath}`);
             }
             
             const data = await response.json();
             
-            if (data && data.updated) {
-                dataUpdatedTimes[filePath] = data.updated;
-                log(`✅ Fetched ${filePath} - Data updated: ${data.updated}`);
-            } else if (data && data.lastLoadedAt) {
-                dataUpdatedTimes[filePath] = data.lastLoadedAt;
-                log(`✅ Fetched ${filePath} - Last loaded: ${data.lastLoadedAt}`);
-            } else {
-                dataUpdatedTimes[filePath] = '—';
-                log(`✅ Fetched ${filePath} - No timestamp in metadata`);
-            }
+            // Record fetch time
+            const fetchTime = new Date().toLocaleTimeString();
+            fetchTimestamps[filePath] = fetchTime;
             
-            // Save to localStorage
-            localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
-            
+            log(`✅ Fetched ${filePath} successfully at ${fetchTime}`);
             return data;
         } catch (e) {
             log(`❌ GitHub fetch failed: ${filePath}`);
-            dataUpdatedTimes[filePath] = '❌ Error';
-            localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
+            log(`   Error: ${e.message}`);
             return null;
         }
     }
 
     async function initializeFromGitHub() {
         log('🚀 Initializing from GitHub...');
+        log(`📍 Repo: ${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}`);
+        
         const symbolsData = await fetchGitHubData(DATA_SOURCES[0].path);
         
-        if (!symbolsData) return Promise.resolve();
-        
-        let stocks = null;
-        if (Array.isArray(symbolsData)) {
-            stocks = symbolsData;
-        } else if (symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
-            stocks = symbolsData.symbols;
-        } else if (typeof symbolsData === 'object') {
-            stocks = Object.values(symbolsData);
+        if (!symbolsData) {
+            log(`❌ No data received from GitHub`);
+            return Promise.resolve();
         }
         
-        if (!stocks || stocks.length === 0) return Promise.resolve();
+        let stocks = null;
+        
+        if (Array.isArray(symbolsData)) {
+            stocks = symbolsData;
+            log(`✅ Data is array format (${stocks.length} records)`);
+        }
+        else if (symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
+            stocks = symbolsData.symbols;
+            log(`✅ Data has 'symbols' property (${stocks.length} records)`);
+        }
+        else if (symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
+            stocks = symbolsData.stocks;
+            log(`✅ Data has 'stocks' property (${stocks.length} records)`);
+        }
+        else if (typeof symbolsData === 'object' && !Array.isArray(symbolsData)) {
+            stocks = Object.values(symbolsData);
+            log(`✅ Data is object format (${stocks.length} records)`);
+        }
+        else {
+            log(`❌ Cannot parse data structure`);
+            return Promise.resolve();
+        }
+        
+        if (!stocks || stocks.length === 0) {
+            log(`❌ No stocks found in data`);
+            return Promise.resolve();
+        }
         
         masterData = stocks;
+        log(`✅ Loaded ${masterData.length} symbols from GitHub`);
         
         return new Promise((resolve) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -532,60 +631,79 @@
                 try {
                     var transaction = db.transaction(STORE_NAME, 'readwrite');
                     var store = transaction.objectStore(STORE_NAME);
+                    
                     store.clear();
-                    masterData.forEach(stock => store.put(stock));
-                    transaction.oncomplete = () => resolve();
-                    transaction.onerror = () => resolve();
+                    masterData.forEach(stock => {
+                        stock.lastUpdated = new Date().toLocaleTimeString();
+                        store.put(stock);
+                    });
+                    
+                    transaction.oncomplete = () => {
+                        lastDataUpdateTime = new Date().toLocaleTimeString();
+                        log(`✅ Saved ${masterData.length} records to IndexedDB`);
+                        resolve();
+                    };
+                    
+                    transaction.onerror = () => {
+                        log(`⚠️ IndexedDB transaction error: ${transaction.error}`);
+                        resolve();
+                    };
                 } catch (err) {
+                    log(`⚠️ IndexedDB error: ${err.message}`);
                     resolve();
                 }
             };
             
-            req.onerror = () => resolve();
+            req.onerror = () => {
+                log(`⚠️ Could not open IndexedDB`);
+                resolve();
+            };
         });
     }
 
+    // ========== INITIALIZATION ==========
     async function init() {
-        document.getElementById('status').textContent = '⏳ Loading...';
-        log('🚀 ETL Center starting...');
-        
-        // Load PAT from storage
-        loadPatFromStorage();
-        
-        // Load updated times from storage
-        const savedTimes = localStorage.getItem('dataUpdatedTimes');
-        if (savedTimes) {
-            dataUpdatedTimes = JSON.parse(savedTimes);
-        }
+        document.getElementById('status').textContent = '⏳ Initializing...';
+        log('🚀 ETL Center starting up...');
+        log('📡 Fetching real data from GitHub...');
         
         try {
-            // Load from IndexedDB only - don't clear!
+            await initializeFromGitHub();
+            await new Promise(resolve => setTimeout(resolve, 300));
             await loadFromIndexedDB();
             
             if (masterData.length > 0) {
-                log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
+                log(`📊 Successfully loaded: ${masterData.length} records`);
                 document.getElementById('status').textContent = '✅ Ready';
             } else {
-                log('⚠️ No data. Click 🚀 LOAD ALL to fetch from GitHub');
+                log('⚠️ No data loaded. Use 🚀 LOAD ALL button to fetch from GitHub');
                 document.getElementById('status').textContent = '⚠️ Click LOAD ALL';
             }
         } catch (e) {
-            log(`⚠️ Error: ${e.message}`);
+            log(`⚠️ Error during initialization: ${e.message}`);
             document.getElementById('status').textContent = '⚠️ Error';
         }
         
         renderDataSources();
         renderSymbols();
+        renderProgress();
         updateHeader();
     }
 
+    // ========== TAB SWITCHING ==========
     function switchTab(tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
         document.getElementById(tabName).classList.add('active');
         event.target.classList.add('active');
+        
+        // Exit edit mode when switching tabs
+        if (editMode) {
+            cancelChanges();
+        }
     }
 
+    // ========== LOGGING ==========
     function log(msg) {
         var ts = new Date().toLocaleTimeString();
         logMessages.push(`[${ts}] ${msg}`);
@@ -604,156 +722,102 @@
         setTimeout(() => el.classList.remove('show'), 2000);
     }
 
+    // ========== TAB 1: DATA SOURCES ==========
     function renderDataSources() {
         var html = '';
-        DATA_SOURCES.forEach((s, index) => {
+        DATA_SOURCES.forEach(s => {
             var count = masterData.length > 0 ? masterData.length : '—';
-            var jsonTime = dataUpdatedTimes[s.path] || '—';
-            
-            // Convert ISO to IST (UTC+5:30)
-            var istTime = '—';
-            if (jsonTime && jsonTime !== '—' && !jsonTime.includes('❌')) {
-                try {
-                    var date = new Date(jsonTime);
-                    istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-                } catch(e) {
-                    istTime = jsonTime;
-                }
-            }
-            
-            // First file (unified-symbols) opens wizard, others load data
-            var loadButton = '';
-            if (index === 0) {
-                loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
-            } else {
-                loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
-            }
-            
+            var updated = lastDataUpdateTime || new Date().toLocaleDateString('en-GB');
             html += `<tr>
                 <td>${s.name}</td>
                 <td>${count}</td>
-                <td style="font-size:9px;">${istTime}</td>
-                <td style="text-align:center;">${loadButton}</td>
-                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:4px 8px; font-size:8px;">🔄</button></td>
+                <td>${updated}</td>
+                <td style="text-align:center;"><button onclick="dataLoad('${s.name}')" style="padding:6px 10px; font-size:9px;">⬇️ LOAD</button></td>
+                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:6px 10px; font-size:9px;">🔄 REFRESH</button></td>
             </tr>`;
         });
+
         document.getElementById('sources-table').innerHTML = html;
     }
 
     function dataLoad(source) {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            log('❌ PAT required in 🔐 PAT tab');
-            showToast('❌ Configure PAT first');
+        log(`⬇️ DATA LOAD initiated for ${source} (Fetch only, no DB save)...`);
+        showToast(`Loading ${source}...`);
+        
+        const sourceObj = DATA_SOURCES.find(s => s.name === source);
+        if (!sourceObj) {
+            log(`❌ Unknown source: ${source}`);
             return;
         }
         
-        let fetchType = source === 'prices.json' ? 'prices_only' : 'fundamentals_only';
-        log(`⏳ Triggering workflow: ${fetchType}`);
-        showToast('⏳ Starting workflow...');
-        
-        triggerWorkflow(pat, fetchType, source);
-    }
-
-    function triggerWorkflow(pat, fetchType, source) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch-prices.yml/dispatches`;
-        
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': `token ${pat}`,
-                'Accept': 'application/vnd.github.v3+json'
-            },
-            body: JSON.stringify({
-                ref: GITHUB_CONFIG.BRANCH,
-                inputs: { fetch_type: fetchType }
-            })
-        })
-        .then(r => {
-            if (r.ok) {
-                log(`✅ Workflow triggered! Waiting...`);
-                showToast('⏳ Workflow running (30 sec)...');
-                setTimeout(() => fetchUpdated(source), 30000);
+        fetchGitHubData(sourceObj.path).then(data => {
+            if (data) {
+                log(`✅ ${source} loaded from GitHub (${Array.isArray(data) ? data.length : Object.keys(data).length} items)`);
+                log(`⚠️ Note: Data loaded to memory only. Click REFRESH to save to IndexedDB.`);
+                showToast(`✅ ${source} loaded (not saved)`);
+                sourceData[source] = data;
             } else {
-                return r.json().then(e => {
-                    log(`❌ Workflow trigger failed: ${e.message}`);
-                    showToast('❌ Failed');
-                });
+                log(`❌ Failed to load ${source}`);
+                showToast(`❌ Failed to load ${source}`);
             }
-        })
-        .catch(e => {
-            log(`❌ Error: ${e.message}`);
-            showToast('❌ Error');
         });
     }
 
-    function fetchUpdated(source) {
-        log(`📥 Fetching updated ${source}...`);
-        fetch(`${source}?cache=${Date.now()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data) {
-                    log(`✅ ${source} updated! Reloading...`);
-                    showToast('✅ Reloading...');
-                    setTimeout(() => location.reload(), 500);
-                } else {
-                    log(`❌ Fetch failed`);
-                    showToast('❌ Failed');
-                }
-            })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
-                showToast('❌ Error');
-            });
-    }
-
     function refreshDB(source) {
-        dataLoad(source);  // Same as dataLoad
-    }
-    
-    function mergeAndSaveData(source, data) {
-        let priceMap = {}, fundMap = {};
+        log(`🔄 REFRESH DB initiated for ${source} (Fetch + Save to IndexedDB)...`);
+        showToast(`Refreshing ${source}...`);
         
-        if (source === 'prices.json') {
-            priceMap = data.quotes && typeof data.quotes === 'object' ? data.quotes : data;
-            masterData.forEach((stock, i) => {
-                if (priceMap[stock.ticker]) {
-                    masterData[i] = {...masterData[i], ...priceMap[stock.ticker]};
-                }
-            });
-            log(`✅ Merged prices into ${masterData.length} stocks`);
-        } else if (source === 'fundamentals.json') {
-            fundMap = data.stocks && typeof data.stocks === 'object' ? data.stocks : data;
-            masterData.forEach((stock, i) => {
-                if (fundMap[stock.ticker]) {
-                    masterData[i] = {...masterData[i], ...fundMap[stock.ticker]};
-                }
-            });
-            log(`✅ Merged fundamentals into ${masterData.length} stocks`);
+        const sourceObj = DATA_SOURCES.find(s => s.name === source);
+        if (!sourceObj) {
+            log(`❌ Unknown source: ${source}`);
+            return;
         }
         
-        // Save to IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            var transaction = db.transaction(STORE_NAME, 'readwrite');
-            var store = transaction.objectStore(STORE_NAME);
-            store.clear();
-            masterData.forEach(stock => store.put(stock));
-            transaction.oncomplete = () => {
-                log(`✅ Saved to IndexedDB`);
-                renderSymbols();
-                renderDataSources();
-                showToast(`✅ ${source} merged & saved!`);
-            };
-        };
+        fetchGitHubData(sourceObj.path).then(data => {
+            if (data && Array.isArray(data) && source === 'unified-symbols.json') {
+                var req = indexedDB.open(DB_NAME, DB_VERSION);
+                req.onsuccess = (e) => {
+                    var db = e.target.result;
+                    try {
+                        var transaction = db.transaction(STORE_NAME, 'readwrite');
+                        var store = transaction.objectStore(STORE_NAME);
+                        store.clear();
+                        
+                        masterData = data;
+                        const now = new Date().toLocaleTimeString();
+                        data.forEach(stock => {
+                            stock.lastUpdated = now;
+                            store.add(stock);
+                        });
+                        
+                        transaction.oncomplete = () => {
+                            lastDataUpdateTime = now;
+                            log(`✅ ${source} merged to IndexedDB (${data.length} records)`);
+                            showToast(`✅ ${source} refreshed!`);
+                            renderSymbols();
+                            renderDataSources();
+                            updateHeader();
+                        };
+                    } catch (err) {
+                        log(`⚠️ IndexedDB error: ${err.message}`);
+                    }
+                };
+            } else {
+                sourceData[source] = data;
+                lastDataUpdateTime = new Date().toLocaleTimeString();
+                log(`✅ ${source} refreshed from GitHub and updated in memory`);
+                showToast(`✅ ${source} refreshed!`);
+            }
+        });
     }
 
+    // ========== TAB 2: SYMBOLS EDITOR ==========
     async function loadFromIndexedDB() {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             
             req.onerror = () => {
+                log(`❌ IndexedDB error: ${req.error}`);
                 masterData = [];
                 resolve();
             };
@@ -762,6 +826,7 @@
                 var db = e.target.result;
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
                     db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                    log(`✅ Created IndexedDB store: ${STORE_NAME}`);
                 }
             };
             
@@ -769,6 +834,7 @@
                 var db = e.target.result;
                 try {
                     if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        log(`⚠️ Store '${STORE_NAME}' not found, will be created on next load`);
                         masterData = [];
                         resolve();
                         return;
@@ -780,14 +846,25 @@
 
                     getAllReq.onsuccess = () => {
                         masterData = getAllReq.result || [];
+                        if (masterData.length > 0) {
+                            log(`✅ Loaded ${masterData.length} records from IndexedDB`);
+                            // Get the timestamp from first record
+                            if (masterData[0] && masterData[0].lastUpdated) {
+                                lastDataUpdateTime = masterData[0].lastUpdated;
+                            }
+                        } else {
+                            log(`ℹ️ IndexedDB is empty - use LOAD ALL to populate`);
+                        }
                         resolve();
                     };
                     
                     getAllReq.onerror = () => {
+                        log(`⚠️ Failed to read from store`);
                         masterData = [];
                         resolve();
                     };
                 } catch (e) {
+                    log(`⚠️ IndexedDB access error: ${e.message}`);
                     masterData = [];
                     resolve();
                 }
@@ -799,21 +876,21 @@
         var html = '';
         
         if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
+            html = '<tr><td colspan="6" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
         } else {
             masterData.slice(0, 50).forEach(stock => {
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
+                var lastUpdated = stock.lastUpdated || '—';
 
                 html += `<tr id="row-${ticker}">
                     <td class="sticky">${ticker}</td>
                     <td>${name}</td>
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                    <td>—</td>
-                    <td>—</td>
+                    <td style="color:var(--gr); font-size:9px;">${lastUpdated}</td>
                     <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
                 </tr>`;
             });
@@ -824,219 +901,101 @@
 
     function toggleEditMode() {
         editMode = !editMode;
+        const contentArea = document.getElementById('content-area');
+        const btn = document.getElementById('edit-mode-btn');
+        
+        if (editMode) {
+            contentArea.classList.add('edit-mode');
+            btn.textContent = '🔧 Edit Mode: ON';
+            document.getElementById('save-section').style.display = 'block';
+        } else {
+            contentArea.classList.remove('edit-mode');
+            btn.textContent = '🔧 Edit Mode: OFF';
+            document.getElementById('save-section').style.display = 'none';
+        }
+        
         document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
             el.disabled = !editMode;
         });
-        event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
-        if (editMode) {
-            document.getElementById('save-section').style.display = 'block';
-        } else {
-            document.getElementById('save-section').style.display = 'none';
-        }
     }
 
     function deleteStock(ticker) {
-        if (!confirm(`Delete ${ticker} permanently?`)) return;
-        
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            log('❌ PAT required to delete');
-            showToast('❌ Configure PAT first');
-            return;
+        if (confirm(`Delete ${ticker}?`)) {
+            log(`🗑️ Marked ${ticker} for deletion`);
+            document.getElementById(`row-${ticker}`).style.opacity = '0.5';
+            showToast(`✅ ${ticker} marked for deletion`);
         }
-        
-        log(`🗑️ Deleting ${ticker}...`);
-        showToast(`Deleting ${ticker}...`);
-        
-        // Remove from display immediately
-        var row = document.getElementById(`row-${ticker}`);
-        if (row) row.remove();
-        
-        // Remove from masterData
-        masterData = masterData.filter(s => s.ticker !== ticker);
-        
-        // Fetch current unified-symbols.json
-        fetch('unified-symbols.json?cache=' + Date.now())
-            .then(r => r.json())
-            .then(data => {
-                // Remove ticker from symbols array
-                let symbols = data.symbols || Object.values(data);
-                symbols = symbols.filter(s => s.ticker !== ticker);
-                
-                // Prepare upload data
-                const uploadData = data.symbols ? { symbols: symbols } : symbols;
-                
-                // Upload back to GitHub
-                uploadToGitHub(pat, 'unified-symbols.json', uploadData, `Delete ${ticker}`);
-            })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
-                showToast('❌ Failed to delete');
-            });
-    }
-    
-    function uploadToGitHub(pat, filename, content, message) {
-        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filename}`;
-        
-        // Step 1: GET current file to get SHA
-        fetch(apiUrl, {
-            headers: { 'Authorization': `token ${pat}` }
-        })
-        .then(r => r.json())
-        .then(fileData => {
-            // Step 2: PUT updated content with SHA
-            const encodedContent = btoa(JSON.stringify(content, null, 2));
-            
-            return fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: message,
-                    content: encodedContent,
-                    sha: fileData.sha,
-                    branch: GITHUB_CONFIG.BRANCH
-                })
-            });
-        })
-        .then(r => {
-            if (r.ok) {
-                log(`✅ Deleted from GitHub`);
-                showToast('✅ Deleted!');
-            } else {
-                return r.json().then(e => {
-                    log(`❌ Upload failed: ${e.message}`);
-                    showToast('❌ Failed');
-                });
-            }
-        })
-        .catch(e => {
-            log(`❌ Error: ${e.message}`);
-            showToast('❌ Error');
-        });
     }
 
     function saveChanges() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT required to save');
-            return;
-        }
-        
         log('💾 Saving changes...');
         
-        // Get all edited values
-        document.querySelectorAll('.qty-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newQty = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.qty = newQty;
-        });
+        // Update lastUpdated timestamp for all stocks
+        const now = new Date().toLocaleTimeString();
+        lastDataUpdateTime = now;
         
-        document.querySelectorAll('.avg-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newAvg = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.avg = newAvg;
+        masterData.forEach(stock => {
+            stock.lastUpdated = now;
         });
-        
-        // Upload to GitHub
-        uploadUnifiedSymbols(pat);
         
         // Save to IndexedDB
         var req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onsuccess = (e) => {
             var db = e.target.result;
-            var transaction = db.transaction(STORE_NAME, 'readwrite');
-            var store = transaction.objectStore(STORE_NAME);
-            
-            masterData.forEach(stock => store.put(stock));
-            
-            transaction.oncomplete = () => {
-                log('✅ Changes saved to IndexedDB');
-                editMode = false;
-                document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
-                document.getElementById('save-section').style.display = 'none';
-                updateHeader();
-                showToast('✅ Saved!');
-            };
-        };
-    }
-    
-    function uploadUnifiedSymbols(pat) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
-        
-        // Fetch current file first
-        fetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
-            .then(r => r.json())
-            .then(currentData => {
-                let symbols = currentData.symbols || [];
+            try {
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
                 
-                // Update only changed stocks in the array
-                symbols = symbols.map(stock => {
-                    const updated = masterData.find(m => m.ticker === stock.ticker);
-                    if (updated) {
-                        // Only update QTY and AVG, keep other fields
-                        return {
-                            ...stock,
-                            qty: updated.qty,
-                            avg: updated.avg
-                        };
-                    }
-                    return stock;
+                masterData.forEach(stock => {
+                    store.put(stock);
                 });
                 
-                // Get SHA and upload
-                fetch(url, {
-                    headers: { 'Authorization': `token ${pat}` }
-                })
-                .then(r => r.json())
-                .then(fileInfo => {
-                    const fileContent = JSON.stringify({ symbols }, null, 2);
-                    const encodedContent = btoa(fileContent);
+                transaction.oncomplete = () => {
+                    log(`✅ Changes saved to IndexedDB at ${now}`);
+                    showToast('✅ Changes saved!');
                     
-                    return fetch(url, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `token ${pat}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            message: 'Update QTY/AVG via ETL Center',
-                            content: encodedContent,
-                            sha: fileInfo.sha
-                        })
+                    // Exit edit mode
+                    editMode = false;
+                    const contentArea = document.getElementById('content-area');
+                    const btn = document.getElementById('edit-mode-btn');
+                    
+                    contentArea.classList.remove('edit-mode');
+                    btn.textContent = '🔧 Edit Mode: OFF';
+                    document.getElementById('save-section').style.display = 'none';
+                    
+                    document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
+                        el.disabled = true;
                     });
-                })
-                .then(r => {
-                    if (r.ok) {
-                        log('✅ Updated unified-symbols.json on GitHub');
-                    } else {
-                        log('❌ Upload failed');
-                    }
-                })
-                .catch(e => {
-                    log(`❌ Upload error: ${e.message}`);
-                });
-            })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
-            });
+                    
+                    renderSymbols();
+                    renderProgress();
+                    updateHeader();
+                };
+            } catch (err) {
+                log(`⚠️ Error saving: ${err.message}`);
+            }
+        };
     }
 
     function cancelChanges() {
         editMode = false;
-        document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+        const contentArea = document.getElementById('content-area');
+        const btn = document.getElementById('edit-mode-btn');
+        
+        contentArea.classList.remove('edit-mode');
+        btn.textContent = '🔧 Edit Mode: OFF';
         document.getElementById('save-section').style.display = 'none';
+        
+        document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
+            el.disabled = true;
+        });
         renderSymbols();
     }
 
     function downloadCSV() {
-        var csv = 'TICKER,NAME,QTY,AVG\n';
+        var csv = 'TICKER,NAME,QTY,AVG,LASTUPDATED\n';
         masterData.forEach(s => {
-            csv += `${s.ticker},${s.name},${s.qty},${s.avg}\n`;
+            csv += `${s.ticker},${s.name},${s.qty},${s.avg},"${s.lastUpdated}"\n`;
         });
         var link = document.createElement('a');
         link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
@@ -1045,80 +1004,44 @@
         showToast('📊 CSV downloaded!');
     }
 
+    // ========== TAB 3: PROGRESS ==========
+    function renderProgress() {
+        var fetchHTML = '';
+        DATA_SOURCES.forEach(source => {
+            const fetchTime = fetchTimestamps[source.path] || '—';
+            fetchHTML += `<div>📥 ${source.name}: <b style="color:var(--gr);">${fetchTime}</b></div>`;
+        });
+        
+        document.getElementById('fetch-times').innerHTML = fetchHTML || '<div style="color:#666;">No fetches yet. Click LOAD ALL to start.</div>';
 
-    function openWizard() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT token required');
-            switchTab('pat');
-            return;
-        }
-        
-        log('🧙 Opening symbol wizard...');
-        
-        // Load app-import.js if not already loaded
-        if (!window.appImportLoaded) {
-            var script = document.createElement('script');
-            script.src = 'app-import.js';
-            script.onload = () => {
-                window.appImportLoaded = true;
-                triggerWizard(pat);
-            };
-            script.onerror = () => {
-                showToast('❌ Failed to load wizard');
-                log('❌ Could not load app-import.js');
-            };
-            document.head.appendChild(script);
-        } else {
-            triggerWizard(pat);
-        }
-    }
-    
-    function triggerWizard(pat) {
-        // Call app-import.js workflow
-        if (typeof window.openImportWorkflow === 'function') {
-            window.openImportWorkflow();
-            log('✅ Import workflow opened');
-        } else {
-            showToast('❌ Workflow not found');
-        }
+        var sources = [
+            { name: 'unified-symbols.json', count: masterData.length || '—', time: lastDataUpdateTime || '—' },
+            { name: 'prices.json', count: '—', time: '—' },
+            { name: 'fundamentals.json', count: '—', time: '—' },
+            { name: 'guidance.json', count: '—', time: '—' },
+            { name: 'macro_data.json', count: '—', time: '—' }
+        ];
+
+        var html = '';
+        sources.forEach(s => {
+            html += `<tr><td>${s.name}</td><td>${s.count}</td><td>${s.time}</td></tr>`;
+        });
+
+        document.getElementById('progress-table').innerHTML = html;
     }
 
+    // ========== TAB 4: PAT CONFIG ==========
     function togglePatVisibility() {
         var input = document.getElementById('patToken');
         input.type = input.type === 'password' ? 'text' : 'password';
         event.target.textContent = input.type === 'password' ? '👁 Show' : '👁 Hide';
     }
 
-    function savePat() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ Enter PAT token first');
-            return;
-        }
-        localStorage.setItem('github_pat', pat);
-        log('✅ PAT saved to localStorage');
-        showToast('✅ PAT saved!');
-        testConnection();
-    }
-    
-    function loadPatFromStorage() {
-        var pat = localStorage.getItem('github_pat');
-        if (pat) {
-            document.getElementById('patToken').value = pat;
-            log('✅ PAT loaded from storage');
-            testConnection();
-        }
-    }
-    
     function resetPat() {
         if (confirm('Reset PAT token?')) {
             document.getElementById('patToken').value = '';
-            localStorage.removeItem('github_pat');
             document.getElementById('patStatus').textContent = '❌ Not Configured';
-            document.getElementById('patRepo').textContent = '—';
             showToast('🔄 PAT reset');
-            log('🔄 PAT cleared');
         }
     }
 
@@ -1137,12 +1060,15 @@
         }, 1000);
     }
 
+    // ========== ACTION BUTTONS ==========
     async function loadAllData() {
-        log('🚀 LOAD ALL initiated...');
+        startTime = new Date();
+        document.getElementById('startTime').textContent = startTime.toLocaleTimeString();
+        
+        log('🚀 LOAD ALL initiated (Fetch all 5 files + merge + save)...');
         document.getElementById('status').textContent = '⏳ Loading';
         showToast('Loading all data from GitHub...');
         
-        // Fetch only 3 core data sources
         const results = await Promise.all(
             DATA_SOURCES.map(source => fetchGitHubData(source.path))
         );
@@ -1170,6 +1096,8 @@
         
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
+        const guidanceData = results[3] || {};
+        const macroData = results[4] || {};
         
         log('📦 Parsing results...');
         
@@ -1177,8 +1105,14 @@
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
             priceMap = pricesData.quotes;
             log('✅ Found prices in "quotes" wrapper');
+        } else if (pricesData.stocks && typeof pricesData.stocks === 'object' && !Array.isArray(pricesData.stocks)) {
+            priceMap = pricesData.stocks;
+            log('✅ Found prices in "stocks" wrapper');
         } else {
-            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
+            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase() && k !== 'QUOTES' && k !== 'STOCKS') 
+                ? pricesData 
+                : {};
+            log('⚠️ No wrapper found for prices');
         }
         
         let fundMap = {};
@@ -1186,10 +1120,23 @@
             fundMap = fundamentalsData.stocks;
             log('✅ Found fundamentals in "stocks" wrapper');
         } else {
-            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
+            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase() && k !== 'STOCKS') 
+                ? fundamentalsData 
+                : {};
+            log('⚠️ No wrapper found for fundamentals');
         }
         
+        const guidMap = {};
+        Object.keys(guidanceData).forEach(key => {
+            if (key !== '_metadata' && guidanceData[key]) {
+                guidMap[key] = guidanceData[key];
+            }
+        });
+        
+        document.getElementById('mergeTime').textContent = new Date().toLocaleTimeString();
+        
         let mergedStocks = [];
+        const saveTime = new Date().toLocaleTimeString();
         symbolsList.forEach(symbol => {
             const ticker = symbol.ticker || symbol.TICKER || symbol.name;
             if (!ticker) return;
@@ -1198,7 +1145,9 @@
                 ...symbol,
                 ...(priceMap[ticker] || {}),
                 ...(fundMap[ticker] || {}),
-                ticker: ticker
+                ...(guidMap[ticker] || {}),
+                ticker: ticker,
+                lastUpdated: saveTime
             };
             
             mergedStocks.push(merged);
@@ -1220,11 +1169,17 @@
                 });
                 
                 transaction.oncomplete = () => {
+                    document.getElementById('dbSaveTime').textContent = new Date().toLocaleTimeString();
                     log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
                     
+                    sourceData.guidance = guidanceData;
+                    lastDataUpdateTime = saveTime;
+                    
+                    document.getElementById('endTime').textContent = new Date().toLocaleTimeString();
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
+                    renderProgress();
                     document.getElementById('status').textContent = '✅ Ready';
                     showToast('✅ Load complete!');
                 };
@@ -1246,7 +1201,7 @@
     }
 
     async function reloadAuto() {
-        log('🔄 RELOAD AUTO initiated...');
+        log('🔄 RELOAD AUTO initiated (Clear DB + fetch + merge)...');
         document.getElementById('status').textContent = '⏳ Reloading';
         showToast('Clearing and reloading from GitHub...');
         
@@ -1262,6 +1217,7 @@
         updateHeader();
         renderSymbols();
         renderDataSources();
+        renderProgress();
         document.getElementById('status').textContent = '✅ Ready';
         showToast('✅ Reload complete!');
     }
@@ -1271,20 +1227,26 @@
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = () => {
                 masterData = [];
+                lastDataUpdateTime = null;
+                fetchTimestamps = {};
                 log('🗑️ Database cleared');
                 updateHeader();
                 renderSymbols();
+                renderDataSources();
+                renderProgress();
                 showToast('✅ Database cleared!');
             };
         }
     }
 
+    // ========== HEADER UPDATE ==========
     function updateHeader() {
         document.getElementById('dbCount').textContent = masterData.length;
         document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
+        document.getElementById('lastUpdated').textContent = lastDataUpdateTime || new Date().toLocaleDateString('en-GB');
     }
 
+    // ========== INIT ==========
     init();
 </script>
 
