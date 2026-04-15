@@ -329,7 +329,6 @@
 
         <!-- SECTION 1: DATA SOURCES -->
         <div class="section-box">
-            <div class="section-header">📥 Data Sources</div>
             <div class="table-container">
                 <table>
                     <thead>
@@ -363,13 +362,13 @@
                 <div style="display:flex; gap:8px; margin-top:8px;">
                     <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
                     <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
+                    <button onclick="verifyPat()" style="flex:1; background:#f59e0b; color:#000; font-weight:bold;">✓ Verify</button>
                     <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
                 </div>
                 <div class="pat-status">
                     <div id="patStatus">❌ Not Configured</div>
                     <div id="patRepo" style="color:#999;">—</div>
                 </div>
-                <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
             </div>
         </div>
 
@@ -576,6 +575,9 @@
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
         document.getElementById(tabName).classList.add('active');
         event.target.classList.add('active');
+        
+        var tabLabel = event.target.textContent.trim();
+        log(`📑 Switched to: ${tabLabel}`);
     }
 
     function log(msg) {
@@ -1100,22 +1102,21 @@
 
     function savePat() {
         var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ Enter PAT token first');
+        if (!pat || pat.length < 20) {
+            showToast('❌ Invalid PAT format');
+            log('❌ PAT too short');
             return;
         }
         localStorage.setItem('github_pat', pat);
         log('✅ PAT saved to localStorage');
         showToast('✅ PAT saved!');
-        testConnection();
     }
     
     function loadPatFromStorage() {
         var pat = localStorage.getItem('github_pat');
         if (pat) {
             document.getElementById('patToken').value = pat;
-            log('✅ PAT loaded from storage');
-            testConnection();
+            document.getElementById('patStatus').textContent = '✅ Loaded';
         }
     }
     
@@ -1130,19 +1131,43 @@
         }
     }
 
-    function testConnection() {
+    function verifyPat() {
         var pat = document.getElementById('patToken').value;
         if (!pat) {
-            showToast('❌ PAT token required');
+            showToast('❌ Enter PAT first');
             return;
         }
-        log('🔗 Testing GitHub connection...');
-        setTimeout(() => {
-            document.getElementById('patStatus').textContent = '✅ Configured';
+        if (pat.length < 20) {
+            showToast('❌ Invalid PAT');
+            log('❌ PAT invalid: too short');
+            return;
+        }
+        
+        log('🔗 Verifying PAT...');
+        showToast('Checking PAT validity...');
+        
+        // Actually verify the PAT with GitHub API
+        fetch('https://api.github.com/user', {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => {
+            if (r.ok) {
+                return r.json();
+            } else {
+                throw new Error(`HTTP ${r.status}`);
+            }
+        })
+        .then(data => {
+            document.getElementById('patStatus').textContent = `✅ Valid (${data.login})`;
             document.getElementById('patRepo').textContent = 'murugkan/bharatmarkets';
-            log('✅ Connected to GitHub');
-            showToast('✅ Connected!');
-        }, 1000);
+            log(`✅ PAT verified for user: ${data.login}`);
+            showToast('✅ PAT valid!');
+        })
+        .catch(e => {
+            document.getElementById('patStatus').textContent = '❌ Invalid PAT';
+            log(`❌ PAT invalid: ${e.message}`);
+            showToast('❌ Invalid PAT');
+        });
     }
 
     async function loadAllData() {
@@ -1274,21 +1299,22 @@
 
     async function reloadAuto() {
         log('🔄 Full reset...');
-        showToast('Clearing & reloading...');
-        
-        // Clear browser caches
-        sessionStorage.clear();
-        localStorage.clear();
-        log('✅ Caches cleared');
+        showToast('Clearing data...');
         
         // Clear IndexedDB
         await new Promise(resolve => {
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = resolve;
         });
-        log('✅ DB cleared');
         
-        // Re-initialize
+        // Clear only data-related storage, preserve PAT
+        sessionStorage.clear();
+        localStorage.removeItem('dataUpdatedTimes');
+        localStorage.removeItem('sourceCounts');
+        
+        log('✅ Data cleared');
+        
+        // Re-initialize UI
         masterData = [];
         sourceCounts = {};
         dataUpdatedTimes = {};
