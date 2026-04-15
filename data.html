@@ -34,19 +34,6 @@
             padding: 12px;
         }
         .header-title { font-size: 14px; font-weight: 800; margin-bottom: 10px; color: var(--bl); }
-        .metrics {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr;
-            gap: 8px;
-        }
-        .metric-box {
-            background: var(--b1);
-            padding: 8px;
-            border-radius: 4px;
-            text-align: center;
-        }
-        .metric-label { font-size: 8px; color: #666; text-transform: uppercase; }
-        .metric-val { font-size: 12px; font-weight: 800; color: var(--bl); margin-top: 4px; }
 
         /* TAB BUTTONS */
         .tabs {
@@ -306,30 +293,11 @@
 
 <header>
     <div class="header-title">📊 BHARAT MARKETS - ETL CENTER</div>
-    <div class="metrics">
-        <div class="metric-box">
-            <div class="metric-label">DB Count</div>
-            <div class="metric-val" id="dbCount">0</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Last Sync</div>
-            <div class="metric-val" id="lastSync">—</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Status</div>
-            <div class="metric-val" id="status">✅ Ready</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Last Updated</div>
-            <div class="metric-val" id="lastUpdated">—</div>
-        </div>
-    </div>
 </header>
 
 <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">⚙️ ETL Pipeline</button>
-    <button class="tab-btn" onclick="switchTab('symbols')">📋 Symbols</button>
-    <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
+    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">⚙️ Data Stats</button>
+    <button class="tab-btn" onclick="switchTab('symbols')">📋 Stock List</button>
 </div>
 
 <div class="content">
@@ -338,9 +306,12 @@
         
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
-            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🚀</span>LOAD ALL</button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>RELOAD</button>
-            <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px;"><span style="font-size:12px;">🗑️</span>CLEAR DB</button>
+            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🚀</span>Load JSON</button>
+            <button onclick="refreshSession()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>Refresh</button>
+            <div style="background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color:#fff; padding:8px 12px; border-radius:4px; text-align:center; font-weight:800;">
+                <div style="font-size:9px; color:#e0e7ff; text-transform:uppercase; margin-bottom:4px;">DB Count</div>
+                <div style="font-size:16px; font-weight:800;" id="dbCountBox">0</div>
+            </div>
         </div>
 
         <!-- SECTION 1: DATA SOURCES -->
@@ -354,7 +325,6 @@
                             <th>Count</th>
                             <th>Updated (IST)</th>
                             <th style="text-align:center;">Data Load</th>
-                            <th style="text-align:center;">Refresh DB</th>
                         </tr>
                     </thead>
                     <tbody id="sources-table">
@@ -368,6 +338,24 @@
             <div class="section-header">📋 Live Log</div>
             <div class="log-box" id="live-log">
                 <div style="color:#666;">[Logs appear here]</div>
+            </div>
+
+        <!-- SECTION 3: PAT CONFIG -->
+        <div class="section-box">
+            <div class="section-header">🔐 PAT Configuration</div>
+            <div class="pat-section">
+                <div class="pat-label">GitHub PAT Token</div>
+                <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
+                    <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
+                    <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
+                </div>
+                <div class="pat-status">
+                    <div id="patStatus">❌ Not Configured</div>
+                    <div id="patRepo" style="color:#999;">—</div>
+                </div>
+                <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
             </div>
         </div>
 
@@ -388,10 +376,9 @@
                 <thead>
                     <tr>
                         <th class="sticky">TICKER</th>
-                        <th>NAME</th>
                         <th>QTY</th>
                         <th>AVG</th>
-                        <th>GUIDANCE</th>
+                        <th>UPDATED</th>
                         <th>INSIGHT</th>
                         <th style="text-align:center;">Actions</th>
                     </tr>
@@ -401,25 +388,6 @@
             </table>
         </div>
     </div>
-
-    <!-- TAB 3: PAT CONFIG -->
-    <div id="pat" class="tab-content">
-        <div class="pat-section">
-            <div class="pat-label">GitHub PAT Token</div>
-            <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
-            <div style="display:flex; gap:8px; margin-top:8px;">
-                <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
-                <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
-                <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
-            </div>
-            <div class="pat-status">
-                <div id="patStatus">❌ Not Configured</div>
-                <div id="patRepo" style="color:#999;">—</div>
-            </div>
-            <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
-        </div>
-    </div>
-
 </div>
 
 <!-- NAVIGATION FOOTER -->
@@ -576,7 +544,6 @@
         
         renderDataSources();
         renderSymbols();
-        updateHeader();
     }
 
     function switchTab(tabName) {
@@ -626,7 +593,7 @@
             if (index === 0) {
                 loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
             } else {
-                loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
+                loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">Load PY</button>`;
             }
             
             html += `<tr>
@@ -634,7 +601,6 @@
                 <td>${count}</td>
                 <td style="font-size:9px;">${istTime}</td>
                 <td style="text-align:center;">${loadButton}</td>
-                <td style="text-align:center;"><button onclick="refreshDB('${s.name}')" style="padding:4px 8px; font-size:8px;">🔄</button></td>
             </tr>`;
         });
         document.getElementById('sources-table').innerHTML = html;
@@ -707,11 +673,6 @@
             });
     }
 
-    function refreshDB(source) {
-        // ⚠️ NOTE: Both 'Load' (⬇️) and 'Refresh' (🔄) buttons do the same thing
-        // They both trigger the GitHub workflow to fetch updated data
-        dataLoad(source);
-    }
     
     function mergeAndSaveData(source, data) {
         let priceMap = {}, fundMap = {};
@@ -801,18 +762,16 @@
         var html = '';
         
         if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
+            html = '<tr><td colspan="6" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
         } else {
             masterData.slice(0, 50).forEach(stock => {
                 var ticker = stock.ticker || '—';
-                var name = stock.name || '—';
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
                 var updated = stock.updated || '—';
 
                 html += `<tr id="row-${ticker}">
                     <td class="sticky">${ticker}</td>
-                    <td>${name}</td>
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
                     <td style="font-size:9px; color:var(--gr);">${updated}</td>
@@ -823,6 +782,11 @@
         }
 
         document.getElementById('symbols-table').innerHTML = html;
+        
+        // Update DB count box
+        if (document.getElementById('dbCountBox')) {
+            document.getElementById('dbCountBox').textContent = masterData.length;
+        }
     }
 
     function toggleEditMode() {
@@ -955,12 +919,7 @@
             var transaction = db.transaction(STORE_NAME, 'readwrite');
             var store = transaction.objectStore(STORE_NAME);
             
-            // Add updated timestamp to all stocks
-            const now = new Date().toLocaleTimeString();
-            masterData.forEach(stock => {
-                stock.updated = now;
-                store.put(stock);
-            });
+            masterData.forEach(stock => store.put(stock));
             
             transaction.oncomplete = () => {
                 log('✅ Changes saved to IndexedDB');
@@ -968,7 +927,6 @@
                 document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
                 document.getElementById('save-section').style.display = 'none';
                 document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
-                updateHeader();
                 renderSymbols();
                 showToast('✅ Saved!');
             };
@@ -1225,16 +1183,13 @@
                 store.clear();
                 
                 masterData = mergedStocks;
-                const now = new Date().toLocaleTimeString();
                 mergedStocks.forEach(stock => {
-                    stock.updated = now;
                     store.put(stock);
                 });
                 
                 transaction.oncomplete = () => {
                     log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
                     
-                    updateHeader();
                     renderSymbols();
                     renderDataSources();
                     document.getElementById('status').textContent = '✅ Ready';
@@ -1257,45 +1212,45 @@
         };
     }
 
-    async function reloadAuto() {
-        log('🔄 RELOAD AUTO initiated...');
-        document.getElementById('status').textContent = '⏳ Reloading';
-        showToast('Clearing and reloading from GitHub...');
+    async function refreshSession() {
+        log('🔄 Refresh initiated - Full reset...');
+        document.getElementById('status').textContent = '⏳ Refreshing';
+        showToast('Full reset: clearing cache, DB, and reloading...');
         
+        // Clear session cache
+        try {
+            sessionStorage.clear();
+            log('✅ Session storage cleared');
+        } catch (e) {
+            log('⚠️ Session storage: ' + e.message);
+        }
+        
+        // Clear local cache
+        try {
+            localStorage.clear();
+            log('✅ Local storage cleared');
+        } catch (e) {
+            log('⚠️ Local storage: ' + e.message);
+        }
+        
+        // Clear IndexedDB
         await new Promise(resolve => {
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = resolve;
         });
-
-        log('✅ DB cleared');
+        log('✅ Database cleared');
         
+        // Reload fresh from GitHub
+        log('📥 Fetching fresh data from GitHub...');
         await initializeFromGitHub();
-        await loadFromIndexedDB();
-        updateHeader();
-        renderSymbols();
-        renderDataSources();
-        document.getElementById('status').textContent = '✅ Ready';
-        showToast('✅ Reload complete!');
+        log('✅ Data fetched');
+        
+        // Full page reload
+        log('🔄 Reloading page...');
+        setTimeout(() => location.reload(), 1000);
     }
 
-    function clearDB() {
-        if (confirm('Clear entire database?')) {
-            var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = () => {
-                masterData = [];
-                log('🗑️ Database cleared');
-                updateHeader();
-                renderSymbols();
-                showToast('✅ Database cleared!');
-            };
-        }
-    }
 
-    function updateHeader() {
-        document.getElementById('dbCount').textContent = masterData.length;
-        document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
-    }
 
     init();
 </script>
