@@ -245,11 +245,14 @@
             border: 1px solid var(--b1);
             border-radius: 4px;
             padding: 10px;
-            max-height: 200px;
+            height: 400px;
+            overflow-x: auto;
             overflow-y: auto;
             font-size: 9px;
             color: var(--gr);
             line-height: 1.4;
+            word-wrap: break-word;
+            white-space: pre-wrap;
         }
 
         /* INPUT FIELDS */
@@ -305,12 +308,12 @@
     <div id="etl-pipeline" class="tab-content active">
         
         <!-- ACTION BUTTONS -->
-        <div class="inline-buttons">
-            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🚀</span>Load JSON</button>
-            <button onclick="refreshSession()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>Refresh</button>
-            <div style="background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color:#fff; padding:8px 12px; border-radius:4px; text-align:center; font-weight:800;">
-                <div style="font-size:9px; color:#e0e7ff; text-transform:uppercase; margin-bottom:4px;">DB Count</div>
-                <div style="font-size:16px; font-weight:800;" id="dbCountBox">0</div>
+        <div class="inline-buttons" style="gap: 8px; margin-bottom: 12px;">
+            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:4px 8px; font-size:10px; height:32px; display:flex; align-items:center; gap:4px;"><span>🚀</span>Load JSON</button>
+            <button onclick="refreshSession()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:4px 8px; font-size:10px; height:32px; display:flex; align-items:center; gap:4px;"><span>🔄</span>Refresh</button>
+            <div style="background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color:#fff; padding:4px 10px; border-radius:4px; text-align:center; font-weight:800; height:32px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                <div style="font-size:8px; color:#e0e7ff; text-transform:uppercase;">DB</div>
+                <div style="font-size:13px; font-weight:800;" id="dbCountBox">0</div>
             </div>
         </div>
 
@@ -346,16 +349,16 @@
             <div class="pat-section">
                 <div class="pat-label">GitHub PAT Token</div>
                 <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
-                <div style="display:flex; gap:8px; margin-top:8px;">
-                    <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
-                    <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
-                    <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button onclick="togglePatVisibility()" style="flex:1; padding:6px; font-size:9px;">👁 Show</button>
+                    <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold; padding:6px; font-size:9px;">💾 Save</button>
+                    <button onclick="resetPat()" class="btn-danger" style="flex:1; padding:6px; font-size:9px;">🔄 Reset</button>
+                    <button onclick="testConnection()" style="flex:1; background:var(--warning); padding:6px; font-size:9px;">🔗 Test</button>
                 </div>
                 <div class="pat-status">
-                    <div id="patStatus">❌ Not Configured</div>
-                    <div id="patRepo" style="color:#999;">—</div>
+                    <div id="patStatus" style="font-size:9px; margin-top:6px;">❌ Not Configured</div>
+                    <div id="patRepo" style="color:#999; font-size:8px;">—</div>
                 </div>
-                <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
             </div>
         </div>
 
@@ -514,7 +517,6 @@
     }
 
     async function init() {
-        document.getElementById('status').textContent = '⏳ Loading...';
         log('🚀 ETL Center starting...');
         
         // Load PAT from storage
@@ -532,14 +534,11 @@
             
             if (masterData.length > 0) {
                 log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
-                document.getElementById('status').textContent = '✅ Ready';
             } else {
-                log('⚠️ No data. Click 🚀 LOAD ALL to fetch from GitHub');
-                document.getElementById('status').textContent = '⚠️ Click LOAD ALL';
+                log('⚠️ No data. Click 🚀 LOAD JSON to fetch from GitHub');
             }
         } catch (e) {
             log(`⚠️ Error: ${e.message}`);
-            document.getElementById('status').textContent = '⚠️ Error';
         }
         
         renderDataSources();
@@ -1106,8 +1105,7 @@
     }
 
     async function loadAllData() {
-        log('🚀 LOAD ALL initiated...');
-        document.getElementById('status').textContent = '⏳ Loading';
+        log('🚀 Load JSON initiated...');
         showToast('Loading all data from GitHub...');
         
         // Fetch only 3 core data sources
@@ -1132,7 +1130,6 @@
         
         if (!symbolsList || symbolsList.length === 0) {
             log('❌ Could not parse symbols data');
-            document.getElementById('status').textContent = '❌ Failed';
             return;
         }
         
@@ -1192,29 +1189,24 @@
                     
                     renderSymbols();
                     renderDataSources();
-                    document.getElementById('status').textContent = '✅ Ready';
                     showToast('✅ Load complete!');
                 };
                 
                 transaction.onerror = () => {
                     log(`⚠️ IndexedDB error: ${transaction.error}`);
-                    document.getElementById('status').textContent = '⚠️ Error';
                 };
             } catch (err) {
                 log(`⚠️ Error: ${err.message}`);
-                document.getElementById('status').textContent = '⚠️ Error';
             }
         };
         
         req.onerror = () => {
             log(`⚠️ Could not open IndexedDB`);
-            document.getElementById('status').textContent = '⚠️ Error';
         };
     }
 
     async function refreshSession() {
         log('🔄 Refresh initiated - Full reset...');
-        document.getElementById('status').textContent = '⏳ Refreshing';
         showToast('Full reset: clearing cache, DB, and reloading...');
         
         // Clear session cache
