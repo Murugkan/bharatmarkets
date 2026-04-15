@@ -306,24 +306,6 @@
 
 <header>
     <div class="header-title">📊 BHARAT MARKETS - ETL CENTER</div>
-    <div class="metrics">
-        <div class="metric-box">
-            <div class="metric-label">DB Count</div>
-            <div class="metric-val" id="dbCount">0</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Last Sync</div>
-            <div class="metric-val" id="lastSync">—</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Status</div>
-            <div class="metric-val" id="status">✅ Ready</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Last Updated</div>
-            <div class="metric-val" id="lastUpdated">—</div>
-        </div>
-    </div>
 </header>
 
 <div class="tabs">
@@ -338,9 +320,9 @@
         
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
-            <button onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🚀</span>LOAD ALL</button>
+            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>RELOAD</button>
-            <button onclick="clearDB()" style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px;"><span style="font-size:12px;">🗑️</span>CLEAR DB</button>
+            <div style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px; border-radius:4px; text-align:center; font-weight:800; font-size:11px;">db <span id="dbCountBox">0</span></div>
         </div>
 
         <!-- SECTION 1: DATA SOURCES -->
@@ -463,6 +445,7 @@
     async function fetchGitHubData(filePath) {
         try {
             const url = `${RAW_GITHUB_URL}/${filePath}`;
+            const fetchTime = new Date().toISOString(); // Capture fetch time upfront
             
             log(`📡 Fetching: ${filePath}`);
             const response = await fetch(url);
@@ -473,6 +456,7 @@
             
             const data = await response.json();
             
+            // Try to get timestamp from data first
             if (data && data.updated) {
                 dataUpdatedTimes[filePath] = data.updated;
                 log(`✅ Fetched ${filePath} - Data updated: ${data.updated}`);
@@ -480,8 +464,9 @@
                 dataUpdatedTimes[filePath] = data.lastLoadedAt;
                 log(`✅ Fetched ${filePath} - Last loaded: ${data.lastLoadedAt}`);
             } else {
-                dataUpdatedTimes[filePath] = '—';
-                log(`✅ Fetched ${filePath} - No timestamp in metadata`);
+                // If no timestamp in data, use fetch time
+                dataUpdatedTimes[filePath] = fetchTime;
+                log(`✅ Fetched ${filePath} - Fetch time: ${fetchTime}`);
             }
             
             // Save to localStorage
@@ -544,7 +529,7 @@
     }
 
     async function init() {
-        document.getElementById('status').textContent = '⏳ Loading...';
+        updateStatusButton('⏳ Loading...');
         log('🚀 ETL Center starting...');
         
         // Load PAT from storage
@@ -562,19 +547,51 @@
             
             if (masterData.length > 0) {
                 log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
-                document.getElementById('status').textContent = '✅ Ready';
+                updateStatusButton('✅ Ready');
             } else {
-                log('⚠️ No data. Click 🚀 LOAD ALL to fetch from GitHub');
-                document.getElementById('status').textContent = '⚠️ Click LOAD ALL';
+                log('⚠️ No data. Click LOAD JSON to fetch from GitHub');
+                updateStatusButton('⚠️ No Data');
             }
         } catch (e) {
             log(`⚠️ Error: ${e.message}`);
-            document.getElementById('status').textContent = '⚠️ Error';
+            updateStatusButton('⚠️ Error');
         }
         
         renderDataSources();
         renderSymbols();
         updateHeader();
+    }
+
+    function updateStatusButton(statusText) {
+        const btn = document.getElementById('loadJsonBtn');
+        const badge = document.getElementById('statusBadge');
+        
+        if (!btn || !badge) return;
+        
+        badge.textContent = statusText;
+        
+        // Update button styling based on status
+        if (statusText.includes('Ready')) {
+            // Green - Ready state
+            btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
+            btn.style.color = '#000';
+            btn.disabled = false;
+        } else if (statusText.includes('Loading') || statusText.includes('Clearing')) {
+            // Yellow/Orange - Loading state
+            btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
+            btn.style.color = '#000';
+            btn.disabled = true;
+        } else if (statusText.includes('Error') || statusText.includes('Failed')) {
+            // Red - Error state
+            btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
+            btn.style.color = '#fff';
+            btn.disabled = false;
+        } else {
+            // Default
+            btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
+            btn.style.color = '#000';
+            btn.disabled = false;
+        }
     }
 
     function switchTab(tabName) {
@@ -1167,9 +1184,31 @@
     }
 
     async function loadAllData() {
-        log('🚀 LOAD ALL initiated...');
-        document.getElementById('status').textContent = '⏳ Loading';
-        showToast('Loading all data from GitHub...');
+        log('🚀 LOAD JSON initiated - clearing cache...');
+        updateStatusButton('⏳ Clearing cache');
+        showToast('Clearing cache and loading fresh data...');
+        
+        // Step 1: Clear IndexedDB
+        await new Promise(resolve => {
+            var req = indexedDB.deleteDatabase(DB_NAME);
+            req.onsuccess = () => {
+                log('✅ IndexedDB cleared');
+                resolve();
+            };
+            req.onerror = () => {
+                log('⚠️ Could not clear IndexedDB');
+                resolve();
+            };
+        });
+        
+        // Step 2: Clear browser cache for JSON files
+        localStorage.removeItem('dataUpdatedTimes');
+        dataUpdatedTimes = {};
+        log('✅ Browser cache cleared');
+        
+        // Step 3: Load fresh data from GitHub
+        log('📡 Fetching fresh data from GitHub...');
+        updateStatusButton('⏳ Loading');
         
         // Fetch only 3 core data sources
         const results = await Promise.all(
@@ -1193,7 +1232,7 @@
         
         if (!symbolsList || symbolsList.length === 0) {
             log('❌ Could not parse symbols data');
-            document.getElementById('status').textContent = '❌ Failed';
+            updateStatusButton('❌ Failed');
             return;
         }
         
@@ -1256,29 +1295,29 @@
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
-                    document.getElementById('status').textContent = '✅ Ready';
+                    updateStatusButton('✅ Ready');
                     showToast('✅ Load complete!');
                 };
                 
                 transaction.onerror = () => {
                     log(`⚠️ IndexedDB error: ${transaction.error}`);
-                    document.getElementById('status').textContent = '⚠️ Error';
+                    updateStatusButton('⚠️ Error');
                 };
             } catch (err) {
                 log(`⚠️ Error: ${err.message}`);
-                document.getElementById('status').textContent = '⚠️ Error';
+                updateStatusButton('⚠️ Error');
             }
         };
         
         req.onerror = () => {
             log(`⚠️ Could not open IndexedDB`);
-            document.getElementById('status').textContent = '⚠️ Error';
+            updateStatusButton('⚠️ Error');
         };
     }
 
     async function reloadAuto() {
         log('🔄 RELOAD AUTO initiated...');
-        document.getElementById('status').textContent = '⏳ Reloading';
+        updateStatusButton('⏳ Reloading');
         showToast('Clearing and reloading from GitHub...');
         
         await new Promise(resolve => {
@@ -1293,27 +1332,12 @@
         updateHeader();
         renderSymbols();
         renderDataSources();
-        document.getElementById('status').textContent = '✅ Ready';
+        updateStatusButton('✅ Ready');
         showToast('✅ Reload complete!');
     }
 
-    function clearDB() {
-        if (confirm('Clear entire database?')) {
-            var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = () => {
-                masterData = [];
-                log('🗑️ Database cleared');
-                updateHeader();
-                renderSymbols();
-                showToast('✅ Database cleared!');
-            };
-        }
-    }
-
     function updateHeader() {
-        document.getElementById('dbCount').textContent = masterData.length;
-        document.getElementById('lastSync').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-GB');
+        document.getElementById('dbCountBox').textContent = masterData.length;
     }
 
     init();
