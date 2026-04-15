@@ -332,7 +332,7 @@
 
         <!-- SECTION 1: DATA SOURCES -->
         <div class="section-box">
-
+            <div class="section-header">📊 Data Sources</div>
             <div class="table-container">
                 <table>
                     <thead>
@@ -541,26 +541,30 @@
     }
 
     async function init() {
-        document.getElementById('status').textContent = '⏳ Loading...';
-        log('🚀 ETL Center starting...');
-        
-        // Load PAT from storage
-        loadPatFromStorage();
-        
-        // Load updated times from storage
-        const savedTimes = localStorage.getItem('dataUpdatedTimes');
-        if (savedTimes) {
-            dataUpdatedTimes = JSON.parse(savedTimes);
-        }
-        
-        // Load source counts from storage
-        const savedCounts = localStorage.getItem('sourceCounts');
-        if (savedCounts) {
-            sourceCounts = JSON.parse(savedCounts);
-            log(`📊 Loaded source counts: ${JSON.stringify(sourceCounts)}`);
-        }
-        
         try {
+            log('🚀 ETL Center starting...');
+            document.getElementById('status').textContent = '⏳ Loading...';
+            
+            // Load PAT from storage
+            log('📍 Loading PAT...');
+            loadPatFromStorage();
+            
+            // Load updated times from storage
+            log('📍 Loading updated times...');
+            const savedTimes = localStorage.getItem('dataUpdatedTimes');
+            if (savedTimes) {
+                dataUpdatedTimes = JSON.parse(savedTimes);
+            }
+            
+            // Load source counts from storage
+            log('📍 Loading source counts...');
+            const savedCounts = localStorage.getItem('sourceCounts');
+            if (savedCounts) {
+                sourceCounts = JSON.parse(savedCounts);
+                log(`📊 Loaded source counts: ${JSON.stringify(sourceCounts)}`);
+            }
+            
+            log('📍 Loading from IndexedDB...');
             // Load from IndexedDB only - don't clear!
             await loadFromIndexedDB();
             
@@ -571,14 +575,21 @@
                 log('⚠️ No data. Click 🚀 LOAD ALL to fetch from GitHub');
                 document.getElementById('status').textContent = '⚠️ Click LOAD ALL';
             }
+            
+            log('📍 Rendering tables...');
+            renderDataSources();
+            log('✅ Data sources rendered');
+            
+            renderSymbols();
+            log('✅ Symbols rendered');
+            
+            updateHeader();
+            log('✅ Init complete');
         } catch (e) {
-            log(`⚠️ Error: ${e.message}`);
+            log(`❌ Init error: ${e.message}`);
+            console.error('Init exception:', e);
             document.getElementById('status').textContent = '⚠️ Error';
         }
-        
-        renderDataSources();
-        renderSymbols();
-        updateHeader();
     }
 
     function switchTab(tabName) {
@@ -612,6 +623,14 @@
 
     function renderDataSources() {
         var html = '';
+        
+        // If no data sources, show placeholder rows
+        if (!DATA_SOURCES || DATA_SOURCES.length === 0) {
+            html = `<tr><td colspan="4" style="text-align:center; color:#666;">No data sources configured</td></tr>`;
+            document.getElementById('sources-table').innerHTML = html;
+            return;
+        }
+        
         DATA_SOURCES.forEach((s, index) => {
             // Get count from sourceCounts object using the file name
             var count = sourceCounts[s.name] || '—';
@@ -643,7 +662,13 @@
                 <td style="text-align:center;">${loadButton}</td>
             </tr>`;
         });
+        
+        if (html === '') {
+            html = `<tr><td colspan="4" style="text-align:center; color:#666;">—</td></tr>`;
+        }
+        
         document.getElementById('sources-table').innerHTML = html;
+        log('📊 Data sources table rendered');
     }
 
     function dataLoad(source) {
@@ -1168,34 +1193,37 @@
     }
 
     async function loadAllData() {
-        log('🚀 Fetching JSON files...');
-        showToast('Loading data...');
-        
-        // Fetch only 3 core data sources
-        const results = await Promise.all(
-            DATA_SOURCES.map(source => fetchGitHubData(source.path))
-        );
-        
-        log('✅ Files fetched');
-        
-        let symbolsData = results[0];
-        let symbolsList = null;
-        
-        if (Array.isArray(symbolsData)) {
-            symbolsList = symbolsData;
-        } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
-            symbolsList = symbolsData.symbols;
-        } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
-            symbolsList = symbolsData.stocks;
-        } else if (symbolsData && typeof symbolsData === 'object') {
-            symbolsList = Object.values(symbolsData);
-        }
-        
-        if (!symbolsList || symbolsList.length === 0) {
-            log('❌ Parse error');
-            showToast('❌ Failed to load');
-            return;
-        }
+        try {
+            log('🚀 Fetching JSON files...');
+            showToast('Loading data...');
+            
+            // Fetch only 3 core data sources
+            const results = await Promise.all(
+                DATA_SOURCES.map(source => fetchGitHubData(source.path))
+            );
+            
+            log('✅ Files fetched');
+            
+            let symbolsData = results[0];
+            let symbolsList = null;
+            
+            if (Array.isArray(symbolsData)) {
+                symbolsList = symbolsData;
+            } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
+                symbolsList = symbolsData.symbols;
+            } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
+                symbolsList = symbolsData.stocks;
+            } else if (symbolsData && typeof symbolsData === 'object') {
+                symbolsList = Object.values(symbolsData);
+            }
+            
+            if (!symbolsList || symbolsList.length === 0) {
+                log('❌ Parse error');
+                showToast('❌ Load failed');
+                renderDataSources();
+                renderSymbols();
+                return;
+            }
         
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
@@ -1267,6 +1295,14 @@
         
         // Save to DB in BACKGROUND - non-blocking
         saveToIndexedDB(mergedStocks, now);
+        
+        } catch (error) {
+            log(`❌ Error: ${error.message}`);
+            showToast('❌ Error');
+            // Show tables even on error
+            renderDataSources();
+            renderSymbols();
+        }
     }
     
     function saveToIndexedDB(stocks, timestamp) {
@@ -1350,7 +1386,15 @@
         }
     }
 
-    init();
+    // Initialize on page load with error handling
+    console.log('Script loaded, calling init()...');
+    log('📍 Page initialized');
+    try {
+        init();
+    } catch (err) {
+        console.error('Init error:', err);
+        log('❌ Init failed: ' + err.message);
+    }
 </script>
 
 </body>
