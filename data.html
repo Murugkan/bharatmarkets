@@ -1586,6 +1586,15 @@ Bullet 5 Text: Key risks to thesis`;
             symbolsList = symbolsData.stocks;
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData);
+        
+        // Debug: Check symbol structure
+        if (symbolsList && symbolsList.length > 0) {
+            const firstSym = symbolsList[0];
+            log(`🔍 SYMBOL fields: ${Object.keys(firstSym).slice(0, 10).join(", ")}...`);
+            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
+                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
+            }
+        }
         }
         
         if (!symbolsList || symbolsList.length === 0) {
@@ -1639,6 +1648,12 @@ Bullet 5 Text: Key risks to thesis`;
         }
         
         let mergedStocks = [];
+        // Debug: Show what we're merging
+        if (symbolsList.length > 0) {
+            const firstSymbol = symbolsList[0];
+            const firstPrice = priceMap[firstSymbol.ticker];
+            log(`🔍 DEBUG Before merge: ${firstSymbol.ticker} | sym.ltp=${firstSymbol.ltp} | price.ltp=${firstPrice?.ltp}`);
+        }
         let priceMatches = 0, fundMatches = 0;
         
         symbolsList.forEach(symbol => {
@@ -1790,6 +1805,15 @@ Bullet 5 Text: Key risks to thesis`;
             symbolsList = symbolsData.stocks;
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData);
+        
+        // Debug: Check symbol structure
+        if (symbolsList && symbolsList.length > 0) {
+            const firstSym = symbolsList[0];
+            log(`🔍 SYMBOL fields: ${Object.keys(firstSym).slice(0, 10).join(", ")}...`);
+            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
+                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
+            }
+        }
         }
         
         if (!symbolsList || symbolsList.length === 0) {
