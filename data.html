@@ -479,27 +479,38 @@
                 
                 const data = await response.json();
                 
-                // Try to get timestamp from data first
-                if (data && data.updated) {
+                // Priority 1: Check HTTP Last-Modified header (most reliable)
+                const lastModified = response.headers.get('last-modified');
+                if (lastModified) {
+                    dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
+                    log(`✅ Fetched ${filePath} - Last modified: ${lastModified}`);
+                }
+                // Priority 2: Check for _metadata.updated in data
+                else if (data && data._metadata && data._metadata.updated) {
+                    dataUpdatedTimes[filePath] = data._metadata.updated;
+                    log(`✅ Fetched ${filePath} - Metadata updated: ${data._metadata.updated}`);
+                }
+                // Priority 3: Check for top-level updated field
+                else if (data && data.updated) {
                     dataUpdatedTimes[filePath] = data.updated;
                     log(`✅ Fetched ${filePath} - Data updated: ${data.updated}`);
-                } else if (data && data.lastLoadedAt) {
+                }
+                // Priority 4: Check for lastLoadedAt
+                else if (data && data.lastLoadedAt) {
                     dataUpdatedTimes[filePath] = data.lastLoadedAt;
                     log(`✅ Fetched ${filePath} - Last loaded: ${data.lastLoadedAt}`);
-                } else {
+                }
+                // Fallback: Use fetch time
+                else {
                     dataUpdatedTimes[filePath] = fetchTime;
-                    log(`✅ Fetched ${filePath} - Fetch time: ${fetchTime}`);
+                    log(`✅ Fetched ${filePath} - Using fetch time: ${fetchTime}`);
                 }
             
-            // Save to localStorage
-            localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
-            
-            return data;
-                
                 // Save to localStorage
                 localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
                 
                 return data;
+                
             } catch (abortErr) {
                 clearTimeout(timeout);
                 if (abortErr.name === 'AbortError') {
@@ -1654,9 +1665,11 @@ Bullet 5 Text: Key risks to thesis`;
         for (let i = 0; i < DATA_SOURCES.length; i++) {
             const source = DATA_SOURCES[i];
             const filename = source.path.split('/').pop();
-            updateProgress(i, DATA_SOURCES.length, filename);
             const data = await fetchGitHubData(source.path);
             results.push(data);
+            
+            // Update progress AFTER loading
+            updateProgress(i + 1, DATA_SOURCES.length, filename);
             log(`✓ File ${i + 1}/${DATA_SOURCES.length}: ${filename}`);
         }
         
