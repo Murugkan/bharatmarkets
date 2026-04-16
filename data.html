@@ -325,19 +325,6 @@
             <div style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px; border-radius:4px; text-align:center; font-weight:800; font-size:11px;">db <span id="dbCountBox">0</span></div>
         </div>
 
-        <!-- PROGRESS BAR -->
-        <div id="progressContainer" style="display:none; padding:12px; background:#0a0a0a; border-bottom:1px solid #222;">
-            <div style="font-size:9px; color:#666; margin-bottom:6px;">
-                <span id="currentFileLabel">Initializing...</span>
-            </div>
-            <div style="width:100%; height:8px; background:#111; border-radius:4px; overflow:hidden;">
-                <div id="progressBar" style="width:0%; height:100%; background:linear-gradient(90deg, #00ff88 0%, #00f2ff 100%); transition:width 0.3s;"></div>
-            </div>
-            <div style="font-size:9px; color:#666; margin-top:6px; text-align:right;">
-                <span id="progressText">0/4</span>
-            </div>
-        </div>
-
         <!-- SECTION 1: DATA SOURCES -->
         <div class="section-box">
             <div class="table-container">
@@ -639,34 +626,6 @@
         
         // Always log
         log(statusText);
-    }
-    
-    function showProgress(show = true) {
-        const container = document.getElementById('progressContainer');
-        if (container) {
-            container.style.display = show ? 'block' : 'none';
-            // Reset progress bar
-            if (show) {
-                const progressBar = document.getElementById('progressBar');
-                if (progressBar) progressBar.style.width = '0%';
-            }
-        }
-    }
-    
-    function updateProgress(current, total, filename = '') {
-        const progressBar = document.getElementById('progressBar');
-        const progressText = document.getElementById('progressText');
-        const fileLabel = document.getElementById('currentFileLabel');
-        
-        if (progressBar) {
-            progressBar.style.width = (current / total * 100) + '%';
-        }
-        if (progressText) {
-            progressText.textContent = `${current}/${total}`;
-        }
-        if (fileLabel && filename) {
-            fileLabel.textContent = `📂 Loading: ${filename}`;
-        }
     }
     
     function saveLogs() {
@@ -979,29 +938,27 @@
                 var name = stock.name || '—';
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
-                
-                var guidanceTimestamp = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
 
-                html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
-                    <td class="sticky" style="font-weight:700; color:#00ffff; font-size:13px; padding:12px 8px; min-width:100px;">${ticker}</td>
-                    <td style="color:#8ab4f8; font-size:11px; padding:12px 4px; white-space:nowrap; max-width:180px; overflow:hidden; text-overflow:ellipsis; min-width:120px;">${name}</td>
-                    <td style="padding:8px 4px;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:60px; padding:8px; background:#1a3a1a; color:#fff; border:2px solid #00ff88; border-radius:4px; font-size:11px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
-                    <td style="padding:8px 4px;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:70px; padding:8px; background:#1a2a3a; color:#fff; border:2px solid #00ccff; border-radius:4px; font-size:11px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
-                    <td style="padding:8px 4px; min-width:115px;">
-                        <div style="display:flex; gap:4px; margin-bottom:4px;">
-                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:50px; height:50px; padding:0; font-size:10px; background:linear-gradient(135deg,#00f2ff,#00ccff); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,242,255,0.3);">📋</button>
-                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:50px; height:50px; padding:0; font-size:10px; background:linear-gradient(135deg,#00ff88,#00cc66); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,255,136,0.3);">✏️</button>
+                html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1); display:table-row;">
+                    <td class="sticky" style="font-weight:700; color:#00ffff; font-size:13px; padding:12px 8px; min-width:100px; vertical-align:middle;">${ticker}</td>
+                    <td style="color:#8ab4f8; font-size:11px; padding:12px 4px; white-space:nowrap; max-width:200px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
+                    <td style="padding:8px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:65px; padding:8px; background:#1a3a1a; color:#fff; border:2px solid #00ff88; border-radius:4px; font-size:11px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="padding:8px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:75px; padding:8px; background:#1a2a3a; color:#fff; border:2px solid #00ccff; border-radius:4px; font-size:11px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="padding:6px 4px; vertical-align:middle;">
+                        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:4px;">
+                            <button onclick="generateGuidancePrompt('${ticker}')" style="flex:1; min-width:55px; padding:10px 4px; font-size:9px; background:linear-gradient(135deg,#00f2ff,#00ccff); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 6px rgba(0,242,255,0.3);">📋 Call</button>
+                            <button onclick="showGuidanceSaveModal('${ticker}')" style="flex:1; min-width:40px; padding:10px 4px; font-size:9px; background:linear-gradient(135deg,#00ff88,#00cc66); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 6px rgba(0,255,136,0.3);">✏️</button>
                         </div>
-                        <div style="font-size:8px; color:#00ffaa; text-align:center; margin-top:2px; font-weight:600;">${guidanceTimestamp}</div>
+                        <div style="font-size:8px; color:#00ffaa; text-align:center; font-weight:600; height:14px;">${guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—'}</div>
                     </td>
-                    <td style="padding:8px 4px; min-width:115px;">
-                        <div style="display:flex; gap:4px; margin-bottom:4px;">
-                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:50px; height:50px; padding:0; font-size:10px; background:linear-gradient(135deg,#f59e0b,#ff9500); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(245,158,11,0.3);">📊</button>
-                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:50px; height:50px; padding:0; font-size:10px; background:linear-gradient(135deg,#00ff88,#00cc66); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,255,136,0.3);">✏️</button>
+                    <td style="padding:6px 4px; vertical-align:middle;">
+                        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:4px;">
+                            <button onclick="generateInsightsPrompt('${ticker}')" style="flex:1; min-width:55px; padding:10px 4px; font-size:9px; background:linear-gradient(135deg,#f59e0b,#ff9500); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 6px rgba(245,158,11,0.3);">📊 Insight</button>
+                            <button onclick="showInsightsSaveModal('${ticker}')" style="flex:1; min-width:40px; padding:10px 4px; font-size:9px; background:linear-gradient(135deg,#00ff88,#00cc66); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 6px rgba(0,255,136,0.3);">✏️</button>
                         </div>
-                        <div style="font-size:8px; color:#00ffaa; text-align:center; margin-top:2px; font-weight:600;">${guidanceTimestamp}</div>
+                        <div style="font-size:8px; color:#00ffaa; text-align:center; font-weight:600; height:14px;">${guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—'}</div>
                     </td>
-                    <td style="text-align:center; padding:8px 4px;"><button onclick="deleteStock('${ticker}')" style="width:50px; height:50px; padding:0; font-size:14px; background:#ff4444; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(255,68,68,0.3);">🗑️</button></td>
+                    <td style="text-align:center; padding:8px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:55px; height:44px; padding:0; font-size:14px; background:#ff4444; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(255,68,68,0.3);">🗑️</button></td>
                 </tr>`;
             });
         }
@@ -1388,14 +1345,22 @@ Bullet 5 Text: Key risks to thesis`;
     function uploadToGitHub(pat, filename, content, message) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filename}`;
         
-        // Step 1: GET current file to get SHA
         fetch(apiUrl, {
             headers: { 'Authorization': `token ${pat}` }
         })
         .then(r => r.json())
         .then(fileData => {
-            // Step 2: PUT updated content with SHA
-            const encodedContent = btoa(JSON.stringify(content, null, 2));
+            if (!fileData.sha) {
+                log(`❌ Could not find file SHA for ${filename}`);
+                return;
+            }
+            
+            // Encode content to base64 (handles Unicode properly)
+            const jsonString = JSON.stringify(content, null, 2);
+            const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
+            
+            // Sanitize commit message
+            const cleanMessage = message.replace(/[^\w\s\-\.]/g, '').substring(0, 72);
             
             return fetch(apiUrl, {
                 method: 'PUT',
@@ -1404,7 +1369,7 @@ Bullet 5 Text: Key risks to thesis`;
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    message: message,
+                    message: cleanMessage || 'Update file',
                     content: encodedContent,
                     sha: fileData.sha,
                     branch: GITHUB_CONFIG.BRANCH
@@ -1412,19 +1377,19 @@ Bullet 5 Text: Key risks to thesis`;
             });
         })
         .then(r => {
+            if (!r) return;
             if (r.ok) {
-                log(`✅ Deleted from GitHub`);
-                showToast('✅ Deleted!');
+                log(`✅ Updated ${filename} on GitHub`);
+                showToast('✅ Saved!');
             } else {
                 return r.json().then(e => {
-                    log(`❌ Upload failed: ${e.message}`);
-                    showToast('❌ Failed');
+                    const errorMsg = e.message || JSON.stringify(e);
+                    log(`⚠️ GitHub: ${errorMsg}`);
                 });
             }
         })
         .catch(e => {
-            log(`❌ Error: ${e.message}`);
-            showToast('❌ Error');
+            log(`⚠️ Upload failed: ${e.message || e}`);
         });
     }
 
@@ -1680,7 +1645,6 @@ Bullet 5 Text: Key risks to thesis`;
         // Step 3: Load fresh data from GitHub (sequential for reliability)
         log('📡 Fetching fresh data from GitHub (sequential)...');
         updateStatusButton('⏳ Loading');
-        showProgress(true);
         
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
@@ -1689,12 +1653,9 @@ Bullet 5 Text: Key risks to thesis`;
             const data = await fetchGitHubData(source.path);
             results.push(data);
             
-            // Update progress AFTER loading
-            updateProgress(i + 1, DATA_SOURCES.length, filename);
             log(`✓ File ${i + 1}/${DATA_SOURCES.length}: ${filename}`);
         }
         
-        showProgress(false);
         log('✅ All files loaded from GitHub');
         
         let symbolsData = results[0];
