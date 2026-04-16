@@ -417,6 +417,8 @@
 
     let masterData = [];
     let sourceData = {};
+    let guidanceData = {};
+    let guidanceTimestamps = {};
     let editMode = false;
     let logMessages = [];
     let dataUpdatedTimes = {};
@@ -439,7 +441,8 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
-        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
+        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals },
+        { name: 'guidance.json', path: GITHUB_CONFIG.PATHS.guidance }
     ];
 
     async function fetchGitHubData(filePath) {
@@ -837,7 +840,7 @@
         var html = '';
         
         if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD ALL" to populate symbols.</td></tr>';
+            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
         } else {
             masterData.slice(0, 50).forEach(stock => {
                 var ticker = stock.ticker || '—';
@@ -845,13 +848,20 @@
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
                 var updated = stock.updated || '—';
+                
+                // Get guidance timestamp if exists
+                var guidanceTime = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
 
                 html += `<tr id="row-${ticker}">
                     <td class="sticky">${ticker}</td>
                     <td>${name}</td>
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                    <td style="font-size:9px; color:var(--gr);">${updated}</td>
+                    <td style="font-size:9px;">
+                        <button onclick="generateGuidancePrompt('${ticker}')" style="padding:4px 6px; font-size:8px; background:#00f2ff; color:#000; border:none; border-radius:3px; cursor:pointer; margin-right:4px;">💡 Prompt</button>
+                        <button onclick="showGuidanceSaveModal('${ticker}')" style="padding:4px 6px; font-size:8px; background:#00ff88; color:#000; border:none; border-radius:3px; cursor:pointer;">💾 Save</button>
+                        <div style="font-size:8px; color:#999; margin-top:4px;">${guidanceTime}</div>
+                    </td>
                     <td>—</td>
                     <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
                 </tr>`;
@@ -859,6 +869,141 @@
         }
 
         document.getElementById('symbols-table').innerHTML = html;
+    }
+    
+    function convertToIST(isoString) {
+        try {
+            var date = new Date(isoString);
+            return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
+        } catch(e) {
+            return isoString;
+        }
+    }
+
+    function generateGuidancePrompt(ticker) {
+        var stock = masterData.find(s => s.ticker === ticker);
+        if (!stock) {
+            showToast('❌ Stock not found');
+            return;
+        }
+        
+        var prompt = `Analyze ${ticker} (${stock.name}) and provide comprehensive guidance including:
+1. Revenue guidance for next quarter
+2. Growth targets
+3. Margin expectations
+4. Capital expenditure plans
+5. Expansion plans
+6. Geographic presence & expansion
+7. Key products & portfolio
+8. Key risks and opportunities
+9. Management tone & confidence level
+10. Key commitments and timelines
+
+Format the response as JSON matching the structure in guidance.json`;
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(prompt).then(() => {
+            showToast('✅ Prompt copied to clipboard!');
+            log(`📋 Guidance prompt for ${ticker} copied`);
+        }).catch(() => {
+            // Fallback if clipboard API not available
+            var textArea = document.createElement('textarea');
+            textArea.value = prompt;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showToast('✅ Prompt copied to clipboard!');
+        });
+    }
+
+    function showGuidanceSaveModal(ticker) {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            return;
+        }
+        
+        var guidanceResponse = prompt(`Paste AI guidance response for ${ticker} (or JSON):`);
+        if (!guidanceResponse) return;
+        
+        log(`💾 Saving guidance for ${ticker}...`);
+        updateStatusButton('⏳ Saving');
+        showToast('Saving guidance...');
+        
+        saveGuidanceToGitHub(ticker, guidanceResponse, pat);
+    }
+
+    function saveGuidanceToGitHub(ticker, guidanceJson, pat) {
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/guidance.json`;
+        
+        // Step 1: GET current guidance.json
+        fetch(apiUrl, {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => r.json())
+        .then(fileData => {
+            // Step 2: Parse and update guidance data
+            var content = JSON.parse(atob(fileData.content));
+            
+            // Parse the guidance response
+            var newGuidance;
+            try {
+                newGuidance = JSON.parse(guidanceJson);
+            } catch(e) {
+                log('⚠️ Invalid JSON format');
+                updateStatusButton('⚠️ Error');
+                return;
+            }
+            
+            // Update guidance.json with new data
+            if (!content[ticker]) {
+                content[ticker] = {};
+            }
+            content[ticker].guidance = newGuidance;
+            
+            // Add timestamp
+            var timestamp = new Date().toISOString();
+            if (!content[ticker].guidance) content[ticker].guidance = {};
+            content[ticker].guidance.updated = timestamp;
+            guidanceTimestamps[ticker] = timestamp;
+            
+            // Step 3: PUT updated content with SHA
+            const encodedContent = btoa(JSON.stringify(content, null, 2));
+            
+            return fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Update guidance for ${ticker}`,
+                    content: encodedContent,
+                    sha: fileData.sha,
+                    branch: GITHUB_CONFIG.BRANCH
+                })
+            });
+        })
+        .then(r => {
+            if (r.ok) {
+                log(`✅ Guidance saved for ${ticker}`);
+                renderSymbols();
+                updateStatusButton('✅ Ready');
+                showToast('✅ Guidance saved!');
+            } else {
+                return r.json().then(e => {
+                    log(`❌ Save failed: ${e.message}`);
+                    updateStatusButton('❌ Failed');
+                    showToast('❌ Failed to save');
+                });
+            }
+        })
+        .catch(e => {
+            log(`❌ Error: ${e.message}`);
+            updateStatusButton('❌ Error');
+            showToast('❌ Error');
+        });
     }
 
     function toggleEditMode() {
@@ -1238,8 +1383,23 @@
         
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
+        const guidanceFileData = results[3] || {};
         
         log('📦 Parsing results...');
+        
+        // Extract guidance data and timestamps
+        if (guidanceFileData && typeof guidanceFileData === 'object') {
+            Object.keys(guidanceFileData).forEach(ticker => {
+                if (ticker !== '_metadata' && guidanceFileData[ticker] && guidanceFileData[ticker].guidance) {
+                    guidanceData[ticker] = guidanceFileData[ticker];
+                    // Extract timestamp from guidance
+                    if (guidanceFileData[ticker].guidance.updated) {
+                        guidanceTimestamps[ticker] = guidanceFileData[ticker].guidance.updated;
+                    }
+                }
+            });
+            log(`✅ Loaded guidance data for ${Object.keys(guidanceData).length} stocks`);
+        }
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
