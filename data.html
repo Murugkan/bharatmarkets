@@ -329,7 +329,7 @@
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
-            <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center;">db <span id="dbCountBox">0</span></div>
+            <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
         </div>
 
         <!-- SECTION 1: DATA SOURCES -->
@@ -831,8 +831,10 @@
         if (storedGuidance) {
             try {
                 guidanceData = JSON.parse(storedGuidance);
+                log(`📥 Loaded guidance data: ${Object.keys(guidanceData).length} items`);
             } catch(e) {
                 guidanceData = {};
+                log(`⚠️ Failed to parse guidanceData`);
             }
         }
         
@@ -849,6 +851,7 @@
         if (storedConcall) {
             try {
                 concallTimestamps = JSON.parse(storedConcall);
+                log(`📥 Loaded concallTimestamps: ${Object.keys(concallTimestamps).length} items`);
             } catch(e) {
                 concallTimestamps = {};
             }
@@ -858,6 +861,7 @@
         if (storedInsights) {
             try {
                 insightsTimestamps = JSON.parse(storedInsights);
+                log(`📥 Loaded insightsTimestamps: ${Object.keys(insightsTimestamps).length} items`);
             } catch(e) {
                 insightsTimestamps = {};
             }
@@ -1661,8 +1665,11 @@ Bullet 5 Text: Key risks to thesis`;
                 }
             });
             log(`✅ Loaded guidance data for ${Object.keys(guidanceData).length} stocks`);
+            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items`);
+            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items`);
         }
             saveGuidanceToStorage();
+            log(`💾 Saved timestamps to localStorage`);
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
