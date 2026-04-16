@@ -325,6 +325,19 @@
             <div style="background:linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%); color:#fff; padding:6px 4px; border-radius:4px; text-align:center; font-weight:800; font-size:11px;">db <span id="dbCountBox">0</span></div>
         </div>
 
+        <!-- PROGRESS BAR -->
+        <div id="progressContainer" style="display:none; padding:12px; background:#0a0a0a; border-bottom:1px solid #222;">
+            <div style="font-size:9px; color:#666; margin-bottom:6px;">
+                <span id="currentFileLabel">Initializing...</span>
+            </div>
+            <div style="width:100%; height:8px; background:#111; border-radius:4px; overflow:hidden;">
+                <div id="progressBar" style="width:0%; height:100%; background:linear-gradient(90deg, #00ff88 0%, #00f2ff 100%); transition:width 0.3s;"></div>
+            </div>
+            <div style="font-size:9px; color:#666; margin-top:6px; text-align:right;">
+                <span id="progressText">0/4</span>
+            </div>
+        </div>
+
         <!-- SECTION 1: DATA SOURCES -->
         <div class="section-box">
             <div class="table-container">
@@ -448,38 +461,56 @@
     async function fetchGitHubData(filePath) {
         try {
             const url = `${RAW_GITHUB_URL}/${filePath}`;
-            const fetchTime = new Date().toISOString(); // Capture fetch time upfront
+            const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
-            const response = await fetch(url);
             
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
+            // Add 30 second timeout
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
             
-            const data = await response.json();
-            
-            // Try to get timestamp from data first
-            if (data && data.updated) {
-                dataUpdatedTimes[filePath] = data.updated;
-                log(`✅ Fetched ${filePath} - Data updated: ${data.updated}`);
-            } else if (data && data.lastLoadedAt) {
-                dataUpdatedTimes[filePath] = data.lastLoadedAt;
-                log(`✅ Fetched ${filePath} - Last loaded: ${data.lastLoadedAt}`);
-            } else {
-                // If no timestamp in data, use fetch time
-                dataUpdatedTimes[filePath] = fetchTime;
-                log(`✅ Fetched ${filePath} - Fetch time: ${fetchTime}`);
-            }
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeout);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Try to get timestamp from data first
+                if (data && data.updated) {
+                    dataUpdatedTimes[filePath] = data.updated;
+                    log(`✅ Fetched ${filePath} - Data updated: ${data.updated}`);
+                } else if (data && data.lastLoadedAt) {
+                    dataUpdatedTimes[filePath] = data.lastLoadedAt;
+                    log(`✅ Fetched ${filePath} - Last loaded: ${data.lastLoadedAt}`);
+                } else {
+                    dataUpdatedTimes[filePath] = fetchTime;
+                    log(`✅ Fetched ${filePath} - Fetch time: ${fetchTime}`);
+                }
             
             // Save to localStorage
             localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
             
             return data;
+                
+                // Save to localStorage
+                localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
+                
+                return data;
+            } catch (abortErr) {
+                clearTimeout(timeout);
+                if (abortErr.name === 'AbortError') {
+                    log(`⏱️ Timeout fetching ${filePath} (30s)`);
+                } else {
+                    log(`❌ Network error: ${filePath}`);
+                }
+                return null;
+            }
         } catch (e) {
-            log(`❌ GitHub fetch failed: ${filePath}`);
-            dataUpdatedTimes[filePath] = '❌ Error';
-            localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
+            log(`❌ Error parsing ${filePath}: ${e.message}`);
             return null;
         }
     }
@@ -532,6 +563,7 @@
     }
 
     async function init() {
+        loadSavedLogs();  // Restore previous logs
         updateStatusButton('⏳ Loading...');
         log('🚀 ETL Center starting...');
         
@@ -570,32 +602,74 @@
         const btn = document.getElementById('loadJsonBtn');
         const badge = document.getElementById('statusBadge');
         
-        if (!btn || !badge) return;
-        
-        badge.textContent = statusText;
-        
-        // Update button styling based on status
-        if (statusText.includes('Ready')) {
-            // Green - Ready state
-            btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
-            btn.style.color = '#000';
-            btn.disabled = false;
-        } else if (statusText.includes('Loading') || statusText.includes('Clearing')) {
-            // Yellow/Orange - Loading state
-            btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
-            btn.style.color = '#000';
-            btn.disabled = true;
-        } else if (statusText.includes('Error') || statusText.includes('Failed')) {
-            // Red - Error state
-            btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
-            btn.style.color = '#fff';
-            btn.disabled = false;
-        } else {
-            // Default
-            btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
-            btn.style.color = '#000';
-            btn.disabled = false;
+        // Safe: Only update if elements exist (data.html page)
+        if (btn && badge) {
+            badge.textContent = statusText;
+            
+            // Update button styling based on status
+            if (statusText.includes('Ready')) {
+                btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
+                btn.style.color = '#000';
+                btn.disabled = false;
+            } else if (statusText.includes('Loading') || statusText.includes('Clearing')) {
+                btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
+                btn.style.color = '#000';
+                btn.disabled = true;
+            } else if (statusText.includes('Error') || statusText.includes('Failed')) {
+                btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
+                btn.style.color = '#fff';
+                btn.disabled = false;
+            } else {
+                btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
+                btn.style.color = '#000';
+                btn.disabled = false;
+            }
         }
+        
+        // Always log
+        log(statusText);
+    }
+    
+    function showProgress(show = true) {
+        const container = document.getElementById('progressContainer');
+        if (container) {
+            container.style.display = show ? 'block' : 'none';
+        }
+    }
+    
+    function updateProgress(current, total, filename = '') {
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const fileLabel = document.getElementById('currentFileLabel');
+        
+        if (progressBar) {
+            progressBar.style.width = (current / total * 100) + '%';
+        }
+        if (progressText) {
+            progressText.textContent = `${current}/${total}`;
+        }
+        if (fileLabel && filename) {
+            fileLabel.textContent = `📂 Loading: ${filename}`;
+        }
+    }
+    
+    function saveLogs() {
+        try {
+            localStorage.setItem('etl_logs', JSON.stringify(logMessages.slice(-100)));
+        } catch(e) {
+            console.warn('Storage full');
+        }
+    }
+    
+    function loadSavedLogs() {
+        try {
+            const saved = localStorage.getItem('etl_logs');
+            if (saved && Array.isArray(JSON.parse(saved))) {
+                logMessages = JSON.parse(saved);
+                renderLogs();
+            }
+        } catch(e) {}
+    }
     }
 
     function switchTab(tabName) {
@@ -620,6 +694,7 @@
             logBox.textContent = logMessages.slice(-30).join('\n');
             logBox.scrollTop = logBox.scrollHeight;
         }
+        saveLogs();
         console.log(msg);
     }
 
@@ -1565,14 +1640,22 @@ Bullet 5 Text: Key risks to thesis`;
         dataUpdatedTimes = {};
         log('✅ Browser cache cleared');
         
-        // Step 3: Load fresh data from GitHub
-        log('📡 Fetching fresh data from GitHub...');
+        // Step 3: Load fresh data from GitHub (sequential for reliability)
+        log('📡 Fetching fresh data from GitHub (sequential)...');
         updateStatusButton('⏳ Loading');
+        showProgress(true);
         
-        const results = await Promise.all(
-            DATA_SOURCES.map(source => fetchGitHubData(source.path))
-        );
+        const results = [];
+        for (let i = 0; i < DATA_SOURCES.length; i++) {
+            const source = DATA_SOURCES[i];
+            const filename = source.path.split('/').pop();
+            updateProgress(i, DATA_SOURCES.length, filename);
+            const data = await fetchGitHubData(source.path);
+            results.push(data);
+            log(`✓ File ${i + 1}/${DATA_SOURCES.length}: ${filename}`);
+        }
         
+        showProgress(false);
         log('✅ All files loaded from GitHub');
         
         let symbolsData = results[0];
@@ -1594,7 +1677,6 @@ Bullet 5 Text: Key risks to thesis`;
             if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
                 log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
             }
-        }
         }
         
         if (!symbolsList || symbolsList.length === 0) {
@@ -1788,11 +1870,20 @@ Bullet 5 Text: Key risks to thesis`;
             };
         });
         
-        // Step 2: Fetch all files from GitHub
-        log('📡 Fetching all data from GitHub...');
-        const results = await Promise.all(
-            DATA_SOURCES.map(source => fetchGitHubData(source.path))
-        );
+        // Step 2: Fetch all files from GitHub (sequential)
+        log('📡 Fetching all data from GitHub (sequential)...');
+        showProgress(true);
+        
+        const results = [];
+        for (let i = 0; i < DATA_SOURCES.length; i++) {
+            const source = DATA_SOURCES[i];
+            const filename = source.path.split('/').pop();
+            updateProgress(i, DATA_SOURCES.length, filename);
+            const data = await fetchGitHubData(source.path);
+            results.push(data);
+        }
+        
+        showProgress(false);
         
         let symbolsData = results[0];
         let symbolsList = null;
@@ -1813,7 +1904,6 @@ Bullet 5 Text: Key risks to thesis`;
             if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
                 log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
             }
-        }
         }
         
         if (!symbolsList || symbolsList.length === 0) {
@@ -1967,6 +2057,7 @@ Bullet 5 Text: Key risks to thesis`;
             log(`⚠️ Could not open IndexedDB: ${req.error}`);
             updateStatusButton('⚠️ Error');
         };
+    }
     }
 
     function updateHeader() {
