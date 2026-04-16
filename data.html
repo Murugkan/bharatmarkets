@@ -634,6 +634,11 @@
         const container = document.getElementById('progressContainer');
         if (container) {
             container.style.display = show ? 'block' : 'none';
+            // Reset progress bar
+            if (show) {
+                const progressBar = document.getElementById('progressBar');
+                if (progressBar) progressBar.style.width = '0%';
+            }
         }
     }
     
@@ -706,9 +711,10 @@
     function renderDataSources() {
         var html = '';
         DATA_SOURCES.forEach((s, index) => {
-            // Fetch count from the actual JSON file
+            // Fetch count from GitHub with cache bust
             var count = '⏳ Loading...';
-            fetch(s.path + '?cache=' + Date.now())
+            const fullUrl = `${RAW_GITHUB_URL}/${s.path}?cache=${Date.now()}`;
+            fetch(fullUrl)
                 .then(r => r.json())
                 .then(data => {
                     if (data.count !== undefined) {
@@ -735,6 +741,7 @@
                     if (countCell) countCell.textContent = '❌';
                 });
             
+            // Get the actual timestamp from dataUpdatedTimes
             var jsonTime = dataUpdatedTimes[s.path] || '—';
             
             // Convert ISO to IST (UTC+5:30)
@@ -1852,212 +1859,27 @@ Bullet 5 Text: Key risks to thesis`;
     }
 
     async function reloadAuto() {
-        log('🔄 REFRESH initiated - complete DB & UI wipe & rebuild...');
-        updateStatusButton('⏳ Reloading');
-        showToast('Complete wipe & rebuild of database and UI...');
+        log('🔄 REFRESH: Quick reload from IndexedDB...');
+        updateStatusButton('⏳ Syncing...');
         
-        // Step 1: Delete old database
-        await new Promise(resolve => {
-            var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = () => {
-                log('✅ Database completely wiped');
-                setTimeout(resolve, 300);
-            };
-            req.onerror = () => {
-                log('⚠️ Database wipe failed');
-                setTimeout(resolve, 300);
-            };
-        });
-        
-        // Step 2: Fetch all files from GitHub (sequential)
-        log('📡 Fetching all data from GitHub (sequential)...');
-        showProgress(true);
-        
-        const results = [];
-        for (let i = 0; i < DATA_SOURCES.length; i++) {
-            const source = DATA_SOURCES[i];
-            const filename = source.path.split('/').pop();
-            updateProgress(i, DATA_SOURCES.length, filename);
-            const data = await fetchGitHubData(source.path);
-            results.push(data);
-        }
-        
-        showProgress(false);
-        
-        let symbolsData = results[0];
-        let symbolsList = null;
-        
-        if (Array.isArray(symbolsData)) {
-            symbolsList = symbolsData;
-        } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
-            symbolsList = symbolsData.symbols;
-        } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
-            symbolsList = symbolsData.stocks;
-        } else if (symbolsData && typeof symbolsData === 'object') {
-            symbolsList = Object.values(symbolsData);
-        }
-        
-        // Debug: Check symbol structure
-        if (symbolsList && symbolsList.length > 0) {
-            const firstSym = symbolsList[0];
-            log(`🔍 SYMBOL fields: ${Object.keys(firstSym).slice(0, 10).join(", ")}...`);
-            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
-                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
-            }
-        }
-        
-        if (!symbolsList || symbolsList.length === 0) {
-            log('❌ Could not parse symbols data');
-            updateStatusButton('❌ Failed');
-            return;
-        }
-        
-        const pricesData = results[1] || {};
-        const fundamentalsData = results[2] || {};
-        const guidanceFileData = results[3] || {};
-        
-        log('📦 Parsing results...');
-        
-        // Extract guidance data and timestamps
-        if (guidanceFileData && typeof guidanceFileData === 'object') {
-            Object.keys(guidanceFileData).forEach(ticker => {
-                if (ticker !== '_metadata' && guidanceFileData[ticker]) {
-                    guidanceData[ticker] = guidanceFileData[ticker];
-                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
-                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
-                        var dateStr = guidanceFileData[ticker].guidance.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        guidanceTimestamps[ticker] = isoDate;
-                    }
-                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
-                        var dateStr = guidanceFileData[ticker].insights.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        guidanceTimestamps[ticker] = isoDate;
-                    }
-                }
-            });
-            log(`✅ Loaded guidance data for ${Object.keys(guidanceData).length} stocks`);
-            saveGuidanceToStorage();
-        }
-        
-        let priceMap = {};
-        if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
-            priceMap = pricesData.quotes;
-            log('✅ Found prices in "quotes" wrapper');
-        } else {
-            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
-        }
-        
-        let fundMap = {};
-        if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
-            fundMap = fundamentalsData.stocks;
-            log('✅ Found fundamentals in "stocks" wrapper');
-        } else {
-            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
-        }
-        
-        let mergedStocks = [];
-        let priceMatches = 0, fundMatches = 0;
-        
-        symbolsList.forEach(symbol => {
-            const ticker = symbol.ticker || symbol.TICKER || symbol.name;
-            if (!ticker) return;
+        try {
+            // Just reload from IndexedDB - no fetch, no clear
+            await loadFromIndexedDB();
+            loadGuidanceFromStorage();
             
-            const priceData = priceMap[ticker];
-            const fundData = fundMap[ticker];
+            renderDataSources();
+            renderSymbols();
+            updateHeader();
             
-            if (priceData) priceMatches++;
-            if (fundData) fundMatches++;
-            
-            const merged = {
-                ...symbol,
-                ...(fundData || {}),
-                ...(priceData || {}),
-                ticker: ticker
-            };
-            
-            mergedStocks.push(merged);
-        });
-        
-        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
-        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
-        
-        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
-        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
-        
-        // Step 3: Save to IndexedDB with same version
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        req.onupgradeneeded = (e) => {
-            var db = e.target.result;
-            try {
-                if (db.objectStoreNames.contains(STORE_NAME)) {
-                    db.deleteObjectStore(STORE_NAME);
-                }
-                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                log('✅ Object store created');
-            } catch(err) {
-                log(`⚠️ Upgrade error: ${err.message}`);
-            }
-        };
-        
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            try {
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                
-                // Clear old data first
-                store.clear();
-                
-                masterData = mergedStocks;
-                const now = new Date().toLocaleTimeString();
-                let putCount = 0;
-                
-                mergedStocks.forEach(stock => {
-                    stock.updated = now;
-                    var putReq = store.put(stock);
-                    putReq.onsuccess = () => putCount++;
-                    putReq.onerror = () => log(`⚠️ Failed to save ${stock.ticker}: ${putReq.error}`);
-                
-                // Log sample data being saved
-                if (mergedStocks.length > 0) {
-                    const sample = mergedStocks[0];
-                    log(`📌 Sample: ${sample.ticker} | LTP: ${sample.ltp} | PE: ${sample.pe} | OPM: ${sample.opm_pct}%`);
-                }
-                });
-                
-                transaction.oncomplete = () => {
-                    log(`✅ Saved ${putCount}/${mergedStocks.length} records to IndexedDB`);
-                    updateHeader();
-                    renderSymbols();
-                    renderDataSources();
-                    updateStatusButton('✅ Ready');
-                    showToast('✅ Refresh complete!');
-                };
-                
-                transaction.onerror = () => {
-                    log(`❌ Transaction aborted: ${transaction.error}`);
-                    updateStatusButton('❌ Error');
-                    showToast('❌ Failed to save data');
-                };
-                
-                transaction.onabort = () => {
-                    log(`❌ Transaction aborted`);
-                    updateStatusButton('❌ Error');
-                };
-            } catch (err) {
-                log(`❌ Error: ${err.message}`);
-                updateStatusButton('❌ Error');
-                showToast(`❌ Error: ${err.message}`);
-            }
-        };
-        
-        req.onerror = () => {
-            log(`⚠️ Could not open IndexedDB: ${req.error}`);
-            updateStatusButton('⚠️ Error');
-        };
+            log(`✅ Synced ${masterData.length} records from IndexedDB`);
+            updateStatusButton('✅ Ready');
+            showToast('✅ Quick sync complete!');
+        } catch (e) {
+            log(`❌ Sync failed: ${e.message}`);
+            updateStatusButton('❌ Error');
+        }
     }
+        
 
     function updateHeader() {
         document.getElementById('dbCountBox').textContent = masterData.length;
