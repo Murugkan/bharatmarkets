@@ -547,6 +547,7 @@
         try {
             // Load from IndexedDB only - don't clear!
             await loadFromIndexedDB();
+            loadGuidanceFromStorage();
             
             if (masterData.length > 0) {
                 log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
@@ -602,6 +603,13 @@
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
         document.getElementById(tabName).classList.add('active');
         event.target.classList.add('active');
+        
+        // Refresh data when switching tabs
+        if (tabName === 'symbols') {
+            renderSymbols();
+        } else if (tabName === 'etl-pipeline') {
+            renderDataSources();
+        }
     }
 
     function log(msg) {
@@ -792,48 +800,81 @@
 
     async function loadFromIndexedDB() {
         return new Promise((resolve) => {
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            // Try opening with current version first, then with incremented version
+            var attemptVersion = DB_VERSION;
             
-            req.onerror = () => {
-                masterData = [];
-                resolve();
-            };
-            
-            req.onupgradeneeded = (e) => {
-                var db = e.target.result;
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                }
-            };
-            
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                try {
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        masterData = [];
-                        resolve();
-                        return;
-                    }
-                    
-                    var transaction = db.transaction(STORE_NAME, 'readonly');
-                    var store = transaction.objectStore(STORE_NAME);
-                    var getAllReq = store.getAll();
-
-                    getAllReq.onsuccess = () => {
-                        masterData = getAllReq.result || [];
-                        resolve();
-                    };
-                    
-                    getAllReq.onerror = () => {
-                        masterData = [];
-                        resolve();
-                    };
-                } catch (e) {
+            function attemptOpen(version) {
+                var req = indexedDB.open(DB_NAME, version);
+                
+                req.onerror = () => {
                     masterData = [];
                     resolve();
-                }
-            };
+                };
+                
+                req.onupgradeneeded = (e) => {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                    }
+                };
+                
+                req.onsuccess = (e) => {
+                    var db = e.target.result;
+                    try {
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            masterData = [];
+                            resolve();
+                            return;
+                        }
+                        
+                        var transaction = db.transaction(STORE_NAME, 'readonly');
+                        var store = transaction.objectStore(STORE_NAME);
+                        var getAllReq = store.getAll();
+
+                        getAllReq.onsuccess = () => {
+                            masterData = getAllReq.result || [];
+                            log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
+                            resolve();
+                        };
+                        
+                        getAllReq.onerror = () => {
+                            masterData = [];
+                            resolve();
+                        };
+                    } catch (e) {
+                        masterData = [];
+                        resolve();
+                    }
+                };
+            }
+            
+            attemptOpen(attemptVersion);
         });
+    }
+    
+    function loadGuidanceFromStorage() {
+        const storedGuidance = localStorage.getItem('guidanceData');
+        if (storedGuidance) {
+            try {
+                guidanceData = JSON.parse(storedGuidance);
+            } catch(e) {
+                guidanceData = {};
+            }
+        }
+        
+        const storedTimestamps = localStorage.getItem('guidanceTimestamps');
+        if (storedTimestamps) {
+            try {
+                guidanceTimestamps = JSON.parse(storedTimestamps);
+            } catch(e) {
+                guidanceTimestamps = {};
+            }
+        }
+    }
+    
+    function saveGuidanceToStorage() {
+        localStorage.setItem('guidanceData', JSON.stringify(guidanceData));
+        localStorage.setItem('guidanceTimestamps', JSON.stringify(guidanceTimestamps));
     }
 
     function renderSymbols() {
@@ -1060,6 +1101,7 @@ Bullet 5 Text: Key risks to thesis`;
             content[ticker].guidance = newGuidance;
             guidanceTimestamps[ticker] = new Date().toISOString();
             guidanceData[ticker] = { ...guidanceData[ticker], guidance: newGuidance };
+            saveGuidanceToStorage();
             
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
@@ -1147,6 +1189,7 @@ Bullet 5 Text: Key risks to thesis`;
             content[ticker].insights = newInsights;
             guidanceTimestamps[ticker] = new Date().toISOString();
             guidanceData[ticker] = { ...guidanceData[ticker], insights: newInsights };
+            saveGuidanceToStorage();
             
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
@@ -1577,6 +1620,7 @@ Bullet 5 Text: Key risks to thesis`;
             });
             log(`✅ Loaded guidance data for ${Object.keys(guidanceData).length} stocks`);
         }
+            saveGuidanceToStorage();
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
@@ -1748,6 +1792,7 @@ Bullet 5 Text: Key risks to thesis`;
                 }
             });
             log(`✅ Loaded guidance data for ${Object.keys(guidanceData).length} stocks`);
+            saveGuidanceToStorage();
         }
         
         let priceMap = {};
