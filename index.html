@@ -140,28 +140,60 @@ const resolve = (obj, field) => {
 async function init() {
     const statusEl = document.getElementById('status');
     const db = await new Promise(res => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        // Open without specific version to handle version mismatches from data.html
+        const req = indexedDB.open(DB_NAME);
         req.onupgradeneeded = e => {
             const d = e.target.result;
             if (!d.objectStoreNames.contains(STORE_NAME)) {
                 d.createObjectStore(STORE_NAME, { keyPath: "ticker" });
             }
         };
-        req.onsuccess = () => res(req.result);
+        req.onsuccess = () => {
+            addDebugLog('✅ IndexedDB opened successfully');
+            res(req.result);
+        };
+        req.onerror = () => {
+            addDebugLog('❌ Failed to open IndexedDB: ' + req.error);
+            res(null);
+        };
     });
-    const tx = db.transaction(STORE_NAME, "readonly");
-    MASTER = await new Promise(res => {
-        tx.objectStore(STORE_NAME).getAll().onsuccess = e => res(e.target.result);
-    });
+    
+    if (!db) {
+        statusEl.innerHTML = "FAILED TO OPEN DATABASE<br>Check browser storage settings";
+        addDebugLog('⚠️ Database connection failed');
+        return;
+    }
+    
+    try {
+        const tx = db.transaction(STORE_NAME, "readonly");
+        MASTER = await new Promise((res, rej) => {
+            const req = tx.objectStore(STORE_NAME).getAll();
+            req.onsuccess = e => {
+                const result = e.target.result || [];
+                addDebugLog('📖 Read ' + result.length + ' records from object store');
+                res(result);
+            };
+            req.onerror = () => {
+                addDebugLog('❌ Error reading object store: ' + req.error);
+                rej(req.error);
+            };
+        });
+    } catch(e) {
+        statusEl.innerHTML = "ERROR READING DATABASE<br>" + e.message;
+        addDebugLog('❌ Transaction error: ' + e.message);
+        return;
+    }
+    
     if (MASTER.length === 0) {
-        statusEl.innerHTML = "DATABASE EMPTY.<br>Go to Data tab and click LOAD ALL";
+        statusEl.innerHTML = "DATABASE EMPTY<br>Go to Data tab and click 🚀 LOAD JSON";
         addDebugLog('⚠️ No data in IndexedDB');
         return;
     }
+    
+    addDebugLog('✅ Loaded ' + MASTER.length + ' stocks');
     statusEl.style.display = "none";
     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
-    addDebugLog('📊 Loaded ' + MASTER.length + ' stocks from IndexedDB');
     render();
 }
 
@@ -249,11 +281,19 @@ function tap(sec) { filter = filter === sec ? null : sec; render(); }
 
 // ===== SYNC ENGINE - Now reads from IndexedDB =====
 function runEngineSync() {
-    addDebugLog('🔄 SYNC started - refreshing from IndexedDB...');
+    addDebugLog('🔄 Refreshing from IndexedDB...');
     init().then(() => {
         addDebugLog('✅ Sync complete');
     });
 }
+
+// Initialize on page load
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+        addDebugLog('📄 Page restored from cache - syncing...');
+        init();
+    }
+});
 
 init();
 </script>

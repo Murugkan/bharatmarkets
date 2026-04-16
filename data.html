@@ -1655,9 +1655,8 @@ Bullet 5 Text: Key risks to thesis`;
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         
-        // Open DB with incremented version to trigger onupgradeneeded
-        var newVersion = DB_VERSION + 1;
-        var req = indexedDB.open(DB_NAME, newVersion);
+        // Open DB without incrementing version - handle store deletion properly
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
         
         req.onupgradeneeded = (e) => {
             var db = e.target.result;
@@ -1828,9 +1827,8 @@ Bullet 5 Text: Key risks to thesis`;
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         
-        // Step 3: Save to IndexedDB with incremented version
-        var newVersion = DB_VERSION + 1;
-        var req = indexedDB.open(DB_NAME, newVersion);
+        // Step 3: Save to IndexedDB with same version
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
         
         req.onupgradeneeded = (e) => {
             var db = e.target.result;
