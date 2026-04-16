@@ -120,6 +120,14 @@
             color: var(--bl);
             font-weight: 800;
         }
+        
+        thead tr {
+            position: sticky;
+            top: 0;
+            background: rgba(0,50,100,0.5);
+            z-index: 10;
+        }
+        
         .pos { color: var(--gr) !important; }
         .neg { color: var(--rd) !important; }
 
@@ -368,7 +376,7 @@
                 <thead>
                     <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
                         <th class="sticky" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left;">TICKER</th>
-                        <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left; width:220px;">NAME</th>
+                        <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left; width:150px;">NAME</th>
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">GUIDANCE</th>
@@ -441,8 +449,7 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
-        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals },
-        { name: 'guidance.json', path: GITHUB_CONFIG.PATHS.guidance }
+        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
     ];
 
     async function fetchGitHubData(filePath) {
@@ -941,21 +948,21 @@
 
                 html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
                     <td class="sticky" style="font-weight:700; color:#00ffff; font-size:14px; padding:12px 8px; min-width:90px; vertical-align:middle;">${ticker}</td>
-                    <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:220px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
-                    <td style="padding:8px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
-                    <td style="padding:8px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:150px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
+                    <td style="padding:8px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="padding:8px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
                     <td style="padding:8px 6px; vertical-align:middle;">
                         <div style="display:flex; gap:5px; align-items:center;">
                             <button onclick="generateGuidancePrompt('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
                             <button onclick="showGuidanceSaveModal('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]).split(',')[0] : '—'}</div>
+                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—'}</div>
                         </div>
                     </td>
                     <td style="padding:8px 6px; vertical-align:middle;">
                         <div style="display:flex; gap:5px; align-items:center;">
                             <button onclick="generateInsightsPrompt('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
                             <button onclick="showInsightsSaveModal('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]).split(',')[0] : '—'}</div>
+                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—'}</div>
                         </div>
                     </td>
                     <td style="text-align:center; padding:8px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:50px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
@@ -969,7 +976,12 @@
     function convertToIST(isoString) {
         try {
             var date = new Date(isoString);
-            return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleString('en-IN', { 
+                timeZone: 'Asia/Kolkata',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
         } catch(e) {
             return isoString;
         }
