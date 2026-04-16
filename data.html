@@ -666,10 +666,8 @@
             const saved = localStorage.getItem('etl_logs');
             if (saved && Array.isArray(JSON.parse(saved))) {
                 logMessages = JSON.parse(saved);
-                renderLogs();
             }
         } catch(e) {}
-    }
     }
 
     function switchTab(tabName) {
@@ -1669,6 +1667,7 @@ Bullet 5 Text: Key risks to thesis`;
             symbolsList = symbolsData.stocks;
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData);
+        }
         
         // Debug: Check symbol structure
         if (symbolsList && symbolsList.length > 0) {
@@ -1896,6 +1895,7 @@ Bullet 5 Text: Key risks to thesis`;
             symbolsList = symbolsData.stocks;
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData);
+        }
         
         // Debug: Check symbol structure
         if (symbolsList && symbolsList.length > 0) {
@@ -2058,13 +2058,20 @@ Bullet 5 Text: Key risks to thesis`;
             updateStatusButton('⚠️ Error');
         };
     }
-    }
 
     function updateHeader() {
         document.getElementById('dbCountBox').textContent = masterData.length;
     }
 
-    init();
+    // Initialize with error handling
+    (async () => {
+        try {
+            await init();
+        } catch (err) {
+            console.error('Init error:', err);
+            document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;"><h2>Initialization Error</h2><pre>' + err.message + '</pre><p>' + err.stack + '</p></div>';
+        }
+    })();
 </script>
 
 </body>
