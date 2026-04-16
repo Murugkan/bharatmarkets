@@ -478,27 +478,27 @@
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
                     dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
-                    log(`✅ Fetched ${filePath} - Last modified: ${lastModified}`);
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 2: Check for _metadata.updated in data
                 else if (data && data._metadata && data._metadata.updated) {
                     dataUpdatedTimes[filePath] = data._metadata.updated;
-                    log(`✅ Fetched ${filePath} - Metadata updated: ${data._metadata.updated}`);
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 3: Check for top-level updated field
                 else if (data && data.updated) {
                     dataUpdatedTimes[filePath] = data.updated;
-                    log(`✅ Fetched ${filePath} - Data updated: ${data.updated}`);
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 4: Check for lastLoadedAt
                 else if (data && data.lastLoadedAt) {
                     dataUpdatedTimes[filePath] = data.lastLoadedAt;
-                    log(`✅ Fetched ${filePath} - Last loaded: ${data.lastLoadedAt}`);
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Fallback: Use fetch time
                 else {
                     dataUpdatedTimes[filePath] = fetchTime;
-                    log(`✅ Fetched ${filePath} - Using fetch time: ${fetchTime}`);
+                    log(`✅ Loaded: ${filePath}`)
                 }
             
                 // Save to localStorage
@@ -1608,10 +1608,22 @@ Bullet 5 Text: Key risks to thesis`;
             const data = await fetchGitHubData(source.path);
             results.push(data);
             
-            log(`✓ File ${i + 1}/${DATA_SOURCES.length}: ${filename}`);
+            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
         }
         
         log('✅ All files loaded from GitHub');
+        
+        // Fetch guidance.json separately (not in DATA_SOURCES display)
+        let guidanceFileData = {};
+        try {
+            const guidanceResponse = await fetchGitHubData('guidance.json');
+            if (guidanceResponse) {
+                guidanceFileData = guidanceResponse;
+                log('✅ Fetched guidance.json');
+            }
+        } catch (e) {
+            log(`⚠️ Could not fetch guidance.json: ${e.message}`);
+        }
         
         let symbolsData = results[0];
         let symbolsList = null;
@@ -1642,7 +1654,6 @@ Bullet 5 Text: Key risks to thesis`;
         
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
-        const guidanceFileData = results[3] || {};
         
         log('📦 Parsing results...');
         
@@ -1664,7 +1675,7 @@ Bullet 5 Text: Key risks to thesis`;
                     }
                 }
             });
-            log(`✅ Loaded guidance data for ${Object.keys(guidanceData).length} stocks`);
+            log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
             log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items`);
             log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items`);
         }
