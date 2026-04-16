@@ -1509,11 +1509,11 @@ Bullet 5 Text: Key risks to thesis`;
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = () => {
                 log('✅ IndexedDB cleared');
-                resolve();
+                setTimeout(resolve, 300);
             };
             req.onerror = () => {
                 log('⚠️ Could not clear IndexedDB');
-                resolve();
+                setTimeout(resolve, 300);
             };
         });
         
@@ -1526,7 +1526,6 @@ Bullet 5 Text: Key risks to thesis`;
         log('📡 Fetching fresh data from GitHub...');
         updateStatusButton('⏳ Loading');
         
-        // Fetch only 3 core data sources
         const results = await Promise.all(
             DATA_SOURCES.map(source => fetchGitHubData(source.path))
         );
@@ -1561,11 +1560,18 @@ Bullet 5 Text: Key risks to thesis`;
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
             Object.keys(guidanceFileData).forEach(ticker => {
-                if (ticker !== '_metadata' && guidanceFileData[ticker] && guidanceFileData[ticker].guidance) {
+                if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    // Extract timestamp from guidance
-                    if (guidanceFileData[ticker].guidance.updated) {
-                        guidanceTimestamps[ticker] = guidanceFileData[ticker].guidance.updated;
+                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
+                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
+                        var dateStr = guidanceFileData[ticker].guidance.updated;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        guidanceTimestamps[ticker] = isoDate;
+                    }
+                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
+                        var dateStr = guidanceFileData[ticker].insights.updated;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        guidanceTimestamps[ticker] = isoDate;
                     }
                 }
             });
@@ -1605,13 +1611,20 @@ Bullet 5 Text: Key risks to thesis`;
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        // Open DB with incremented version to trigger onupgradeneeded
+        var newVersion = DB_VERSION + 1;
+        var req = indexedDB.open(DB_NAME, newVersion);
         
         req.onupgradeneeded = (e) => {
             var db = e.target.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
+            try {
+                if (db.objectStoreNames.contains(STORE_NAME)) {
+                    db.deleteObjectStore(STORE_NAME);
+                }
                 db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
                 log('✅ Object store created');
+            } catch(err) {
+                log(`⚠️ Upgrade error: ${err.message}`);
             }
         };
         
@@ -1620,7 +1633,6 @@ Bullet 5 Text: Key risks to thesis`;
             try {
                 var transaction = db.transaction(STORE_NAME, 'readwrite');
                 var store = transaction.objectStore(STORE_NAME);
-                store.clear();
                 
                 masterData = mergedStocks;
                 const now = new Date().toLocaleTimeString();
@@ -1631,7 +1643,6 @@ Bullet 5 Text: Key risks to thesis`;
                 
                 transaction.oncomplete = () => {
                     log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
-                    
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
@@ -1640,7 +1651,7 @@ Bullet 5 Text: Key risks to thesis`;
                 };
                 
                 transaction.onerror = () => {
-                    log(`⚠️ IndexedDB error: ${transaction.error}`);
+                    log(`⚠️ Transaction error: ${transaction.error}`);
                     updateStatusButton('⚠️ Error');
                 };
             } catch (err) {
@@ -1650,9 +1661,23 @@ Bullet 5 Text: Key risks to thesis`;
         };
         
         req.onerror = () => {
-            log(`⚠️ Could not open IndexedDB`);
+            log(`⚠️ Could not open IndexedDB: ${req.error}`);
             updateStatusButton('⚠️ Error');
         };
+    }
+    
+    function convertDDMMYYtoISO(ddmmyyStr) {
+        try {
+            var parts = ddmmyyStr.split('/');
+            if (parts.length === 3) {
+                var day = parts[0];
+                var month = parts[1];
+                var year = '20' + parts[2];
+                var isoStr = year + '-' + month + '-' + day + 'T00:00:00Z';
+                return new Date(isoStr).toISOString();
+            }
+        } catch(e) {}
+        return new Date().toISOString();
     }
 
     async function reloadAuto() {
@@ -1663,11 +1688,17 @@ Bullet 5 Text: Key risks to thesis`;
         // Step 1: Delete old database
         await new Promise(resolve => {
             var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = resolve;
+            req.onsuccess = () => {
+                log('✅ Database completely wiped');
+                setTimeout(resolve, 300);
+            };
+            req.onerror = () => {
+                log('⚠️ Database wipe failed');
+                setTimeout(resolve, 300);
+            };
         });
-        log('✅ Database completely wiped');
         
-        // Step 2: Fetch all three files from GitHub
+        // Step 2: Fetch all files from GitHub
         log('📡 Fetching all data from GitHub...');
         const results = await Promise.all(
             DATA_SOURCES.map(source => fetchGitHubData(source.path))
@@ -1680,6 +1711,8 @@ Bullet 5 Text: Key risks to thesis`;
             symbolsList = symbolsData;
         } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
             symbolsList = symbolsData.symbols;
+        } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
+            symbolsList = symbolsData.stocks;
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData);
         }
@@ -1699,11 +1732,18 @@ Bullet 5 Text: Key risks to thesis`;
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
             Object.keys(guidanceFileData).forEach(ticker => {
-                if (ticker !== '_metadata' && guidanceFileData[ticker] && guidanceFileData[ticker].guidance) {
+                if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    // Extract timestamp from guidance
-                    if (guidanceFileData[ticker].guidance.updated) {
-                        guidanceTimestamps[ticker] = guidanceFileData[ticker].guidance.updated;
+                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
+                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
+                        var dateStr = guidanceFileData[ticker].guidance.updated;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        guidanceTimestamps[ticker] = isoDate;
+                    }
+                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
+                        var dateStr = guidanceFileData[ticker].insights.updated;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        guidanceTimestamps[ticker] = isoDate;
                     }
                 }
             });
@@ -1743,14 +1783,20 @@ Bullet 5 Text: Key risks to thesis`;
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         
-        // Step 3: Save to IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        // Step 3: Save to IndexedDB with incremented version
+        var newVersion = DB_VERSION + 1;
+        var req = indexedDB.open(DB_NAME, newVersion);
         
         req.onupgradeneeded = (e) => {
             var db = e.target.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
+            try {
+                if (db.objectStoreNames.contains(STORE_NAME)) {
+                    db.deleteObjectStore(STORE_NAME);
+                }
                 db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
                 log('✅ Object store created');
+            } catch(err) {
+                log(`⚠️ Upgrade error: ${err.message}`);
             }
         };
         
@@ -1759,7 +1805,6 @@ Bullet 5 Text: Key risks to thesis`;
             try {
                 var transaction = db.transaction(STORE_NAME, 'readwrite');
                 var store = transaction.objectStore(STORE_NAME);
-                store.clear();
                 
                 masterData = mergedStocks;
                 const now = new Date().toLocaleTimeString();
@@ -1770,16 +1815,15 @@ Bullet 5 Text: Key risks to thesis`;
                 
                 transaction.oncomplete = () => {
                     log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
-                    
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
                     updateStatusButton('✅ Ready');
-                    showToast('✅ Refresh complete! DB & UI rebuilt!');
+                    showToast('✅ Refresh complete!');
                 };
                 
                 transaction.onerror = () => {
-                    log(`⚠️ IndexedDB error: ${transaction.error}`);
+                    log(`⚠️ Transaction error: ${transaction.error}`);
                     updateStatusButton('⚠️ Error');
                 };
             } catch (err) {
@@ -1789,7 +1833,7 @@ Bullet 5 Text: Key risks to thesis`;
         };
         
         req.onerror = () => {
-            log(`⚠️ Could not open IndexedDB`);
+            log(`⚠️ Could not open IndexedDB: ${req.error}`);
             updateStatusButton('⚠️ Error');
         };
     }
