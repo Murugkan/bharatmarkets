@@ -858,9 +858,11 @@
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
                     <td style="font-size:9px;">
-                        <button onclick="generateGuidancePrompt('${ticker}')" style="padding:4px 6px; font-size:8px; background:#00f2ff; color:#000; border:none; border-radius:3px; cursor:pointer; margin-right:4px;">💡 Prompt</button>
-                        <button onclick="showGuidanceSaveModal('${ticker}')" style="padding:4px 6px; font-size:8px; background:#00ff88; color:#000; border:none; border-radius:3px; cursor:pointer;">💾 Save</button>
-                        <div style="font-size:8px; color:#999; margin-top:4px;">${guidanceTime}</div>
+                        <div style="display:flex; gap:4px; margin-bottom:4px;">
+                            <button onclick="generateGuidancePrompt('${ticker}')" style="flex:1; padding:4px 4px; font-size:8px; background:#00f2ff; color:#000; border:none; border-radius:3px; cursor:pointer;">💡 Prompt</button>
+                            <button onclick="showGuidanceSaveModal('${ticker}')" style="flex:1; padding:4px 4px; font-size:8px; background:#00ff88; color:#000; border:none; border-radius:3px; cursor:pointer;">💾 Save</button>
+                        </div>
+                        <div style="font-size:8px; color:#999;">${guidanceTime}</div>
                     </td>
                     <td>—</td>
                     <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
@@ -887,33 +889,63 @@
             return;
         }
         
-        var prompt = `Analyze ${ticker} (${stock.name}) and provide comprehensive guidance including:
-1. Revenue guidance for next quarter
-2. Growth targets
-3. Margin expectations
-4. Capital expenditure plans
-5. Expansion plans
-6. Geographic presence & expansion
-7. Key products & portfolio
-8. Key risks and opportunities
-9. Management tone & confidence level
-10. Key commitments and timelines
+        // Build context from stock data
+        var sector = stock.sector || '—';
+        var ltp = stock.ltp || '—';
+        var pe = stock.pe || '—';
+        var roe = stock.roe || '—';
+        var opm = stock.opm_pct || '—';
+        var mcap = stock.mcap || '—';
+        var name = stock.name || ticker;
+        
+        var prompt = `You are a senior equity research analyst. Provide comprehensive guidance analysis for ${ticker} (${name}).
 
-Format the response as JSON matching the structure in guidance.json`;
+COMPANY CONTEXT:
+- Sector: ${sector}
+- Current Price: ₹${ltp} | P/E: ${pe}x | ROE: ${roe}% | OPM: ${opm}%
+- MCap: ₹${mcap}Cr
+
+TASK: Analyze the company and provide forward guidance. 
+Return ONLY in the KEY: VALUE format below — one field per line, no markdown, no bullets, no extra text.
+
+Quarter: Q# FY##
+Revenue Guidance: Next quarter/year target or order pipeline
+Growth Target: YoY or QoQ growth % guidance
+EBITDA Margin Target: Guided margin range or achieved
+PAT Margin Target: Net margin target or achieved
+Capex Plan: Amount, purpose, and timeline
+Capacity Expansion: New plants/lines with commissioning dates
+Expansion Plans: Geographic or product line expansion
+New Products: New product launches or services
+Key Products Portfolio: Top 3-5 products with revenue contribution %
+Order Book: Total order book and execution timeline
+Geographic Presence: List of countries/regions operating in
+Domestic vs Export: Revenue split % e.g. Domestic 60% Export 40%
+Geographic Expansion: New markets being targeted
+Management Tone: Positive/Cautious/Defensive with specific reason
+Key Commitments: Top 3 commitments with numbers and timelines
+Key Risks: Top 3 risks rated as High/Medium/Low
+Confidence Level: High/Medium/Low based on specificity
+
+RULES:
+- Use specific numbers not vague statements
+- Write "Not mentioned" if information is unavailable
+- Do NOT use markdown or tables — plain KEY: VALUE only
+- Be concise but comprehensive`;
 
         // Copy to clipboard
         navigator.clipboard.writeText(prompt).then(() => {
-            showToast('✅ Prompt copied to clipboard!');
-            log(`📋 Guidance prompt for ${ticker} copied`);
+            showToast('✅ Prompt copied!');
+            log(`📋 Guidance prompt for ${ticker} copied to clipboard`);
         }).catch(() => {
-            // Fallback if clipboard API not available
             var textArea = document.createElement('textarea');
             textArea.value = prompt;
             document.body.appendChild(textArea);
             textArea.select();
             document.execCommand('copy');
             document.body.removeChild(textArea);
-            showToast('✅ Prompt copied to clipboard!');
+            showToast('✅ Prompt copied!');
+            log(`📋 Guidance prompt for ${ticker} copied to clipboard`);
         });
     }
 
@@ -934,42 +966,97 @@ Format the response as JSON matching the structure in guidance.json`;
         saveGuidanceToGitHub(ticker, guidanceResponse, pat);
     }
 
-    function saveGuidanceToGitHub(ticker, guidanceJson, pat) {
-        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/guidance.json`;
+    function saveGuidanceToGitHub(ticker, guidanceText, pat) {
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        // Parse KEY: VALUE format to JSON
+        var newGuidance = {};
+        try {
+            var lines = guidanceText.trim().split('\n');
+            lines.forEach(line => {
+                var colonIdx = line.indexOf(':');
+                if (colonIdx > 0) {
+                    var key = line.substring(0, colonIdx).trim().toLowerCase();
+                    var value = line.substring(colonIdx + 1).trim();
+                    
+                    // Map KEY names to guidance.json field names
+                    key = key
+                        .replace(/\s+/g, '_')
+                        .replace('revenue_guidance', 'revenue_guidance')
+                        .replace('growth_target', 'growth_target')
+                        .replace('ebitda_margin_target', 'margin_guidance')
+                        .replace('pat_margin_target', 'margin_guidance')
+                        .replace('capex_plan', 'capex_plan')
+                        .replace('capacity_expansion', 'expansion')
+                        .replace('expansion_plans', 'expansion')
+                        .replace('key_products_portfolio', 'key_products_portfolio')
+                        .replace('geographic_presence', 'geographic_presence')
+                        .replace('domestic_vs_export', 'geographic_mix')
+                        .replace('geographic_expansion', 'geographic_expansion')
+                        .replace('management_tone', 'tone')
+                        .replace('key_commitments', 'key_commitments')
+                        .replace('key_risks', 'risks_flagged')
+                        .replace('confidence_level', 'confidence')
+                        .replace('quarter', 'quarter');
+                    
+                    // Convert risks to array
+                    if (key === 'risks_flagged' && value) {
+                        newGuidance[key] = value.split(',').map(s => s.trim());
+                    } 
+                    // Convert commitments to array
+                    else if (key === 'key_commitments' && value) {
+                        newGuidance[key] = value.split(';').map(s => s.trim());
+                    }
+                    else {
+                        newGuidance[key] = value;
+                    }
+                }
+            });
+            
+            log(`✅ Guidance parsed successfully (${Object.keys(newGuidance).length} fields)`);
+        } catch(e) {
+            log(`⚠️ Parse error: ${e.message}`);
+            updateStatusButton('⚠️ Error');
+            showToast(`❌ Parse error: ${e.message}`);
+            return;
+        }
         
         // Step 1: GET current guidance.json
         fetch(apiUrl, {
             headers: { 'Authorization': `token ${pat}` }
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) {
+                throw new Error(`HTTP ${r.status}`);
+            }
+            return r.json();
+        })
         .then(fileData => {
-            // Step 2: Parse and update guidance data
-            var content = JSON.parse(atob(fileData.content));
-            
-            // Parse the guidance response
-            var newGuidance;
+            // Step 2: Parse current file content
+            var content;
             try {
-                newGuidance = JSON.parse(guidanceJson);
+                content = JSON.parse(atob(fileData.content));
             } catch(e) {
-                log('⚠️ Invalid JSON format');
-                updateStatusButton('⚠️ Error');
-                return;
+                log(`⚠️ Could not parse existing file`);
+                content = {};
             }
             
-            // Update guidance.json with new data
+            // Step 3: Update guidance data
             if (!content[ticker]) {
                 content[ticker] = {};
             }
+            
+            // Add timestamp to the guidance object
+            newGuidance.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+            
             content[ticker].guidance = newGuidance;
+            guidanceTimestamps[ticker] = new Date().toISOString();
             
-            // Add timestamp
-            var timestamp = new Date().toISOString();
-            if (!content[ticker].guidance) content[ticker].guidance = {};
-            content[ticker].guidance.updated = timestamp;
-            guidanceTimestamps[ticker] = timestamp;
+            // Step 4: Encode and PUT back to GitHub
+            const jsonString = JSON.stringify(content, null, 2);
+            const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
             
-            // Step 3: PUT updated content with SHA
-            const encodedContent = btoa(JSON.stringify(content, null, 2));
+            log(`📤 Uploading to GitHub...`);
             
             return fetch(apiUrl, {
                 method: 'PUT',
@@ -986,23 +1073,19 @@ Format the response as JSON matching the structure in guidance.json`;
             });
         })
         .then(r => {
-            if (r.ok) {
-                log(`✅ Guidance saved for ${ticker}`);
-                renderSymbols();
-                updateStatusButton('✅ Ready');
-                showToast('✅ Guidance saved!');
-            } else {
-                return r.json().then(e => {
-                    log(`❌ Save failed: ${e.message}`);
-                    updateStatusButton('❌ Failed');
-                    showToast('❌ Failed to save');
-                });
+            if (!r || !r.ok) {
+                throw new Error('Failed to save to GitHub');
             }
+            log(`✅ Guidance saved for ${ticker}`);
+            renderSymbols();
+            updateStatusButton('✅ Ready');
+            showToast('✅ Guidance saved!');
+            return r.json();
         })
         .catch(e => {
             log(`❌ Error: ${e.message}`);
             updateStatusButton('❌ Error');
-            showToast('❌ Error');
+            showToast(`❌ Error: ${e.message}`);
         });
     }
 
@@ -1521,8 +1604,23 @@ Format the response as JSON matching the structure in guidance.json`;
         
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
+        const guidanceFileData = results[3] || {};
         
         log('📦 Parsing results...');
+        
+        // Extract guidance data and timestamps
+        if (guidanceFileData && typeof guidanceFileData === 'object') {
+            Object.keys(guidanceFileData).forEach(ticker => {
+                if (ticker !== '_metadata' && guidanceFileData[ticker] && guidanceFileData[ticker].guidance) {
+                    guidanceData[ticker] = guidanceFileData[ticker];
+                    // Extract timestamp from guidance
+                    if (guidanceFileData[ticker].guidance.updated) {
+                        guidanceTimestamps[ticker] = guidanceFileData[ticker].guidance.updated;
+                    }
+                }
+            });
+            log(`✅ Loaded guidance data for ${Object.keys(guidanceData).length} stocks`);
+        }
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
