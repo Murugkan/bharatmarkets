@@ -366,14 +366,14 @@
         <div class="table-container">
             <table>
                 <thead>
-                    <tr>
-                        <th class="sticky">TICKER</th>
-                        <th>NAME</th>
-                        <th>QTY</th>
-                        <th>AVG</th>
-                        <th>CONCALL</th>
-                        <th>INSIGHTS</th>
-                        <th style="text-align:center;">Actions</th>
+                    <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
+                        <th class="sticky" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left;">TICKER</th>
+                        <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left;">NAME</th>
+                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
+                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
+                        <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">GUIDANCE</th>
+                        <th style="color:#f59e0b; font-weight:700; padding:10px 4px; text-align:center;">INSIGHTS</th>
+                        <th style="color:#ff4444; font-weight:700; padding:10px 4px; text-align:center; width:40px;">DEL</th>
                     </tr>
                 </thead>
                 <tbody id="symbols-table">
@@ -848,37 +848,28 @@
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
                 
-                var concallData = guidanceData[ticker]?.concall || {};
-                var insightsData = guidanceData[ticker]?.insights || {};
-                
-                var concallQuarter = concallData.quarter || '—';
-                var concallSummary = concallData.summary || '—';
-                var concallTime = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
-                
-                var insightsAction = insightsData.action || '—';
-                var insightsTrigger = insightsData.trigger || '—';
-                var insightsTime = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
+                var guidanceTimestamp = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
 
-                html += `<tr id="row-${ticker}">
-                    <td class="sticky">${ticker}</td>
-                    <td>${name}</td>
-                    <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
-                    <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                    <td style="font-size:8px;">
-                        <div style="display:flex; gap:3px; margin-bottom:3px;">
-                            <button onclick="generateConcallPrompt('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#00f2ff; color:#000; border:none; border-radius:2px; cursor:pointer;">📋</button>
-                            <button onclick="showConcallSaveModal('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#00ff88; color:#000; border:none; border-radius:2px; cursor:pointer;">✏️</button>
+                html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
+                    <td class="sticky" style="font-weight:700; color:#00ffff; font-size:13px; padding:12px 8px;">${ticker}</td>
+                    <td style="color:#8ab4f8; font-size:11px; padding:12px 4px;">${name}</td>
+                    <td style="color:#999; font-size:9px; padding:12px 2px; width:40px;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:35px; padding:2px; background:#222; color:#fff; border:1px solid #444; border-radius:2px; font-size:9px;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="color:#999; font-size:9px; padding:12px 2px; width:45px;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:40px; padding:2px; background:#222; color:#fff; border:1px solid #444; border-radius:2px; font-size:9px;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="padding:8px 4px;">
+                        <div style="display:flex; gap:4px; margin-bottom:4px;">
+                            <button onclick="generateGuidancePrompt('${ticker}')" style="flex:1; padding:8px 3px; font-size:12px; background:linear-gradient(135deg,#00f2ff,#00ccff); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 8px rgba(0,242,255,0.3);">📋</button>
+                            <button onclick="showGuidanceSaveModal('${ticker}')" style="flex:1; padding:8px 3px; font-size:12px; background:linear-gradient(135deg,#00ff88,#00cc66); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 8px rgba(0,255,136,0.3);">✏️</button>
                         </div>
-                        <div style="font-size:7px; color:#999; line-height:1.2;">${concallQuarter}|${concallSummary}|${concallTime}</div>
+                        <div style="font-size:8px; color:#00ffaa; text-align:center; font-weight:600;">${guidanceTimestamp}</div>
                     </td>
-                    <td style="font-size:8px;">
-                        <div style="display:flex; gap:3px; margin-bottom:3px;">
-                            <button onclick="generateInsightsPrompt('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#f59e0b; color:#000; border:none; border-radius:2px; cursor:pointer;">📊</button>
-                            <button onclick="showInsightsSaveModal('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#00ff88; color:#000; border:none; border-radius:2px; cursor:pointer;">✏️</button>
+                    <td style="padding:8px 4px;">
+                        <div style="display:flex; gap:4px; margin-bottom:4px;">
+                            <button onclick="generateInsightsPrompt('${ticker}')" style="flex:1; padding:8px 3px; font-size:12px; background:linear-gradient(135deg,#f59e0b,#ff9500); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 8px rgba(245,158,11,0.3);">📊</button>
+                            <button onclick="showInsightsSaveModal('${ticker}')" style="flex:1; padding:8px 3px; font-size:12px; background:linear-gradient(135deg,#00ff88,#00cc66); color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; box-shadow:0 2px 8px rgba(0,255,136,0.3);">✏️</button>
                         </div>
-                        <div style="font-size:7px; color:#999; line-height:1.2;">${insightsAction}|${insightsTrigger}|${insightsTime}</div>
+                        <div style="font-size:8px; color:#00ffaa; text-align:center; font-weight:600;">${guidanceTimestamp}</div>
                     </td>
-                    <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
+                    <td style="text-align:center; padding:12px 4px;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:6px 8px; font-size:11px; background:#ff4444; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:700;">🗑️</button></td>
                 </tr>`;
             });
         }
@@ -895,7 +886,7 @@
         }
     }
 
-    function generateConcallPrompt(ticker) {
+    function generateGuidancePrompt(ticker) {
         var stock = masterData.find(s => s.ticker === ticker);
         if (!stock) {
             showToast('❌ Stock not found');
@@ -919,27 +910,23 @@ COMPANY CONTEXT:
 
 Return ONLY in KEY: VALUE format — one field per line, no markdown, no bullets.
 
-Quarter: Q# FY##
-Revenue Guidance: Next quarter/year target or pipeline
-Growth Target: YoY or QoQ growth %
-EBITDA Margin Target: Guided range
-PAT Margin Target: Net margin target
-Capex Plan: Amount and timeline
-Capacity Expansion: New plants/lines with dates
-Expansion Plans: Geographic or product expansion
-New Products: Product launches
-Key Products Portfolio: Top products with %
-Order Book: Total and execution timeline
-Geographic Presence: Countries operating in
-Domestic vs Export: Revenue split %
-Geographic Expansion: New markets targeted
-Management Tone: Positive/Cautious/Defensive with reason
-Key Commitments: Top 3 with numbers and timelines
-Key Risks: Top 3 risks (High/Medium/Low)
-Summary: One-line key takeaway`;
+quarter: Q# FY##
+revenue_guidance: Specific target next quarter and full year or pipeline
+growth_target: YoY or QoQ growth % guided
+margin_guidance: EBITDA and PAT margin targets
+capex_plan: Amount, purpose, funding source
+expansion: Capacity expansion plans with timeline
+key_products_portfolio: Top products with revenue contribution %
+geographic_presence: Countries/regions operating in
+geographic_mix: Domestic vs export revenue split %
+geographic_expansion: New markets being targeted
+tone: Positive/Cautious/Defensive with reason
+key_commitments: Top 3 commitments with numbers (separate by semicolon)
+risks_flagged: Top 3 risks with severity (separate by comma)
+summary: One-line key takeaway`;
 
         navigator.clipboard.writeText(prompt).then(() => {
-            showToast('✅ Concall prompt copied!');
+            showToast('✅ Guidance prompt copied!');
         }).catch(() => {
             var textArea = document.createElement('textarea');
             textArea.value = prompt;
@@ -947,7 +934,7 @@ Summary: One-line key takeaway`;
             textArea.select();
             document.execCommand('copy');
             document.body.removeChild(textArea);
-            showToast('✅ Concall prompt copied!');
+            showToast('✅ Guidance prompt copied!');
         });
     }
     
@@ -999,19 +986,18 @@ Bullet 5 Text: Key risks to thesis`;
         });
     }
 
-    function showConcallSaveModal(ticker) {
+    function showGuidanceSaveModal(ticker) {
         var pat = document.getElementById('patToken').value;
         if (!pat) {
             showToast('❌ PAT token required');
             return;
         }
         
-        var response = prompt(`Paste concall response for ${ticker}:`);
+        var response = prompt(`Paste guidance response for ${ticker}:`);
         if (!response) return;
         
-        log(`💾 Saving concall for ${ticker}...`);
         updateStatusButton('⏳ Saving');
-        saveConcallToGitHub(ticker, response, pat);
+        saveGuidanceToGitHub(ticker, response, pat);
     }
     
     function showInsightsSaveModal(ticker) {
@@ -1024,17 +1010,16 @@ Bullet 5 Text: Key risks to thesis`;
         var response = prompt(`Paste insights response for ${ticker}:`);
         if (!response) return;
         
-        log(`💾 Saving insights for ${ticker}...`);
         updateStatusButton('⏳ Saving');
         saveInsightsToGitHub(ticker, response, pat);
     }
 
-    function saveConcallToGitHub(ticker, concallText, pat) {
+    function saveGuidanceToGitHub(ticker, guidanceText, pat) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
-        var newConcall = {};
+        var newGuidance = {};
         try {
-            var lines = concallText.trim().split('\n');
+            var lines = guidanceText.trim().split('\n');
             lines.forEach(line => {
                 var colonIdx = line.indexOf(':');
                 if (colonIdx > 0) {
@@ -1042,20 +1027,18 @@ Bullet 5 Text: Key risks to thesis`;
                     var value = line.substring(colonIdx + 1).trim();
                     
                     if (key === 'key_commitments' && value) {
-                        newConcall[key] = value.split(';').map(s => s.trim());
-                    } else if (key === 'key_risks' && value) {
-                        newConcall[key] = value.split(',').map(s => s.trim());
+                        newGuidance[key] = value.split(';').map(s => s.trim());
+                    } else if (key === 'risks_flagged' && value) {
+                        newGuidance[key] = value.split(',').map(s => s.trim());
                     } else {
-                        newConcall[key] = value;
+                        newGuidance[key] = value || null;
                     }
                 }
             });
             
-            log(`✅ Concall parsed (${Object.keys(newConcall).length} fields)`);
         } catch(e) {
-            log(`❌ Parse error: ${e.message}`);
-            updateStatusButton('❌ Error');
             showToast(`❌ Parse error: ${e.message}`);
+            updateStatusButton('❌ Error');
             return;
         }
         
@@ -1073,10 +1056,10 @@ Bullet 5 Text: Key risks to thesis`;
             
             if (!content[ticker]) content[ticker] = {};
             
-            newConcall.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
-            content[ticker].concall = newConcall;
+            newGuidance.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+            content[ticker].guidance = newGuidance;
             guidanceTimestamps[ticker] = new Date().toISOString();
-            guidanceData[ticker] = { ...guidanceData[ticker], concall: newConcall };
+            guidanceData[ticker] = { ...guidanceData[ticker], guidance: newGuidance };
             
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
@@ -1088,7 +1071,7 @@ Bullet 5 Text: Key risks to thesis`;
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    message: `Update concall for ${ticker}`,
+                    message: `Update guidance for ${ticker}`,
                     content: encodedContent,
                     sha: fileData.sha,
                     branch: GITHUB_CONFIG.BRANCH
@@ -1097,13 +1080,11 @@ Bullet 5 Text: Key risks to thesis`;
         })
         .then(r => {
             if (!r?.ok) throw new Error('Failed to save');
-            log(`✅ Concall saved for ${ticker}`);
             renderSymbols();
             updateStatusButton('✅ Ready');
-            showToast('✅ Concall updated!');
+            showToast('✅ Guidance updated!');
         })
         .catch(e => {
-            log(`❌ Error: ${e.message}`);
             updateStatusButton('❌ Error');
             showToast(`❌ Error: ${e.message}`);
         });
@@ -1123,25 +1104,28 @@ Bullet 5 Text: Key risks to thesis`;
                     var key = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
                     var value = line.substring(colonIdx + 1).trim();
                     
-                    if (key.includes('bullet') && key.includes('category')) {
+                    if (key.startsWith('bullet') && key.includes('category')) {
+                        if (currentBullet) {
+                            newInsights.bullets.push(currentBullet);
+                        }
                         currentBullet = { cat: value, text: '' };
-                    } else if (key.includes('bullet') && key.includes('text')) {
+                    } else if (key.startsWith('bullet') && key.includes('text')) {
                         if (currentBullet) {
                             currentBullet.text = value;
-                            newInsights.bullets.push(currentBullet);
-                            currentBullet = null;
                         }
                     } else {
-                        newInsights[key] = value;
+                        newInsights[key] = value || null;
                     }
                 }
             });
             
-            log(`✅ Insights parsed (${newInsights.bullets.length} bullets)`);
+            if (currentBullet && currentBullet.text) {
+                newInsights.bullets.push(currentBullet);
+            }
+            
         } catch(e) {
-            log(`❌ Parse error: ${e.message}`);
-            updateStatusButton('❌ Error');
             showToast(`❌ Parse error: ${e.message}`);
+            updateStatusButton('❌ Error');
             return;
         }
         
@@ -1183,13 +1167,11 @@ Bullet 5 Text: Key risks to thesis`;
         })
         .then(r => {
             if (!r?.ok) throw new Error('Failed to save');
-            log(`✅ Insights saved for ${ticker}`);
             renderSymbols();
             updateStatusButton('✅ Ready');
             showToast('✅ Insights updated!');
         })
         .catch(e => {
-            log(`❌ Error: ${e.message}`);
             updateStatusButton('❌ Error');
             showToast(`❌ Error: ${e.message}`);
         });
