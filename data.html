@@ -1689,15 +1689,22 @@ Bullet 5 Text: Key risks to thesis`;
                 var transaction = db.transaction(STORE_NAME, 'readwrite');
                 var store = transaction.objectStore(STORE_NAME);
                 
+                // Clear old data first
+                store.clear();
+                
                 masterData = mergedStocks;
                 const now = new Date().toLocaleTimeString();
+                let putCount = 0;
+                
                 mergedStocks.forEach(stock => {
                     stock.updated = now;
-                    store.put(stock);
+                    var putReq = store.put(stock);
+                    putReq.onsuccess = () => putCount++;
+                    putReq.onerror = () => log(`⚠️ Failed to save ${stock.ticker}: ${putReq.error}`);
                 });
                 
                 transaction.oncomplete = () => {
-                    log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
+                    log(`✅ Saved ${putCount}/${mergedStocks.length} records to IndexedDB`);
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
@@ -1706,12 +1713,19 @@ Bullet 5 Text: Key risks to thesis`;
                 };
                 
                 transaction.onerror = () => {
-                    log(`⚠️ Transaction error: ${transaction.error}`);
-                    updateStatusButton('⚠️ Error');
+                    log(`❌ Transaction aborted: ${transaction.error}`);
+                    updateStatusButton('❌ Error');
+                    showToast('❌ Failed to save data');
+                };
+                
+                transaction.onabort = () => {
+                    log(`❌ Transaction aborted`);
+                    updateStatusButton('❌ Error');
                 };
             } catch (err) {
-                log(`⚠️ Error: ${err.message}`);
-                updateStatusButton('⚠️ Error');
+                log(`❌ Error: ${err.message}`);
+                updateStatusButton('❌ Error');
+                showToast(`❌ Error: ${err.message}`);
             }
         };
         
@@ -1873,15 +1887,22 @@ Bullet 5 Text: Key risks to thesis`;
                 var transaction = db.transaction(STORE_NAME, 'readwrite');
                 var store = transaction.objectStore(STORE_NAME);
                 
+                // Clear old data first
+                store.clear();
+                
                 masterData = mergedStocks;
                 const now = new Date().toLocaleTimeString();
+                let putCount = 0;
+                
                 mergedStocks.forEach(stock => {
                     stock.updated = now;
-                    store.put(stock);
+                    var putReq = store.put(stock);
+                    putReq.onsuccess = () => putCount++;
+                    putReq.onerror = () => log(`⚠️ Failed to save ${stock.ticker}: ${putReq.error}`);
                 });
                 
                 transaction.oncomplete = () => {
-                    log(`✅ Merged ${mergedStocks.length} records to IndexedDB`);
+                    log(`✅ Saved ${putCount}/${mergedStocks.length} records to IndexedDB`);
                     updateHeader();
                     renderSymbols();
                     renderDataSources();
@@ -1890,12 +1911,19 @@ Bullet 5 Text: Key risks to thesis`;
                 };
                 
                 transaction.onerror = () => {
-                    log(`⚠️ Transaction error: ${transaction.error}`);
-                    updateStatusButton('⚠️ Error');
+                    log(`❌ Transaction aborted: ${transaction.error}`);
+                    updateStatusButton('❌ Error');
+                    showToast('❌ Failed to save data');
+                };
+                
+                transaction.onabort = () => {
+                    log(`❌ Transaction aborted`);
+                    updateStatusButton('❌ Error');
                 };
             } catch (err) {
-                log(`⚠️ Error: ${err.message}`);
-                updateStatusButton('⚠️ Error');
+                log(`❌ Error: ${err.message}`);
+                updateStatusButton('❌ Error');
+                showToast(`❌ Error: ${err.message}`);
             }
         };
         
