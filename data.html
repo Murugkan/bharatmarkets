@@ -1639,14 +1639,22 @@ Bullet 5 Text: Key risks to thesis`;
         }
         
         let mergedStocks = [];
+        let priceMatches = 0, fundMatches = 0;
+        
         symbolsList.forEach(symbol => {
             const ticker = symbol.ticker || symbol.TICKER || symbol.name;
             if (!ticker) return;
             
+            const priceData = priceMap[ticker];
+            const fundData = fundMap[ticker];
+            
+            if (priceData) priceMatches++;
+            if (fundData) fundMatches++;
+            
             const merged = {
                 ...symbol,
-                ...(priceMap[ticker] || {}),
-                ...(fundMap[ticker] || {}),
+                ...(priceData || {}),
+                ...(fundData || {}),
                 ticker: ticker
             };
             
@@ -1654,6 +1662,10 @@ Bullet 5 Text: Key risks to thesis`;
         });
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
+        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
+        
+        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
+        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
         
         // Open DB without incrementing version - handle store deletion properly
         var req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -1811,14 +1823,22 @@ Bullet 5 Text: Key risks to thesis`;
         }
         
         let mergedStocks = [];
+        let priceMatches = 0, fundMatches = 0;
+        
         symbolsList.forEach(symbol => {
             const ticker = symbol.ticker || symbol.TICKER || symbol.name;
             if (!ticker) return;
             
+            const priceData = priceMap[ticker];
+            const fundData = fundMap[ticker];
+            
+            if (priceData) priceMatches++;
+            if (fundData) fundMatches++;
+            
             const merged = {
                 ...symbol,
-                ...(priceMap[ticker] || {}),
-                ...(fundMap[ticker] || {}),
+                ...(priceData || {}),
+                ...(fundData || {}),
                 ticker: ticker
             };
             
@@ -1826,6 +1846,10 @@ Bullet 5 Text: Key risks to thesis`;
         });
         
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
+        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
+        
+        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
+        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
         
         // Step 3: Save to IndexedDB with same version
         var req = indexedDB.open(DB_NAME, DB_VERSION);
