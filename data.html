@@ -371,8 +371,8 @@
                         <th>NAME</th>
                         <th>QTY</th>
                         <th>AVG</th>
-                        <th>GUIDANCE</th>
-                        <th>INSIGHT</th>
+                        <th>CONCALL</th>
+                        <th>INSIGHTS</th>
                         <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
@@ -847,24 +847,37 @@
                 var name = stock.name || '—';
                 var qty = stock.qty || 0;
                 var avg = stock.avg || 0;
-                var updated = stock.updated || '—';
                 
-                // Get guidance timestamp if exists
-                var guidanceTime = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
+                var concallData = guidanceData[ticker]?.concall || {};
+                var insightsData = guidanceData[ticker]?.insights || {};
+                
+                var concallQuarter = concallData.quarter || '—';
+                var concallSummary = concallData.summary || '—';
+                var concallTime = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
+                
+                var insightsAction = insightsData.action || '—';
+                var insightsTrigger = insightsData.trigger || '—';
+                var insightsTime = guidanceTimestamps[ticker] ? convertToIST(guidanceTimestamps[ticker]) : '—';
 
                 html += `<tr id="row-${ticker}">
                     <td class="sticky">${ticker}</td>
                     <td>${name}</td>
                     <td><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" ${editMode ? '' : 'disabled'}></td>
                     <td><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" ${editMode ? '' : 'disabled'}></td>
-                    <td style="font-size:9px;">
-                        <div style="display:flex; gap:4px; margin-bottom:4px;">
-                            <button onclick="generateGuidancePrompt('${ticker}')" style="flex:1; padding:4px 4px; font-size:8px; background:#00f2ff; color:#000; border:none; border-radius:3px; cursor:pointer;">💡 Prompt</button>
-                            <button onclick="showGuidanceSaveModal('${ticker}')" style="flex:1; padding:4px 4px; font-size:8px; background:#00ff88; color:#000; border:none; border-radius:3px; cursor:pointer;">💾 Save</button>
+                    <td style="font-size:8px;">
+                        <div style="display:flex; gap:3px; margin-bottom:3px;">
+                            <button onclick="generateConcallPrompt('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#00f2ff; color:#000; border:none; border-radius:2px; cursor:pointer;">📋</button>
+                            <button onclick="showConcallSaveModal('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#00ff88; color:#000; border:none; border-radius:2px; cursor:pointer;">✏️</button>
                         </div>
-                        <div style="font-size:8px; color:#999;">${guidanceTime}</div>
+                        <div style="font-size:7px; color:#999; line-height:1.2;">${concallQuarter}|${concallSummary}|${concallTime}</div>
                     </td>
-                    <td>—</td>
+                    <td style="font-size:8px;">
+                        <div style="display:flex; gap:3px; margin-bottom:3px;">
+                            <button onclick="generateInsightsPrompt('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#f59e0b; color:#000; border:none; border-radius:2px; cursor:pointer;">📊</button>
+                            <button onclick="showInsightsSaveModal('${ticker}')" style="flex:1; padding:3px 2px; font-size:7px; background:#00ff88; color:#000; border:none; border-radius:2px; cursor:pointer;">✏️</button>
+                        </div>
+                        <div style="font-size:7px; color:#999; line-height:1.2;">${insightsAction}|${insightsTrigger}|${insightsTime}</div>
+                    </td>
                     <td style="text-align:center;"><button onclick="deleteStock('${ticker}')" class="btn-danger" style="padding:4px 6px; font-size:8px;">🗑️</button></td>
                 </tr>`;
             });
@@ -882,14 +895,13 @@
         }
     }
 
-    function generateGuidancePrompt(ticker) {
+    function generateConcallPrompt(ticker) {
         var stock = masterData.find(s => s.ticker === ticker);
         if (!stock) {
             showToast('❌ Stock not found');
             return;
         }
         
-        // Build context from stock data
         var sector = stock.sector || '—';
         var ltp = stock.ltp || '—';
         var pe = stock.pe || '—';
@@ -898,45 +910,36 @@
         var mcap = stock.mcap || '—';
         var name = stock.name || ticker;
         
-        var prompt = `You are a senior equity research analyst. Provide comprehensive guidance analysis for ${ticker} (${name}).
+        var prompt = `You are a senior equity research analyst. Analyze the earnings concall for ${ticker} (${name}).
 
 COMPANY CONTEXT:
 - Sector: ${sector}
 - Current Price: ₹${ltp} | P/E: ${pe}x | ROE: ${roe}% | OPM: ${opm}%
 - MCap: ₹${mcap}Cr
 
-TASK: Analyze the company and provide forward guidance. 
-Return ONLY in the KEY: VALUE format below — one field per line, no markdown, no bullets, no extra text.
+Return ONLY in KEY: VALUE format — one field per line, no markdown, no bullets.
 
 Quarter: Q# FY##
-Revenue Guidance: Next quarter/year target or order pipeline
-Growth Target: YoY or QoQ growth % guidance
-EBITDA Margin Target: Guided margin range or achieved
-PAT Margin Target: Net margin target or achieved
-Capex Plan: Amount, purpose, and timeline
-Capacity Expansion: New plants/lines with commissioning dates
-Expansion Plans: Geographic or product line expansion
-New Products: New product launches or services
-Key Products Portfolio: Top 3-5 products with revenue contribution %
-Order Book: Total order book and execution timeline
-Geographic Presence: List of countries/regions operating in
-Domestic vs Export: Revenue split % e.g. Domestic 60% Export 40%
-Geographic Expansion: New markets being targeted
-Management Tone: Positive/Cautious/Defensive with specific reason
-Key Commitments: Top 3 commitments with numbers and timelines
-Key Risks: Top 3 risks rated as High/Medium/Low
-Confidence Level: High/Medium/Low based on specificity
+Revenue Guidance: Next quarter/year target or pipeline
+Growth Target: YoY or QoQ growth %
+EBITDA Margin Target: Guided range
+PAT Margin Target: Net margin target
+Capex Plan: Amount and timeline
+Capacity Expansion: New plants/lines with dates
+Expansion Plans: Geographic or product expansion
+New Products: Product launches
+Key Products Portfolio: Top products with %
+Order Book: Total and execution timeline
+Geographic Presence: Countries operating in
+Domestic vs Export: Revenue split %
+Geographic Expansion: New markets targeted
+Management Tone: Positive/Cautious/Defensive with reason
+Key Commitments: Top 3 with numbers and timelines
+Key Risks: Top 3 risks (High/Medium/Low)
+Summary: One-line key takeaway`;
 
-RULES:
-- Use specific numbers not vague statements
-- Write "Not mentioned" if information is unavailable
-- Do NOT use markdown or tables — plain KEY: VALUE only
-- Be concise but comprehensive`;
-
-        // Copy to clipboard
         navigator.clipboard.writeText(prompt).then(() => {
-            showToast('✅ Prompt copied!');
-            log(`📋 Guidance prompt for ${ticker} copied to clipboard`);
+            showToast('✅ Concall prompt copied!');
         }).catch(() => {
             var textArea = document.createElement('textarea');
             textArea.value = prompt;
@@ -944,119 +947,139 @@ RULES:
             textArea.select();
             document.execCommand('copy');
             document.body.removeChild(textArea);
-            showToast('✅ Prompt copied!');
-            log(`📋 Guidance prompt for ${ticker} copied to clipboard`);
+            showToast('✅ Concall prompt copied!');
+        });
+    }
+    
+    function generateInsightsPrompt(ticker) {
+        var stock = masterData.find(s => s.ticker === ticker);
+        if (!stock) {
+            showToast('❌ Stock not found');
+            return;
+        }
+        
+        var sector = stock.sector || '—';
+        var ltp = stock.ltp || '—';
+        var pe = stock.pe || '—';
+        var name = stock.name || ticker;
+        
+        var prompt = `You are a senior equity research analyst. Provide investment insights for ${ticker} (${name}).
+
+COMPANY CONTEXT:
+- Sector: ${sector}
+- Current Price: ₹${ltp} | P/E: ${pe}x
+- Stock Name: ${name}
+
+Return ONLY in the format below, no markdown or tables.
+
+Action: BUY/HOLD/REDUCE/EXIT with one line reason
+Trigger: What would make you change recommendation
+Headline: One sentence summary of key insight
+Bullet 1 Category: VALUATION
+Bullet 1 Text: Analysis about valuation
+Bullet 2 Category: GROWTH QUALITY
+Bullet 2 Text: Analysis about growth
+Bullet 3 Category: CATALYST
+Bullet 3 Text: Key catalyst for stock
+Bullet 4 Category: MOAT
+Bullet 4 Text: Competitive advantage analysis
+Bullet 5 Category: RISKS
+Bullet 5 Text: Key risks to thesis`;
+
+        navigator.clipboard.writeText(prompt).then(() => {
+            showToast('✅ Insights prompt copied!');
+        }).catch(() => {
+            var textArea = document.createElement('textarea');
+            textArea.value = prompt;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showToast('✅ Insights prompt copied!');
         });
     }
 
-    function showGuidanceSaveModal(ticker) {
+    function showConcallSaveModal(ticker) {
         var pat = document.getElementById('patToken').value;
         if (!pat) {
             showToast('❌ PAT token required');
             return;
         }
         
-        var guidanceResponse = prompt(`Paste AI guidance response for ${ticker} (or JSON):`);
-        if (!guidanceResponse) return;
+        var response = prompt(`Paste concall response for ${ticker}:`);
+        if (!response) return;
         
-        log(`💾 Saving guidance for ${ticker}...`);
+        log(`💾 Saving concall for ${ticker}...`);
         updateStatusButton('⏳ Saving');
-        showToast('Saving guidance...');
+        saveConcallToGitHub(ticker, response, pat);
+    }
+    
+    function showInsightsSaveModal(ticker) {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            return;
+        }
         
-        saveGuidanceToGitHub(ticker, guidanceResponse, pat);
+        var response = prompt(`Paste insights response for ${ticker}:`);
+        if (!response) return;
+        
+        log(`💾 Saving insights for ${ticker}...`);
+        updateStatusButton('⏳ Saving');
+        saveInsightsToGitHub(ticker, response, pat);
     }
 
-    function saveGuidanceToGitHub(ticker, guidanceText, pat) {
+    function saveConcallToGitHub(ticker, concallText, pat) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
-        // Parse KEY: VALUE format to JSON
-        var newGuidance = {};
+        var newConcall = {};
         try {
-            var lines = guidanceText.trim().split('\n');
+            var lines = concallText.trim().split('\n');
             lines.forEach(line => {
                 var colonIdx = line.indexOf(':');
                 if (colonIdx > 0) {
-                    var key = line.substring(0, colonIdx).trim().toLowerCase();
+                    var key = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
                     var value = line.substring(colonIdx + 1).trim();
                     
-                    // Map KEY names to guidance.json field names
-                    key = key
-                        .replace(/\s+/g, '_')
-                        .replace('revenue_guidance', 'revenue_guidance')
-                        .replace('growth_target', 'growth_target')
-                        .replace('ebitda_margin_target', 'margin_guidance')
-                        .replace('pat_margin_target', 'margin_guidance')
-                        .replace('capex_plan', 'capex_plan')
-                        .replace('capacity_expansion', 'expansion')
-                        .replace('expansion_plans', 'expansion')
-                        .replace('key_products_portfolio', 'key_products_portfolio')
-                        .replace('geographic_presence', 'geographic_presence')
-                        .replace('domestic_vs_export', 'geographic_mix')
-                        .replace('geographic_expansion', 'geographic_expansion')
-                        .replace('management_tone', 'tone')
-                        .replace('key_commitments', 'key_commitments')
-                        .replace('key_risks', 'risks_flagged')
-                        .replace('confidence_level', 'confidence')
-                        .replace('quarter', 'quarter');
-                    
-                    // Convert risks to array
-                    if (key === 'risks_flagged' && value) {
-                        newGuidance[key] = value.split(',').map(s => s.trim());
-                    } 
-                    // Convert commitments to array
-                    else if (key === 'key_commitments' && value) {
-                        newGuidance[key] = value.split(';').map(s => s.trim());
-                    }
-                    else {
-                        newGuidance[key] = value;
+                    if (key === 'key_commitments' && value) {
+                        newConcall[key] = value.split(';').map(s => s.trim());
+                    } else if (key === 'key_risks' && value) {
+                        newConcall[key] = value.split(',').map(s => s.trim());
+                    } else {
+                        newConcall[key] = value;
                     }
                 }
             });
             
-            log(`✅ Guidance parsed successfully (${Object.keys(newGuidance).length} fields)`);
+            log(`✅ Concall parsed (${Object.keys(newConcall).length} fields)`);
         } catch(e) {
-            log(`⚠️ Parse error: ${e.message}`);
-            updateStatusButton('⚠️ Error');
+            log(`❌ Parse error: ${e.message}`);
+            updateStatusButton('❌ Error');
             showToast(`❌ Parse error: ${e.message}`);
             return;
         }
         
-        // Step 1: GET current guidance.json
         fetch(apiUrl, {
             headers: { 'Authorization': `token ${pat}` }
         })
-        .then(r => {
-            if (!r.ok) {
-                throw new Error(`HTTP ${r.status}`);
-            }
-            return r.json();
-        })
+        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
         .then(fileData => {
-            // Step 2: Parse current file content
-            var content;
+            var content = {};
             try {
                 content = JSON.parse(atob(fileData.content));
             } catch(e) {
                 log(`⚠️ Could not parse existing file`);
-                content = {};
             }
             
-            // Step 3: Update guidance data
-            if (!content[ticker]) {
-                content[ticker] = {};
-            }
+            if (!content[ticker]) content[ticker] = {};
             
-            // Add timestamp to the guidance object
-            newGuidance.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
-            
-            content[ticker].guidance = newGuidance;
+            newConcall.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+            content[ticker].concall = newConcall;
             guidanceTimestamps[ticker] = new Date().toISOString();
+            guidanceData[ticker] = { ...guidanceData[ticker], concall: newConcall };
             
-            // Step 4: Encode and PUT back to GitHub
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
-            
-            log(`📤 Uploading to GitHub...`);
             
             return fetch(apiUrl, {
                 method: 'PUT',
@@ -1065,7 +1088,7 @@ RULES:
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    message: `Update guidance for ${ticker}`,
+                    message: `Update concall for ${ticker}`,
                     content: encodedContent,
                     sha: fileData.sha,
                     branch: GITHUB_CONFIG.BRANCH
@@ -1073,14 +1096,97 @@ RULES:
             });
         })
         .then(r => {
-            if (!r || !r.ok) {
-                throw new Error('Failed to save to GitHub');
-            }
-            log(`✅ Guidance saved for ${ticker}`);
+            if (!r?.ok) throw new Error('Failed to save');
+            log(`✅ Concall saved for ${ticker}`);
             renderSymbols();
             updateStatusButton('✅ Ready');
-            showToast('✅ Guidance saved!');
-            return r.json();
+            showToast('✅ Concall updated!');
+        })
+        .catch(e => {
+            log(`❌ Error: ${e.message}`);
+            updateStatusButton('❌ Error');
+            showToast(`❌ Error: ${e.message}`);
+        });
+    }
+    
+    function saveInsightsToGitHub(ticker, insightsText, pat) {
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        var newInsights = { bullets: [] };
+        try {
+            var lines = insightsText.trim().split('\n');
+            var currentBullet = null;
+            
+            lines.forEach(line => {
+                var colonIdx = line.indexOf(':');
+                if (colonIdx > 0) {
+                    var key = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
+                    var value = line.substring(colonIdx + 1).trim();
+                    
+                    if (key.includes('bullet') && key.includes('category')) {
+                        currentBullet = { cat: value, text: '' };
+                    } else if (key.includes('bullet') && key.includes('text')) {
+                        if (currentBullet) {
+                            currentBullet.text = value;
+                            newInsights.bullets.push(currentBullet);
+                            currentBullet = null;
+                        }
+                    } else {
+                        newInsights[key] = value;
+                    }
+                }
+            });
+            
+            log(`✅ Insights parsed (${newInsights.bullets.length} bullets)`);
+        } catch(e) {
+            log(`❌ Parse error: ${e.message}`);
+            updateStatusButton('❌ Error');
+            showToast(`❌ Parse error: ${e.message}`);
+            return;
+        }
+        
+        fetch(apiUrl, {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+        .then(fileData => {
+            var content = {};
+            try {
+                content = JSON.parse(atob(fileData.content));
+            } catch(e) {
+                log(`⚠️ Could not parse existing file`);
+            }
+            
+            if (!content[ticker]) content[ticker] = {};
+            
+            newInsights.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+            content[ticker].insights = newInsights;
+            guidanceTimestamps[ticker] = new Date().toISOString();
+            guidanceData[ticker] = { ...guidanceData[ticker], insights: newInsights };
+            
+            const jsonString = JSON.stringify(content, null, 2);
+            const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
+            
+            return fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Update insights for ${ticker}`,
+                    content: encodedContent,
+                    sha: fileData.sha,
+                    branch: GITHUB_CONFIG.BRANCH
+                })
+            });
+        })
+        .then(r => {
+            if (!r?.ok) throw new Error('Failed to save');
+            log(`✅ Insights saved for ${ticker}`);
+            renderSymbols();
+            updateStatusButton('✅ Ready');
+            showToast('✅ Insights updated!');
         })
         .catch(e => {
             log(`❌ Error: ${e.message}`);
