@@ -117,3 +117,59 @@ function selectStock(ticker) {
 function getStock(ticker) {
   return MASTER.find(s => s.ticker === ticker || s.sym === ticker);
 }
+
+// ===== UTILITY FUNCTIONS (for old JS files) =====
+function mergeHolding(h) {
+  return {
+    ...h,
+    sym: h.ticker,
+    symbol: h.ticker,
+    ltp: h.ltp || 0,
+    qty: h.qty || 0,
+    avg: h.avg || 0,
+    avgBuy: h.avg || 0,
+    change: h.change || 0,
+    changePct: h.changePct || 0
+  };
+}
+
+function fmt(val, decimals = 2) {
+  if (typeof val !== 'number') return '—';
+  return val.toFixed(decimals);
+}
+
+function trunc(str, len) {
+  if (!str) return '';
+  return str.length > len ? str.substring(0, len) + '...' : str;
+}
+
+function scoreColor(score) {
+  if (score >= 80) return '#00ff88';  // Green
+  if (score >= 60) return '#00f2ff';  // Blue
+  if (score >= 40) return '#ffb800';  // Orange
+  return '#ff4d6d';  // Red
+}
+
+function scoreLabel(score) {
+  if (score >= 80) return 'Strong';
+  if (score >= 60) return 'Good';
+  if (score >= 40) return 'Fair';
+  return 'Weak';
+}
+
+function setDrillTab(tab) {
+  S.drillTab = tab;
+  if (S.selStock) renderDrill(document.getElementById('app'));
+}
+
+function closeStock() {
+  S.selStock = null;
+  window.history.back();
+}
+
+function deletePortfolioStock(ticker) {
+  console.log(`Delete requested for ${ticker}`);
+  alert(`Delete functionality not yet implemented for ${ticker}`);
+}
+
+// ===== CLEANUP: Remove duplicate function =====
