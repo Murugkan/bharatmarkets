@@ -44,11 +44,14 @@ async function init() {
   
   if (drillTicker) {
     // Open drill view directly for clicked stock
-    selectStock(drillTicker);
-    renderDrill(document.getElementById('app'));
+    if (selectStock(drillTicker)) {
+      renderDrill(document.getElementById('app'));
+    } else {
+      document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; text-align:center;">❌ Stock not found</div>';
+    }
   } else {
-    // Show coverage summary (analysis home page)
-    renderAnalysis(document.getElementById('app'));
+    // Show message - analysis moved to data.html
+    document.getElementById('app').innerHTML = '<div style="padding:40px; color:#8ab4f8; text-align:center;"><div style="font-size:14px; margin-bottom:20px;">📊 Analysis Coverage</div><div style="font-size:12px;">Moved to Data tab</div><div style="font-size:10px; color:#666; margin-top:10px;">Click stock in Portfolio to drill down</div></div>';
   }
 }
 
