@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Onyx | Pro Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; padding-bottom: 80px; }
+        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:12px; display:flex; justify-content:space-around; }
+        .kpi-box { text-align:center; }
+        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
+        .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
+        #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
+        #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
+        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,0,0,0.3); }
+        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
+        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
+        .leg.on { color:#fff; font-weight:800; }
+        .dot { width:8px; height:8px; border-radius:2px; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; -webkit-overflow-scrolling:touch; }
+        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
+        th { background:var(--s1); color:#666; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
+        th.active { color: var(--bl); }
+        td { padding:12px; border-bottom:1px solid #111; }
+        tfoot td { background: var(--s1); font-weight: 800; color: var(--tx); border-top: 2px solid var(--b1); position: sticky; bottom: 0; }
+        .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; }
+        .pos { color:var(--gr)!important; }
+        .neg { color:var(--rd)!important; }
+        .sig-buy { color:#00ff88; font-weight:800; border:1px solid #00ff88; padding:2px 4px; border-radius:2px; font-size:9px; }
+        #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; }
+        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 12px 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 1000; }
+        .nav-btn { text-decoration: none; color: #666; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; padding: 8px 0; transition: color 0.2s; }
+        .nav-btn:hover { color: var(--bl); }
+        .nav-btn.active { color: var(--bl); font-weight: 800; }
+        .nav-label { font-size: 8px; margin-top: 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
+    <div class="kpi-box"><div class="kpi-label">P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
+    <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
+</header>
+
+<div id="bar-wrap"><div id="tape-bar"></div></div>
+<div id="legend"></div>
+<div id="status">Loading Pro Engine...</div>
+<div class="view"><div id="app"></div></div>
+
+<footer>
+    <a href="index.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
+    <a href="data.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
+    <a href="analysis.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span class="nav-label">Analysis</span></a>
+</footer>
+
+<script>
+// ===== DEBUG LOG (Console only) =====
+function addDebugLog(msg) {
+    var ts = new Date().toLocaleTimeString();
+    console.log('[' + ts + '] ' + msg);
+}
+
+function showToast(msg) {
+    console.log('📢 ' + msg);
+}
+
+// ===== PORTFOLIO CODE =====
+const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
+const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
+let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false;
+const UI_FIELDS = ['SYM', 'SIGNAL', 'PNL', 'PNL%', '1D%', 'LTP', 'QTY', 'AVG', 'INVESTED', 'POS', 'NEG', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'SECTOR'];
+
+const cleanNum = (v) => {
+    if (typeof v === 'number') return v;
+    if (!v || v === '—') return 0;
+    return parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
+};
+
+const fmt = (val, field) => {
+    const n = cleanNum(val);
+    if (n === 0 && val === '—') return '—';
+    if (['LTP', 'AVG', 'PNL', 'INVESTED', 'MCAP'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (field.includes('%')) return n.toFixed(2) + '%';
+    return val;
+};
+
+const resolve = (obj, field) => {
+    const f = field.toUpperCase();
+    const mappings = { 
+        'SYM':['ticker','SYM','SYMBOL','TICKER'], 
+        'SIGNAL':['signal','SIGNAL','TECH_SIGNAL'],
+        'PNL':['pnl','PNL','P/L'], 
+        'PNL%':['pnlPct','PNL%','PNL_PCT'], 
+        '1D%':['changePct','1D%','CHANGE_1D','CHANGE'], 
+        'LTP':['ltp','LTP','PRICE','price'], 
+        'QTY':['qty','QTY','quantity'], 
+        'AVG':['avg','AVG','AVGBUY','avgbuy'], 
+        'INVESTED':['invested','INVESTED'], 
+        'POS':['pos','POS','POSITIVE'], 
+        'NEG':['neg','NEG','NEGATIVE'], 
+        'ROE%':['roe','ROE%','ROE','roe'], 
+        'ROCE%':['roce','ROCE%','ROCE'], 
+        'OPM%':['opm','OPM%','OPM','opmPct'], 
+        'NPM%':['npm','NPM%','NPM','npmPct'], 
+        'PE':['pe','PE','P/E'], 
+        'PB':['pb','PB','P/B'], 
+        'MCAP':['mcap','MCAP','marketcap'], 
+        'SALES':['sales','SALES','revenue'], 
+        'EBITDA':['ebitda','EBITDA'], 
+        'CFO':['cfo','CFO'], 
+        'EPS':['eps','EPS'], 
+        'PROM%':['prom','PROM%','prom_pct'], 
+        'FII%':['fii','FII%','fii_pct'], 
+        'DII%':['dii','DII%','dii_pct'], 
+        'ATH%':['ath','ATH%','ath_pct'], 
+        '52W%':['w52','52W%','52WEEK','w52_pct'], 
+        'SECTOR':['sector','SECTOR'],
+        'NAME':['name','NAME','COMPANY'],
+        'OPEN':['open','OPEN'],
+        'HIGH':['high','HIGH'],
+        'LOW':['low','LOW'],
+        'CHANGE':['change','CHANGE'],
+        'VOL':['vol','VOL','VOLUME'],
+        'BETA':['beta','BETA']
+    };
+    const targets = mappings[f] || [f];
+    for (let t of targets) {
+        if (obj[t] !== undefined) return obj[t];
+        const cleanT = t.replace('%', '');
+        if (obj[cleanT] !== undefined) return obj[cleanT];
+    }
+    return '—';
+};
+
+// ===== READ FROM INDEXEDDB =====
+async function init() {
+    const statusEl = document.getElementById('status');
+    const db = await new Promise(res => {
+        // Open without specific version to handle version mismatches from data.html
+        const req = indexedDB.open(DB_NAME);
+        req.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains(STORE_NAME)) {
+                d.createObjectStore(STORE_NAME, { keyPath: "ticker" });
+            }
+        };
+        req.onsuccess = () => {
+            addDebugLog('✅ IndexedDB opened successfully');
+            res(req.result);
+        };
+        req.onerror = () => {
+            addDebugLog('❌ Failed to open IndexedDB: ' + req.error);
+            res(null);
+        };
+    });
+    
+    if (!db) {
+        statusEl.innerHTML = "FAILED TO OPEN DATABASE<br>Check browser storage settings";
+        addDebugLog('⚠️ Database connection failed');
+        return;
+    }
+    
+    try {
+        const tx = db.transaction(STORE_NAME, "readonly");
+        MASTER = await new Promise((res, rej) => {
+            const req = tx.objectStore(STORE_NAME).getAll();
+            req.onsuccess = e => {
+                const result = e.target.result || [];
+                addDebugLog('📖 Read ' + result.length + ' records from object store');
+                res(result);
+            };
+            req.onerror = () => {
+                addDebugLog('❌ Error reading object store: ' + req.error);
+                rej(req.error);
+            };
+        });
+    } catch(e) {
+        statusEl.innerHTML = "ERROR READING DATABASE<br>" + e.message;
+        addDebugLog('❌ Transaction error: ' + e.message);
+        return;
+    }
+    
+    if (MASTER.length === 0) {
+        statusEl.innerHTML = "DATABASE EMPTY<br><br>📊 Go to Data tab → Click 🚀 LOAD JSON<br>(No authentication required)";
+        addDebugLog('⚠️ No data in IndexedDB');
+        return;
+    }
+    
+    addDebugLog('✅ Loaded ' + MASTER.length + ' stocks');
+                    addDebugLog('✅ Loaded ' + MASTER.length + ' stocks');
+                    
+                    // Log sample data loaded
+                    if (MASTER.length > 0) {
+                        const sample = MASTER[0];
+                        addDebugLog(`📌 Sample: ${resolve(sample,'SYM')} | LTP: ${resolve(sample,'LTP')} | PE: ${resolve(sample,'PE')} | OPM: ${resolve(sample,'OPM%')}`);
+                    }
+    statusEl.style.display = "none";
+    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
+    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+    render();
+}
+
+function enrichStock(stock) {
+    // Calculate INVESTED = QTY * AVG
+    const qty = cleanNum(resolve(stock, 'QTY'));
+    const avg = cleanNum(resolve(stock, 'AVG'));
+    if (qty && avg && !stock.invested) {
+        stock.invested = qty * avg;
+    }
+    
+    // Calculate PNL = (LTP - AVG) * QTY
+    const ltp = cleanNum(resolve(stock, 'LTP'));
+    if (qty && avg && ltp && !stock.pnl) {
+        stock.pnl = (ltp - avg) * qty;
+    }
+    
+    // Calculate PNL% = ((LTP - AVG) / AVG) * 100
+    if (avg && ltp && !stock.pnlPct) {
+        stock.pnlPct = ((ltp - avg) / avg) * 100;
+    }
+    
+    return stock;
+}
+
+function render() {
+    // Enrich each stock with calculated fields
+    MASTER.forEach(s => enrichStock(s));
+    
+    let sumPnl = 0, sumInv = 0, sc = {};
+    MASTER.forEach(s => { 
+        const sec = resolve(s, 'SECTOR') || 'OTHER';
+        sumPnl += cleanNum(resolve(s, 'PNL'));
+        sumInv += cleanNum(resolve(s, 'INVESTED'));
+        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || cleanNum(resolve(s, 'LTP')), 1);
+        sc[sec] = (sc[sec] || 0) + weight; 
+    });
+    document.getElementById('k-count').textContent = MASTER.length;
+    const pEl = document.getElementById('k-pnl');
+    pEl.textContent = '₹' + (sumPnl/100000).toFixed(2) + 'L';
+    pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
+    const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
+    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
+    document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
+    let rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : MASTER.slice();
+    rows.sort((a, b) => {
+        let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
+        let nA = cleanNum(vA), nB = cleanNum(vB);
+        return sortAsc ? nA - nB : nB - nA;
+    });
+    let h = '<table><thead><tr>';
+    UI_FIELDS.forEach(f => h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='SYM'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>');
+    h += '</tr></thead><tbody>';
+    rows.forEach(s => {
+        h += '<tr>';
+        UI_FIELDS.forEach(f => {
+            const raw = resolve(s, f);
+            const val = fmt(raw, f);
+            let cls = f === 'SYM' ? 'sticky' : '';
+            const n = cleanNum(raw);
+            if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += '<td class="' + cls + '"><span class="sig-buy">BUY</span></td>';
+            else {
+                if (n !== 0) {
+                    if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
+                    if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+                }
+                h += '<td class="' + cls + '">' + val + '</td>';
+            }
+        });
+        h += '</tr>';
+    });
+    h += '</tbody><tfoot><tr>';
+    UI_FIELDS.forEach(f => {
+        let cls = f === 'SYM' ? 'sticky' : '';
+        if (f === 'SYM') h += '<td class="' + cls + '">TOTAL</td>';
+        else if (f === 'PNL') h += '<td class="' + (sumPnl>=0?'pos':'neg') + '">' + fmt(sumPnl, 'PNL') + '</td>';
+        else if (f === 'INVESTED') h += '<td>' + fmt(sumInv, 'INVESTED') + '</td>';
+        else h += '<td class="' + cls + '"></td>';
+    });
+    document.getElementById('app').innerHTML = h + '</tr></tfoot></table>';
+}
+
+function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
+function tap(sec) { filter = filter === sec ? null : sec; render(); }
+
+// ===== SYNC ENGINE - Now reads from IndexedDB =====
+function runEngineSync() {
+    addDebugLog('🔄 Refreshing from IndexedDB...');
+    init().then(() => {
+        addDebugLog('✅ Sync complete');
+    });
+}
+
+// Initialize on page load
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+        addDebugLog('📄 Page restored from cache - syncing...');
+        init();
+    }
+});
+
+init();
+</script>
+
+</body>
+</html>
