@@ -19,85 +19,119 @@ const STORE_NAME = 'Stocks';
 async function initBridge() {
   console.log('🌉 Initializing data bridge...');
   
+  // Show immediate status on page
+  const appEl = document.getElementById('app');
+  if (appEl) {
+    appEl.innerHTML = '<div style="padding:20px; color:#00f2ff; font-size:12px;">⏳ Loading data...</div>';
+  }
+  
   return new Promise((resolve) => {
-    const req = indexedDB.open(DB_NAME);
-    
-    req.onsuccess = (e) => {
-      const db = e.target.result;
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const getAllReq = store.getAll();
+    try {
+      const req = indexedDB.open(DB_NAME);
       
-      getAllReq.onsuccess = () => {
-        const records = getAllReq.result || [];
-        console.log(`📚 Loaded ${records.length} records from IndexedDB`);
-        
-        // 1. MASTER array (portfolio data with aliases for old code)
-        MASTER = records.map(stock => ({
-          ...stock,
-          sym: stock.ticker,           // Alias for old code
-          symbol: stock.ticker,        // Alias for old code
-          ltp: stock.ltp || 0,
-          qty: stock.qty || 0,
-          avg: stock.avg || 0,
-          avgBuy: stock.avg || 0       // Alias
-        }));
-        
-        // 2. FUND object (fundamental data by ticker)
-        FUND = {};
-        records.forEach(stock => {
-          FUND[stock.ticker] = {
-            ...stock,
-            name: stock.name,
-            sector: stock.sector,
-            pe: stock.pe,
-            pb: stock.pb,
-            roe: stock.roe,
-            roce: stock.roce,
-            opm: stock.opm,
-            npm: stock.npm,
-            eps: stock.eps,
-            sales: stock.sales,
-            ebitda: stock.ebitda,
-            cfo: stock.cfo,
-            quarterly: stock.quarterly || [],
-            ltp: stock.ltp,
-            change: stock.change,
-            changePct: stock.changePct,
-            mcap: stock.mcap
+      req.onsuccess = (e) => {
+        try {
+          const db = e.target.result;
+          const tx = db.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          const getAllReq = store.getAll();
+          
+          getAllReq.onsuccess = () => {
+            try {
+              const records = getAllReq.result || [];
+              console.log(`📚 Loaded ${records.length} records from IndexedDB`);
+              
+              if (records.length === 0) {
+                console.error('❌ No records in IndexedDB');
+                if (appEl) appEl.innerHTML = '<div style="padding:20px; color:#ff4d6d;">❌ No data in IndexedDB. Run LOAD JSON in Data tab first.</div>';
+                resolve();
+                return;
+              }
+              
+              // 1. MASTER array
+              MASTER = records.map(stock => ({
+                ...stock,
+                sym: stock.ticker,
+                symbol: stock.ticker,
+                ltp: stock.ltp || 0,
+                qty: stock.qty || 0,
+                avg: stock.avg || 0,
+                avgBuy: stock.avg || 0
+              }));
+              
+              // 2. FUND object
+              FUND = {};
+              records.forEach(stock => {
+                FUND[stock.ticker] = {
+                  ...stock,
+                  name: stock.name,
+                  sector: stock.sector,
+                  pe: stock.pe,
+                  pb: stock.pb,
+                  roe: stock.roe,
+                  roce: stock.roce,
+                  opm: stock.opm,
+                  npm: stock.npm,
+                  eps: stock.eps,
+                  sales: stock.sales,
+                  ebitda: stock.ebitda,
+                  cfo: stock.cfo,
+                  quarterly: stock.quarterly || [],
+                  ltp: stock.ltp,
+                  change: stock.change,
+                  changePct: stock.changePct,
+                  mcap: stock.mcap
+                };
+              });
+              
+              // 3. GUIDANCE object
+              GUIDANCE = {};
+              records.forEach(stock => {
+                GUIDANCE[stock.ticker] = {
+                  guidance: stock.guidance || null,
+                  insights: stock.insights || null,
+                  updated: stock.guidance?.updated || null
+                };
+              });
+              
+              // 4. S.portfolio
+              S.portfolio = MASTER;
+              
+              console.log(`✅ Bridge ready: ${MASTER.length} stocks`);
+              console.log(`✅ FUND map: ${Object.keys(FUND).length} entries`);
+              console.log(`✅ GUIDANCE map: ${Object.keys(GUIDANCE).length} entries`);
+              
+              if (appEl) appEl.innerHTML = '';  // Clear loading message
+              resolve();
+            } catch (err) {
+              console.error('❌ Error processing records:', err.message);
+              if (appEl) appEl.innerHTML = '<div style="padding:20px; color:#ff4d6d;">❌ Error: ' + err.message + '</div>';
+              resolve();
+            }
           };
-        });
-        
-        // 3. GUIDANCE object (concall/insights by ticker)
-        GUIDANCE = {};
-        records.forEach(stock => {
-          GUIDANCE[stock.ticker] = {
-            guidance: stock.guidance || null,
-            insights: stock.insights || null,
-            updated: stock.guidance?.updated || null
+          
+          getAllReq.onerror = () => {
+            console.error('❌ Failed to read IndexedDB');
+            if (appEl) appEl.innerHTML = '<div style="padding:20px; color:#ff4d6d;">❌ Failed to read IndexedDB</div>';
+            resolve();
           };
-        });
-        
-        // 4. S.portfolio (legacy compatibility)
-        S.portfolio = MASTER;
-        
-        console.log(`✅ Bridge ready: ${MASTER.length} stocks`);
-        console.log(`✅ FUND map: ${Object.keys(FUND).length} entries`);
-        console.log(`✅ GUIDANCE map: ${Object.keys(GUIDANCE).length} entries`);
-        
-        resolve();
+        } catch (err) {
+          console.error('❌ Transaction error:', err.message);
+          if (appEl) appEl.innerHTML = '<div style="padding:20px; color:#ff4d6d;">❌ Error: ' + err.message + '</div>';
+          resolve();
+        }
       };
       
-      getAllReq.onerror = () => {
-        console.error('❌ Failed to read IndexedDB');
+      req.onerror = () => {
+        console.error('❌ Failed to open IndexedDB');
+        if (appEl) appEl.innerHTML = '<div style="padding:20px; color:#ff4d6d;">❌ Failed to open IndexedDB</div>';
         resolve();
       };
-    };
-    
-    req.onerror = () => {
-      console.error('❌ Failed to open IndexedDB');
+    } catch (err) {
+      console.error('❌ Critical error:', err.message);
+      if (appEl) appEl.innerHTML = '<div style="padding:20px; color:#ff4d6d;">❌ Critical error: ' + err.message + '</div>';
       resolve();
-    };
+    }
   });
 }
 

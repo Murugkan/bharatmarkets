@@ -70,38 +70,50 @@ function toggleDebug() {
 
 // ===== INIT FLOW =====
 async function init() {
-  addDebug('🚀 Init started');
-  
-  // 1. Load data from IndexedDB via bridge
-  addDebug('📚 Loading bridge...');
-  await initBridge();
-  addDebug(`✅ Bridge ready: MASTER=${MASTER.length}`);
-  
-  // 2. Check if drill mode requested via URL parameter
-  const params = new URLSearchParams(window.location.search);
-  const drillTicker = params.get('drill');
-  addDebug(`📍 URL param drill: ${drillTicker || 'none'}`);
-  
-  if (drillTicker) {
-    // Open drill view directly for clicked stock
-    addDebug(`🔍 Looking for stock: ${drillTicker}`);
-    if (selectStock(drillTicker)) {
-      addDebug(`✅ Selected: ${drillTicker}`);
-      addDebug(`📋 S.selStock: ${S.selStock?.ticker || 'undefined'}`);
-      addDebug(`🎨 Calling renderDrill...`);
-      renderDrill(document.getElementById('app'));
-      addDebug(`✅ renderDrill completed`);
+  try {
+    addDebug('🚀 Init started');
+    
+    // 1. Load data from IndexedDB via bridge
+    addDebug('📚 Loading bridge...');
+    await initBridge();
+    addDebug(`✅ Bridge ready: MASTER=${MASTER.length}`);
+    
+    // 2. Check if drill mode requested via URL parameter
+    const params = new URLSearchParams(window.location.search);
+    const drillTicker = params.get('drill');
+    addDebug(`📍 URL param drill: ${drillTicker || 'none'}`);
+    
+    if (drillTicker) {
+      // Open drill view directly for clicked stock
+      addDebug(`🔍 Looking for stock: ${drillTicker}`);
+      if (selectStock(drillTicker)) {
+        addDebug(`✅ Selected: ${drillTicker}`);
+        addDebug(`📋 S.selStock: ${S.selStock?.ticker || 'undefined'}`);
+        addDebug(`🎨 Calling renderDrill...`);
+        try {
+          renderDrill(document.getElementById('app'));
+          addDebug(`✅ renderDrill completed`);
+        } catch (err) {
+          addDebug(`❌ renderDrill error: ${err.message}`);
+          console.error('renderDrill error:', err);
+          document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; font-size:11px;">❌ Error rendering drill:<br>' + err.message + '</div>';
+        }
+      } else {
+        addDebug(`❌ Stock not found: ${drillTicker}`);
+        document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; text-align:center;">❌ Stock not found: ' + drillTicker + '</div>';
+      }
     } else {
-      addDebug(`❌ Stock not found: ${drillTicker}`);
-      document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; text-align:center;">❌ Stock not found: ' + drillTicker + '</div>';
+      // Show message - analysis moved to data.html
+      addDebug('ℹ️ No drill param, showing info message');
+      document.getElementById('app').innerHTML = '<div style="padding:40px; color:#8ab4f8; text-align:center;"><div style="font-size:14px; margin-bottom:20px;">📊 Analysis Coverage</div><div style="font-size:12px;">Moved to Data tab</div><div style="font-size:10px; color:#666; margin-top:10px;">Click stock in Portfolio to drill down</div></div>';
     }
-  } else {
-    // Show message - analysis moved to data.html
-    addDebug('ℹ️ No drill param, showing info message');
-    document.getElementById('app').innerHTML = '<div style="padding:40px; color:#8ab4f8; text-align:center;"><div style="font-size:14px; margin-bottom:20px;">📊 Analysis Coverage</div><div style="font-size:12px;">Moved to Data tab</div><div style="font-size:10px; color:#666; margin-top:10px;">Click stock in Portfolio to drill down</div></div>';
+    
+    addDebug('✅ Init completed');
+  } catch (err) {
+    addDebug(`❌ FATAL ERROR: ${err.message}`);
+    console.error('Init fatal error:', err);
+    document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; font-size:11px;">❌ Fatal error:<br>' + err.message + '</div>';
   }
-  
-  addDebug('✅ Init completed');
 }
 
 // Start initialization
