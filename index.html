@@ -191,13 +191,12 @@ async function init() {
     }
     
     addDebugLog('✅ Loaded ' + MASTER.length + ' stocks');
-                    addDebugLog('✅ Loaded ' + MASTER.length + ' stocks');
-                    
-                    // Log sample data loaded
-                    if (MASTER.length > 0) {
-                        const sample = MASTER[0];
-                        addDebugLog(`📌 Sample: ${resolve(sample,'SYM')} | LTP: ${resolve(sample,'LTP')} | PE: ${resolve(sample,'PE')} | OPM: ${resolve(sample,'OPM%')}`);
-                    }
+    
+    // Log sample data loaded
+    if (MASTER.length > 0) {
+        const sample = MASTER[0];
+        addDebugLog(`📌 Sample: ${resolve(sample,'SYM')} | LTP: ${resolve(sample,'LTP')} | PE: ${resolve(sample,'PE')} | OPM: ${resolve(sample,'OPM%')}`);
+    }
     statusEl.style.display = "none";
     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
@@ -255,7 +254,7 @@ function render() {
     UI_FIELDS.forEach(f => h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='SYM'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>');
     h += '</tr></thead><tbody>';
     rows.forEach(s => {
-        h += '<tr>';
+        h += '<tr style="cursor:pointer;" onclick="openDrill(\'' + resolve(s, 'SYM') + '\')">';
         UI_FIELDS.forEach(f => {
             const raw = resolve(s, f);
             const val = fmt(raw, f);
@@ -285,6 +284,12 @@ function render() {
 
 function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
+
+// ===== DRILL TRIGGER =====
+function openDrill(ticker) {
+    // Navigate to analysis.html with drill ticker parameter
+    window.location.href = 'analysis.html?drill=' + encodeURIComponent(ticker);
+}
 
 // ===== SYNC ENGINE - Now reads from IndexedDB =====
 function runEngineSync() {
