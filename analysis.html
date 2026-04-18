@@ -95,14 +95,23 @@ const ticker = urlParams.get('drill') || urlParams.get('t');
 // Load data
 async function loadStock() {
     if (!ticker) {
-        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>No stock selected</div>';
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>No stock selected (use ?drill=TICKER)</div>';
+        console.error('No ticker in URL');
         return;
     }
     
+    console.log('Loading ticker:', ticker);
+    
     const db = await new Promise(r => {
         const req = indexedDB.open(DB);
-        req.onsuccess = () => r(req.result);
-        req.onerror = () => r(null);
+        req.onsuccess = () => {
+            console.log('DB opened');
+            r(req.result);
+        };
+        req.onerror = () => {
+            console.error('DB error:', req.error);
+            r(null);
+        };
     });
     
     if (!db) {
@@ -110,22 +119,35 @@ async function loadStock() {
         return;
     }
     
-    const tx = db.transaction(STORE, 'readonly');
-    const store = tx.objectStore(STORE);
-    
-    currentStock = await new Promise(r => {
-        const req = store.get(ticker);
-        req.onsuccess = () => r(req.result);
-        req.onerror = () => r(null);
-    });
-    
-    if (!currentStock) {
-        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found</div>';
-        return;
+    try {
+        const tx = db.transaction(STORE, 'readonly');
+        const store = tx.objectStore(STORE);
+        
+        currentStock = await new Promise(r => {
+            const req = store.get(ticker);
+            req.onsuccess = () => {
+                console.log('Stock loaded:', req.result);
+                r(req.result);
+            };
+            req.onerror = () => {
+                console.error('Store error:', req.error);
+                r(null);
+            };
+        });
+        
+        if (!currentStock) {
+            console.error('Stock not found:', ticker);
+            document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
+            return;
+        }
+        
+        console.log('Rendering header and overview...');
+        renderHeader();
+        renderTab('overview');
+    } catch(e) {
+        console.error('Error:', e);
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
     }
-    
-    renderHeader();
-    renderTab('overview');
 }
 
 // Render header
@@ -223,6 +245,9 @@ function renderTab(tab) {
             }
         }
         
+        // CALCULATE: FCF Yield = (fcf / mcap) * 100
+        const fcfYield = mcap > 0 && fcf > 0 ? ((fcf / mcap) * 100) : 0;
+        
         html = `
             <div style="padding-top:4px">
             
@@ -233,17 +258,17 @@ function renderTab(tab) {
                 <div style="color:var(--tx3)">Fair Value (DCF): <span class="tbd">TBD</span> | Upside: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">P/E Multiple: <strong style="color:var(--tx1)">${fmt(pe)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">Price/Book: <strong style="color:var(--tx1)">${fmt(pb)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">EV/EBITDA: <strong style="color:var(--tx1)">${num(get(s, 'ev_ebitda')) > 0 ? fmt(get(s, 'ev_ebitda')) + 'x' : '<span class="tbd">TBD</span>'}</strong> | Peer Avg: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">EV/EBITDA: <strong style="color:var(--tx1)">${num(get(s, 'ev_ebitda')) > 0 ? fmt(get(s, 'ev_ebitda')) + 'x' : 'TBD'}</strong> | Peer Avg: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">PEG Ratio: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
             </div>
             
             <!-- QUALITY OF EARNINGS -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
                 <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">⭐ Quality of Earnings</div>
-                <div style="color:var(--tx3)">Operating Margin Trend: <strong style="color:var(--tx1)">${marginTrend !== '—' ? marginTrend : '<span class="tbd">TBD</span>'}</strong></div>
+                <div style="color:var(--tx3)">Operating Margin Trend: <strong style="color:var(--tx1)">${marginTrend !== '—' ? marginTrend : 'TBD'}</strong></div>
                 <div style="color:var(--tx3)">ROIC: <strong style="color:var(--tx1)">${fmt(roce)}%</strong> vs WACC: <span class="tbd">TBD</span> | Spread: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Cash Conversion: <strong style="color:var(--tx1)">${cashConversion > 0 ? fmt(cashConversion) + '%' : '<span class="tbd">TBD</span>'}</strong> of Net Profit</div>
-                <div style="color:var(--tx3)">FCF Yield: <strong style="color:var(--tx1)">${fcfYield > 0 ? fmt(fcfYield) + '%' : '<span class="tbd">TBD</span>'}</strong></div>
+                <div style="color:var(--tx3)">Cash Conversion: <strong style="color:var(--tx1)">${cashConversion > 0 ? fmt(cashConversion) + '%' : 'TBD'}</strong> of Net Profit</div>
+                <div style="color:var(--tx3)">FCF Yield: <strong style="color:var(--tx1)">${fcfYield > 0 ? fmt(fcfYield) + '%' : 'TBD'}</strong></div>
                 <div style="color:var(--tx1)">Quality Score: <strong style="color:${npm > 12 ? 'var(--gr)' : npm > 8 ? 'var(--yw)' : 'var(--tx3)'}">A</strong> | <span style="color:var(--tx3)">(Strong profitability)</span></div>
             </div>
             
