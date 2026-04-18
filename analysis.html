@@ -51,25 +51,36 @@
         .val-warning{color:var(--yw);font-weight:700}
         
         /* Metric Row */
-        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(26,35,50,.2);color:var(--tx3);font-size:9px;line-height:1.3}
+        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(26,35,50,.2);color:var(--tx3);font-size:10px;line-height:1.3}
         .metric-row:last-child{border-bottom:none}
-        .metric-label{flex:1;font-size:8px}
-        .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:9px}
+        .metric-label{flex:1;font-size:9px}
+        .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:10px}
         
         /* Section Container for Two Columns */
         .section-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
         .section-row > div{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
         
         /* Weightage Summary */
-        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
-        .weightage-box{text-align:center;padding:8px;background:rgba(0,0,0,.3);border-radius:4px}
-        .weightage-label{font-size:7px;color:var(--tx3);text-transform:uppercase;margin-bottom:4px}
-        .weightage-value{font-size:18px;font-weight:800}
+        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:8px;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+        .weightage-box{text-align:center;padding:5px 6px;background:rgba(0,0,0,.3);border-radius:4px}
+        .weightage-label{font-size:7px;color:var(--tx3);text-transform:uppercase;margin-bottom:2px;letter-spacing:0.5px}
+        .weightage-value{font-size:22px;font-weight:800;line-height:1}
+        .weightage-count{font-size:8px;color:var(--tx3);margin-top:2px;font-weight:600}
         .pos-box .weightage-value{color:var(--gr)}
         .neg-box .weightage-value{color:var(--rd)}
-        .signal-box .weightage-value{color:var(--ac);font-size:14px}
-        .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
-    </style>
+        .signal-box .weightage-value{color:var(--ac);font-size:18px}
+        
+        /* Fundamentals Tab Styles */
+        .fund-card{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:8px}
+        .fund-title{font-weight:800;color:var(--ac);font-size:9px;text-transform:uppercase;margin-bottom:8px}
+        .trend-row{display:flex;justify-content:space-between;gap:4px;margin-bottom:6px}
+        .trend-val{flex:1;text-align:center;font-size:9px;padding:4px;background:rgba(0,0,0,.3);border-radius:3px}
+        .trend-val-header{font-size:7px;color:var(--tx3);margin-bottom:2px}
+        .trend-val-number{font-weight:800;color:var(--tx1);font-size:9px}
+        .trend-val-arrow{font-size:8px;margin-top:1px}
+        .cagr-row{text-align:center;padding:6px;background:rgba(0,242,255,.05);border-radius:3px;margin-top:6px;border:1px solid rgba(0,242,255,.2)}
+        .cagr-label{font-size:7px;color:var(--tx3);text-transform:uppercase}
+        .cagr-value{font-size:12px;font-weight:800;color:var(--gr)}
 </head>
 <body>
 
@@ -363,16 +374,16 @@ function renderTab(tab) {
                 <div class="weightage-box pos-box">
                     <div class="weightage-label">Positive</div>
                     <div class="weightage-value">${posWeightage}%</div>
-                    <div style="font-size:7px;color:var(--tx3)">+${posSignals}</div>
+                    <div class="weightage-count">+${posSignals}</div>
                 </div>
                 <div class="weightage-box neg-box">
                     <div class="weightage-label">Negative</div>
                     <div class="weightage-value">${negWeightage}%</div>
-                    <div style="font-size:7px;color:var(--tx3)">-${negSignals}</div>
+                    <div class="weightage-count">-${negSignals}</div>
                 </div>
                 <div class="weightage-box signal-box">
                     <div class="weightage-label">Signal</div>
-                    <div class="weightage-value ${signal === 'BUY' ? 'val-positive' : signal === 'SELL' ? 'val-negative' : 'val-neutral'}">${signal}</div>
+                    <div class="weightage-value">${signal}</div>
                     <div class="signal-label">${signal === 'BUY' ? '📈 Bullish' : signal === 'SELL' ? '📉 Bearish' : '⚪ Neutral'}</div>
                 </div>
             </div>
@@ -527,7 +538,78 @@ function renderTab(tab) {
     } else if (tab === 'technical') {
         html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     } else if (tab === 'fundamentals') {
-        html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+        const s = currentStock;
+        const quarterly = get(s, 'quarterly') || [];
+        
+        // Helper to get trend direction and color
+        const getTrendArrow = (prev, curr) => {
+            if (!prev || !curr) return '—';
+            if (curr > prev) return '📈';
+            if (curr < prev) return '📉';
+            return '➡️';
+        };
+        
+        // Helper to get direction color
+        const getTrendColor = (prev, curr) => {
+            if (!prev || !curr) return 'var(--tx3)';
+            if (curr > prev) return 'var(--gr)';
+            if (curr < prev) return 'var(--rd)';
+            return 'var(--tx1)';
+        };
+        
+        // Helper to calculate CAGR for a metric
+        const calcCAGR = (metric) => {
+            if (quarterly.length < 2) return 0;
+            const first = num(quarterly[0][metric] || 0);
+            const last = num(quarterly[quarterly.length - 1][metric] || 0);
+            if (first <= 0 || last <= 0) return 0;
+            const years = (quarterly.length - 1) / 4;
+            return (Math.pow(last / first, 1 / years) - 1) * 100;
+        };
+        
+        // Function to render a trend card
+        const renderTrendCard = (title, metric, isCurrency = false, isPercent = false) => {
+            const values = quarterly.map(q => num(q[metric] || 0));
+            const cagr = calcCAGR(metric);
+            
+            let trendHTML = `<div class="fund-card">
+                <div class="fund-title">${title}</div>
+                <div class="trend-row">`;
+            
+            for (let i = 0; i < values.length; i++) {
+                const val = values[i];
+                const arrow = i === 0 ? '—' : getTrendArrow(values[i-1], val);
+                const color = getTrendColor(values[i-1], val);
+                const display = val === 0 ? '—' : (isCurrency ? fmt(val, 0) : isPercent ? fmt(val, 1) : fmt(val, isPercent ? 2 : 1));
+                
+                trendHTML += `<div class="trend-val">
+                    <div class="trend-val-header">Q${i+1}</div>
+                    <div class="trend-val-number">${display}</div>
+                    <div class="trend-val-arrow" style="color:${color}">${arrow}</div>
+                </div>`;
+            }
+            
+            trendHTML += `</div>
+                <div class="cagr-row">
+                    <div class="cagr-label">3Y CAGR</div>
+                    <div class="cagr-value">${cagr > 0 ? fmt(cagr) + '%' : '—'}</div>
+                </div>
+            </div>`;
+            
+            return trendHTML;
+        };
+        
+        html = `
+            <div style="padding:8px 0;padding-bottom:80px">
+            ${renderTrendCard('Revenue', 'rev', true)}
+            ${renderTrendCard('Net Profit', 'net', true)}
+            ${renderTrendCard('EBITDA', 'ebitda', true)}
+            ${renderTrendCard('EPS', 'eps')}
+            ${renderTrendCard('Operating Margin', 'opm', false, true)}
+            ${renderTrendCard('EBIT', 'ebit', true)}
+            ${renderTrendCard('Gross Profit', 'gross', true)}
+            </div>
+        `;
     } else if (tab === 'guidance') {
         html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     }
