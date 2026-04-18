@@ -51,10 +51,24 @@
         .val-warning{color:var(--yw);font-weight:700}
         
         /* Metric Row */
-        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(26,35,50,.3);color:var(--tx3);font-size:9px;line-height:1.4}
+        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(26,35,50,.2);color:var(--tx3);font-size:9px;line-height:1.3}
         .metric-row:last-child{border-bottom:none}
         .metric-label{flex:1;font-size:8px}
         .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:9px}
+        
+        /* Section Container for Two Columns */
+        .section-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+        .section-row > div{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
+        
+        /* Weightage Summary */
+        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+        .weightage-box{text-align:center;padding:8px;background:rgba(0,0,0,.3);border-radius:4px}
+        .weightage-label{font-size:7px;color:var(--tx3);text-transform:uppercase;margin-bottom:4px}
+        .weightage-value{font-size:18px;font-weight:800}
+        .pos-box .weightage-value{color:var(--gr)}
+        .neg-box .weightage-value{color:var(--rd)}
+        .signal-box .weightage-value{color:var(--ac);font-size:14px}
+        .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
     </style>
 </head>
 <body>
@@ -255,6 +269,14 @@ function renderTab(tab) {
         const dii = num(get(s, 'dii', 'dii_pct'));
         const quarterly = get(s, 'quarterly') || [];
         
+        // EXTRACT: Positive & Negative signals, Signal
+        const posSignals = num(get(s, 'pos', 'positive', 0));
+        const negSignals = num(get(s, 'neg', 'negative', 0));
+        const signal = get(s, 'signal', 'Signal', 'BUY');
+        const totalSignals = posSignals + negSignals;
+        const posWeightage = totalSignals > 0 ? Math.round((posSignals / totalSignals) * 100) : 0;
+        const negWeightage = totalSignals > 0 ? Math.round((negSignals / totalSignals) * 100) : 0;
+        
         // EXTRACT: Total Debt from quarterly ONLY (never use pre-calculated field)
         let totalDebt = 0;
         if (quarterly && quarterly.length > 0) {
@@ -336,136 +358,167 @@ function renderTab(tab) {
         html = `
             <div style="padding:8px 0;padding-bottom:80px">
             
-            <!-- VALUATION ANALYSIS -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📊 Valuation</div>
-                <div class="metric-row">
-                    <div class="metric-label">Current Price</div>
-                    <div class="metric-value val-neutral">₹${fmt(ltp)}</div>
+            <!-- WEIGHTAGE & SIGNAL SUMMARY -->
+            <div class="weightage-container">
+                <div class="weightage-box pos-box">
+                    <div class="weightage-label">Positive</div>
+                    <div class="weightage-value">${posWeightage}%</div>
+                    <div style="font-size:7px;color:var(--tx3)">+${posSignals}</div>
                 </div>
-                <div class="metric-row">
-                    <div class="metric-label">Fair Value (DCF)</div>
-                    <div class="metric-value">${tbdLink('DCF Fair Value')}</div>
+                <div class="weightage-box neg-box">
+                    <div class="weightage-label">Negative</div>
+                    <div class="weightage-value">${negWeightage}%</div>
+                    <div style="font-size:7px;color:var(--tx3)">-${negSignals}</div>
                 </div>
-                <div class="metric-row">
-                    <div class="metric-label">P/E Multiple</div>
-                    <div class="metric-value ${pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning'}">${fmt(pe)}x</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Price/Book</div>
-                    <div class="metric-value ${pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning'}">${fmt(pb)}x</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">EV/EBITDA</div>
-                    <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">PEG Ratio</div>
-                    <div class="metric-value">${tbdLink('PEG Ratio')}</div>
+                <div class="weightage-box signal-box">
+                    <div class="weightage-label">Signal</div>
+                    <div class="weightage-value ${signal === 'BUY' ? 'val-positive' : signal === 'SELL' ? 'val-negative' : 'val-neutral'}">${signal}</div>
+                    <div class="signal-label">${signal === 'BUY' ? '📈 Bullish' : signal === 'SELL' ? '📉 Bearish' : '⚪ Neutral'}</div>
                 </div>
             </div>
             
-            <!-- QUALITY OF EARNINGS -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">⭐ Quality</div>
-                <div class="metric-row">
-                    <div class="metric-label">Operating Margin</div>
-                    <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
+            <!-- ROW 1: Valuation + Quality -->
+            <div class="section-row">
+                <!-- VALUATION ANALYSIS -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📊 Valuation</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Price</div>
+                        <div class="metric-value val-neutral">₹${fmt(ltp)}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Fair Value</div>
+                        <div class="metric-value">${tbdLink('DCF Fair Value')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/E</div>
+                        <div class="metric-value ${pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning'}">${fmt(pe)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/B</div>
+                        <div class="metric-value ${pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning'}">${fmt(pb)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EV/EBITDA</div>
+                        <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">PEG</div>
+                        <div class="metric-value">${tbdLink('PEG Ratio')}</div>
+                    </div>
                 </div>
-                <div class="metric-row">
-                    <div class="metric-label">ROIC</div>
-                    <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">WACC</div>
-                    <div class="metric-value">${tbdLink('WACC')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Cash Conversion</div>
-                    <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">FCF Yield</div>
-                    <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Quality Score</div>
-                    <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">A</div>
-                </div>
-            </div>
-            
-            <!-- GROWTH TRAJECTORY -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📈 Growth</div>
-                <div class="metric-row">
-                    <div class="metric-label">Revenue CAGR (3Y)</div>
-                    <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">EBITDA CAGR (3Y)</div>
-                    <div class="metric-value">${tbdLink('EBITDA CAGR')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Earnings CAGR (3Y)</div>
-                    <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Growth Score</div>
-                    <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'val-warning'}">B+</div>
-                </div>
-            </div>
-            
-            <!-- FINANCIAL HEALTH -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">🏦 Health</div>
-                <div class="metric-row">
-                    <div class="metric-label">Debt/EBITDA</div>
-                    <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Interest Coverage</div>
-                    <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Current Ratio</div>
-                    <div class="metric-value">${tbdLink('Current Ratio')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Quick Ratio</div>
-                    <div class="metric-value">${tbdLink('Quick Ratio')}</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Credit Rating</div>
-                    <div class="metric-value val-positive">AA-</div>
+                
+                <!-- QUALITY OF EARNINGS -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">⭐ Quality</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Op Margin</div>
+                        <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">ROIC</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">WACC</div>
+                        <div class="metric-value">${tbdLink('WACC')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Cash Conv</div>
+                        <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">FCF Yield</div>
+                        <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Q Score</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">A</div>
+                    </div>
                 </div>
             </div>
             
-            <!-- BUSINESS SCALE & HOLDINGS -->
+            <!-- ROW 2: Growth + Health -->
+            <div class="section-row">
+                <!-- GROWTH TRAJECTORY -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📈 Growth</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Rev CAGR</div>
+                        <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EBITDA CAGR</div>
+                        <div class="metric-value">${tbdLink('EBITDA CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EPS CAGR</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">G Score</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'val-warning'}">B+</div>
+                    </div>
+                </div>
+                
+                <!-- FINANCIAL HEALTH -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">🏦 Health</div>
+                    <div class="metric-row">
+                        <div class="metric-label">D/EBITDA</div>
+                        <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Int Cover</div>
+                        <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Curr Ratio</div>
+                        <div class="metric-value">${tbdLink('Current Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Quick Ratio</div>
+                        <div class="metric-value">${tbdLink('Quick Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Credit</div>
+                        <div class="metric-value val-positive">AA-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ROW 3: Scale & Holdings (Full Width) -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
                 <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📋 Scale & Holdings</div>
-                <div class="metric-row">
-                    <div class="metric-label">Revenue (Annual)</div>
-                    <div class="metric-value val-neutral">₹${fmt(sales)}Cr</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">EBITDA</div>
-                    <div class="metric-value val-neutral">₹${fmt(ebitda)}Cr</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Market Cap</div>
-                    <div class="metric-value val-neutral">₹${fmt(mcap)}Cr</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">Promoter Holding</div>
-                    <div class="metric-value ${prom > 50 ? 'val-positive' : prom > 30 ? 'val-neutral' : 'val-warning'}">${fmt(prom)}%</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">FII Holding</div>
-                    <div class="metric-value ${fii > 20 ? 'val-positive' : fii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(fii)}%</div>
-                </div>
-                <div class="metric-row">
-                    <div class="metric-label">DII Holding</div>
-                    <div class="metric-value ${dii > 15 ? 'val-positive' : dii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(dii)}%</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Revenue</div>
+                            <div class="metric-value val-neutral">₹${fmt(sales)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">EBITDA</div>
+                            <div class="metric-value val-neutral">₹${fmt(ebitda)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">Market Cap</div>
+                            <div class="metric-value val-neutral">₹${fmt(mcap)}Cr</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Promoter</div>
+                            <div class="metric-value ${prom > 50 ? 'val-positive' : prom > 30 ? 'val-neutral' : 'val-warning'}">${fmt(prom)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">FII</div>
+                            <div class="metric-value ${fii > 20 ? 'val-positive' : fii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(fii)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">DII</div>
+                            <div class="metric-value ${dii > 15 ? 'val-positive' : dii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(dii)}%</div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
