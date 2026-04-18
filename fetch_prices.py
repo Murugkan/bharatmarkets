@@ -6,6 +6,10 @@ Reads:  unified-symbols.json  (source of truth)
 Writes: prices.json, charts/*.json
         unified-symbols.json (resolved sym+yf written back when RESOLVE=true)
 
+Daily metrics only (intraday/daily updates):
+- ltp, change, changePct, open, high, low, prev, vol
+- w52h, w52l, beta
+
 ENV vars (set by workflow):
   RESOLVE=true     → resolve unconfirmed symbols via Yahoo search (import/add only)
   CLEAN_STALE=true → wipe data for symbols not in unified-symbols.json (delete/clear only)
@@ -172,7 +176,7 @@ def build_quote(sym, info, hist):
     prev = prev or ltp
     chg  = round(ltp - prev, 2)
     pct  = round(chg / prev * 100, 3) if prev else 0
-    roe_raw = info.get("returnOnEquity")
+    
     return {
         "ticker": sym,
         "name": info.get("longName") or info.get("shortName") or sym,
@@ -181,13 +185,8 @@ def build_quote(sym, info, hist):
         "open": safe(info.get("open") or ltp), "high": safe(info.get("dayHigh") or ltp),
         "low": safe(info.get("dayLow") or ltp), "prev": prev,
         "vol": int(info.get("volume") or 0),
-        "pe": safe(info.get("trailingPE")), "pb": safe(info.get("priceToBook")),
-        "eps": safe(info.get("trailingEps")),
-        "roe": safe(roe_raw, mult=100) if roe_raw is not None else None,
         "w52h": safe(info.get("fiftyTwoWeekHigh")), "w52l": safe(info.get("fiftyTwoWeekLow")),
         "beta": safe(info.get("beta")),
-        "opm": safe(info.get("operatingMargins"), mult=100),
-        "npm": safe(info.get("profitMargins"), mult=100),
     }
 
 def build_chart(sym, hist):

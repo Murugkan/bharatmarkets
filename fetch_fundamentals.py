@@ -284,8 +284,10 @@ def fetch_yfinance(sym):
 
         roe_raw = safe_float(info.get("returnOnEquity"))
         roa_raw = safe_float(info.get("returnOnAssets"))
+        roce_raw = safe_float(info.get("returnOnCapital"))
         result["roe"] = round(roe_raw * 100, 2) if roe_raw is not None else None
         result["roa"] = round(roa_raw * 100, 2) if roa_raw is not None else None
+        result["roce"] = round(roce_raw * 100, 2) if roce_raw is not None else None
 
         npm_raw = safe_float(info.get("profitMargins"))
         opm_raw = safe_float(info.get("operatingMargins"))
