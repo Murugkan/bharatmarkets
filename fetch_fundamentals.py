@@ -378,6 +378,8 @@ def fetch_yfinance(sym):
                         elif rl == 'ebit':                             q_data[k]['ebit']  = round(v/1e7, 2)
                         elif rl == 'gross profit':                     q_data[k]['gross'] = round(v/1e7, 2)
                         elif rl == 'operating income' or rl == 'operating profit': q_data[k].setdefault('ebit', round(v/1e7, 2))
+                        elif any(x in rl for x in ('interest expense', 'interest paid', 'finance cost', 'finance charges')): q_data[k]['int_exp'] = round(v/1e7, 2)
+                        elif any(x in rl for x in ('provision for income tax', 'income tax expense', 'tax expense')): q_data[k]['tax'] = round(v/1e7, 2)
             else:
                 print(f"  ⚠ {sym}: no income stmt data")
 
@@ -411,6 +413,9 @@ def fetch_yfinance(sym):
                             q_data[k]['cfo'] = round(v/1e7, 2)
                         elif 'free cash flow' in rl:
                             q_data[k]['fcf'] = round(v/1e7, 2)
+                        elif any(x in rl for x in ('capital expenditure', 'capex', 'capital spending',
+                                                     'purchase of ppe', 'purchase of property')):
+                            q_data[k]['capex'] = round(v/1e7, 2)
 
             # Check if CFO was populated; if not, try direct row search
             cfo_missing = any('cfo' not in v for v in q_data.values() if v)
@@ -443,22 +448,57 @@ def fetch_yfinance(sym):
             if qb is not None:
                 for row_label in qb.index:
                     rl = str(row_label).lower().strip()
-                    if rl in ('total debt', 'long term debt', 'current debt', 'net debt'):
-                        for col in qb.columns:
-                            k = qkey(col)
-                            if k not in q_data: q_data[k] = {}
-                            try:
-                                v = float(qb.loc[row_label, col])
-                                if v != v: continue
-                                q_data[k]['debt'] = round(v/1e7, 2)
-                            except (TypeError, ValueError):
-                                continue
-                        break
+                    for col in qb.columns:
+                        k = qkey(col)
+                        if k not in q_data: q_data[k] = {}
+                        try:
+                            v = float(qb.loc[row_label, col])
+                            if v != v: continue
+                        except (TypeError, ValueError):
+                            continue
+                        if rl in ('total debt', 'long term debt', 'current debt', 'net debt', 'total borrowings'):
+                            q_data[k]['debt'] = round(v/1e7, 2)
+                        elif any(x in rl for x in ('cash and cash equivalents', 'cash', 'short term investments')):
+                            q_data[k].setdefault('cash', round(v/1e7, 2))
+                        elif rl == 'current assets':
+                            q_data[k]['cur_asset'] = round(v/1e7, 2)
+                        elif rl == 'current liabilities':
+                            q_data[k]['cur_liab'] = round(v/1e7, 2)
+                        elif rl == 'total assets':
+                            q_data[k]['tot_asset'] = round(v/1e7, 2)
+                        elif rl == 'total liabilities':
+                            q_data[k]['tot_liab'] = round(v/1e7, 2)
+                        elif rl == 'stockholders equity' or rl == 'total equity' or rl == 'shareholders equity':
+                            q_data[k]['equity'] = round(v/1e7, 2)
 
             # ── Compute derived fields ─────────────────────────────────
             for k, v in q_data.items():
                 if v.get('ebit') and v.get('rev') and v['rev'] != 0:
                     v['opm'] = round(v['ebit'] / v['rev'] * 100, 1)
+                
+                # Interest Coverage Ratio = EBIT / Interest Expense
+                if v.get('ebit') and v.get('int_exp') and v['int_exp'] != 0:
+                    v['int_cov'] = round(v['ebit'] / v['int_exp'], 2)
+                
+                # FCF Conversion = FCF / Net Income
+                if v.get('fcf') and v.get('net') and v['net'] != 0:
+                    v['fcf_conv'] = round(v['fcf'] / v['net'] * 100, 1)
+                
+                # Calculate FCF if CFO and CAPEX available
+                if v.get('cfo') and v.get('capex'):
+                    v['fcf'] = round(v['cfo'] - v['capex'], 2)
+                
+                # Current Ratio = Current Assets / Current Liabilities
+                if v.get('cur_asset') and v.get('cur_liab') and v['cur_liab'] != 0:
+                    v['cur_ratio'] = round(v['cur_asset'] / v['cur_liab'], 2)
+                
+                # Net Debt = Total Debt - Cash
+                if v.get('debt') and v.get('cash'):
+                    v['net_debt'] = round(v['debt'] - v['cash'], 2)
+                
+                # Debt to EBITDA (only if EBITDA available)
+                if v.get('debt') and v.get('ebitda') and v['ebitda'] != 0:
+                    v['debt_ebitda'] = round(v['debt'] / v['ebitda'], 2)
 
             # ── Save only quarters that have at least one data field ───
             if q_data:
