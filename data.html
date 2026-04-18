@@ -1139,7 +1139,7 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             return;
         }
         
-        var response = prompt(`Paste JSON guidance for ${ticker}:`);
+        var response = prompt(`Paste JSON guidance for ${ticker}:\n\nUse: AI_PROMPT_WITH_GAPS.md to generate JSON first`);
         if (!response) return;
         
         // Validate JSON syntax only
@@ -1161,7 +1161,7 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             return;
         }
         
-        var response = prompt(`Paste JSON insights for ${ticker}:`);
+        var response = prompt(`Paste JSON insights for ${ticker}:\n\nUse: AI_PROMPT_WITH_GAPS.md to generate JSON first`);
         if (!response) return;
         
         // Validate JSON syntax only
@@ -1181,18 +1181,26 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         
         var newGuidance = {};
         try {
-            // Parse JSON directly - no text parsing needed
+            // Parse JSON directly
             var parsed = JSON.parse(jsonText);
             
-            // Extract guidance object for this ticker
+            // Extract guidance - handle both formats:
+            // Format 1: {"guidance": {...}}
+            // Format 2: {"TICKER": {"guidance": {...}}}
             if (parsed.guidance) {
                 newGuidance = parsed.guidance;
+            } else if (parsed[ticker.toUpperCase()]) {
+                if (parsed[ticker.toUpperCase()].guidance) {
+                    newGuidance = parsed[ticker.toUpperCase()].guidance;
+                } else {
+                    throw new Error('Missing "guidance" field');
+                }
             } else {
-                throw new Error('Missing "guidance" field in JSON');
+                throw new Error('Invalid format: paste {"guidance": {...}} or {"TICKER": {"guidance": {...}}}');
             }
             
         } catch(e) {
-            showToast(`❌ Parse error: ${e.message}`);
+            showToast(`❌ JSON Error: ${e.message}`);
             updateStatusButton('❌ Error');
             return;
         }
@@ -1252,18 +1260,26 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         
         var newInsights = {};
         try {
-            // Parse JSON directly - no text parsing needed
+            // Parse JSON directly
             var parsed = JSON.parse(jsonText);
             
-            // Extract insights object for this ticker
+            // Extract insights - handle both formats:
+            // Format 1: {"insights": {...}}
+            // Format 2: {"TICKER": {"insights": {...}}}
             if (parsed.insights) {
                 newInsights = parsed.insights;
+            } else if (parsed[ticker.toUpperCase()]) {
+                if (parsed[ticker.toUpperCase()].insights) {
+                    newInsights = parsed[ticker.toUpperCase()].insights;
+                } else {
+                    throw new Error('Missing "insights" field');
+                }
             } else {
-                throw new Error('Missing "insights" field in JSON');
+                throw new Error('Invalid format: paste {"insights": {...}} or {"TICKER": {"insights": {...}}}');
             }
             
         } catch(e) {
-            showToast(`❌ Parse error: ${e.message}`);
+            showToast(`❌ JSON Error: ${e.message}`);
             updateStatusButton('❌ Error');
             console.error('Insights parse error:', e);
             return;

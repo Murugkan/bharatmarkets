@@ -558,19 +558,23 @@ function renderTab(tab) {
     } else if (tab === 'technical') {
         html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     } else if (tab === 'fundamentals') {
-        // Fetch guidance data
+        // Fetch guidance data from localStorage or IndexedDB
         let guidance = {};
         try {
-            const cached = localStorage.getItem(`guidance_${s.ticker}`);
-            if (cached) {
-                guidance = JSON.parse(cached);
+            // Try to get from localStorage guidanceData object first
+            const guidanceDataStr = localStorage.getItem('guidanceData');
+            if (guidanceDataStr) {
+                const allGuidance = JSON.parse(guidanceDataStr);
+                if (allGuidance[s.ticker]) {
+                    guidance = allGuidance[s.ticker];
+                }
             }
         } catch (e) {
-            console.log('No cached guidance data');
+            console.log('No guidance data in localStorage');
         }
         
         if (!guidance || !guidance.guidance) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Loading...</div></div>';
+            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save guidance from Data tab</div></div>';
         } else {
             const g = guidance.guidance;
             
@@ -665,19 +669,23 @@ function renderTab(tab) {
             `;
         }
     } else if (tab === 'guidance') {
-        // Fetch guidance data
+        // Fetch guidance data from localStorage or IndexedDB
         let guidance = {};
         try {
-            const cached = localStorage.getItem(`guidance_${s.ticker}`);
-            if (cached) {
-                guidance = JSON.parse(cached);
+            // Try to get from localStorage guidanceData object first
+            const guidanceDataStr = localStorage.getItem('guidanceData');
+            if (guidanceDataStr) {
+                const allGuidance = JSON.parse(guidanceDataStr);
+                if (allGuidance[s.ticker]) {
+                    guidance = allGuidance[s.ticker];
+                }
             }
         } catch (e) {
-            console.log('No cached guidance data');
+            console.log('No guidance data in localStorage');
         }
         
         if (!guidance || !guidance.insights) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Loading...</div></div>';
+            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save insights from Data tab</div></div>';
         } else {
             const g = guidance.guidance || {};
             const i = guidance.insights;
