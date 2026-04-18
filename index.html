@@ -255,7 +255,8 @@ function render() {
     UI_FIELDS.forEach(f => h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='SYM'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>');
     h += '</tr></thead><tbody>';
     rows.forEach(s => {
-        h += '<tr>';
+        const ticker = resolve(s, 'SYM');
+        h += '<tr style="cursor:pointer;" onclick="window.location.href=\'analysis.html?drill=' + encodeURIComponent(ticker) + '\'">';
         UI_FIELDS.forEach(f => {
             const raw = resolve(s, f);
             const val = fmt(raw, f);
