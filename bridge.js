@@ -247,7 +247,22 @@ function renderDrill(container) {
     return;
   }
   
-  const bull = (s.changePct || 0) >= 0;
+  // Safe number conversion
+  const num = (val) => {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      const n = parseFloat(val);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  };
+  
+  const fmt = (val, decimals = 2) => {
+    const n = num(val);
+    return n === 0 && val === '—' ? '—' : n.toFixed(decimals);
+  };
+  
+  const bull = num(s.changePct) >= 0;
   const col = bull ? 'var(--gr)' : 'var(--rd)';
   
   container.innerHTML = `
@@ -259,45 +274,45 @@ function renderDrill(container) {
           <div style="font-size:10px; color:#666; margin-top:2px;">${s.sector || '—'}</div>
         </div>
         <div style="text-align:right;">
-          <div style="font-size:14px; font-weight:800;">₹${(s.ltp || 0).toFixed(2)}</div>
-          <div style="font-size:12px; color:${col}; margin-top:2px;">${bull ? '▲' : '▼'} ${Math.abs(s.changePct || 0).toFixed(2)}%</div>
+          <div style="font-size:14px; font-weight:800;">₹${fmt(s.ltp)}</div>
+          <div style="font-size:12px; color:${col}; margin-top:2px;">${bull ? '▲' : '▼'} ${Math.abs(num(s.changePct)).toFixed(2)}%</div>
         </div>
       </div>
       
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
         <div style="background:var(--s1); padding:10px; border-radius:4px;">
           <div style="font-size:9px; color:#666; margin-bottom:4px;">PE Ratio</div>
-          <div style="font-size:13px; font-weight:800; color:var(--bl);">${(s.pe || '—').toFixed(2)}</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${fmt(s.pe)}</div>
         </div>
         <div style="background:var(--s1); padding:10px; border-radius:4px;">
           <div style="font-size:9px; color:#666; margin-bottom:4px;">ROE %</div>
-          <div style="font-size:13px; font-weight:800; color:var(--gr);">${(s.roe || '—').toFixed(2)}%</div>
+          <div style="font-size:13px; font-weight:800; color:var(--gr);">${fmt(s.roe)}%</div>
         </div>
         <div style="background:var(--s1); padding:10px; border-radius:4px;">
           <div style="font-size:9px; color:#666; margin-bottom:4px;">OPM %</div>
-          <div style="font-size:13px; font-weight:800; color:var(--bl);">${(s.opm || '—').toFixed(2)}%</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${fmt(s.opm)}%</div>
         </div>
         <div style="background:var(--s1); padding:10px; border-radius:4px;">
           <div style="font-size:9px; color:#666; margin-bottom:4px;">Market Cap</div>
-          <div style="font-size:13px; font-weight:800; color:var(--bl);">₹${((s.mcap || 0) / 100000).toFixed(1)}L</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">₹${(num(s.mcap) / 100000).toFixed(1)}L</div>
         </div>
       </div>
       
       <div style="background:var(--s1); padding:12px; border-radius:4px;">
         <div style="font-size:11px; font-weight:800; margin-bottom:8px; color:var(--bl);">Financial Metrics</div>
         <table style="width:100%; font-size:10px;">
-          <tr><td style="padding:6px 0; color:#666;">EPS</td><td style="text-align:right; font-weight:700;">₹${(s.eps || '—').toFixed(2)}</td></tr>
-          <tr><td style="padding:6px 0; color:#666;">Sales</td><td style="text-align:right; font-weight:700;">₹${((s.sales || 0) / 1000).toFixed(0)}K Cr</td></tr>
-          <tr><td style="padding:6px 0; color:#666;">EBITDA</td><td style="text-align:right; font-weight:700;">₹${((s.ebitda || 0) / 1000).toFixed(0)}K Cr</td></tr>
-          <tr><td style="padding:6px 0; color:#666;">NPM %</td><td style="text-align:right; font-weight:700;">${(s.npm || '—').toFixed(2)}%</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">EPS</td><td style="text-align:right; font-weight:700;">₹${fmt(s.eps)}</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">Sales</td><td style="text-align:right; font-weight:700;">₹${(num(s.sales) / 1000).toFixed(0)}K Cr</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">EBITDA</td><td style="text-align:right; font-weight:700;">₹${(num(s.ebitda) / 1000).toFixed(0)}K Cr</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">NPM %</td><td style="text-align:right; font-weight:700;">${fmt(s.npm)}%</td></tr>
         </table>
       </div>
       
       <div style="margin-top:12px; padding:12px; background:var(--s1); border-radius:4px; font-size:10px; color:#666;">
         <div style="margin-bottom:6px;"><strong>Holdings</strong></div>
-        <div>Qty: ${s.qty || 0}</div>
-        <div>Avg: ₹${(s.avg || 0).toFixed(2)}</div>
-        <div style="margin-top:6px; color:var(--bl); font-weight:700;">P&L: ₹${(((s.ltp || 0) - (s.avg || 0)) * (s.qty || 0)).toFixed(0)}</div>
+        <div>Qty: ${num(s.qty)}</div>
+        <div>Avg: ₹${fmt(s.avg)}</div>
+        <div style="margin-top:6px; color:var(--bl); font-weight:700;">P&L: ₹${((num(s.ltp) - num(s.avg)) * num(s.qty)).toFixed(0)}</div>
       </div>
     </div>
   `;
