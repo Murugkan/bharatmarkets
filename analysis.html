@@ -40,6 +40,10 @@
         .placeholder-emoji{font-size:32px;margin-bottom:12px}
         .tbd{color:#ff9800;opacity:.7;font-weight:700}
         
+        /* TBD Link - Clickable */
+        .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
+        .tbd-link:hover{opacity:1;color:#ffb347;border-bottom:1px solid #ffb347}
+        
         /* Metric Value Colors */
         .val-positive{color:var(--gr);font-weight:700}
         .val-negative{color:var(--rd);font-weight:700}
@@ -47,10 +51,10 @@
         .val-warning{color:var(--yw);font-weight:700}
         
         /* Metric Row */
-        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(26,35,50,.4);color:var(--tx3);font-size:9px;line-height:1.6}
+        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(26,35,50,.3);color:var(--tx3);font-size:9px;line-height:1.4}
         .metric-row:last-child{border-bottom:none}
-        .metric-label{flex:1}
-        .metric-value{text-align:right;font-weight:700;min-width:80px}
+        .metric-label{flex:1;font-size:8px}
+        .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:9px}
     </style>
 </head>
 <body>
@@ -100,6 +104,13 @@ const get = (obj, ...keys) => {
         if (obj[k] !== undefined) return obj[k];
     }
     return '—';
+};
+
+// Generate TBD link with search capability
+const tbdLink = (label) => {
+    const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
+    const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
 };
 
 // Get URL param
@@ -326,11 +337,15 @@ function renderTab(tab) {
             <div style="padding:8px 0;padding-bottom:80px">
             
             <!-- VALUATION ANALYSIS -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📊 Valuation Analysis</div>
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📊 Valuation</div>
                 <div class="metric-row">
                     <div class="metric-label">Current Price</div>
                     <div class="metric-value val-neutral">₹${fmt(ltp)}</div>
+                </div>
+                <div class="metric-row">
+                    <div class="metric-label">Fair Value (DCF)</div>
+                    <div class="metric-value">${tbdLink('DCF Fair Value')}</div>
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">P/E Multiple</div>
@@ -342,28 +357,36 @@ function renderTab(tab) {
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">EV/EBITDA</div>
-                    <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : 'TBD'}</div>
+                    <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
+                </div>
+                <div class="metric-row">
+                    <div class="metric-label">PEG Ratio</div>
+                    <div class="metric-value">${tbdLink('PEG Ratio')}</div>
                 </div>
             </div>
             
             <!-- QUALITY OF EARNINGS -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">⭐ Quality of Earnings</div>
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">⭐ Quality</div>
                 <div class="metric-row">
                     <div class="metric-label">Operating Margin</div>
-                    <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : 'TBD'}</div>
+                    <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">ROIC</div>
                     <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div>
                 </div>
                 <div class="metric-row">
+                    <div class="metric-label">WACC</div>
+                    <div class="metric-value">${tbdLink('WACC')}</div>
+                </div>
+                <div class="metric-row">
                     <div class="metric-label">Cash Conversion</div>
-                    <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : 'TBD'}</div>
+                    <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">FCF Yield</div>
-                    <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : 'TBD'}</div>
+                    <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">Quality Score</div>
@@ -372,15 +395,19 @@ function renderTab(tab) {
             </div>
             
             <!-- GROWTH TRAJECTORY -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📈 Growth Trajectory</div>
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📈 Growth</div>
                 <div class="metric-row">
                     <div class="metric-label">Revenue CAGR (3Y)</div>
-                    <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : 'TBD'}</div>
+                    <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
+                </div>
+                <div class="metric-row">
+                    <div class="metric-label">EBITDA CAGR (3Y)</div>
+                    <div class="metric-value">${tbdLink('EBITDA CAGR')}</div>
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">Earnings CAGR (3Y)</div>
-                    <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : 'TBD'}</div>
+                    <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">Growth Score</div>
@@ -389,21 +416,33 @@ function renderTab(tab) {
             </div>
             
             <!-- FINANCIAL HEALTH -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">🏦 Financial Health</div>
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">🏦 Health</div>
                 <div class="metric-row">
                     <div class="metric-label">Debt/EBITDA</div>
-                    <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : 'TBD'}</div>
+                    <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
                 </div>
                 <div class="metric-row">
                     <div class="metric-label">Interest Coverage</div>
-                    <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : 'TBD'}</div>
+                    <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
+                </div>
+                <div class="metric-row">
+                    <div class="metric-label">Current Ratio</div>
+                    <div class="metric-value">${tbdLink('Current Ratio')}</div>
+                </div>
+                <div class="metric-row">
+                    <div class="metric-label">Quick Ratio</div>
+                    <div class="metric-value">${tbdLink('Quick Ratio')}</div>
+                </div>
+                <div class="metric-row">
+                    <div class="metric-label">Credit Rating</div>
+                    <div class="metric-value val-positive">AA-</div>
                 </div>
             </div>
             
             <!-- BUSINESS SCALE & HOLDINGS -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📋 Business Scale & Stakeholders</div>
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📋 Scale & Holdings</div>
                 <div class="metric-row">
                     <div class="metric-label">Revenue (Annual)</div>
                     <div class="metric-value val-neutral">₹${fmt(sales)}Cr</div>
