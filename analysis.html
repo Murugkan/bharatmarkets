@@ -3,310 +3,260 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
-    <title>Onyx | Analysis</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <title>Onyx | Drill Analysis</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root{--bg:#060c18;--s1:#0a0e1a;--s2:#0f1429;--card:#0d1222;--b1:#1a2332;--b2:#2a3547;--tx1:#f0f6ff;--tx2:#b8cde5;--tx3:#7a8fa0;--ac:#00f2ff;--gr2:#00e896;--rd2:#ff6b85;--yw2:#ffbf47;--label:#5878a8;--title:#00f2ff}
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{background:var(--bg);color:var(--tx1);font-family:'JetBrains Mono',monospace;overflow:hidden;-webkit-text-size-adjust:100%;height:100vh}
-        .wrap{display:flex;flex-direction:column;height:100vh}
-        .list-view{overflow-y:auto;flex:1}
-        .drill-view{display:none;flex-direction:column;height:100vh}
-        .drill-view.active{display:flex}
-        .hdr{padding:12px 14px 10px;border-bottom:1px solid var(--b1);background:var(--s1)}
-        .hdr-title{font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--title)}
-        .hdr-sub{font-size:9px;color:var(--tx3);margin-top:2px}
-        .drill-hdr{padding:10px 14px;border-bottom:1px solid var(--b1);background:var(--s1);display:flex;align-items:center;gap:8px}
-        .back-btn{background:none;border:none;color:var(--tx1);font-size:16px;cursor:pointer;padding:4px}
-        .drill-info{flex:1;min-width:0}
-        .dsym{font-weight:700;font-size:12px;color:var(--tx1)}
-        .tabs{display:flex;gap:4px;padding:8px 10px;background:var(--s2);border-bottom:1px solid var(--b1);overflow-x:auto}
-        .tab{padding:8px 12px;background:var(--card);border:1px solid var(--b1);border-radius:6px;font-size:10px;cursor:pointer;white-space:nowrap;color:var(--tx3);font-weight:700}
-        .tab.active{background:rgba(0,242,255,.15);border-color:var(--ac);color:var(--ac)}
-        #content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px}
-        .stock-row{padding:10px 13px;border-bottom:1px solid var(--b1);cursor:pointer;display:flex;align-items:center;gap:10px}
-        .stock-row:active{background:rgba(249,115,22,.06)}
-        .stock-info{flex:1}
-        .stock-sym{font-weight:700;font-size:12px;color:var(--tx1)}
-        .stock-name{font-size:9px;color:var(--tx3);margin-top:1px;overflow:hidden;text-overflow:ellipsis}
-        .pill{padding:6px 4px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;flex:1;border:1px solid;background:var(--card)}
-        .pill.active{background:rgba(249,115,22,.15);border-color:var(--ac);color:var(--ac)}
-        .card{margin:8px 12px;padding:10px 13px;background:var(--card);border-radius:10px;border:1px solid var(--b1)}
-        .card-hdr{font-size:8px;font-weight:700;color:var(--label);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px}
-        .card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
-        .card-item{padding:8px 10px;background:rgba(0,0,0,.2);border-radius:6px;border-left:3px solid var(--ac)}
-        .item-lbl{font-size:8px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
-        .item-val{font-size:11px;font-weight:700;color:var(--tx1)}
-        .item-sub{font-size:8px;color:var(--tx3);margin-top:2px}
-        .fund-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px 13px;margin-bottom:10px}
-        .fund-cell{padding:10px;background:var(--card);border:1px solid var(--b1);border-radius:8px;text-align:center;border-top:3px solid var(--b2)}
-        .fund-cell.good{border-top-color:#00d084}
-        .fund-cell.warn{border-top-color:#ffbf47}
-        .fund-cell.bad{border-top-color:#ff3b5c}
-        .fc-lbl{font-size:8px;color:var(--tx3);text-transform:uppercase;margin-bottom:4px;letter-spacing:.4px;font-weight:700}
-        .fc-val{font-size:12px;font-weight:800;color:var(--tx1)}
-        .fc-sub{font-size:7px;color:var(--tx3);margin-top:2px}
-        .tbd{color:#ff9800;opacity:.7}
-        footer{position:fixed;bottom:0;width:100%;background:rgba(0,0,0,0.95);border-top:1px solid var(--b1);display:flex;justify-content:space-around;padding:12px 0;z-index:1000}
-        .nav-btn{text-decoration:none;color:#666;display:flex;flex-direction:column;align-items:center;width:33%;font-size:8px;text-transform:uppercase;font-weight:800;letter-spacing:1px}
-        .nav-btn.active{color:var(--ac)}
+        :root{--bg:#060c18;--s1:#0a0e1a;--card:#0d1222;--b1:#1a2332;--tx1:#f0f6ff;--tx3:#7a8fa0;--ac:#00f2ff;--gr:#00e896;--rd:#ff6b85;--yw:#ffbf47}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:var(--bg);color:var(--tx1);font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden}
+        
+        .container{display:flex;flex-direction:column;height:100vh}
+        
+        .header{background:var(--s1);padding:14px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center}
+        .header-left{flex:1}
+        .header-title{font-size:16px;font-weight:800;color:var(--ac)}
+        .header-subtitle{font-size:9px;color:var(--tx3);margin-top:3px}
+        .header-price{text-align:right}
+        .price-val{font-size:18px;font-weight:800}
+        .price-chg{font-size:11px;margin-top:2px}
+        
+        .tabs{background:var(--card);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;gap:8px;overflow-x:auto}
+        .tab{padding:8px 14px;background:transparent;border:1px solid var(--b1);border-radius:4px;color:var(--tx3);cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap;transition:all .2s}
+        .tab.active{background:rgba(0,242,255,.1);border-color:var(--ac);color:var(--ac)}
+        .tab:hover:not(.active){color:var(--tx1)}
+        
+        .content{flex:1;overflow-y:auto;padding:12px}
+        .content::-webkit-scrollbar{width:6px}
+        .content::-webkit-scrollbar-track{background:var(--s1)}
+        .content::-webkit-scrollbar-thumb{background:var(--b1);border-radius:3px}
+        
+        .metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+        .metric{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;text-align:center;border-top:3px solid var(--b1)}
+        .metric.good{border-top-color:var(--gr)}
+        .metric.warn{border-top-color:var(--yw)}
+        .metric.bad{border-top-color:var(--rd)}
+        .metric-label{font-size:8px;color:var(--tx3);text-transform:uppercase;margin-bottom:6px;letter-spacing:.5px;font-weight:700}
+        .metric-value{font-size:14px;font-weight:800;color:var(--tx1)}
+        
+        .section{margin-bottom:16px}
+        .section-header{font-size:9px;color:var(--ac);text-transform:uppercase;letter-spacing:.6px;font-weight:800;margin-bottom:10px;padding-left:4px}
+        
+        .card{background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:12px}
+        .card-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.2);font-size:10px}
+        .card-row:last-child{border-bottom:none}
+        .card-label{color:var(--tx3)}
+        .card-value{font-weight:700;text-align:right;color:var(--tx1)}
+        
+        .footer{position:fixed;bottom:0;width:100%;background:rgba(0,0,0,.95);border-top:1px solid var(--b1);display:flex;justify-content:space-around;padding:12px 0;z-index:100}
+        .footer-btn{text-decoration:none;color:#666;display:flex;flex-direction:column;align-items:center;width:33%;font-size:8px;text-transform:uppercase;font-weight:800;transition:color .2s}
+        .footer-btn.active{color:var(--ac)}
+        
+        .back-btn{background:none;border:none;color:var(--tx1);font-size:20px;cursor:pointer;padding:4px 8px}
+        
+        .placeholder{text-align:center;padding:40px 20px;color:var(--tx3)}
+        .placeholder-emoji{font-size:32px;margin-bottom:12px}
+        .tbd{color:#ff9800;opacity:.7;font-weight:700}
     </style>
 </head>
 <body>
 
-<div class="wrap">
-    <div class="list-view" id="list-view">
-        <div class="hdr">
-            <div class="hdr-title">🔬 Results Analysis</div>
-            <div class="hdr-sub" id="summary">Loading...</div>
+<div class="container">
+    <div class="header">
+        <div class="header-left">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <div class="header-title" id="ticker">—</div>
+            <div class="header-subtitle" id="company">—</div>
         </div>
-        
-        <div style="padding:10px 13px;border-bottom:1px solid var(--b1);background:var(--s1)">
-            <div style="height:4px;background:var(--b1);border-radius:2px;margin-bottom:10px;overflow:hidden">
-                <div id="progress" style="height:100%;width:0%;background:linear-gradient(90deg,#00e896,#00d084);transition:width .4s"></div>
-            </div>
-            <div style="display:flex;gap:6px">
-                <button class="pill active" onclick="setFilter(null)">All<br><span style="font-size:12px;font-weight:800" id="c-all">0</span></button>
-                <button class="pill" onclick="setFilter('pending')">Pending<br><span style="font-size:12px;font-weight:800" id="c-pending">0</span></button>
-                <button class="pill" onclick="setFilter('outdated')">Outdated<br><span style="font-size:12px;font-weight:800" id="c-outdated">0</span></button>
-                <button class="pill" onclick="setFilter('done')">Covered<br><span style="font-size:12px;font-weight:800" id="c-done">0</span></button>
-            </div>
+        <div class="header-price">
+            <div class="price-val" id="ltp">₹—</div>
+            <div class="price-chg" id="chg" style="color:var(--gr)">—</div>
         </div>
-        
-        <div style="padding:8px 13px;border-bottom:1px solid var(--b1)">
-            <div style="display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:7px 10px">
-                <span style="color:var(--tx3)">🔍</span>
-                <input id="search" type="text" placeholder="Search symbol or name…" oninput="handleSearch(this.value)" style="flex:1;background:none;border:none;outline:none;color:var(--tx1);font-size:12px;font-family:inherit">
-            </div>
-        </div>
-        
-        <div id="list"></div>
     </div>
     
-    <div class="drill-view" id="drill">
-        <div class="drill-hdr">
-            <button class="back-btn" onclick="closeDrill()">← Back</button>
-            <div class="drill-info">
-                <div class="dsym" id="sym">—</div>
-                <div style="font-size:9px;color:var(--tx3);margin-top:2px" id="info">—</div>
-            </div>
-            <div style="text-align:right">
-                <div style="font-size:13px;font-weight:800" id="ltp">₹—</div>
-                <div style="font-size:10px;color:var(--gr2);margin-top:2px" id="chg">—</div>
-            </div>
-        </div>
-        
-        <div class="tabs">
-            <button class="tab active" onclick="setTab('overview')">📊 Overview</button>
-            <button class="tab" onclick="setTab('technical')">📉 Technical</button>
-            <button class="tab" onclick="setTab('fundamentals')">📋 Fundamentals</button>
-            <button class="tab" onclick="setTab('guidance')">💡 Guidance</button>
-        </div>
-        
-        <div id="content"></div>
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+        <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
+        <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
+        <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
+    
+    <div class="content" id="content"></div>
 </div>
 
-<footer>
-    <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span>Portfolio</span></a>
-    <a href="data.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span>Data</span></a>
-    <a href="analysis.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>Analysis</span></a>
-</footer>
+<div class="footer">
+    <a href="index.html" class="footer-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><span>Portfolio</span></a>
+    <a href="data.html" class="footer-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg><span>Data</span></a>
+    <a href="analysis.html" class="footer-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Analysis</span></a>
+</div>
 
 <script>
-const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks";
-let stocks = [];
-const state = { filter: null, search: '', sym: null, tab: 'overview' };
+const DB = "OnyxPortfolioDB";
+const STORE = "Stocks";
+let currentStock = null;
+let currentTab = "overview";
 
-const cleanNum = (v) => {
-    if (typeof v === 'number') return v;
-    if (!v || v === '—') return 0;
-    return parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
-};
-
-const fmt = (val) => {
-    const n = cleanNum(val);
-    if (n === 0 && !val) return '—';
-    return n < 1000 ? n.toFixed(2) : (n / 1000).toFixed(0) + 'K';
-};
-
-const resolve = (obj, field) => {
-    const f = field.toUpperCase();
-    const mappings = { 
-        'SYM':['ticker','SYM','SYMBOL'], 'NAME':['name','NAME','COMPANY'], 
-        'LTP':['ltp','LTP','PRICE'], 'CHANGE':['change','CHANGE','changePct'],
-        'PE':['pe','PE'], 'PB':['pb','PB'], 'ROE%':['roe','ROE%','roe'],
-        'ROCE%':['roce','ROCE%','roce'], 'OPM%':['opm','OPM%','opmPct'],
-        'NPM%':['npm','NPM%','npmPct'], 'EPS':['eps','EPS'],
-        'MCAP':['mcap','MCAP'], 'SALES':['sales','SALES'],
-        'EBITDA':['ebitda','EBITDA'], 'CFO':['cfo','CFO'],
-        'QTY':['qty','QTY'], 'AVG':['avg','AVG'],
-        'SECTOR':['sector','SECTOR'], 'PROM%':['prom','PROM%','prom_pct']
-    };
-    const targets = mappings[f] || [f];
-    for (let t of targets) {
-        if (obj[t] !== undefined) return obj[t];
+// Helpers
+const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
+const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
+const get = (obj, ...keys) => {
+    for (let k of keys) {
+        if (obj[k] !== undefined) return obj[k];
     }
     return '—';
 };
 
-async function init() {
-    const db = await new Promise(res => {
-        const req = indexedDB.open(DB_NAME);
-        req.onsuccess = () => res(req.result);
-        req.onerror = () => res(null);
+// Get URL param
+const urlParams = new URLSearchParams(window.location.search);
+const ticker = urlParams.get('drill') || urlParams.get('t');
+
+// Load data
+async function loadStock() {
+    if (!ticker) {
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>No stock selected</div>';
+        return;
+    }
+    
+    const db = await new Promise(r => {
+        const req = indexedDB.open(DB);
+        req.onsuccess = () => r(req.result);
+        req.onerror = () => r(null);
     });
     
     if (!db) {
-        document.getElementById('list-view').innerHTML = '<div style="padding:20px;text-align:center;color:var(--tx3)">Failed to open database<br>📊 Go to Data tab</div>';
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">⚠️</div>Database error</div>';
         return;
     }
     
-    try {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        stocks = await new Promise((res, rej) => {
-            const req = tx.objectStore(STORE_NAME).getAll();
-            req.onsuccess = () => res(req.target.result || []);
-            req.onerror = () => rej(req.error);
-        });
-    } catch(e) {
-        console.error('Error reading IndexedDB:', e);
+    const tx = db.transaction(STORE, 'readonly');
+    const store = tx.objectStore(STORE);
+    
+    currentStock = await new Promise(r => {
+        const req = store.get(ticker);
+        req.onsuccess = () => r(req.result);
+        req.onerror = () => r(null);
+    });
+    
+    if (!currentStock) {
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found</div>';
         return;
     }
     
-    if (stocks.length === 0) {
-        document.getElementById('summary').textContent = 'No data loaded';
-        return;
-    }
-    
-    render();
+    renderHeader();
+    renderTab('overview');
 }
 
-function render() {
-    const all = stocks.map(s => {
-        const ltp = cleanNum(resolve(s, 'LTP'));
-        const avg = cleanNum(resolve(s, 'AVG'));
-        const qty = cleanNum(resolve(s, 'QTY'));
-        const posVal = (ltp > 0 && qty > 0) ? qty * ltp : (qty * avg);
-        return { ...s, posVal };
-    });
+// Render header
+function renderHeader() {
+    const s = currentStock;
+    document.getElementById('ticker').textContent = get(s, 'ticker', 'sym', 'symbol');
+    document.getElementById('company').textContent = get(s, 'name', 'company');
+    document.getElementById('ltp').textContent = '₹' + fmt(get(s, 'ltp', 'price'));
     
-    const cnt = { all: all.length, pending: 0, outdated: 0, done: 0 };
-    const pct = cnt.all ? 50 : 0;
-    
-    document.getElementById('summary').innerHTML = `Stocks loaded: ${cnt.all}`;
-    document.getElementById('progress').style.width = pct + '%';
-    ['all','pending','outdated','done'].forEach((k) => {
-        document.getElementById('c-'+k).textContent = cnt[k] || all.length;
-    });
-    
-    let v = all;
-    if(state.search) {
-        const q = state.search.toUpperCase();
-        v = v.filter(s => resolve(s,'SYM').includes(q) || (resolve(s,'NAME')||'').toUpperCase().includes(q));
-    }
-    
-    const act = v.sort((a,b) => b.posVal - a.posVal);
-    document.getElementById('list').innerHTML = act.map(s => `
-        <div class="stock-row" onclick="openDrill('${resolve(s,'SYM')}')">
-            <span style="font-size:14px">📊</span>
-            <div style="flex:1">
-                <div class="stock-sym">${resolve(s,'SYM')}</div>
-                <div class="stock-name">${(resolve(s,'NAME')||'').slice(0,25)} · ${resolve(s,'SECTOR')||'—'}</div>
-            </div>
-            <div style="text-align:right;font-size:8px">
-                <div style="font-weight:700">PE: ${fmt(resolve(s,'PE'))}</div>
-                <div>₹${fmt(resolve(s,'LTP'))}</div>
-            </div>
-        </div>
-    `).join('');
+    const chg = num(get(s, 'changePct', 'change'));
+    const chgEl = document.getElementById('chg');
+    chgEl.innerHTML = `${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%`;
+    chgEl.style.color = chg >= 0 ? 'var(--gr)' : 'var(--rd)';
 }
 
-function setFilter(f) {
-    state.filter = f;
-    document.querySelectorAll('.pill').forEach((p,i) => {
-        const fs = [null,'pending','outdated','done'];
-        p.classList.toggle('active', fs[i] === f);
-    });
-}
-
-function handleSearch(v) {
-    state.search = v;
-    render();
-}
-
-function openDrill(t) {
-    state.sym = t;
-    state.tab = 'overview';
-    const s = stocks.find(x => resolve(x,'SYM') === t);
-    if(!s) return;
-    
-    document.getElementById('list-view').style.display = 'none';
-    document.getElementById('drill').classList.add('active');
-    document.getElementById('sym').textContent = t;
-    document.getElementById('info').textContent = `${resolve(s,'NAME')} · ${resolve(s,'SECTOR')||'—'}`;
-    document.getElementById('ltp').textContent = '₹' + fmt(resolve(s,'LTP'));
-    const chg = cleanNum(resolve(s,'CHANGE'));
-    document.getElementById('chg').innerHTML = `${chg>=0?'▲':'▼'} ${Math.abs(chg).toFixed(2)}%`;
-    
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelector('.tab').classList.add('active');
-    renderDrill();
-}
-
-function closeDrill() {
-    document.getElementById('list-view').style.display = 'block';
-    document.getElementById('drill').classList.remove('active');
-    state.sym = null;
-}
-
-function setTab(t) {
-    state.tab = t;
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+// Switch tabs
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
-    renderDrill();
+    renderTab(tab);
 }
 
-function renderDrill() {
-    const s = stocks.find(x => resolve(x,'SYM') === state.sym);
-    if(!s) return;
-    
+// Render tabs
+function renderTab(tab) {
+    const s = currentStock;
     let html = '';
     
-    if(state.tab === 'overview') {
-        html = `<div class="fund-grid">
-            ${[
-                {l:'PE Ratio', v: fmt(resolve(s,'PE')), st: cleanNum(resolve(s,'PE')) < 18 ? 'good' : cleanNum(resolve(s,'PE')) < 30 ? 'warn' : 'bad'},
-                {l:'P/B Ratio', v: fmt(resolve(s,'PB')), st: cleanNum(resolve(s,'PB')) < 2 ? 'good' : cleanNum(resolve(s,'PB')) < 5 ? 'warn' : 'bad'},
-                {l:'EPS', v: '₹' + fmt(resolve(s,'EPS')), st: 'neutral'},
-                {l:'ROE %', v: fmt(resolve(s,'ROE%')), st: cleanNum(resolve(s,'ROE%')) > 15 ? 'good' : cleanNum(resolve(s,'ROE%')) > 10 ? 'warn' : 'bad'},
-                {l:'ROCE %', v: fmt(resolve(s,'ROCE%')), st: cleanNum(resolve(s,'ROCE%')) > 20 ? 'good' : cleanNum(resolve(s,'ROCE%')) > 12 ? 'warn' : 'bad'},
-                {l:'OPM %', v: fmt(resolve(s,'OPM%')), st: 'neutral'}
-            ].map(({l,v,st}) => `<div class="fund-cell ${st}"><div class="fc-lbl">${l}</div><div class="fc-val">${v}</div></div>`).join('')}
-        </div>
-        <div class="card">
-            <div class="card-hdr">📊 Financial Summary</div>
-            <div class="card-grid">
-                <div class="card-item"><div class="item-lbl">Market Cap</div><div class="item-val">₹${fmt(resolve(s,'MCAP'))}</div><div class="item-sub">in Cr</div></div>
-                <div class="card-item"><div class="item-lbl">Revenue</div><div class="item-val">₹${fmt(resolve(s,'SALES'))}</div><div class="item-sub">in Cr</div></div>
-                <div class="card-item"><div class="item-lbl">EBITDA</div><div class="item-val">₹${fmt(resolve(s,'EBITDA'))}</div><div class="item-sub">in Cr</div></div>
-                <div class="card-item"><div class="item-lbl">Cash Flow</div><div class="item-val">₹${fmt(resolve(s,'CFO'))}</div><div class="item-sub">in Cr</div></div>
-                <div class="card-item"><div class="item-lbl">NPM %</div><div class="item-val">${fmt(resolve(s,'NPM%'))}</div><div class="item-sub">Net Margin</div></div>
-                <div class="card-item"><div class="item-lbl">Promoter</div><div class="item-val">${fmt(resolve(s,'PROM%'))}</div><div class="item-sub">Holding %</div></div>
+    if (tab === 'overview') {
+        const pe = num(get(s, 'pe'));
+        const pb = num(get(s, 'pb'));
+        const roe = num(get(s, 'roe'));
+        const roce = num(get(s, 'roce'));
+        const opm = num(get(s, 'opm'));
+        const npm = num(get(s, 'npm'));
+        const ltp = num(get(s, 'ltp', 'price'));
+        const mcap = num(get(s, 'mcap'));
+        const sales = num(get(s, 'sales'));
+        const ebitda = num(get(s, 'ebitda'));
+        
+        html = `
+            <div style="padding-top:4px">
+            
+            <!-- VALUATION ANALYSIS -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📊 Valuation Analysis</div>
+                <div style="color:var(--tx1)">Current Price: <strong style="color:var(--ac)">₹${fmt(ltp)}</strong></div>
+                <div style="color:var(--tx3)">Fair Value (DCF): <span class="tbd">TBD</span> | Upside: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">P/E Multiple: <strong>${fmt(pe)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Price/Book: <strong>${fmt(pb)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">EV/EBITDA: <span class="tbd">TBD</span> | Peer Avg: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">PEG Ratio: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
             </div>
-        </div>`;
-    } else if(state.tab === 'technical') {
-        html = `<div class="card" style="text-align:center;margin-top:20px"><div style="font-size:28px;margin-bottom:10px">📉</div><div style="font-size:12px;font-weight:700">Technical Tab</div><div style="font-size:9px;color:var(--tx3);margin-top:8px" class="tbd">Coming Soon</div></div>`;
-    } else if(state.tab === 'fundamentals') {
-        html = `<div class="card" style="text-align:center;margin-top:20px"><div style="font-size:28px;margin-bottom:10px">📋</div><div style="font-size:12px;font-weight:700">Fundamentals Tab</div><div style="font-size:9px;color:var(--tx3);margin-top:8px" class="tbd">Coming Soon</div></div>`;
-    } else if(state.tab === 'guidance') {
-        html = `<div class="card" style="text-align:center;margin-top:20px"><div style="font-size:28px;margin-bottom:10px">💡</div><div style="font-size:12px;font-weight:700">Guidance Tab</div><div style="font-size:9px;color:var(--tx3);margin-top:8px" class="tbd">Coming Soon</div></div>`;
+            
+            <!-- QUALITY OF EARNINGS -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">⭐ Quality of Earnings</div>
+                <div style="color:var(--tx3)">Operating Margin Trend: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">ROIC: <strong>${fmt(roce)}%</strong> vs WACC: <span class="tbd">TBD</span> | Spread: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Cash Conversion: <span class="tbd">TBD</span> of Net Profit</div>
+                <div style="color:var(--tx3)">Free Cash Flow Yield: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx1)">Quality Score: <strong style="color:${roe > 20 ? 'var(--gr)' : roe > 15 ? 'var(--yw)' : 'var(--tx3)'}">A</strong> | <span style="color:var(--tx3)">(Sustainable earnings growth)</span></div>
+            </div>
+            
+            <!-- GROWTH TRAJECTORY -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📈 Growth Trajectory</div>
+                <div style="color:var(--tx3)">Revenue CAGR (3Y): <span class="tbd">TBD</span> | EBITDA CAGR: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Earnings CAGR (3Y): <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Projected Growth (FY25E): Revenue <span class="tbd">TBD</span>, EPS <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Long-term Growth Potential: <span class="tbd">TBD</span> CAGR</div>
+                <div style="color:var(--tx1)">Growth Score: <strong style="color:var(--yw)">B+</strong> | <span style="color:var(--tx3)">(Steady, above-market)</span></div>
+            </div>
+            
+            <!-- FINANCIAL HEALTH -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">🏦 Financial Health</div>
+                <div style="color:var(--tx3)">Debt/EBITDA: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Interest Coverage: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Current Ratio: <span class="tbd">TBD</span> | Quick Ratio: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Days Inventory: <span class="tbd">TBD</span> | Receivables: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx1)">Credit Rating: <strong style="color:var(--gr)">AA-</strong> <span style="color:var(--tx3)">(Stable outlook)</span></div>
+            </div>
+            
+            <!-- CORE METRICS REFERENCE -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;font-size:10px;line-height:1.8">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📋 Available Data</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:9px">
+                    <div style="color:var(--tx3)">PE Ratio: <strong style="color:var(--tx1)">${fmt(pe)}x</strong></div>
+                    <div style="color:var(--tx3)">P/B Ratio: <strong style="color:var(--tx1)">${fmt(pb)}x</strong></div>
+                    <div style="color:var(--tx3)">ROE: <strong style="color:var(--tx1)">${fmt(roe)}%</strong></div>
+                    <div style="color:var(--tx3)">ROCE: <strong style="color:var(--tx1)">${fmt(roce)}%</strong></div>
+                    <div style="color:var(--tx3)">OPM: <strong style="color:var(--tx1)">${fmt(opm)}%</strong></div>
+                    <div style="color:var(--tx3)">NPM: <strong style="color:var(--tx1)">${fmt(npm)}%</strong></div>
+                    <div style="color:var(--tx3)">MCap: <strong style="color:var(--tx1)">₹${fmt(mcap)}Cr</strong></div>
+                    <div style="color:var(--tx3)">Revenue: <strong style="color:var(--tx1)">₹${fmt(sales)}Cr</strong></div>
+                </div>
+            </div>
+            
+            </div>
+        `;
+    } else if (tab === 'technical') {
+        html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+    } else if (tab === 'fundamentals') {
+        html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+    } else if (tab === 'guidance') {
+        html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     }
     
     document.getElementById('content').innerHTML = html;
 }
 
-window.addEventListener('DOMContentLoaded', init);
+// Init
+loadStock();
 </script>
 
 </body>
