@@ -28,11 +28,11 @@
         .tab.active{background:rgba(0,242,255,.1);border-color:var(--ac);color:var(--ac)}
         .tab:hover:not(.active){color:var(--tx1)}
         
-        .content{flex:1;overflow-y:auto;overflow-x:auto;padding:12px}
-        .content::-webkit-scrollbar{width:8px;height:6px}
+        .content{flex:1;overflow-y:auto;overflow-x:auto;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.3) var(--s1)}
+        .content::-webkit-scrollbar{width:10px;height:6px}
         .content::-webkit-scrollbar-track{background:var(--s1)}
-        .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.3);border-radius:4px;transition:background .2s}
-        .content::-webkit-scrollbar-thumb:hover{background:var(--ac)}
+        .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.4);border-radius:5px;transition:background .2s}
+        .content::-webkit-scrollbar-thumb:hover{background:var(--ac);width:12px}
         
         .footer{position:fixed;bottom:0;width:100%;background:rgba(0,0,0,.95);border-top:1px solid var(--b1);display:flex;justify-content:space-around;padding:12px 0;z-index:100}
         .footer-btn{text-decoration:none;color:#666;display:flex;flex-direction:column;align-items:center;width:33%;font-size:8px;text-transform:uppercase;font-weight:800;transition:color .2s}
@@ -227,6 +227,10 @@ async function loadStock() {
         
         console.log('Rendering header and overview...');
         renderHeader();
+        
+        // Load guidance data from localStorage or external source
+        loadGuidanceData(ticker);
+        
         renderTab('overview');
     } catch(e) {
         console.error('Error:', e);
@@ -245,6 +249,23 @@ function renderHeader() {
     const chgEl = document.getElementById('chg');
     chgEl.innerHTML = `${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%`;
     chgEl.style.color = chg >= 0 ? 'var(--gr)' : 'var(--rd)';
+}
+
+// Load guidance data
+async function loadGuidanceData(ticker) {
+    try {
+        // Try to fetch from guidance.json (same domain)
+        const response = await fetch('guidance.json');
+        if (response.ok) {
+            const data = await response.json();
+            if (data[ticker]) {
+                localStorage.setItem(`guidance_${ticker}`, JSON.stringify(data[ticker]));
+                console.log('Guidance data cached for', ticker);
+            }
+        }
+    } catch (e) {
+        console.log('Guidance data not available or offline:', e.message);
+    }
 }
 
 // Switch tabs
@@ -537,9 +558,287 @@ function renderTab(tab) {
     } else if (tab === 'technical') {
         html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     } else if (tab === 'fundamentals') {
-        html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+        // Fetch guidance data from guidance.json
+        let guidance = {};
+        try {
+            // Try to load from localStorage cache first
+            const cached = localStorage.getItem(`guidance_${s.ticker}`);
+            if (cached) {
+                guidance = JSON.parse(cached);
+            }
+        } catch (e) {
+            console.log('No cached guidance data');
+        }
+        
+        if (!guidance || !guidance.guidance) {
+            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Loading...</div></div>';
+        } else {
+            const g = guidance.guidance;
+            const i = guidance.insights || {};
+            
+            html = `
+                <div style="padding:8px 0;padding-bottom:80px">
+                
+                <!-- GUIDANCE SECTION -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                    <div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px">📊 Fundamentals Analysis</div>
+                    <div style="font-size:8px;color:var(--tx3);margin-bottom:10px">Updated: ${g.updated || 'N/A'}</div>
+                    
+                    ${g.balance_sheet_health ? `
+                    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Balance Sheet Health</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.balance_sheet_health}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.cash_flow_quality ? `
+                    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Cash Flow Quality</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.cash_flow_quality}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.profitability_trends ? `
+                    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Profitability Trends</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.profitability_trends}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.leverage_metrics ? `
+                    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Leverage Metrics</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.leverage_metrics}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.dividend_sustainability ? `
+                    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Dividend Sustainability</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.dividend_sustainability}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.quarterly_momentum ? `
+                    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Quarterly Momentum</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.quarterly_momentum}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.valuation_relative_to_peers ? `
+                    <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Valuation vs Peers</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.valuation_relative_to_peers}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.key_metrics_to_watch ? `
+                    <div>
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:4px">Key Metrics to Watch</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.4">${g.key_metrics_to_watch}</div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <!-- INSIGHTS SECTION -->
+                ${i.action || i.bullets ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                    <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:8px">💡 Investment Insights</div>
+                    
+                    ${i.action ? `
+                    <div style="margin-bottom:6px;padding:6px;background:rgba(0,242,255,.1);border-left:2px solid var(--ac);border-radius:3px">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Action</div>
+                        <div style="font-size:9px;color:var(--tx1);line-height:1.3">${i.action}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${i.trigger ? `
+                    <div style="margin-bottom:6px;padding:6px;background:rgba(255,107,133,.1);border-left:2px solid var(--rd);border-radius:3px">
+                        <div style="font-size:9px;font-weight:700;color:var(--rd)">Trigger</div>
+                        <div style="font-size:9px;color:var(--tx1);line-height:1.3">${i.trigger}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${i.headline ? `
+                    <div style="margin-bottom:8px;padding:6px;background:rgba(0,232,150,.1);border-left:2px solid var(--gr);border-radius:3px">
+                        <div style="font-size:9px;font-weight:700;color:var(--gr)">Key Insight</div>
+                        <div style="font-size:9px;color:var(--tx1);line-height:1.3">${i.headline}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${i.bullets && i.bullets.length ? `
+                    <div style="margin-top:8px">
+                        <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:6px">Analysis Bullets</div>
+                        ${i.bullets.map(b => `
+                        <div style="margin-bottom:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <div style="font-size:9px;font-weight:700;color:var(--ac)">${b.cat || 'N/A'}</div>
+                            <div style="font-size:8px;color:var(--tx3);line-height:1.4;margin-top:4px">${b.text || ''}</div>
+                        </div>
+                        `).join('')}
+                    </div>
+                    ` : ''}
+                </div>
+                ` : ''}
+                
+                <div style="text-align:center;padding:20px;color:var(--tx3);font-size:8px">
+                    📊 Data-Driven Fundamentals | Last Updated: ${g.updated || i.updated || 'N/A'}
+                </div>
+                
+                </div>
+            `;
+        }
     } else if (tab === 'guidance') {
-        html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+        // Fetch guidance data from guidance.json
+        let guidance = {};
+        try {
+            const cached = localStorage.getItem(`guidance_${s.ticker}`);
+            if (cached) {
+                guidance = JSON.parse(cached);
+            }
+        } catch (e) {
+            console.log('No cached guidance data');
+        }
+        
+        if (!guidance || !guidance.guidance) {
+            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Loading...</div></div>';
+        } else {
+            const g = guidance.guidance;
+            const i = guidance.insights || {};
+            
+            html = `
+                <div style="padding:8px 0;padding-bottom:80px">
+                
+                <!-- INVESTMENT THESIS SECTION -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                    <div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px">📊 Investment Thesis</div>
+                    
+                    ${i.action ? `
+                    <div style="margin-bottom:8px;padding:8px;background:rgba(0,242,255,.15);border-left:3px solid var(--ac);border-radius:4px">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac);text-transform:uppercase">Action</div>
+                        <div style="font-size:9px;color:var(--tx1);line-height:1.4;margin-top:4px">${i.action}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${i.trigger ? `
+                    <div style="margin-bottom:8px;padding:8px;background:rgba(255,191,71,.15);border-left:3px solid var(--yw);border-radius:4px">
+                        <div style="font-size:9px;font-weight:700;color:var(--yw);text-transform:uppercase">Change Trigger</div>
+                        <div style="font-size:9px;color:var(--tx1);line-height:1.4;margin-top:4px">${i.trigger}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${i.headline ? `
+                    <div style="margin-bottom:10px;padding:10px;background:rgba(0,232,150,.15);border-left:3px solid var(--gr);border-radius:4px">
+                        <div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;margin-bottom:4px">Headline Insight</div>
+                        <div style="font-size:9px;color:var(--tx1);line-height:1.5">${i.headline}</div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <!-- ANALYST INSIGHTS - 8 BULLETS -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                    <div style="font-size:12px;font-weight:700;color:var(--gr);margin-bottom:10px">📈 Detailed Analysis</div>
+                    
+                    ${i.bullets && i.bullets.length > 0 ? i.bullets.map((b, idx) => {
+                        const colors = [
+                            {bg: 'rgba(0,242,255,.1)', border: 'var(--ac)'},      // VALUATION - Cyan
+                            {bg: 'rgba(0,232,150,.1)', border: 'var(--gr)'},      // GROWTH QUALITY - Green
+                            {bg: 'rgba(255,191,71,.1)', border: 'var(--yw)'},     // MARGIN RISK - Yellow
+                            {bg: 'rgba(0,242,255,.1)', border: 'var(--ac)'},      // CASH FLOW - Cyan
+                            {bg: 'rgba(0,232,150,.1)', border: 'var(--gr)'},      // BALANCE SHEET - Green
+                            {bg: 'rgba(255,191,71,.1)', border: 'var(--yw)'},     // CATALYST - Yellow
+                            {bg: 'rgba(0,242,255,.1)', border: 'var(--ac)'},      // MOAT - Cyan
+                            {bg: 'rgba(255,107,133,.1)', border: 'var(--rd)'}     // RISKS - Red
+                        ];
+                        const color = colors[idx] || colors[0];
+                        return `
+                        <div style="margin-bottom:10px;padding:10px;background:${color.bg};border-left:3px solid ${color.border};border-radius:4px">
+                            <div style="font-size:10px;font-weight:700;color:${color.border};text-transform:uppercase;margin-bottom:6px">
+                                ${b.cat || 'Bullet ' + (idx+1)}
+                            </div>
+                            <div style="font-size:9px;color:var(--tx3);line-height:1.5">${b.text || ''}</div>
+                        </div>
+                        `;
+                    }).join('') : '<div style="color:var(--tx3);font-size:9px">No detailed insights available</div>'}
+                </div>
+                
+                <!-- GUIDANCE SECTION -->
+                ${g.quarter ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                    <div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px">💼 Management Guidance</div>
+                    
+                    ${g.quarter ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Quarter</div>
+                        <div style="font-size:9px;color:var(--tx3)">${g.quarter}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.revenue_guidance ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Revenue Guidance</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.3">${g.revenue_guidance}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.growth_target ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Growth Target</div>
+                        <div style="font-size:9px;color:var(--tx3)">${g.growth_target}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.margin_guidance ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Margin Guidance</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.3">${g.margin_guidance}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.capex_plan ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Capex Plan</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.3">${g.capex_plan}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.expansion ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Expansion Plans</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.3">${g.expansion}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.tone ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Management Tone</div>
+                        <div style="font-size:9px;color:var(--tx3)">${g.tone}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.key_commitments ? `
+                    <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(26,35,50,.2)">
+                        <div style="font-size:9px;font-weight:700;color:var(--ac)">Key Commitments</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.3">${g.key_commitments}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${g.risks_flagged ? `
+                    <div>
+                        <div style="font-size:9px;font-weight:700;color:var(--rd)">Risks Flagged</div>
+                        <div style="font-size:9px;color:var(--tx3);line-height:1.3">${g.risks_flagged}</div>
+                    </div>
+                    ` : ''}
+                </div>
+                ` : ''}
+                
+                <div style="text-align:center;padding:20px;color:var(--tx3);font-size:8px">
+                    📊 Data-Driven Insights | Updated: ${g.updated || i.updated || 'N/A'}
+                </div>
+                
+                </div>
+            `;
+        }
     }
     
     document.getElementById('content').innerHTML = html;
