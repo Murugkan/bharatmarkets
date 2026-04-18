@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Onyx | Drill Analysis</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root{--bg:#060c18;--s1:#0a0e1a;--card:#0d1222;--b1:#1a2332;--tx1:#f0f6ff;--tx3:#7a8fa0;--ac:#00f2ff;--gr:#00e896;--rd:#ff6b85;--yw:#ffbf47}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:var(--bg);color:var(--tx1);font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden;padding-top:max(0px, env(safe-area-inset-top))}
+        
+        .container{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+        
+        .header{background:var(--s1);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0}
+        .header-left{flex:1;display:flex;align-items:center;gap:8px}
+        .header-title{font-size:14px;font-weight:800;color:var(--ac)}
+        .header-subtitle{font-size:9px;color:var(--tx3);margin-top:2px}
+        .header-price{text-align:right;display:flex;flex-direction:column}
+        .price-val{font-size:14px;font-weight:800}
+        .price-chg{font-size:10px;margin-top:2px}
+        
+        .tabs{background:var(--card);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;gap:8px;overflow-x:auto;flex-shrink:0}
+        .tabs::-webkit-scrollbar{height:4px}
+        .tabs::-webkit-scrollbar-track{background:var(--s1)}
+        .tabs::-webkit-scrollbar-thumb{background:var(--b1);border-radius:2px}
+        .tab{padding:8px 14px;background:transparent;border:1px solid var(--b1);border-radius:4px;color:var(--tx3);cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap;transition:all .2s}
+        .tab.active{background:rgba(0,242,255,.1);border-color:var(--ac);color:var(--ac)}
+        .tab:hover:not(.active){color:var(--tx1)}
+        
+        .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch}
+        .content::-webkit-scrollbar{width:14px;background:transparent}
+        .content::-webkit-scrollbar-track{background:transparent}
+        .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
+        .content::-webkit-scrollbar-thumb:hover{background:var(--ac);border-color:var(--ac);background-clip:padding-box}
+        
+        .footer{position:fixed;bottom:0;width:100%;background:rgba(0,0,0,.95);border-top:1px solid var(--b1);display:flex;justify-content:space-around;padding:12px 0;z-index:100;flex-shrink:0}
+        .footer-btn{text-decoration:none;color:#666;display:flex;flex-direction:column;align-items:center;width:33%;font-size:8px;text-transform:uppercase;font-weight:800;transition:color .2s}
+        .footer-btn.active{color:var(--ac)}
+        
+        .back-btn{background:none;border:none;color:var(--tx1);font-size:18px;cursor:pointer;padding:2px 4px;line-height:1}
+        
+        .placeholder{text-align:center;padding:40px 20px;color:var(--tx3)}
+        .placeholder-emoji{font-size:32px;margin-bottom:12px}
+        .tbd{color:#ff9800;opacity:.7;font-weight:700}
+        
+        /* TBD Link - Clickable */
+        .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
+        .tbd-link:hover{opacity:1;color:#ffb347;border-bottom:1px solid #ffb347}
+        
+        /* Metric Value Colors */
+        .val-positive{color:var(--gr);font-weight:700}
+        .val-negative{color:var(--rd);font-weight:700}
+        .val-neutral{color:var(--ac);font-weight:700}
+        .val-warning{color:var(--yw);font-weight:700}
+        
+        /* Metric Row */
+        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(26,35,50,.2);color:var(--tx3);font-size:11px;line-height:1.3}
+        .metric-row:last-child{border-bottom:none}
+        .metric-label{flex:1;font-size:10px}
+        .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:11px}
+        
+        /* Section Container for Two Columns */
+        .section-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+        .section-row > div{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
+        
+        /* Weightage Summary */
+        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:0 6px 6px 6px;margin-bottom:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+        .weightage-box{text-align:center;padding:4px;background:rgba(0,0,0,.3);border-radius:4px}
+        .weightage-label{font-size:7px;color:var(--tx3);text-transform:uppercase;margin-bottom:2px}
+        .weightage-value{font-size:18px;font-weight:800}
+        .pos-box .weightage-value{color:var(--gr)}
+        .neg-box .weightage-value{color:var(--rd)}
+        .signal-box .weightage-value{color:var(--ac);font-size:14px}
+        .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="header-left">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <div>
+                <div class="header-title" id="ticker">—</div>
+                <div class="header-subtitle" id="company">—</div>
+            </div>
+        </div>
+        <div class="header-price">
+            <div class="price-val" id="ltp">₹—</div>
+            <div class="price-chg" id="chg" style="color:var(--gr)">—</div>
+        </div>
+    </div>
+    
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+        <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
+        <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
+        <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
+    </div>
+    
+    <div class="content" id="content"></div>
+</div>
+
+<div class="footer">
+    <a href="index.html" class="footer-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><span>Portfolio</span></a>
+    <a href="data.html" class="footer-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg><span>Data</span></a>
+    <a href="analysis.html" class="footer-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Analysis</span></a>
+</div>
+
+<script>
+const DB = "OnyxPortfolioDB";
+const STORE = "Stocks";
+let currentStock = null;
+let currentTab = "overview";
+let dataSource = null; // Track where data comes from: 'db' or 'json'
+
+// Helpers
+const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
+const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
+const get = (obj, ...keys) => {
+    for (let k of keys) {
+        if (obj[k] !== undefined) return obj[k];
+    }
+    return '—';
+};
+
+// Generate TBD link with search capability
+const tbdLink = (label) => {
+    const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
+    const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
+};
+
+// Get URL param
+const urlParams = new URLSearchParams(window.location.search);
+const ticker = urlParams.get('drill') || urlParams.get('t');
+
+console.log('URL Search:', window.location.search);
+console.log('Ticker from URL:', ticker);
+
+// Load data
+async function loadStock() {
+    if (!ticker) {
+        // Try to get list of stocks for user guidance
+        let stockList = 'ABCAPITAL, ABFRL, ADANIPORTS, ... (load data.html first)';
+        try {
+            const db = await new Promise(r => {
+                const req = indexedDB.open(DB);
+                req.onsuccess = () => r(req.result);
+                req.onerror = () => r(null);
+            });
+            if (db && db.objectStoreNames.contains(STORE)) {
+                const tx = db.transaction(STORE, 'readonly');
+                const store = tx.objectStore(STORE);
+                const keys = await new Promise(r => {
+                    const req = store.getAllKeys();
+                    req.onsuccess = () => r(req.result);
+                    req.onerror = () => r([]);
+                });
+                if (keys.length > 0) {
+                    stockList = keys.slice(0, 10).join(', ') + (keys.length > 10 ? '...' : '');
+                }
+            }
+        } catch (e) {}
+        
+        document.getElementById('content').innerHTML = `
+            <div class="placeholder">
+                <div class="placeholder-emoji">❌</div>
+                <div>No stock selected</div>
+                <div style="font-size:9px;color:#ff9800;margin-top:8px">
+                    Use: analysis.html?drill=TICKER<br/>
+                    Example: analysis.html?drill=ABCAPITAL<br/>
+                    Available: ${stockList}
+                </div>
+            </div>
+        `;
+        console.error('No ticker in URL. Usage: analysis.html?drill=TICKER');
+        return;
+    }
+    
+    console.log('Loading ticker:', ticker);
+    
+    const db = await new Promise(r => {
+        const req = indexedDB.open(DB);
+        req.onsuccess = () => {
+            console.log('DB opened');
+            r(req.result);
+        };
+        req.onerror = () => {
+            console.error('DB error:', req.error);
+            r(null);
+        };
+    });
+    
+    if (!db) {
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">⚠️</div>Database error</div>';
+        return;
+    }
+    
+    try {
+        const tx = db.transaction(STORE, 'readonly');
+        const store = tx.objectStore(STORE);
+        
+        currentStock = await new Promise(r => {
+            const req = store.get(ticker);
+            req.onsuccess = () => {
+                console.log('Stock loaded:', req.result);
+                r(req.result);
+            };
+            req.onerror = () => {
+                console.error('Store error:', req.error);
+                r(null);
+            };
+        });
+        
+        if (!currentStock) {
+            console.error('Stock not found:', ticker);
+            document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
+            return;
+        }
+        
+        // Determine data source
+        dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
+        console.log('Data Source:', dataSource);
+        console.log('Full stock object:', currentStock);
+        
+        console.log('Rendering header and overview...');
+        renderHeader();
+        
+        // Load guidance data from localStorage or external source
+        loadGuidanceData(ticker);
+        
+        renderTab('overview');
+    } catch(e) {
+        console.error('Error:', e);
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
+    }
+}
+
+// Render header
+function renderHeader() {
+    const s = currentStock;
+    document.getElementById('ticker').textContent = get(s, 'ticker', 'sym', 'symbol');
+    document.getElementById('company').textContent = get(s, 'name', 'company');
+    document.getElementById('ltp').textContent = '₹' + fmt(get(s, 'ltp', 'price'));
+    
+    const chg = num(get(s, 'changePct', 'change', 'chg1d'));
+    const chgEl = document.getElementById('chg');
+    chgEl.innerHTML = `${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%`;
+    chgEl.style.color = chg >= 0 ? 'var(--gr)' : 'var(--rd)';
+}
+
+// Load guidance data
+async function loadGuidanceData(ticker) {
+    try {
+        // Try to fetch from guidance.json (same domain)
+        const response = await fetch('guidance.json');
+        if (response.ok) {
+            const data = await response.json();
+            if (data[ticker]) {
+                localStorage.setItem(`guidance_${ticker}`, JSON.stringify(data[ticker]));
+                console.log('Guidance data cached for', ticker);
+            }
+        }
+    } catch (e) {
+        console.log('Guidance data not available or offline:', e.message);
+    }
+}
+
+// Switch tabs
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    renderTab(tab);
+}
+
+// Render tabs
+function renderTab(tab) {
+    const s = currentStock;
+    let html = '';
+    
+    if (tab === 'overview') {
+        const pe = num(get(s, 'pe'));
+        const pb = num(get(s, 'pb'));
+        const roe = num(get(s, 'roe'));
+        const roce = num(get(s, 'roce'));
+        const opm = num(get(s, 'opm_pct'));
+        const npm = num(get(s, 'npm_pct'));
+        const ltp = num(get(s, 'ltp', 'price'));
+        const mcap = num(get(s, 'mcap'));
+        const sales = num(get(s, 'sales'));
+        const ebitda = num(get(s, 'ebitda'));
+        const cfo = num(get(s, 'cfo'));
+        const fcf = num(get(s, 'fcf'));
+        const eps = num(get(s, 'eps'));
+        const prom = num(get(s, 'prom', 'prom_pct'));
+        const fii = num(get(s, 'fii', 'fii_pct'));
+        const dii = num(get(s, 'dii', 'dii_pct'));
+        const quarterly = get(s, 'quarterly') || [];
+        
+        // EXTRACT: Positive & Negative signals, Signal
+        const posSignals = num(get(s, 'pos', 'positive', 0));
+        const negSignals = num(get(s, 'neg', 'negative', 0));
+        const signal = get(s, 'signal', 'Signal', 'BUY');
+        const totalSignals = posSignals + negSignals;
+        const posWeightage = totalSignals > 0 ? Math.round((posSignals / totalSignals) * 100) : 0;
+        const negWeightage = totalSignals > 0 ? Math.round((negSignals / totalSignals) * 100) : 0;
+        
+        // EXTRACT: Total Debt from quarterly ONLY (never use pre-calculated field)
+        let totalDebt = 0;
+        if (quarterly && quarterly.length > 0) {
+            for (let i = quarterly.length - 1; i >= 0; i--) {
+                if (quarterly[i].debt && num(quarterly[i].debt) > 0) {
+                    totalDebt = num(quarterly[i].debt);
+                    break;
+                }
+            }
+        }
+        
+        // CALCULATE: Operating Margin Trend from quarterly
+        let marginTrend = '—';
+        if (quarterly && quarterly.length >= 2) {
+            const recent = quarterly.slice(-3).map(q => num(q.opm || 0));
+            if (recent.length > 0) {
+                marginTrend = recent.map(m => fmt(m)).join('% → ') + '%';
+            }
+        }
+        
+        // CALCULATE: Revenue CAGR (3Y)
+        let revenueCagr = 0;
+        if (quarterly && quarterly.length >= 4) {
+            const oldest = num(quarterly[0].rev || 0);
+            const newest = num(quarterly[quarterly.length - 1].rev || 0);
+            if (oldest > 0 && newest > 0) {
+                const years = (quarterly.length - 1) / 4;
+                revenueCagr = (Math.pow(newest / oldest, 1 / years) - 1) * 100;
+            }
+        }
+        
+        // CALCULATE: Earnings CAGR (3Y)
+        let earningsCagr = 0;
+        if (quarterly && quarterly.length >= 4) {
+            const oldestEps = num(quarterly[0].eps || 0);
+            const newestEps = num(quarterly[quarterly.length - 1].eps || 0);
+            if (oldestEps > 0 && newestEps > 0) {
+                const years = (quarterly.length - 1) / 4;
+                earningsCagr = (Math.pow(newestEps / oldestEps, 1 / years) - 1) * 100;
+            }
+        }
+        
+        // CALCULATE: Cash Conversion
+        let cashConversion = 0;
+        if (quarterly && quarterly.length > 0) {
+            const latestNet = num(quarterly[quarterly.length - 1].net || 0);
+            if (latestNet > 0 && cfo > 0) {
+                cashConversion = (cfo / latestNet) * 100;
+            }
+        }
+        
+        // CALCULATE: Interest Coverage = EBIT / Interest Expense
+        let interestCoverage = 0;
+        if (quarterly && quarterly.length > 0) {
+            const latestEbit = num(quarterly[quarterly.length - 1].ebit || 0);
+            const interestExp = num(get(s, 'interest_exp'));
+            if (latestEbit > 0 && interestExp > 0) {
+                interestCoverage = latestEbit / interestExp;
+            }
+        }
+        
+        // CALCULATE: Debt/EBITDA = totalDebt / ebitda
+        let debtToEbitda = 0;
+        if (totalDebt > 0 && ebitda > 0) {
+            debtToEbitda = totalDebt / ebitda;
+        }
+        
+        // CALCULATE: FCF Yield = (fcf / mcap) * 100
+        const fcfYield = mcap > 0 && fcf > 0 ? ((fcf / mcap) * 100) : 0;
+        
+        // CALCULATE: EV/EBITDA = (mcap + totalDebt - cash) / ebitda
+        let evEbitda = 0;
+        if (mcap > 0 && ebitda > 0 && totalDebt > 0) {
+            const cash = num(get(s, 'cash', 0)); // Default to 0 if not available
+            const ev = mcap + totalDebt - (cash > 0 ? cash : 0);
+            evEbitda = ev / ebitda;
+        }
+        
+        html = `
+            <div style="padding:8px 0;padding-bottom:80px">
+            
+            <!-- WEIGHTAGE & SIGNAL SUMMARY -->
+            <div class="weightage-container">
+                <div class="weightage-box pos-box">
+                    <div class="weightage-label">Positive</div>
+                    <div class="weightage-value">${posWeightage}%</div>
+                    <div style="font-size:7px;color:var(--tx3)">+${posSignals}</div>
+                </div>
+                <div class="weightage-box neg-box">
+                    <div class="weightage-label">Negative</div>
+                    <div class="weightage-value">${negWeightage}%</div>
+                    <div style="font-size:7px;color:var(--tx3)">-${negSignals}</div>
+                </div>
+                <div class="weightage-box signal-box">
+                    <div class="weightage-label">Signal</div>
+                    <div class="weightage-value ${signal === 'BUY' ? 'val-positive' : signal === 'SELL' ? 'val-negative' : 'val-neutral'}">${signal}</div>
+                    <div class="signal-label">${signal === 'BUY' ? '📈 Bullish' : signal === 'SELL' ? '📉 Bearish' : '⚪ Neutral'}</div>
+                </div>
+            </div>
+            
+            <!-- ROW 1: Valuation + Quality -->
+            <div class="section-row">
+                <!-- VALUATION ANALYSIS -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📊 Valuation</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Price</div>
+                        <div class="metric-value val-neutral">₹${fmt(ltp)}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Fair Value</div>
+                        <div class="metric-value">${tbdLink('DCF Fair Value')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/E</div>
+                        <div class="metric-value ${pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning'}">${fmt(pe)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/B</div>
+                        <div class="metric-value ${pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning'}">${fmt(pb)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EV/EBITDA</div>
+                        <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">PEG</div>
+                        <div class="metric-value">${tbdLink('PEG Ratio')}</div>
+                    </div>
+                </div>
+                
+                <!-- QUALITY OF EARNINGS -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">⭐ Quality</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Op Margin</div>
+                        <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">ROIC</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">WACC</div>
+                        <div class="metric-value">${tbdLink('WACC')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Cash Conv</div>
+                        <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">FCF Yield</div>
+                        <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Q Score</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">A</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ROW 2: Growth + Health -->
+            <div class="section-row">
+                <!-- GROWTH TRAJECTORY -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📈 Growth</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Rev CAGR</div>
+                        <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EBITDA CAGR</div>
+                        <div class="metric-value">${tbdLink('EBITDA CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EPS CAGR</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">G Score</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'val-warning'}">B+</div>
+                    </div>
+                </div>
+                
+                <!-- FINANCIAL HEALTH -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">🏦 Health</div>
+                    <div class="metric-row">
+                        <div class="metric-label">D/EBITDA</div>
+                        <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Int Cover</div>
+                        <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Curr Ratio</div>
+                        <div class="metric-value">${tbdLink('Current Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Quick Ratio</div>
+                        <div class="metric-value">${tbdLink('Quick Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Credit</div>
+                        <div class="metric-value val-positive">AA-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ROW 3: Scale & Holdings (Full Width) -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📋 Scale & Holdings</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Revenue</div>
+                            <div class="metric-value val-neutral">₹${fmt(sales)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">EBITDA</div>
+                            <div class="metric-value val-neutral">₹${fmt(ebitda)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">Market Cap</div>
+                            <div class="metric-value val-neutral">₹${fmt(mcap)}Cr</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Promoter</div>
+                            <div class="metric-value ${prom > 50 ? 'val-positive' : prom > 30 ? 'val-neutral' : 'val-warning'}">${fmt(prom)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">FII</div>
+                            <div class="metric-value ${fii > 20 ? 'val-positive' : fii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(fii)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">DII</div>
+                            <div class="metric-value ${dii > 15 ? 'val-positive' : dii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(dii)}%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            </div>
+        `;
+    } else if (tab === 'technical') {
+        html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+    } else if (tab === 'fundamentals') {
+        // Fetch guidance data
+        let guidance = {};
+        try {
+            const cached = localStorage.getItem(`guidance_${s.ticker}`);
+            if (cached) {
+                guidance = JSON.parse(cached);
+            }
+        } catch (e) {
+            console.log('No cached guidance data');
+        }
+        
+        if (!guidance || !guidance.guidance) {
+            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Loading...</div></div>';
+        } else {
+            const g = guidance.guidance;
+            
+            html = `
+                <div style="padding:8px 0;padding-bottom:80px">
+                
+                <!-- PROFITABILITY SECTION -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--yw);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        📈 Profitability & Growth
+                    </div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Profitability Trends</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.profitability_trends || '—'}</span>
+                        </div>
+                        ${g.quarterly_momentum ? `
+                        <div style="display:flex;justify-content:space-between;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Quarterly Momentum</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.quarterly_momentum}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                
+                <!-- VALUATION & MARGINS -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        💰 Valuation & Margins
+                    </div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        ${g.margin_guidance ? `
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Margin Guidance</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.margin_guidance}</span>
+                        </div>
+                        ` : ''}
+                        ${g.valuation_relative_to_peers ? `
+                        <div style="display:flex;justify-content:space-between;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Valuation vs Peers</span>
+                            <span style="color:var(--gr);font-weight:700">${g.valuation_relative_to_peers}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                
+                <!-- FINANCIAL HEALTH -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--gr);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        🏦 Financial Health
+                    </div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Balance Sheet</span>
+                            <span style="color:var(--tx1)">${g.balance_sheet_health || '—'}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Cash Flow Quality</span>
+                            <span style="color:var(--tx1)">${g.cash_flow_quality || '—'}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Leverage Metrics</span>
+                            <span style="color:var(--tx1)">${g.leverage_metrics || '—'}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ADDITIONAL METRICS -->
+                ${g.dividend_sustainability || g.operational_efficiency ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--yw);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        📊 Other Metrics
+                    </div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        ${g.dividend_sustainability ? `
+                        <div style="padding:6px;background:rgba(0,0,0,.2);border-radius:4px;margin-bottom:6px">
+                            <span style="font-weight:700">🎁 Dividend Sustainability</span>
+                            <div style="margin-top:4px;color:var(--tx1)">${g.dividend_sustainability}</div>
+                        </div>
+                        ` : ''}
+                        ${g.operational_efficiency ? `
+                        <div style="padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span style="font-weight:700">⚙️ Operational Efficiency</span>
+                            <div style="margin-top:4px;color:var(--tx1)">${g.operational_efficiency}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                ` : ''}
+                
+                </div>
+            `;
+        }
+    } else if (tab === 'guidance') {
+        // Fetch guidance data
+        let guidance = {};
+        try {
+            const cached = localStorage.getItem(`guidance_${s.ticker}`);
+            if (cached) {
+                guidance = JSON.parse(cached);
+            }
+        } catch (e) {
+            console.log('No cached guidance data');
+        }
+        
+        if (!guidance || !guidance.insights) {
+            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Loading...</div></div>';
+        } else {
+            const g = guidance.guidance || {};
+            const i = guidance.insights;
+            
+            // Extract action + recommendation color
+            let actionColor = 'var(--ac)', actionBg = 'rgba(0,242,255,.15)';
+            if (i.action && i.action.toUpperCase().includes('BUY')) {
+                actionColor = 'var(--gr)'; actionBg = 'rgba(0,232,150,.15)';
+            } else if (i.action && i.action.toUpperCase().includes('REDUCE')) {
+                actionColor = 'var(--yw)'; actionBg = 'rgba(255,191,71,.15)';
+            } else if (i.action && i.action.toUpperCase().includes('EXIT')) {
+                actionColor = 'var(--rd)'; actionBg = 'rgba(255,107,133,.15)';
+            }
+            
+            html = `
+                <div style="padding:8px 0;padding-bottom:80px">
+                
+                <!-- INVESTMENT RECOMMENDATION - TOP PRIORITY -->
+                <div style="background:${actionBg};border:1px solid ${actionColor};border-radius:8px;padding:14px;margin-bottom:14px">
+                    <div style="font-size:12px;font-weight:900;color:${actionColor};margin-bottom:4px">
+                        ${i.action ? i.action.split('–')[0].trim() : 'HOLD'}
+                    </div>
+                    ${i.action ? `<div style="font-size:9px;color:var(--tx3);line-height:1.6">${i.action.split('–').slice(1).join('–').trim()}</div>` : ''}
+                </div>
+                
+                <!-- KEY INSIGHT HEADLINE -->
+                ${i.headline ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;border-left:3px solid var(--gr)">
+                    <div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:6px">📊 Key Thesis</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-weight:600">${i.headline}</div>
+                </div>
+                ` : ''}
+                
+                <!-- GROUPED ANALYSIS BULLETS -->
+                ${i.bullets && i.bullets.length > 0 ? `
+                <div style="margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px;padding:0 4px">💡 Analysis Breakdown</div>
+                    
+                    ${(() => {
+                        // Group bullets by category type
+                        const positive = i.bullets.filter(b => ['VALUATION', 'GROWTH QUALITY', 'CATALYST', 'OPPORTUNITY', 'MOAT'].includes(b.cat));
+                        const risk = i.bullets.filter(b => ['MARGIN RISK', 'RISKS', 'RED FLAG'].includes(b.cat));
+                        const quality = i.bullets.filter(b => ['CASH FLOW GENERATION', 'BALANCE SHEET STRENGTH'].includes(b.cat));
+                        const other = i.bullets.filter(b => !positive.includes(b) && !risk.includes(b) && !quality.includes(b));
+                        
+                        const categoryEmojis = {
+                            'VALUATION': '💰',
+                            'GROWTH QUALITY': '📈',
+                            'MARGIN RISK': '⚠️',
+                            'CASH FLOW GENERATION': '💵',
+                            'BALANCE SHEET STRENGTH': '🏦',
+                            'CATALYST': '🚀',
+                            'OPPORTUNITY': '⭐',
+                            'MOAT': '🛡️',
+                            'RISKS': '🔴',
+                            'RED FLAG': '🚩'
+                        };
+                        
+                        let grouped = '';
+                        
+                        // STRENGTHS GROUP
+                        if (positive.length > 0) {
+                            grouped += '<div style="margin-bottom:10px">';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--gr);margin-bottom:6px;text-transform:uppercase">✅ Strengths</div>';
+                            positive.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(0,232,150,.08);border-left:3px solid var(--gr);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--gr);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        // FINANCIAL QUALITY GROUP
+                        if (quality.length > 0) {
+                            grouped += '<div style="margin-bottom:10px">';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--ac);margin-bottom:6px;text-transform:uppercase">💰 Financial Quality</div>';
+                            quality.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(0,242,255,.08);border-left:3px solid var(--ac);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--ac);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        // RISKS GROUP
+                        if (risk.length > 0) {
+                            grouped += '<div style="margin-bottom:10px">';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--rd);margin-bottom:6px;text-transform:uppercase">⚠️ Risk Factors</div>';
+                            risk.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(255,107,133,.08);border-left:3px solid var(--rd);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--rd);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        // OTHER
+                        if (other.length > 0) {
+                            grouped += '<div>';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--yw);margin-bottom:6px;text-transform:uppercase">📊 Other Insights</div>';
+                            other.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(255,191,71,.08);border-left:3px solid var(--yw);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--yw);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        return grouped;
+                    })()}
+                </div>
+                ` : ''}
+                
+                <!-- CHANGE TRIGGER - ACTION POINT -->
+                ${i.trigger ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--yw)">
+                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px">⚡ Catalysts & Triggers</div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.6">${i.trigger}</div>
+                </div>
+                ` : ''}
+                
+                </div>
+            `;
+        }
+    }
+    
+    document.getElementById('content').innerHTML = html;
+}
+
+// Init
+loadStock();
+</script>
+
+</body>
+</html>
