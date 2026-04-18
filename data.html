@@ -1132,99 +1132,6 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         });
     }
 
-    function validateGuidanceInput(text) {
-        const errors = [];
-        const lines = text.trim().split('\n');
-        const parsed = {};
-        
-        // Parse into key-value pairs
-        lines.forEach(line => {
-            const colonIdx = line.indexOf(':');
-            if (colonIdx > 0) {
-                const key = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
-                const value = line.substring(colonIdx + 1).trim();
-                parsed[key] = value;
-            }
-        });
-        
-        // Check required fields
-        if (!parsed.updated) errors.push('missing: updated (DD/MM/YY)');
-        if (!parsed.quarter) errors.push('missing: quarter (Q3 FY26)');
-        if (!parsed.tone) errors.push('missing: tone (Positive/Cautious/Defensive)');
-        
-        // Check field lengths
-        if (parsed.summary && parsed.summary.length > 300) errors.push('summary too long (max 300 chars)');
-        if (parsed.revenue_guidance && parsed.revenue_guidance.length > 300) errors.push('revenue_guidance too long');
-        if (parsed.growth_target && parsed.growth_target.length > 200) errors.push('growth_target too long');
-        
-        // Check tone value
-        const validTones = ['Positive', 'Cautious', 'Defensive', 'Neutral', 'Aggressive'];
-        if (parsed.tone && !validTones.includes(parsed.tone)) {
-            errors.push(`tone invalid: use ${validTones.join('/')}`);
-        }
-        
-        return {
-            isValid: errors.length === 0,
-            errors,
-            parsed
-        };
-    }
-
-    function validateInsightsInput(text) {
-        const errors = [];
-        const lines = text.trim().split('\n');
-        const parsed = { bullets: [] };
-        let bulletCount = 0;
-        let currentBullet = null;
-        
-        // Parse
-        lines.forEach(line => {
-            const colonIdx = line.indexOf(':');
-            if (colonIdx > 0) {
-                const key = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
-                const value = line.substring(colonIdx + 1).trim();
-                
-                if (key.startsWith('bullet') && key.includes('category')) {
-                    if (currentBullet) parsed.bullets.push(currentBullet);
-                    bulletCount++;
-                    currentBullet = { cat: value, text: '' };
-                } else if (key.startsWith('bullet') && key.includes('text')) {
-                    if (currentBullet) currentBullet.text = value;
-                } else {
-                    parsed[key] = value;
-                }
-            }
-        });
-        if (currentBullet && currentBullet.text) parsed.bullets.push(currentBullet);
-        
-        // Validate
-        if (!parsed.action) errors.push('missing: action (BUY/HOLD/REDUCE/EXIT)');
-        if (!parsed.headline) errors.push('missing: headline');
-        if (!parsed.trigger) errors.push('missing: trigger');
-        
-        if (parsed.bullets.length < 5) errors.push(`need 5+ bullets (have ${parsed.bullets.length})`);
-        if (parsed.bullets.length > 8) errors.push(`max 8 bullets (have ${parsed.bullets.length})`);
-        
-        // Check each bullet
-        parsed.bullets.forEach((b, i) => {
-            if (!b.cat) errors.push(`bullet ${i + 1}: missing category`);
-            if (!b.text || b.text.length < 20) errors.push(`bullet ${i + 1}: text too short`);
-        });
-        
-        // Check action starts with valid type
-        const validActions = ['BUY', 'HOLD', 'REDUCE', 'EXIT'];
-        const actionType = parsed.action?.split(' ')[0]?.toUpperCase();
-        if (parsed.action && !validActions.includes(actionType)) {
-            errors.push(`action must start with: ${validActions.join('/')}`);
-        }
-        
-        return {
-            isValid: errors.length === 0,
-            errors,
-            parsed
-        };
-    }
-    
     function showGuidanceSaveModal(ticker) {
         var pat = document.getElementById('patToken').value;
         if (!pat) {
@@ -1234,14 +1141,6 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         
         var response = prompt(`Paste guidance response for ${ticker}:`);
         if (!response) return;
-        
-        // VALIDATE before save
-        var validation = validateGuidanceInput(response);
-        if (!validation.isValid) {
-            showToast(`❌ ${validation.errors[0]}`);
-            console.error('Guidance validation failed:', validation);
-            return;
-        }
         
         updateStatusButton('⏳ Saving');
         saveGuidanceToGitHub(ticker, response, pat);
@@ -1257,14 +1156,6 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         var response = prompt(`Paste insights response for ${ticker}:`);
         if (!response) return;
         
-        // VALIDATE before save
-        var validation = validateInsightsInput(response);
-        if (!validation.isValid) {
-            showToast(`❌ ${validation.errors[0]}`);
-            console.error('Insights validation failed:', validation);
-            return;
-        }
-        
         updateStatusButton('⏳ Saving');
         saveInsightsToGitHub(ticker, response, pat);
     }
@@ -1275,21 +1166,43 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         var newGuidance = {};
         try {
             var lines = guidanceText.trim().split('\n');
-            lines.forEach(line => {
+            var currentKey = null;
+            var currentValue = '';
+            
+            lines.forEach((line, idx) => {
+                line = line.trim();
+                if (!line) return; // skip empty
+                
                 var colonIdx = line.indexOf(':');
                 if (colonIdx > 0) {
-                    var key = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
-                    var value = line.substring(colonIdx + 1).trim();
+                    // This is a new field
+                    if (currentKey) {
+                        // Store previous field
+                        newGuidance[currentKey] = currentValue.trim();
+                    }
                     
-                    if (key === 'key_commitments' && value) {
-                        newGuidance[key] = value.split(';').map(s => s.trim());
-                    } else if (key === 'risks_flagged' && value) {
-                        newGuidance[key] = value.split(',').map(s => s.trim());
-                    } else {
-                        newGuidance[key] = value || null;
+                    currentKey = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
+                    currentValue = line.substring(colonIdx + 1).trim();
+                } else {
+                    // Continuation of previous value
+                    if (currentKey) {
+                        currentValue += ' ' + line;
                     }
                 }
             });
+            
+            // Store last field
+            if (currentKey) {
+                newGuidance[currentKey] = currentValue.trim();
+            }
+            
+            // Split arrays if detected
+            if (newGuidance.key_commitments && typeof newGuidance.key_commitments === 'string') {
+                newGuidance.key_commitments = newGuidance.key_commitments.split(/[;,]/).map(s => s.trim()).filter(s => s);
+            }
+            if (newGuidance.risks_flagged && typeof newGuidance.risks_flagged === 'string') {
+                newGuidance.risks_flagged = newGuidance.risks_flagged.split(/[;,]/).map(s => s.trim()).filter(s => s);
+            }
             
         } catch(e) {
             showToast(`❌ Parse error: ${e.message}`);
@@ -1352,36 +1265,96 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         var newInsights = { bullets: [] };
         try {
             var lines = insightsText.trim().split('\n');
-            var currentBullet = null;
+            var currentKey = null;
+            var currentValue = '';
+            var rawFields = {};
             
-            lines.forEach(line => {
+            // Parse into key-value pairs (allow multi-line values)
+            lines.forEach((line, idx) => {
+                line = line.trim();
+                if (!line) return;
+                
                 var colonIdx = line.indexOf(':');
                 if (colonIdx > 0) {
-                    var key = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
-                    var value = line.substring(colonIdx + 1).trim();
-                    
-                    if (key.startsWith('bullet') && key.includes('category')) {
-                        if (currentBullet) {
-                            newInsights.bullets.push(currentBullet);
-                        }
-                        currentBullet = { cat: value, text: '' };
-                    } else if (key.startsWith('bullet') && key.includes('text')) {
-                        if (currentBullet) {
-                            currentBullet.text = value;
-                        }
-                    } else {
-                        newInsights[key] = value || null;
+                    // New field
+                    if (currentKey) {
+                        rawFields[currentKey] = currentValue.trim();
+                    }
+                    currentKey = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
+                    currentValue = line.substring(colonIdx + 1).trim();
+                } else {
+                    // Continuation
+                    if (currentKey) {
+                        currentValue += ' ' + line;
                     }
                 }
             });
-            
-            if (currentBullet && currentBullet.text) {
-                newInsights.bullets.push(currentBullet);
+            if (currentKey) {
+                rawFields[currentKey] = currentValue.trim();
             }
+            
+            // Extract top-level fields
+            newInsights.action = rawFields.action || null;
+            newInsights.trigger = rawFields.trigger || null;
+            newInsights.headline = rawFields.headline || null;
+            
+            // Extract bullets - look for patterns like "BULLET 1 CATEGORY", "BULLET 1 TEXT", etc.
+            var bulletMap = {};
+            Object.keys(rawFields).forEach(key => {
+                var match = key.match(/bullet_(\d+)_(category|text)/);
+                if (match) {
+                    var bulletNum = parseInt(match[1]);
+                    var field = match[2];
+                    if (!bulletMap[bulletNum]) bulletMap[bulletNum] = {};
+                    bulletMap[bulletNum][field] = rawFields[key];
+                }
+            });
+            
+            // Also try to extract bullets from lines starting with category names
+            var categories = ['VALUATION', 'GROWTH QUALITY', 'MARGIN RISK', 'CASH FLOW GENERATION', 
+                             'BALANCE SHEET STRENGTH', 'CATALYST', 'OPPORTUNITY', 'MOAT', 'RISKS', 'RED FLAG'];
+            var currentBullet = null;
+            
+            lines.forEach(line => {
+                var trimmed = line.trim();
+                // Check if line starts with a category
+                var categoryMatch = categories.find(cat => trimmed.startsWith(cat));
+                if (categoryMatch) {
+                    // New bullet
+                    if (currentBullet) {
+                        if (!bulletMap[Object.keys(bulletMap).length + 1]) {
+                            bulletMap[Object.keys(bulletMap).length + 1] = currentBullet;
+                        }
+                    }
+                    currentBullet = { 
+                        cat: categoryMatch,
+                        text: trimmed.substring(categoryMatch.length).trim() 
+                    };
+                } else if (currentBullet && trimmed && !trimmed.includes(':')) {
+                    // Continuation of bullet text
+                    currentBullet.text += ' ' + trimmed;
+                }
+            });
+            if (currentBullet && currentBullet.text) {
+                bulletMap[Object.keys(bulletMap).length + 1] = currentBullet;
+            }
+            
+            // Convert bulletMap to array
+            Object.keys(bulletMap)
+                .sort((a, b) => parseInt(a) - parseInt(b))
+                .forEach(key => {
+                    if (bulletMap[key].cat && bulletMap[key].text) {
+                        newInsights.bullets.push({
+                            cat: bulletMap[key].cat,
+                            text: bulletMap[key].text.substring(0, 500) // Limit to 500 chars
+                        });
+                    }
+                });
             
         } catch(e) {
             showToast(`❌ Parse error: ${e.message}`);
             updateStatusButton('❌ Error');
+            console.error('Insights parse error:', e);
             return;
         }
         
