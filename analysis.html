@@ -115,8 +115,37 @@ async function init() {
         addDebug(`📋 S.selStock: ${S.selStock?.ticker || 'undefined'}`);
         addDebug(`🎨 Calling renderDrill...`);
         try {
-          renderDrill(document.getElementById('app'));
-          addDebug(`✅ renderDrill completed`);
+          // Wrap renderDrill with additional error handling
+          const appEl = document.getElementById('app');
+          const s = S.selStock;
+          
+          // First try to render the drill header
+          addDebug(`📝 Rendering drill header for ${s.ticker}...`);
+          
+          try {
+            renderDrill(appEl);
+            addDebug(`✅ renderDrill completed`);
+          } catch (drillErr) {
+            addDebug(`❌ renderDrill failed: ${drillErr.message}`);
+            addDebug(`📍 Error at: ${drillErr.stack?.split('\n')[1] || 'unknown'}`);
+            console.error('Full renderDrill error:', drillErr);
+            
+            // Show error and fallback UI
+            appEl.innerHTML = `<div style="padding:20px; color:#ff4d6d; font-size:11px;">
+              <div>❌ Drill view error</div>
+              <div style="margin-top:10px; font-size:10px;">
+                Error: ${drillErr.message}<br>
+                Stack: ${drillErr.stack?.split('\n')[0] || 'no stack'}
+              </div>
+              <div style="margin-top:20px;">
+                <strong>Stock Data:</strong><br>
+                Ticker: ${s.ticker}<br>
+                Name: ${s.name}<br>
+                LTP: ${s.ltp}<br>
+                Sector: ${s.sector}
+              </div>
+            </div>`;
+          }
         } catch (err) {
           addDebug(`❌ renderDrill error: ${err.message}`);
           console.error('renderDrill error:', err);

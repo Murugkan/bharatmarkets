@@ -238,3 +238,20 @@ if (typeof renderNewsTab === 'undefined') {
 if (typeof renderInsights === 'undefined') {
   window.renderInsights = (s) => `<div style="padding:12px; color:#8ab4f8;">Insights tab - Stock: ${s.symbol}</div>`;
 }
+
+// ===== WRAPPER FOR renderDC =====
+if (typeof renderDC === 'undefined') {
+  window.renderDC = (s) => {
+    try {
+      if (S.drillTab === 'overview' && typeof renderOverview !== 'undefined') return renderOverview(s);
+      if (S.drillTab === 'technical' && typeof renderTechnical !== 'undefined') return renderTechnical(s);
+      if (S.drillTab === 'fundamentals' && typeof renderFundamentals !== 'undefined') return renderFundamentals(s);
+      if (S.drillTab === 'news' && typeof renderNewsTab !== 'undefined') return renderNewsTab(s);
+      if (S.drillTab === 'insights' && typeof renderInsights !== 'undefined') return renderInsights(s);
+      return `<div style="padding:12px; color:#8ab4f8;">Tab: ${S.drillTab} - Stock: ${s.symbol}</div>`;
+    } catch (err) {
+      console.error(`renderDC error for tab ${S.drillTab}:`, err);
+      return `<div style="padding:12px; color:#ff4d6d;">Error in ${S.drillTab} tab: ${err.message}</div>`;
+    }
+  };
+}
