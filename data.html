@@ -1224,10 +1224,11 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             
             if (!content[ticker]) content[ticker] = {};
             
+            // MERGE new guidance into existing, don't replace
             newGuidance.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
-            content[ticker].guidance = newGuidance;
+            content[ticker].guidance = { ...content[ticker].guidance, ...newGuidance };
             concallTimestamps[ticker] = new Date().toISOString();
-            guidanceData[ticker] = { ...guidanceData[ticker], guidance: newGuidance };
+            guidanceData[ticker] = { ...guidanceData[ticker], guidance: content[ticker].guidance };
             saveGuidanceToStorage();
             
             const jsonString = JSON.stringify(content, null, 2);
@@ -1372,10 +1373,11 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             
             if (!content[ticker]) content[ticker] = {};
             
+            // MERGE new insights into existing, don't replace
             newInsights.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
-            content[ticker].insights = newInsights;
+            content[ticker].insights = { ...content[ticker].insights, ...newInsights };
             insightsTimestamps[ticker] = new Date().toISOString();
-            guidanceData[ticker] = { ...guidanceData[ticker], insights: newInsights };
+            guidanceData[ticker] = { ...guidanceData[ticker], insights: content[ticker].insights };
             saveGuidanceToStorage();
             
             const jsonString = JSON.stringify(content, null, 2);
