@@ -182,6 +182,14 @@ function renderTab(tab) {
         const mcap = num(get(s, 'mcap'));
         const sales = num(get(s, 'sales'));
         const ebitda = num(get(s, 'ebitda'));
+        const cfo = num(get(s, 'cfo'));
+        const eps = num(get(s, 'eps'));
+        const prom = num(get(s, 'prom'));
+        const fii = num(get(s, 'fii'));
+        const dii = num(get(s, 'dii'));
+        
+        // CALCULATE: EBITDA Margin
+        const ebitdaMargin = sales > 0 ? ((ebitda / sales) * 100) : 0;
         
         html = `
             <div style="padding-top:4px">
@@ -191,8 +199,8 @@ function renderTab(tab) {
                 <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📊 Valuation Analysis</div>
                 <div style="color:var(--tx1)">Current Price: <strong style="color:var(--ac)">₹${fmt(ltp)}</strong></div>
                 <div style="color:var(--tx3)">Fair Value (DCF): <span class="tbd">TBD</span> | Upside: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">P/E Multiple: <strong>${fmt(pe)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Price/Book: <strong>${fmt(pb)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">P/E Multiple: <strong style="color:var(--tx1)">${fmt(pe)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Price/Book: <strong style="color:var(--tx1)">${fmt(pb)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">EV/EBITDA: <span class="tbd">TBD</span> | Peer Avg: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">PEG Ratio: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
             </div>
@@ -200,45 +208,44 @@ function renderTab(tab) {
             <!-- QUALITY OF EARNINGS -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
                 <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">⭐ Quality of Earnings</div>
-                <div style="color:var(--tx3)">Operating Margin Trend: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">ROIC: <strong>${fmt(roce)}%</strong> vs WACC: <span class="tbd">TBD</span> | Spread: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Cash Conversion: <span class="tbd">TBD</span> of Net Profit</div>
-                <div style="color:var(--tx3)">Free Cash Flow Yield: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx1)">Quality Score: <strong style="color:${roe > 20 ? 'var(--gr)' : roe > 15 ? 'var(--yw)' : 'var(--tx3)'}">A</strong> | <span style="color:var(--tx3)">(Sustainable earnings growth)</span></div>
+                <div style="color:var(--tx3)">Operating Margin: <strong style="color:var(--tx1)">${fmt(opm)}%</strong> | EBITDA Margin: <strong style="color:var(--tx1)">${fmt(ebitdaMargin)}%</strong></div>
+                <div style="color:var(--tx3)">ROIC: <strong style="color:var(--tx1)">${fmt(roce)}%</strong> | ROE: <strong style="color:var(--tx1)">${fmt(roe)}%</strong></div>
+                <div style="color:var(--tx3)">Net Profit Margin: <strong style="color:var(--tx1)">${fmt(npm)}%</strong></div>
+                <div style="color:var(--tx3)">Cash Flow: <strong style="color:var(--tx1)">₹${fmt(cfo)}Cr</strong> from operations</div>
+                <div style="color:var(--tx1)">Quality Score: <strong style="color:${npm > 12 ? 'var(--gr)' : npm > 8 ? 'var(--yw)' : 'var(--tx3)'}">A</strong> | <span style="color:var(--tx3)">(Strong profitability)</span></div>
             </div>
             
-            <!-- GROWTH TRAJECTORY -->
+            <!-- GROWTH & SCALE -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📈 Growth Trajectory</div>
-                <div style="color:var(--tx3)">Revenue CAGR (3Y): <span class="tbd">TBD</span> | EBITDA CAGR: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Earnings CAGR (3Y): <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Projected Growth (FY25E): Revenue <span class="tbd">TBD</span>, EPS <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Long-term Growth Potential: <span class="tbd">TBD</span> CAGR</div>
-                <div style="color:var(--tx1)">Growth Score: <strong style="color:var(--yw)">B+</strong> | <span style="color:var(--tx3)">(Steady, above-market)</span></div>
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📈 Business Scale</div>
+                <div style="color:var(--tx3)">Revenue (TTM): <strong style="color:var(--tx1)">₹${fmt(sales)}Cr</strong></div>
+                <div style="color:var(--tx3)">EBITDA: <strong style="color:var(--tx1)">₹${fmt(ebitda)}Cr</strong> (${fmt(ebitdaMargin)}% of revenue)</div>
+                <div style="color:var(--tx3)">Earnings Per Share: <strong style="color:var(--tx1)">₹${fmt(eps)}</strong></div>
+                <div style="color:var(--tx3)">Market Cap: <strong style="color:var(--tx1)">₹${fmt(mcap)}Cr</strong></div>
+                <div style="color:var(--tx1)">Scale: <strong style="color:${mcap > 50000 ? 'var(--gr)' : mcap > 10000 ? 'var(--yw)' : 'var(--tx3)'}">LARGE CAP</strong> | <span style="color:var(--tx3)">(Strong fundamentals)</span></div>
             </div>
             
-            <!-- FINANCIAL HEALTH -->
+            <!-- STAKEHOLDER HOLDINGS -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">🏦 Financial Health</div>
-                <div style="color:var(--tx3)">Debt/EBITDA: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Interest Coverage: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Current Ratio: <span class="tbd">TBD</span> | Quick Ratio: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">Days Inventory: <span class="tbd">TBD</span> | Receivables: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx1)">Credit Rating: <strong style="color:var(--gr)">AA-</strong> <span style="color:var(--tx3)">(Stable outlook)</span></div>
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">👥 Stakeholder Composition</div>
+                <div style="color:var(--tx3)">Promoter Holding: <strong style="color:var(--tx1)">${fmt(prom)}%</strong></div>
+                <div style="color:var(--tx3)">FII Holding: <strong style="color:var(--tx1)">${fmt(fii)}%</strong></div>
+                <div style="color:var(--tx3)">DII Holding: <strong style="color:var(--tx1)">${fmt(dii)}%</strong></div>
+                <div style="color:var(--tx3)">Public & Others: <strong style="color:var(--tx1)">${fmt(100 - (num(prom) + num(fii) + num(dii)))}%</strong></div>
             </div>
             
-            <!-- CORE METRICS REFERENCE -->
+            <!-- PROFITABILITY METRICS -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;font-size:10px;line-height:1.8">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">📋 Available Data</div>
+                <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">💰 Profitability Summary</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:9px">
-                    <div style="color:var(--tx3)">PE Ratio: <strong style="color:var(--tx1)">${fmt(pe)}x</strong></div>
+                    <div style="color:var(--tx3)">P/E Ratio: <strong style="color:var(--tx1)">${fmt(pe)}x</strong></div>
                     <div style="color:var(--tx3)">P/B Ratio: <strong style="color:var(--tx1)">${fmt(pb)}x</strong></div>
+                    <div style="color:var(--tx3)">EPS: <strong style="color:var(--tx1)">₹${fmt(eps)}</strong></div>
                     <div style="color:var(--tx3)">ROE: <strong style="color:var(--tx1)">${fmt(roe)}%</strong></div>
                     <div style="color:var(--tx3)">ROCE: <strong style="color:var(--tx1)">${fmt(roce)}%</strong></div>
                     <div style="color:var(--tx3)">OPM: <strong style="color:var(--tx1)">${fmt(opm)}%</strong></div>
                     <div style="color:var(--tx3)">NPM: <strong style="color:var(--tx1)">${fmt(npm)}%</strong></div>
-                    <div style="color:var(--tx3)">MCap: <strong style="color:var(--tx1)">₹${fmt(mcap)}Cr</strong></div>
-                    <div style="color:var(--tx3)">Revenue: <strong style="color:var(--tx1)">₹${fmt(sales)}Cr</strong></div>
+                    <div style="color:var(--tx3)">CFO: <strong style="color:var(--tx1)">₹${fmt(cfo)}Cr</strong></div>
                 </div>
             </div>
             
