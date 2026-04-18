@@ -963,41 +963,53 @@
         var mcap = stock.mcap || '—';
         var name = stock.name || ticker;
         
-        var prompt = `You are a senior equity research analyst. Analyze the earnings concall for ${ticker} (${name}).
+        var prompt = `You are a senior equity research analyst analyzing ${ticker} (${name}).
 
 COMPANY CONTEXT:
 - Sector: ${sector}
 - Current Price: ₹${ltp} | P/E: ${pe}x | ROE: ${roe}% | OPM: ${opm}%
 - MCap: ₹${mcap}Cr
 
+=== DATA SOURCES (use in this order) ===
+1. EARNINGS CALL TRANSCRIPT - Paste the text below if you have it
+2. INVESTOR PRESENTATION - Paste the text below if available
+3. QUARTERLY RESULTS (P&L, Balance Sheet, Cash Flow) - Paste PDF text below
+4. YOUR TRAINING DATA - If no documents, use your knowledge up to Jan 2025
+
+⚠️ IMPORTANT: If you don't have specific data (e.g., no capex plan mentioned), 
+   state "Not disclosed in available sources" rather than guessing.
+
+PASTE OPTIONAL DOCUMENTS HERE:
+[Earnings call transcript / Investor presentation / Quarterly results]
+
 Return ONLY in KEY: VALUE format — one field per line, no markdown, no bullets.
 
 ===== GUIDANCE SECTION =====
-quarter: Q# FY##
-revenue_guidance: Specific target next quarter and full year or pipeline
-growth_target: YoY or QoQ growth % guided
-margin_guidance: EBITDA and PAT margin targets (current vs target)
-capex_plan: Amount, purpose, funding source, timeline
-expansion: Capacity expansion plans with timeline and capex
-key_products_portfolio: Top products with revenue contribution %
-geographic_presence: Countries/regions operating in
-geographic_mix: Domestic vs export revenue split % with trend
-geographic_expansion: New markets being targeted with expected contribution
-tone: Positive/Cautious/Defensive with reason
-key_commitments: Top 3 commitments with numbers (separate by semicolon)
-risks_flagged: Top 3 risks with severity (separate by comma)
+quarter: Q# FY## (from document or latest known)
+revenue_guidance: Target for next Q/FY or pipeline (from concall/presentation/training data)
+growth_target: YoY % guided (from management OR "Not disclosed")
+margin_guidance: EBITDA%, PAT% target (from concall OR "Not disclosed")
+capex_plan: Amount, purpose, timeline (from investor materials OR "Not disclosed")
+expansion: Capacity/geographic plans (from concall/presentation OR "Not disclosed")
+key_products_portfolio: Top products with % contribution (from quarterly results OR company knowledge)
+geographic_presence: Countries/regions operating in (from annual report)
+geographic_mix: Domestic% vs export% (from quarterly results or investor materials)
+geographic_expansion: New markets targeted (from concall OR "Not disclosed")
+tone: Positive/Cautious/Defensive (from management commentary)
+key_commitments: Top 3 numbered commitments (from concall OR "Not disclosed")
+risks_flagged: Top 3 risks with severity (from management OR analyst view)
 summary: One-line key takeaway
 
-===== FUNDAMENTALS SECTION (for Fundamentals Tab) =====
-balance_sheet_health: Current ratio, quick ratio, net debt position, working capital trend
-cash_flow_quality: Operating CF trend (TTM), FCF trend (TTM), FCF conversion % (FCF/Net Income), capital intensity (Capex/Revenue)
-profitability_trends: Gross margin trend (3Y), Operating margin trend (3Y), Net margin trend (3Y)
-operational_efficiency: Asset turnover, Inventory days, Receivables days, Cash conversion cycle (if applicable)
-leverage_metrics: Interest coverage ratio, Debt/EBITDA ratio, Debt/Equity trend
-dividend_sustainability: Current dividend payout ratio, dividend trend, sustainability based on FCF
-quarterly_momentum: Latest quarter YoY growth %, Sequential growth (QoQ), Guidance vs actual comparison
-valuation_relative_to_peers: P/E vs peer average, P/B vs peer average, Margin vs industry average
-key_metrics_to_watch: Top 3 metrics to track quarterly for investment thesis validation`;
+===== FUNDAMENTALS SECTION =====
+balance_sheet_health: Current ratio, quick ratio, net debt, WC trend (from balance sheet)
+cash_flow_quality: OCF trend, FCF trend, FCF conversion % (from cash flow statement)
+profitability_trends: Gross%, Operating%, Net% margins (3Y if available, from P&L)
+operational_efficiency: Asset turnover, Inventory/Receivables days (from financials OR "N/A")
+leverage_metrics: Interest coverage, Debt/EBITDA, D/E trend (calculate from balance sheet + P&L)
+dividend_sustainability: Payout ratio %, dividend trend, FCF coverage (from dividend history)
+quarterly_momentum: Latest Q YoY% growth, Sequential growth (from quarterly results)
+valuation_relative_to_peers: P/E vs peer average, P/B vs peers, Margin vs industry (from your knowledge)
+key_metrics_to_watch: Top 3 metrics to track quarterly (analyst view)`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1024,12 +1036,24 @@ key_metrics_to_watch: Top 3 metrics to track quarterly for investment thesis val
         var pe = stock.pe || '—';
         var name = stock.name || ticker;
         
-        var prompt = `You are a senior equity research analyst. Provide investment insights for ${ticker} (${name}).
+        var prompt = `You are a senior equity research analyst providing investment insights for ${ticker} (${name}).
 
 COMPANY CONTEXT:
 - Sector: ${sector}
 - Current Price: ₹${ltp} | P/E: ${pe}x
 - Stock Name: ${name}
+
+=== DATA SOURCES (use in this order) ===
+1. GUIDANCE DATA - If you have guidance.json, paste it below
+2. QUARTERLY FINANCIAL DATA - Paste latest P&L, Balance Sheet, Cash Flow below
+3. EARNINGS CALL TRANSCRIPT - Paste if available
+4. YOUR TRAINING DATA - Use your knowledge up to Jan 2025
+
+⚠️ IMPORTANT: Be specific about what data you're using. If making assumptions, 
+   state them clearly (e.g., "Based on your training data..." or "From provided financials...")
+
+PASTE OPTIONAL DATA HERE:
+[guidance.json / Latest quarterly results / Earnings transcript]
 
 Return ONLY in the format below, no markdown or tables.
 
@@ -1038,28 +1062,28 @@ Trigger: What would make you change recommendation
 Headline: One sentence summary of key insight
 
 Bullet 1 Category: VALUATION
-Bullet 1 Text: Relative valuation (vs peers, vs history), P/E/P/B reasonableness, EV/EBITDA analysis, margin of safety
+Bullet 1 Text: P/E vs peers (from provided data or your knowledge), P/B analysis, valuation fairness, margin of safety
 
 Bullet 2 Category: GROWTH QUALITY
-Bullet 2 Text: Consistency of growth, organic vs inorganic, guidance track record, sustainability of margins
+Bullet 2 Text: Growth consistency (from quarterly trends), guidance track record (from provided data), margin sustainability
 
 Bullet 3 Category: MARGIN RISK
-Bullet 3 Text: Operating leverage analysis, pricing power, cost pressures, margin sustainability vs peers
+Bullet 3 Text: Operating leverage analysis (from P&L trends), pricing power, cost pressures, peer comparison
 
 Bullet 4 Category: CASH FLOW GENERATION
-Bullet 4 Text: FCF quality, operating CF trends, capex intensity, cash conversion efficiency, dividend sustainability
+Bullet 4 Text: FCF quality (from cash flow statement), capex intensity, FCF conversion %, dividend coverage
 
 Bullet 5 Category: BALANCE SHEET STRENGTH
-Bullet 5 Text: Debt/EBITDA, interest coverage, liquidity position, working capital efficiency, contingent liabilities
+Bullet 5 Text: Debt/EBITDA (calculate from balance sheet), interest coverage, liquidity, working capital status
 
 Bullet 6 Category: CATALYST
-Bullet 6 Text: Near-term (next 2Q) and medium-term (12M) catalysts for re-rating
+Bullet 6 Text: Near-term (next 2Q) and medium-term (12M) catalysts (from provided guidance or your knowledge)
 
 Bullet 7 Category: MOAT
-Bullet 7 Text: Competitive advantages (scale, intangibles, cost, network effects), moat durability and narrowing risks
+Bullet 7 Text: Competitive advantages (from company knowledge), moat durability, narrowing risks
 
 Bullet 8 Category: RISKS
-Bullet 8 Text: Key risks to thesis with severity assessment (regulatory, competitive, execution, macro)`;
+Bullet 8 Text: Key risks with severity (regulatory, competitive, execution, macro) - from provided data or analyst view`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Insights prompt copied!');
