@@ -577,65 +577,87 @@ function renderTab(tab) {
             html = `
                 <div style="padding:8px 0;padding-bottom:80px">
                 
-                <!-- BALANCE SHEET HEALTH -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <span>💰</span> Balance Sheet Health
+                <!-- PROFITABILITY SECTION -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--yw);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        📈 Profitability & Growth
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${g.balance_sheet_health || 'No data'}</div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Profitability Trends</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.profitability_trends || '—'}</span>
+                        </div>
+                        ${g.quarterly_momentum ? `
+                        <div style="display:flex;justify-content:space-between;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Quarterly Momentum</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.quarterly_momentum}</span>
+                        </div>
+                        ` : ''}
+                    </div>
                 </div>
                 
-                <!-- CASH FLOW QUALITY -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--gr);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <span>💵</span> Cash Flow Quality
+                <!-- VALUATION & MARGINS -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        💰 Valuation & Margins
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${g.cash_flow_quality || 'No data'}</div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        ${g.margin_guidance ? `
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Margin Guidance</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.margin_guidance}</span>
+                        </div>
+                        ` : ''}
+                        ${g.valuation_relative_to_peers ? `
+                        <div style="display:flex;justify-content:space-between;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Valuation vs Peers</span>
+                            <span style="color:var(--gr);font-weight:700">${g.valuation_relative_to_peers}</span>
+                        </div>
+                        ` : ''}
+                    </div>
                 </div>
                 
-                <!-- PROFITABILITY -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--yw);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <span>📈</span> Profitability Trends
+                <!-- FINANCIAL HEALTH -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--gr);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        🏦 Financial Health
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${g.profitability_trends || 'No data'}</div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Balance Sheet</span>
+                            <span style="color:var(--tx1)">${g.balance_sheet_health || '—'}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Cash Flow Quality</span>
+                            <span style="color:var(--tx1)">${g.cash_flow_quality || '—'}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span>Leverage Metrics</span>
+                            <span style="color:var(--tx1)">${g.leverage_metrics || '—'}</span>
+                        </div>
+                    </div>
                 </div>
                 
-                <!-- LEVERAGE -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--rd);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <span>⚖️</span> Leverage Metrics
+                <!-- ADDITIONAL METRICS -->
+                ${g.dividend_sustainability || g.operational_efficiency ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--yw);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1);">
+                        📊 Other Metrics
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${g.leverage_metrics || 'No data'}</div>
-                </div>
-                
-                <!-- DIVIDEND SUSTAINABILITY -->
-                ${g.dividend_sustainability ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <span>🎁</span> Dividend Sustainability
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.8;">
+                        ${g.dividend_sustainability ? `
+                        <div style="padding:6px;background:rgba(0,0,0,.2);border-radius:4px;margin-bottom:6px">
+                            <span style="font-weight:700">🎁 Dividend Sustainability</span>
+                            <div style="margin-top:4px;color:var(--tx1)">${g.dividend_sustainability}</div>
+                        </div>
+                        ` : ''}
+                        ${g.operational_efficiency ? `
+                        <div style="padding:6px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span style="font-weight:700">⚙️ Operational Efficiency</span>
+                            <div style="margin-top:4px;color:var(--tx1)">${g.operational_efficiency}</div>
+                        </div>
+                        ` : ''}
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${g.dividend_sustainability}</div>
-                </div>
-                ` : ''}
-                
-                <!-- QUARTERLY MOMENTUM -->
-                ${g.quarterly_momentum ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <span>📊</span> Quarterly Momentum
-                    </div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${g.quarterly_momentum}</div>
-                </div>
-                ` : ''}
-                
-                <!-- VALUATION VS PEERS -->
-                ${g.valuation_relative_to_peers ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--gr);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <span>🎯</span> Valuation vs Peers
-                    </div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${g.valuation_relative_to_peers}</div>
                 </div>
                 ` : ''}
                 
@@ -673,27 +695,34 @@ function renderTab(tab) {
             html = `
                 <div style="padding:8px 0;padding-bottom:80px">
                 
-                <!-- INVESTMENT THESIS - KEY DECISION -->
-                <div style="background:${actionBg};border:1px solid ${actionColor};border-radius:8px;padding:14px;margin-bottom:12px">
-                    <div style="font-size:13px;font-weight:900;color:${actionColor};margin-bottom:2px">
-                        ${i.action ? i.action.split('–')[0].trim() : 'N/A'}
+                <!-- INVESTMENT RECOMMENDATION - TOP PRIORITY -->
+                <div style="background:${actionBg};border:1px solid ${actionColor};border-radius:8px;padding:14px;margin-bottom:14px">
+                    <div style="font-size:12px;font-weight:900;color:${actionColor};margin-bottom:4px">
+                        ${i.action ? i.action.split('–')[0].trim() : 'HOLD'}
                     </div>
-                    ${i.action ? `<div style="font-size:9px;color:var(--tx3);line-height:1.5">${i.action.split('–').slice(1).join('–').trim()}</div>` : ''}
+                    ${i.action ? `<div style="font-size:9px;color:var(--tx3);line-height:1.6">${i.action.split('–').slice(1).join('–').trim()}</div>` : ''}
                 </div>
                 
                 <!-- KEY INSIGHT HEADLINE -->
                 ${i.headline ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:10px;border-left:3px solid var(--gr)">
-                    <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:4px">📊 Key Insight</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.5;font-weight:600">${i.headline}</div>
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;border-left:3px solid var(--gr)">
+                    <div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:6px">📊 Key Thesis</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-weight:600">${i.headline}</div>
                 </div>
                 ` : ''}
                 
-                <!-- ANALYST BULLETS - 8 INSIGHTS -->
+                <!-- GROUPED ANALYSIS BULLETS -->
                 ${i.bullets && i.bullets.length > 0 ? `
-                <div style="margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:8px;padding:0 4px">💡 Analysis</div>
-                    ${i.bullets.map((b, idx) => {
+                <div style="margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px;padding:0 4px">💡 Analysis Breakdown</div>
+                    
+                    ${(() => {
+                        // Group bullets by category type
+                        const positive = i.bullets.filter(b => ['VALUATION', 'GROWTH QUALITY', 'CATALYST', 'OPPORTUNITY', 'MOAT'].includes(b.cat));
+                        const risk = i.bullets.filter(b => ['MARGIN RISK', 'RISKS', 'RED FLAG'].includes(b.cat));
+                        const quality = i.bullets.filter(b => ['CASH FLOW GENERATION', 'BALANCE SHEET STRENGTH'].includes(b.cat));
+                        const other = i.bullets.filter(b => !positive.includes(b) && !risk.includes(b) && !quality.includes(b));
+                        
                         const categoryEmojis = {
                             'VALUATION': '💰',
                             'GROWTH QUALITY': '📈',
@@ -701,38 +730,84 @@ function renderTab(tab) {
                             'CASH FLOW GENERATION': '💵',
                             'BALANCE SHEET STRENGTH': '🏦',
                             'CATALYST': '🚀',
+                            'OPPORTUNITY': '⭐',
                             'MOAT': '🛡️',
-                            'RISKS': '🔴'
+                            'RISKS': '🔴',
+                            'RED FLAG': '🚩'
                         };
-                        const colors = [
-                            {bg: 'rgba(0,242,255,.1)', border: 'var(--ac)', label: '1'},
-                            {bg: 'rgba(0,232,150,.1)', border: 'var(--gr)', label: '2'},
-                            {bg: 'rgba(255,191,71,.1)', border: 'var(--yw)', label: '3'},
-                            {bg: 'rgba(0,242,255,.1)', border: 'var(--ac)', label: '4'},
-                            {bg: 'rgba(0,232,150,.1)', border: 'var(--gr)', label: '5'},
-                            {bg: 'rgba(255,191,71,.1)', border: 'var(--yw)', label: '6'},
-                            {bg: 'rgba(0,242,255,.1)', border: 'var(--ac)', label: '7'},
-                            {bg: 'rgba(255,107,133,.1)', border: 'var(--rd)', label: '8'}
-                        ];
-                        const color = colors[idx] || colors[0];
-                        const emoji = categoryEmojis[b.cat] || '•';
-                        return `
-                        <div style="background:${color.bg};border-left:3px solid ${color.border};border-radius:6px;padding:10px;margin-bottom:8px">
-                            <div style="font-size:10px;font-weight:800;color:${color.border};margin-bottom:6px">
-                                ${emoji} ${b.cat || 'Insight ' + (idx+1)}
-                            </div>
-                            <div style="font-size:9px;color:var(--tx3);line-height:1.5">${b.text || ''}</div>
-                        </div>
-                        `;
-                    }).join('')}
+                        
+                        let grouped = '';
+                        
+                        // STRENGTHS GROUP
+                        if (positive.length > 0) {
+                            grouped += '<div style="margin-bottom:10px">';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--gr);margin-bottom:6px;text-transform:uppercase">✅ Strengths</div>';
+                            positive.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(0,232,150,.08);border-left:3px solid var(--gr);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--gr);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        // FINANCIAL QUALITY GROUP
+                        if (quality.length > 0) {
+                            grouped += '<div style="margin-bottom:10px">';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--ac);margin-bottom:6px;text-transform:uppercase">💰 Financial Quality</div>';
+                            quality.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(0,242,255,.08);border-left:3px solid var(--ac);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--ac);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        // RISKS GROUP
+                        if (risk.length > 0) {
+                            grouped += '<div style="margin-bottom:10px">';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--rd);margin-bottom:6px;text-transform:uppercase">⚠️ Risk Factors</div>';
+                            risk.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(255,107,133,.08);border-left:3px solid var(--rd);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--rd);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        // OTHER
+                        if (other.length > 0) {
+                            grouped += '<div>';
+                            grouped += '<div style="font-size:9px;font-weight:700;color:var(--yw);margin-bottom:6px;text-transform:uppercase">📊 Other Insights</div>';
+                            other.forEach((b, idx) => {
+                                const emoji = categoryEmojis[b.cat] || '•';
+                                const text = b.text.substring(0, 150);
+                                grouped += '<div style="background:rgba(255,191,71,.08);border-left:3px solid var(--yw);border-radius:4px;padding:8px;margin-bottom:6px">';
+                                grouped += '<div style="font-size:9px;font-weight:700;color:var(--yw);margin-bottom:4px">' + emoji + ' ' + b.cat + '</div>';
+                                grouped += '<div style="font-size:8px;color:var(--tx3);line-height:1.5">' + text + '...</div>';
+                                grouped += '</div>';
+                            });
+                            grouped += '</div>';
+                        }
+                        
+                        return grouped;
+                    })()}
                 </div>
                 ` : ''}
                 
-                <!-- CHANGE TRIGGER -->
+                <!-- CHANGE TRIGGER - ACTION POINT -->
                 ${i.trigger ? `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--yw)">
-                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px">⚡ What Could Change This?</div>
-                    <div style="font-size:9px;color:var(--tx3);line-height:1.5">${i.trigger}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px">⚡ Catalysts & Triggers</div>
+                    <div style="font-size:9px;color:var(--tx3);line-height:1.6">${i.trigger}</div>
                 </div>
                 ` : ''}
                 
