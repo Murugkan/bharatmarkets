@@ -258,8 +258,11 @@ function switchTab(tab) {
 
 // Render tabs
 function renderTab(tab) {
+    const debugMsg = `[DEBUG] renderTab: ${tab} | stock: ${currentStock?.ticker || 'null'} | quarterly: ${currentStock?.quarterly?.length || 0}`;
+    console.log(debugMsg);
+    
     const s = currentStock;
-    let html = '';
+    let html = `<div style="background:#1a1a1a;padding:8px;margin-bottom:8px;border:1px solid #ff9800;border-radius:4px;font-size:7px;color:#ff9800;font-family:monospace">${debugMsg}</div>`;
     
     if (tab === 'overview') {
         const pe = num(get(s, 'pe'));
@@ -536,84 +539,95 @@ function renderTab(tab) {
             </div>
         `;
     } else if (tab === 'technical') {
+        console.log('📉 Rendering TECHNICAL tab');
         html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     } else if (tab === 'fundamentals') {
-        const s = currentStock;
-        const quarterly = get(s, 'quarterly') || [];
-        
-        // Helper to get trend direction and color
-        const getTrendArrow = (prev, curr) => {
-            if (!prev || !curr) return '—';
-            if (curr > prev) return '📈';
-            if (curr < prev) return '📉';
-            return '➡️';
-        };
-        
-        // Helper to get direction color
-        const getTrendColor = (prev, curr) => {
-            if (!prev || !curr) return 'var(--tx3)';
-            if (curr > prev) return 'var(--gr)';
-            if (curr < prev) return 'var(--rd)';
-            return 'var(--tx1)';
-        };
-        
-        // Helper to calculate CAGR for a metric
-        const calcCAGR = (metric) => {
-            if (quarterly.length < 2) return 0;
-            const first = num(quarterly[0][metric] || 0);
-            const last = num(quarterly[quarterly.length - 1][metric] || 0);
-            if (first <= 0 || last <= 0) return 0;
-            const years = (quarterly.length - 1) / 4;
-            return (Math.pow(last / first, 1 / years) - 1) * 100;
-        };
-        
-        // Function to render a trend card
-        const renderTrendCard = (title, metric, isCurrency = false, isPercent = false) => {
-            const values = quarterly.map(q => num(q[metric] || 0));
-            const cagr = calcCAGR(metric);
+        console.log('📊 Rendering FUNDAMENTALS tab');
+        console.log('📊 s.quarterly:', s.quarterly);
+        if (!s || !s.quarterly || s.quarterly.length === 0) {
+            console.log('⚠️ No quarterly data found');
+            html += '<div style="background:#ff6b6b;padding:12px;border-radius:6px;color:#000;font-weight:700">❌ ERROR: No quarterly data in currentStock</div>';
+        } else {
+            console.log('✅ Found quarterly data, length:', s.quarterly.length);
+            html += `<div style="background:#00ff88;padding:12px;border-radius:6px;color:#000;font-weight:700;margin-bottom:8px">✅ Quarterly data found: ${s.quarterly.length} records</div>`;
+            const quarterly = s.quarterly;
+            html = '<div style="padding:8px 0;padding-bottom:80px">';
             
-            let trendHTML = `<div class="fund-card">
-                <div class="fund-title">${title}</div>
-                <div class="trend-row">`;
+            // Simple revenue card
+            html += '<div class="fund-card">';
+            html += '<div class="fund-title">📊 Revenue Trend</div>';
+            html += '<div class="trend-row">';
             
-            for (let i = 0; i < values.length; i++) {
-                const val = values[i];
-                const arrow = i === 0 ? '—' : getTrendArrow(values[i-1], val);
-                const color = getTrendColor(values[i-1], val);
-                const display = val === 0 ? '—' : (isCurrency ? fmt(val, 0) : isPercent ? fmt(val, 1) : fmt(val, isPercent ? 2 : 1));
-                
-                trendHTML += `<div class="trend-val">
-                    <div class="trend-val-header">Q${i+1}</div>
-                    <div class="trend-val-number">${display}</div>
-                    <div class="trend-val-arrow" style="color:${color}">${arrow}</div>
-                </div>`;
+            for (let i = 0; i < quarterly.length; i++) {
+                const rev = num(quarterly[i].rev || 0);
+                const arrow = i === 0 ? '—' : (rev > num(quarterly[i-1].rev || 0) ? '📈' : '📉');
+                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${rev > 0 ? fmt(rev, 0) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
             }
             
-            trendHTML += `</div>
-                <div class="cagr-row">
-                    <div class="cagr-label">3Y CAGR</div>
-                    <div class="cagr-value">${cagr > 0 ? fmt(cagr) + '%' : '—'}</div>
-                </div>
-            </div>`;
+            html += '</div></div>';
             
-            return trendHTML;
-        };
-        
-        html = `
-            <div style="padding:8px 0;padding-bottom:80px">
-            ${renderTrendCard('Revenue', 'rev', true)}
-            ${renderTrendCard('Net Profit', 'net', true)}
-            ${renderTrendCard('EBITDA', 'ebitda', true)}
-            ${renderTrendCard('EPS', 'eps')}
-            ${renderTrendCard('Operating Margin', 'opm', false, true)}
-            ${renderTrendCard('EBIT', 'ebit', true)}
-            ${renderTrendCard('Gross Profit', 'gross', true)}
-            </div>
-        `;
+            // Simple net profit card  
+            html += '<div class="fund-card">';
+            html += '<div class="fund-title">💰 Net Profit Trend</div>';
+            html += '<div class="trend-row">';
+            
+            for (let i = 0; i < quarterly.length; i++) {
+                const net = num(quarterly[i].net || 0);
+                const arrow = i === 0 ? '—' : (net > num(quarterly[i-1].net || 0) ? '📈' : '📉');
+                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${net > 0 ? fmt(net, 0) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
+            }
+            
+            html += '</div></div>';
+            
+            // Simple EBITDA card
+            html += '<div class="fund-card">';
+            html += '<div class="fund-title">📈 EBITDA Trend</div>';
+            html += '<div class="trend-row">';
+            
+            for (let i = 0; i < quarterly.length; i++) {
+                const ebitda = num(quarterly[i].ebitda || 0);
+                const arrow = i === 0 ? '—' : (ebitda > num(quarterly[i-1].ebitda || 0) ? '📈' : '📉');
+                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${ebitda > 0 ? fmt(ebitda, 0) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
+            }
+            
+            html += '</div></div>';
+            
+            // Simple EPS card
+            html += '<div class="fund-card">';
+            html += '<div class="fund-title">💎 EPS Trend</div>';
+            html += '<div class="trend-row">';
+            
+            for (let i = 0; i < quarterly.length; i++) {
+                const eps = num(quarterly[i].eps || 0);
+                const arrow = i === 0 ? '—' : (eps > num(quarterly[i-1].eps || 0) ? '📈' : '📉');
+                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${eps > 0 ? fmt(eps, 2) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
+            }
+            
+            html += '</div></div>';
+            
+            // Operating Margin card
+            html += '<div class="fund-card">';
+            html += '<div class="fund-title">📊 Op Margin Trend</div>';
+            html += '<div class="trend-row">';
+            
+            for (let i = 0; i < quarterly.length; i++) {
+                const opm = num(quarterly[i].opm || 0);
+                const arrow = i === 0 ? '—' : (opm > num(quarterly[i-1].opm || 0) ? '📈' : '📉');
+                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${opm > 0 ? fmt(opm, 1) + '%' : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
+            }
+            
+            html += '</div></div>';
+            
+            html += '</div>';
+        }
     } else if (tab === 'guidance') {
-        html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+        console.log('💡 Rendering GUIDANCE tab');
+        html += '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+    } else {
+        html += `<div style="background:#ff9800;padding:12px;border-radius:6px;color:#000;font-weight:700">❌ ERROR: Unknown tab '${tab}'</div>`;
     }
     
+    console.log('✅ HTML length:', html.length, 'bytes');
     document.getElementById('content').innerHTML = html;
 }
 
