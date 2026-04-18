@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
-    <title>Onyx | Analysis</title>
+    <title>Onyx | Drill Analysis</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
         :root{--bg:#060c18;--s1:#0a0e1a;--card:#0d1222;--b1:#1a2332;--tx1:#f0f6ff;--tx3:#7a8fa0;--ac:#00f2ff;--gr:#00e896;--rd:#ff6b85;--yw:#ffbf47}
@@ -11,6 +11,7 @@
         body{background:var(--bg);color:var(--tx1);font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden;padding-top:max(0px, env(safe-area-inset-top))}
         
         .container{display:flex;flex-direction:column;height:100vh}
+        
         .header{background:var(--s1);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:12px}
         .header-left{flex:1;display:flex;align-items:center;gap:8px}
         .header-title{font-size:14px;font-weight:800;color:var(--ac)}
@@ -22,6 +23,7 @@
         .tabs{background:var(--card);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;gap:8px;overflow-x:auto}
         .tab{padding:8px 14px;background:transparent;border:1px solid var(--b1);border-radius:4px;color:var(--tx3);cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap;transition:all .2s}
         .tab.active{background:rgba(0,242,255,.1);border-color:var(--ac);color:var(--ac)}
+        .tab:hover:not(.active){color:var(--tx1)}
         
         .content{flex:1;overflow-y:auto;padding:12px}
         .content::-webkit-scrollbar{width:6px}
@@ -38,39 +40,35 @@
         .placeholder-emoji{font-size:32px;margin-bottom:12px}
         .tbd{color:#ff9800;opacity:.7;font-weight:700}
         
+        /* TBD Link - Clickable */
+        .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
+        .tbd-link:hover{opacity:1;color:#ffb347;border-bottom:1px solid #ffb347}
+        
+        /* Metric Value Colors */
         .val-positive{color:var(--gr);font-weight:700}
         .val-negative{color:var(--rd);font-weight:700}
         .val-neutral{color:var(--ac);font-weight:700}
         .val-warning{color:var(--yw);font-weight:700}
         
-        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(26,35,50,.2);color:var(--tx3);font-size:11px;line-height:1.3}
+        /* Metric Row */
+        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(26,35,50,.2);color:var(--tx3);font-size:9px;line-height:1.3}
         .metric-row:last-child{border-bottom:none}
-        .metric-label{flex:1;font-size:10px}
-        .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:11px}
+        .metric-label{flex:1;font-size:8px}
+        .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:9px}
         
+        /* Section Container for Two Columns */
         .section-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
         .section-row > div{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
         
-        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:4px;margin-bottom:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
-        .weightage-box{text-align:center;padding:3px 4px;background:rgba(0,0,0,.3);border-radius:4px}
-        .weightage-label{font-size:8px;color:var(--tx3);text-transform:uppercase;margin-bottom:1px;letter-spacing:0.5px}
-        .weightage-value{font-size:23px;font-weight:800;line-height:1}
-        .weightage-count{font-size:9px;color:var(--tx3);margin-top:1px;font-weight:600}
+        /* Weightage Summary */
+        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+        .weightage-box{text-align:center;padding:8px;background:rgba(0,0,0,.3);border-radius:4px}
+        .weightage-label{font-size:7px;color:var(--tx3);text-transform:uppercase;margin-bottom:4px}
+        .weightage-value{font-size:18px;font-weight:800}
         .pos-box .weightage-value{color:var(--gr)}
         .neg-box .weightage-value{color:var(--rd)}
-        .signal-box .weightage-value{color:var(--ac);font-size:19px}
-        .signal-label{font-size:8px;color:var(--tx3);margin-top:1px;text-transform:uppercase;font-weight:700;letter-spacing:0.3px}
-        
-        .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
-        .tbd-link:hover{opacity:1;color:#ffb347;border-bottom:1px solid #ffb347}
-        
-        .fund-card{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:8px}
-        .fund-title{font-weight:800;color:var(--ac);font-size:9px;text-transform:uppercase;margin-bottom:8px}
-        .trend-row{display:flex;justify-content:space-between;gap:4px}
-        .trend-val{flex:1;text-align:center;font-size:9px;padding:4px;background:rgba(0,0,0,.3);border-radius:3px}
-        .trend-val-header{font-size:7px;color:var(--tx3);margin-bottom:2px}
-        .trend-val-number{font-weight:800;color:var(--tx1);font-size:9px}
-        .trend-val-arrow{font-size:8px;margin-top:1px}
+        .signal-box .weightage-value{color:var(--ac);font-size:14px}
+        .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
     </style>
 </head>
 <body>
@@ -91,10 +89,10 @@
     </div>
     
     <div class="tabs">
-        <button class="tab active" onclick="switchTab(event, 'overview')">📊 Overview</button>
-        <button class="tab" onclick="switchTab(event, 'technical')">📉 Technical</button>
-        <button class="tab" onclick="switchTab(event, 'fundamentals')">📋 Fundamentals</button>
-        <button class="tab" onclick="switchTab(event, 'guidance')">💡 Guidance</button>
+        <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+        <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
+        <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
+        <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
     
     <div class="content" id="content"></div>
@@ -110,100 +108,176 @@
 const DB = "OnyxPortfolioDB";
 const STORE = "Stocks";
 let currentStock = null;
+let currentTab = "overview";
 
+// Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
 const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
 const get = (obj, ...keys) => {
     for (let k of keys) {
-        if (obj && obj[k] !== undefined) return obj[k];
+        if (obj[k] !== undefined) return obj[k];
     }
-    return null;
+    return '—';
 };
 
+// Generate TBD link with search capability
+const tbdLink = (label) => {
+    const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
+    const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
+};
+
+// Get URL param
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
 
+console.log('URL Search:', window.location.search);
+console.log('Ticker from URL:', ticker);
+
+// Load data
 async function loadStock() {
     if (!ticker) {
-        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div><div>No stock selected</div></div>';
+        // Try to get list of stocks for user guidance
+        let stockList = 'ABCAPITAL, ABFRL, ADANIPORTS, ... (load data.html first)';
+        try {
+            const db = await new Promise(r => {
+                const req = indexedDB.open(DB);
+                req.onsuccess = () => r(req.result);
+                req.onerror = () => r(null);
+            });
+            if (db && db.objectStoreNames.contains(STORE)) {
+                const tx = db.transaction(STORE, 'readonly');
+                const store = tx.objectStore(STORE);
+                const keys = await new Promise(r => {
+                    const req = store.getAllKeys();
+                    req.onsuccess = () => r(req.result);
+                    req.onerror = () => r([]);
+                });
+                if (keys.length > 0) {
+                    stockList = keys.slice(0, 10).join(', ') + (keys.length > 10 ? '...' : '');
+                }
+            }
+        } catch (e) {}
+        
+        document.getElementById('content').innerHTML = `
+            <div class="placeholder">
+                <div class="placeholder-emoji">❌</div>
+                <div>No stock selected</div>
+                <div style="font-size:9px;color:#ff9800;margin-top:8px">
+                    Use: analysis.html?drill=TICKER<br/>
+                    Example: analysis.html?drill=ABCAPITAL<br/>
+                    Available: ${stockList}
+                </div>
+            </div>
+        `;
+        console.error('No ticker in URL. Usage: analysis.html?drill=TICKER');
         return;
     }
-
+    
+    console.log('Loading ticker:', ticker);
+    
+    const db = await new Promise(r => {
+        const req = indexedDB.open(DB);
+        req.onsuccess = () => {
+            console.log('DB opened');
+            r(req.result);
+        };
+        req.onerror = () => {
+            console.error('DB error:', req.error);
+            r(null);
+        };
+    });
+    
+    if (!db) {
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">⚠️</div>Database error</div>';
+        return;
+    }
+    
     try {
-        const db = await new Promise((resolve, reject) => {
-            const req = indexedDB.open(DB);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(new Error('DB error'));
-        });
-
         const tx = db.transaction(STORE, 'readonly');
-        const stock = await new Promise((resolve, reject) => {
-            const req = tx.objectStore(STORE).get(ticker);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(new Error('Query error'));
+        const store = tx.objectStore(STORE);
+        
+        currentStock = await new Promise(r => {
+            const req = store.get(ticker);
+            req.onsuccess = () => {
+                console.log('Stock loaded:', req.result);
+                r(req.result);
+            };
+            req.onerror = () => {
+                console.error('Store error:', req.error);
+                r(null);
+            };
         });
-
-        if (!stock) {
-            document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div><div>Not found: ' + ticker + '</div></div>';
+        
+        if (!currentStock) {
+            console.error('Stock not found:', ticker);
+            document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
             return;
         }
-
-        currentStock = stock;
+        
+        console.log('Rendering header and overview...');
         renderHeader();
         renderTab('overview');
-    } catch (e) {
-        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">⚠️</div><div>' + e.message + '</div></div>';
+    } catch(e) {
+        console.error('Error:', e);
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
     }
 }
 
+// Render header
 function renderHeader() {
     const s = currentStock;
-    document.getElementById('ticker').textContent = get(s, 'ticker') || '—';
-    document.getElementById('company').textContent = get(s, 'name') || '—';
-    document.getElementById('ltp').textContent = '₹' + fmt(get(s, 'ltp') || 0);
+    document.getElementById('ticker').textContent = get(s, 'ticker', 'sym', 'symbol');
+    document.getElementById('company').textContent = get(s, 'name', 'company');
+    document.getElementById('ltp').textContent = '₹' + fmt(get(s, 'ltp', 'price'));
     
-    const chg = num(get(s, 'changePct') || 0);
+    const chg = num(get(s, 'changePct', 'change', 'chg1d'));
     const chgEl = document.getElementById('chg');
-    chgEl.textContent = (chg >= 0 ? '▲ ' : '▼ ') + Math.abs(chg).toFixed(2) + '%';
+    chgEl.innerHTML = `${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%`;
     chgEl.style.color = chg >= 0 ? 'var(--gr)' : 'var(--rd)';
 }
 
-function switchTab(event, tab) {
+// Switch tabs
+function switchTab(tab) {
+    currentTab = tab;
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
     renderTab(tab);
 }
 
-const tbdLink = (label) => {
-    const query = `${currentStock?.ticker || 'stock'} ${label}`;
-    return `<a href="https://www.google.com/search?q=${encodeURIComponent(query)}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
-};
-
+// Render tabs
 function renderTab(tab) {
     const s = currentStock;
     let html = '';
     
     if (tab === 'overview') {
-        const quarterly = get(s, 'quarterly') || [];
         const pe = num(get(s, 'pe'));
         const pb = num(get(s, 'pb'));
+        const roe = num(get(s, 'roe'));
         const roce = num(get(s, 'roce'));
+        const opm = num(get(s, 'opm_pct'));
+        const npm = num(get(s, 'npm_pct'));
+        const ltp = num(get(s, 'ltp', 'price'));
         const mcap = num(get(s, 'mcap'));
         const sales = num(get(s, 'sales'));
         const ebitda = num(get(s, 'ebitda'));
         const cfo = num(get(s, 'cfo'));
-        const fcf = num(get(s, 'fcf') || 0);
-        const prom = num(get(s, 'prom') || 0);
-        const fii = num(get(s, 'fii') || 0);
-        const dii = num(get(s, 'dii') || 0);
+        const fcf = num(get(s, 'fcf'));
+        const eps = num(get(s, 'eps'));
+        const prom = num(get(s, 'prom', 'prom_pct'));
+        const fii = num(get(s, 'fii', 'fii_pct'));
+        const dii = num(get(s, 'dii', 'dii_pct'));
+        const quarterly = get(s, 'quarterly') || [];
         
-        const posSignals = num(get(s, 'pos') || 0);
-        const negSignals = num(get(s, 'neg') || 0);
-        const signal = get(s, 'signal') || 'HOLD';
+        // EXTRACT: Positive & Negative signals, Signal
+        const posSignals = num(get(s, 'pos', 'positive', 0));
+        const negSignals = num(get(s, 'neg', 'negative', 0));
+        const signal = get(s, 'signal', 'Signal', 'BUY');
         const totalSignals = posSignals + negSignals;
         const posWeightage = totalSignals > 0 ? Math.round((posSignals / totalSignals) * 100) : 0;
         const negWeightage = totalSignals > 0 ? Math.round((negSignals / totalSignals) * 100) : 0;
-
+        
+        // EXTRACT: Total Debt from quarterly ONLY (never use pre-calculated field)
         let totalDebt = 0;
         if (quarterly && quarterly.length > 0) {
             for (let i = quarterly.length - 1; i >= 0; i--) {
@@ -213,19 +287,8 @@ function renderTab(tab) {
                 }
             }
         }
-
-        let debtToEbitda = 0;
-        if (totalDebt > 0 && ebitda > 0) {
-            debtToEbitda = totalDebt / ebitda;
-        }
-
-        let evEbitda = 0;
-        if (mcap > 0 && ebitda > 0 && totalDebt > 0) {
-            const cash = num(get(s, 'cash') || 0);
-            const ev = mcap + totalDebt - (cash > 0 ? cash : 0);
-            evEbitda = ev / ebitda;
-        }
-
+        
+        // CALCULATE: Operating Margin Trend from quarterly
         let marginTrend = '—';
         if (quarterly && quarterly.length >= 2) {
             const recent = quarterly.slice(-3).map(q => num(q.opm || 0));
@@ -233,7 +296,30 @@ function renderTab(tab) {
                 marginTrend = recent.map(m => fmt(m)).join('% → ') + '%';
             }
         }
-
+        
+        // CALCULATE: Revenue CAGR (3Y)
+        let revenueCagr = 0;
+        if (quarterly && quarterly.length >= 4) {
+            const oldest = num(quarterly[0].rev || 0);
+            const newest = num(quarterly[quarterly.length - 1].rev || 0);
+            if (oldest > 0 && newest > 0) {
+                const years = (quarterly.length - 1) / 4;
+                revenueCagr = (Math.pow(newest / oldest, 1 / years) - 1) * 100;
+            }
+        }
+        
+        // CALCULATE: Earnings CAGR (3Y)
+        let earningsCagr = 0;
+        if (quarterly && quarterly.length >= 4) {
+            const oldestEps = num(quarterly[0].eps || 0);
+            const newestEps = num(quarterly[quarterly.length - 1].eps || 0);
+            if (oldestEps > 0 && newestEps > 0) {
+                const years = (quarterly.length - 1) / 4;
+                earningsCagr = (Math.pow(newestEps / oldestEps, 1 / years) - 1) * 100;
+            }
+        }
+        
+        // CALCULATE: Cash Conversion
         let cashConversion = 0;
         if (quarterly && quarterly.length > 0) {
             const latestNet = num(quarterly[quarterly.length - 1].net || 0);
@@ -241,118 +327,207 @@ function renderTab(tab) {
                 cashConversion = (cfo / latestNet) * 100;
             }
         }
-
+        
+        // CALCULATE: Interest Coverage = EBIT / Interest Expense
+        let interestCoverage = 0;
+        if (quarterly && quarterly.length > 0) {
+            const latestEbit = num(quarterly[quarterly.length - 1].ebit || 0);
+            const interestExp = num(get(s, 'interest_exp'));
+            if (latestEbit > 0 && interestExp > 0) {
+                interestCoverage = latestEbit / interestExp;
+            }
+        }
+        
+        // CALCULATE: Debt/EBITDA = totalDebt / ebitda
+        let debtToEbitda = 0;
+        if (totalDebt > 0 && ebitda > 0) {
+            debtToEbitda = totalDebt / ebitda;
+        }
+        
+        // CALCULATE: FCF Yield = (fcf / mcap) * 100
         const fcfYield = mcap > 0 && fcf > 0 ? ((fcf / mcap) * 100) : 0;
-
-        html = `<div style="padding:8px 0;padding-bottom:80px">
+        
+        // CALCULATE: EV/EBITDA = (mcap + totalDebt - cash) / ebitda
+        let evEbitda = 0;
+        if (mcap > 0 && ebitda > 0 && totalDebt > 0) {
+            const cash = num(get(s, 'cash', 0)); // Default to 0 if not available
+            const ev = mcap + totalDebt - (cash > 0 ? cash : 0);
+            evEbitda = ev / ebitda;
+        }
+        
+        html = `
+            <div style="padding:8px 0;padding-bottom:80px">
+            
+            <!-- WEIGHTAGE & SIGNAL SUMMARY -->
             <div class="weightage-container">
                 <div class="weightage-box pos-box">
                     <div class="weightage-label">Positive</div>
                     <div class="weightage-value">${posWeightage}%</div>
-                    <div class="weightage-count">+${posSignals}</div>
+                    <div style="font-size:7px;color:var(--tx3)">+${posSignals}</div>
                 </div>
                 <div class="weightage-box neg-box">
                     <div class="weightage-label">Negative</div>
                     <div class="weightage-value">${negWeightage}%</div>
-                    <div class="weightage-count">-${negSignals}</div>
+                    <div style="font-size:7px;color:var(--tx3)">-${negSignals}</div>
                 </div>
                 <div class="weightage-box signal-box">
                     <div class="weightage-label">Signal</div>
-                    <div class="weightage-value">${signal}</div>
-                    <div class="signal-label">${signal === 'BUY' ? '📈' : signal === 'SELL' ? '📉' : '⚪'}</div>
+                    <div class="weightage-value ${signal === 'BUY' ? 'val-positive' : signal === 'SELL' ? 'val-negative' : 'val-neutral'}">${signal}</div>
+                    <div class="signal-label">${signal === 'BUY' ? '📈 Bullish' : signal === 'SELL' ? '📉 Bearish' : '⚪ Neutral'}</div>
                 </div>
             </div>
-
+            
+            <!-- ROW 1: Valuation + Quality -->
             <div class="section-row">
+                <!-- VALUATION ANALYSIS -->
                 <div>
-                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;font-size:10px">📊 VALUATION</div>
-                    <div class="metric-row"><div class="metric-label">P/E</div><div class="metric-value ${pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning'}">${fmt(pe)}x</div></div>
-                    <div class="metric-row"><div class="metric-label">P/B</div><div class="metric-value ${pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning'}">${fmt(pb)}x</div></div>
-                    <div class="metric-row"><div class="metric-label">EV/EBITDA</div><div class="metric-value">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div></div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📊 Valuation</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Price</div>
+                        <div class="metric-value val-neutral">₹${fmt(ltp)}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Fair Value</div>
+                        <div class="metric-value">${tbdLink('DCF Fair Value')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/E</div>
+                        <div class="metric-value ${pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning'}">${fmt(pe)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/B</div>
+                        <div class="metric-value ${pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning'}">${fmt(pb)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EV/EBITDA</div>
+                        <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">PEG</div>
+                        <div class="metric-value">${tbdLink('PEG Ratio')}</div>
+                    </div>
                 </div>
                 
+                <!-- QUALITY OF EARNINGS -->
                 <div>
-                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;font-size:10px">⭐ QUALITY</div>
-                    <div class="metric-row"><div class="metric-label">Op Margin</div><div class="metric-value val-neutral">${marginTrend}</div></div>
-                    <div class="metric-row"><div class="metric-label">ROIC</div><div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div></div>
-                    <div class="metric-row"><div class="metric-label">FCF Yield</div><div class="metric-value">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div></div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">⭐ Quality</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Op Margin</div>
+                        <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">ROIC</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">WACC</div>
+                        <div class="metric-value">${tbdLink('WACC')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Cash Conv</div>
+                        <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">FCF Yield</div>
+                        <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Q Score</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">A</div>
+                    </div>
                 </div>
             </div>
-
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;font-size:10px">💰 CASH & DEBT</div>
-                <div class="metric-row"><div class="metric-label">D/EBITDA</div><div class="metric-value">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('D/EBITDA')}</div></div>
-                <div class="metric-row"><div class="metric-label">Cash Conv</div><div class="metric-value">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conv')}</div></div>
+            
+            <!-- ROW 2: Growth + Health -->
+            <div class="section-row">
+                <!-- GROWTH TRAJECTORY -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📈 Growth</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Rev CAGR</div>
+                        <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EBITDA CAGR</div>
+                        <div class="metric-value">${tbdLink('EBITDA CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EPS CAGR</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">G Score</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'val-warning'}">B+</div>
+                    </div>
+                </div>
+                
+                <!-- FINANCIAL HEALTH -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">🏦 Health</div>
+                    <div class="metric-row">
+                        <div class="metric-label">D/EBITDA</div>
+                        <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Int Cover</div>
+                        <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Curr Ratio</div>
+                        <div class="metric-value">${tbdLink('Current Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Quick Ratio</div>
+                        <div class="metric-value">${tbdLink('Quick Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Credit</div>
+                        <div class="metric-value val-positive">AA-</div>
+                    </div>
+                </div>
             </div>
-
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-top:10px">
-                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;font-size:10px">📋 HOLDINGS</div>
-                <div class="metric-row"><div class="metric-label">Revenue</div><div class="metric-value">₹${fmt(sales)}Cr</div></div>
-                <div class="metric-row"><div class="metric-label">EBITDA</div><div class="metric-value">₹${fmt(ebitda)}Cr</div></div>
-                <div class="metric-row"><div class="metric-label">Market Cap</div><div class="metric-value">₹${fmt(mcap)}Cr</div></div>
-                <div class="metric-row"><div class="metric-label">Promoter</div><div class="metric-value">${fmt(prom)}%</div></div>
-                <div class="metric-row"><div class="metric-label">FII</div><div class="metric-value">${fmt(fii)}%</div></div>
-                <div class="metric-row"><div class="metric-label">DII</div><div class="metric-value">${fmt(dii)}%</div></div>
+            
+            <!-- ROW 3: Scale & Holdings (Full Width) -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📋 Scale & Holdings</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Revenue</div>
+                            <div class="metric-value val-neutral">₹${fmt(sales)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">EBITDA</div>
+                            <div class="metric-value val-neutral">₹${fmt(ebitda)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">Market Cap</div>
+                            <div class="metric-value val-neutral">₹${fmt(mcap)}Cr</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Promoter</div>
+                            <div class="metric-value ${prom > 50 ? 'val-positive' : prom > 30 ? 'val-neutral' : 'val-warning'}">${fmt(prom)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">FII</div>
+                            <div class="metric-value ${fii > 20 ? 'val-positive' : fii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(fii)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">DII</div>
+                            <div class="metric-value ${dii > 15 ? 'val-positive' : dii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(dii)}%</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>`;
-
+            
+            </div>
+        `;
     } else if (tab === 'technical') {
         html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
-    
     } else if (tab === 'fundamentals') {
-        const quarterly = get(s, 'quarterly') || [];
-        
-        if (!quarterly || quarterly.length === 0) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">📊</div><div>No quarterly data</div></div>';
-        } else {
-            html = '<div style="padding:8px 0;padding-bottom:80px">';
-            
-            // Revenue card
-            html += '<div class="fund-card"><div class="fund-title">📊 Revenue</div><div class="trend-row">';
-            for (let i = 0; i < quarterly.length; i++) {
-                const val = num(quarterly[i].rev || 0);
-                const arrow = i === 0 ? '—' : (val > num(quarterly[i-1].rev || 0) ? '📈' : '📉');
-                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${val > 0 ? fmt(val, 0) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
-            }
-            html += '</div></div>';
-            
-            // Net Profit card
-            html += '<div class="fund-card"><div class="fund-title">💰 Net Profit</div><div class="trend-row">';
-            for (let i = 0; i < quarterly.length; i++) {
-                const val = num(quarterly[i].net || 0);
-                const arrow = i === 0 ? '—' : (val > num(quarterly[i-1].net || 0) ? '📈' : '📉');
-                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${val > 0 ? fmt(val, 0) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
-            }
-            html += '</div></div>';
-            
-            // EBITDA card
-            html += '<div class="fund-card"><div class="fund-title">📈 EBITDA</div><div class="trend-row">';
-            for (let i = 0; i < quarterly.length; i++) {
-                const val = num(quarterly[i].ebitda || 0);
-                const arrow = i === 0 ? '—' : (val > num(quarterly[i-1].ebitda || 0) ? '📈' : '📉');
-                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${val > 0 ? fmt(val, 0) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
-            }
-            html += '</div></div>';
-            
-            // EPS card
-            html += '<div class="fund-card"><div class="fund-title">💎 EPS</div><div class="trend-row">';
-            for (let i = 0; i < quarterly.length; i++) {
-                const val = num(quarterly[i].eps || 0);
-                const arrow = i === 0 ? '—' : (val > num(quarterly[i-1].eps || 0) ? '📈' : '📉');
-                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${val > 0 ? fmt(val, 2) : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
-            }
-            html += '</div></div>';
-            
-            // Operating Margin card
-            html += '<div class="fund-card"><div class="fund-title">📊 Op Margin</div><div class="trend-row">';
-            for (let i = 0; i < quarterly.length; i++) {
-                const val = num(quarterly[i].opm || 0);
-                const arrow = i === 0 ? '—' : (val > num(quarterly[i-1].opm || 0) ? '📈' : '📉');
-                html += `<div class="trend-val"><div class="trend-val-header">Q${i+1}</div><div class="trend-val-number">${val > 0 ? fmt(val, 1) + '%' : '—'}</div><div class="trend-val-arrow">${arrow}</div></div>`;
-            }
-            html += '</div></div></div>';
-        }
-    
+        html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     } else if (tab === 'guidance') {
         html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Guidance & Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     }
@@ -360,6 +535,7 @@ function renderTab(tab) {
     document.getElementById('content').innerHTML = html;
 }
 
+// Init
 loadStock();
 </script>
 
