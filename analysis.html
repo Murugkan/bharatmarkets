@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
-    <title>Onyx | Analysis</title>
+    <title>Onyx | Drill View</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
-        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; --gr2:#00ff88; --rd2:#ff4d6d; --tx1:#fff; --tx3:#666; }
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
         *{box-sizing:border-box;margin:0;padding:0;}
         body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; padding-bottom: 80px; }
         .view { width:100%; overflow:auto; height:calc(100vh - 80px); background:#000; -webkit-overflow-scrolling:touch; }
@@ -15,30 +15,6 @@
         .nav-btn:hover { color: var(--bl); }
         .nav-btn.active { color: var(--bl); font-weight: 800; }
         .nav-label { font-size: 8px; margin-top: 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-        
-        /* Drill styles */
-        .drill-wrap { padding: 12px; }
-        .drill-hdr { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: 1px solid var(--b1); margin-bottom: 12px; }
-        .back-btn { background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 11px; }
-        .back-btn:hover { background: #333; }
-        .dsym { font-size: 16px; font-weight: 800; color: var(--bl); }
-        .dchg { font-size: 12px; font-weight: 700; }
-        .u-f1min0 { flex: 1; min-width: 0; }
-        .u-tar-fs0 { text-align: right; font-size: 10px; }
-        .score-ring { width: 50px; height: 50px; border-radius: 50%; border: 2px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
-        .score-num { font-size: 18px; font-weight: 800; }
-        .score-lbl { font-size: 8px; }
-        .dtabs { display: flex; gap: 0; border-bottom: 1px solid var(--b1); margin-bottom: 12px; overflow-x: auto; }
-        .dtab { flex: 1; min-width: 80px; padding: 10px; background: #111; color: #666; border: none; cursor: pointer; font-size: 10px; font-weight: 700; text-transform: uppercase; white-space: nowrap; border-bottom: 2px solid transparent; }
-        .dtab.active { color: var(--bl); border-bottom-color: var(--bl); }
-        .dtab:hover { color: var(--tx); }
-        
-        /* Content styles */
-        .fin { padding-bottom: 20px; }
-        .u-sub { font-size: 9px; color: #666; margin-top: 4px; }
-        table { width: 100%; border-collapse: collapse; font-size: 10px; }
-        th { background: var(--s1); color: #666; padding: 10px; text-align: left; border-bottom: 1px solid var(--b1); }
-        td { padding: 10px; border-bottom: 1px solid #111; }
     </style>
 </head>
 <body>
@@ -62,9 +38,7 @@
     <a href="analysis.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span class="nav-label">Analysis</span></a>
 </footer>
 
-<!-- Load bridge first, then app-analysis.js (app-drill.js removed - we have renderDrill in bridge.js) -->
 <script src="bridge.js"></script>
-<script src="app-analysis.js"></script>
 
 <script>
 // ===== DEBUG LOGGING =====
@@ -91,85 +65,119 @@ function toggleDebug() {
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 
-// ===== INIT FLOW =====
+// ===== INIT =====
 async function init() {
   try {
     addDebug('🚀 Init started');
     
-    // 1. Load data from IndexedDB via bridge
     addDebug('📚 Loading bridge...');
     await initBridge();
     addDebug(`✅ Bridge ready: MASTER=${MASTER.length}`);
     
-    // 2. Check if drill mode requested via URL parameter
     const params = new URLSearchParams(window.location.search);
     const drillTicker = params.get('drill');
     addDebug(`📍 URL param drill: ${drillTicker || 'none'}`);
     
     if (drillTicker) {
-      // Open drill view directly for clicked stock
       addDebug(`🔍 Looking for stock: ${drillTicker}`);
       if (selectStock(drillTicker)) {
         addDebug(`✅ Selected: ${drillTicker}`);
-        addDebug(`📋 S.selStock: ${S.selStock?.ticker || 'undefined'}`);
-        addDebug(`🎨 Calling renderDrill...`);
-        try {
-          // Wrap renderDrill with additional error handling
-          const appEl = document.getElementById('app');
-          const s = S.selStock;
-          
-          // First try to render the drill header
-          addDebug(`📝 Rendering drill header for ${s.ticker}...`);
-          
-          try {
-            renderDrill(appEl);
-            addDebug(`✅ renderDrill completed`);
-          } catch (drillErr) {
-            addDebug(`❌ renderDrill failed: ${drillErr.message}`);
-            addDebug(`📍 Error at: ${drillErr.stack?.split('\n')[1] || 'unknown'}`);
-            console.error('Full renderDrill error:', drillErr);
-            
-            // Show error and fallback UI
-            appEl.innerHTML = `<div style="padding:20px; color:#ff4d6d; font-size:11px;">
-              <div>❌ Drill view error</div>
-              <div style="margin-top:10px; font-size:10px;">
-                Error: ${drillErr.message}<br>
-                Stack: ${drillErr.stack?.split('\n')[0] || 'no stack'}
-              </div>
-              <div style="margin-top:20px;">
-                <strong>Stock Data:</strong><br>
-                Ticker: ${s.ticker}<br>
-                Name: ${s.name}<br>
-                LTP: ${s.ltp}<br>
-                Sector: ${s.sector}
-              </div>
-            </div>`;
-          }
-        } catch (err) {
-          addDebug(`❌ renderDrill error: ${err.message}`);
-          console.error('renderDrill error:', err);
-          document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; font-size:11px;">❌ Error rendering drill:<br>' + err.message + '</div>';
-        }
+        showDrill();
+        addDebug(`✅ Drill view displayed`);
       } else {
         addDebug(`❌ Stock not found: ${drillTicker}`);
-        document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; text-align:center;">❌ Stock not found: ' + drillTicker + '</div>';
+        document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; text-align:center;">❌ Stock not found</div>';
       }
     } else {
-      // Show message - analysis moved to data.html
-      addDebug('ℹ️ No drill param, showing info message');
-      document.getElementById('app').innerHTML = '<div style="padding:40px; color:#8ab4f8; text-align:center;"><div style="font-size:14px; margin-bottom:20px;">📊 Analysis Coverage</div><div style="font-size:12px;">Moved to Data tab</div><div style="font-size:10px; color:#666; margin-top:10px;">Click stock in Portfolio to drill down</div></div>';
+      addDebug('ℹ️ No drill param');
+      document.getElementById('app').innerHTML = '<div style="padding:40px; color:#8ab4f8; text-align:center;"><div style="font-size:14px; margin-bottom:20px;">📊 Drill View</div><div style="font-size:12px;">Click stock in Portfolio to view details</div></div>';
     }
-    
-    addDebug('✅ Init completed');
   } catch (err) {
-    addDebug(`❌ FATAL ERROR: ${err.message}`);
-    console.error('Init fatal error:', err);
-    document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; font-size:11px;">❌ Fatal error:<br>' + err.message + '</div>';
+    addDebug(`❌ FATAL: ${err.message}`);
+    console.error('Init error:', err);
+    document.getElementById('app').innerHTML = '<div style="padding:20px; color:#ff4d6d; font-size:11px;">❌ Error: ' + err.message + '</div>';
   }
 }
 
-// Start initialization
-addDebug('⏳ Page loaded, starting init...');
+// ===== DRILL VIEW =====
+function showDrill() {
+  const s = S.selStock;
+  if (!s) return;
+  
+  const num = (val) => {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      const n = parseFloat(val);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  };
+  
+  const fmt = (val, decimals = 2) => {
+    const n = num(val);
+    return n === 0 && val === '—' ? '—' : n.toFixed(decimals);
+  };
+  
+  const bull = num(s.changePct) >= 0;
+  const col = bull ? 'var(--gr)' : 'var(--rd)';
+  
+  document.getElementById('app').innerHTML = `
+    <div style="padding:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--b1);">
+        <div style="flex:1;">
+          <div style="font-size:16px; font-weight:800; color:var(--bl);">${s.symbol}</div>
+          <div style="font-size:12px; color:var(--tx); margin-top:4px;">${s.name}</div>
+          <div style="font-size:10px; color:#666; margin-top:2px;">${s.sector || '—'}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px; font-weight:800;">₹${fmt(s.ltp)}</div>
+          <div style="font-size:12px; color:${col}; margin-top:2px;">${bull ? '▲' : '▼'} ${Math.abs(num(s.changePct)).toFixed(2)}%</div>
+        </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">PE Ratio</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${fmt(s.pe)}</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">ROE %</div>
+          <div style="font-size:13px; font-weight:800; color:var(--gr);">${fmt(s.roe)}%</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">OPM %</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${fmt(s.opm)}%</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">Market Cap</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">₹${(num(s.mcap) / 100000).toFixed(1)}L</div>
+        </div>
+      </div>
+      
+      <div style="background:var(--s1); padding:12px; border-radius:4px; margin-bottom:12px;">
+        <div style="font-size:11px; font-weight:800; margin-bottom:8px; color:var(--bl);">Financial Metrics</div>
+        <table style="width:100%; font-size:10px;">
+          <tr><td style="padding:6px 0; color:#666;">EPS</td><td style="text-align:right; font-weight:700;">₹${fmt(s.eps)}</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">ROCE %</td><td style="text-align:right; font-weight:700;">${fmt(s.roce)}%</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">NPM %</td><td style="text-align:right; font-weight:700;">${fmt(s.npm)}%</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">PB Ratio</td><td style="text-align:right; font-weight:700;">${fmt(s.pb)}</td></tr>
+        </table>
+      </div>
+      
+      <div style="background:var(--s1); padding:12px; border-radius:4px;">
+        <div style="font-size:11px; font-weight:800; margin-bottom:8px; color:var(--bl);">Holdings</div>
+        <table style="width:100%; font-size:10px;">
+          <tr><td style="padding:6px 0; color:#666;">Quantity</td><td style="text-align:right; font-weight:700;">${num(s.qty)}</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">Avg Price</td><td style="text-align:right; font-weight:700;">₹${fmt(s.avg)}</td></tr>
+          <tr style="border-top:1px solid #333;"><td style="padding:6px 0; color:#666; font-weight:700;">P&L</td><td style="text-align:right; font-weight:700; color:var(--gr);">₹${((num(s.ltp) - num(s.avg)) * num(s.qty)).toFixed(0)}</td></tr>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// Start
+addDebug('⏳ Page loaded');
 init();
 </script>
 
