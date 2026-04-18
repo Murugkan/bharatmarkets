@@ -92,11 +92,46 @@ const get = (obj, ...keys) => {
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
 
+console.log('URL Search:', window.location.search);
+console.log('Ticker from URL:', ticker);
+
 // Load data
 async function loadStock() {
     if (!ticker) {
-        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>No stock selected (use ?drill=TICKER)</div>';
-        console.error('No ticker in URL');
+        // Try to get list of stocks for user guidance
+        let stockList = 'ABCAPITAL, ABFRL, ADANIPORTS, ... (load data.html first)';
+        try {
+            const db = await new Promise(r => {
+                const req = indexedDB.open(DB);
+                req.onsuccess = () => r(req.result);
+                req.onerror = () => r(null);
+            });
+            if (db && db.objectStoreNames.contains(STORE)) {
+                const tx = db.transaction(STORE, 'readonly');
+                const store = tx.objectStore(STORE);
+                const keys = await new Promise(r => {
+                    const req = store.getAllKeys();
+                    req.onsuccess = () => r(req.result);
+                    req.onerror = () => r([]);
+                });
+                if (keys.length > 0) {
+                    stockList = keys.slice(0, 10).join(', ') + (keys.length > 10 ? '...' : '');
+                }
+            }
+        } catch (e) {}
+        
+        document.getElementById('content').innerHTML = `
+            <div class="placeholder">
+                <div class="placeholder-emoji">❌</div>
+                <div>No stock selected</div>
+                <div style="font-size:9px;color:#ff9800;margin-top:8px">
+                    Use: analysis.html?drill=TICKER<br/>
+                    Example: analysis.html?drill=ABCAPITAL<br/>
+                    Available: ${stockList}
+                </div>
+            </div>
+        `;
+        console.error('No ticker in URL. Usage: analysis.html?drill=TICKER');
         return;
     }
     
@@ -195,6 +230,17 @@ function renderTab(tab) {
         const dii = num(get(s, 'dii', 'dii_pct'));
         const quarterly = get(s, 'quarterly') || [];
         
+        // Extract total_debt from quarterly if not in top-level
+        let totalDebt = num(get(s, 'total_debt'));
+        if (!totalDebt && quarterly.length > 0) {
+            for (let i = quarterly.length - 1; i >= 0; i--) {
+                if (quarterly[i].debt) {
+                    totalDebt = num(quarterly[i].debt);
+                    break;
+                }
+            }
+        }
+        
         // CALCULATE: Operating Margin Trend from quarterly
         let marginTrend = '—';
         if (quarterly && quarterly.length >= 2) {
@@ -245,8 +291,22 @@ function renderTab(tab) {
             }
         }
         
+        // CALCULATE: Debt/EBITDA = totalDebt / ebitda
+        let debtToEbitda = 0;
+        if (totalDebt > 0 && ebitda > 0) {
+            debtToEbitda = totalDebt / ebitda;
+        }
+        
         // CALCULATE: FCF Yield = (fcf / mcap) * 100
         const fcfYield = mcap > 0 && fcf > 0 ? ((fcf / mcap) * 100) : 0;
+        
+        // CALCULATE: EV/EBITDA = (mcap + totalDebt - cash) / ebitda
+        let evEbitda = 0;
+        if (mcap > 0 && ebitda > 0 && totalDebt > 0) {
+            const cash = num(get(s, 'cash', 0)); // Default to 0 if not available
+            const ev = mcap + totalDebt - (cash > 0 ? cash : 0);
+            evEbitda = ev / ebitda;
+        }
         
         html = `
             <div style="padding-top:4px">
@@ -258,7 +318,7 @@ function renderTab(tab) {
                 <div style="color:var(--tx3)">Fair Value (DCF): <span class="tbd">TBD</span> | Upside: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">P/E Multiple: <strong style="color:var(--tx1)">${fmt(pe)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">Price/Book: <strong style="color:var(--tx1)">${fmt(pb)}x</strong> | Peer Avg: <span class="tbd">TBD</span></div>
-                <div style="color:var(--tx3)">EV/EBITDA: <strong style="color:var(--tx1)">${num(get(s, 'ev_ebitda')) > 0 ? fmt(get(s, 'ev_ebitda')) + 'x' : 'TBD'}</strong> | Peer Avg: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">EV/EBITDA: <strong style="color:var(--tx1)">${evEbitda > 0 ? fmt(evEbitda, 2) + 'x' : 'TBD'}</strong> | Peer Avg: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">PEG Ratio: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
             </div>
             
@@ -285,7 +345,7 @@ function renderTab(tab) {
             <!-- FINANCIAL HEALTH -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;font-size:10px;line-height:1.8">
                 <div style="font-weight:800;color:var(--ac);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-size:9px">🏦 Financial Health</div>
-                <div style="color:var(--tx3)">Debt/EBITDA: <span class="tbd">TBD</span> | Assessment: <span class="tbd">TBD</span></div>
+                <div style="color:var(--tx3)">Debt/EBITDA: <strong style="color:var(--tx1)">${debtToEbitda > 0 ? fmt(debtToEbitda, 2) + 'x' : 'TBD'}</strong> | Assessment: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">Interest Coverage: <strong style="color:var(--tx1)">${interestCoverage > 0 ? fmt(interestCoverage) + 'x' : '<span class="tbd">TBD</span>'}</strong> | Assessment: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">Current Ratio: <span class="tbd">TBD</span> | Quick Ratio: <span class="tbd">TBD</span></div>
                 <div style="color:var(--tx3)">Days Inventory: <span class="tbd">TBD</span> | Receivables: <span class="tbd">TBD</span></div>
