@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Onyx | Analysis</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; --tx1:#fff; --tx2:#ddd; --tx3:#666; --card:#0a0a0a; --ac:#f97316; --title:#fff; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; padding-bottom: 80px; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 80px); background:#000; -webkit-overflow-scrolling:touch; }
+        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 12px 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 1000; }
+        .nav-btn { text-decoration: none; color: #666; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; padding: 8px 0; transition: color 0.2s; }
+        .nav-btn:hover { color: var(--bl); }
+        .nav-btn.active { color: var(--bl); font-weight: 800; }
+        .nav-label { font-size: 8px; margin-top: 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        
+        /* Analysis styles */
+        .fin { padding-bottom: 80px; }
+        .u-f1min0 { flex: 1; min-width: 0; }
+        .u-tar-fs0 { text-align: right; font-size: 10px; }
+        .u-sub { font-size: 9px; color: #666; margin-top: 4px; }
+        
+        /* Drill styles */
+        .drill-wrap { padding: 12px; }
+        .dtabs { display: flex; gap: 0; border-bottom: 1px solid var(--b1); margin-bottom: 12px; overflow-x: auto; }
+        .dtab { flex: 1; min-width: 80px; padding: 10px; background: #111; color: #666; border: none; cursor: pointer; font-size: 10px; font-weight: 700; text-transform: uppercase; white-space: nowrap; border-bottom: 2px solid transparent; }
+        .dtab.active { color: var(--bl); border-bottom-color: var(--bl); }
+        .dtab:hover:not(:disabled) { color: var(--tx); }
+        .dtab:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        th { background: var(--s1); color: #666; padding: 10px; text-align: left; border-bottom: 1px solid var(--b1); }
+        td { padding: 10px; border-bottom: 1px solid #111; }
+    </style>
+</head>
+<body>
+
+<div class="view"><div id="app"></div></div>
+
+<footer>
+    <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
+    <a href="data.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
+    <a href="analysis.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span class="nav-label">Analysis</span></a>
+</footer>
+
+<script src="bridge.js"></script>
+
+<script>
+// ===== STATE =====
+let analysisState = {
+  statusFilter: null,
+  search: '',
+  showDone: false
+};
+
+// ===== ANALYSIS LOGIC =====
+function _analysisStocks() {
+  const now = Date.now();
+  return S.portfolio.map(h => {
+    const mh = h;
+    const g = GUIDANCE[mh.ticker];
+    let status = 'pending', statusLabel = 'Pending', daysOld = null;
+    
+    if (g && g.guidance && g.guidance.updated) {
+      const updatedDate = new Date(g.guidance.updated);
+      daysOld = Math.floor((now - updatedDate.getTime()) / 86400000);
+      status = daysOld > 90 ? 'outdated' : 'done';
+      statusLabel = daysOld === 0 ? 'Today' : daysOld + 'd ago';
+    }
+    
+    const ltp = parseFloat(mh.ltp) || 0;
+    const qty = parseFloat(mh.qty) || 0;
+    const avg = parseFloat(mh.avg) || 0;
+    const posVal = (ltp > 0 && qty > 0) ? qty * ltp : (qty * avg);
+    
+    return { ...mh, g, status, statusLabel, daysOld, posVal };
+  });
+}
+
+function fmt(val, decimals = 2) {
+  if (typeof val === 'number') return val.toFixed(decimals);
+  const n = parseFloat(val);
+  return isNaN(n) ? '—' : n.toFixed(decimals);
+}
+
+function setAnalysisFilter(status) {
+  analysisState.statusFilter = status;
+  renderAnalysis(document.getElementById('app'));
+}
+
+function anSearchUpdate(val) {
+  analysisState.search = val;
+  renderAnalysis(document.getElementById('app'));
+}
+
+function openAnalysisSheet(ticker) {
+  if (selectStock(ticker)) {
+    renderDrill(document.getElementById('app'));
+  }
+}
+
+function closeDrill() {
+  renderAnalysis(document.getElementById('app'));
+}
+
+function setDrillTab(tab) {
+  S.drillTab = tab;
+  renderDrill(document.getElementById('app'));
+}
+
+// ===== RENDER ANALYSIS (HOME) =====
+function renderAnalysis(c) {
+  const all = _analysisStocks();
+  const total = all.length;
+  const nDone = all.filter(s => s.status === 'done').length;
+  const nOut = all.filter(s => s.status === 'outdated').length;
+  const nPend = all.filter(s => s.status === 'pending').length;
+  const pctDone = total ? Math.round(nDone / total * 100) : 0;
+  
+  const sf = analysisState.statusFilter;
+  const srch = analysisState.search.trim().toUpperCase();
+  
+  // Filter & sort
+  let visible = [...all];
+  if (sf) visible = visible.filter(s => s.status === sf);
+  if (srch) visible = visible.filter(s => s.ticker.includes(srch) || (s.name || '').toUpperCase().includes(srch));
+  
+  const showingDone = srch || sf === 'done';
+  const actionRows = visible.filter(s => s.status !== 'done').sort((a, b) => b.posVal - a.posVal);
+  const doneRows = visible.filter(s => s.status === 'done').sort((a, b) => b.posVal - a.posVal);
+  
+  function stockRow(s) {
+    const dot = s.status === 'done' ? '🟢' : s.status === 'outdated' ? '🟡' : '⚪';
+    const stCol = s.status === 'done' ? '#00e896' : s.status === 'outdated' ? '#ffbf47' : '#4a6888';
+    const posK = s.posVal >= 1e5 ? (s.posVal / 1e5).toFixed(1) + 'L' : s.posVal > 0 ? (s.posVal / 1000).toFixed(0) + 'K' : '—';
+    const ltp = parseFloat(s.ltp) || 0;
+    
+    return `<div onclick="openAnalysisSheet('${s.ticker}')"
+      style="display:flex;align-items:center;gap:10px;padding:10px 13px;border-bottom:1px solid var(--b1);cursor:pointer;${s.status === 'done' ? 'opacity:.55' : ''}">
+      <span style="font-size:14px;flex-shrink:0">${dot}</span>
+      <div class="u-f1min0">
+        <div style="display:flex;align-items:baseline;gap:6px">
+          <span style="font-weight:700;font-size:12px;color:var(--tx1)">${s.ticker}</span>
+          <span style="font-size:9px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.name || '').slice(0, 22)}</span>
+        </div>
+        <div style="font-size:9px;color:var(--tx3);margin-top:1px">${s.sector || '—'} · ₹${posK}</div>
+      </div>
+      <div class="u-tar-fs0">
+        <div style="font-size:9px;color:${stCol};font-weight:700">${s.statusLabel}</div>
+        <div style="font-size:8px;color:var(--tx3);margin-top:1px">${ltp > 0 ? '₹' + fmt(ltp) : ''}</div>
+      </div>
+      <span style="color:var(--tx3);font-size:11px">›</span>
+    </div>`;
+  }
+  
+  c.innerHTML = `<div class="fin" style="padding-bottom:80px">
+    <div style="padding:13px 14px 10px;border-bottom:1px solid var(--b1)">
+      <div style="font-weight:800;font-size:15px;color:var(--title)">🔬 Results Analysis</div>
+      <div class="u-sub">Concall analysis · ${nDone}/${total} covered</div>
+    </div>
+    
+    <div style="padding:10px 13px;border-bottom:1px solid var(--b1)">
+      <div style="height:4px;background:var(--b1);border-radius:2px;margin-bottom:10px;overflow:hidden">
+        <div style="height:100%;width:${pctDone}%;background:linear-gradient(90deg,#00e896,#00d084);border-radius:2px;transition:width .4s"></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        ${[
+          {k: null, label: 'All', n: total, col: '#5878a8'},
+          {k: 'pending', label: 'Pending', n: nPend, col: '#4a6888'},
+          {k: 'outdated', label: 'Outdated', n: nOut, col: '#ffbf47'},
+          {k: 'done', label: 'Covered', n: nDone, col: '#00e896'},
+        ].map(p => {
+          const active = sf === p.k;
+          return `<button onclick="setAnalysisFilter(${p.k ? `'${p.k}'` : 'null'})"
+            style="flex:1;padding:6px 4px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;background:${active ? 'rgba(249,115,22,.15)' : 'var(--card)'};border:1px solid ${active ? 'var(--ac)' : p.col + '44'};color:${active ? 'var(--ac)' : p.col}">
+            ${p.label}<br><span style="font-size:12px;font-weight:800">${p.n}</span>
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
+    
+    <div style="padding:8px 13px;border-bottom:1px solid var(--b1)">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:7px 10px">
+        <span style="color:var(--tx3);font-size:12px">🔍</span>
+        <input type="text" placeholder="Search symbol or name…" value="${analysisState.search}" oninput="anSearchUpdate(this.value)"
+          style="flex:1;background:none;border:none;outline:none;color:var(--tx1);font-size:12px;font-family:var(--mono)">
+        ${analysisState.search ? `<button onclick="analysisState.search='';anSearchUpdate('')" style="background:none;border:none;color:var(--tx3);font-size:14px;cursor:pointer;padding:0">✕</button>` : ''}
+      </div>
+    </div>
+    
+    <div style="padding:7px 13px 4px">
+      <div style="font-size:8px;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px">
+        ${sf === 'done' ? 'Covered' : 'Action Queue'} · ${actionRows.length} stock${actionRows.length !== 1 ? 's' : ''}
+      </div>
+    </div>
+    <div style="background:var(--card);border-top:1px solid var(--b1);border-bottom:1px solid var(--b1)">
+      ${actionRows.length ? actionRows.map(stockRow).join('') : (!srch && sf !== 'done') ? `
+      <div style="padding:30px 20px;text-align:center;color:var(--tx3)">
+        <div style="font-size:28px;margin-bottom:10px">🎉</div>
+        <div style="font-size:12px;font-weight:700;color:var(--tx2)">All stocks covered</div>
+        <div style="font-size:10px;margin-top:4px">Check back after next earnings quarter</div>
+      </div>` : ''}
+    </div>
+    
+    ${(!showingDone && doneRows.length) ? `
+    <div style="padding:10px 13px;">
+      <button onclick="analysisState.showDone=!analysisState.showDone;renderAnalysis(document.getElementById('app'))"
+        style="width:100%;padding:9px;background:var(--card);border:1px solid var(--b1);border-radius:8px;color:var(--tx3);font-size:10px;font-weight:700;cursor:pointer;text-align:left">
+        🟢 ${analysisState.showDone ? 'Hide' : 'Show'} ${doneRows.length} covered stock${doneRows.length !== 1 ? 's' : ''}
+        <span style="float:right">${analysisState.showDone ? '▴' : '▾'}</span>
+      </button>
+      ${analysisState.showDone ? `<div style="background:var(--card);border:1px solid var(--b1);border-radius:0 0 8px 8px;overflow:hidden;margin-top:-1px">
+        ${doneRows.map(stockRow).join('')}
+      </div>` : ''}
+    </div>` : ''}
+  </div>`;
+}
+
+// ===== RENDER DRILL =====
+function renderDrill(c) {
+  const s = S.selStock;
+  if (!s) return;
+  
+  const num = (val) => {
+    if (typeof val === 'number') return val;
+    const n = parseFloat(val);
+    return isNaN(n) ? 0 : n;
+  };
+  
+  const bull = num(s.changePct) >= 0;
+  const col = bull ? 'var(--gr)' : 'var(--rd)';
+  
+  // Tab content rendering
+  const tabs = ['overview', 'technical', 'fundamentals', 'insights'];
+  const tabLabels = {
+    overview: 'Overview',
+    technical: '📉 Technical',
+    fundamentals: '📊 Fundamentals',
+    insights: '💡 Insights'
+  };
+  
+  let tabContent = '';
+  
+  if (S.drillTab === 'overview') {
+    tabContent = `
+      <div style="padding:12px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">PE Ratio</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${fmt(s.pe)}</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">ROE %</div>
+          <div style="font-size:13px; font-weight:800; color:var(--gr);">${fmt(s.roe)}%</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">OPM %</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${fmt(s.opm)}%</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">ROCE %</div>
+          <div style="font-size:13px; font-weight:800; color:var(--gr);">${fmt(s.roce)}%</div>
+        </div>
+      </div>
+      <div style="padding:12px; background:var(--s1); border-radius:4px; margin:12px;">
+        <div style="font-size:11px; font-weight:800; margin-bottom:8px; color:var(--bl);">Holdings</div>
+        <table>
+          <tr><td style="padding:6px 0; color:#666;">Quantity</td><td style="text-align:right; font-weight:700;">${num(s.qty)}</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">Avg Price</td><td style="text-align:right; font-weight:700;">₹${fmt(s.avg)}</td></tr>
+          <tr><td style="padding:6px 0; color:#666; font-weight:700;">P&L</td><td style="text-align:right; font-weight:700; color:var(--gr);">₹${((num(s.ltp) - num(s.avg)) * num(s.qty)).toFixed(0)}</td></tr>
+        </table>
+      </div>
+    `;
+  } else if (S.drillTab === 'technical') {
+    const quarterly = s.quarterly || [];
+    tabContent = `
+      <div style="padding:12px;">
+        <div style="font-size:11px; font-weight:800; margin-bottom:8px; color:var(--bl);">Quarterly Performance</div>
+        <table>
+          <thead><tr><th>Quarter</th><th>Revenue</th><th>Profit</th><th>Margin</th></tr></thead>
+          <tbody>
+            ${quarterly.slice(0, 8).map(q => `
+              <tr>
+                <td style="font-weight:700;">${q.qtr || '—'}</td>
+                <td>₹${(num(q.rev) / 1000).toFixed(0)}K Cr</td>
+                <td>₹${(num(q.profit) / 1000).toFixed(0)}K Cr</td>
+                <td>${fmt(q.margin)}%</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else if (S.drillTab === 'fundamentals') {
+    tabContent = `
+      <div style="padding:12px;">
+        <div style="font-size:11px; font-weight:800; margin-bottom:8px; color:var(--bl);">Financial Metrics</div>
+        <table>
+          <tr><td style="color:#666;">EPS</td><td style="text-align:right; font-weight:700;">₹${fmt(s.eps)}</td></tr>
+          <tr><td style="color:#666;">Sales</td><td style="text-align:right; font-weight:700;">₹${(num(s.sales) / 1000).toFixed(0)}K Cr</td></tr>
+          <tr><td style="color:#666;">EBITDA</td><td style="text-align:right; font-weight:700;">₹${(num(s.ebitda) / 1000).toFixed(0)}K Cr</td></tr>
+          <tr><td style="color:#666;">CFO</td><td style="text-align:right; font-weight:700;">₹${(num(s.cfo) / 1000).toFixed(0)}K Cr</td></tr>
+          <tr><td style="color:#666;">NPM %</td><td style="text-align:right; font-weight:700;">${fmt(s.npm)}%</td></tr>
+          <tr><td style="color:#666;">PB Ratio</td><td style="text-align:right; font-weight:700;">${fmt(s.pb)}</td></tr>
+        </table>
+      </div>
+    `;
+  } else if (S.drillTab === 'insights') {
+    tabContent = `
+      <div style="padding:20px; text-align:center; color:#666;">
+        <div style="font-size:14px; margin-bottom:10px;">💡</div>
+        <div>Insights coming soon</div>
+        <div style="font-size:9px; margin-top:10px;">Insights will be added in next phase</div>
+      </div>
+    `;
+  }
+  
+  c.innerHTML = `
+    <div class="drill-wrap" style="padding-bottom:80px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--b1);">
+        <button onclick="closeDrill()" style="background:#222; color:#fff; border:1px solid #444; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:11px;">← Back</button>
+        <div style="flex:1; text-align:center; margin:0 10px;">
+          <div style="font-size:16px; font-weight:800; color:var(--bl);">${s.symbol}</div>
+          <div style="font-size:11px; color:#666; margin-top:2px;">${s.name}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px; font-weight:800;">₹${fmt(s.ltp)}</div>
+          <div style="font-size:12px; color:${col}; margin-top:2px;">${bull ? '▲' : '▼'} ${Math.abs(num(s.changePct)).toFixed(2)}%</div>
+        </div>
+      </div>
+      
+      <div class="dtabs">
+        ${tabs.map(t => `
+          <button class="dtab ${S.drillTab === t ? 'active' : ''} ${t === 'insights' ? 'disabled' : ''}" 
+            onclick="${t === 'insights' ? '' : `setDrillTab('${t}')`}" 
+            ${t === 'insights' ? 'disabled' : ''}>
+            ${tabLabels[t]}
+          </button>
+        `).join('')}
+      </div>
+      
+      ${tabContent}
+    </div>
+  `;
+}
+
+// ===== INIT =====
+async function init() {
+  await initBridge();
+  console.log('✅ Analysis ready');
+  renderAnalysis(document.getElementById('app'));
+}
+
+init();
+</script>
+
+</body>
+</html>
