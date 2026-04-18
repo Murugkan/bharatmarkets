@@ -239,19 +239,66 @@ if (typeof renderInsights === 'undefined') {
   window.renderInsights = (s) => `<div style="padding:12px; color:#8ab4f8;">Insights tab - Stock: ${s.symbol}</div>`;
 }
 
-// ===== WRAPPER FOR renderDC =====
-if (typeof renderDC === 'undefined') {
-  window.renderDC = (s) => {
-    try {
-      if (S.drillTab === 'overview' && typeof renderOverview !== 'undefined') return renderOverview(s);
-      if (S.drillTab === 'technical' && typeof renderTechnical !== 'undefined') return renderTechnical(s);
-      if (S.drillTab === 'fundamentals' && typeof renderFundamentals !== 'undefined') return renderFundamentals(s);
-      if (S.drillTab === 'news' && typeof renderNewsTab !== 'undefined') return renderNewsTab(s);
-      if (S.drillTab === 'insights' && typeof renderInsights !== 'undefined') return renderInsights(s);
-      return `<div style="padding:12px; color:#8ab4f8;">Tab: ${S.drillTab} - Stock: ${s.symbol}</div>`;
-    } catch (err) {
-      console.error(`renderDC error for tab ${S.drillTab}:`, err);
-      return `<div style="padding:12px; color:#ff4d6d;">Error in ${S.drillTab} tab: ${err.message}</div>`;
-    }
-  };
+// ===== SIMPLE DRILL VIEW (replaces app-drill.js renderDrill) =====
+function renderDrill(container) {
+  const s = S.selStock;
+  if (!s) {
+    closeStock();
+    return;
+  }
+  
+  const bull = (s.changePct || 0) >= 0;
+  const col = bull ? 'var(--gr)' : 'var(--rd)';
+  
+  container.innerHTML = `
+    <div style="padding:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--b1);">
+        <div style="flex:1;">
+          <div style="font-size:16px; font-weight:800; color:var(--bl);">${s.symbol}</div>
+          <div style="font-size:12px; color:var(--tx); margin-top:4px;">${s.name}</div>
+          <div style="font-size:10px; color:#666; margin-top:2px;">${s.sector || '—'}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px; font-weight:800;">₹${(s.ltp || 0).toFixed(2)}</div>
+          <div style="font-size:12px; color:${col}; margin-top:2px;">${bull ? '▲' : '▼'} ${Math.abs(s.changePct || 0).toFixed(2)}%</div>
+        </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">PE Ratio</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${(s.pe || '—').toFixed(2)}</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">ROE %</div>
+          <div style="font-size:13px; font-weight:800; color:var(--gr);">${(s.roe || '—').toFixed(2)}%</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">OPM %</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">${(s.opm || '—').toFixed(2)}%</div>
+        </div>
+        <div style="background:var(--s1); padding:10px; border-radius:4px;">
+          <div style="font-size:9px; color:#666; margin-bottom:4px;">Market Cap</div>
+          <div style="font-size:13px; font-weight:800; color:var(--bl);">₹${((s.mcap || 0) / 100000).toFixed(1)}L</div>
+        </div>
+      </div>
+      
+      <div style="background:var(--s1); padding:12px; border-radius:4px;">
+        <div style="font-size:11px; font-weight:800; margin-bottom:8px; color:var(--bl);">Financial Metrics</div>
+        <table style="width:100%; font-size:10px;">
+          <tr><td style="padding:6px 0; color:#666;">EPS</td><td style="text-align:right; font-weight:700;">₹${(s.eps || '—').toFixed(2)}</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">Sales</td><td style="text-align:right; font-weight:700;">₹${((s.sales || 0) / 1000).toFixed(0)}K Cr</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">EBITDA</td><td style="text-align:right; font-weight:700;">₹${((s.ebitda || 0) / 1000).toFixed(0)}K Cr</td></tr>
+          <tr><td style="padding:6px 0; color:#666;">NPM %</td><td style="text-align:right; font-weight:700;">${(s.npm || '—').toFixed(2)}%</td></tr>
+        </table>
+      </div>
+      
+      <div style="margin-top:12px; padding:12px; background:var(--s1); border-radius:4px; font-size:10px; color:#666;">
+        <div style="margin-bottom:6px;"><strong>Holdings</strong></div>
+        <div>Qty: ${s.qty || 0}</div>
+        <div>Avg: ₹${(s.avg || 0).toFixed(2)}</div>
+        <div style="margin-top:6px; color:var(--bl); font-weight:700;">P&L: ₹${(((s.ltp || 0) - (s.avg || 0)) * (s.qty || 0)).toFixed(0)}</div>
+      </div>
+    </div>
+  `;
 }
