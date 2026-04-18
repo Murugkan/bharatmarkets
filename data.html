@@ -1139,8 +1139,16 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             return;
         }
         
-        var response = prompt(`Paste guidance response for ${ticker}:`);
+        var response = prompt(`Paste JSON guidance for ${ticker}:`);
         if (!response) return;
+        
+        // Validate JSON syntax only
+        try {
+            JSON.parse(response);
+        } catch(e) {
+            showToast('❌ Invalid JSON: ' + e.message);
+            return;
+        }
         
         updateStatusButton('⏳ Saving');
         saveGuidanceToGitHub(ticker, response, pat);
@@ -1153,78 +1161,34 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             return;
         }
         
-        var response = prompt(`Paste insights response for ${ticker}:`);
+        var response = prompt(`Paste JSON insights for ${ticker}:`);
         if (!response) return;
+        
+        // Validate JSON syntax only
+        try {
+            JSON.parse(response);
+        } catch(e) {
+            showToast('❌ Invalid JSON: ' + e.message);
+            return;
+        }
         
         updateStatusButton('⏳ Saving');
         saveInsightsToGitHub(ticker, response, pat);
     }
 
-    function saveGuidanceToGitHub(ticker, guidanceText, pat) {
+    function saveGuidanceToGitHub(ticker, jsonText, pat) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
         var newGuidance = {};
         try {
-            // Fix UTF-8 corruption before processing
-            var cleanText = guidanceText
-                .replace(/ÃÂ¢ÃÂÃÂ/g, '₹')  // Rupee symbol
-                .replace(/ÃÂ¢ÃÂ/g, '–')    // En-dash
-                .replace(/ÃÂ£/g, '£')      // Pound
-                .replace(/ÃÂ¹/g, '¹')      // Superscript
-                .replace(/Ã¢ÃÂÂ/g, '–')   // Another dash variant
-                .replace(/Ã¢ÂÂÂÂ/g, '–')  // Another dash variant
-                .replace(/ÃÂ/g, '');       // Remove orphaned escape chars
+            // Parse JSON directly - no text parsing needed
+            var parsed = JSON.parse(jsonText);
             
-            var lines = cleanText.trim().split('\n');
-            var currentKey = null;
-            var currentValue = '';
-            
-            lines.forEach((line, idx) => {
-                line = line.trim();
-                if (!line) return; // skip empty
-                
-                var colonIdx = line.indexOf(':');
-                if (colonIdx > 0) {
-                    // This is a new field - store previous if exists
-                    if (currentKey) {
-                        var cleanedValue = currentValue.trim();
-                        // If value is very long, it's probably guidance text - split it
-                        if (cleanedValue.length > 200 && cleanedValue.includes('|')) {
-                            // Try to parse sub-fields from pipe-separated text
-                            newGuidance[currentKey] = cleanedValue;
-                        } else {
-                            newGuidance[currentKey] = cleanedValue;
-                        }
-                    }
-                    
-                    currentKey = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
-                    currentValue = line.substring(colonIdx + 1).trim();
-                } else {
-                    // Continuation of previous value
-                    if (currentKey) {
-                        currentValue += ' ' + line;
-                    }
-                }
-            });
-            
-            // Store last field
-            if (currentKey) {
-                newGuidance[currentKey] = currentValue.trim();
-            }
-            
-            // Clean up values - remove excessive whitespace
-            Object.keys(newGuidance).forEach(key => {
-                if (typeof newGuidance[key] === 'string') {
-                    newGuidance[key] = newGuidance[key].replace(/\s+/g, ' ').trim();
-                }
-            });
-            
-            // Split arrays if detected
-            if (newGuidance.key_commitments && typeof newGuidance.key_commitments === 'string') {
-                newGuidance.key_commitments = newGuidance.key_commitments.split(/[;,]/).map(s => s.trim()).filter(s => s);
-            }
-            if (newGuidance.risks_flagged && typeof newGuidance.risks_flagged === 'string') {
-                newGuidance.risks_flagged = newGuidance.risks_flagged.split(/[;,]/).map(s => s.trim()).filter(s => s);
+            // Extract guidance object for this ticker
+            if (parsed.guidance) {
+                newGuidance = parsed.guidance;
+            } else {
+                throw new Error('Missing "guidance" field in JSON');
             }
             
         } catch(e) {
@@ -1247,7 +1211,7 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             
             if (!content[ticker]) content[ticker] = {};
             
-            // MERGE new guidance into existing, don't replace
+            // Merge new guidance into existing
             newGuidance.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
             content[ticker].guidance = { ...content[ticker].guidance, ...newGuidance };
             concallTimestamps[ticker] = new Date().toISOString();
@@ -1283,107 +1247,20 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
         });
     }
     
-    function saveInsightsToGitHub(ticker, insightsText, pat) {
+    function saveInsightsToGitHub(ticker, jsonText, pat) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
-        var newInsights = { bullets: [] };
+        var newInsights = {};
         try {
-            // Fix UTF-8 corruption before processing
-            var cleanText = insightsText
-                .replace(/ÃÂ¢ÃÂÃÂ/g, '₹')  // Rupee symbol
-                .replace(/ÃÂ¢ÃÂ/g, '–')    // En-dash
-                .replace(/ÃÂ£/g, '£')      // Pound
-                .replace(/ÃÂ¹/g, '¹')      // Superscript
-                .replace(/Ã¢ÃÂÂ/g, '–')   // Another dash variant
-                .replace(/Ã¢ÂÂÂÂ/g, '–')  // Another dash variant
-                .replace(/ÃÂ/g, '');       // Remove orphaned escape chars
+            // Parse JSON directly - no text parsing needed
+            var parsed = JSON.parse(jsonText);
             
-            var lines = cleanText.trim().split('\n');
-            var currentKey = null;
-            var currentValue = '';
-            var rawFields = {};
-            
-            // Parse into key-value pairs (allow multi-line values)
-            lines.forEach((line, idx) => {
-                line = line.trim();
-                if (!line) return;
-                
-                var colonIdx = line.indexOf(':');
-                if (colonIdx > 0) {
-                    // New field
-                    if (currentKey) {
-                        rawFields[currentKey] = currentValue.trim();
-                    }
-                    currentKey = line.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, '_');
-                    currentValue = line.substring(colonIdx + 1).trim();
-                } else {
-                    // Continuation
-                    if (currentKey) {
-                        currentValue += ' ' + line;
-                    }
-                }
-            });
-            if (currentKey) {
-                rawFields[currentKey] = currentValue.trim();
+            // Extract insights object for this ticker
+            if (parsed.insights) {
+                newInsights = parsed.insights;
+            } else {
+                throw new Error('Missing "insights" field in JSON');
             }
-            
-            // Extract top-level fields
-            newInsights.action = rawFields.action || null;
-            newInsights.trigger = rawFields.trigger || null;
-            newInsights.headline = rawFields.headline || null;
-            
-            // Extract bullets - look for patterns like "BULLET 1 CATEGORY", "BULLET 1 TEXT", etc.
-            var bulletMap = {};
-            Object.keys(rawFields).forEach(key => {
-                var match = key.match(/bullet_(\d+)_(category|text)/);
-                if (match) {
-                    var bulletNum = parseInt(match[1]);
-                    var field = match[2];
-                    if (!bulletMap[bulletNum]) bulletMap[bulletNum] = {};
-                    bulletMap[bulletNum][field] = rawFields[key];
-                }
-            });
-            
-            // Also try to extract bullets from lines starting with category names
-            var categories = ['VALUATION', 'GROWTH QUALITY', 'MARGIN RISK', 'CASH FLOW GENERATION', 
-                             'BALANCE SHEET STRENGTH', 'CATALYST', 'OPPORTUNITY', 'MOAT', 'RISKS', 'RED FLAG'];
-            var currentBullet = null;
-            var bulletNum = Object.keys(bulletMap).length + 1;
-            
-            lines.forEach(line => {
-                var trimmed = line.trim();
-                // Check if line starts with a category
-                var categoryMatch = categories.find(cat => trimmed.startsWith(cat));
-                if (categoryMatch) {
-                    // New bullet
-                    if (currentBullet && currentBullet.cat && currentBullet.text) {
-                        if (!bulletMap[bulletNum]) bulletMap[bulletNum] = currentBullet;
-                        bulletNum++;
-                    }
-                    currentBullet = { 
-                        cat: categoryMatch,
-                        text: trimmed.substring(categoryMatch.length).trim() 
-                    };
-                } else if (currentBullet && trimmed && !trimmed.includes(':')) {
-                    // Continuation of bullet text
-                    currentBullet.text += ' ' + trimmed;
-                }
-            });
-            if (currentBullet && currentBullet.cat && currentBullet.text) {
-                if (!bulletMap[bulletNum]) bulletMap[bulletNum] = currentBullet;
-            }
-            
-            // Convert bulletMap to array
-            Object.keys(bulletMap)
-                .sort((a, b) => parseInt(a) - parseInt(b))
-                .forEach(key => {
-                    if (bulletMap[key].cat && bulletMap[key].text) {
-                        newInsights.bullets.push({
-                            cat: bulletMap[key].cat,
-                            text: bulletMap[key].text.substring(0, 500).replace(/\s+/g, ' ').trim() // Limit and clean
-                        });
-                    }
-                });
             
         } catch(e) {
             showToast(`❌ Parse error: ${e.message}`);
@@ -1406,7 +1283,7 @@ Bullet 8 Text: FROM DATA: Risk factors from guidance or financial analysis | 1) 
             
             if (!content[ticker]) content[ticker] = {};
             
-            // MERGE new insights into existing, don't replace
+            // Merge new insights into existing
             newInsights.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
             content[ticker].insights = { ...content[ticker].insights, ...newInsights };
             insightsTimestamps[ticker] = new Date().toISOString();
