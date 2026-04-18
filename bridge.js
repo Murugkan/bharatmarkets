@@ -137,13 +137,27 @@ async function initBridge() {
 
 // Helper: Select a stock for drill view
 function selectStock(ticker) {
-  const stock = MASTER.find(s => s.ticker === ticker || s.sym === ticker);
+  let stock = MASTER.find(s => s.ticker === ticker || s.sym === ticker);
   if (!stock) {
     console.warn(`⚠️ Stock ${ticker} not found in MASTER`);
     return false;
   }
+  
+  // Ensure all aliases are set
+  stock.sym = stock.ticker;
+  stock.symbol = stock.ticker;
+  stock.ltp = stock.ltp || 0;
+  stock.qty = stock.qty || 0;
+  stock.avg = stock.avg || 0;
+  stock.change = stock.change || 0;
+  stock.changePct = stock.changePct || 0;
+  stock.sector = stock.sector || '—';
+  stock.name = stock.name || ticker;
+  stock.score = stock.score || 65;
+  
   S.selStock = stock;
   console.log(`✅ Selected: ${stock.ticker}`);
+  console.log(`📋 Stock object:`, stock);
   return true;
 }
 
@@ -207,3 +221,20 @@ function deletePortfolioStock(ticker) {
 }
 
 // ===== CLEANUP: Remove duplicate function =====
+
+// ===== STUB RENDER FUNCTIONS (if app-drill.js functions missing) =====
+if (typeof renderOverview === 'undefined') {
+  window.renderOverview = (s) => `<div style="padding:12px; color:#8ab4f8;">Overview tab - Stock: ${s.symbol}</div>`;
+}
+if (typeof renderTechnical === 'undefined') {
+  window.renderTechnical = (s) => `<div style="padding:12px; color:#8ab4f8;">Technical tab - Stock: ${s.symbol}</div>`;
+}
+if (typeof renderFundamentals === 'undefined') {
+  window.renderFundamentals = (s) => `<div style="padding:12px; color:#8ab4f8;">Fundamentals tab - Stock: ${s.symbol}</div>`;
+}
+if (typeof renderNewsTab === 'undefined') {
+  window.renderNewsTab = (s) => `<div style="padding:12px; color:#8ab4f8;">News tab - Stock: ${s.symbol}</div>`;
+}
+if (typeof renderInsights === 'undefined') {
+  window.renderInsights = (s) => `<div style="padding:12px; color:#8ab4f8;">Insights tab - Stock: ${s.symbol}</div>`;
+}
