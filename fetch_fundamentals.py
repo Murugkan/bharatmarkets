@@ -305,6 +305,21 @@ def fetch_yfinance(sym):
         de = safe_float(info.get("debtToEquity"))
         result["debt_eq"]   = round(de / 100, 2) if de is not None else None
         result["cur_ratio"] = safe_float(info.get("currentRatio"))
+        
+        # Additional financial metrics (if available)
+        result["total_debt"] = to_cr(info.get("totalDebt"))
+        result["cash"]       = to_cr(info.get("totalCash") or info.get("cash"))
+        result["quick_ratio"] = safe_float(info.get("quickRatio"))
+        result["inventory"]  = to_cr(info.get("inventory"))
+        result["interest_exp"] = to_cr(info.get("interestExpense"))
+        
+        # Calculate EV/EBITDA if we have the components
+        if result.get("mcap") and result.get("ebitda") and result.get("total_debt"):
+            ev = result["mcap"] + result["total_debt"]
+            if result.get("cash"):
+                ev = ev - result["cash"]
+            if result["ebitda"] > 0:
+                result["ev_ebitda"] = round(ev / result["ebitda"], 2)
 
         if result.get("w52h") and ltp:
             result["w52_pct"] = round((ltp / result["w52h"] - 1) * 100, 1)
