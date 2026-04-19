@@ -968,79 +968,70 @@
 COMPANY CONTEXT:
 - Sector: ${sector}
 
-=== DATA SOURCES (Priority Order) ===
+DATA SOURCES (Priority Order):
 1. EARNINGS CALL TRANSCRIPT - Primary source
 2. INVESTOR PRESENTATION (latest)
 3. QUARTERLY RESULTS (P&L, Balance Sheet, Cash Flow)
-4. YOUR TRAINING DATA (up to Jan 2025)
 
-⚠️ CRITICAL REQUIREMENTS - Every field MUST include:
-   - FROM DATA: [Specific number/metric + Source document + Reference]
-   - CALCULATION: [Formula used = Result] (if derived)
-   - TREND: [Current vs Previous period with % change]
-   - ANALYST VIEW: [Assessment based on numbers, not assumptions]
+CRITICAL REQUIREMENTS - Every field MUST include:
+- FROM DATA: Specific number/metric with Source
+- CALCULATION: Formula used = Result (if derived)
+- TREND: Current vs Previous with percentage change
+- ANALYST VIEW: Assessment based on numbers
 
-❌ PROHIBITED:
-   - Vague ranges without source
-   - "Trend-based estimate" - state "Insufficient data"
-   - Generic statements without numbers
-   - Assumptions not grounded in data
+IMPORTANT: Do NOT use quotes or apostrophes. Use square brackets [like this] instead. No special characters.
 
-PASTE DOCUMENTS HERE:
-[Earnings call transcript / Investor presentation / Quarterly results]
+Return ONLY valid JSON. No markdown, no extra text before or after JSON.
 
-Return ONLY in KEY: VALUE format — one field per line, no markdown, no bullets.
-
-===== GUIDANCE SECTION =====
-quarter: FROM DATA: [Q# FY##] | SOURCE: [Document] | ANALYST VIEW: [Latest data used]
-
-revenue_guidance: FROM DATA: [₹/$ amount] | SOURCE: [Reference] | CALCULATION: [Growth % vs prior year] | TREND: [vs prior quarter/year] | ANALYST VIEW: [Achievable/Stretch]
-
-growth_target: FROM DATA: [% guided] OR "Not disclosed" | CALCULATION: [If derived: show formula] | ANALYST VIEW: [Sustainable/At risk]
-
-margin_guidance: FROM DATA: [EBITDA%, PAT%] | SOURCE: [Document] | CALCULATION: [Implied ₹ amounts] | TREND: [vs current in bps] | ANALYST VIEW: [Drivers]
-
-capex_plan: FROM DATA: [₹ amount, purpose, timeline] | SOURCE: [Document] | CALCULATION: [% of revenue] | TREND: [vs prior year]
-
-expansion: FROM DATA: [Announced plans with numbers] | SOURCE: [Document] | CALCULATION: [Capex per unit or growth rate] | TREND: [vs existing]
-
-key_products_portfolio: FROM DATA: [Product names with % revenue] | CALCULATION: [Top 3 = X% of revenue]
-
-geographic_presence: FROM DATA: [Countries/regions with % revenue] | CALCULATION: [Geographic breakdown]
-
-geographic_mix: FROM DATA: [Domestic % and Export %] | CALCULATION: [Absolute ₹/$ values]
-
-geographic_expansion: FROM DATA: [New markets announced] OR "Not disclosed" | TREND: [Revenue if disclosed]
-
-tone: [Positive/Cautious/Defensive] - REASON: [Management commentary + KPIs with numbers]
-
-key_commitments: [Top 3 FROM management with specific numbers/milestones/timelines]
-
-risks_flagged: [Top 3 FROM management or analyst, with severity (High/Medium/Low) + supporting KPI]
-
-summary: One-line takeaway backed by top 2 numbers
-
-===== FUNDAMENTALS SECTION =====
-balance_sheet_health: FROM DATA: [CR = X.Xx | QR = X.Xx | Net Debt = ₹XCr from Balance Sheet] | TREND: [YoY % change] | ANALYST VIEW: [Liquidity: Healthy/Stressed/Improving]
-
-cash_flow_quality: FROM DATA: [OCF = ₹XCr | FCF = ₹XCr from Cash Flow Stmt] | CALCULATION: [FCF conversion % = FCF/NI = X%] | TREND: [Q1→Q2→Q3 movement] | ANALYST VIEW: [Quality: Strong/Adequate/Weak]
-
-profitability_trends: FROM DATA: [Q1: OPM X%, NPM X% | Q2: OPM X%, NPM X% | Q3: OPM X%, NPM X%] | CALCULATION: [Margin change in bps] | ASSESSMENT: [Improving/Stable/Declining]
-
-operational_efficiency: FROM DATA: [Asset Turnover = X.Xx | Rec Days = X | Inv Days = X] | CALCULATION: [CCC = Rec + Inv - Pay days = X days] | ANALYST VIEW: [vs peers]
-
-leverage_metrics: FROM DATA: [Interest Exp = ₹XCr | EBITDA = ₹XCr | Debt = ₹XCr | Equity = ₹XCr] | CALCULATION: [IC = EBITDA/Int = X.Xx | D/E = X.Xx | Debt/EBITDA = X.Xx] | TREND: [QoQ/YoY] | ANALYST VIEW: [Strong/Moderate/Stressed]
-
-dividend_sustainability: FROM DATA: [Dividend FY24 = ₹XCr | FCF = ₹XCr | Payout = X%] | CALCULATION: [FCF coverage = FCF/Dividend = X.Xx] | TREND: [Payout ratio FY23→FY24→FY25E] | ANALYST VIEW: [High/Moderate/At risk]
-
-quarterly_momentum: FROM DATA: [Q1 ₹XCr (YoY X%) | Q2 ₹XCr (YoY X%) | Q3 ₹XCr (YoY X%)] | CALCULATION: [QoQ: Q2 vs Q1 = X%, Q3 vs Q2 = X%] | ASSESSMENT: [Accelerating/Stable/Decelerating]
-
-valuation_relative_to_peers: FROM DATA: [${ticker} P/E = X.Xx | Peer Avg = X.Xx | P/B = X.Xx vs Peer Avg = X.Xx | EV/EBITDA = X.Xx vs Peer Avg = X.Xx] | CALCULATION: [P/E Premium = (${ticker} − Peer) / Peer = +/− X%] | ANALYST VIEW: [Premium justified by growth diff or valuation trap]
-
-key_metrics_to_watch: 
-1) [Metric | Current Value | Historical Range | Why track]
-2) [Metric | Current Value | Historical Range | Why track]
-3) [Metric | Current Value | Historical Range | Why track]`;
+{
+  "${ticker}": {
+    "guidance": {
+      "updated": "DD/MM/YY",
+      "quarter": "Q# FY##",
+      "revenue_guidance": "FROM DATA with amount and source",
+      "growth_target": "percentage or Not mentioned",
+      "margin_guidance": "EBITDA and PAT with FROM DATA",
+      "capex_plan": "amount, purpose, timeline",
+      "expansion": "announced plans with numbers",
+      "geographic_presence": "countries/regions with percentages",
+      "geographic_mix": "domestic and export percentages",
+      "geographic_expansion": "new markets or Not disclosed",
+      "key_products_portfolio": "product names with revenue percentages",
+      "tone": "Positive or Cautious or Defensive",
+      "tone_detail": "detailed explanation with numbers",
+      "key_commitments": ["commitment 1", "commitment 2", "commitment 3"],
+      "risks_flagged": ["risk 1 with severity", "risk 2 with severity", "risk 3 with severity"],
+      "confidence": "High or Medium or Low",
+      "summary": "one line takeaway with top 2 numbers",
+      "balance_sheet_health": "FROM DATA with metrics",
+      "cash_flow_quality": "OCF, FCF, Capex with CALCULATION",
+      "profitability_trends": "quarterly margins with CALCULATION",
+      "operational_efficiency": "asset turnover and cycle metrics",
+      "leverage_metrics": "debt/EBITDA and interest coverage",
+      "dividend_sustainability": "payout ratio and coverage",
+      "quarterly_momentum": "revenue trend with percentages",
+      "valuation_relative_to_peers": "PE premium or discount",
+      "key_metrics_to_watch": ["metric 1 with range", "metric 2 with range", "metric 3 with range"]
+    },
+    "insights": {
+      "updated": "DD/MM/YY",
+      "action": "BUY or HOLD or REDUCE or EXIT",
+      "action_reason": "one line reason",
+      "trigger": "what would change recommendation",
+      "headline": "one sentence summary",
+      "bullets": [
+        {"cat": "VALUATION", "text": "FROM DATA with PE and peer comparison"},
+        {"cat": "GROWTH QUALITY", "text": "FROM DATA showing YoY growth trend"},
+        {"cat": "MARGIN RISK", "text": "FROM DATA showing operating margins"},
+        {"cat": "CASH FLOW GENERATION", "text": "FROM DATA for OCF, FCF, Capex"},
+        {"cat": "BALANCE SHEET STRENGTH", "text": "FROM DATA for debt and EBITDA"},
+        {"cat": "CATALYST", "text": "FROM DATA on order book or pipeline"},
+        {"cat": "MOAT", "text": "FROM DATA on market position"},
+        {"cat": "RISKS", "text": "FROM DATA on risk factors with severity"}
+      ]
+    }
+  }
+}`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
