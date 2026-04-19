@@ -580,49 +580,85 @@ function renderTab(tab) {
             html = `
                 <div style="padding:8px 0;padding-bottom:80px">
                 
+                <!-- QUARTER & SUMMARY - HEADLINE -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:3px solid var(--ac)">
+                    <div style="font-size:10px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px">📊 ${g.quarter}</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-weight:600">${g.summary}</div>
+                    <div style="font-size:8px;color:var(--tx3);margin-top:8px">Last updated: ${g.date || 'N/A'}</div>
+                </div>
+                
+                <!-- FINANCIAL GUIDANCE -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">📊 QUARTER & SUMMARY</div>
-                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                        <div><strong>Quarter:</strong> ${g.quarter}</div>
-                        <div><strong>Date:</strong> ${g.date || 'N/A'}</div>
-                        <div><strong>Summary:</strong> ${g.summary}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1)">💰 Financial Guidance</div>
+                    <div style="display:flex;flex-direction:column;gap:8px;font-size:9px">
+                        <div style="display:flex;justify-content:space-between;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span style="color:var(--tx3)">Revenue</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.financial.revenue}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span style="color:var(--tx3)">Growth Target</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.financial.growth}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span style="color:var(--tx3)">Margins</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.financial.margins}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">
+                            <span style="color:var(--tx3)">Capex Plan</span>
+                            <span style="color:var(--tx1);font-weight:700">${g.financial.capex}</span>
+                        </div>
                     </div>
                 </div>
                 
+                <!-- BUSINESS EXPANSION -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">💰 FINANCIAL</div>
-                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                        <div><strong>Revenue:</strong> ${g.financial.revenue}</div>
-                        <div><strong>Growth:</strong> ${g.financial.growth}</div>
-                        <div><strong>Margins:</strong> ${g.financial.margins}</div>
-                        <div><strong>Capex:</strong> ${g.financial.capex}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1)">🏢 Business Plan</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;font-size:9px">
+                        <div>
+                            <div style="color:var(--tx3);margin-bottom:4px">Expansion Strategy</div>
+                            <div style="color:var(--tx1);line-height:1.6;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">${g.business.expansion}</div>
+                        </div>
+                        <div>
+                            <div style="color:var(--tx3);margin-bottom:4px">Product Portfolio</div>
+                            <div style="color:var(--tx1);line-height:1.6;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">${g.business.products}</div>
+                        </div>
+                        <div>
+                            <div style="color:var(--tx3);margin-bottom:4px">Geographic Presence</div>
+                            <div style="color:var(--tx1);line-height:1.6;padding:8px;background:rgba(0,0,0,.2);border-radius:4px">${g.business.geography}</div>
+                        </div>
                     </div>
                 </div>
                 
+                <!-- MANAGEMENT TONE & COMMITMENTS -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">🏢 BUSINESS</div>
-                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                        <div><strong>Expansion:</strong> ${g.business.expansion}</div>
-                        <div><strong>Products:</strong> ${g.business.products}</div>
-                        <div><strong>Geography:</strong> ${g.business.geography}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--b1)">👔 Management View</div>
+                    
+                    <div style="display:flex;gap:10px;margin-bottom:10px">
+                        <div style="flex:1;padding:8px;background:rgba(0,242,255,.1);border-radius:4px;border:1px solid rgba(0,242,255,.3)">
+                            <div style="font-size:8px;color:var(--tx3);margin-bottom:4px">Tone</div>
+                            <div style="font-size:11px;font-weight:700;color:${g.management.tone === 'Positive' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">${g.management.tone}</div>
+                        </div>
+                        <div style="flex:1;padding:8px;background:rgba(0,242,255,.1);border-radius:4px;border:1px solid rgba(0,242,255,.3)">
+                            <div style="font-size:8px;color:var(--tx3);margin-bottom:4px">Confidence</div>
+                            <div style="font-size:11px;font-weight:700;color:var(--ac)">${g.management.confidence}</div>
+                        </div>
                     </div>
-                </div>
-                
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">👔 MANAGEMENT</div>
-                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                        <div><strong>Tone:</strong> ${g.management.tone}</div>
-                        <div><strong>Confidence:</strong> ${g.management.confidence}</div>
-                        <div style="margin-top:8px"><strong>Commitments:</strong></div>
-                        <ul style="margin-left:20px;color:var(--gr)">
-                            ${g.management.commitments.map(c => `<li>${c}</li>`).join('')}
+                    
+                    <div style="margin-bottom:10px">
+                        <div style="font-size:9px;font-weight:700;color:var(--tx3);margin-bottom:6px">✓ Key Commitments</div>
+                        <ul style="margin:0;padding-left:16px;list-style:none">
+                            ${g.management.commitments.map(c => `<li style="color:var(--gr);font-size:9px;margin-bottom:4px;line-height:1.5">✓ ${c}</li>`).join('')}
                         </ul>
-                        <div style="margin-top:8px"><strong>Risks:</strong></div>
-                        <ul style="margin-left:20px;color:var(--rd)">
-                            ${g.management.risks.map(r => `<li>${r}</li>`).join('')}
+                    </div>
+                    
+                    <div>
+                        <div style="font-size:9px;font-weight:700;color:var(--tx3);margin-bottom:6px">⚠ Key Risks</div>
+                        <ul style="margin:0;padding-left:16px;list-style:none">
+                            ${g.management.risks.map(r => `<li style="color:var(--rd);font-size:9px;margin-bottom:4px;line-height:1.5">⚠ ${r}</li>`).join('')}
                         </ul>
                     </div>
                 </div>
+                
                 </div>
             `;
         }
