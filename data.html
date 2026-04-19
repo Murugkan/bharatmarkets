@@ -325,14 +325,6 @@
     <!-- TAB 1: COMBINED ETL PIPELINE -->
     <div id="etl-pipeline" class="tab-content active">
         
-        <!-- INFO BANNER -->
-        <div style="background:#0a0a0a; border:1px solid #00ff88; padding:12px; border-radius:4px; margin-bottom:12px;">
-            <div style="font-size:10px; color:#aaa; line-height:1.6;">
-                <span style="color:#00ff88; font-weight:bold;">✅ Fresh Data:</span> Click <strong>🚀 LOAD JSON</strong> to fetch latest prices & fundamentals from GitHub<br>
-                <span style="color:#999; font-size:9px;">No authentication needed • Runs in background • Updates Portfolio automatically</span>
-            </div>
-        </div>
-        
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
@@ -626,6 +618,11 @@
             const saved = localStorage.getItem('etl_logs');
             if (saved && Array.isArray(JSON.parse(saved))) {
                 logMessages = JSON.parse(saved);
+                // Display immediately with newest on top
+                var logBox = document.getElementById('live-log');
+                if (logBox && logMessages.length > 0) {
+                    logBox.textContent = logMessages.slice(-30).reverse().join('\n');
+                }
             }
         } catch(e) {}
     }
@@ -831,6 +828,23 @@
 
                         getAllReq.onsuccess = () => {
                             masterData = getAllReq.result || [];
+                            
+                            // Extract guidance data from stock records
+                            masterData.forEach(stock => {
+                                if (stock.guidance) {
+                                    if (!guidanceData[stock.ticker]) {
+                                        guidanceData[stock.ticker] = {};
+                                    }
+                                    guidanceData[stock.ticker].guidance = stock.guidance;
+                                }
+                                if (stock.insights) {
+                                    if (!guidanceData[stock.ticker]) {
+                                        guidanceData[stock.ticker] = {};
+                                    }
+                                    guidanceData[stock.ticker].insights = stock.insights;
+                                }
+                            });
+                            
                             log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
                             resolve();
                         };
@@ -901,6 +915,23 @@
         localStorage.setItem('guidanceTimestamps', JSON.stringify(guidanceTimestamps));
         localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
         localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
+        
+        // Also update IndexedDB stock records with guidance
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = (e) => {
+            var db = e.target.result;
+            var transaction = db.transaction(STORE_NAME, 'readwrite');
+            var store = transaction.objectStore(STORE_NAME);
+            
+            Object.keys(guidanceData).forEach(ticker => {
+                var stock = masterData.find(s => s.ticker === ticker);
+                if (stock) {
+                    stock.guidance = guidanceData[ticker].guidance || null;
+                    stock.insights = guidanceData[ticker].insights || null;
+                    store.put(stock);
+                }
+            });
+        };
     }
 
     function renderSymbols() {
@@ -2199,6 +2230,12 @@ CRITICAL RULES:
             let putCount = 0;
             
             mergedStocks.forEach(stock => {
+                // Attach guidance data if available
+                if (guidanceData[stock.ticker]) {
+                    stock.guidance = guidanceData[stock.ticker].guidance || null;
+                    stock.insights = guidanceData[stock.ticker].insights || null;
+                }
+                
                 var putReq = store.put(stock);
                 putReq.onsuccess = () => putCount++;
             });
