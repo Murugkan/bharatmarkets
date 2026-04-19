@@ -494,10 +494,6 @@
                 
                 const data = await response.json();
                 
-                // CRITICAL: Sanitize immediately after fetching to prevent corruption spread
-                const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
-                const sanitizedData = JSON.parse(sanitizedJSON);
-                
                 // Priority 1: Check HTTP Last-Modified header (most reliable)
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
@@ -505,18 +501,18 @@
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 2: Check for _metadata.updated in data
-                else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
-                    dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
+                else if (data && data._metadata && data._metadata.updated) {
+                    dataUpdatedTimes[filePath] = data._metadata.updated;
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 3: Check for top-level updated field
-                else if (sanitizedData && sanitizedData.updated) {
-                    dataUpdatedTimes[filePath] = sanitizedData.updated;
+                else if (data && data.updated) {
+                    dataUpdatedTimes[filePath] = data.updated;
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 4: Check for lastLoadedAt
-                else if (sanitizedData && sanitizedData.lastLoadedAt) {
-                    dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
+                else if (data && data.lastLoadedAt) {
+                    dataUpdatedTimes[filePath] = data.lastLoadedAt;
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Fallback: Use fetch time
@@ -528,7 +524,7 @@
                 // Save to localStorage
                 localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
                 
-                return sanitizedData;
+                return data;
                 
             } catch (abortErr) {
                 clearTimeout(timeout);
@@ -1288,21 +1284,14 @@ CRITICAL RULES:
     
     function sanitizeJSON(jsonString) {
         // Fix corrupted rupee symbols and other Unicode issues
-        // The pattern ₹¹ÃÂÃÂ¹ is the new corruption we're seeing
+        // Common corruptions: "â‚ą", "Â Â", etc. should be "₹"
         let cleaned = jsonString;
         
-        // Fix multiple rupee symbol corruptions - be aggressive
-        cleaned = cleaned.replace(/â‚ą/g, '₹');                    // â‚ą -> ₹
-        cleaned = cleaned.replace(/Â Â/g, '₹');                    // Â Â -> ₹
-        cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹');    // UTF-8 corrupted -> ₹
-        cleaned = cleaned.replace(/â€?/g, '₹');                   // â€? -> ₹
-        cleaned = cleaned.replace(/Ã¢â‚¬/g, '₹');                 // Ã¢â‚¬ -> ₹
-        cleaned = cleaned.replace(/[\u00c2\u00c3][\u00a2\u00b9]/g, '₹'); // Double-encoded patterns
-        
-        // Pattern: ₹¹ÃÂÃÂ¹ or similar - consecutive corrupted chars -> single ₹
-        // This catches the exact pattern from the screenshot
-        cleaned = cleaned.replace(/₹[¹ÃÂÃÂ\u00b9]+/g, '₹');
-        cleaned = cleaned.replace(/[¹ÃÂÃÂ\u00b9]+/g, '₹');
+        // Fix common rupee symbol corruptions
+        cleaned = cleaned.replace(/â‚ą/g, '₹');      // â‚ą -> ₹
+        cleaned = cleaned.replace(/Â Â/g, '₹');       // Â Â -> ₹
+        cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹'); // UTF-8 corrupted -> ₹
+        cleaned = cleaned.replace(/â€?/g, '₹');      // â€? -> ₹
         
         return cleaned;
     }
@@ -2016,35 +2005,9 @@ CRITICAL RULES:
     }
 
     async function loadAllData() {
-        log('🚀 LOAD JSON initiated - clearing ALL caches...');
+        log('🚀 LOAD JSON initiated - clearing cache...');
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
-        
-        // Step 0: Clear ALL localStorage (comprehensive wipe)
-        const localStorageKeys = [
-            'dataUpdatedTimes',
-            'guidanceData',
-            'guidanceTimestamps', 
-            'concallTimestamps',
-            'insightsTimestamps',
-            'masterData',
-            'symbolsCache',
-            'pricesCache'
-        ];
-        
-        localStorageKeys.forEach(key => {
-            localStorage.removeItem(key);
-            log(`🗑️ Cleared localStorage: ${key}`);
-        });
-        
-        // Step 0b: Clear memory caches
-        masterData = [];
-        dataUpdatedTimes = {};
-        concallTimestamps = {};
-        insightsTimestamps = {};
-        guidanceData = {};
-        pricesData = {};
-        log('✅ Memory caches cleared');
         
         // Step 1: Clear IndexedDB
         await new Promise(resolve => {
@@ -2059,7 +2022,7 @@ CRITICAL RULES:
             };
         });
         
-        // Step 2: Clear browser cache for JSON files (already done above)
+        // Step 2: Clear browser cache for JSON files
         localStorage.removeItem('dataUpdatedTimes');
         dataUpdatedTimes = {};
         log('✅ Browser cache cleared');
@@ -2283,44 +2246,25 @@ CRITICAL RULES:
     }
 
     async function reloadAuto() {
-        log('🔄 HARD REFRESH: Clearing all caches and reloading page...');
-        updateStatusButton('⏳ Hard refresh...');
-        showToast('Clearing everything and reloading...');
+        log('🔄 REFRESH: Quick reload from IndexedDB...');
+        updateStatusButton('⏳ Syncing...');
         
-        // Clear ALL localStorage
-        const allKeys = Object.keys(localStorage);
-        allKeys.forEach(key => {
-            localStorage.removeItem(key);
-            log(`🗑️ Cleared: ${key}`);
-        });
-        
-        // Clear IndexedDB
-        await new Promise(resolve => {
-            var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = () => {
-                log('✅ IndexedDB deleted');
-                setTimeout(resolve, 300);
-            };
-            req.onerror = () => {
-                log('⚠️ Could not delete IndexedDB');
-                setTimeout(resolve, 300);
-            };
-        });
-        
-        // Clear all memory
-        masterData = [];
-        guidanceData = {};
-        pricesData = {};
-        dataUpdatedTimes = {};
-        concallTimestamps = {};
-        insightsTimestamps = {};
-        
-        log('✅ All caches cleared - reloading page...');
-        
-        // Hard page reload
-        setTimeout(() => {
-            window.location.reload(true); // true = skip cache
-        }, 800);
+        try {
+            // Just reload from IndexedDB - no fetch, no clear
+            await loadFromIndexedDB();
+            loadGuidanceFromStorage();
+            
+            renderDataSources();
+            renderSymbols();
+            updateHeader();
+            
+            log(`✅ Synced ${masterData.length} records from IndexedDB`);
+            updateStatusButton('✅ Ready');
+            showToast('✅ Quick sync complete!');
+        } catch (e) {
+            log(`❌ Sync failed: ${e.message}`);
+            updateStatusButton('❌ Error');
+        }
     }
         
 
