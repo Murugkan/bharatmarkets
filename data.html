@@ -988,60 +988,38 @@ DO NOT:
 PASTE DOCUMENTS HERE:
 [Earnings call transcript / Investor presentation / Quarterly results]
 
-Return ONLY in KEY: VALUE format. One field per line. No markdown, no bullets, no special characters.
+Return ONLY valid JSON. No markdown, no extra text before or after the JSON.
 
-===== GUIDANCE SECTION =====
-
-quarter: FROM DATA: Q# FY## | SOURCE: Document | ANALYST VIEW: Latest data used
-
-revenue_guidance: FROM DATA: Currency amount | SOURCE: Reference | CALCULATION: Growth percentage vs prior year | TREND: vs prior quarter or year | ANALYST VIEW: Achievable or Stretch
-
-growth_target: FROM DATA: Percentage guided OR Not disclosed | CALCULATION: If derived, show formula | ANALYST VIEW: Sustainable or At risk
-
-margin_guidance: FROM DATA: EBITDA percentage, PAT percentage | SOURCE: Document | CALCULATION: Implied currency amounts | TREND: vs current in basis points | ANALYST VIEW: Drivers
-
-capex_plan: FROM DATA: Currency amount, purpose, timeline | SOURCE: Document | CALCULATION: Percentage of revenue | TREND: vs prior year
-
-expansion: FROM DATA: Announced plans with numbers | SOURCE: Document | CALCULATION: Capex per unit or growth rate | TREND: vs existing
-
-key_products_portfolio: FROM DATA: Product names with percentage revenue | CALCULATION: Top 3 = X percentage of revenue
-
-geographic_presence: FROM DATA: Countries or regions with percentage revenue | CALCULATION: Geographic breakdown
-
-geographic_mix: FROM DATA: Domestic percentage and Export percentage | CALCULATION: Absolute currency values
-
-geographic_expansion: FROM DATA: New markets announced OR Not disclosed | TREND: Revenue if disclosed
-
-tone: Positive or Cautious or Defensive - REASON: Management commentary plus KPIs with numbers
-
-key_commitments: Top 3 FROM management with specific numbers or milestones or timelines
-
-risks_flagged: Top 3 FROM management or analyst, with severity (High or Medium or Low) plus supporting KPI
-
-summary: One line takeaway backed by top 2 numbers
-
-===== FUNDAMENTALS SECTION =====
-
-balance_sheet_health: FROM DATA: CR = X.Xx, QR = X.Xx, Net Debt = Currency amount from Balance Sheet | TREND: YoY percentage change | ANALYST VIEW: Liquidity - Healthy or Stressed or Improving
-
-cash_flow_quality: FROM DATA: OCF = Currency amount, FCF = Currency amount from Cash Flow Statement | CALCULATION: FCF conversion percentage = FCF divided by Net Income = X percentage | TREND: Q1 to Q2 to Q3 movement | ANALYST VIEW: Quality - Strong or Adequate or Weak
-
-profitability_trends: FROM DATA: Q1 OPM X percentage NPM X percentage, Q2 OPM X percentage NPM X percentage, Q3 OPM X percentage NPM X percentage | CALCULATION: Margin change in basis points | ASSESSMENT: Improving or Stable or Declining
-
-operational_efficiency: FROM DATA: Asset Turnover = X.Xx, Receivable Days = X, Inventory Days = X | CALCULATION: CCC = Receivable plus Inventory minus Payable days = X days | ANALYST VIEW: vs peers
-
-leverage_metrics: FROM DATA: Interest Expense = Currency, EBITDA = Currency, Debt = Currency, Equity = Currency | CALCULATION: Interest Coverage = EBITDA divided by Interest = X.Xx, Debt to Equity = X.Xx, Debt to EBITDA = X.Xx | TREND: QoQ or YoY | ANALYST VIEW: Strong or Moderate or Stressed
-
-dividend_sustainability: FROM DATA: Dividend FY24 = Currency, FCF = Currency, Payout = X percentage | CALCULATION: FCF coverage = FCF divided by Dividend = X.Xx | TREND: Payout ratio FY23 to FY24 to FY25 | ANALYST VIEW: High or Moderate or At risk
-
-quarterly_momentum: FROM DATA: Q1 Currency (YoY X percentage), Q2 Currency (YoY X percentage), Q3 Currency (YoY X percentage) | CALCULATION: QoQ Q2 vs Q1 = X percentage, Q3 vs Q2 = X percentage | ASSESSMENT: Accelerating or Stable or Decelerating
-
-valuation_relative_to_peers: FROM DATA: ${ticker} PE = X.Xx, Peer Average = X.Xx, Price to Book = X.Xx vs Peer Average = X.Xx, EV to EBITDA = X.Xx vs Peer Average = X.Xx | CALCULATION: PE Premium = (${ticker} minus Peer) divided by Peer = plus or minus X percentage | ANALYST VIEW: Premium justified by growth difference or valuation trap
-
-key_metrics_to_watch: 
-1) Metric, Current Value, Historical Range, Why track
-2) Metric, Current Value, Historical Range, Why track
-3) Metric, Current Value, Historical Range, Why track`;
+{
+  "guidance": {
+    "updated": "DD/MM/YY",
+    "quarter": "Q# FY##",
+    "revenue_guidance": "description with FROM DATA, CALCULATION, TREND, ANALYST VIEW",
+    "growth_target": "percentage or Not mentioned",
+    "margin_guidance": "EBITDA and PAT percentages with FROM DATA and TREND",
+    "capex_plan": "amount, purpose, timeline with FROM DATA",
+    "expansion": "announced plans with numbers and CALCULATION",
+    "geographic_presence": "countries/regions with percentages",
+    "geographic_mix": "domestic percentage and export percentage",
+    "geographic_expansion": "new markets or Not disclosed",
+    "key_products_portfolio": "product names with revenue percentages",
+    "tone": "Positive or Cautious or Defensive - REASON with numbers",
+    "tone_detail": "detailed explanation with management commentary",
+    "key_commitments": ["commitment 1 with numbers", "commitment 2 with timeline", "commitment 3 with target"],
+    "risks_flagged": ["risk 1 with severity", "risk 2 with severity", "risk 3 with severity"],
+    "confidence": "High or Medium or Low - reasoning",
+    "summary": "one line takeaway with top 2 numbers",
+    "balance_sheet_health": "FROM DATA with metrics and TREND",
+    "cash_flow_quality": "OCF, FCF, Capex with CALCULATION and percentages",
+    "profitability_trends": "quarterly margins with CALCULATION in basis points",
+    "operational_efficiency": "asset turnover and cycle metrics with ANALYST VIEW",
+    "leverage_metrics": "debt/EBITDA, interest coverage with CALCULATION",
+    "dividend_sustainability": "payout ratio and coverage with TREND",
+    "quarterly_momentum": "revenue trend with percentages and ASSESSMENT",
+    "valuation_relative_to_peers": "PE premium or discount with CALCULATION",
+    "key_metrics_to_watch": ["metric 1 with current and range", "metric 2 with current and range", "metric 3 with current and range"]
+  }
+}`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1081,37 +1059,51 @@ Show calculations where relevant (CALCULATION:)
 Show trends with percentage changes (TREND:)
 Back views with KPIs, not assumptions (ANALYST VIEW:)
 
-Return ONLY in KEY: VALUE format below. One field per line. No markdown, no tables, no bullets, no special characters.
+Return ONLY valid JSON. No markdown, no extra text before or after the JSON.
 
-Action: BUY or HOLD or REDUCE or EXIT with one line reason
-
-Trigger: What would make you change recommendation
-
-Headline: One sentence summary of key insight
-
-Bullet 1 Category: VALUATION
-Bullet 1 Text: FROM DATA: Current PE, Peer avg PE with premium/discount percentage | CALCULATION: Show math | FROM DATA: Industry avg metrics | ANALYST VIEW: Safety assessment
-
-Bullet 2 Category: GROWTH QUALITY
-Bullet 2 Text: FROM DATA: YoY revenue growth last 4 quarters | CALCULATION: Growth rate change | ASSESSMENT: Consistency or deceleration | ANALYST VIEW: Margin sustainability with percentages
-
-Bullet 3 Category: MARGIN RISK
-Bullet 3 Text: FROM DATA: Operating margin quarterly from P and L | CALCULATION: OPM change in basis points | TREND: Historical vs current | FROM DATA: Industry avg OPM | ANALYST VIEW: Operating leverage and pricing power
-
-Bullet 4 Category: CASH FLOW GENERATION
-Bullet 4 Text: FROM DATA: Operating cash flow, Free cash flow, Capital expenditure | CALCULATION: FCF conversion percentage = FCF / Net Income | FROM DATA: Capex intensity percentage | TREND: 3 quarter FCF trend | ANALYST VIEW: Dividend coverage
-
-Bullet 5 Category: BALANCE SHEET STRENGTH
-Bullet 5 Text: FROM DATA: Total Debt, EBITDA from financials | CALCULATION: Debt to EBITDA ratio, Interest coverage = EBITDA / Interest expense | FROM DATA: Current ratio, Net cash | TREND: Leverage movement YoY | ANALYST VIEW: Financial health
-
-Bullet 6 Category: CATALYST
-Bullet 6 Text: FROM DATA: Order book or pipeline if disclosed | NEAR TERM: Next 2 quarters catalyst with specific events | MEDIUM TERM: 12 month catalyst with context | ANALYST VIEW: Re-rating potential
-
-Bullet 7 Category: MOAT
-Bullet 7 Text: FROM DATA: Market position and revenue concentration | TREND: Competitive position strengthening or weakening | ASSESSMENT: Moat durability wide or narrow or narrowing | ANALYST VIEW: Competitive advantages
-
-Bullet 8 Category: RISKS
-Bullet 8 Text: FROM DATA: Risk factors from analysis | 1) Risk 1 with specific metric (Severity High or Medium or Low) | 2) Risk 2 with supporting KPI (Severity) | 3) Risk 3 with evidence (Severity) | ANALYST VIEW: Probability and impact`;
+{
+  "insights": {
+    "updated": "DD/MM/YY",
+    "action": "BUY or HOLD or REDUCE or EXIT",
+    "action_reason": "one line reason",
+    "trigger": "what would change recommendation",
+    "headline": "one sentence summary",
+    "bullets": [
+      {
+        "cat": "VALUATION",
+        "text": "FROM DATA with PE and peer comparison | CALCULATION showing discount or premium | ANALYSIS of P/B and EV/EBITDA | ANALYST VIEW on margin of safety"
+      },
+      {
+        "cat": "GROWTH QUALITY",
+        "text": "FROM DATA showing YoY growth trend | CALCULATION of growth rate changes | ASSESSMENT of consistency | ANALYST VIEW on sustainability"
+      },
+      {
+        "cat": "MARGIN RISK",
+        "text": "FROM DATA showing operating margins | CALCULATION of margin changes in basis points | TREND compared to industry | ANALYST VIEW on drivers"
+      },
+      {
+        "cat": "CASH FLOW GENERATION",
+        "text": "FROM DATA for OCF, FCF, Capex | CALCULATION of FCF conversion percentage | FROM DATA for capex intensity | ANALYST VIEW on dividend coverage"
+      },
+      {
+        "cat": "BALANCE SHEET STRENGTH",
+        "text": "FROM DATA for debt and EBITDA | CALCULATION of debt ratios and interest coverage | FROM DATA for current ratio | ANALYST VIEW on financial health"
+      },
+      {
+        "cat": "CATALYST",
+        "text": "FROM DATA on order book or pipeline | NEAR TERM events with timeline | MEDIUM TERM opportunities with context | ANALYST VIEW on re-rating potential"
+      },
+      {
+        "cat": "MOAT",
+        "text": "FROM DATA on market position | TREND in competitive standing | ASSESSMENT of moat width | ANALYST VIEW on durability"
+      },
+      {
+        "cat": "RISKS",
+        "text": "FROM DATA on risk factors | List 3 risks with severity levels | Supporting KPIs for each risk | ANALYST VIEW on probability and impact"
+      }
+    ]
+  }
+}`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Insights prompt copied!');
