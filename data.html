@@ -1213,6 +1213,21 @@ CRITICAL RULES:
             .trim();
     }
     
+    function utf8ToBase64(str) {
+        // Properly encode UTF-8 string to base64 for GitHub API
+        try {
+            return btoa(unescape(encodeURIComponent(str)));
+        } catch (e) {
+            // Fallback for complex Unicode
+            const utf8Bytes = new TextEncoder().encode(str);
+            let binary = '';
+            for (let i = 0; i < utf8Bytes.length; i++) {
+                binary += String.fromCharCode(utf8Bytes[i]);
+            }
+            return btoa(binary);
+        }
+    }
+    
     function showGuidanceSaveModal(ticker) {
         var pat = document.getElementById('patToken').value;
         if (!pat) {
@@ -1354,12 +1369,17 @@ CRITICAL RULES:
             if (!content[ticker]) content[ticker] = {};
             
             // Update only this ticker's guidance
-            newGuidance.date = new Date().toISOString().split('T')[0];
+            // Use date from parameter (from modal), or default to today
+            if (date) {
+                newGuidance.date = date;
+            } else {
+                newGuidance.date = new Date().toISOString().split('T')[0];
+            }
             content[ticker].guidance = newGuidance;
             
-            // Encode using btoa method (like watchlist module)
+            // Encode using proper UTF-8 base64 helper
             const jsonString = JSON.stringify(content, null, 2);
-            const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
+            const encodedContent = utf8ToBase64(jsonString);
             
             return fetch(apiUrl, {
                 method: 'PUT',
@@ -1380,6 +1400,12 @@ CRITICAL RULES:
             log(`✅ Guidance for ${ticker} saved`);
             updateStatusButton('✅ Ready');
             showToast(`✅ Guidance saved for ${ticker}`);
+            
+            // Record timestamp from guidance JSON and refresh table
+            const guidanceDate = newGuidance.date || new Date().toISOString().split('T')[0];
+            concallTimestamps[ticker] = guidanceDate;
+            localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
+            renderStockTable();
         })
         .catch(e => {
             updateStatusButton('❌ Error');
@@ -1462,12 +1488,17 @@ CRITICAL RULES:
             if (!content[ticker]) content[ticker] = {};
             
             // Update only this ticker's insights
-            newInsights.date = new Date().toISOString().split('T')[0];
+            // Use date from parameter (from modal), or default to today
+            if (date) {
+                newInsights.date = date;
+            } else {
+                newInsights.date = new Date().toISOString().split('T')[0];
+            }
             content[ticker].insights = newInsights;
             
-            // Encode using btoa method (like watchlist module)
+            // Encode using proper UTF-8 base64 helper
             const jsonString = JSON.stringify(content, null, 2);
-            const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
+            const encodedContent = utf8ToBase64(jsonString);
             
             return fetch(apiUrl, {
                 method: 'PUT',
@@ -1488,6 +1519,12 @@ CRITICAL RULES:
             log(`✅ Insights for ${ticker} saved`);
             updateStatusButton('✅ Ready');
             showToast(`✅ Insights saved for ${ticker}`);
+            
+            // Record timestamp from insights JSON and refresh table
+            const insightsDate = newInsights.date || new Date().toISOString().split('T')[0];
+            insightsTimestamps[ticker] = insightsDate;
+            localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
+            renderStockTable();
         })
         .catch(e => {
             updateStatusButton('❌ Error');
