@@ -558,82 +558,74 @@ function renderTab(tab) {
     } else if (tab === 'technical') {
         html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     } else if (tab === 'fundamentals') {
-        // Fetch guidance data from GitHub
+        // Load guidance from localStorage (same pattern as guidance tab below)
         let guidance = {};
-        
-        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
-        
-        fetch(rawUrl)
-            .then(r => r.json())
-            .then(data => {
-                const g = data[s.ticker.toUpperCase()]?.guidance;
-                
-                if (!g) {
-                    html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save guidance from Data tab</div></div>';
-                } else {
-                    html = `
-                        <div style="padding:8px 0;padding-bottom:80px;font-family:monospace">
-                        
-                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">📊 QUARTER & SUMMARY</div>
-                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                                <div><strong>Quarter:</strong> ${g.quarter}</div>
-                                <div><strong>Date:</strong> ${g.date || 'N/A'}</div>
-                                <div><strong>Summary:</strong> ${g.summary}</div>
-                            </div>
-                        </div>
-                        
-                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">💰 FINANCIAL</div>
-                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                                <div><strong>Revenue:</strong> ${g.financial.revenue}</div>
-                                <div><strong>Growth:</strong> ${g.financial.growth}</div>
-                                <div><strong>Margins:</strong> ${g.financial.margins}</div>
-                                <div><strong>Capex:</strong> ${g.financial.capex}</div>
-                            </div>
-                        </div>
-                        
-                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">🏢 BUSINESS</div>
-                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                                <div><strong>Expansion:</strong> ${g.business.expansion}</div>
-                                <div><strong>Products:</strong> ${g.business.products}</div>
-                                <div><strong>Geography:</strong> ${g.business.geography}</div>
-                            </div>
-                        </div>
-                        
-                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">👔 MANAGEMENT</div>
-                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
-                                <div><strong>Tone:</strong> ${g.management.tone}</div>
-                                <div><strong>Confidence:</strong> ${g.management.confidence}</div>
-                                <div style="margin-top:8px"><strong>Commitments:</strong></div>
-                                <ul style="margin-left:20px;color:var(--gr)">
-                                    ${g.management.commitments.map(c => `<li>${c}</li>`).join('')}
-                                </ul>
-                                <div style="margin-top:8px"><strong>Risks:</strong></div>
-                                <ul style="margin-left:20px;color:var(--rd)">
-                                    ${g.management.risks.map(r => `<li>${r}</li>`).join('')}
-                                </ul>
-                            </div>
-                        </div>
-                        
-                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">📋 RAW JSON</div>
-                            <pre style="background:#000;padding:8px;border-radius:4px;overflow-x:auto;font-size:8px">${JSON.stringify(g, null, 2)}</pre>
-                        </div>
-                        </div>
-                    `;
+        try {
+            const guidanceDataStr = localStorage.getItem('guidanceData');
+            if (guidanceDataStr) {
+                const allGuidance = JSON.parse(guidanceDataStr);
+                if (allGuidance[s.ticker]) {
+                    guidance = allGuidance[s.ticker];
                 }
-                
-                document.getElementById('content').innerHTML = html;
-            })
-            .catch(err => {
-                html = `<div class="placeholder"><div style="color:var(--rd)">Error loading fundamentals: ${err.message}</div></div>`;
-                document.getElementById('content').innerHTML = html;
-            });
+            }
+        } catch (e) {
+            console.log('No guidance data in localStorage');
+        }
         
-        return;
+        if (!guidance || !guidance.guidance) {
+            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save guidance from Data tab</div></div>';
+        } else {
+            const g = guidance.guidance;
+            
+            html = `
+                <div style="padding:8px 0;padding-bottom:80px">
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">📊 QUARTER & SUMMARY</div>
+                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                        <div><strong>Quarter:</strong> ${g.quarter}</div>
+                        <div><strong>Date:</strong> ${g.date || 'N/A'}</div>
+                        <div><strong>Summary:</strong> ${g.summary}</div>
+                    </div>
+                </div>
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">💰 FINANCIAL</div>
+                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                        <div><strong>Revenue:</strong> ${g.financial.revenue}</div>
+                        <div><strong>Growth:</strong> ${g.financial.growth}</div>
+                        <div><strong>Margins:</strong> ${g.financial.margins}</div>
+                        <div><strong>Capex:</strong> ${g.financial.capex}</div>
+                    </div>
+                </div>
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">🏢 BUSINESS</div>
+                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                        <div><strong>Expansion:</strong> ${g.business.expansion}</div>
+                        <div><strong>Products:</strong> ${g.business.products}</div>
+                        <div><strong>Geography:</strong> ${g.business.geography}</div>
+                    </div>
+                </div>
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">👔 MANAGEMENT</div>
+                    <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                        <div><strong>Tone:</strong> ${g.management.tone}</div>
+                        <div><strong>Confidence:</strong> ${g.management.confidence}</div>
+                        <div style="margin-top:8px"><strong>Commitments:</strong></div>
+                        <ul style="margin-left:20px;color:var(--gr)">
+                            ${g.management.commitments.map(c => `<li>${c}</li>`).join('')}
+                        </ul>
+                        <div style="margin-top:8px"><strong>Risks:</strong></div>
+                        <ul style="margin-left:20px;color:var(--rd)">
+                            ${g.management.risks.map(r => `<li>${r}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+                </div>
+            `;
+        }
     } else if (tab === 'guidance') {
         // Fetch guidance data from localStorage or IndexedDB
         let guidance = {};
