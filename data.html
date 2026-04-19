@@ -957,13 +957,16 @@
         
         var name = stock.name || ticker;
         
-        var prompt = `You are a senior equity analyst. Extract ${ticker} (${name}) guidance from latest earnings call. Focus on COMPANY-SPECIFIC analysis only.
+        var prompt = `TICKER: ${ticker}
+COMPANY: ${name}
 
-CRITICAL: Provide all 10 analyst dimensions with specific numbers. NO sector briefing here.
+You are a senior equity analyst. Extract guidance from latest earnings call. Provide COMPLETE fundamental analysis.
+
+CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
 
 {
   "guidance": {
-    "quarter": "Q3 FY26",
+    "quarter": "Q4 FY26",
     
     "financial": {
       "revenue": "SPECIFIC target with growth rate",
@@ -981,33 +984,113 @@ CRITICAL: Provide all 10 analyst dimensions with specific numbers. NO sector bri
     "management": {
       "tone": "'Positive' or 'Cautious' or 'Defensive'",
       "confidence": "'High' or 'Medium' or 'Low'",
-      "commitments": ["commitment 1", "commitment 2", "commitment 3"],
-      "risks": ["risk - Severity", "risk - Severity", "risk - Severity"]
+      "commitments": ["commitment 1", "commitment 2"],
+      "risks": ["risk - Severity", "risk - Severity"]
     },
     
     "summary": "One sentence with top 2 numbers",
     
+    "deals_and_pipeline": {
+      "deal_wins": ["Deal 1: ₹X Cr, client type, when", "Deal 2: ₹Y Cr, client type, when"],
+      "order_book": {
+        "total_value": "₹X Cr total",
+        "execution_timeline": "X% in next Y months; Z% in Y-24 months",
+        "by_segment": "Segment 1 ₹X Cr | Segment 2 ₹Y Cr"
+      },
+      "sales_pipeline": "₹X Cr active pipeline; X% conversion expected",
+      "deal_pipeline_value": "₹X Cr in advanced negotiations"
+    },
+    
+    "customers": {
+      "customer_additions": ["New customer 1", "New customer 2"],
+      "customer_losses": ["Lost customer with ₹X Cr impact"],
+      "customer_concentration": "Top 5 customers = X% revenue; Top 10 = Y%",
+      "net_assessment": "Net positive/negative; consolidation or diversification trend"
+    },
+    
+    "segments": {
+      "revenue_by_segment": {
+        "Segment 1": "X% revenue | +Y% YoY growth",
+        "Segment 2": "X% revenue | +Y% YoY growth",
+        "Segment 3": "X% revenue | +Y% YoY growth"
+      },
+      "segment_outlook": "Which segments accelerating vs declining"
+    },
+    
+    "geography": {
+      "revenue_mix": {"Region 1": "X%", "Region 2": "Y%", "Region 3": "Z%"},
+      "expansion_plans": "New countries/regions targeted with timeline"
+    },
+    
+    "operations": {
+      "headcount": {
+        "current_strength": "X employees",
+        "hiring_plan": "Add Y engineers/staff",
+        "utilization_target": "Current X% → Target Y%",
+        "attrition_rate": "X% YoY vs industry Y%"
+      },
+      "raw_materials": {
+        "cost_outlook": "Cost pressure easing or intensifying",
+        "expected_benefit": "X-Y bps margin benefit/pressure",
+        "key_materials": "Material 1 +X% cost | Material 2 -Y% cost"
+      },
+      "working_capital": {
+        "receivables_dso": "X days (was Y days)",
+        "inventory_dio": "X days (was Y days)",
+        "cash_conversion_cycle": "X days (was Y days)",
+        "cash_release_potential": "₹X Cr WC release expected"
+      }
+    },
+    
+    "capital_allocation": {
+      "capex_detailed": {
+        "total": "₹X Cr",
+        "automation": "₹X Cr",
+        "it_infrastructure": "₹X Cr",
+        "facility_expansion": "₹X Cr",
+        "funding_source": "X% operations, Y% debt, Z% equity"
+      },
+      "debt_management": {
+        "repayment_plan": "₹X Cr debt repayment",
+        "net_debt_target": "Target X.X x EBITDA (from Y.Y x)",
+        "timeline": "Achieve by end of FY27/FY28",
+        "current_net_debt": "₹X Cr"
+      }
+    },
+    
+    "competitive_position": {
+      "market_share": {
+        "by_segment": "Segment 1: X% (gaining/losing)",
+        "overall_trend": "Market position strengthening or weakening"
+      },
+      "pricing_strategy": "Pricing power; price increase acceptance; vs peers",
+      "competitive_advantages": ["Advantage 1", "Advantage 2", "Advantage 3"],
+      "competitive_threats": ["Threat 1 (Severity)", "Threat 2 (Severity)", "Threat 3 (Severity)"]
+    },
+    
+    "investor_verdict": "One sentence most important takeaway",
+    
     "analyst_dimensions": {
-      "valuation_context": "How does guidance compare to current valuation? Is management conservative or aggressive?",
-      "consensus_gap": "Guidance vs street consensus vs previous guidance",
-      "achievability": "Is guidance achievable? Company's track record",
-      "margin_quality": "What's driving margins? Sustainable?",
-      "capex_roi": "Capex justified by returns? When will new capacity generate revenue?",
-      "order_book_health": "Order book to revenue ratio, execution risk timeline",
-      "risk_opportunity_scorecard": "Which risks matter most? Which opportunities are game-changers?",
-      "management_credibility": "Transparent? Conservative or aggressive setter? Track record",
-      "forward_estimate_impact": "How does guidance change FY26/FY27 estimates? Upside/downside to consensus",
-      "quarterly_trajectory": "How will revenue/margin evolve quarter by quarter? When do catalysts hit?"
+      "valuation_context": "How does guidance compare to valuation",
+      "consensus_gap": "Guidance vs street consensus vs previous",
+      "achievability": "Is guidance achievable; track record",
+      "margin_quality": "What's driving margins; sustainable",
+      "capex_roi": "Capex justified by returns; ROIC",
+      "order_book_health": "Order book value + execution timeline + risk",
+      "risk_opportunity_scorecard": "Risks vs opportunities with probability & impact",
+      "management_credibility": "Transparent; conservative or aggressive setter",
+      "forward_estimate_impact": "How guidance changes FY26/FY27 EPS estimates",
+      "quarterly_trajectory": "Revenue/margin path; catalyst timing"
     }
   }
 }
 
 CRITICAL RULES:
 1. Return ONLY JSON
-2. All 10 analyst dimensions MUST have specific, detailed analysis
-3. Use actual numbers from call, not templates
-4. Be brutally honest about risks and opportunities
-5. NO sector briefing - that goes in Insights`;
+2. ALL 25 fields required
+3. Use actual numbers from call
+4. Do NOT fabricate data - use "Not disclosed" if missing
+5. Be brutally honest on risks & opportunities`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1032,7 +1115,11 @@ CRITICAL RULES:
         var name = stock.name || ticker;
         var sector = stock.sector || 'N/A';
         
-        var prompt = `You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT for ${ticker} (${name}, ${sector}).
+        var prompt = `TICKER: ${ticker}
+COMPANY: ${name}
+SECTOR: ${sector}
+
+You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT.
 
 This is your investment opinion + sector analysis. Company guidance is separate.
 
@@ -1133,16 +1220,22 @@ CRITICAL RULES:
             return;
         }
         
-        // Create modal with textarea
+        // Create modal with textarea + date
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
+        
+        const today = new Date().toISOString().split('T')[0];
         
         modal.innerHTML = `
             <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
                 <h3 style="color:#00f2ff;margin-bottom:15px">📋 Paste Guidance JSON for ${ticker}</h3>
-                <textarea id="guidance-json-input" style="width:100%;height:300px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
+                <div style="margin-bottom:15px">
+                    <label style="color:#aaa;font-size:11px">Date</label>
+                    <input id="guidance-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
+                </div>
+                <textarea id="guidance-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
                 <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="const json=cleanJSON(document.getElementById('guidance-json-input').value);try{JSON.parse(json);document.getElementById('guidance-modal').remove();updateStatusButton('⏳ Saving');saveGuidanceToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="const json=cleanJSON(document.getElementById('guidance-json-input').value);const date=document.getElementById('guidance-date-input').value;try{JSON.parse(json);document.getElementById('guidance-modal').remove();updateStatusButton('⏳ Saving');saveGuidanceToGitHub('${ticker}',json,'${pat}',date)}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
                     <button onclick="document.getElementById('guidance-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
                 </div>
             </div>
@@ -1159,16 +1252,22 @@ CRITICAL RULES:
             return;
         }
         
-        // Create modal with textarea
+        // Create modal with textarea + date
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
+        
+        const today = new Date().toISOString().split('T')[0];
         
         modal.innerHTML = `
             <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
                 <h3 style="color:#00f2ff;margin-bottom:15px">💡 Paste Insights JSON for ${ticker}</h3>
-                <textarea id="insights-json-input" style="width:100%;height:300px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
+                <div style="margin-bottom:15px">
+                    <label style="color:#aaa;font-size:11px">Date</label>
+                    <input id="insights-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
+                </div>
+                <textarea id="insights-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
                 <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="const json=cleanJSON(document.getElementById('insights-json-input').value);try{JSON.parse(json);document.getElementById('insights-modal').remove();updateStatusButton('⏳ Saving');saveInsightsToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="const json=cleanJSON(document.getElementById('insights-json-input').value);const date=document.getElementById('insights-date-input').value;try{JSON.parse(json);document.getElementById('insights-modal').remove();updateStatusButton('⏳ Saving');saveInsightsToGitHub('${ticker}',json,'${pat}',date)}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
                     <button onclick="document.getElementById('insights-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
                 </div>
             </div>
@@ -1178,7 +1277,7 @@ CRITICAL RULES:
         document.getElementById('insights-json-input').focus();
     }
 
-    function saveGuidanceToGitHub(ticker, jsonText, pat) {
+    function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
         var newGuidance = {};
@@ -1199,7 +1298,10 @@ CRITICAL RULES:
                 throw new Error('Invalid format');
             }
             
-            // Validate structure
+            // Add date field
+            if (date) {
+                newGuidance.date = date;
+            }
             const required = ['quarter', 'financial', 'business', 'management', 'summary'];
             for (let field of required) {
                 if (!(field in newGuidance)) {
@@ -1286,7 +1388,7 @@ CRITICAL RULES:
         });
     }
     
-    function saveInsightsToGitHub(ticker, jsonText, pat) {
+    function saveInsightsToGitHub(ticker, jsonText, pat, date) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
         var newInsights = {};
@@ -1305,6 +1407,11 @@ CRITICAL RULES:
                 }
             } else {
                 throw new Error('Invalid format');
+            }
+            
+            // Add date field
+            if (date) {
+                newInsights.date = date;
             }
             
             // Validate structure
