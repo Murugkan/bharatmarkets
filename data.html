@@ -2114,7 +2114,7 @@ CRITICAL RULES:
             results.push(data);
         }
         
-        // Load saved guidance from localStorage (GitHub version is corrupted)
+        // Load saved guidance from localStorage (GitHub version might be corrupted)
         let guidanceFileData = {};
         const existingGuidance = localStorage.getItem('guidanceData');
         if (existingGuidance) {
@@ -2124,6 +2124,21 @@ CRITICAL RULES:
             } catch (e) {
                 guidanceFileData = {};
             }
+        }
+        
+        // Also try to fetch from GitHub as backup
+        try {
+            const githubGuidance = await fetchGitHubData('guidance.json');
+            if (githubGuidance && typeof githubGuidance === 'object') {
+                // Merge GitHub version (GitHub has priority if it exists)
+                Object.keys(githubGuidance).forEach(ticker => {
+                    if (ticker !== '_metadata') {
+                        guidanceFileData[ticker] = githubGuidance[ticker];
+                    }
+                });
+            }
+        } catch (e) {
+            // GitHub fetch failed, that's OK - use localStorage version
         }
         
         let symbolsData = results[0];
@@ -2153,15 +2168,16 @@ CRITICAL RULES:
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
-                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
-                        var dateStr = guidanceFileData[ticker].guidance.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
+                    // Store ISO timestamp from guidance.date
+                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
+                        var dateStr = guidanceFileData[ticker].guidance.date;
+                        // If it's ISO format, use as-is; if DD/MM/YY, convert
+                        var isoDate = dateStr.includes('-') ? dateStr : convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
                     }
-                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
-                        var dateStr = guidanceFileData[ticker].insights.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
+                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.date) {
+                        var dateStr = guidanceFileData[ticker].insights.date;
+                        var isoDate = dateStr.includes('-') ? dateStr : convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
                     }
                 }
