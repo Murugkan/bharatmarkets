@@ -558,23 +558,82 @@ function renderTab(tab) {
     } else if (tab === 'technical') {
         html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
     } else if (tab === 'fundamentals') {
-        // Fetch guidance data from localStorage or IndexedDB
+        // Fetch guidance data from GitHub
         let guidance = {};
-        try {
-            // Try to get from localStorage guidanceData object first
-            const guidanceDataStr = localStorage.getItem('guidanceData');
-            if (guidanceDataStr) {
-                const allGuidance = JSON.parse(guidanceDataStr);
-                if (allGuidance[s.ticker]) {
-                    guidance = allGuidance[s.ticker];
-                }
-            }
-        } catch (e) {
-            console.log('No guidance data in localStorage');
-        }
         
-        if (!guidance || !guidance.guidance) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save guidance from Data tab</div></div>';
+        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        fetch(rawUrl)
+            .then(r => r.json())
+            .then(data => {
+                const g = data[s.ticker.toUpperCase()]?.guidance;
+                
+                if (!g) {
+                    html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save guidance from Data tab</div></div>';
+                } else {
+                    html = `
+                        <div style="padding:8px 0;padding-bottom:80px;font-family:monospace">
+                        
+                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">📊 QUARTER & SUMMARY</div>
+                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                                <div><strong>Quarter:</strong> ${g.quarter}</div>
+                                <div><strong>Date:</strong> ${g.date || 'N/A'}</div>
+                                <div><strong>Summary:</strong> ${g.summary}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">💰 FINANCIAL</div>
+                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                                <div><strong>Revenue:</strong> ${g.financial.revenue}</div>
+                                <div><strong>Growth:</strong> ${g.financial.growth}</div>
+                                <div><strong>Margins:</strong> ${g.financial.margins}</div>
+                                <div><strong>Capex:</strong> ${g.financial.capex}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">🏢 BUSINESS</div>
+                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                                <div><strong>Expansion:</strong> ${g.business.expansion}</div>
+                                <div><strong>Products:</strong> ${g.business.products}</div>
+                                <div><strong>Geography:</strong> ${g.business.geography}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">👔 MANAGEMENT</div>
+                            <div style="font-size:10px;color:var(--tx3);line-height:1.8">
+                                <div><strong>Tone:</strong> ${g.management.tone}</div>
+                                <div><strong>Confidence:</strong> ${g.management.confidence}</div>
+                                <div style="margin-top:8px"><strong>Commitments:</strong></div>
+                                <ul style="margin-left:20px;color:var(--gr)">
+                                    ${g.management.commitments.map(c => `<li>${c}</li>`).join('')}
+                                </ul>
+                                <div style="margin-top:8px"><strong>Risks:</strong></div>
+                                <ul style="margin-left:20px;color:var(--rd)">
+                                    ${g.management.risks.map(r => `<li>${r}</li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                            <div style="font-size:11px;font-weight:800;color:var(--ac);margin-bottom:10px">📋 RAW JSON</div>
+                            <pre style="background:#000;padding:8px;border-radius:4px;overflow-x:auto;font-size:8px">${JSON.stringify(g, null, 2)}</pre>
+                        </div>
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('content').innerHTML = html;
+            })
+            .catch(err => {
+                html = `<div class="placeholder"><div style="color:var(--rd)">Error loading fundamentals: ${err.message}</div></div>`;
+                document.getElementById('content').innerHTML = html;
+            });
+        
+        return;
         } else {
             const g = guidance.guidance;
             
@@ -829,6 +888,167 @@ function renderTab(tab) {
 
 // Init
 loadStock();
+
+// ============================================================================
+// ANALYSIS TAB DISPLAY FUNCTIONS
+// ============================================================================
+
+function loadGuidanceData(ticker) {
+    try {
+        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        fetch(rawUrl)
+            .then(r => r.json())
+            .then(data => {
+                const guidance = data[ticker.toUpperCase()]?.guidance;
+                if (guidance) {
+                    renderFundamentalsTab(ticker, guidance);
+                } else {
+                    document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">No guidance data for ${ticker}</div>`;
+                }
+            })
+            .catch(err => {
+                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--rd)">Error loading data: ${err.message}</div>`;
+            });
+    } catch (error) {
+        console.error('Error loading guidance:', error);
+    }
+}
+
+function loadInsightsData(ticker) {
+    try {
+        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        fetch(rawUrl)
+            .then(r => r.json())
+            .then(data => {
+                const insights = data[ticker.toUpperCase()]?.insights;
+                if (insights) {
+                    renderInsightsTab(ticker, insights);
+                } else {
+                    document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">No insights data for ${ticker}</div>`;
+                }
+            })
+            .catch(err => {
+                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--rd)">Error loading data: ${err.message}</div>`;
+            });
+    } catch (error) {
+        console.error('Error loading insights:', error);
+    }
+}
+
+function renderFundamentalsTab(ticker, guidance) {
+    let html = `
+        <div style="font-family: monospace; padding: 20px; background: var(--bg); color: var(--tx1);">
+            <h3 style="color: var(--ac); margin-bottom: 20px;">📋 FUNDAMENTALS - ${ticker}</h3>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">QUARTER & SUMMARY</h4>
+                <p><strong>Quarter:</strong> ${guidance.quarter}</p>
+                <p><strong>Date:</strong> ${guidance.date || 'N/A'}</p>
+                <p><strong>Summary:</strong> ${guidance.summary}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">FINANCIAL</h4>
+                <p><strong>Revenue:</strong> ${guidance.financial.revenue}</p>
+                <p><strong>Growth:</strong> ${guidance.financial.growth}</p>
+                <p><strong>Margins:</strong> ${guidance.financial.margins}</p>
+                <p><strong>Capex:</strong> ${guidance.financial.capex}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">BUSINESS</h4>
+                <p><strong>Expansion:</strong> ${guidance.business.expansion}</p>
+                <p><strong>Products:</strong> ${guidance.business.products}</p>
+                <p><strong>Geography:</strong> ${guidance.business.geography}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">MANAGEMENT</h4>
+                <p><strong>Tone:</strong> ${guidance.management.tone}</p>
+                <p><strong>Confidence:</strong> ${guidance.management.confidence}</p>
+                
+                <p style="margin-top: 10px;"><strong>Commitments:</strong></p>
+                <ul style="margin-left: 20px; color: var(--gr);">
+    `;
+    
+    guidance.management.commitments.forEach(commitment => {
+        html += `<li>${commitment}</li>`;
+    });
+    
+    html += `
+                </ul>
+                
+                <p style="margin-top: 10px;"><strong>Risks:</strong></p>
+                <ul style="margin-left: 20px; color: var(--rd);">
+    `;
+    
+    guidance.management.risks.forEach(risk => {
+        html += `<li>${risk}</li>`;
+    });
+    
+    html += `
+                </ul>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">RAW JSON DATA</h4>
+                <pre style="background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 9px;">${JSON.stringify(guidance, null, 2)}</pre>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content').innerHTML = html;
+}
+
+function renderInsightsTab(ticker, insights) {
+    let html = `
+        <div style="font-family: monospace; padding: 20px; background: var(--bg); color: var(--tx1);">
+            <h3 style="color: var(--ac); margin-bottom: 20px;">💡 INSIGHTS - ${ticker}</h3>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">RECOMMENDATION</h4>
+                <p><strong style="font-size: 14px; color: var(--gr);">Action: ${insights.recommendation}</strong></p>
+                <p><strong>Date:</strong> ${insights.date || 'N/A'}</p>
+                <p><strong>Thesis:</strong> ${insights.thesis}</p>
+                <p><strong>Trigger:</strong> ${insights.trigger}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">ANALYSIS BREAKDOWN</h4>
+    `;
+    
+    const dimensions = ['valuation', 'growth', 'profitability', 'cash_strength', 'catalyst', 'moat', 'opportunity'];
+    
+    dimensions.forEach(dim => {
+        if (insights.analysis[dim]) {
+            const analysis = insights.analysis[dim];
+            const signalColor = analysis.signal === 'Positive' ? var(--gr) : analysis.signal === 'Caution' ? var(--rd) : var(--ac);
+            
+            html += `
+                <div style="margin: 15px 0; padding: 10px; border-left: 3px solid var(--ac); background: rgba(0,242,255,.05);">
+                    <p><strong style="text-transform: uppercase;">${dim.replace(/_/g, ' ')} [${analysis.signal}]</strong></p>
+                    <p style="font-size: 10px; color: var(--tx3);"><strong>Metric:</strong> ${analysis.metric}</p>
+                    <p style="font-size: 10px; color: var(--tx3);"><strong>Assessment:</strong> ${analysis.assessment}</p>
+                </div>
+            `;
+        }
+    });
+    
+    html += `
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">RAW JSON DATA</h4>
+                <pre style="background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 9px;">${JSON.stringify(insights, null, 2)}</pre>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content').innerHTML = html;
+}
+
 </script>
 
 </body>

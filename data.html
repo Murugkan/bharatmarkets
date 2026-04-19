@@ -955,83 +955,54 @@
             return;
         }
         
-        var sector = stock.sector || '—';
-        var ltp = stock.ltp || '—';
-        var pe = stock.pe || '—';
-        var roe = stock.roe || '—';
-        var opm = stock.opm_pct || '—';
-        var mcap = stock.mcap || '—';
         var name = stock.name || ticker;
         
-        var prompt = `You are a senior equity research analyst analyzing ${ticker} (${name}).
+        var prompt = `You are an equity analyst. Analyze ${ticker} (${name}) guidance from latest earnings call.
 
-COMPANY CONTEXT:
-- Sector: ${sector}
-
-DATA SOURCES (Priority Order):
-1. EARNINGS CALL TRANSCRIPT - Primary source
-2. INVESTOR PRESENTATION (latest)
-3. QUARTERLY RESULTS (P&L, Balance Sheet, Cash Flow)
-
-CRITICAL REQUIREMENTS - Every field MUST include:
-- FROM DATA: Specific number/metric with Source
-- CALCULATION: Formula used = Result (if derived)
-- TREND: Current vs Previous with percentage change
-- ANALYST VIEW: Assessment based on numbers
-
-IMPORTANT: Do NOT use quotes or apostrophes. Use square brackets [like this] instead. No special characters.
-
-Return ONLY valid JSON. No markdown, no extra text before or after JSON.
+IMPORTANT: Return ONLY valid JSON. Every field is REQUIRED. For missing data, use placeholder.
 
 {
-  "${ticker}": {
-    "guidance": {
-      "updated": "DD/MM/YY",
-      "quarter": "Q# FY##",
-      "revenue_guidance": "FROM DATA with amount and source",
-      "growth_target": "percentage or Not mentioned",
-      "margin_guidance": "EBITDA and PAT with FROM DATA",
-      "capex_plan": "amount, purpose, timeline",
-      "expansion": "announced plans with numbers",
-      "geographic_presence": "countries/regions with percentages",
-      "geographic_mix": "domestic and export percentages",
-      "geographic_expansion": "new markets or Not disclosed",
-      "key_products_portfolio": "product names with revenue percentages",
-      "tone": "Positive or Cautious or Defensive",
-      "tone_detail": "detailed explanation with numbers",
-      "key_commitments": ["commitment 1", "commitment 2", "commitment 3"],
-      "risks_flagged": ["risk 1 with severity", "risk 2 with severity", "risk 3 with severity"],
-      "confidence": "High or Medium or Low",
-      "summary": "one line takeaway with top 2 numbers",
-      "balance_sheet_health": "FROM DATA with metrics",
-      "cash_flow_quality": "OCF, FCF, Capex with CALCULATION",
-      "profitability_trends": "quarterly margins with CALCULATION",
-      "operational_efficiency": "asset turnover and cycle metrics",
-      "leverage_metrics": "debt/EBITDA and interest coverage",
-      "dividend_sustainability": "payout ratio and coverage",
-      "quarterly_momentum": "revenue trend with percentages",
-      "valuation_relative_to_peers": "PE premium or discount",
-      "key_metrics_to_watch": ["metric 1 with range", "metric 2 with range", "metric 3 with range"]
+  "guidance": {
+    "quarter": "Q3 FY26",
+    
+    "financial": {
+      "revenue": "Provide revenue guidance + growth rate",
+      "growth": "Provide growth target or 'Not disclosed'",
+      "margins": "Provide operating & net margins with direction",
+      "capex": "Provide capex amount & purpose or 'Not disclosed'"
     },
-    "insights": {
-      "updated": "DD/MM/YY",
-      "action": "BUY or HOLD or REDUCE or EXIT",
-      "action_reason": "one line reason",
-      "trigger": "what would change recommendation",
-      "headline": "one sentence summary",
-      "bullets": [
-        {"cat": "VALUATION", "text": "FROM DATA with PE and peer comparison"},
-        {"cat": "GROWTH QUALITY", "text": "FROM DATA showing YoY growth trend"},
-        {"cat": "MARGIN RISK", "text": "FROM DATA showing operating margins"},
-        {"cat": "CASH FLOW GENERATION", "text": "FROM DATA for OCF, FCF, Capex"},
-        {"cat": "BALANCE SHEET STRENGTH", "text": "FROM DATA for debt and EBITDA"},
-        {"cat": "CATALYST", "text": "FROM DATA on order book or pipeline"},
-        {"cat": "MOAT", "text": "FROM DATA on market position"},
-        {"cat": "RISKS", "text": "FROM DATA on risk factors with severity"}
+    
+    "business": {
+      "expansion": "New capacity/market expansion with timeline",
+      "products": "Key product categories",
+      "geography": "Geographic presence - countries/regions"
+    },
+    
+    "management": {
+      "tone": "Must be: 'Positive' or 'Cautious' or 'Defensive'",
+      "confidence": "Must be: 'High' or 'Medium' or 'Low'",
+      "commitments": [
+        "Specific commitment 1",
+        "Specific commitment 2",
+        "Specific commitment 3"
+      ],
+      "risks": [
+        "Risk 1 with severity (High/Medium/Low)",
+        "Risk 2 with severity",
+        "Risk 3 with severity"
       ]
-    }
+    },
+    
+    "summary": "One sentence with top 2 numbers"
   }
-}`;
+}
+
+RULES:
+1. Return ONLY JSON - no markdown, no explanation
+2. Every field must be included
+3. For missing data, use "Not disclosed" or "Not available"
+4. Never leave fields empty
+5. Arrays must have at least 1 item`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1053,69 +1024,71 @@ Return ONLY valid JSON. No markdown, no extra text before or after JSON.
             return;
         }
         
-        var sector = stock.sector || '—';
-        var ltp = stock.ltp || '—';
-        var pe = stock.pe || '—';
         var name = stock.name || ticker;
         
-        var prompt = `You are a senior equity research analyst providing investment insights for ${ticker} (${name}).
+        var prompt = `You are an equity analyst. Provide investment recommendation for ${ticker} (${name}).
 
-COMPANY CONTEXT:
-- Sector: ${sector}
-
-CRITICAL: For EVERY insight, cite specific numbers and data points that support it.
-State data source clearly (FROM DATA:)
-Show calculations where relevant (CALCULATION:)
-Show trends with percentage changes (TREND:)
-Back views with KPIs, not assumptions (ANALYST VIEW:)
-
-IMPORTANT: Do NOT use quotes or apostrophes in any text fields. Use square brackets [like this] instead.
-
-Return ONLY valid JSON. No markdown, no extra text before or after.
+IMPORTANT: Return ONLY valid JSON. Every field is REQUIRED. For missing data, use placeholder.
 
 {
   "insights": {
-    "updated": "DD/MM/YY",
-    "action": "BUY or HOLD or REDUCE or EXIT",
-    "action_reason": "one line reason",
-    "trigger": "what would change recommendation",
-    "headline": "one sentence summary",
-    "bullets": [
-      {
-        "cat": "VALUATION",
-        "text": "FROM DATA with PE and peer comparison | CALCULATION showing discount or premium | ANALYST VIEW on margin of safety"
+    "recommendation": "Must be: 'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
+    "thesis": "One sentence investment idea",
+    "trigger": "What would change the recommendation",
+    
+    "analysis": {
+      "valuation": {
+        "metric": "Current valuation with peer comparison",
+        "assessment": "Is it expensive or cheap?",
+        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
       },
-      {
-        "cat": "GROWTH QUALITY",
-        "text": "FROM DATA showing YoY growth trend | CALCULATION of growth rate changes | ANALYST VIEW on sustainability"
+      
+      "growth": {
+        "metric": "Revenue/earnings growth trend",
+        "assessment": "Is growth sustainable?",
+        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
       },
-      {
-        "cat": "MARGIN RISK",
-        "text": "FROM DATA showing operating margins | CALCULATION of margin changes | ANALYST VIEW on drivers"
+      
+      "profitability": {
+        "metric": "Operating margins trend",
+        "assessment": "Margin quality and drivers",
+        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
       },
-      {
-        "cat": "CASH FLOW GENERATION",
-        "text": "FROM DATA for OCF, FCF, Capex | CALCULATION of FCF conversion percentage | ANALYST VIEW on dividend coverage"
+      
+      "cash_strength": {
+        "metric": "OCF, FCF, leverage",
+        "assessment": "Cash quality assessment",
+        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
       },
-      {
-        "cat": "BALANCE SHEET STRENGTH",
-        "text": "FROM DATA for debt and EBITDA | CALCULATION of debt ratios | ANALYST VIEW on financial health"
+      
+      "catalyst": {
+        "metric": "Events that could drive re-rating",
+        "assessment": "Timing and impact",
+        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
       },
-      {
-        "cat": "CATALYST",
-        "text": "FROM DATA on order book or pipeline | NEAR TERM events | MEDIUM TERM opportunities | ANALYST VIEW on re-rating"
+      
+      "moat": {
+        "metric": "Type of competitive advantage",
+        "assessment": "Moat assessment",
+        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
       },
-      {
-        "cat": "MOAT",
-        "text": "FROM DATA on market position | TREND in competitive standing | ANALYST VIEW on durability"
-      },
-      {
-        "cat": "RISKS",
-        "text": "FROM DATA on risk factors | List 3 risks with severity levels | ANALYST VIEW on probability and impact"
+      
+      "opportunity": {
+        "metric": "Strategic upside not priced in",
+        "assessment": "Why it matters",
+        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
       }
-    ]
+    }
   }
-}`;
+}
+
+RULES:
+1. Return ONLY JSON - no markdown, no explanation
+2. Every field must be included
+3. For missing data, use "Not disclosed" or "Data not available"
+4. recommendation must be exactly: BUY, HOLD, REDUCE, or EXIT
+5. signal must be exactly: Positive, Neutral, or Caution
+6. Never leave fields empty`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Insights prompt copied!');
@@ -1179,12 +1152,10 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
         
         var newGuidance = {};
         try {
-            // Parse JSON directly
+            // Parse JSON
             var parsed = JSON.parse(jsonText);
             
-            // Extract guidance - handle both formats:
-            // Format 1: {"guidance": {...}}
-            // Format 2: {"TICKER": {"guidance": {...}}}
+            // Extract guidance
             if (parsed.guidance) {
                 newGuidance = parsed.guidance;
             } else if (parsed[ticker.toUpperCase()]) {
@@ -1194,12 +1165,42 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
                     throw new Error('Missing "guidance" field');
                 }
             } else {
-                throw new Error('Invalid format: paste {"guidance": {...}} or {"TICKER": {"guidance": {...}}}');
+                throw new Error('Invalid format');
+            }
+            
+            // Validate structure
+            const required = ['quarter', 'financial', 'business', 'management', 'summary'];
+            for (let field of required) {
+                if (!(field in newGuidance)) {
+                    throw new Error(`Missing required field: ${field}`);
+                }
+            }
+            
+            const financialFields = ['revenue', 'growth', 'margins', 'capex'];
+            for (let field of financialFields) {
+                if (!(field in newGuidance.financial)) {
+                    throw new Error(`Missing financial.${field}`);
+                }
+            }
+            
+            const businessFields = ['expansion', 'products', 'geography'];
+            for (let field of businessFields) {
+                if (!(field in newGuidance.business)) {
+                    throw new Error(`Missing business.${field}`);
+                }
+            }
+            
+            const mgmtFields = ['tone', 'confidence', 'commitments', 'risks'];
+            for (let field of mgmtFields) {
+                if (!(field in newGuidance.management)) {
+                    throw new Error(`Missing management.${field}`);
+                }
             }
             
         } catch(e) {
-            showToast(`❌ JSON Error: ${e.message}`);
+            showToast(`❌ Error: ${e.message}`);
             updateStatusButton('❌ Error');
+            log(`❌ Validation error: ${e.message}`);
             return;
         }
         
@@ -1213,16 +1214,14 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
                 content = JSON.parse(atob(fileData.content));
             } catch(e) {
                 log(`⚠️ Could not parse existing file`);
+                content = { "_metadata": { "version": "1.0" } };
             }
             
             if (!content[ticker]) content[ticker] = {};
             
-            // Merge new guidance into existing
-            newGuidance.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
-            content[ticker].guidance = { ...content[ticker].guidance, ...newGuidance };
-            concallTimestamps[ticker] = new Date().toISOString();
-            guidanceData[ticker] = { ...guidanceData[ticker], guidance: content[ticker].guidance };
-            saveGuidanceToStorage();
+            // Update only this ticker's guidance
+            newGuidance.date = new Date().toISOString().split('T')[0];
+            content[ticker].guidance = newGuidance;
             
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
@@ -1234,7 +1233,7 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    message: `Update guidance for ${ticker}`,
+                    message: `Add/update guidance for ${ticker}`,
                     content: encodedContent,
                     sha: fileData.sha,
                     branch: GITHUB_CONFIG.BRANCH
@@ -1243,13 +1242,14 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
         })
         .then(r => {
             if (!r?.ok) throw new Error('Failed to save');
-            renderSymbols();
+            log(`✅ Guidance for ${ticker} saved`);
             updateStatusButton('✅ Ready');
-            showToast('✅ Guidance updated!');
+            showToast(`✅ Guidance saved for ${ticker}`);
         })
         .catch(e => {
             updateStatusButton('❌ Error');
             showToast(`❌ Error: ${e.message}`);
+            log(`❌ Save error: ${e.message}`);
         });
     }
     
@@ -1258,12 +1258,10 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
         
         var newInsights = {};
         try {
-            // Parse JSON directly
+            // Parse JSON
             var parsed = JSON.parse(jsonText);
             
-            // Extract insights - handle both formats:
-            // Format 1: {"insights": {...}}
-            // Format 2: {"TICKER": {"insights": {...}}}
+            // Extract insights
             if (parsed.insights) {
                 newInsights = parsed.insights;
             } else if (parsed[ticker.toUpperCase()]) {
@@ -1273,13 +1271,37 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
                     throw new Error('Missing "insights" field');
                 }
             } else {
-                throw new Error('Invalid format: paste {"insights": {...}} or {"TICKER": {"insights": {...}}}');
+                throw new Error('Invalid format');
+            }
+            
+            // Validate structure
+            const required = ['recommendation', 'thesis', 'trigger', 'analysis'];
+            for (let field of required) {
+                if (!(field in newInsights)) {
+                    throw new Error(`Missing required field: ${field}`);
+                }
+            }
+            
+            const validRecs = ['BUY', 'HOLD', 'REDUCE', 'EXIT'];
+            if (!validRecs.includes(newInsights.recommendation)) {
+                throw new Error(`Invalid recommendation: '${newInsights.recommendation}'. Must be: ${validRecs.join(', ')}`);
+            }
+            
+            const analysisDims = ['valuation', 'growth', 'profitability', 'cash_strength', 'catalyst', 'moat', 'opportunity'];
+            for (let dim of analysisDims) {
+                if (!(dim in newInsights.analysis)) {
+                    throw new Error(`Missing analysis.${dim}`);
+                }
+                const validSignals = ['Positive', 'Neutral', 'Caution'];
+                if (!validSignals.includes(newInsights.analysis[dim].signal)) {
+                    throw new Error(`Invalid signal in ${dim}: '${newInsights.analysis[dim].signal}'`);
+                }
             }
             
         } catch(e) {
-            showToast(`❌ JSON Error: ${e.message}`);
+            showToast(`❌ Error: ${e.message}`);
             updateStatusButton('❌ Error');
-            console.error('Insights parse error:', e);
+            log(`❌ Validation error: ${e.message}`);
             return;
         }
         
@@ -1293,16 +1315,14 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
                 content = JSON.parse(atob(fileData.content));
             } catch(e) {
                 log(`⚠️ Could not parse existing file`);
+                content = { "_metadata": { "version": "1.0" } };
             }
             
             if (!content[ticker]) content[ticker] = {};
             
-            // Merge new insights into existing
-            newInsights.updated = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
-            content[ticker].insights = { ...content[ticker].insights, ...newInsights };
-            insightsTimestamps[ticker] = new Date().toISOString();
-            guidanceData[ticker] = { ...guidanceData[ticker], insights: content[ticker].insights };
-            saveGuidanceToStorage();
+            // Update only this ticker's insights
+            newInsights.date = new Date().toISOString().split('T')[0];
+            content[ticker].insights = newInsights;
             
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
@@ -1314,7 +1334,7 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    message: `Update insights for ${ticker}`,
+                    message: `Add/update insights for ${ticker}`,
                     content: encodedContent,
                     sha: fileData.sha,
                     branch: GITHUB_CONFIG.BRANCH
@@ -1323,13 +1343,14 @@ Return ONLY valid JSON. No markdown, no extra text before or after.
         })
         .then(r => {
             if (!r?.ok) throw new Error('Failed to save');
-            renderSymbols();
+            log(`✅ Insights for ${ticker} saved`);
             updateStatusButton('✅ Ready');
-            showToast('✅ Insights updated!');
+            showToast(`✅ Insights saved for ${ticker}`);
         })
         .catch(e => {
             updateStatusButton('❌ Error');
             showToast(`❌ Error: ${e.message}`);
+            log(`❌ Save error: ${e.message}`);
         });
     }
 
