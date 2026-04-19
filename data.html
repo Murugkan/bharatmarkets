@@ -308,6 +308,49 @@
             border-radius: 8px;
             border: 1px solid var(--b1);
         }
+        
+        /* DEBUG PANEL */
+        #debugPanel {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 400px;
+            height: 300px;
+            background: var(--s1);
+            border: 2px solid var(--bl);
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            flex-direction: column;
+            font-size: 10px;
+            z-index: 9998;
+            box-shadow: 0 -2px 10px rgba(0,242,255,.3);
+        }
+        #debugHeader {
+            background: var(--bl);
+            color: var(--bg);
+            padding: 8px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        #debugContent {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            font-family: 'Courier New', monospace;
+            color: var(--tx);
+            line-height: 1.3;
+        }
+        .debug-log-item {
+            padding: 2px 0;
+            border-bottom: 1px solid var(--b1);
+        }
+        .debug-error { color: var(--rd); }
+        .debug-success { color: var(--gr); }
+        .debug-info { color: var(--bl); }
+        .debug-warn { color: var(--warning); }
     </style>
 </head>
 <body>
@@ -494,6 +537,10 @@
                 
                 const data = await response.json();
                 
+                // CRITICAL: Sanitize immediately after fetching to prevent corruption spread
+                const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
+                const sanitizedData = JSON.parse(sanitizedJSON);
+                
                 // Priority 1: Check HTTP Last-Modified header (most reliable)
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
@@ -501,18 +548,18 @@
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 2: Check for _metadata.updated in data
-                else if (data && data._metadata && data._metadata.updated) {
-                    dataUpdatedTimes[filePath] = data._metadata.updated;
+                else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
+                    dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 3: Check for top-level updated field
-                else if (data && data.updated) {
-                    dataUpdatedTimes[filePath] = data.updated;
+                else if (sanitizedData && sanitizedData.updated) {
+                    dataUpdatedTimes[filePath] = sanitizedData.updated;
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 4: Check for lastLoadedAt
-                else if (data && data.lastLoadedAt) {
-                    dataUpdatedTimes[filePath] = data.lastLoadedAt;
+                else if (sanitizedData && sanitizedData.lastLoadedAt) {
+                    dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
                     log(`✅ Loaded: ${filePath}`)
                 }
                 // Fallback: Use fetch time
@@ -524,7 +571,7 @@
                 // Save to localStorage
                 localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
                 
-                return data;
+                return sanitizedData;
                 
             } catch (abortErr) {
                 clearTimeout(timeout);
@@ -642,14 +689,50 @@
 
     function log(msg) {
         var ts = new Date().toLocaleTimeString();
-        logMessages.push(`[${ts}] ${msg}`);
+        var fullMsg = `[${ts}] ${msg}`;
+        logMessages.push(fullMsg);
         var logBox = document.getElementById('live-log');
         if (logBox) {
             logBox.textContent = logMessages.slice(-30).join('\n');
             logBox.scrollTop = logBox.scrollHeight;
         }
+        // Also add to debug panel
+        addDebugLog(msg);
         saveLogs();
         console.log(msg);
+    }
+    
+    function addDebugLog(msg) {
+        const debugContent = document.getElementById('debugContent');
+        if (!debugContent) return;
+        
+        const item = document.createElement('div');
+        item.className = 'debug-log-item';
+        item.textContent = msg;
+        
+        // Color code based on content
+        if (msg.includes('❌') || msg.includes('Error')) {
+            item.classList.add('debug-error');
+        } else if (msg.includes('✅')) {
+            item.classList.add('debug-success');
+        } else if (msg.includes('⚠️')) {
+            item.classList.add('debug-warn');
+        } else {
+            item.classList.add('debug-info');
+        }
+        
+        debugContent.appendChild(item);
+        debugContent.scrollTop = debugContent.scrollHeight;
+        
+        // Keep only last 50 items
+        while (debugContent.children.length > 50) {
+            debugContent.removeChild(debugContent.firstChild);
+        }
+    }
+    
+    function toggleDebug() {
+        const panel = document.getElementById('debugPanel');
+        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
     }
 
     function showToast(msg) {
@@ -2282,6 +2365,12 @@ CRITICAL RULES:
         }
     })();
 </script>
+<div id="debugPanel">
+    <div id="debugHeader">
+        🐛 DEBUG <span onclick="toggleDebug()" style="cursor:pointer">✕</span>
+    </div>
+    <div id="debugContent"></div>
+</div>
 
 </body>
 </html>
