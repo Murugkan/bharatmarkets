@@ -968,65 +968,79 @@
 COMPANY CONTEXT:
 - Sector: ${sector}
 
-DATA SOURCES (Priority Order):
+=== DATA SOURCES (Priority Order) ===
 1. EARNINGS CALL TRANSCRIPT - Primary source
 2. INVESTOR PRESENTATION (latest)
 3. QUARTERLY RESULTS (P&L, Balance Sheet, Cash Flow)
+4. YOUR TRAINING DATA (up to Jan 2025)
 
-CRITICAL REQUIREMENTS - Every field MUST include:
-- FROM DATA: Specific number/metric with Source and Reference
-- CALCULATION: Formula used = Result (if derived)
-- TREND: Current vs Previous period with percentage change
-- ANALYST VIEW: Assessment based on numbers, not assumptions
+⚠️ CRITICAL REQUIREMENTS - Every field MUST include:
+   - FROM DATA: [Specific number/metric + Source document + Reference]
+   - CALCULATION: [Formula used = Result] (if derived)
+   - TREND: [Current vs Previous period with % change]
+   - ANALYST VIEW: [Assessment based on numbers, not assumptions]
 
-DO NOT:
-- Provide vague ranges without source
-- Use "Trend-based estimate" - state "Insufficient data" instead
-- Write generic statements without numbers
-- Make assumptions not grounded in data
-
-IMPORTANT JSON FORMATTING RULES:
-- Do NOT use quotes (") or apostrophes (') in any text fields
-- Use square brackets [like this] instead of quotes
-- Use hyphens - for separators instead of dashes
-- Do NOT use special characters: ~, ^, `, |, {, }, [, ]
-- Only use: letters, numbers, spaces, periods, commas, colons, hyphens, parentheses
+❌ PROHIBITED:
+   - Vague ranges without source
+   - "Trend-based estimate" - state "Insufficient data"
+   - Generic statements without numbers
+   - Assumptions not grounded in data
 
 PASTE DOCUMENTS HERE:
 [Earnings call transcript / Investor presentation / Quarterly results]
 
-Return ONLY valid JSON with proper formatting. No markdown, no extra text before or after the JSON.
+Return ONLY in KEY: VALUE format — one field per line, no markdown, no bullets.
 
-{
-  "guidance": {
-    "updated": "DD/MM/YY",
-    "quarter": "Q# FY##",
-    "revenue_guidance": "description with FROM DATA, CALCULATION, TREND, ANALYST VIEW",
-    "growth_target": "percentage or Not mentioned",
-    "margin_guidance": "EBITDA and PAT percentages with FROM DATA and TREND",
-    "capex_plan": "amount, purpose, timeline with FROM DATA",
-    "expansion": "announced plans with numbers and CALCULATION",
-    "geographic_presence": "countries/regions with percentages",
-    "geographic_mix": "domestic percentage and export percentage",
-    "geographic_expansion": "new markets or Not disclosed",
-    "key_products_portfolio": "product names with revenue percentages",
-    "tone": "Positive or Cautious or Defensive - REASON with numbers",
-    "tone_detail": "detailed explanation with management commentary",
-    "key_commitments": ["commitment 1 with numbers", "commitment 2 with timeline", "commitment 3 with target"],
-    "risks_flagged": ["risk 1 with severity", "risk 2 with severity", "risk 3 with severity"],
-    "confidence": "High or Medium or Low - reasoning",
-    "summary": "one line takeaway with top 2 numbers",
-    "balance_sheet_health": "FROM DATA with metrics and TREND",
-    "cash_flow_quality": "OCF, FCF, Capex with CALCULATION and percentages",
-    "profitability_trends": "quarterly margins with CALCULATION in basis points",
-    "operational_efficiency": "asset turnover and cycle metrics with ANALYST VIEW",
-    "leverage_metrics": "debt/EBITDA, interest coverage with CALCULATION",
-    "dividend_sustainability": "payout ratio and coverage with TREND",
-    "quarterly_momentum": "revenue trend with percentages and ASSESSMENT",
-    "valuation_relative_to_peers": "PE premium or discount with CALCULATION",
-    "key_metrics_to_watch": ["metric 1 with current and range", "metric 2 with current and range", "metric 3 with current and range"]
-  }
-}`;
+===== GUIDANCE SECTION =====
+quarter: FROM DATA: [Q# FY##] | SOURCE: [Document] | ANALYST VIEW: [Latest data used]
+
+revenue_guidance: FROM DATA: [₹/$ amount] | SOURCE: [Reference] | CALCULATION: [Growth % vs prior year] | TREND: [vs prior quarter/year] | ANALYST VIEW: [Achievable/Stretch]
+
+growth_target: FROM DATA: [% guided] OR "Not disclosed" | CALCULATION: [If derived: show formula] | ANALYST VIEW: [Sustainable/At risk]
+
+margin_guidance: FROM DATA: [EBITDA%, PAT%] | SOURCE: [Document] | CALCULATION: [Implied ₹ amounts] | TREND: [vs current in bps] | ANALYST VIEW: [Drivers]
+
+capex_plan: FROM DATA: [₹ amount, purpose, timeline] | SOURCE: [Document] | CALCULATION: [% of revenue] | TREND: [vs prior year]
+
+expansion: FROM DATA: [Announced plans with numbers] | SOURCE: [Document] | CALCULATION: [Capex per unit or growth rate] | TREND: [vs existing]
+
+key_products_portfolio: FROM DATA: [Product names with % revenue] | CALCULATION: [Top 3 = X% of revenue]
+
+geographic_presence: FROM DATA: [Countries/regions with % revenue] | CALCULATION: [Geographic breakdown]
+
+geographic_mix: FROM DATA: [Domestic % and Export %] | CALCULATION: [Absolute ₹/$ values]
+
+geographic_expansion: FROM DATA: [New markets announced] OR "Not disclosed" | TREND: [Revenue if disclosed]
+
+tone: [Positive/Cautious/Defensive] - REASON: [Management commentary + KPIs with numbers]
+
+key_commitments: [Top 3 FROM management with specific numbers/milestones/timelines]
+
+risks_flagged: [Top 3 FROM management or analyst, with severity (High/Medium/Low) + supporting KPI]
+
+summary: One-line takeaway backed by top 2 numbers
+
+===== FUNDAMENTALS SECTION =====
+balance_sheet_health: FROM DATA: [CR = X.Xx | QR = X.Xx | Net Debt = ₹XCr from Balance Sheet] | TREND: [YoY % change] | ANALYST VIEW: [Liquidity: Healthy/Stressed/Improving]
+
+cash_flow_quality: FROM DATA: [OCF = ₹XCr | FCF = ₹XCr from Cash Flow Stmt] | CALCULATION: [FCF conversion % = FCF/NI = X%] | TREND: [Q1→Q2→Q3 movement] | ANALYST VIEW: [Quality: Strong/Adequate/Weak]
+
+profitability_trends: FROM DATA: [Q1: OPM X%, NPM X% | Q2: OPM X%, NPM X% | Q3: OPM X%, NPM X%] | CALCULATION: [Margin change in bps] | ASSESSMENT: [Improving/Stable/Declining]
+
+operational_efficiency: FROM DATA: [Asset Turnover = X.Xx | Rec Days = X | Inv Days = X] | CALCULATION: [CCC = Rec + Inv - Pay days = X days] | ANALYST VIEW: [vs peers]
+
+leverage_metrics: FROM DATA: [Interest Exp = ₹XCr | EBITDA = ₹XCr | Debt = ₹XCr | Equity = ₹XCr] | CALCULATION: [IC = EBITDA/Int = X.Xx | D/E = X.Xx | Debt/EBITDA = X.Xx] | TREND: [QoQ/YoY] | ANALYST VIEW: [Strong/Moderate/Stressed]
+
+dividend_sustainability: FROM DATA: [Dividend FY24 = ₹XCr | FCF = ₹XCr | Payout = X%] | CALCULATION: [FCF coverage = FCF/Dividend = X.Xx] | TREND: [Payout ratio FY23→FY24→FY25E] | ANALYST VIEW: [High/Moderate/At risk]
+
+quarterly_momentum: FROM DATA: [Q1 ₹XCr (YoY X%) | Q2 ₹XCr (YoY X%) | Q3 ₹XCr (YoY X%)] | CALCULATION: [QoQ: Q2 vs Q1 = X%, Q3 vs Q2 = X%] | ASSESSMENT: [Accelerating/Stable/Decelerating]
+
+valuation_relative_to_peers: FROM DATA: [${ticker} P/E = X.Xx | Peer Avg = X.Xx | P/B = X.Xx vs Peer Avg = X.Xx | EV/EBITDA = X.Xx vs Peer Avg = X.Xx] | CALCULATION: [P/E Premium = (${ticker} − Peer) / Peer = +/− X%] | ANALYST VIEW: [Premium justified by growth diff or valuation trap]
+
+key_metrics_to_watch: 
+1) [Metric | Current Value | Historical Range | Why track]
+2) [Metric | Current Value | Historical Range | Why track]
+3) [Metric | Current Value | Historical Range | Why track]`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1058,22 +1072,15 @@ Return ONLY valid JSON with proper formatting. No markdown, no extra text before
 COMPANY CONTEXT:
 - Sector: ${sector}
 
-OPTIONAL: If you have earnings call transcript or company disclosures, include them for context.
-
 CRITICAL: For EVERY insight, cite specific numbers and data points that support it.
 State data source clearly (FROM DATA:)
 Show calculations where relevant (CALCULATION:)
 Show trends with percentage changes (TREND:)
 Back views with KPIs, not assumptions (ANALYST VIEW:)
 
-IMPORTANT JSON FORMATTING RULES:
-- Do NOT use quotes (") or apostrophes (') in any text fields
-- Use square brackets [like this] instead of quotes
-- Use hyphens - for separators instead of dashes
-- Do NOT use special characters: ~, ^, `, |, {, }, [, ]
-- Only use: letters, numbers, spaces, periods, commas, colons, hyphens, parentheses
+IMPORTANT: Do NOT use quotes or apostrophes in any text fields. Use square brackets [like this] instead.
 
-Return ONLY valid JSON with proper formatting. No markdown, no extra text before or after the JSON.
+Return ONLY valid JSON. No markdown, no extra text before or after.
 
 {
   "insights": {
@@ -1085,35 +1092,35 @@ Return ONLY valid JSON with proper formatting. No markdown, no extra text before
     "bullets": [
       {
         "cat": "VALUATION",
-        "text": "FROM DATA with PE and peer comparison | CALCULATION showing discount or premium | ANALYSIS of P/B and EV/EBITDA | ANALYST VIEW on margin of safety"
+        "text": "FROM DATA with PE and peer comparison | CALCULATION showing discount or premium | ANALYST VIEW on margin of safety"
       },
       {
         "cat": "GROWTH QUALITY",
-        "text": "FROM DATA showing YoY growth trend | CALCULATION of growth rate changes | ASSESSMENT of consistency | ANALYST VIEW on sustainability"
+        "text": "FROM DATA showing YoY growth trend | CALCULATION of growth rate changes | ANALYST VIEW on sustainability"
       },
       {
         "cat": "MARGIN RISK",
-        "text": "FROM DATA showing operating margins | CALCULATION of margin changes in basis points | TREND compared to industry | ANALYST VIEW on drivers"
+        "text": "FROM DATA showing operating margins | CALCULATION of margin changes | ANALYST VIEW on drivers"
       },
       {
         "cat": "CASH FLOW GENERATION",
-        "text": "FROM DATA for OCF, FCF, Capex | CALCULATION of FCF conversion percentage | FROM DATA for capex intensity | ANALYST VIEW on dividend coverage"
+        "text": "FROM DATA for OCF, FCF, Capex | CALCULATION of FCF conversion percentage | ANALYST VIEW on dividend coverage"
       },
       {
         "cat": "BALANCE SHEET STRENGTH",
-        "text": "FROM DATA for debt and EBITDA | CALCULATION of debt ratios and interest coverage | FROM DATA for current ratio | ANALYST VIEW on financial health"
+        "text": "FROM DATA for debt and EBITDA | CALCULATION of debt ratios | ANALYST VIEW on financial health"
       },
       {
         "cat": "CATALYST",
-        "text": "FROM DATA on order book or pipeline | NEAR TERM events with timeline | MEDIUM TERM opportunities with context | ANALYST VIEW on re-rating potential"
+        "text": "FROM DATA on order book or pipeline | NEAR TERM events | MEDIUM TERM opportunities | ANALYST VIEW on re-rating"
       },
       {
         "cat": "MOAT",
-        "text": "FROM DATA on market position | TREND in competitive standing | ASSESSMENT of moat width | ANALYST VIEW on durability"
+        "text": "FROM DATA on market position | TREND in competitive standing | ANALYST VIEW on durability"
       },
       {
         "cat": "RISKS",
-        "text": "FROM DATA on risk factors | List 3 risks with severity levels | Supporting KPIs for each risk | ANALYST VIEW on probability and impact"
+        "text": "FROM DATA on risk factors | List 3 risks with severity levels | ANALYST VIEW on probability and impact"
       }
     ]
   }
@@ -1139,7 +1146,7 @@ Return ONLY valid JSON with proper formatting. No markdown, no extra text before
             return;
         }
         
-        var response = prompt(`Paste analyst output for ${ticker}:\n\nFormat: Key: Value (one per line)`);
+        var response = prompt(`Paste analyst JSON output for ${ticker}`);
         if (!response) return;
         
         // Validate JSON syntax only
@@ -1161,7 +1168,7 @@ Return ONLY valid JSON with proper formatting. No markdown, no extra text before
             return;
         }
         
-        var response = prompt(`Paste analyst output for ${ticker}:\n\nFormat: Key: Value (one per line)`);
+        var response = prompt(`Paste analyst JSON output for ${ticker}`);
         if (!response) return;
         
         // Validate JSON syntax only
