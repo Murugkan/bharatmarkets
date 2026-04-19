@@ -933,7 +933,9 @@
         const storedGuidance = localStorage.getItem('guidanceData');
         if (storedGuidance) {
             try {
-                guidanceData = JSON.parse(storedGuidance);
+                // Sanitize before parsing to fix any corrupted rupees
+                const sanitizedGuidance = sanitizeJSON(storedGuidance);
+                guidanceData = JSON.parse(sanitizedGuidance);
                 log(`📥 Loaded guidance data: ${Object.keys(guidanceData).length} items`);
             } catch(e) {
                 guidanceData = {};
@@ -972,7 +974,9 @@
     }
     
     function saveGuidanceToStorage() {
-        localStorage.setItem('guidanceData', JSON.stringify(guidanceData));
+        // Sanitize before saving to prevent corruption storage
+        const sanitizedGuidance = sanitizeJSON(JSON.stringify(guidanceData));
+        localStorage.setItem('guidanceData', sanitizedGuidance);
         localStorage.setItem('guidanceTimestamps', JSON.stringify(guidanceTimestamps));
         localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
         localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
@@ -1367,14 +1371,30 @@ CRITICAL RULES:
     
     function sanitizeJSON(jsonString) {
         // Fix corrupted rupee symbols and other Unicode issues
-        // Common corruptions: "â‚ą", "Â Â", etc. should be "₹"
         let cleaned = jsonString;
         
-        // Fix common rupee symbol corruptions
-        cleaned = cleaned.replace(/â‚ą/g, '₹');      // â‚ą -> ₹
-        cleaned = cleaned.replace(/Â Â/g, '₹');       // Â Â -> ₹
-        cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹'); // UTF-8 corrupted -> ₹
-        cleaned = cleaned.replace(/â€?/g, '₹');      // â€? -> ₹
+        // Remove invisible/control characters that cause corruption
+        cleaned = cleaned.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        
+        // Fix common rupee symbol corruptions (multiple patterns)
+        // Pattern 1: â‚ą (UTF-8 BOM corruption)
+        cleaned = cleaned.replace(/â‚ą/g, '₹');
+        // Pattern 2: Â Â (double nbsp corruption)
+        cleaned = cleaned.replace(/Â Â/g, '₹');
+        // Pattern 3: Unicode sequence corruption
+        cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹');
+        // Pattern 4: â€? variations
+        cleaned = cleaned.replace(/â€?/g, '₹');
+        // Pattern 5: ₹¹ (corrupted with superscript)
+        cleaned = cleaned.replace(/₹[¹²³⁴]/g, '₹');
+        // Pattern 6: Multiple rupee chars should be one
+        cleaned = cleaned.replace(/₹{2,}/g, '₹');
+        // Pattern 7: Rupee with trailing garbage
+        cleaned = cleaned.replace(/₹[\u00c2\u00c3][\u00a2\u00b9]/g, '₹');
+        // Pattern 8: Smart quotes and dashes to normal
+        cleaned = cleaned.replace(/[""]/g, '"');
+        cleaned = cleaned.replace(/['']/g, "'");
+        cleaned = cleaned.replace(/–/g, '-');
         
         return cleaned;
     }
@@ -2092,16 +2112,23 @@ CRITICAL RULES:
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
-        // Step 1: Clear IndexedDB
+        // Step 1: Clear IndexedDB with timeout
         await new Promise(resolve => {
+            const timeout = setTimeout(() => {
+                log('⚠️ IndexedDB deletion timeout, continuing anyway');
+                resolve();
+            }, 3000); // 3 second timeout instead of forever
+            
             var req = indexedDB.deleteDatabase(DB_NAME);
             req.onsuccess = () => {
+                clearTimeout(timeout);
                 log('✅ IndexedDB cleared');
-                setTimeout(resolve, 300);
+                resolve();
             };
             req.onerror = () => {
+                clearTimeout(timeout);
                 log('⚠️ Could not clear IndexedDB');
-                setTimeout(resolve, 300);
+                resolve();
             };
         });
         
