@@ -1261,18 +1261,39 @@ CRITICAL RULES:
     }
     
     function utf8ToBase64(str) {
-        // Properly encode UTF-8 string to base64 for GitHub API
+        // Properly encode UTF-8 string (including ₹) to base64 for GitHub API
         try {
-            return btoa(unescape(encodeURIComponent(str)));
-        } catch (e) {
-            // Fallback for complex Unicode
+            // Use TextEncoder for proper UTF-8 encoding (works with ₹, emoji, etc)
             const utf8Bytes = new TextEncoder().encode(str);
             let binary = '';
             for (let i = 0; i < utf8Bytes.length; i++) {
                 binary += String.fromCharCode(utf8Bytes[i]);
             }
             return btoa(binary);
+        } catch (e) {
+            // Fallback: try the old method
+            console.warn('TextEncoder failed, trying legacy method:', e);
+            try {
+                return btoa(unescape(encodeURIComponent(str)));
+            } catch (e2) {
+                console.error('Both encoding methods failed:', e2);
+                return btoa(str); // Last resort
+            }
         }
+    }
+    
+    function sanitizeJSON(jsonString) {
+        // Fix corrupted rupee symbols and other Unicode issues
+        // Common corruptions: "â‚ą", "Â Â", etc. should be "₹"
+        let cleaned = jsonString;
+        
+        // Fix common rupee symbol corruptions
+        cleaned = cleaned.replace(/â‚ą/g, '₹');      // â‚ą -> ₹
+        cleaned = cleaned.replace(/Â Â/g, '₹');       // Â Â -> ₹
+        cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹'); // UTF-8 corrupted -> ₹
+        cleaned = cleaned.replace(/â€?/g, '₹');      // â€? -> ₹
+        
+        return cleaned;
     }
     
     function showGuidanceSaveModal(ticker) {
@@ -1467,7 +1488,8 @@ CRITICAL RULES:
             content[ticker].guidance = newGuidance;
             
             // Encode using proper UTF-8 base64 helper
-            const jsonString = JSON.stringify(content, null, 2);
+            let jsonString = JSON.stringify(content, null, 2);
+            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
             const encodedContent = utf8ToBase64(jsonString);
             
             return fetch(apiUrl, {
@@ -1592,7 +1614,8 @@ CRITICAL RULES:
             content[ticker].insights = newInsights;
             
             // Encode using proper UTF-8 base64 helper
-            const jsonString = JSON.stringify(content, null, 2);
+            let jsonString = JSON.stringify(content, null, 2);
+            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
             const encodedContent = utf8ToBase64(jsonString);
             
             return fetch(apiUrl, {
