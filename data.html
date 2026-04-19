@@ -965,6 +965,7 @@ You are a senior equity analyst. Extract guidance from latest earnings call. Pro
 CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
 
 {
+  "ticker": "${ticker}",
   "guidance": {
     "quarter": "Q4 FY26",
     
@@ -1124,6 +1125,7 @@ You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT.
 This is your investment opinion + sector analysis. Company guidance is separate.
 
 {
+  "ticker": "${ticker}",
   "insights": {
     "recommendation": "'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
     "thesis": "One sentence investment idea with specific reason",
@@ -1205,12 +1207,43 @@ CRITICAL RULES:
 
     function cleanJSON(str) {
         // Remove invisible/special characters that break JSON parsing
-        return str
+        let cleaned = str
             .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width chars
             .replace(/[\u2018\u2019]/g, "'")       // Smart quotes
             .replace(/[\u201C\u201D]/g, '"')       // Smart double quotes
             .replace(/[\r\n\t]/g, ' ')             // Normalize whitespace
             .trim();
+        
+        // If text contains "TICKER:" or other non-JSON preamble, extract just the JSON
+        // Find the first { and last } to extract JSON object
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        
+        if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
+            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
+        
+        return cleaned;
+    }
+    
+    function extractJSONFromText(text) {
+        // Extract JSON object from text that may contain preamble
+        // Remove any preamble like "TICKER: ...\nCOMPANY: ...\n"
+        let lines = text.split('\n');
+        let jsonStartIndex = -1;
+        
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim().startsWith('{')) {
+                jsonStartIndex = i;
+                break;
+            }
+        }
+        
+        if (jsonStartIndex !== -1) {
+            return lines.slice(jsonStartIndex).join('\n');
+        }
+        
+        return text;
     }
     
     function utf8ToBase64(str) {
@@ -1248,9 +1281,27 @@ CRITICAL RULES:
                     <label style="color:#aaa;font-size:11px">Date</label>
                     <input id="guidance-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
                 </div>
+                <div id="guidance-error" style="display:none;margin-bottom:15px;padding:10px;background:#ff4444;border:1px solid #ff0000;border-radius:4px;color:#fff;font-size:11px;font-weight:700;max-height:80px;overflow-y:auto;word-break:break-word;white-space:pre-wrap;"></div>
                 <textarea id="guidance-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
                 <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="const json=cleanJSON(document.getElementById('guidance-json-input').value);const date=document.getElementById('guidance-date-input').value;try{JSON.parse(json);document.getElementById('guidance-modal').remove();updateStatusButton('⏳ Saving');saveGuidanceToGitHub('${ticker}',json,'${pat}',date)}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="
+                        let rawText = document.getElementById('guidance-json-input').value;
+                        rawText = extractJSONFromText(rawText);
+                        const json = cleanJSON(rawText);
+                        const date = document.getElementById('guidance-date-input').value;
+                        const errorDiv = document.getElementById('guidance-error');
+                        try{
+                            JSON.parse(json);
+                            errorDiv.style.display='none';
+                            document.getElementById('guidance-modal').remove();
+                            updateStatusButton('⏳ Saving');
+                            saveGuidanceToGitHub('${ticker}', json, '${pat}', date)
+                        }catch(e){
+                            errorDiv.innerHTML='❌ ' + e.message;
+                            errorDiv.style.display='block';
+                            showToast('❌ Invalid JSON')
+                        }
+                    " style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
                     <button onclick="document.getElementById('guidance-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
                 </div>
             </div>
@@ -1280,9 +1331,27 @@ CRITICAL RULES:
                     <label style="color:#aaa;font-size:11px">Date</label>
                     <input id="insights-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
                 </div>
+                <div id="insights-error" style="display:none;margin-bottom:15px;padding:10px;background:#ff4444;border:1px solid #ff0000;border-radius:4px;color:#fff;font-size:11px;font-weight:700;max-height:80px;overflow-y:auto;word-break:break-word;white-space:pre-wrap;"></div>
                 <textarea id="insights-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
                 <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="const json=cleanJSON(document.getElementById('insights-json-input').value);const date=document.getElementById('insights-date-input').value;try{JSON.parse(json);document.getElementById('insights-modal').remove();updateStatusButton('⏳ Saving');saveInsightsToGitHub('${ticker}',json,'${pat}',date)}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="
+                        let rawText = document.getElementById('insights-json-input').value;
+                        rawText = extractJSONFromText(rawText);
+                        const json = cleanJSON(rawText);
+                        const date = document.getElementById('insights-date-input').value;
+                        const errorDiv = document.getElementById('insights-error');
+                        try{
+                            JSON.parse(json);
+                            errorDiv.style.display='none';
+                            document.getElementById('insights-modal').remove();
+                            updateStatusButton('⏳ Saving');
+                            saveInsightsToGitHub('${ticker}', json, '${pat}', date)
+                        }catch(e){
+                            errorDiv.innerHTML='❌ ' + e.message;
+                            errorDiv.style.display='block';
+                            showToast('❌ Invalid JSON')
+                        }
+                    " style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
                     <button onclick="document.getElementById('insights-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
                 </div>
             </div>
@@ -1300,7 +1369,7 @@ CRITICAL RULES:
             // Parse JSON
             var parsed = JSON.parse(jsonText);
             
-            // Extract guidance
+            // Extract guidance first
             if (parsed.guidance) {
                 newGuidance = parsed.guidance;
             } else if (parsed[ticker.toUpperCase()]) {
@@ -1310,7 +1379,13 @@ CRITICAL RULES:
                     throw new Error('Missing "guidance" field');
                 }
             } else {
-                throw new Error('Invalid format');
+                throw new Error('Invalid format - missing "guidance" field');
+            }
+            
+            // Validate ticker: if provided in JSON, it must match selected ticker
+            // This prevents accidental paste of wrong ticker
+            if (parsed.ticker && parsed.ticker.toUpperCase() !== ticker.toUpperCase()) {
+                throw new Error(`❌ Ticker mismatch!\nJSON has: "${parsed.ticker}"\nYou selected: "${ticker}"\n\nMake sure you're pasting the right company's data`);
             }
             
             // Add date field
@@ -1422,7 +1497,7 @@ CRITICAL RULES:
             // Parse JSON
             var parsed = JSON.parse(jsonText);
             
-            // Extract insights
+            // Extract insights first
             if (parsed.insights) {
                 newInsights = parsed.insights;
             } else if (parsed[ticker.toUpperCase()]) {
@@ -1432,7 +1507,13 @@ CRITICAL RULES:
                     throw new Error('Missing "insights" field');
                 }
             } else {
-                throw new Error('Invalid format');
+                throw new Error('Invalid format - missing "insights" field');
+            }
+            
+            // Validate ticker: if provided in JSON, it must match selected ticker
+            // This prevents accidental paste of wrong ticker
+            if (parsed.ticker && parsed.ticker.toUpperCase() !== ticker.toUpperCase()) {
+                throw new Error(`❌ Ticker mismatch!\nJSON has: "${parsed.ticker}"\nYou selected: "${ticker}"\n\nMake sure you're pasting the right company's data`);
             }
             
             // Add date field
