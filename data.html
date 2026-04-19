@@ -2069,13 +2069,30 @@ CRITICAL RULES:
         updateStatusButton('⏳ Loading');
         
         const results = [];
-        for (let i = 0; i < DATA_SOURCES.length; i++) {
-            const source = DATA_SOURCES[i];
-            const filename = source.path.split('/').pop();
-            const data = await fetchGitHubData(source.path);
-            results.push(data);
-            
-            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
+        try {
+            for (let i = 0; i < DATA_SOURCES.length; i++) {
+                const source = DATA_SOURCES[i];
+                const filename = source.path.split('/').pop();
+                log(`📥 Fetching: ${filename}...`);
+                
+                try {
+                    const data = await fetchGitHubData(source.path);
+                    if (!data) {
+                        log(`⚠️ ${filename}: Returned null/empty`);
+                        results.push(null);
+                    } else {
+                        log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
+                        results.push(data);
+                    }
+                } catch (fetchErr) {
+                    log(`❌ Error fetching ${filename}: ${fetchErr.message}`);
+                    results.push(null);
+                }
+            }
+        } catch (loopErr) {
+            log(`❌ Loop error: ${loopErr.message}`);
+            updateStatusButton('❌ Fetch Failed');
+            return;
         }
         
         log('✅ All files loaded from GitHub');
@@ -2083,10 +2100,13 @@ CRITICAL RULES:
         // Fetch guidance.json separately (not in DATA_SOURCES display)
         let guidanceFileData = {};
         try {
+            log('📥 Fetching guidance.json...');
             const guidanceResponse = await fetchGitHubData('guidance.json');
             if (guidanceResponse) {
                 guidanceFileData = guidanceResponse;
                 log('✅ Fetched guidance.json');
+            } else {
+                log('⚠️ guidance.json is empty');
             }
         } catch (e) {
             log(`⚠️ Could not fetch guidance.json: ${e.message}`);
@@ -2095,14 +2115,21 @@ CRITICAL RULES:
         let symbolsData = results[0];
         let symbolsList = null;
         
+        log(`📊 Processing symbols data...`);
         if (Array.isArray(symbolsData)) {
             symbolsList = symbolsData;
+            log(`✅ Symbols is array: ${symbolsData.length} items`);
         } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
             symbolsList = symbolsData.symbols;
+            log(`✅ Symbols from .symbols property: ${symbolsData.symbols.length} items`);
         } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
             symbolsList = symbolsData.stocks;
+            log(`✅ Symbols from .stocks property: ${symbolsData.stocks.length} items`);
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData);
+            log(`✅ Symbols from object values: ${symbolsList.length} items`);
+        } else {
+            log(`❌ Could not identify symbols structure. Type: ${typeof symbolsData}`);
         }
         
         // Debug: Check symbol structure
@@ -2213,6 +2240,12 @@ CRITICAL RULES:
             } catch(err) {
                 log(`⚠️ Upgrade error: ${err.message}`);
             }
+        };
+        
+        req.onerror = (e) => {
+            log(`❌ IndexedDB open error: ${req.error.message || 'Unknown error'}`);
+            updateStatusButton('❌ DB Error');
+            showToast('❌ Database error - try refreshing');
         };
         
         req.onsuccess = (e) => {
