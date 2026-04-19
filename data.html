@@ -1110,19 +1110,23 @@ RULES:
             return;
         }
         
-        var response = prompt(`Paste analyst JSON output for ${ticker}`);
-        if (!response) return;
+        // Create modal with textarea
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
         
-        // Validate JSON syntax only
-        try {
-            JSON.parse(response);
-        } catch(e) {
-            showToast('❌ Invalid JSON: ' + e.message);
-            return;
-        }
-        
-        updateStatusButton('⏳ Saving');
-        saveGuidanceToGitHub(ticker, response, pat);
+        modal.innerHTML = `
+            <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
+                <h3 style="color:#00f2ff;margin-bottom:15px">📋 Paste Guidance JSON for ${ticker}</h3>
+                <textarea id="guidance-json-input" style="width:100%;height:300px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
+                <div style="display:flex;gap:10px;margin-top:15px">
+                    <button onclick="const json=document.getElementById('guidance-json-input').value;try{JSON.parse(json);document.getElementById('guidance-modal').remove();updateStatusButton('⏳ Saving');saveGuidanceToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="document.getElementById('guidance-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
+                </div>
+            </div>
+        `;
+        modal.id = 'guidance-modal';
+        document.body.appendChild(modal);
+        document.getElementById('guidance-json-input').focus();
     }
     
     function showInsightsSaveModal(ticker) {
@@ -1132,19 +1136,23 @@ RULES:
             return;
         }
         
-        var response = prompt(`Paste analyst JSON output for ${ticker}`);
-        if (!response) return;
+        // Create modal with textarea
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
         
-        // Validate JSON syntax only
-        try {
-            JSON.parse(response);
-        } catch(e) {
-            showToast('❌ Invalid JSON: ' + e.message);
-            return;
-        }
-        
-        updateStatusButton('⏳ Saving');
-        saveInsightsToGitHub(ticker, response, pat);
+        modal.innerHTML = `
+            <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
+                <h3 style="color:#00f2ff;margin-bottom:15px">💡 Paste Insights JSON for ${ticker}</h3>
+                <textarea id="insights-json-input" style="width:100%;height:300px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
+                <div style="display:flex;gap:10px;margin-top:15px">
+                    <button onclick="const json=document.getElementById('insights-json-input').value;try{JSON.parse(json);document.getElementById('insights-modal').remove();updateStatusButton('⏳ Saving');saveInsightsToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="document.getElementById('insights-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
+                </div>
+            </div>
+        `;
+        modal.id = 'insights-modal';
+        document.body.appendChild(modal);
+        document.getElementById('insights-json-input').focus();
     }
 
     function saveGuidanceToGitHub(ticker, jsonText, pat) {
@@ -1204,6 +1212,7 @@ RULES:
             return;
         }
         
+        // Fetch current file
         fetch(apiUrl, {
             headers: { 'Authorization': `token ${pat}` }
         })
@@ -1223,6 +1232,7 @@ RULES:
             newGuidance.date = new Date().toISOString().split('T')[0];
             content[ticker].guidance = newGuidance;
             
+            // Encode using btoa method (like watchlist module)
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
             
@@ -1305,6 +1315,7 @@ RULES:
             return;
         }
         
+        // Fetch current file
         fetch(apiUrl, {
             headers: { 'Authorization': `token ${pat}` }
         })
@@ -1324,6 +1335,7 @@ RULES:
             newInsights.date = new Date().toISOString().split('T')[0];
             content[ticker].insights = newInsights;
             
+            // Encode using btoa method (like watchlist module)
             const jsonString = JSON.stringify(content, null, 2);
             const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
             
