@@ -957,54 +957,57 @@
         
         var name = stock.name || ticker;
         
-        var prompt = `You are an equity analyst. Extract ${ticker} (${name}) guidance from latest earnings call, investor presentation, or management commentary.
+        var prompt = `You are a senior equity analyst. Extract ${ticker} (${name}) guidance from latest earnings call. Focus on COMPANY-SPECIFIC analysis only.
 
-IMPORTANT: Be SPECIFIC. Use actual numbers, percentages, and dates from the call. Do NOT use generic templates.
+CRITICAL: Provide all 10 analyst dimensions with specific numbers. NO sector briefing here.
 
 {
   "guidance": {
     "quarter": "Q3 FY26",
     
     "financial": {
-      "revenue": "SPECIFIC: e.g., 'FY26 revenue target ₹5,000-5,500 Cr, 22% YoY growth expected' or 'Not disclosed'",
-      "growth": "SPECIFIC: e.g., '18-20% YoY growth in coming quarters' or 'Management targets 15%+ CAGR'",
-      "margins": "SPECIFIC: e.g., 'Operating margin guidance 32-34%, Net margin 24-26%' or actual trends",
-      "capex": "SPECIFIC: e.g., '₹1,500 Cr capex planned for expansion at facility X by Q4 FY26'"
+      "revenue": "SPECIFIC target with growth rate",
+      "growth": "SPECIFIC growth target",
+      "margins": "SPECIFIC operating & net margins",
+      "capex": "SPECIFIC capex amount & purpose"
     },
     
     "business": {
-      "expansion": "SPECIFIC: e.g., 'Gavasad plant #3: 7,500 MVA capacity commissioned by April 2027; total capacity to 14,000 MVA'",
-      "products": "SPECIFIC: List actual products mentioned in call, e.g., 'Missile systems, underwater weapons, airborne products'",
-      "geography": "SPECIFIC: e.g., 'India 60% of revenue; Middle East (Saudi, UAE) 20%; Asia-Pacific 15%; Other 5%'"
+      "expansion": "New capacity/market with timeline",
+      "products": "Product portfolio mix",
+      "geography": "Geographic revenue breakdown"
     },
     
     "management": {
-      "tone": "Assess from language: 'Positive' (bullish), 'Cautious' (mixed), or 'Defensive' (bearish)",
-      "confidence": "Based on specificity of guidance: 'High' (precise targets), 'Medium' (ranges given), 'Low' (vague/hedged)",
-      "commitments": [
-        "SPECIFIC commitment from management, e.g., 'Commission Gavasad #3 by April 2027'",
-        "SPECIFIC commitment e.g., 'Maintain 30%+ operating margins'",
-        "SPECIFIC commitment e.g., 'Export revenue to 50% of total by FY28'"
-      ],
-      "risks": [
-        "Risk with severity, e.g., 'US/India tariffs on defence contracts - High'",
-        "Risk e.g., 'Capacity execution delays at Gavasad - Medium'",
-        "Risk e.g., 'Geopolitical tensions reducing orders - Medium'"
-      ]
+      "tone": "'Positive' or 'Cautious' or 'Defensive'",
+      "confidence": "'High' or 'Medium' or 'Low'",
+      "commitments": ["commitment 1", "commitment 2", "commitment 3"],
+      "risks": ["risk - Severity", "risk - Severity", "risk - Severity"]
     },
     
-    "summary": "One sentence with TOP 2 NUMBERS, e.g., 'Targeting 22% revenue growth with capex of ₹1,500 Cr for capacity expansion to 14,000 MVA'"
+    "summary": "One sentence with top 2 numbers",
+    
+    "analyst_dimensions": {
+      "valuation_context": "How does guidance compare to current valuation? Is management conservative or aggressive?",
+      "consensus_gap": "Guidance vs street consensus vs previous guidance",
+      "achievability": "Is guidance achievable? Company's track record",
+      "margin_quality": "What's driving margins? Sustainable?",
+      "capex_roi": "Capex justified by returns? When will new capacity generate revenue?",
+      "order_book_health": "Order book to revenue ratio, execution risk timeline",
+      "risk_opportunity_scorecard": "Which risks matter most? Which opportunities are game-changers?",
+      "management_credibility": "Transparent? Conservative or aggressive setter? Track record",
+      "forward_estimate_impact": "How does guidance change FY26/FY27 estimates? Upside/downside to consensus",
+      "quarterly_trajectory": "How will revenue/margin evolve quarter by quarter? When do catalysts hit?"
+    }
   }
 }
 
 CRITICAL RULES:
-1. Return ONLY JSON - no markdown, no explanation
-2. Use SPECIFIC numbers, percentages, dates from earnings call
-3. If data not disclosed, use "Not disclosed" - do NOT make up numbers
-4. Every field must have actual content (not template text)
-5. tone must be: 'Positive' or 'Cautious' or 'Defensive'
-6. confidence must be: 'High' or 'Medium' or 'Low'
-7. Arrays must have at least 1 real commitment/risk`;
+1. Return ONLY JSON
+2. All 10 analyst dimensions MUST have specific, detailed analysis
+3. Use actual numbers from call, not templates
+4. Be brutally honest about risks and opportunities
+5. NO sector briefing - that goes in Insights`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1027,70 +1030,78 @@ CRITICAL RULES:
         }
         
         var name = stock.name || ticker;
+        var sector = stock.sector || 'N/A';
         
-        var prompt = `You are an equity analyst. Provide deep investment analysis for ${ticker} (${name}).
+        var prompt = `You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT for ${ticker} (${name}, ${sector}).
 
-CRITICAL: Provide SPECIFIC analysis with actual data points. Not generic placeholders.
+This is your investment opinion + sector analysis. Company guidance is separate.
 
 {
   "insights": {
-    "recommendation": "Must be: 'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
-    "thesis": "One sentence investment idea with specific reason, e.g., 'Cheap at 22x P/E vs 60x peers despite superior 30% margins'",
-    "trigger": "Specific event that would change recommendation, e.g., 'OPM drop below 27% or capacity commissioning delay'",
+    "recommendation": "'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
+    "thesis": "One sentence investment idea with specific reason",
+    "trigger": "Specific event that would change recommendation",
     
     "analysis": {
       "valuation": {
-        "metric": "SPECIFIC valuation data, e.g., 'P/E 22.36x vs TDPOWERSYS 60.28x vs Nifty 24x; P/B 3.2x vs peer avg 4.5x'",
-        "assessment": "SPECIFIC assessment, e.g., 'Undervalued by 30-40% vs peers on margin-adjusted basis'",
-        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
+        "metric": "SPECIFIC: P/E, P/B, vs peers, vs Nifty",
+        "assessment": "Cheap/expensive? Why?",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "growth": {
-        "metric": "SPECIFIC growth data, e.g., 'Q3 revenue -9.7% YoY; 9M revenue +28% YoY; order book ₹45,000 Cr'",
-        "assessment": "SPECIFIC assessment, e.g., 'Deceleration from US tariffs temporary; domestic demand strong'",
-        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
+        "metric": "SPECIFIC: YoY growth, trend, order book",
+        "assessment": "Growth quality and sustainability",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "profitability": {
-        "metric": "SPECIFIC margin data, e.g., 'OPM 30.8% in Q3 vs 31.2% in Q2; PAT margin 24%'",
-        "assessment": "SPECIFIC assessment, e.g., 'Margins resilient despite price compression; commodity tailwind protective'",
-        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
+        "metric": "SPECIFIC: OPM, PAT margin trends",
+        "assessment": "Margin quality and drivers",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "cash_strength": {
-        "metric": "SPECIFIC cash data, e.g., 'Zero debt, FCF ₹800 Cr in 9M, cash ₹2,500 Cr'",
-        "assessment": "SPECIFIC assessment, e.g., 'Strong balance sheet provides dividend coverage and capex flexibility'",
-        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
+        "metric": "SPECIFIC: Debt, FCF, cash, leverage",
+        "assessment": "Balance sheet quality",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "catalyst": {
-        "metric": "SPECIFIC catalysts, e.g., 'Gavasad #3 commission (Apr 2027), 132 KV segment entry, Middle East orders'",
-        "assessment": "SPECIFIC timing, e.g., 'Primary re-rating trigger; 6-12 month timeline; value-chain upgrade potential'",
-        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
+        "metric": "SPECIFIC: What events drive re-rating? Timelines?",
+        "assessment": "Timeline and impact",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "moat": {
-        "metric": "SPECIFIC moat factors, e.g., 'Niche renewable certifications, debt-free, ISRO partnerships, 50+ year history'",
-        "assessment": "SPECIFIC moat assessment, e.g., 'Narrow moat; defensibility depends on 132 KV product success'",
-        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
+        "metric": "SPECIFIC: Competitive advantages, barriers",
+        "assessment": "Moat width and durability",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "opportunity": {
-        "metric": "SPECIFIC unpriced upside, e.g., 'Global transformer supply deficit, Middle East diversification, 43% export mix rebalance'",
-        "assessment": "SPECIFIC upside, e.g., 'De-risks US exposure; taps ₹500 Cr addressable market in Middle East'",
-        "signal": "Must be: 'Positive' or 'Neutral' or 'Caution'"
+        "metric": "SPECIFIC: Unpriced upside? TAM expansion? New markets?",
+        "assessment": "Why not priced in?",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
       }
+    },
+    
+    "sector_briefing": {
+      "sector_name": "${sector}",
+      "sector_outlook": "Bullish/Neutral/Bearish? Growth trends, tailwinds, headwinds for sector",
+      "sector_growth": "Sector CAGR, margin trends, competitive consolidation",
+      "company_positioning": "${ticker}'s market position, competitive advantages, vs sector trends",
+      "sector_risks": "Macro risks affecting sector + how ${ticker} is positioned vs them"
     }
   }
 }
 
 CRITICAL RULES:
-1. Return ONLY JSON - no markdown, no explanation
-2. Every metric/assessment must have SPECIFIC data points, not generic text
-3. Use company data: P/E ratios, margins, growth rates, order books, capacities, timelines
-4. If data unknown, use "Not disclosed" - do NOT fabricate numbers
-5. recommendation must be exactly: BUY, HOLD, REDUCE, or EXIT
-6. Each signal must be exactly: Positive, Neutral, or Caution`;
+1. Return ONLY JSON
+2. All 7 analysis dimensions + all sector briefing REQUIRED
+3. Be SPECIFIC: Use numbers, timelines, peer comparisons
+4. Investment opinion should be yours, not generic
+5. Sector briefing contextualizes company positioning within sector trends`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Insights prompt copied!');
