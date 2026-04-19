@@ -1103,6 +1103,16 @@ RULES:
         });
     }
 
+    function cleanJSON(str) {
+        // Remove invisible/special characters that break JSON parsing
+        return str
+            .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width chars
+            .replace(/[\u2018\u2019]/g, "'")       // Smart quotes
+            .replace(/[\u201C\u201D]/g, '"')       // Smart double quotes
+            .replace(/[\r\n\t]/g, ' ')             // Normalize whitespace
+            .trim();
+    }
+    
     function showGuidanceSaveModal(ticker) {
         var pat = document.getElementById('patToken').value;
         if (!pat) {
@@ -1119,7 +1129,7 @@ RULES:
                 <h3 style="color:#00f2ff;margin-bottom:15px">📋 Paste Guidance JSON for ${ticker}</h3>
                 <textarea id="guidance-json-input" style="width:100%;height:300px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
                 <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="const json=document.getElementById('guidance-json-input').value;try{JSON.parse(json);document.getElementById('guidance-modal').remove();updateStatusButton('⏳ Saving');saveGuidanceToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="const json=cleanJSON(document.getElementById('guidance-json-input').value);try{JSON.parse(json);document.getElementById('guidance-modal').remove();updateStatusButton('⏳ Saving');saveGuidanceToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
                     <button onclick="document.getElementById('guidance-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
                 </div>
             </div>
@@ -1145,7 +1155,7 @@ RULES:
                 <h3 style="color:#00f2ff;margin-bottom:15px">💡 Paste Insights JSON for ${ticker}</h3>
                 <textarea id="insights-json-input" style="width:100%;height:300px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
                 <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="const json=document.getElementById('insights-json-input').value;try{JSON.parse(json);document.getElementById('insights-modal').remove();updateStatusButton('⏳ Saving');saveInsightsToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="const json=cleanJSON(document.getElementById('insights-json-input').value);try{JSON.parse(json);document.getElementById('insights-modal').remove();updateStatusButton('⏳ Saving');saveInsightsToGitHub('${ticker}',json,'${pat}')}catch(e){showToast('❌ Invalid JSON: '+e.message)}" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
                     <button onclick="document.getElementById('insights-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
                 </div>
             </div>
