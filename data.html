@@ -308,49 +308,6 @@
             border-radius: 8px;
             border: 1px solid var(--b1);
         }
-        
-        /* DEBUG PANEL */
-        #debugPanel {
-            position: fixed;
-            bottom: 0;
-            right: 0;
-            width: 400px;
-            height: 300px;
-            background: var(--s1);
-            border: 2px solid var(--bl);
-            border-radius: 8px 8px 0 0;
-            display: flex;
-            flex-direction: column;
-            font-size: 10px;
-            z-index: 9998;
-            box-shadow: 0 -2px 10px rgba(0,242,255,.3);
-        }
-        #debugHeader {
-            background: var(--bl);
-            color: var(--bg);
-            padding: 8px;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            cursor: pointer;
-        }
-        #debugContent {
-            flex: 1;
-            overflow-y: auto;
-            padding: 8px;
-            font-family: 'Courier New', monospace;
-            color: var(--tx);
-            line-height: 1.3;
-        }
-        .debug-log-item {
-            padding: 2px 0;
-            border-bottom: 1px solid var(--b1);
-        }
-        .debug-error { color: var(--rd); }
-        .debug-success { color: var(--gr); }
-        .debug-info { color: var(--bl); }
-        .debug-warn { color: var(--warning); }
     </style>
 </head>
 <body>
@@ -689,50 +646,14 @@
 
     function log(msg) {
         var ts = new Date().toLocaleTimeString();
-        var fullMsg = `[${ts}] ${msg}`;
-        logMessages.push(fullMsg);
+        logMessages.push(`[${ts}] ${msg}`);
         var logBox = document.getElementById('live-log');
         if (logBox) {
-            logBox.textContent = logMessages.slice(-30).join('\n');
-            logBox.scrollTop = logBox.scrollHeight;
+            // Show latest 30 messages, with newest on top
+            logBox.textContent = logMessages.slice(-30).reverse().join('\n');
         }
-        // Also add to debug panel
-        addDebugLog(msg);
         saveLogs();
         console.log(msg);
-    }
-    
-    function addDebugLog(msg) {
-        const debugContent = document.getElementById('debugContent');
-        if (!debugContent) return;
-        
-        const item = document.createElement('div');
-        item.className = 'debug-log-item';
-        item.textContent = msg;
-        
-        // Color code based on content
-        if (msg.includes('❌') || msg.includes('Error')) {
-            item.classList.add('debug-error');
-        } else if (msg.includes('✅')) {
-            item.classList.add('debug-success');
-        } else if (msg.includes('⚠️')) {
-            item.classList.add('debug-warn');
-        } else {
-            item.classList.add('debug-info');
-        }
-        
-        debugContent.appendChild(item);
-        debugContent.scrollTop = debugContent.scrollHeight;
-        
-        // Keep only last 50 items
-        while (debugContent.children.length > 50) {
-            debugContent.removeChild(debugContent.firstChild);
-        }
-    }
-    
-    function toggleDebug() {
-        const panel = document.getElementById('debugPanel');
-        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
     }
 
     function showToast(msg) {
@@ -985,9 +906,7 @@
     function renderSymbols() {
         var html = '';
         
-        if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
-        } else {
+        if (masterData && masterData.length > 0) {
             masterData.slice(0, 50).forEach(stock => {
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
@@ -1057,13 +976,21 @@
         }
         
         var name = stock.name || ticker;
+        var qty = stock.qty || 0;
+        var avg = stock.avg || 0;
+        var ltp = stock.ltp || 0;
         
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
 
-You are a senior equity analyst. Extract guidance from latest earnings call. Provide COMPLETE fundamental analysis.
+=== PORTFOLIO CONTEXT ===
+Position Size: ${qty} units
+Average Cost: ₹${avg}
+Current Price: ₹${ltp}
 
-CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
+You are a senior equity analyst. Extract guidance from latest earnings call. Provide COMPLETE fundamental analysis that helps assess if this guidance justifies the position.
+
+CRITICAL: Be SPECIFIC with actual numbers. Collect ALL fields below.
 
 {
   "ticker": "${ticker}",
@@ -1192,7 +1119,9 @@ CRITICAL RULES:
 2. ALL 25 fields required
 3. Use actual numbers from call
 4. Do NOT fabricate data - use "Not disclosed" if missing
-5. Be brutally honest on risks & opportunities`;
+5. Be brutally honest on risks & opportunities
+6. Flag if guidance supports holding ${qty} units at ₹${avg} avg cost
+7. Highlight risks/opportunities affecting this position's thesis`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1217,81 +1146,104 @@ CRITICAL RULES:
         var name = stock.name || ticker;
         var sector = stock.sector || 'N/A';
         
+        // Portfolio context
+        var qty = stock.qty || 0;
+        var avg = stock.avg || 0;
+        var ltp = stock.ltp || 0;
+        var investmentValue = (qty * avg).toFixed(2);
+        var currentValue = (qty * ltp).toFixed(2);
+        var gainLoss = ((currentValue - investmentValue) / investmentValue * 100).toFixed(2);
+        var wt = stock.weight || 'N/A';
+        
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
 SECTOR: ${sector}
 
-You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT.
+=== PORTFOLIO CONTEXT ===
+Position Size: ${qty} units
+Average Cost: ₹${avg}
+Current Price: ₹${ltp}
+Investment Value: ₹${investmentValue}
+Current Value: ₹${currentValue}
+Gain/Loss: ${gainLoss}%
+Portfolio Weight: ${wt}
 
-This is your investment opinion + sector analysis. Company guidance is separate.
+You are a senior portfolio manager's advisor. Provide INVESTMENT SIGNAL for this specific position.
+
+Consider:
+- Is position sized correctly for risk?
+- Exit point vs hold vs add thesis?
+- Sector tailwinds/headwinds for this position?
+- Upcoming catalysts affecting holding period?
 
 {
   "ticker": "${ticker}",
   "insights": {
-    "recommendation": "'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
-    "thesis": "One sentence investment idea with specific reason",
-    "trigger": "Specific event that would change recommendation",
+    "recommendation": "'BUY (ADD)' or 'BUY (ENTRY)' or 'HOLD' or 'TRIM' or 'REDUCE' or 'EXIT'",
+    "thesis": "One sentence - why hold/add/exit THIS position at current levels with this portfolio weight?",
+    "trigger": "Specific price/event that triggers action. Entry/exit target price if relevant",
     
     "analysis": {
       "valuation": {
-        "metric": "SPECIFIC: P/E, P/B, vs peers, vs Nifty",
-        "assessment": "Cheap/expensive? Why?",
+        "metric": "SPECIFIC: Current P/E vs fair value, vs peers, vs Nifty. Is position expensive/cheap NOW?",
+        "assessment": "At ₹${ltp}, is this position priced right? Downside/upside risk?",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "growth": {
-        "metric": "SPECIFIC: YoY growth, trend, order book",
-        "assessment": "Growth quality and sustainability",
+        "metric": "SPECIFIC: Growth trajectory, earnings revisions, order book trends",
+        "assessment": "Will growth justify current ${qty} unit holding? Holding period outlook?",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "profitability": {
-        "metric": "SPECIFIC: OPM, PAT margin trends",
-        "assessment": "Margin quality and drivers",
+        "metric": "SPECIFIC: Recent margin trends, competitive pressures, pricing power",
+        "assessment": "Will margins support valuation at current position size?",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "cash_strength": {
-        "metric": "SPECIFIC: Debt, FCF, cash, leverage",
-        "assessment": "Balance sheet quality",
+        "metric": "SPECIFIC: Debt maturity, FCF, dividend sustainability, buyback plans",
+        "assessment": "Balance sheet strength to support holding? Dividend risk?",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "catalyst": {
-        "metric": "SPECIFIC: What events drive re-rating? Timelines?",
-        "assessment": "Timeline and impact",
+        "metric": "SPECIFIC: Next 6-12 month catalysts. Earnings dates, results, events?",
+        "assessment": "When will next catalyst emerge? Upside/downside trigger?",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "moat": {
-        "metric": "SPECIFIC: Competitive advantages, barriers",
-        "assessment": "Moat width and durability",
+        "metric": "SPECIFIC: Competitive moats, barriers to entry, market consolidation",
+        "assessment": "Moat durable? Risk of disruption in holding period?",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       
       "opportunity": {
-        "metric": "SPECIFIC: Unpriced upside? TAM expansion? New markets?",
-        "assessment": "Why not priced in?",
+        "metric": "SPECIFIC: Upside target (6-12 months)? Risk/reward at ₹${ltp}?",
+        "assessment": "At current avg cost ₹${avg}, what's realistic return target? Exit thesis?",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       }
     },
     
     "sector_briefing": {
       "sector_name": "${sector}",
-      "sector_outlook": "Bullish/Neutral/Bearish? Growth trends, tailwinds, headwinds for sector",
-      "sector_growth": "Sector CAGR, margin trends, competitive consolidation",
-      "company_positioning": "${ticker}'s market position, competitive advantages, vs sector trends",
-      "sector_risks": "Macro risks affecting sector + how ${ticker} is positioned vs them"
+      "sector_outlook": "Is sector bullish/neutral/bearish? Tailwinds/headwinds affecting holdings?",
+      "sector_growth": "Sector growth trends? Will ${ticker} outperform/underperform sector?",
+      "company_positioning": "${ticker}'s relative position in ${sector}. Market share, competitive standing?",
+      "sector_risks": "Key sector risks? How does this ${qty}-unit position weather them?"
     }
   }
 }
 
 CRITICAL RULES:
 1. Return ONLY JSON
-2. All 7 analysis dimensions + all sector briefing REQUIRED
-3. Be SPECIFIC: Use numbers, timelines, peer comparisons
-4. Investment opinion should be yours, not generic
-5. Sector briefing contextualizes company positioning within sector trends`;
+2. All 7 analysis dimensions + sector briefing REQUIRED
+3. Reference portfolio context (₹${investmentValue} invested, ${gainLoss}% return)
+4. Provide ACTION for THIS position: ADD/HOLD/TRIM/EXIT with reasoning
+5. Give specific price targets or holding period catalysts
+6. Consider position weight (${wt}) in recommendation`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Insights prompt copied!');
@@ -2108,61 +2060,39 @@ CRITICAL RULES:
     }
 
     async function loadAllData() {
-        log('🚀 LOAD JSON initiated - clearing cache...');
-        updateStatusButton('⏳ Clearing cache');
-        showToast('Clearing cache and loading fresh data...');
+        log('🚀 Loading data from GitHub...');
+        updateStatusButton('⏳ Loading');
+        showToast('Loading fresh data...');
         
-        // Step 1: Clear IndexedDB with timeout
+        // Clear caches
         await new Promise(resolve => {
-            const timeout = setTimeout(() => {
-                log('⚠️ IndexedDB deletion timeout, continuing anyway');
-                resolve();
-            }, 3000); // 3 second timeout instead of forever
-            
+            const timeout = setTimeout(() => resolve(), 3000);
             var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = () => {
-                clearTimeout(timeout);
-                log('✅ IndexedDB cleared');
-                resolve();
-            };
-            req.onerror = () => {
-                clearTimeout(timeout);
-                log('⚠️ Could not clear IndexedDB');
-                resolve();
-            };
+            req.onsuccess = () => { clearTimeout(timeout); resolve(); };
+            req.onerror = () => { clearTimeout(timeout); resolve(); };
         });
         
-        // Step 2: Clear browser cache for JSON files
         localStorage.removeItem('dataUpdatedTimes');
         dataUpdatedTimes = {};
-        log('✅ Browser cache cleared');
         
-        // Step 3: Load fresh data from GitHub (sequential for reliability)
-        log('📡 Fetching fresh data from GitHub (sequential)...');
-        updateStatusButton('⏳ Loading');
-        
+        // Fetch data from GitHub
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
             const source = DATA_SOURCES[i];
-            const filename = source.path.split('/').pop();
             const data = await fetchGitHubData(source.path);
             results.push(data);
-            
-            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
         }
         
-        log('✅ All files loaded from GitHub');
-        
-        // Fetch guidance.json separately (not in DATA_SOURCES display)
+        // Load saved guidance from localStorage (GitHub version is corrupted)
         let guidanceFileData = {};
-        try {
-            const guidanceResponse = await fetchGitHubData('guidance.json');
-            if (guidanceResponse) {
-                guidanceFileData = guidanceResponse;
-                log('✅ Fetched guidance.json');
+        const existingGuidance = localStorage.getItem('guidanceData');
+        if (existingGuidance) {
+            try {
+                const sanitized = sanitizeJSON(existingGuidance);
+                guidanceFileData = JSON.parse(sanitized);
+            } catch (e) {
+                guidanceFileData = {};
             }
-        } catch (e) {
-            log(`⚠️ Could not fetch guidance.json: ${e.message}`);
         }
         
         let symbolsData = results[0];
@@ -2178,24 +2108,14 @@ CRITICAL RULES:
             symbolsList = Object.values(symbolsData);
         }
         
-        // Debug: Check symbol structure
-        if (symbolsList && symbolsList.length > 0) {
-            const firstSym = symbolsList[0];
-            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
-                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
-            }
-        }
-        
         if (!symbolsList || symbolsList.length === 0) {
-            log('❌ Could not parse symbols data');
-            updateStatusButton('❌ Failed');
+            log('❌ Error: Could not parse symbols');
+            updateStatusButton('❌ Error');
             return;
         }
         
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
-        
-        log('📦 Parsing results...');
         
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
@@ -2215,17 +2135,12 @@ CRITICAL RULES:
                     }
                 }
             });
-            log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items`);
-            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items`);
         }
-            saveGuidanceToStorage();
-            log(`💾 Saved timestamps to localStorage`);
+        saveGuidanceToStorage();
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
             priceMap = pricesData.quotes;
-            log('✅ Found prices in "quotes" wrapper');
         } else {
             priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
         }
@@ -2233,17 +2148,11 @@ CRITICAL RULES:
         let fundMap = {};
         if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
             fundMap = fundamentalsData.stocks;
-            log('✅ Found fundamentals in "stocks" wrapper');
         } else {
             fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
         }
         
         let mergedStocks = [];
-        // Debug: Show what we're merging
-        if (symbolsList.length > 0) {
-            const firstSymbol = symbolsList[0];
-            const firstPrice = priceMap[firstSymbol.ticker];
-        }
         let priceMatches = 0, fundMatches = 0;
         
         symbolsList.forEach(symbol => {
@@ -2266,77 +2175,52 @@ CRITICAL RULES:
             mergedStocks.push(merged);
         });
         
-        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
-        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
+        if (priceMatches === 0) log('⚠️ No price data matched');
+        if (fundMatches === 0) log('⚠️ No fundamentals matched');
         
-        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
-        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
-        
-        // Open DB without incrementing version - handle store deletion properly
+        // Open DB and save data
         var req = indexedDB.open(DB_NAME, DB_VERSION);
         
         req.onupgradeneeded = (e) => {
             var db = e.target.result;
-            try {
-                if (db.objectStoreNames.contains(STORE_NAME)) {
-                    db.deleteObjectStore(STORE_NAME);
-                }
-                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                log('✅ Object store created');
-            } catch(err) {
-                log(`⚠️ Upgrade error: ${err.message}`);
+            if (db.objectStoreNames.contains(STORE_NAME)) {
+                db.deleteObjectStore(STORE_NAME);
             }
+            db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
         };
         
         req.onsuccess = (e) => {
             var db = e.target.result;
-            try {
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                
-                // Clear old data first
-                store.clear();
-                
-                masterData = mergedStocks;
-                const now = new Date().toLocaleTimeString();
-                let putCount = 0;
-                
-                mergedStocks.forEach(stock => {
-                    stock.updated = now;
-                    var putReq = store.put(stock);
-                    putReq.onsuccess = () => putCount++;
-                    putReq.onerror = () => log(`⚠️ Failed to save ${stock.ticker}: ${putReq.error}`);
-                });
-                
-                transaction.oncomplete = () => {
-                    log(`✅ Saved ${putCount}/${mergedStocks.length} records to IndexedDB`);
-                    updateHeader();
-                    renderSymbols();
-                    renderDataSources();
-                    updateStatusButton('✅ Ready');
-                    showToast('✅ Load complete!');
-                };
-                
-                transaction.onerror = () => {
-                    log(`❌ Transaction aborted: ${transaction.error}`);
-                    updateStatusButton('❌ Error');
-                    showToast('❌ Failed to save data');
-                };
-                
-                transaction.onabort = () => {
-                    log(`❌ Transaction aborted`);
-                    updateStatusButton('❌ Error');
-                };
-            } catch (err) {
-                log(`❌ Error: ${err.message}`);
+            var transaction = db.transaction(STORE_NAME, 'readwrite');
+            var store = transaction.objectStore(STORE_NAME);
+            store.clear();
+            
+            masterData = mergedStocks;
+            let putCount = 0;
+            
+            mergedStocks.forEach(stock => {
+                var putReq = store.put(stock);
+                putReq.onsuccess = () => putCount++;
+            });
+            
+            transaction.oncomplete = () => {
+                log(`✅ Loaded ${mergedStocks.length} stocks`);
+                updateHeader();
+                renderSymbols();
+                renderDataSources();
+                updateStatusButton('✅ Ready');
+                showToast('✅ Ready');
+            };
+            
+            transaction.onerror = () => {
+                log('❌ Error saving data');
                 updateStatusButton('❌ Error');
-                showToast(`❌ Error: ${err.message}`);
-            }
+            };
         };
         
         req.onerror = () => {
-            log(`⚠️ Could not open IndexedDB: ${req.error}`);
-            updateStatusButton('⚠️ Error');
+            log('❌ Error: Database unavailable');
+            updateStatusButton('❌ Error');
         };
     }
     
@@ -2392,12 +2276,6 @@ CRITICAL RULES:
         }
     })();
 </script>
-<div id="debugPanel">
-    <div id="debugHeader">
-        🐛 DEBUG <span onclick="toggleDebug()" style="cursor:pointer">✕</span>
-    </div>
-    <div id="debugContent"></div>
-</div>
 
 </body>
 </html>
