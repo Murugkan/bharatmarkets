@@ -1176,74 +1176,41 @@ Consider:
 - Sector tailwinds/headwinds for this position?
 - Upcoming catalysts affecting holding period?
 
+Expected output format:
 {
   "ticker": "${ticker}",
   "insights": {
-    "recommendation": "'BUY (ADD)' or 'BUY (ENTRY)' or 'HOLD' or 'TRIM' or 'REDUCE' or 'EXIT'",
-    "thesis": "One sentence - why hold/add/exit THIS position at current levels with this portfolio weight?",
-    "trigger": "Specific price/event that triggers action. Entry/exit target price if relevant",
+    "recommendation": "BUY (ADD) or BUY (ENTRY) or HOLD or TRIM or REDUCE or EXIT",
+    "thesis": "One sentence - why hold/add/exit THIS position at current levels?",
+    "trigger": "Specific price/event that triggers action",
     
     "analysis": {
-      "valuation": {
-        "metric": "SPECIFIC: Current P/E vs fair value, vs peers, vs Nifty. Is position expensive/cheap NOW?",
-        "assessment": "At ₹${ltp}, is this position priced right? Downside/upside risk?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "growth": {
-        "metric": "SPECIFIC: Growth trajectory, earnings revisions, order book trends",
-        "assessment": "Will growth justify current ${qty} unit holding? Holding period outlook?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "profitability": {
-        "metric": "SPECIFIC: Recent margin trends, competitive pressures, pricing power",
-        "assessment": "Will margins support valuation at current position size?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "cash_strength": {
-        "metric": "SPECIFIC: Debt maturity, FCF, dividend sustainability, buyback plans",
-        "assessment": "Balance sheet strength to support holding? Dividend risk?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "catalyst": {
-        "metric": "SPECIFIC: Next 6-12 month catalysts. Earnings dates, results, events?",
-        "assessment": "When will next catalyst emerge? Upside/downside trigger?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "moat": {
-        "metric": "SPECIFIC: Competitive moats, barriers to entry, market consolidation",
-        "assessment": "Moat durable? Risk of disruption in holding period?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "opportunity": {
-        "metric": "SPECIFIC: Upside target (6-12 months)? Risk/reward at ₹${ltp}?",
-        "assessment": "At current avg cost ₹${avg}, what's realistic return target? Exit thesis?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      }
+      "valuation": { "metric": "Current P/E, valuation vs peers", "signal": "Positive or Neutral or Caution" },
+      "growth": { "metric": "Growth trajectory, earnings revisions", "signal": "Positive or Neutral or Caution" },
+      "profitability": { "metric": "Margin trends, pricing power", "signal": "Positive or Neutral or Caution" },
+      "cash_strength": { "metric": "Debt, FCF, dividend sustainability", "signal": "Positive or Neutral or Caution" },
+      "catalyst": { "metric": "Next 6-12 month catalysts", "signal": "Positive or Neutral or Caution" },
+      "moat": { "metric": "Competitive moats, barriers to entry", "signal": "Positive or Neutral or Caution" },
+      "opportunity": { "metric": "Upside target, risk/reward", "signal": "Positive or Neutral or Caution" }
     },
     
     "sector_briefing": {
       "sector_name": "${sector}",
-      "sector_outlook": "Is sector bullish/neutral/bearish? Tailwinds/headwinds affecting holdings?",
-      "sector_growth": "Sector growth trends? Will ${ticker} outperform/underperform sector?",
-      "company_positioning": "${ticker}'s relative position in ${sector}. Market share, competitive standing?",
-      "sector_risks": "Key sector risks? How does this ${qty}-unit position weather them?"
+      "sector_outlook": "Bullish/neutral/bearish",
+      "sector_growth": "Growth trends affecting this stock",
+      "company_positioning": "${ticker}'s competitive standing",
+      "sector_risks": "Key sector risks"
     }
   }
 }
 
 CRITICAL RULES:
-1. Return ONLY JSON
-2. All 7 analysis dimensions + sector briefing REQUIRED
-3. Reference portfolio context (₹${investmentValue} invested, ${gainLoss}% return)
-4. Provide ACTION for THIS position: ADD/HOLD/TRIM/EXIT with reasoning
-5. Give specific price targets or holding period catalysts
-6. Consider position weight (${wt}) in recommendation`;
+1. Return ONLY valid JSON
+2. All 7 analysis dimensions required
+3. Reference portfolio context (₹${investmentValue} invested)
+4. Provide ACTION for THIS position: ADD/HOLD/TRIM/EXIT
+5. Give specific price targets
+6. Consider position weight (${wt}%)`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Insights prompt copied!');
