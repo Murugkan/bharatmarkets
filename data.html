@@ -2222,39 +2222,51 @@ CRITICAL RULES:
             try {
                 log('📥 Saving 91 stocks to IndexedDB...');
                 
-                masterData = mergedStocks;
-                const now = new Date().toLocaleTimeString();
-                let savedCount = 0;
+                // Clear old data first
+                var clearTx = db.transaction(STORE_NAME, 'readwrite');
+                var clearStore = clearTx.objectStore(STORE_NAME);
+                clearStore.clear();
                 
-                // Process stocks sequentially with promise chain
-                function saveNext(index) {
-                    if (index >= mergedStocks.length) {
-                        log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
-                        updateHeader();
-                        renderSymbols();
-                        renderDataSources();
-                        updateStatusButton('✅ Ready');
-                        showToast('✅ Load complete!');
-                        return;
+                clearTx.oncomplete = () => {
+                    // Now save new data
+                    masterData = mergedStocks;
+                    const now = new Date().toLocaleTimeString();
+                    let savedCount = 0;
+                    
+                    // Process stocks sequentially with promise chain
+                    function saveNext(index) {
+                        if (index >= mergedStocks.length) {
+                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                            updateHeader();
+                            renderSymbols();
+                            renderDataSources();
+                            updateStatusButton('✅ Ready');
+                            showToast('✅ Load complete!');
+                            return;
+                        }
+                        
+                        var transaction = db.transaction(STORE_NAME, 'readwrite');
+                        var store = transaction.objectStore(STORE_NAME);
+                        var stock = mergedStocks[index];
+                        stock.updated = now;
+                        
+                        var putReq = store.put(stock);
+                        putReq.onsuccess = () => {
+                            savedCount++;
+                            saveNext(index + 1);
+                        };
+                        putReq.onerror = () => {
+                            log(`⚠️ Failed to save ${stock.ticker}`);
+                            saveNext(index + 1);
+                        };
                     }
                     
-                    var transaction = db.transaction(STORE_NAME, 'readwrite');
-                    var store = transaction.objectStore(STORE_NAME);
-                    var stock = mergedStocks[index];
-                    stock.updated = now;
-                    
-                    var putReq = store.put(stock);
-                    putReq.onsuccess = () => {
-                        savedCount++;
-                        saveNext(index + 1);
-                    };
-                    putReq.onerror = () => {
-                        log(`⚠️ Failed to save ${stock.ticker}`);
-                        saveNext(index + 1);
-                    };
-                }
+                    saveNext(0);
+                };
                 
-                saveNext(0);
+                clearTx.onerror = () => {
+                    log(`⚠️ Error clearing store`);
+                };
                 
             } catch (err) {
                 log(`❌ Error: ${err.message}`);
