@@ -1615,10 +1615,34 @@ CRITICAL RULES:
             updateStatusButton('✅ Ready');
             showToast(`✅ Guidance saved for ${ticker}`);
             
-            // Record timestamp from guidance JSON and refresh table
+            // Update in-memory guidanceData
+            if (!guidanceData[ticker]) {
+                guidanceData[ticker] = {};
+            }
+            guidanceData[ticker].guidance = newGuidance;
+            
+            // Update localStorage cache
+            saveGuidanceToStorage();
+            
+            // Record timestamp from guidance JSON
             const guidanceDate = newGuidance.date || new Date().toISOString().split('T')[0];
             concallTimestamps[ticker] = guidanceDate;
             localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
+            
+            // Update IndexedDB stock record
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
+                var stock = masterData.find(s => s.ticker === ticker);
+                if (stock) {
+                    stock.guidance = newGuidance;
+                    store.put(stock);
+                    log(`✅ Updated ${ticker} in IndexedDB`);
+                }
+            };
+            
             renderSymbols();
         })
         .catch(e => {
@@ -1741,10 +1765,34 @@ CRITICAL RULES:
             updateStatusButton('✅ Ready');
             showToast(`✅ Insights saved for ${ticker}`);
             
-            // Record timestamp from insights JSON and refresh table
+            // Update in-memory guidanceData
+            if (!guidanceData[ticker]) {
+                guidanceData[ticker] = {};
+            }
+            guidanceData[ticker].insights = newInsights;
+            
+            // Update localStorage cache
+            saveGuidanceToStorage();
+            
+            // Record timestamp from insights JSON
             const insightsDate = newInsights.date || new Date().toISOString().split('T')[0];
             insightsTimestamps[ticker] = insightsDate;
             localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
+            
+            // Update IndexedDB stock record
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
+                var stock = masterData.find(s => s.ticker === ticker);
+                if (stock) {
+                    stock.insights = newInsights;
+                    store.put(stock);
+                    log(`✅ Updated ${ticker} insights in IndexedDB`);
+                }
+            };
+            
             renderSymbols();
         })
         .catch(e => {
@@ -2252,6 +2300,7 @@ CRITICAL RULES:
             
             const priceData = priceMap[ticker];
             const fundData = fundMap[ticker];
+            const guidData = guidanceData[ticker] || null;
             
             if (priceData) priceMatches++;
             if (fundData) fundMatches++;
@@ -2260,7 +2309,9 @@ CRITICAL RULES:
                 ...symbol,
                 ...(fundData || {}),
                 ...(priceData || {}),
-                ticker: ticker
+                ticker: ticker,
+                guidance: guidData ? guidData.guidance : null,
+                insights: guidData ? guidData.insights : null
             };
             
             mergedStocks.push(merged);
