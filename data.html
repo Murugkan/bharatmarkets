@@ -2248,57 +2248,42 @@ CRITICAL RULES:
         req.onsuccess = (e) => {
             var db = e.target.result;
             try {
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                
-                // Clear old data first
-                store.clear();
+                log('📥 Saving 91 stocks to IndexedDB...');
                 
                 masterData = mergedStocks;
                 const now = new Date().toLocaleTimeString();
-                let putCount = 0;
-                let totalToSave = mergedStocks.length;
+                let savedCount = 0;
                 
-                // Use a promise-based approach to wait for all puts
-                let allPutsDone = false;
-                
-                mergedStocks.forEach((stock, index) => {
+                // Process stocks sequentially with promise chain
+                function saveNext(index) {
+                    if (index >= mergedStocks.length) {
+                        log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                        updateHeader();
+                        renderSymbols();
+                        renderDataSources();
+                        updateStatusButton('✅ Ready');
+                        showToast('✅ Load complete!');
+                        return;
+                    }
+                    
+                    var transaction = db.transaction(STORE_NAME, 'readwrite');
+                    var store = transaction.objectStore(STORE_NAME);
+                    var stock = mergedStocks[index];
                     stock.updated = now;
+                    
                     var putReq = store.put(stock);
                     putReq.onsuccess = () => {
-                        putCount++;
-                        // When all puts complete, mark done
-                        if (putCount === totalToSave && !allPutsDone) {
-                            allPutsDone = true;
-                            log(`✅ Saved ${putCount}/${mergedStocks.length} records to IndexedDB`);
-                        }
+                        savedCount++;
+                        saveNext(index + 1);
                     };
-                    putReq.onerror = () => log(`⚠️ Failed to save ${stock.ticker}: ${putReq.error}`);
-                });
+                    putReq.onerror = () => {
+                        log(`⚠️ Failed to save ${stock.ticker}`);
+                        saveNext(index + 1);
+                    };
+                }
                 
-                transaction.oncomplete = () => {
-                    // Wait a tick for all puts to be registered
-                    setTimeout(() => {
-                        if (putCount >= totalToSave) {
-                            updateHeader();
-                            renderSymbols();
-                            renderDataSources();
-                            updateStatusButton('✅ Ready');
-                            showToast('✅ Load complete!');
-                        }
-                    }, 100);
-                };
+                saveNext(0);
                 
-                transaction.onerror = () => {
-                    log(`❌ Transaction aborted: ${transaction.error}`);
-                    updateStatusButton('❌ Error');
-                    showToast('❌ Failed to save data');
-                };
-                
-                transaction.onabort = () => {
-                    log(`❌ Transaction aborted`);
-                    updateStatusButton('❌ Error');
-                };
             } catch (err) {
                 log(`❌ Error: ${err.message}`);
                 updateStatusButton('❌ Error');
