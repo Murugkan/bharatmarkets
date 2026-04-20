@@ -560,11 +560,19 @@ function renderTab(tab) {
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
-            const guidanceDataStr = localStorage.getItem('guidanceData');
-            if (guidanceDataStr) {
-                const allGuidance = JSON.parse(guidanceDataStr);
-                if (allGuidance[s.ticker]) {
-                    guidance = allGuidance[s.ticker];
+            // Try to get guidance from the stock record in IndexedDB (merged data)
+            const stock = masterData.find(st => st.ticker === s.ticker);
+            if (stock && stock.guidance) {
+                guidance = { guidance: stock.guidance };
+            }
+            // Fallback to localStorage if not in IndexedDB
+            if (!guidance.guidance) {
+                const guidanceDataStr = localStorage.getItem('guidanceData');
+                if (guidanceDataStr) {
+                    const allGuidance = JSON.parse(guidanceDataStr);
+                    if (allGuidance[s.ticker]) {
+                        guidance = allGuidance[s.ticker];
+                    }
                 }
             }
         } catch (e) {
@@ -580,23 +588,23 @@ function renderTab(tab) {
             const dimCard = (title, emoji, content, color) => `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid ${color}">
                     <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;margin-bottom:6px">${emoji} ${title}</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6">${content || 'Not disclosed'}</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${content || 'Not disclosed'}</div>
                 </div>
             `;
             
             html = `
-                <div style="padding:12px 0;padding-bottom:80px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+                <div style="padding:12px 0;padding-bottom:80px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif;color:var(--tx1)">
                 
                 <!-- SUMMARY -->
                 <div style="background:linear-gradient(135deg, rgba(0,242,255,.1), rgba(0,200,150,.1));border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--ac)">
-                    <div style="font-size:9px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px">📊 ${g.quarter}</div>
-                    <div style="font-size:13px;color:var(--tx1);line-height:1.5;font-weight:500">${g.summary}</div>
-                    <div style="font-size:8px;color:var(--tx3);margin-top:6px">Updated: ${g.date || 'N/A'}</div>
+                    <div style="font-size:9px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 ${g.quarter}</div>
+                    <div style="font-size:14px;color:var(--tx1);line-height:1.6;font-weight:500;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.summary}</div>
+                    <div style="font-size:8px;color:var(--tx3);margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Updated: ${g.date || 'N/A'}</div>
                 </div>
                 
                 <!-- FINANCIALS - 2x2 GRID -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px">
-                    <div style="font-size:9px;font-weight:800;color:var(--yw);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px">💰 Financial</div>
+                    <div style="font-size:9px;font-weight:800;color:var(--yw);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">💰 Financial</div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                         <div style="background:rgba(0,0,0,.2);padding:10px;border-radius:6px;border-left:3px solid var(--yw)">
                             <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Revenue</div>
@@ -619,11 +627,11 @@ function renderTab(tab) {
                 
                 <!-- BUSINESS -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--gr)">
-                    <div style="font-size:9px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:10px;letter-spacing:1px">🏢 Business</div>
-                    <div style="font-size:12px;color:var(--tx1);line-height:1.6">
-                        <div style="margin-bottom:8px"><span style="font-weight:700;color:var(--gr)">▸ Expansion:</span> <span style="color:var(--tx1)">${g.business.expansion}</span></div>
-                        <div style="margin-bottom:8px"><span style="font-weight:700;color:var(--gr)">▸ Products:</span> <span style="color:var(--tx1)">${g.business.products}</span></div>
-                        <div><span style="font-weight:700;color:var(--gr)">▸ Geography:</span> <span style="color:var(--tx1)">${g.business.geography}</span></div>
+                    <div style="font-size:9px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:10px;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🏢 Business</div>
+                    <div style="font-size:12px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">
+                        <div style="margin-bottom:10px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Expansion:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.expansion}</span></div>
+                        <div style="margin-bottom:10px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Products:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.products}</span></div>
+                        <div><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Geography:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.geography}</span></div>
                     </div>
                 </div>
                 
@@ -643,12 +651,12 @@ function renderTab(tab) {
                         </div>
                     </div>
                     <div style="margin-bottom:8px">
-                        <div style="font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px">✓ Commitments</div>
-                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px">${g.management.commitments.map(c => `<li style="color:var(--gr);margin-bottom:3px;font-weight:600">✓ ${c}</li>`).join('')}</ul>
+                        <div style="font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">✓ Commitments</div>
+                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.commitments.map(c => `<li style="color:var(--gr);margin-bottom:3px;font-weight:600">✓ ${c}</li>`).join('')}</ul>
                     </div>
                     <div>
-                        <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px">⚠ Risks</div>
-                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px">${g.management.risks.map(r => `<li style="color:var(--rd);margin-bottom:3px;font-weight:600">⚠ ${r}</li>`).join('')}</ul>
+                        <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠ Risks</div>
+                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.risks.map(r => `<li style="color:var(--rd);margin-bottom:3px;font-weight:600">⚠ ${r}</li>`).join('')}</ul>
                     </div>
                 </div>
                 
@@ -670,14 +678,22 @@ function renderTab(tab) {
             `;
         }
     } else if (tab === 'guidance') {
-        // Fetch guidance data from localStorage (contains both guidance and insights)
+        // Fetch guidance data from IndexedDB (merged in stock record), fallback to localStorage
         let data = {};
         try {
-            const guidanceDataStr = localStorage.getItem('guidanceData');
-            if (guidanceDataStr) {
-                const allData = JSON.parse(guidanceDataStr);
-                if (allData[s.ticker]) {
-                    data = allData[s.ticker];
+            // Try to get insights from the stock record in IndexedDB (merged data)
+            const stock = masterData.find(st => st.ticker === s.ticker);
+            if (stock && stock.insights) {
+                data = { insights: stock.insights };
+            }
+            // Fallback to localStorage if not in IndexedDB
+            if (!data.insights) {
+                const guidanceDataStr = localStorage.getItem('guidanceData');
+                if (guidanceDataStr) {
+                    const allData = JSON.parse(guidanceDataStr);
+                    if (allData[s.ticker]) {
+                        data = allData[s.ticker];
+                    }
                 }
             }
         } catch (e) {
@@ -702,11 +718,11 @@ function renderTab(tab) {
             const analysisCard = (title, emoji, metric, assessment, signal, color) => `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid ${color}">
                     <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px">
-                        <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase">${emoji} ${title}</div>
+                        <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${emoji} ${title}</div>
                         <div style="font-size:9px;font-weight:700;color:${getSignalColor(signal)};padding:2px 6px;background:${getSignalColor(signal) === 'var(--gr)' ? 'rgba(0,232,150,.15)' : getSignalColor(signal) === 'var(--rd)' ? 'rgba(255,107,133,.15)' : 'rgba(255,191,71,.15)'};border-radius:3px">${signal || 'Neutral'}</div>
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);margin-bottom:4px"><strong>Metric:</strong> ${metric}</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.5">${assessment}</div>
+                    <div style="font-size:9px;color:var(--tx3);margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"><strong>Metric:</strong> ${metric}</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${assessment}</div>
                 </div>
             `;
             
@@ -725,9 +741,9 @@ function renderTab(tab) {
                 
                 <!-- RECOMMENDATION HEADLINE -->
                 <div style="background:${recBg};border:1px solid ${recColor};border-radius:8px;padding:12px;margin-bottom:12px">
-                    <div style="font-size:12px;font-weight:900;color:${recColor};margin-bottom:4px">${i.recommendation || 'HOLD'}</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.6;font-weight:600;margin-bottom:4px">${i.thesis || 'No thesis provided'}</div>
-                    ${i.trigger ? `<div style="font-size:9px;color:var(--tx3)"><strong>Trigger:</strong> ${i.trigger}</div>` : ''}
+                    <div style="font-size:12px;font-weight:900;color:${recColor};margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${i.recommendation || 'HOLD'}</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-weight:600;margin-bottom:4px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${i.thesis || 'No thesis provided'}</div>
+                    ${i.trigger ? `<div style="font-size:9px;color:var(--tx3);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"><strong>Trigger:</strong> ${i.trigger}</div>` : ''}
                 </div>
                 
                 <!-- INVESTMENT ANALYSIS DIMENSIONS -->
@@ -742,26 +758,26 @@ function renderTab(tab) {
                 ${analysisCard('Opportunity', '⭐', i.analysis.opportunity.metric, i.analysis.opportunity.assessment, i.analysis.opportunity.signal, 'var(--ac)')}
                 
                 <!-- SECTOR BRIEFING -->
-                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px">🌍 Sector Briefing</div>
+                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🌍 Sector Briefing</div>
                 
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--ac)">
-                    <div style="font-size:10px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px">🔮 Sector Outlook</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.5">${sb.sector_outlook || 'Not provided'}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🔮 Sector Outlook</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_outlook || 'Not provided'}</div>
                 </div>
                 
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--yw)">
-                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px">📊 Sector Growth & Dynamics</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.5">${sb.sector_growth || 'Not provided'}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 Sector Growth & Dynamics</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_growth || 'Not provided'}</div>
                 </div>
                 
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--gr)">
-                    <div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;margin-bottom:6px">🎯 Company Positioning</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.5">${sb.company_positioning || 'Not provided'}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🎯 Company Positioning</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.company_positioning || 'Not provided'}</div>
                 </div>
                 
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--rd)">
-                    <div style="font-size:10px;font-weight:700;color:var(--rd);text-transform:uppercase;margin-bottom:6px">⚠️ Sector Risks</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.5">${sb.sector_risks || 'Not provided'}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--rd);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠️ Sector Risks</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_risks || 'Not provided'}</div>
                 </div>
                 
                 </div>
