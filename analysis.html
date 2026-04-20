@@ -560,12 +560,11 @@ function renderTab(tab) {
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
-            // Try to get guidance from the stock record in IndexedDB (merged data)
-            const stock = masterData.find(st => st.ticker === s.ticker);
-            if (stock && stock.guidance) {
-                guidance = { guidance: stock.guidance };
+            // Try to get guidance from the current stock record (already loaded from IndexedDB)
+            if (s && s.guidance) {
+                guidance = { guidance: s.guidance };
             }
-            // Fallback to localStorage if not in IndexedDB
+            // Fallback to localStorage if not in stock record
             if (!guidance.guidance) {
                 const guidanceDataStr = localStorage.getItem('guidanceData');
                 if (guidanceDataStr) {
@@ -678,15 +677,14 @@ function renderTab(tab) {
             `;
         }
     } else if (tab === 'guidance') {
-        // Fetch guidance data from IndexedDB (merged in stock record), fallback to localStorage
+        // Fetch guidance data from current stock record (already loaded from IndexedDB), fallback to localStorage
         let data = {};
         try {
-            // Try to get insights from the stock record in IndexedDB (merged data)
-            const stock = masterData.find(st => st.ticker === s.ticker);
-            if (stock && stock.insights) {
-                data = { insights: stock.insights };
+            // Try to get insights from the current stock record (already loaded from IndexedDB)
+            if (s && s.insights) {
+                data = { insights: s.insights };
             }
-            // Fallback to localStorage if not in IndexedDB
+            // Fallback to localStorage if not in stock record
             if (!data.insights) {
                 const guidanceDataStr = localStorage.getItem('guidanceData');
                 if (guidanceDataStr) {
