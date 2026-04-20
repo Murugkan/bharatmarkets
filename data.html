@@ -2063,32 +2063,12 @@ CRITICAL RULES:
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
-        // Step 1: Clear IndexedDB with timeout
-        await new Promise(resolve => {
-            const timeout = setTimeout(() => {
-                log('⚠️ IndexedDB deletion timeout, continuing anyway');
-                resolve();
-            }, 3000); // 3 second timeout instead of forever
-            
-            var req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = () => {
-                clearTimeout(timeout);
-                log('✅ IndexedDB cleared');
-                resolve();
-            };
-            req.onerror = () => {
-                clearTimeout(timeout);
-                log('⚠️ Could not clear IndexedDB');
-                resolve();
-            };
-        });
-        
-        // Step 2: Clear browser cache for JSON files
+        // Just clear browser cache, skip DB deletion (it locks the DB)
         localStorage.removeItem('dataUpdatedTimes');
         dataUpdatedTimes = {};
         log('✅ Browser cache cleared');
         
-        // Step 3: Load fresh data from GitHub (sequential for reliability)
+        // Step 2: Load fresh data from GitHub (sequential for reliability)
         log('📡 Fetching fresh data from GitHub (sequential)...');
         updateStatusButton('⏳ Loading');
         
@@ -2190,11 +2170,6 @@ CRITICAL RULES:
         }
         
         let mergedStocks = [];
-        // Debug: Show what we're merging
-        if (symbolsList.length > 0) {
-            const firstSymbol = symbolsList[0];
-            const firstPrice = priceMap[firstSymbol.ticker];
-        }
         let priceMatches = 0, fundMatches = 0;
         
         symbolsList.forEach(symbol => {
@@ -2203,9 +2178,6 @@ CRITICAL RULES:
             
             const priceData = priceMap[ticker];
             const fundData = fundMap[ticker];
-            
-            if (priceData) priceMatches++;
-            if (fundData) fundMatches++;
             const guidData = guidanceData[ticker] || null;
             
             if (priceData) priceMatches++;
