@@ -1531,20 +1531,15 @@ CRITICAL RULES:
             showToast(`✅ Guidance saved for ${ticker}`);
             
             // Update in-memory guidanceData
-            if (!guidanceData[ticker]) {
-                guidanceData[ticker] = {};
-            }
+            if (!guidanceData[ticker]) guidanceData[ticker] = {};
             guidanceData[ticker].guidance = newGuidance;
-            
-            // Update localStorage cache
             saveGuidanceToStorage();
             
-            // Record timestamp from guidance JSON
+            // Record timestamp and update IndexedDB
             const guidanceDate = newGuidance.date || new Date().toISOString().split('T')[0];
             concallTimestamps[ticker] = guidanceDate;
             localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
             
-            // Update IndexedDB stock record
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onsuccess = (e) => {
                 var db = e.target.result;
@@ -1554,7 +1549,6 @@ CRITICAL RULES:
                 if (stock) {
                     stock.guidance = newGuidance;
                     store.put(stock);
-                    log(`✅ Updated ${ticker} in IndexedDB`);
                 }
             };
             
@@ -1681,20 +1675,15 @@ CRITICAL RULES:
             showToast(`✅ Insights saved for ${ticker}`);
             
             // Update in-memory guidanceData
-            if (!guidanceData[ticker]) {
-                guidanceData[ticker] = {};
-            }
+            if (!guidanceData[ticker]) guidanceData[ticker] = {};
             guidanceData[ticker].insights = newInsights;
-            
-            // Update localStorage cache
             saveGuidanceToStorage();
             
-            // Record timestamp from insights JSON
+            // Record timestamp and update IndexedDB
             const insightsDate = newInsights.date || new Date().toISOString().split('T')[0];
             insightsTimestamps[ticker] = insightsDate;
             localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
             
-            // Update IndexedDB stock record
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onsuccess = (e) => {
                 var db = e.target.result;
@@ -1704,7 +1693,6 @@ CRITICAL RULES:
                 if (stock) {
                     stock.insights = newInsights;
                     store.put(stock);
-                    log(`✅ Updated ${ticker} insights in IndexedDB`);
                 }
             };
             
@@ -2215,6 +2203,9 @@ CRITICAL RULES:
             
             const priceData = priceMap[ticker];
             const fundData = fundMap[ticker];
+            
+            if (priceData) priceMatches++;
+            if (fundData) fundMatches++;
             const guidData = guidanceData[ticker] || null;
             
             if (priceData) priceMatches++;
