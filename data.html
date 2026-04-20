@@ -2257,21 +2257,36 @@ CRITICAL RULES:
                 masterData = mergedStocks;
                 const now = new Date().toLocaleTimeString();
                 let putCount = 0;
+                let totalToSave = mergedStocks.length;
                 
-                mergedStocks.forEach(stock => {
+                // Use a promise-based approach to wait for all puts
+                let allPutsDone = false;
+                
+                mergedStocks.forEach((stock, index) => {
                     stock.updated = now;
                     var putReq = store.put(stock);
-                    putReq.onsuccess = () => putCount++;
+                    putReq.onsuccess = () => {
+                        putCount++;
+                        // When all puts complete, mark done
+                        if (putCount === totalToSave && !allPutsDone) {
+                            allPutsDone = true;
+                            log(`✅ Saved ${putCount}/${mergedStocks.length} records to IndexedDB`);
+                        }
+                    };
                     putReq.onerror = () => log(`⚠️ Failed to save ${stock.ticker}: ${putReq.error}`);
                 });
                 
                 transaction.oncomplete = () => {
-                    log(`✅ Saved ${putCount}/${mergedStocks.length} records to IndexedDB`);
-                    updateHeader();
-                    renderSymbols();
-                    renderDataSources();
-                    updateStatusButton('✅ Ready');
-                    showToast('✅ Load complete!');
+                    // Wait a tick for all puts to be registered
+                    setTimeout(() => {
+                        if (putCount >= totalToSave) {
+                            updateHeader();
+                            renderSymbols();
+                            renderDataSources();
+                            updateStatusButton('✅ Ready');
+                            showToast('✅ Load complete!');
+                        }
+                    }, 100);
                 };
                 
                 transaction.onerror = () => {
