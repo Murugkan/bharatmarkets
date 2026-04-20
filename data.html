@@ -470,7 +470,8 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
-        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
+        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals },
+        { name: 'guidance.json', path: GITHUB_CONFIG.PATHS.guidance }
     ];
 
     async function fetchGitHubData(filePath) {
@@ -2063,6 +2064,10 @@ CRITICAL RULES:
         }
         
         let symbolsData = results[0];
+        let pricesData = results[1] || {};
+        let fundamentalsData = results[2] || {};
+        let guidanceFileData = results[3] || {};
+        
         let symbolsList = null;
         
         if (Array.isArray(symbolsData)) {
@@ -2081,27 +2086,26 @@ CRITICAL RULES:
             return;
         }
         
-        const pricesData = results[1] || {};
-        const fundamentalsData = results[2] || {};
-        
-        // Extract guidance data and timestamps
+        // Extract guidance data and timestamps (using 'date' field, not 'updated')
         if (guidanceFileData && typeof guidanceFileData === 'object') {
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
-                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
-                        var dateStr = guidanceFileData[ticker].guidance.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
+                    // Store ISO timestamp from guidance.date field
+                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
+                        var dateStr = guidanceFileData[ticker].guidance.date;
+                        // Handle both ISO (YYYY-MM-DD) and DD/MM/YY formats
+                        var isoDate = dateStr.includes('-') ? dateStr : convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
                     }
-                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
-                        var dateStr = guidanceFileData[ticker].insights.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
+                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.date) {
+                        var dateStr = guidanceFileData[ticker].insights.date;
+                        var isoDate = dateStr.includes('-') ? dateStr : convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
                     }
                 }
             });
+            log(`📥 Loaded guidance for ${Object.keys(guidanceData).length} tickers`);
         }
         saveGuidanceToStorage();
         
@@ -2128,6 +2132,7 @@ CRITICAL RULES:
             
             const priceData = priceMap[ticker];
             const fundData = fundMap[ticker];
+            const guidData = guidanceData[ticker] || null;
             
             if (priceData) priceMatches++;
             if (fundData) fundMatches++;
@@ -2136,7 +2141,9 @@ CRITICAL RULES:
                 ...symbol,
                 ...(fundData || {}),
                 ...(priceData || {}),
-                ticker: ticker
+                ticker: ticker,
+                guidance: guidData ? guidData.guidance : null,
+                insights: guidData ? guidData.insights : null
             };
             
             mergedStocks.push(merged);
