@@ -493,16 +493,6 @@
                 const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
                 const sanitizedData = JSON.parse(sanitizedJSON);
                 
-                // TRACE: For unified-symbols.json, log all attempts
-                if (filePath.includes('unified-symbols')) {
-                    log(`📍 TRACE unified-symbols.json extraction:`);
-                    log(`  - HTTP Last-Modified: ${response.headers.get('last-modified')}`);
-                    log(`  - _metadata.updated: ${sanitizedData._metadata?.updated}`);
-                    log(`  - top-level updated: ${sanitizedData.updated}`);
-                    log(`  - lastLoadedAt: ${sanitizedData.lastLoadedAt}`);
-                    log(`  - symbols[0].updated: ${sanitizedData.symbols?.[0]?.updated}`);
-                }
-                
                 // Priority 1: Check HTTP Last-Modified header (most reliable)
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
@@ -531,11 +521,6 @@
                     if (filePath.includes('unified-symbols')) {
                         log(`✅ USED: lastLoadedAt: ${dataUpdatedTimes[filePath]}`);
                     }
-                }
-                // Priority 5: For unified-symbols.json, check symbols array metadata
-                else if (filePath.includes('unified-symbols') && sanitizedData && sanitizedData.symbols && Array.isArray(sanitizedData.symbols) && sanitizedData.symbols[0] && sanitizedData.symbols[0].updated) {
-                    dataUpdatedTimes[filePath] = sanitizedData.symbols[0].updated;
-                    log(`✅ USED: symbols[0].updated: ${dataUpdatedTimes[filePath]}`);
                 }
                 // Fallback: Use fetch time
                 else {
@@ -2177,6 +2162,9 @@ CRITICAL RULES:
     async function loadFreshData() {
         log('📡 Fetching fresh data from GitHub (sequential)...');
         updateStatusButton('⏳ Loading');
+        
+        // Clear guidance data to ensure fresh data
+        guidanceData = {};
         
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
