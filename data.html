@@ -328,7 +328,7 @@
         
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
-            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
+            <button id="loadJsonBtn" onclick="loadAllData().catch(e => {console.error('Load error:', e); showToast('❌ Load failed')})" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
             <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
         </div>
@@ -2372,54 +2372,43 @@ CRITICAL RULES:
         req.onsuccess = (e) => {
             var db = e.target.result;
             try {
-                log('📥 Saving 91 stocks to IndexedDB...');
+                log('📥 Saving stocks to IndexedDB...');
                 
-                // Clear old data first
-                var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                var clearStore = clearTx.objectStore(STORE_NAME);
-                clearStore.clear();
+                // Don't clear here - already cleared in loadAllData
+                masterData = mergedStocks;
+                // Use the actual unified-symbols.json updated timestamp
+                const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
+                let savedCount = 0;
                 
-                clearTx.oncomplete = () => {
-                    // Now save new data
-                    masterData = mergedStocks;
-                    // Use the actual unified-symbols.json updated timestamp
-                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
-                    let savedCount = 0;
-                    
-                    // Process stocks sequentially with promise chain
-                    function saveNext(index) {
-                        if (index >= mergedStocks.length) {
-                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
-                            updateHeader();
-                            renderSymbols();
-                            renderDataSources();
-                            updateStatusButton('✅ Ready');
-                            showToast('✅ Load complete!');
-                            return;
-                        }
-                        
-                        var transaction = db.transaction(STORE_NAME, 'readwrite');
-                        var store = transaction.objectStore(STORE_NAME);
-                        var stock = mergedStocks[index];
-                        stock.updated = symbolsUpdateTime;
-                        
-                        var putReq = store.put(stock);
-                        putReq.onsuccess = () => {
-                            savedCount++;
-                            saveNext(index + 1);
-                        };
-                        putReq.onerror = () => {
-                            log(`⚠️ Failed to save ${stock.ticker}`);
-                            saveNext(index + 1);
-                        };
+                // Process stocks sequentially with promise chain
+                function saveNext(index) {
+                    if (index >= mergedStocks.length) {
+                        log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                        updateHeader();
+                        renderSymbols();
+                        renderDataSources();
+                        updateStatusButton('✅ Ready');
+                        showToast('✅ Load complete!');
+                        return;
                     }
                     
-                    saveNext(0);
-                };
+                    var transaction = db.transaction(STORE_NAME, 'readwrite');
+                    var store = transaction.objectStore(STORE_NAME);
+                    var stock = mergedStocks[index];
+                    stock.updated = symbolsUpdateTime;
+                    
+                    var putReq = store.put(stock);
+                    putReq.onsuccess = () => {
+                        savedCount++;
+                        saveNext(index + 1);
+                    };
+                    putReq.onerror = () => {
+                        log(`⚠️ Failed to save ${stock.ticker}`);
+                        saveNext(index + 1);
+                    };
+                }
                 
-                clearTx.onerror = () => {
-                    log(`⚠️ Error clearing store`);
-                };
+                saveNext(0);
                 
             } catch (err) {
                 log(`❌ Error: ${err.message}`);
