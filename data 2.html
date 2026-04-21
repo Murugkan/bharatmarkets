@@ -1,0 +1,2422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Bharat Markets - ETL Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #000;
+            --s1: #0a0a0a;
+            --b1: #222;
+            --bl: #00f2ff;
+            --gr: #00ff88;
+            --rd: #ff4d6d;
+            --tx: #fff;
+            --warning: #f59e0b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--tx);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            overflow: hidden;
+            -webkit-text-size-adjust: 100%;
+            padding-bottom: 80px;
+        }
+
+        /* HEADER */
+        header {
+            background: var(--s1);
+            border-bottom: 1px solid var(--b1);
+            padding: 4px;
+        }
+        .header-title { font-size: 14px; font-weight: 800; margin-bottom: 10px; color: var(--bl); }
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 8px;
+        }
+        .metric-box {
+            background: var(--b1);
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .metric-label { font-size: 8px; color: #666; text-transform: uppercase; }
+        .metric-val { font-size: 12px; font-weight: 800; color: var(--bl); margin-top: 4px; }
+
+        /* TAB BUTTONS */
+        .tabs {
+            display: flex;
+            gap: 0;
+            background: var(--s1);
+            border-bottom: 2px solid var(--b1);
+            overflow-x: auto;
+            padding: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px;
+            background: var(--s1);
+            color: #666;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            color: var(--bl);
+            border-bottom-color: var(--bl);
+            background: #111;
+        }
+
+        /* CONTENT AREA */
+        .content {
+            height: calc(100vh - 160px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 8px;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* TABLES */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+        }
+        th {
+            background: var(--s1);
+            color: #666;
+            padding: 8px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 2px solid var(--b1);
+            text-align: left;
+            font-weight: 800;
+        }
+        th.active { color: var(--bl); }
+        td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #111;
+        }
+        td.sticky {
+            position: sticky;
+            left: 0;
+            background: #0a0a0a;
+            z-index: 5;
+            border-right: 1px solid var(--b1);
+            color: var(--bl);
+            font-weight: 800;
+        }
+        
+        thead tr {
+            position: sticky;
+            top: 0;
+            background: rgba(0,50,100,0.5);
+            z-index: 10;
+        }
+        
+        .pos { color: var(--gr) !important; }
+        .neg { color: var(--rd) !important; }
+
+        /* BUTTONS */
+        button {
+            padding: 8px 12px;
+            background: var(--bl);
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 9px;
+            font-family: 'JetBrains Mono', monospace;
+            transition: all 0.2s;
+        }
+        button:hover { opacity: 0.8; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { background: var(--rd); }
+        .btn-success { background: var(--gr); }
+        .btn-warning { background: var(--warning); }
+
+        /* INLINE BUTTONS */
+        .inline-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .inline-buttons button {
+            width: 100%;
+            padding: 10px 8px;
+            font-size: 11px;
+            border-radius: 6px;
+        }
+
+        /* NAVIGATION FOOTER */
+        .nav-footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid var(--b1);
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+            z-index: 999;
+        }
+
+        .nav-btn {
+            text-decoration: none;
+            color: #666;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 50%;
+            padding: 8px 0;
+            transition: color 0.2s;
+        }
+
+        .nav-btn:hover {
+            color: var(--bl);
+        }
+
+        .nav-btn.active {
+            color: var(--bl);
+            font-weight: 800;
+        }
+
+        .nav-label {
+            font-size: 8px;
+            margin-top: 4px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* PAT CONFIG */
+        .pat-section {
+            background: var(--b1);
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+        .pat-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
+        .pat-input {
+            width: 100%;
+            padding: 8px;
+            background: #111;
+            color: var(--tx);
+            border: 1px solid var(--b1);
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+        }
+        .pat-status {
+            margin-top: 8px;
+            font-size: 9px;
+            color: var(--gr);
+        }
+
+        /* TOAST */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--gr);
+            color: #000;
+            padding: 10px 16px;
+            border-radius: 4px;
+            font-weight: 800;
+            z-index: 2000;
+            animation: slideUp 0.3s ease-out;
+            display: none;
+        }
+        .toast.show { display: block; }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* SCROLLABLE TABLE CONTAINER */
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* LOG */
+        .log-box {
+            background: #111;
+            border: 1px solid var(--b1);
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 9px;
+            color: var(--gr);
+            line-height: 1.4;
+        }
+
+        /* INPUT FIELDS */
+        input[type="number"], input[type="text"] {
+            padding: 6px;
+            background: #111;
+            color: var(--tx);
+            border: 1px solid var(--b1);
+            border-radius: 2px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+        }
+        input[type="number"]:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: var(--bl);
+        }
+
+        /* SECTION HEADERS */
+        .section-header {
+            font-size: 12px;
+            font-weight: 800;
+            margin-bottom: 10px;
+            color: var(--bl);
+        }
+
+        .section-header.success {
+            color: var(--gr);
+        }
+
+        /* SECTION BOX */
+        .section-box {
+            margin: 15px 0;
+            padding: 12px;
+            background: var(--s1);
+            border-radius: 8px;
+            border: 1px solid var(--b1);
+        }
+        
+    </style>
+</head>
+<body>
+
+<header>
+</header>
+
+<div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">📊 Data status</button>
+    <button class="tab-btn" onclick="switchTab('symbols')">📋 Stock list</button>
+    <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
+</div>
+
+<div class="content">
+    <!-- TAB 1: COMBINED ETL PIPELINE -->
+    <div id="etl-pipeline" class="tab-content active">
+        
+        <!-- ACTION BUTTONS -->
+        <div class="inline-buttons">
+            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
+            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
+            <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
+        </div>
+
+        <!-- SECTION 1: DATA SOURCES -->
+        <div class="section-box">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Count</th>
+                            <th>Updated (IST)</th>
+                            <th style="text-align:center;">Data Load</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sources-table">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECTION 2: LIVE LOG -->
+        <div class="section-box">
+            <div class="section-header">📋 Live Log</div>
+            <div class="log-box" id="live-log">
+                <div style="color:#666;">[Logs appear here]</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- TAB 2: SYMBOLS EDITOR -->
+    <div id="symbols" class="tab-content">
+        <div style="margin-bottom:10px;">
+            <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
+            <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
+        </div>
+        <div id="save-section" style="display:none; margin-bottom:12px;">
+            <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
+            <button onclick="cancelChanges()">❌ Cancel</button>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
+                        <th class="sticky" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left;">TICKER</th>
+                        <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left; width:150px;">NAME</th>
+                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
+                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
+                        <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
+                        <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
+                        <th style="color:#f59e0b; font-weight:700; padding:10px 4px; text-align:center;">INSIGHTS</th>
+                        <th style="color:#ffaa44; font-weight:700; padding:10px 4px; text-align:center; width:75px;">INSIGHTS DATE</th>
+                        <th style="color:#ff4444; font-weight:700; padding:10px 4px; text-align:center; width:40px;">DEL</th>
+                    </tr>
+                </thead>
+                <tbody id="symbols-table">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB 3: PAT CONFIG -->
+    <div id="pat" class="tab-content">
+        <div class="pat-section">
+            <div style="background:#0a0a0a; padding:12px; border-radius:4px; margin-bottom:12px; border-left:2px solid #00ff88;">
+                <div style="font-size:9px; color:#666; margin-bottom:6px;">💡 QUICK START</div>
+                <div style="font-size:10px; color:#aaa; line-height:1.5;">
+                    1️⃣ Go to <strong>📊 Data status</strong> tab<br>
+                    2️⃣ Click <strong>🚀 LOAD JSON</strong> (no PAT needed)<br>
+                    3️⃣ Portfolio updates automatically
+                </div>
+                <div style="font-size:9px; color:#666; margin-top:8px; margin-bottom:4px;">🔐 PAT NEEDED FOR:</div>
+                <div style="font-size:10px; color:#aaa;">Save guidance/insights edits</div>
+            </div>
+            
+            <div class="pat-label">GitHub PAT Token</div>
+            <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
+                <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
+                <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
+            </div>
+            <div class="pat-status">
+                <div id="patStatus">❌ Not Configured</div>
+                <div id="patRepo" style="color:#999;">—</div>
+            </div>
+            <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
+        </div>
+    </div>
+
+</div>
+
+<!-- NAVIGATION FOOTER -->
+<footer class="nav-footer">
+    <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
+    <a href="data.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
+    <a href="analysis.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span class="nav-label">Analysis</span></a>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    const DB_NAME = 'OnyxPortfolioDB';
+    const DB_VERSION = 8;
+    const STORE_NAME = 'Stocks';
+
+    let masterData = [];
+    let sourceData = {};
+    let guidanceData = {};
+    let guidanceTimestamps = {};
+    let concallTimestamps = {}; // Separate timestamp for concall
+    let insightsTimestamps = {}; // Separate timestamp for insights
+    let editMode = false;
+    let logMessages = [];
+    let dataUpdatedTimes = {};
+
+    const GITHUB_CONFIG = {
+        OWNER: 'murugkan',
+        REPO: 'bharatmarkets',
+        BRANCH: 'main',
+        PATHS: {
+            symbols: 'unified-symbols.json',
+            prices: 'prices.json',
+            fundamentals: 'fundamentals.json',
+            guidance: 'guidance.json',
+            macro: 'macro_data.json'
+        }
+    };
+    
+    const RAW_GITHUB_URL = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}`;
+    
+    const DATA_SOURCES = [
+        { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
+        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
+        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
+    ];
+
+    async function fetchGitHubData(filePath) {
+        try {
+            const url = `${RAW_GITHUB_URL}/${filePath}`;
+            const fetchTime = new Date().toISOString();
+            
+            log(`📡 Fetching: ${filePath}`);
+            
+            // Add 30 second timeout
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeout);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // CRITICAL: Sanitize immediately after fetching to prevent corruption spread
+                const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
+                const sanitizedData = JSON.parse(sanitizedJSON);
+                
+                // TRACE: For unified-symbols.json, log all attempts
+                if (filePath.includes('unified-symbols')) {
+                    log(`📍 TRACE unified-symbols.json extraction:`);
+                    log(`  - HTTP Last-Modified: ${response.headers.get('last-modified')}`);
+                    log(`  - _metadata.updated: ${sanitizedData._metadata?.updated}`);
+                    log(`  - top-level updated: ${sanitizedData.updated}`);
+                    log(`  - lastLoadedAt: ${sanitizedData.lastLoadedAt}`);
+                    log(`  - symbols[0].updated: ${sanitizedData.symbols?.[0]?.updated}`);
+                }
+                
+                // Priority 1: Check HTTP Last-Modified header (most reliable)
+                const lastModified = response.headers.get('last-modified');
+                if (lastModified) {
+                    dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: HTTP Last-Modified header: ${dataUpdatedTimes[filePath]}`);
+                    }
+                }
+                // Priority 2: Check for _metadata.updated in data
+                else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
+                    dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: _metadata.updated: ${dataUpdatedTimes[filePath]}`);
+                    }
+                }
+                // Priority 3: Check for top-level updated field
+                else if (sanitizedData && sanitizedData.updated) {
+                    dataUpdatedTimes[filePath] = sanitizedData.updated;
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: top-level updated: ${dataUpdatedTimes[filePath]}`);
+                    }
+                }
+                // Priority 4: Check for lastLoadedAt
+                else if (sanitizedData && sanitizedData.lastLoadedAt) {
+                    dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: lastLoadedAt: ${dataUpdatedTimes[filePath]}`);
+                    }
+                }
+                // Priority 5: For unified-symbols.json, check symbols array metadata
+                else if (filePath.includes('unified-symbols') && sanitizedData && sanitizedData.symbols && Array.isArray(sanitizedData.symbols) && sanitizedData.symbols[0] && sanitizedData.symbols[0].updated) {
+                    dataUpdatedTimes[filePath] = sanitizedData.symbols[0].updated;
+                    log(`✅ USED: symbols[0].updated: ${dataUpdatedTimes[filePath]}`);
+                }
+                // Fallback: Use fetch time
+                else {
+                    dataUpdatedTimes[filePath] = fetchTime;
+                    if (filePath.includes('unified-symbols')) {
+                        log(`⚠️ FALLBACK to fetch time: ${dataUpdatedTimes[filePath]}`);
+                    }
+                }
+            
+                // Save to localStorage
+                localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
+                
+                return sanitizedData;
+                
+            } catch (abortErr) {
+                clearTimeout(timeout);
+                if (abortErr.name === 'AbortError') {
+                    log(`⏱️ Timeout fetching ${filePath} (30s)`);
+                } else {
+                    log(`❌ Network error: ${filePath}`);
+                }
+                return null;
+            }
+        } catch (e) {
+            log(`❌ Error parsing ${filePath}: ${e.message}`);
+            return null;
+        }
+    }
+
+    async function init() {
+        loadSavedLogs();  // Restore previous logs
+        updateStatusButton('⏳ Loading...');
+        log('🚀 ETL Center starting...');
+        
+        // Load PAT from storage
+        loadPatFromStorage();
+        
+        // Load updated times from storage
+        const savedTimes = localStorage.getItem('dataUpdatedTimes');
+        if (savedTimes) {
+            dataUpdatedTimes = JSON.parse(savedTimes);
+        }
+        
+        try {
+            // Load from IndexedDB only - don't clear!
+            await loadFromIndexedDB();
+            loadGuidanceFromStorage();
+            
+            if (masterData.length > 0) {
+                log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
+                updateStatusButton('✅ Ready');
+            } else {
+                log('⚠️ No data. Click LOAD JSON to fetch from GitHub');
+                updateStatusButton('⚠️ No Data');
+            }
+        } catch (e) {
+            log(`⚠️ Error: ${e.message}`);
+            updateStatusButton('⚠️ Error');
+        }
+        
+        renderDataSources();
+        renderSymbols();
+        updateHeader();
+    }
+
+    function updateStatusButton(statusText) {
+        const btn = document.getElementById('loadJsonBtn');
+        const badge = document.getElementById('statusBadge');
+        
+        // Safe: Only update if elements exist (data.html page)
+        if (btn && badge) {
+            badge.textContent = statusText;
+            
+            // Update button styling based on status
+            if (statusText.includes('Ready')) {
+                btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
+                btn.style.color = '#000';
+                btn.disabled = false;
+            } else if (statusText.includes('Loading') || statusText.includes('Clearing')) {
+                btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
+                btn.style.color = '#000';
+                btn.disabled = true;
+            } else if (statusText.includes('Error') || statusText.includes('Failed')) {
+                btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
+                btn.style.color = '#fff';
+                btn.disabled = false;
+            } else {
+                btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
+                btn.style.color = '#000';
+                btn.disabled = false;
+            }
+        }
+        
+        // Always log
+        log(statusText);
+    }
+    
+    function saveLogs() {
+        try {
+            localStorage.setItem('etl_logs', JSON.stringify(logMessages.slice(-100)));
+        } catch(e) {
+            console.warn('Storage full');
+        }
+    }
+    
+    function loadSavedLogs() {
+        try {
+            const saved = localStorage.getItem('etl_logs');
+            if (saved && Array.isArray(JSON.parse(saved))) {
+                logMessages = JSON.parse(saved);
+            }
+        } catch(e) {}
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabName).classList.add('active');
+        event.target.classList.add('active');
+        
+        // Refresh data when switching tabs
+        if (tabName === 'symbols') {
+            renderSymbols();
+        } else if (tabName === 'etl-pipeline') {
+            renderDataSources();
+        }
+    }
+
+    function log(msg) {
+        var ts = new Date().toLocaleTimeString();
+        var fullMsg = `[${ts}] ${msg}`;
+        logMessages.push(fullMsg);
+        var logBox = document.getElementById('live-log');
+        if (logBox) {
+            logBox.textContent = logMessages.slice(-30).reverse().join('\n');
+            logBox.scrollTop = 0;
+        }
+        saveLogs();
+        console.log(msg);
+    }
+    
+    function showToast(msg) {
+        var el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), 2000);
+    }
+
+    function renderDataSources() {
+        var html = '';
+        log(`🔍 DEBUG: dataUpdatedTimes keys: ${Object.keys(dataUpdatedTimes).join(', ')}`);
+        
+        DATA_SOURCES.forEach((s, index) => {
+            // Fetch count from GitHub with cache bust
+            var count = '⏳ Loading...';
+            const fullUrl = `${RAW_GITHUB_URL}/${s.path}?cache=${Date.now()}`;
+            fetch(fullUrl)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.count !== undefined) {
+                        // For prices.json which has "count" field
+                        count = data.count;
+                    } else if (data.symbols && Array.isArray(data.symbols)) {
+                        // For unified-symbols.json with symbols array
+                        count = data.symbols.length;
+                    } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
+                        // For fundamentals.json with stocks object
+                        count = Object.keys(data.stocks).length;
+                    } else if (Array.isArray(data)) {
+                        // If it's a direct array
+                        count = data.length;
+                    } else {
+                        count = '—';
+                    }
+                    // Update the count in the table cell
+                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
+                    if (countCell) countCell.textContent = count;
+                })
+                .catch(e => {
+                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
+                    if (countCell) countCell.textContent = '❌';
+                });
+            
+            // Get the actual timestamp from dataUpdatedTimes
+            var jsonTime = dataUpdatedTimes[s.path] || '—';
+            log(`🔍 DEBUG: Looking up s.path="${s.path}", found="${jsonTime}"`);
+            
+            // Convert ISO to IST (UTC+5:30)
+            var istTime = '—';
+            if (jsonTime && jsonTime !== '—' && !jsonTime.includes('❌')) {
+                try {
+                    var date = new Date(jsonTime);
+                    istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    log(`🔍 DEBUG: Converted "${jsonTime}" to IST: "${istTime}"`);
+                } catch(e) {
+                    istTime = jsonTime;
+                }
+            }
+            
+            // First file (unified-symbols) opens wizard, others load data
+            var loadButton = '';
+            if (index === 0) {
+                loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
+            } else {
+                loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
+            }
+            
+            html += `<tr data-source="${s.name}">
+                <td>${s.name}</td>
+                <td class="count-cell">${count}</td>
+                <td style="font-size:9px;">${istTime}</td>
+                <td style="text-align:center;">${loadButton}</td>
+            </tr>`;
+        });
+        document.getElementById('sources-table').innerHTML = html;
+    }
+
+    function dataLoad(source) {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            log('❌ PAT required in 🔐 PAT tab');
+            showToast('❌ Configure PAT first');
+            return;
+        }
+        
+        let fetchType = source === 'prices.json' ? 'prices_only' : 'fundamentals_only';
+        log(`⏳ Triggering workflow: ${fetchType}`);
+        showToast('⏳ Starting workflow...');
+        
+        triggerWorkflow(pat, fetchType, source);
+    }
+
+    function triggerWorkflow(pat, fetchType, source) {
+        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch-prices.yml/dispatches`;
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json'
+            },
+            body: JSON.stringify({
+                ref: GITHUB_CONFIG.BRANCH,
+                inputs: { fetch_type: fetchType }
+            })
+        })
+        .then(r => {
+            if (r.ok) {
+                log(`✅ Workflow triggered! Waiting...`);
+                showToast('⏳ Workflow running (30 sec)...');
+                setTimeout(() => fetchUpdated(source), 30000);
+            } else {
+                return r.json().then(e => {
+                    log(`❌ Workflow trigger failed: ${e.message}`);
+                    showToast('❌ Failed');
+                });
+            }
+        })
+        .catch(e => {
+            log(`❌ Error: ${e.message}`);
+            showToast('❌ Error');
+        });
+    }
+
+    function fetchUpdated(source) {
+        log(`📥 Fetching updated ${source}...`);
+        fetch(`${source}?cache=${Date.now()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data) {
+                    log(`✅ ${source} updated! Reloading...`);
+                    showToast('✅ Reloading...');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    log(`❌ Fetch failed`);
+                    showToast('❌ Failed');
+                }
+            })
+            .catch(e => {
+                log(`❌ Error: ${e.message}`);
+                showToast('❌ Error');
+            });
+    }
+
+
+    async function loadFromIndexedDB() {
+        return new Promise((resolve) => {
+            // Try opening with current version first, then with incremented version
+            var attemptVersion = DB_VERSION;
+            
+            function attemptOpen(version) {
+                var req = indexedDB.open(DB_NAME, version);
+                
+                req.onerror = () => {
+                    masterData = [];
+                    resolve();
+                };
+                
+                req.onupgradeneeded = (e) => {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                    }
+                };
+                
+                req.onsuccess = (e) => {
+                    var db = e.target.result;
+                    try {
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            masterData = [];
+                            resolve();
+                            return;
+                        }
+                        
+                        var transaction = db.transaction(STORE_NAME, 'readonly');
+                        var store = transaction.objectStore(STORE_NAME);
+                        var getAllReq = store.getAll();
+
+                        getAllReq.onsuccess = () => {
+                            masterData = getAllReq.result || [];
+                            log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
+                            resolve();
+                        };
+                        
+                        getAllReq.onerror = () => {
+                            masterData = [];
+                            resolve();
+                        };
+                    } catch (e) {
+                        masterData = [];
+                        resolve();
+                    }
+                };
+            }
+            
+            attemptOpen(attemptVersion);
+        });
+    }
+    
+    function loadGuidanceFromStorage() {
+        const storedGuidance = localStorage.getItem('guidanceData');
+        if (storedGuidance) {
+            try {
+                // Sanitize before parsing to fix any corrupted rupees
+                const sanitizedGuidance = sanitizeJSON(storedGuidance);
+                guidanceData = JSON.parse(sanitizedGuidance);
+                log(`📥 Loaded guidance data: ${Object.keys(guidanceData).length} items`);
+            } catch(e) {
+                guidanceData = {};
+                log(`⚠️ Failed to parse guidanceData`);
+            }
+        }
+        
+        const storedTimestamps = localStorage.getItem('guidanceTimestamps');
+        if (storedTimestamps) {
+            try {
+                guidanceTimestamps = JSON.parse(storedTimestamps);
+            } catch(e) {
+                guidanceTimestamps = {};
+            }
+        }
+        
+        const storedConcall = localStorage.getItem('concallTimestamps');
+        if (storedConcall) {
+            try {
+                concallTimestamps = JSON.parse(storedConcall);
+                log(`📥 Loaded concallTimestamps: ${Object.keys(concallTimestamps).length} items`);
+                log(`🔍 DEBUG concallTimestamps: ${JSON.stringify(concallTimestamps)}`);
+            } catch(e) {
+                concallTimestamps = {};
+                log(`⚠️ Failed to parse concallTimestamps`);
+            }
+        } else {
+            log(`⚠️ No concallTimestamps in localStorage`);
+        }
+        
+        const storedInsights = localStorage.getItem('insightsTimestamps');
+        if (storedInsights) {
+            try {
+                insightsTimestamps = JSON.parse(storedInsights);
+                log(`📥 Loaded insightsTimestamps: ${Object.keys(insightsTimestamps).length} items`);
+                log(`🔍 DEBUG insightsTimestamps: ${JSON.stringify(insightsTimestamps)}`);
+
+            } catch(e) {
+                insightsTimestamps = {};
+            }
+        }
+    }
+    
+    function saveGuidanceToStorage() {
+        // Sanitize before saving to prevent corruption storage
+        const sanitizedGuidance = sanitizeJSON(JSON.stringify(guidanceData));
+        localStorage.setItem('guidanceData', sanitizedGuidance);
+        localStorage.setItem('guidanceTimestamps', JSON.stringify(guidanceTimestamps));
+        localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
+        localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
+    }
+
+    function renderSymbols() {
+        var html = '';
+        
+        if (!masterData || masterData.length === 0) {
+            html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
+        } else {
+            masterData.slice(0, 50).forEach(stock => {
+                var ticker = stock.ticker || '—';
+                var name = stock.name || '—';
+                var qty = stock.qty || 0;
+                var avg = stock.avg || 0;
+
+                html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
+                    <td class="sticky" style="font-weight:700; color:#00ffff; font-size:14px; padding:8px 8px; min-width:90px; vertical-align:middle;">${ticker}</td>
+                    <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:150px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
+                    <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="padding:1px 6px; vertical-align:middle;">
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
+                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
+                        </div>
+                    </td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—'}</td>
+                    <td style="padding:1px 6px; vertical-align:middle;">
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
+                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
+                        </div>
+                    </td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—'}</td>
+                    <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
+                </tr>`;
+            });
+        }
+
+        document.getElementById('symbols-table').innerHTML = html;
+    }
+    
+    function convertToIST(isoString) {
+        try {
+            // Handle both ISO datetime (2026-04-19T00:00:00Z) and date-only (2026-04-19) formats
+            let dateStr = isoString;
+            
+            // If it's just a date (YYYY-MM-DD), convert to full ISO datetime
+            if (dateStr && dateStr.length === 10 && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                dateStr = dateStr + 'T00:00:00Z';
+            }
+            
+            var date = new Date(dateStr);
+            
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                return isoString;
+            }
+            
+            return date.toLocaleString('en-IN', { 
+                timeZone: 'Asia/Kolkata',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+        } catch(e) {
+            return isoString;
+        }
+    }
+
+    function generateGuidancePrompt(ticker) {
+        var stock = masterData.find(s => s.ticker === ticker);
+        if (!stock) {
+            showToast('❌ Stock not found');
+            return;
+        }
+        
+        var name = stock.name || ticker;
+        
+        var prompt = `TICKER: ${ticker}
+COMPANY: ${name}
+
+You are a senior equity analyst. Extract guidance from latest earnings call. Provide COMPLETE fundamental analysis.
+
+CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
+
+{
+  "ticker": "${ticker}",
+  "guidance": {
+    "quarter": "Q4 FY26",
+    
+    "financial": {
+      "revenue": "SPECIFIC target with growth rate",
+      "growth": "SPECIFIC growth target",
+      "margins": "SPECIFIC operating & net margins",
+      "capex": "SPECIFIC capex amount & purpose"
+    },
+    
+    "business": {
+      "expansion": "New capacity/market with timeline",
+      "products": "Product portfolio mix",
+      "geography": "Geographic revenue breakdown"
+    },
+    
+    "management": {
+      "tone": "'Positive' or 'Cautious' or 'Defensive'",
+      "confidence": "'High' or 'Medium' or 'Low'",
+      "commitments": ["commitment 1", "commitment 2"],
+      "risks": ["risk - Severity", "risk - Severity"]
+    },
+    
+    "summary": "One sentence with top 2 numbers",
+    
+    "deals_and_pipeline": {
+      "deal_wins": ["Deal 1: ₹X Cr, client type, when", "Deal 2: ₹Y Cr, client type, when"],
+      "order_book": {
+        "total_value": "₹X Cr total",
+        "execution_timeline": "X% in next Y months; Z% in Y-24 months",
+        "by_segment": "Segment 1 ₹X Cr | Segment 2 ₹Y Cr"
+      },
+      "sales_pipeline": "₹X Cr active pipeline; X% conversion expected",
+      "deal_pipeline_value": "₹X Cr in advanced negotiations"
+    },
+    
+    "customers": {
+      "customer_additions": ["New customer 1", "New customer 2"],
+      "customer_losses": ["Lost customer with ₹X Cr impact"],
+      "customer_concentration": "Top 5 customers = X% revenue; Top 10 = Y%",
+      "net_assessment": "Net positive/negative; consolidation or diversification trend"
+    },
+    
+    "segments": {
+      "revenue_by_segment": {
+        "Segment 1": "X% revenue | +Y% YoY growth",
+        "Segment 2": "X% revenue | +Y% YoY growth",
+        "Segment 3": "X% revenue | +Y% YoY growth"
+      },
+      "segment_outlook": "Which segments accelerating vs declining"
+    },
+    
+    "geography": {
+      "revenue_mix": {"Region 1": "X%", "Region 2": "Y%", "Region 3": "Z%"},
+      "expansion_plans": "New countries/regions targeted with timeline"
+    },
+    
+    "operations": {
+      "headcount": {
+        "current_strength": "X employees",
+        "hiring_plan": "Add Y engineers/staff",
+        "utilization_target": "Current X% → Target Y%",
+        "attrition_rate": "X% YoY vs industry Y%"
+      },
+      "raw_materials": {
+        "cost_outlook": "Cost pressure easing or intensifying",
+        "expected_benefit": "X-Y bps margin benefit/pressure",
+        "key_materials": "Material 1 +X% cost | Material 2 -Y% cost"
+      },
+      "working_capital": {
+        "receivables_dso": "X days (was Y days)",
+        "inventory_dio": "X days (was Y days)",
+        "cash_conversion_cycle": "X days (was Y days)",
+        "cash_release_potential": "₹X Cr WC release expected"
+      }
+    },
+    
+    "capital_allocation": {
+      "capex_detailed": {
+        "total": "₹X Cr",
+        "automation": "₹X Cr",
+        "it_infrastructure": "₹X Cr",
+        "facility_expansion": "₹X Cr",
+        "funding_source": "X% operations, Y% debt, Z% equity"
+      },
+      "debt_management": {
+        "repayment_plan": "₹X Cr debt repayment",
+        "net_debt_target": "Target X.X x EBITDA (from Y.Y x)",
+        "timeline": "Achieve by end of FY27/FY28",
+        "current_net_debt": "₹X Cr"
+      }
+    },
+    
+    "competitive_position": {
+      "market_share": {
+        "by_segment": "Segment 1: X% (gaining/losing)",
+        "overall_trend": "Market position strengthening or weakening"
+      },
+      "pricing_strategy": "Pricing power; price increase acceptance; vs peers",
+      "competitive_advantages": ["Advantage 1", "Advantage 2", "Advantage 3"],
+      "competitive_threats": ["Threat 1 (Severity)", "Threat 2 (Severity)", "Threat 3 (Severity)"]
+    },
+    
+    "investor_verdict": "One sentence most important takeaway",
+    
+    "analyst_dimensions": {
+      "valuation_context": "How does guidance compare to valuation",
+      "consensus_gap": "Guidance vs street consensus vs previous",
+      "achievability": "Is guidance achievable; track record",
+      "margin_quality": "What's driving margins; sustainable",
+      "capex_roi": "Capex justified by returns; ROIC",
+      "order_book_health": "Order book value + execution timeline + risk",
+      "risk_opportunity_scorecard": "Risks vs opportunities with probability & impact",
+      "management_credibility": "Transparent; conservative or aggressive setter",
+      "forward_estimate_impact": "How guidance changes FY26/FY27 EPS estimates",
+      "quarterly_trajectory": "Revenue/margin path; catalyst timing"
+    }
+  }
+}
+
+CRITICAL RULES:
+1. Return ONLY JSON
+2. ALL 25 fields required
+3. Use actual numbers from call
+4. Do NOT fabricate data - use "Not disclosed" if missing
+5. Be brutally honest on risks & opportunities`;
+
+        navigator.clipboard.writeText(prompt).then(() => {
+            showToast('✅ Guidance prompt copied!');
+        }).catch(() => {
+            var textArea = document.createElement('textarea');
+            textArea.value = prompt;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showToast('✅ Guidance prompt copied!');
+        });
+    }
+    
+    function generateInsightsPrompt(ticker) {
+        var stock = masterData.find(s => s.ticker === ticker);
+        if (!stock) {
+            showToast('❌ Stock not found');
+            return;
+        }
+        
+        var name = stock.name || ticker;
+        var sector = stock.sector || 'N/A';
+        
+        var prompt = `TICKER: ${ticker}
+COMPANY: ${name}
+SECTOR: ${sector}
+
+You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT.
+
+This is your investment opinion + sector analysis. Company guidance is separate.
+
+{
+  "ticker": "${ticker}",
+  "insights": {
+    "recommendation": "'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
+    "thesis": "One sentence investment idea with specific reason",
+    "trigger": "Specific event that would change recommendation",
+    
+    "analysis": {
+      "valuation": {
+        "metric": "SPECIFIC: P/E, P/B, vs peers, vs Nifty",
+        "assessment": "Cheap/expensive? Why?",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
+      },
+      
+      "growth": {
+        "metric": "SPECIFIC: YoY growth, trend, order book",
+        "assessment": "Growth quality and sustainability",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
+      },
+      
+      "profitability": {
+        "metric": "SPECIFIC: OPM, PAT margin trends",
+        "assessment": "Margin quality and drivers",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
+      },
+      
+      "cash_strength": {
+        "metric": "SPECIFIC: Debt, FCF, cash, leverage",
+        "assessment": "Balance sheet quality",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
+      },
+      
+      "catalyst": {
+        "metric": "SPECIFIC: What events drive re-rating? Timelines?",
+        "assessment": "Timeline and impact",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
+      },
+      
+      "moat": {
+        "metric": "SPECIFIC: Competitive advantages, barriers",
+        "assessment": "Moat width and durability",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
+      },
+      
+      "opportunity": {
+        "metric": "SPECIFIC: Unpriced upside? TAM expansion? New markets?",
+        "assessment": "Why not priced in?",
+        "signal": "'Positive' or 'Neutral' or 'Caution'"
+      }
+    },
+    
+    "sector_briefing": {
+      "sector_name": "${sector}",
+      "sector_outlook": "Bullish/Neutral/Bearish? Growth trends, tailwinds, headwinds for sector",
+      "sector_growth": "Sector CAGR, margin trends, competitive consolidation",
+      "company_positioning": "${ticker}'s market position, competitive advantages, vs sector trends",
+      "sector_risks": "Macro risks affecting sector + how ${ticker} is positioned vs them"
+    }
+  }
+}
+
+CRITICAL RULES:
+1. Return ONLY JSON
+2. All 7 analysis dimensions + all sector briefing REQUIRED
+3. Be SPECIFIC: Use numbers, timelines, peer comparisons
+4. Investment opinion should be yours, not generic
+5. Sector briefing contextualizes company positioning within sector trends`;
+
+        navigator.clipboard.writeText(prompt).then(() => {
+            showToast('✅ Insights prompt copied!');
+        }).catch(() => {
+            var textArea = document.createElement('textarea');
+            textArea.value = prompt;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showToast('✅ Insights prompt copied!');
+        });
+    }
+
+    function cleanJSON(str) {
+        // Remove invisible/special characters that break JSON parsing
+        let cleaned = str
+            .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width chars
+            .replace(/[\u2018\u2019]/g, "'")       // Smart quotes
+            .replace(/[\u201C\u201D]/g, '"')       // Smart double quotes
+            .replace(/[\r\n\t]/g, ' ')             // Normalize whitespace
+            .trim();
+        
+        // If text contains "TICKER:" or other non-JSON preamble, extract just the JSON
+        // Find the first { and last } to extract JSON object
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        
+        if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
+            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
+        
+        return cleaned;
+    }
+    
+    function extractJSONFromText(text) {
+        // Extract JSON object from text that may contain preamble
+        // Remove any preamble like "TICKER: ...\nCOMPANY: ...\n"
+        let lines = text.split('\n');
+        let jsonStartIndex = -1;
+        
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim().startsWith('{')) {
+                jsonStartIndex = i;
+                break;
+            }
+        }
+        
+        if (jsonStartIndex !== -1) {
+            return lines.slice(jsonStartIndex).join('\n');
+        }
+        
+        return text;
+    }
+    
+    function utf8ToBase64(str) {
+        // Properly encode UTF-8 string (including ₹) to base64 for GitHub API
+        try {
+            // Use TextEncoder for proper UTF-8 encoding (works with ₹, emoji, etc)
+            const utf8Bytes = new TextEncoder().encode(str);
+            let binary = '';
+            for (let i = 0; i < utf8Bytes.length; i++) {
+                binary += String.fromCharCode(utf8Bytes[i]);
+            }
+            return btoa(binary);
+        } catch (e) {
+            // Fallback: try the old method
+            console.warn('TextEncoder failed, trying legacy method:', e);
+            try {
+                return btoa(unescape(encodeURIComponent(str)));
+            } catch (e2) {
+                console.error('Both encoding methods failed:', e2);
+                return btoa(str); // Last resort
+            }
+        }
+    }
+    
+    function sanitizeJSON(jsonString) {
+        // Fix corrupted rupee symbols and other Unicode issues
+        let cleaned = jsonString;
+        
+        // Remove invisible/control characters that cause corruption
+        cleaned = cleaned.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        
+        // Fix common rupee symbol corruptions (multiple patterns)
+        // Pattern 1: â‚ą (UTF-8 BOM corruption)
+        cleaned = cleaned.replace(/â‚ą/g, '₹');
+        // Pattern 2: Â Â (double nbsp corruption)
+        cleaned = cleaned.replace(/Â Â/g, '₹');
+        // Pattern 3: Unicode sequence corruption
+        cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹');
+        // Pattern 4: â€? variations
+        cleaned = cleaned.replace(/â€?/g, '₹');
+        // Pattern 5: ₹¹ (corrupted with superscript)
+        cleaned = cleaned.replace(/₹[¹²³⁴]/g, '₹');
+        // Pattern 6: Multiple rupee chars should be one
+        cleaned = cleaned.replace(/₹{2,}/g, '₹');
+        // Pattern 7: Rupee with trailing garbage
+        cleaned = cleaned.replace(/₹[\u00c2\u00c3][\u00a2\u00b9]/g, '₹');
+        // Pattern 8: Smart quotes and dashes to normal
+        cleaned = cleaned.replace(/[""]/g, '"');
+        cleaned = cleaned.replace(/['']/g, "'");
+        cleaned = cleaned.replace(/–/g, '-');
+        
+        return cleaned;
+    }
+    
+    function showGuidanceSaveModal(ticker) {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            return;
+        }
+        
+        // Create modal with textarea + date
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
+        
+        const today = new Date().toISOString().split('T')[0];
+        
+        modal.innerHTML = `
+            <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
+                <h3 style="color:#00f2ff;margin-bottom:15px">📋 Paste Guidance JSON for ${ticker}</h3>
+                <div style="margin-bottom:15px">
+                    <label style="color:#aaa;font-size:11px">Date</label>
+                    <input id="guidance-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
+                </div>
+                <div id="guidance-error" style="display:none;margin-bottom:15px;padding:10px;background:#ff4444;border:1px solid #ff0000;border-radius:4px;color:#fff;font-size:11px;font-weight:700;max-height:80px;overflow-y:auto;word-break:break-word;white-space:pre-wrap;"></div>
+                <textarea id="guidance-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
+                <div style="display:flex;gap:10px;margin-top:15px">
+                    <button onclick="
+                        let rawText = document.getElementById('guidance-json-input').value;
+                        rawText = extractJSONFromText(rawText);
+                        const json = cleanJSON(rawText);
+                        const date = document.getElementById('guidance-date-input').value;
+                        const errorDiv = document.getElementById('guidance-error');
+                        try{
+                            JSON.parse(json);
+                            errorDiv.style.display='none';
+                            document.getElementById('guidance-modal').remove();
+                            updateStatusButton('⏳ Saving');
+                            saveGuidanceToGitHub('${ticker}', json, '${pat}', date)
+                        }catch(e){
+                            errorDiv.innerHTML='❌ ' + e.message;
+                            errorDiv.style.display='block';
+                            showToast('❌ Invalid JSON')
+                        }
+                    " style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="document.getElementById('guidance-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
+                </div>
+            </div>
+        `;
+        modal.id = 'guidance-modal';
+        document.body.appendChild(modal);
+        document.getElementById('guidance-json-input').focus();
+    }
+    
+    function showInsightsSaveModal(ticker) {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            return;
+        }
+        
+        // Create modal with textarea + date
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
+        
+        const today = new Date().toISOString().split('T')[0];
+        
+        modal.innerHTML = `
+            <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
+                <h3 style="color:#00f2ff;margin-bottom:15px">💡 Paste Insights JSON for ${ticker}</h3>
+                <div style="margin-bottom:15px">
+                    <label style="color:#aaa;font-size:11px">Date</label>
+                    <input id="insights-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
+                </div>
+                <div id="insights-error" style="display:none;margin-bottom:15px;padding:10px;background:#ff4444;border:1px solid #ff0000;border-radius:4px;color:#fff;font-size:11px;font-weight:700;max-height:80px;overflow-y:auto;word-break:break-word;white-space:pre-wrap;"></div>
+                <textarea id="insights-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
+                <div style="display:flex;gap:10px;margin-top:15px">
+                    <button onclick="
+                        let rawText = document.getElementById('insights-json-input').value;
+                        rawText = extractJSONFromText(rawText);
+                        const json = cleanJSON(rawText);
+                        const date = document.getElementById('insights-date-input').value;
+                        const errorDiv = document.getElementById('insights-error');
+                        try{
+                            JSON.parse(json);
+                            errorDiv.style.display='none';
+                            document.getElementById('insights-modal').remove();
+                            updateStatusButton('⏳ Saving');
+                            saveInsightsToGitHub('${ticker}', json, '${pat}', date)
+                        }catch(e){
+                            errorDiv.innerHTML='❌ ' + e.message;
+                            errorDiv.style.display='block';
+                            showToast('❌ Invalid JSON')
+                        }
+                    " style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
+                    <button onclick="document.getElementById('insights-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
+                </div>
+            </div>
+        `;
+        modal.id = 'insights-modal';
+        document.body.appendChild(modal);
+        document.getElementById('insights-json-input').focus();
+    }
+
+    function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        var newGuidance = {};
+        try {
+            // Parse JSON
+            var parsed = JSON.parse(jsonText);
+            
+            // Extract guidance first
+            if (parsed.guidance) {
+                newGuidance = parsed.guidance;
+            } else if (parsed[ticker.toUpperCase()]) {
+                if (parsed[ticker.toUpperCase()].guidance) {
+                    newGuidance = parsed[ticker.toUpperCase()].guidance;
+                } else {
+                    throw new Error('Missing "guidance" field');
+                }
+            } else {
+                throw new Error('Invalid format - missing "guidance" field');
+            }
+            
+            // Validate ticker: if provided in JSON, it must match selected ticker
+            // This prevents accidental paste of wrong ticker
+            if (parsed.ticker && parsed.ticker.toUpperCase() !== ticker.toUpperCase()) {
+                throw new Error(`❌ Ticker mismatch!\nJSON has: "${parsed.ticker}"\nYou selected: "${ticker}"\n\nMake sure you're pasting the right company's data`);
+            }
+            
+            // Add date field
+            if (date) {
+                newGuidance.date = date;
+            }
+            const required = ['quarter', 'financial', 'business', 'management', 'summary'];
+            for (let field of required) {
+                if (!(field in newGuidance)) {
+                    throw new Error(`Missing required field: ${field}`);
+                }
+            }
+            
+            const financialFields = ['revenue', 'growth', 'margins', 'capex'];
+            for (let field of financialFields) {
+                if (!(field in newGuidance.financial)) {
+                    throw new Error(`Missing financial.${field}`);
+                }
+            }
+            
+            const businessFields = ['expansion', 'products', 'geography'];
+            for (let field of businessFields) {
+                if (!(field in newGuidance.business)) {
+                    throw new Error(`Missing business.${field}`);
+                }
+            }
+            
+            const mgmtFields = ['tone', 'confidence', 'commitments', 'risks'];
+            for (let field of mgmtFields) {
+                if (!(field in newGuidance.management)) {
+                    throw new Error(`Missing management.${field}`);
+                }
+            }
+            
+        } catch(e) {
+            showToast(`❌ Error: ${e.message}`);
+            updateStatusButton('❌ Error');
+            log(`❌ Validation error: ${e.message}`);
+            return;
+        }
+        
+        // Fetch current file
+        fetch(apiUrl, {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+        .then(fileData => {
+            var content = {};
+            try {
+                content = JSON.parse(atob(fileData.content));
+            } catch(e) {
+                log(`⚠️ Could not parse existing file`);
+                content = { "_metadata": { "version": "1.0" } };
+            }
+            
+            if (!content[ticker]) content[ticker] = {};
+            
+            // Update only this ticker's guidance
+            // Use date from parameter (from modal), or default to today
+            if (date) {
+                newGuidance.date = date;
+            } else {
+                newGuidance.date = new Date().toISOString().split('T')[0];
+            }
+            content[ticker].guidance = newGuidance;
+            
+            // Encode using proper UTF-8 base64 helper
+            let jsonString = JSON.stringify(content, null, 2);
+            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
+            const encodedContent = utf8ToBase64(jsonString);
+            
+            return fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Add/update guidance for ${ticker}`,
+                    content: encodedContent,
+                    sha: fileData.sha,
+                    branch: GITHUB_CONFIG.BRANCH
+                })
+            });
+        })
+        .then(r => {
+            if (!r?.ok) throw new Error('Failed to save');
+            log(`✅ Guidance for ${ticker} saved`);
+            updateStatusButton('✅ Ready');
+            showToast(`✅ Guidance saved for ${ticker}`);
+            
+            // Update in-memory guidanceData
+            if (!guidanceData[ticker]) guidanceData[ticker] = {};
+            guidanceData[ticker].guidance = newGuidance;
+            saveGuidanceToStorage();
+            
+            // Record timestamp and update IndexedDB
+            const guidanceDate = newGuidance.date || new Date().toISOString().split('T')[0];
+            concallTimestamps[ticker] = guidanceDate;
+            localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
+            
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
+                var stock = masterData.find(s => s.ticker === ticker);
+                if (stock) {
+                    stock.guidance = newGuidance;
+                    store.put(stock);
+                }
+            };
+            
+            renderSymbols();
+        })
+        .catch(e => {
+            updateStatusButton('❌ Error');
+            showToast(`❌ Error: ${e.message}`);
+            log(`❌ Save error: ${e.message}`);
+        });
+    }
+    
+    function saveInsightsToGitHub(ticker, jsonText, pat, date) {
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        var newInsights = {};
+        try {
+            // Parse JSON
+            var parsed = JSON.parse(jsonText);
+            
+            // Extract insights first
+            if (parsed.insights) {
+                newInsights = parsed.insights;
+            } else if (parsed[ticker.toUpperCase()]) {
+                if (parsed[ticker.toUpperCase()].insights) {
+                    newInsights = parsed[ticker.toUpperCase()].insights;
+                } else {
+                    throw new Error('Missing "insights" field');
+                }
+            } else {
+                throw new Error('Invalid format - missing "insights" field');
+            }
+            
+            // Validate ticker: if provided in JSON, it must match selected ticker
+            // This prevents accidental paste of wrong ticker
+            if (parsed.ticker && parsed.ticker.toUpperCase() !== ticker.toUpperCase()) {
+                throw new Error(`❌ Ticker mismatch!\nJSON has: "${parsed.ticker}"\nYou selected: "${ticker}"\n\nMake sure you're pasting the right company's data`);
+            }
+            
+            // Add date field
+            if (date) {
+                newInsights.date = date;
+            }
+            
+            // Validate structure
+            const required = ['recommendation', 'thesis', 'trigger', 'analysis'];
+            for (let field of required) {
+                if (!(field in newInsights)) {
+                    throw new Error(`Missing required field: ${field}`);
+                }
+            }
+            
+            const validRecs = ['BUY', 'HOLD', 'REDUCE', 'EXIT'];
+            if (!validRecs.includes(newInsights.recommendation)) {
+                throw new Error(`Invalid recommendation: '${newInsights.recommendation}'. Must be: ${validRecs.join(', ')}`);
+            }
+            
+            const analysisDims = ['valuation', 'growth', 'profitability', 'cash_strength', 'catalyst', 'moat', 'opportunity'];
+            for (let dim of analysisDims) {
+                if (!(dim in newInsights.analysis)) {
+                    throw new Error(`Missing analysis.${dim}`);
+                }
+                const validSignals = ['Positive', 'Neutral', 'Caution'];
+                if (!validSignals.includes(newInsights.analysis[dim].signal)) {
+                    throw new Error(`Invalid signal in ${dim}: '${newInsights.analysis[dim].signal}'`);
+                }
+            }
+            
+        } catch(e) {
+            showToast(`❌ Error: ${e.message}`);
+            updateStatusButton('❌ Error');
+            log(`❌ Validation error: ${e.message}`);
+            return;
+        }
+        
+        // Fetch current file
+        fetch(apiUrl, {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+        .then(fileData => {
+            var content = {};
+            try {
+                content = JSON.parse(atob(fileData.content));
+            } catch(e) {
+                log(`⚠️ Could not parse existing file`);
+                content = { "_metadata": { "version": "1.0" } };
+            }
+            
+            if (!content[ticker]) content[ticker] = {};
+            
+            // Update only this ticker's insights
+            // Use date from parameter (from modal), or default to today
+            if (date) {
+                newInsights.date = date;
+            } else {
+                newInsights.date = new Date().toISOString().split('T')[0];
+            }
+            content[ticker].insights = newInsights;
+            
+            // Encode using proper UTF-8 base64 helper
+            let jsonString = JSON.stringify(content, null, 2);
+            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
+            const encodedContent = utf8ToBase64(jsonString);
+            
+            return fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Add/update insights for ${ticker}`,
+                    content: encodedContent,
+                    sha: fileData.sha,
+                    branch: GITHUB_CONFIG.BRANCH
+                })
+            });
+        })
+        .then(r => {
+            if (!r?.ok) throw new Error('Failed to save');
+            log(`✅ Insights for ${ticker} saved`);
+            updateStatusButton('✅ Ready');
+            showToast(`✅ Insights saved for ${ticker}`);
+            
+            // Update in-memory guidanceData
+            if (!guidanceData[ticker]) guidanceData[ticker] = {};
+            guidanceData[ticker].insights = newInsights;
+            saveGuidanceToStorage();
+            
+            // Record timestamp and update IndexedDB
+            const insightsDate = newInsights.date || new Date().toISOString().split('T')[0];
+            insightsTimestamps[ticker] = insightsDate;
+            localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
+            
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
+                var stock = masterData.find(s => s.ticker === ticker);
+                if (stock) {
+                    stock.insights = newInsights;
+                    store.put(stock);
+                }
+            };
+            
+            renderSymbols();
+        })
+        .catch(e => {
+            updateStatusButton('❌ Error');
+            showToast(`❌ Error: ${e.message}`);
+            log(`❌ Save error: ${e.message}`);
+        });
+    }
+
+    function toggleEditMode() {
+        editMode = !editMode;
+        document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
+            el.disabled = !editMode;
+        });
+        event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
+        if (editMode) {
+            document.getElementById('save-section').style.display = 'block';
+        } else {
+            document.getElementById('save-section').style.display = 'none';
+        }
+    }
+
+    function deleteStock(ticker) {
+        if (!confirm(`Delete ${ticker}? (Removes from DB + Guidance JSON)`)) return;
+        
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            log('❌ PAT required');
+            showToast('❌ Configure PAT first');
+            return;
+        }
+        
+        log(`🗑️ Deleting ${ticker}...`);
+        
+        // 1. Remove from masterData
+        masterData = masterData.filter(s => s.ticker !== ticker);
+        
+        // 2. Remove guidance (both concall + insights)
+        delete guidanceData[ticker];
+        delete guidanceTimestamps[ticker];
+        delete concallTimestamps[ticker];
+        delete insightsTimestamps[ticker];
+        saveGuidanceToStorage();
+        log(`✅ Deleted guidance for ${ticker}`);
+        
+        // 3. Remove from IndexedDB
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = (e) => {
+            var db = e.target.result;
+            try {
+                var transaction = db.transaction(STORE_NAME, 'readwrite');
+                var store = transaction.objectStore(STORE_NAME);
+                store.delete(ticker);
+                transaction.oncomplete = () => {
+                    log(`✅ Deleted ${ticker} from IndexedDB`);
+                    renderSymbols();
+                    updateHeader();
+                };
+            } catch(err) {
+                log(`⚠️ IndexedDB delete: ${err.message}`);
+            }
+        };
+        
+        // 4. Delete from unified-symbols.json on GitHub
+        fetch(`${RAW_GITHUB_URL}/unified-symbols.json?cache=` + Date.now())
+            .then(r => r.json())
+            .then(data => {
+                let symbols = data.symbols || Object.values(data);
+                symbols = symbols.filter(s => s.ticker !== ticker);
+                const uploadData = data.symbols ? { symbols } : symbols;
+                uploadToGitHub(pat, 'unified-symbols.json', uploadData, `Delete ${ticker}`);
+            })
+            .catch(e => log(`⚠️ Symbol update failed: ${e.message}`));
+        
+        // 5. Delete from guidance.json on GitHub
+        fetch(`${RAW_GITHUB_URL}/guidance.json?cache=` + Date.now())
+            .then(r => r.json())
+            .then(data => {
+                delete data[ticker];
+                uploadToGitHub(pat, 'guidance.json', data, `Delete ${ticker} guidance`);
+                log(`✅ Deleted ${ticker} from guidance.json`);
+            })
+            .catch(e => log(`⚠️ Guidance update failed: ${e.message}`));
+    }
+    
+    function uploadToGitHub(pat, filename, content, message) {
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filename}`;
+        
+        fetch(apiUrl, {
+            headers: { 'Authorization': `token ${pat}` }
+        })
+        .then(r => r.json())
+        .then(fileData => {
+            if (!fileData.sha) {
+                log(`❌ Could not find file SHA for ${filename}`);
+                return;
+            }
+            
+            // Encode content to base64 (handles Unicode properly)
+            const jsonString = JSON.stringify(content, null, 2);
+            const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
+            
+            // Sanitize commit message
+            const cleanMessage = message.replace(/[^\w\s\-\.]/g, '').substring(0, 72);
+            
+            return fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${pat}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: cleanMessage || 'Update file',
+                    content: encodedContent,
+                    sha: fileData.sha,
+                    branch: GITHUB_CONFIG.BRANCH
+                })
+            });
+        })
+        .then(r => {
+            if (!r) return;
+            if (r.ok) {
+                log(`✅ Updated ${filename} on GitHub`);
+                showToast('✅ Saved!');
+            } else {
+                return r.json().then(e => {
+                    const errorMsg = e.message || JSON.stringify(e);
+                    log(`⚠️ GitHub: ${errorMsg}`);
+                });
+            }
+        })
+        .catch(e => {
+            log(`⚠️ Upload failed: ${e.message || e}`);
+        });
+    }
+
+    function saveChanges() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT required to save');
+            return;
+        }
+        
+        log('💾 Saving changes...');
+        
+        // Get all edited values
+        document.querySelectorAll('.qty-input').forEach(input => {
+            var ticker = input.dataset.ticker;
+            var newQty = parseFloat(input.value) || 0;
+            var stock = masterData.find(s => s.ticker === ticker);
+            if (stock) stock.qty = newQty;
+        });
+        
+        document.querySelectorAll('.avg-input').forEach(input => {
+            var ticker = input.dataset.ticker;
+            var newAvg = parseFloat(input.value) || 0;
+            var stock = masterData.find(s => s.ticker === ticker);
+            if (stock) stock.avg = newAvg;
+        });
+        
+        // Upload to GitHub
+        uploadUnifiedSymbols(pat);
+        
+        // Save to IndexedDB
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = (e) => {
+            var db = e.target.result;
+            var transaction = db.transaction(STORE_NAME, 'readwrite');
+            var store = transaction.objectStore(STORE_NAME);
+            
+            // Add updated timestamp to all stocks
+            const now = new Date().toLocaleTimeString();
+            masterData.forEach(stock => {
+                stock.updated = now;
+                store.put(stock);
+            });
+            
+            transaction.oncomplete = () => {
+                log('✅ Changes saved to IndexedDB');
+                editMode = false;
+                document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+                document.getElementById('save-section').style.display = 'none';
+                document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
+                updateHeader();
+                renderSymbols();
+                showToast('✅ Saved!');
+            };
+        };
+    }
+    
+    function uploadUnifiedSymbols(pat) {
+        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
+        
+        // Fetch current file first
+        fetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
+            .then(r => r.json())
+            .then(currentData => {
+                let symbols = currentData.symbols || [];
+                
+                // Update only changed stocks in the array
+                symbols = symbols.map(stock => {
+                    const updated = masterData.find(m => m.ticker === stock.ticker);
+                    if (updated) {
+                        // Only update QTY and AVG, keep other fields
+                        return {
+                            ...stock,
+                            qty: updated.qty,
+                            avg: updated.avg
+                        };
+                    }
+                    return stock;
+                });
+                
+                // Get SHA and upload
+                fetch(url, {
+                    headers: { 'Authorization': `token ${pat}` }
+                })
+                .then(r => r.json())
+                .then(fileInfo => {
+                    const fileContent = JSON.stringify({ symbols }, null, 2);
+                    const encodedContent = btoa(fileContent);
+                    
+                    return fetch(url, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `token ${pat}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            message: 'Update QTY/AVG via ETL Center',
+                            content: encodedContent,
+                            sha: fileInfo.sha
+                        })
+                    });
+                })
+                .then(r => {
+                    if (r.ok) {
+                        log('✅ Updated unified-symbols.json on GitHub');
+                    } else {
+                        log('❌ Upload failed');
+                    }
+                })
+                .catch(e => {
+                    log(`❌ Upload error: ${e.message}`);
+                });
+            })
+            .catch(e => {
+                log(`❌ Error: ${e.message}`);
+            });
+    }
+
+    function cancelChanges() {
+        editMode = false;
+        document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+        document.getElementById('save-section').style.display = 'none';
+        renderSymbols();
+    }
+
+    function downloadCSV() {
+        var csv = 'TICKER,NAME,QTY,AVG\n';
+        masterData.forEach(s => {
+            csv += `${s.ticker},${s.name},${s.qty},${s.avg}\n`;
+        });
+        var link = document.createElement('a');
+        link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+        link.download = 'symbols.csv';
+        link.click();
+        showToast('📊 CSV downloaded!');
+    }
+
+
+    function openWizard() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            switchTab('pat');
+            return;
+        }
+        
+        log('🧙 Opening symbol wizard...');
+        
+        // Load app-import.js if not already loaded
+        if (!window.appImportLoaded) {
+            var script = document.createElement('script');
+            script.src = 'app-import.js';
+            script.onload = () => {
+                window.appImportLoaded = true;
+                triggerWizard(pat);
+            };
+            script.onerror = () => {
+                showToast('❌ Failed to load wizard');
+                log('❌ Could not load app-import.js');
+            };
+            document.head.appendChild(script);
+        } else {
+            triggerWizard(pat);
+        }
+    }
+    
+    function triggerWizard(pat) {
+        // Call app-import.js workflow
+        if (typeof window.openImportWorkflow === 'function') {
+            window.openImportWorkflow();
+            log('✅ Import workflow opened');
+        } else {
+            showToast('❌ Workflow not found');
+        }
+    }
+
+    function togglePatVisibility() {
+        var input = document.getElementById('patToken');
+        input.type = input.type === 'password' ? 'text' : 'password';
+        event.target.textContent = input.type === 'password' ? '👁 Show' : '👁 Hide';
+    }
+
+    function savePat() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ Enter PAT token first');
+            return;
+        }
+        localStorage.setItem('github_pat', pat);
+        log('✅ PAT saved to localStorage');
+        showToast('✅ PAT saved!');
+        testConnection();
+    }
+    
+    function loadPatFromStorage() {
+        var pat = localStorage.getItem('github_pat');
+        if (pat) {
+            document.getElementById('patToken').value = pat;
+            log('✅ PAT loaded from storage');
+            testConnection();
+        }
+    }
+    
+    function resetPat() {
+        if (confirm('Reset PAT token?')) {
+            document.getElementById('patToken').value = '';
+            localStorage.removeItem('github_pat');
+            document.getElementById('patStatus').textContent = '❌ Not Configured';
+            document.getElementById('patRepo').textContent = '—';
+            showToast('🔄 PAT reset');
+            log('🔄 PAT cleared');
+        }
+    }
+
+    function testConnection() {
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT token required');
+            return;
+        }
+        log('🔗 Testing GitHub connection...');
+        setTimeout(() => {
+            document.getElementById('patStatus').textContent = '✅ Configured';
+            document.getElementById('patRepo').textContent = 'murugkan/bharatmarkets';
+            log('✅ Connected to GitHub');
+            showToast('✅ Connected!');
+        }, 1000);
+    }
+
+    async function loadAllData() {
+        log('🚀 LOAD JSON initiated - clearing cache...');
+        updateStatusButton('⏳ Clearing cache');
+        showToast('Clearing cache and loading fresh data...');
+        
+        // Just clear browser cache, skip DB deletion (it locks the DB)
+        localStorage.removeItem('dataUpdatedTimes');
+        dataUpdatedTimes = {};
+        log('✅ Browser cache cleared');
+        
+        // Step 2: Load fresh data from GitHub (sequential for reliability)
+        log('📡 Fetching fresh data from GitHub (sequential)...');
+        updateStatusButton('⏳ Loading');
+        
+        const results = [];
+        for (let i = 0; i < DATA_SOURCES.length; i++) {
+            const source = DATA_SOURCES[i];
+            const filename = source.path.split('/').pop();
+            const data = await fetchGitHubData(source.path);
+            results.push(data);
+            
+            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
+        }
+        
+        log('✅ All files loaded from GitHub');
+        
+        // Fetch guidance.json separately (not in DATA_SOURCES display)
+        let guidanceFileData = {};
+        try {
+            const guidanceResponse = await fetchGitHubData('guidance.json');
+            if (guidanceResponse) {
+                guidanceFileData = guidanceResponse;
+                log('✅ Fetched guidance.json');
+            }
+        } catch (e) {
+            log(`⚠️ Could not fetch guidance.json: ${e.message}`);
+        }
+        
+        let symbolsData = results[0];
+        let symbolsList = null;
+        
+        if (Array.isArray(symbolsData)) {
+            symbolsList = symbolsData;
+        } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
+            symbolsList = symbolsData.symbols;
+        } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
+            symbolsList = symbolsData.stocks;
+        } else if (symbolsData && symbolsData.data && Array.isArray(symbolsData.data)) {
+            symbolsList = symbolsData.data;
+        } else if (symbolsData && typeof symbolsData === 'object') {
+            symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
+        }
+        
+        // Debug: Check symbol structure
+        if (symbolsList && symbolsList.length > 0) {
+            const firstSym = symbolsList[0];
+            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
+                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
+            }
+        }
+        
+        if (!symbolsList || symbolsList.length === 0) {
+            log('❌ Could not parse symbols data');
+            updateStatusButton('❌ Failed');
+            return;
+        }
+        
+        const pricesData = results[1] || {};
+        const fundamentalsData = results[2] || {};
+        
+        log('📦 Parsing results...');
+        
+        // Extract guidance data and timestamps
+        if (guidanceFileData && typeof guidanceFileData === 'object') {
+            log(`🔍 DEBUG: guidanceFileData keys: ${Object.keys(guidanceFileData).join(', ')}`);
+            Object.keys(guidanceFileData).forEach(ticker => {
+                if (ticker !== '_metadata' && guidanceFileData[ticker]) {
+                    guidanceData[ticker] = guidanceFileData[ticker];
+                    
+                    // DEBUG: Log the full structure of this ticker
+                    log(`🔍 DEBUG ${ticker}: ${JSON.stringify(guidanceFileData[ticker]).substring(0, 200)}`);
+                    
+                    // Check if guidance exists
+                    if (guidanceFileData[ticker].guidance) {
+                        log(`🔍 DEBUG ${ticker}.guidance: ${JSON.stringify(guidanceFileData[ticker].guidance).substring(0, 200)}`);
+                        log(`🔍 DEBUG ${ticker}.guidance.date = ${guidanceFileData[ticker].guidance.date}`);
+                    }
+                    
+                    // Check if insights exists
+                    if (guidanceFileData[ticker].insights) {
+                        log(`🔍 DEBUG ${ticker}.insights: ${JSON.stringify(guidanceFileData[ticker].insights).substring(0, 200)}`);
+                        log(`🔍 DEBUG ${ticker}.insights.date = ${guidanceFileData[ticker].insights.date}`);
+                    }
+                    
+                    // Store ISO timestamp from guidance.date (now using 'date' field instead of 'updated')
+                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
+                        var dateStr = guidanceFileData[ticker].guidance.date;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        concallTimestamps[ticker] = isoDate;
+                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.date)`);
+                    }
+                    // Fallback to old 'updated' field if it exists
+                    else if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
+                        var dateStr = guidanceFileData[ticker].guidance.updated;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        concallTimestamps[ticker] = isoDate;
+                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.updated - legacy)`);
+                    }
+                    
+                    // Store ISO timestamp from insights.date (now using 'date' field instead of 'updated')
+                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.date) {
+                        var dateStr = guidanceFileData[ticker].insights.date;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        insightsTimestamps[ticker] = isoDate;
+                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.date)`);
+                    }
+                    // Fallback to old 'updated' field if it exists
+                    else if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
+                        var dateStr = guidanceFileData[ticker].insights.updated;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        insightsTimestamps[ticker] = isoDate;
+                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.updated - legacy)`);
+                    }
+                }
+            });
+            log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
+            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items: ${JSON.stringify(concallTimestamps)}`);
+            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items: ${JSON.stringify(insightsTimestamps)}`);
+        }
+            saveGuidanceToStorage();
+            log(`💾 Saved timestamps to localStorage`);
+        
+        let priceMap = {};
+        if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
+            priceMap = pricesData.quotes;
+            log('✅ Found prices in "quotes" wrapper');
+        } else {
+            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
+        }
+        
+        let fundMap = {};
+        if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
+            fundMap = fundamentalsData.stocks;
+            log('✅ Found fundamentals in "stocks" wrapper');
+        } else {
+            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
+        }
+        
+        let mergedStocks = [];
+        let priceMatches = 0, fundMatches = 0;
+        
+        symbolsList.forEach(symbol => {
+            const ticker = symbol.ticker || symbol.TICKER || symbol.name;
+            if (!ticker) return;
+            
+            const priceData = priceMap[ticker];
+            const fundData = fundMap[ticker];
+            const guidData = guidanceData[ticker] || null;
+            
+            if (priceData) priceMatches++;
+            if (fundData) fundMatches++;
+            
+            const merged = {
+                ...symbol,
+                ...(fundData || {}),
+                ...(priceData || {}),
+                ticker: ticker,
+                guidance: guidData ? guidData.guidance : null,
+                insights: guidData ? guidData.insights : null
+            };
+            
+            mergedStocks.push(merged);
+        });
+        
+        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
+        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
+        
+        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
+        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
+        
+        // Open DB without incrementing version - handle store deletion properly
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        
+        req.onupgradeneeded = (e) => {
+            var db = e.target.result;
+            try {
+                if (db.objectStoreNames.contains(STORE_NAME)) {
+                    db.deleteObjectStore(STORE_NAME);
+                }
+                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                log('✅ Object store created');
+            } catch(err) {
+                log(`⚠️ Upgrade error: ${err.message}`);
+            }
+        };
+        
+        req.onsuccess = (e) => {
+            var db = e.target.result;
+            try {
+                log('📥 Saving 91 stocks to IndexedDB...');
+                
+                // Clear old data first
+                var clearTx = db.transaction(STORE_NAME, 'readwrite');
+                var clearStore = clearTx.objectStore(STORE_NAME);
+                clearStore.clear();
+                
+                clearTx.oncomplete = () => {
+                    // Now save new data
+                    masterData = mergedStocks;
+                    // Use the actual unified-symbols.json updated timestamp
+                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
+                    let savedCount = 0;
+                    
+                    // Process stocks sequentially with promise chain
+                    function saveNext(index) {
+                        if (index >= mergedStocks.length) {
+                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                            updateHeader();
+                            renderSymbols();
+                            renderDataSources();
+                            updateStatusButton('✅ Ready');
+                            showToast('✅ Load complete!');
+                            return;
+                        }
+                        
+                        var transaction = db.transaction(STORE_NAME, 'readwrite');
+                        var store = transaction.objectStore(STORE_NAME);
+                        var stock = mergedStocks[index];
+                        stock.updated = symbolsUpdateTime;
+                        
+                        var putReq = store.put(stock);
+                        putReq.onsuccess = () => {
+                            savedCount++;
+                            saveNext(index + 1);
+                        };
+                        putReq.onerror = () => {
+                            log(`⚠️ Failed to save ${stock.ticker}`);
+                            saveNext(index + 1);
+                        };
+                    }
+                    
+                    saveNext(0);
+                };
+                
+                clearTx.onerror = () => {
+                    log(`⚠️ Error clearing store`);
+                };
+                
+            } catch (err) {
+                log(`❌ Error: ${err.message}`);
+                updateStatusButton('❌ Error');
+                showToast(`❌ Error: ${err.message}`);
+            }
+        };
+        
+        req.onerror = () => {
+            log(`⚠️ Could not open IndexedDB: ${req.error}`);
+            updateStatusButton('⚠️ Error');
+        };
+    }
+    
+    function convertDDMMYYtoISO(dateStr) {
+        try {
+            // Handle multiple formats
+            
+            // Format 1: "YYYY-MM-DD" (ISO date already)
+            if (dateStr && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return dateStr + 'T00:00:00Z';
+            }
+            
+            // Format 2: "DD/MM/YY" → 2026-04-16
+            if (dateStr && dateStr.includes('/')) {
+                var parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    var day = String(parts[0]).padStart(2, '0');
+                    var month = String(parts[1]).padStart(2, '0');
+                    var year = '20' + parts[2];
+                    var isoStr = `${year}-${month}-${day}T00:00:00Z`;
+                    return isoStr;
+                }
+            }
+        } catch(e) {}
+        return new Date().toISOString();
+    }
+
+    async function reloadAuto() {
+        log('🔄 REFRESH: Quick reload from IndexedDB...');
+        updateStatusButton('⏳ Syncing...');
+        
+        try {
+            // Just reload from IndexedDB - no fetch, no clear
+            await loadFromIndexedDB();
+            loadGuidanceFromStorage();
+            
+            renderDataSources();
+            renderSymbols();
+            updateHeader();
+            
+            log(`✅ Synced ${masterData.length} records from IndexedDB`);
+            updateStatusButton('✅ Ready');
+            showToast('✅ Quick sync complete!');
+        } catch (e) {
+            log(`❌ Sync failed: ${e.message}`);
+            updateStatusButton('❌ Error');
+        }
+    }
+        
+
+    function updateHeader() {
+        document.getElementById('dbCountBox').textContent = masterData.length;
+    }
+
+    // Initialize with error handling
+    (async () => {
+        try {
+            await init();
+        } catch (err) {
+            console.error('Init error:', err);
+            document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;"><h2>Initialization Error</h2><pre>' + err.message + '</pre><p>' + err.stack + '</p></div>';
+        }
+    })();
+</script>
+
+</body>
+</html>
