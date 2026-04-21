@@ -495,28 +495,28 @@
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
                     dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
-                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 2: Check for _metadata.updated in data
                 else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
                     dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
-                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 3: Check for top-level updated field
                 else if (sanitizedData && sanitizedData.updated) {
                     dataUpdatedTimes[filePath] = sanitizedData.updated;
-                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 4: Check for lastLoadedAt
                 else if (sanitizedData && sanitizedData.lastLoadedAt) {
                     dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
-                    log(`✅ Loaded: ${filePath}`)
                 }
-                // Fallback: Use fetch time
+                // Fallback: Keep the old timestamp (don't update with current time)
                 else {
-                    dataUpdatedTimes[filePath] = fetchTime;
-                    log(`✅ Loaded: ${filePath}`)
+                    // Don't override - keep previous value if it exists
+                    if (!dataUpdatedTimes[filePath]) {
+                        dataUpdatedTimes[filePath] = new Date().toISOString();
+                    }
                 }
+                
+                log(`✅ Loaded: ${filePath}`);
             
                 // Save to localStorage
                 localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
@@ -2133,12 +2133,15 @@ CRITICAL RULES:
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
+                    
+                    // Check for guidance timestamp from guidance.updated
                     if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
                         var dateStr = guidanceFileData[ticker].guidance.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
                     }
+                    
+                    // Check for insights timestamp from insights.updated
                     if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
                         var dateStr = guidanceFileData[ticker].insights.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
