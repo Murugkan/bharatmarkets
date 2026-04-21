@@ -2214,24 +2214,29 @@ CRITICAL RULES:
         let symbolsData = results[0];
         let symbolsList = null;
         
+        log(`🔍 TRACE: symbolsData received from fetch, type: ${typeof symbolsData}, isArray: ${Array.isArray(symbolsData)}`);
+        
         if (Array.isArray(symbolsData)) {
             symbolsList = symbolsData;
+            log(`✅ Using symbolsData as array, length: ${symbolsList.length}`);
         } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
             symbolsList = symbolsData.symbols;
+            log(`✅ Using symbolsData.symbols, length: ${symbolsList.length}`);
         } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
             symbolsList = symbolsData.stocks;
+            log(`✅ Using symbolsData.stocks, length: ${symbolsList.length}`);
         } else if (symbolsData && symbolsData.data && Array.isArray(symbolsData.data)) {
             symbolsList = symbolsData.data;
+            log(`✅ Using symbolsData.data, length: ${symbolsList.length}`);
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
+            log(`✅ Filtered symbolsData object values, length: ${symbolsList.length}`);
         }
         
-        // Debug: Check symbol structure
+        // DEBUG: Log first stock to verify it's fresh
         if (symbolsList && symbolsList.length > 0) {
-            const firstSym = symbolsList[0];
-            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
-                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
-            }
+            const firstStock = symbolsList[0];
+            log(`🔍 First stock: ticker=${firstStock.ticker}, qty=${firstStock.qty}, avg=${firstStock.avg}`);
         }
         
         if (!symbolsList || symbolsList.length === 0) {
