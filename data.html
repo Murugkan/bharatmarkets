@@ -380,7 +380,9 @@
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
+                        <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
                         <th style="color:#f59e0b; font-weight:700; padding:10px 4px; text-align:center;">INSIGHTS</th>
+                        <th style="color:#ffaa44; font-weight:700; padding:10px 4px; text-align:center; width:75px;">INSIGHTS DATE</th>
                         <th style="color:#ff4444; font-weight:700; padding:10px 4px; text-align:center; width:40px;">DEL</th>
                     </tr>
                 </thead>
@@ -495,28 +497,33 @@
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
                     dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 2: Check for _metadata.updated in data
                 else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
                     dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 3: Check for top-level updated field
                 else if (sanitizedData && sanitizedData.updated) {
                     dataUpdatedTimes[filePath] = sanitizedData.updated;
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 4: Check for lastLoadedAt
                 else if (sanitizedData && sanitizedData.lastLoadedAt) {
                     dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
+                    log(`✅ Loaded: ${filePath}`)
                 }
-                // Fallback: Keep the old timestamp (don't update with current time)
+                // Priority 5: For unified-symbols.json, check symbols array metadata
+                else if (filePath.includes('unified-symbols') && sanitizedData && sanitizedData.symbols && Array.isArray(sanitizedData.symbols) && sanitizedData.symbols[0] && sanitizedData.symbols[0].updated) {
+                    dataUpdatedTimes[filePath] = sanitizedData.symbols[0].updated;
+                    log(`✅ Loaded: ${filePath} (from symbols metadata)`)
+                }
+                // Fallback: Use fetch time
                 else {
-                    // Don't override - keep previous value if it exists
-                    if (!dataUpdatedTimes[filePath]) {
-                        dataUpdatedTimes[filePath] = new Date().toISOString();
-                    }
+                    dataUpdatedTimes[filePath] = fetchTime;
+                    log(`✅ Loaded: ${filePath}`)
                 }
-                
-                log(`✅ Loaded: ${filePath}`);
             
                 // Save to localStorage
                 localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
@@ -559,6 +566,11 @@
             
             if (masterData.length > 0) {
                 log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
+                // Extract unified-symbols updated date from first stock record
+                if (masterData[0] && masterData[0].updated && !dataUpdatedTimes['unified-symbols.json']) {
+                    dataUpdatedTimes['unified-symbols.json'] = masterData[0].updated;
+                    log(`📅 Restored unified-symbols updated: ${masterData[0].updated}`);
+                }
                 updateStatusButton('✅ Ready');
             } else {
                 log('⚠️ No data. Click LOAD JSON to fetch from GitHub');
@@ -901,7 +913,7 @@
         var html = '';
         
         if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
+            html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
         } else {
             masterData.slice(0, 50).forEach(stock => {
                 var ticker = stock.ticker || '—';
@@ -915,20 +927,20 @@
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center;">
-                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
-                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—'}</div>
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
+                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
                         </div>
                     </td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—'}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center;">
-                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
-                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—'}</div>
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
+                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
                         </div>
                     </td>
-                    <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:50px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—'}</td>
+                    <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
                 </tr>`;
             });
         }
@@ -2133,15 +2145,12 @@ CRITICAL RULES:
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    
-                    // Check for guidance timestamp from guidance.updated
+                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
                     if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
                         var dateStr = guidanceFileData[ticker].guidance.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
                     }
-                    
-                    // Check for insights timestamp from insights.updated
                     if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
                         var dateStr = guidanceFileData[ticker].insights.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
@@ -2233,7 +2242,8 @@ CRITICAL RULES:
                 clearTx.oncomplete = () => {
                     // Now save new data
                     masterData = mergedStocks;
-                    const now = new Date().toLocaleTimeString();
+                    // Use the actual unified-symbols.json updated timestamp
+                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
                     let savedCount = 0;
                     
                     // Process stocks sequentially with promise chain
@@ -2251,7 +2261,7 @@ CRITICAL RULES:
                         var transaction = db.transaction(STORE_NAME, 'readwrite');
                         var store = transaction.objectStore(STORE_NAME);
                         var stock = mergedStocks[index];
-                        stock.updated = now;
+                        stock.updated = symbolsUpdateTime;
                         
                         var putReq = store.put(stock);
                         putReq.onsuccess = () => {
