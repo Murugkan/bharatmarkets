@@ -470,7 +470,7 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            const url = `${RAW_GITHUB_URL}/${filePath}`;
+            const url = `${RAW_GITHUB_URL}/${filePath}?cache=${Date.now()}`;
             const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
@@ -2141,6 +2141,11 @@ CRITICAL RULES:
         // Clear IndexedDB
         return new Promise((resolve) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onerror = () => {
+                log('⚠️ Could not open IndexedDB, loading fresh data anyway');
+                masterData = [];
+                loadFreshData().then(resolve);
+            };
             req.onsuccess = (e) => {
                 var db = e.target.result;
                 if (db.objectStoreNames.contains(STORE_NAME)) {
@@ -2150,10 +2155,26 @@ CRITICAL RULES:
                     clearTx.oncomplete = () => {
                         log('✅ IndexedDB cleared');
                         masterData = [];
-                        loadFreshData().then(resolve);
+                        loadFreshData().then(resolve).catch((err) => {
+                            log(`❌ Error loading fresh data: ${err.message}`);
+                            resolve();
+                        });
+                    };
+                    clearTx.onerror = () => {
+                        log('⚠️ Error clearing IndexedDB, loading fresh data anyway');
+                        masterData = [];
+                        loadFreshData().then(resolve).catch((err) => {
+                            log(`❌ Error loading fresh data: ${err.message}`);
+                            resolve();
+                        });
                     };
                 } else {
-                    loadFreshData().then(resolve);
+                    log('⚠️ STORE_NAME not in IndexedDB, loading fresh data');
+                    masterData = [];
+                    loadFreshData().then(resolve).catch((err) => {
+                        log(`❌ Error loading fresh data: ${err.message}`);
+                        resolve();
+                    });
                 }
             };
         });
