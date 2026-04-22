@@ -1589,6 +1589,43 @@ CRITICAL RULES:
                 }
             };
             
+            // NOW UPDATE unified-symbols.json with updated timestamp and count
+            const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
+            fetch(symbolsUrl, {
+                headers: { 'Authorization': `token ${pat}` }
+            })
+            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+            .then(fileData => {
+                var symbolsContent = JSON.parse(atob(fileData.content));
+                // Add updated and count if missing
+                symbolsContent.updated = new Date().toISOString();
+                if (symbolsContent.symbols && Array.isArray(symbolsContent.symbols)) {
+                    symbolsContent.count = symbolsContent.symbols.length;
+                }
+                const encodedSymbols = utf8ToBase64(JSON.stringify(symbolsContent, null, 2));
+                return fetch(symbolsUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${pat}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `Update unified-symbols.json - guidance saved for ${ticker}`,
+                        content: encodedSymbols,
+                        sha: fileData.sha,
+                        branch: GITHUB_CONFIG.BRANCH
+                    })
+                });
+            })
+            .then(r => {
+                if (r?.ok) {
+                    log(`✅ Updated unified-symbols.json`);
+                }
+            })
+            .catch(e => {
+                log(`⚠️ Could not update unified-symbols.json: ${e.message}`);
+            });
+            
             renderSymbols();
         })
         .catch(e => {
@@ -1952,8 +1989,13 @@ CRITICAL RULES:
                 })
                 .then(r => r.json())
                 .then(fileInfo => {
-                    const fileContent = JSON.stringify({ symbols }, null, 2);
-                    const encodedContent = btoa(fileContent);
+                    // Create file content with updated and count fields
+                    const fileContent = {
+                        updated: new Date().toISOString(),
+                        count: symbols.length,
+                        symbols: symbols
+                    };
+                    const encodedContent = utf8ToBase64(JSON.stringify(fileContent, null, 2));
                     
                     return fetch(url, {
                         method: 'PUT',
@@ -2096,16 +2138,43 @@ CRITICAL RULES:
     }
 
     async function loadAllData() {
-        log('🚀 LOAD JSON initiated - clearing cache...');
+        log('🚀 LOAD JSON initiated - clearing all caches...');
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
-        // Just clear browser cache, skip DB deletion (it locks the DB)
+        // Clear localStorage
         localStorage.removeItem('dataUpdatedTimes');
+        localStorage.removeItem('guidanceData');
+        localStorage.removeItem('concallTimestamps');
+        localStorage.removeItem('insightsTimestamps');
         dataUpdatedTimes = {};
-        log('✅ Browser cache cleared');
+        guidanceData = {};
+        concallTimestamps = {};
+        insightsTimestamps = {};
+        log('✅ localStorage cleared');
         
-        // Step 2: Load fresh data from GitHub (sequential for reliability)
+        // Clear IndexedDB
+        return new Promise((resolve) => {
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                var db = e.target.result;
+                if (db.objectStoreNames.contains(STORE_NAME)) {
+                    var clearTx = db.transaction(STORE_NAME, 'readwrite');
+                    var clearStore = clearTx.objectStore(STORE_NAME);
+                    clearStore.clear();
+                    clearTx.oncomplete = () => {
+                        log('✅ IndexedDB cleared');
+                        masterData = [];
+                        loadFreshData().then(resolve);
+                    };
+                } else {
+                    loadFreshData().then(resolve);
+                }
+            };
+        });
+    }
+    
+    async function loadFreshData() {
         log('📡 Fetching fresh data from GitHub (sequential)...');
         updateStatusButton('⏳ Loading');
         
