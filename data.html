@@ -546,9 +546,11 @@
             } catch (abortErr) {
                 clearTimeout(timeout);
                 if (abortErr.name === 'AbortError') {
-                    log(`⏱️ Timeout fetching ${filePath} (30s)`);
+                    log(`⏱️ Timeout fetching ${filePath} (30s): ${abortErr.message}`);
                 } else {
                     log(`❌ Network error: ${filePath}`);
+                    log(`   Error type: ${abortErr.name}`);
+                    log(`   Error: ${abortErr.message}`);
                 }
                 return null;
             }
@@ -2190,16 +2192,46 @@ CRITICAL RULES:
         guidanceData = {};
         
         const results = [];
+        let networkFailed = false;
+        
         for (let i = 0; i < DATA_SOURCES.length; i++) {
             const source = DATA_SOURCES[i];
             const filename = source.path.split('/').pop();
             const data = await fetchGitHubData(source.path);
-            results.push(data);
             
-            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
+            if (data === null) {
+                networkFailed = true;
+                log(`⚠️ File fetch failed, will attempt IndexedDB fallback: ${filename}`);
+                results.push(null);
+            } else {
+                results.push(data);
+                log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
+            }
         }
         
-        log('✅ All files loaded from GitHub');
+        log('✅ All files attempted from GitHub');
+        
+        // If network failed for all files, try loading from IndexedDB instead
+        if (networkFailed && results.every(r => r === null)) {
+            log('⚠️ Network failed - attempting to load cached data from IndexedDB...');
+            await loadFromIndexedDB();
+            loadGuidanceFromStorage();
+            
+            if (masterData.length > 0) {
+                log(`✅ Loaded ${masterData.length} cached records from IndexedDB`);
+                renderDataSources();
+                renderSymbols();
+                updateHeader();
+                updateStatusButton('⚠️ Using cached data (offline)');
+                showToast('⚠️ Offline - showing cached data');
+                return;
+            } else {
+                log('❌ No cached data available - network required');
+                updateStatusButton('❌ Network failed');
+                showToast('❌ Network error and no cached data');
+                return;
+            }
+        }
         
         // Fetch guidance.json separately (not in DATA_SOURCES display)
         let guidanceFileData = {};
