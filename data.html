@@ -328,7 +328,7 @@
         
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
-            <button id="loadJsonBtn" onclick="loadAllData().catch(e => {console.error('Load error:', e); showToast('❌ Load failed')})" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
+            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
             <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
         </div>
@@ -470,13 +470,10 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            // Normalize path - remove leading slash if present
-            const cleanPath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
-            const url = `${RAW_GITHUB_URL}/${cleanPath}?cache=${Date.now()}`;
+            const url = `${RAW_GITHUB_URL}/${filePath}`;
             const fetchTime = new Date().toISOString();
             
-            log(`📡 Fetching: ${cleanPath}`);
-            log(`🔗 URL: ${url}`);
+            log(`📡 Fetching: ${filePath}`);
             
             // Add 30 second timeout
             const controller = new AbortController();
@@ -486,33 +483,11 @@
                 const response = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeout);
                 
-                log(`📥 Response status: ${response.status} for ${cleanPath}`);
-                
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    log(`❌ HTTP Error ${response.status}: ${errorText.substring(0, 100)}`);
-                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                    throw new Error(`HTTP ${response.status}`);
                 }
                 
-                const text = await response.text();
-                log(`✅ Received ${text.length} bytes from ${cleanPath}`);
-                
-                // Parse JSON with error handling
-                let data;
-                try {
-                    data = JSON.parse(text);
-                } catch (parseErr) {
-                    log(`❌ JSON PARSE ERROR in ${cleanPath}: ${parseErr.message}`);
-                    log(`🔍 First 200 chars: ${text.substring(0, 200)}`);
-                    return null;
-                }
-                
-                // Verify data is not empty
-                if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
-                    log(`⚠️ Warning: ${cleanPath} appears empty but valid JSON`);
-                } else {
-                    log(`✅ ${cleanPath} parsed successfully - ${typeof data} with ${Object.keys(data).length} keys`);
-                }
+                const data = await response.json();
                 
                 // CRITICAL: Sanitize immediately after fetching to prevent corruption spread
                 const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
@@ -521,28 +496,33 @@
                 // Priority 1: Check HTTP Last-Modified header (most reliable)
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
-                    dataUpdatedTimes[cleanPath] = new Date(lastModified).toISOString();
-                    log(`✅ ${cleanPath} timestamp: HTTP Last-Modified = ${dataUpdatedTimes[cleanPath]}`);
+                    dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 2: Check for _metadata.updated in data
                 else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
-                    dataUpdatedTimes[cleanPath] = sanitizedData._metadata.updated;
-                    log(`✅ ${cleanPath} timestamp: _metadata.updated = ${dataUpdatedTimes[cleanPath]}`);
+                    dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 3: Check for top-level updated field
                 else if (sanitizedData && sanitizedData.updated) {
-                    dataUpdatedTimes[cleanPath] = sanitizedData.updated;
-                    log(`✅ ${cleanPath} timestamp: top-level updated = ${dataUpdatedTimes[cleanPath]}`);
+                    dataUpdatedTimes[filePath] = sanitizedData.updated;
+                    log(`✅ Loaded: ${filePath}`)
                 }
                 // Priority 4: Check for lastLoadedAt
                 else if (sanitizedData && sanitizedData.lastLoadedAt) {
-                    dataUpdatedTimes[cleanPath] = sanitizedData.lastLoadedAt;
-                    log(`✅ ${cleanPath} timestamp: lastLoadedAt = ${dataUpdatedTimes[cleanPath]}`);
+                    dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
+                    log(`✅ Loaded: ${filePath}`)
+                }
+                // Priority 5: For unified-symbols.json, check symbols array metadata
+                else if (filePath.includes('unified-symbols') && sanitizedData && sanitizedData.symbols && Array.isArray(sanitizedData.symbols) && sanitizedData.symbols[0] && sanitizedData.symbols[0].updated) {
+                    dataUpdatedTimes[filePath] = sanitizedData.symbols[0].updated;
+                    log(`✅ Loaded: ${filePath} (from symbols metadata)`)
                 }
                 // Fallback: Use fetch time
                 else {
-                    dataUpdatedTimes[cleanPath] = fetchTime;
-                    log(`⚠️ ${cleanPath} timestamp: FALLBACK to fetch time = ${dataUpdatedTimes[cleanPath]}`);
+                    dataUpdatedTimes[filePath] = fetchTime;
+                    log(`✅ Loaded: ${filePath}`)
                 }
             
                 // Save to localStorage
@@ -553,16 +533,14 @@
             } catch (abortErr) {
                 clearTimeout(timeout);
                 if (abortErr.name === 'AbortError') {
-                    log(`⏱️ TIMEOUT: ${cleanPath} exceeded 30 second limit`);
-                } else if (abortErr instanceof SyntaxError) {
-                    log(`❌ JSON SYNTAX ERROR in ${cleanPath}: ${abortErr.message}`);
+                    log(`⏱️ Timeout fetching ${filePath} (30s)`);
                 } else {
-                    log(`❌ Network error for ${cleanPath}: ${abortErr.message}`);
+                    log(`❌ Network error: ${filePath}`);
                 }
                 return null;
             }
         } catch (e) {
-            log(`❌ Fatal error in fetchGitHubData: ${e.message}`);
+            log(`❌ Error parsing ${filePath}: ${e.message}`);
             return null;
         }
     }
@@ -588,6 +566,11 @@
             
             if (masterData.length > 0) {
                 log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
+                // Extract unified-symbols updated date from first stock record
+                if (masterData[0] && masterData[0].updated && !dataUpdatedTimes['unified-symbols.json']) {
+                    dataUpdatedTimes['unified-symbols.json'] = masterData[0].updated;
+                    log(`📅 Restored unified-symbols updated: ${masterData[0].updated}`);
+                }
                 updateStatusButton('✅ Ready');
             } else {
                 log('⚠️ No data. Click LOAD JSON to fetch from GitHub');
@@ -1591,43 +1574,6 @@ CRITICAL RULES:
                 }
             };
             
-            // NOW UPDATE unified-symbols.json with updated timestamp and count
-            const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
-            fetch(symbolsUrl, {
-                headers: { 'Authorization': `token ${pat}` }
-            })
-            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-            .then(fileData => {
-                var symbolsContent = JSON.parse(atob(fileData.content));
-                // Add updated and count if missing
-                symbolsContent.updated = new Date().toISOString();
-                if (symbolsContent.symbols && Array.isArray(symbolsContent.symbols)) {
-                    symbolsContent.count = symbolsContent.symbols.length;
-                }
-                const encodedSymbols = utf8ToBase64(JSON.stringify(symbolsContent, null, 2));
-                return fetch(symbolsUrl, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `token ${pat}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: `Update unified-symbols.json - guidance saved for ${ticker}`,
-                        content: encodedSymbols,
-                        sha: fileData.sha,
-                        branch: GITHUB_CONFIG.BRANCH
-                    })
-                });
-            })
-            .then(r => {
-                if (r?.ok) {
-                    log(`✅ Updated unified-symbols.json`);
-                }
-            })
-            .catch(e => {
-                log(`⚠️ Could not update unified-symbols.json: ${e.message}`);
-            });
-            
             renderSymbols();
         })
         .catch(e => {
@@ -1991,13 +1937,8 @@ CRITICAL RULES:
                 })
                 .then(r => r.json())
                 .then(fileInfo => {
-                    // Create file content with updated and count fields
-                    const fileContent = {
-                        updated: new Date().toISOString(),
-                        count: symbols.length,
-                        symbols: symbols
-                    };
-                    const encodedContent = utf8ToBase64(JSON.stringify(fileContent, null, 2));
+                    const fileContent = JSON.stringify({ symbols }, null, 2);
+                    const encodedContent = btoa(fileContent);
                     
                     return fetch(url, {
                         method: 'PUT',
@@ -2140,69 +2081,18 @@ CRITICAL RULES:
     }
 
     async function loadAllData() {
-        log('🚀 LOAD JSON initiated - clearing all caches...');
+        log('🚀 LOAD JSON initiated - clearing cache...');
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
-        // Clear localStorage
+        // Just clear browser cache, skip DB deletion (it locks the DB)
         localStorage.removeItem('dataUpdatedTimes');
-        localStorage.removeItem('guidanceData');
-        localStorage.removeItem('concallTimestamps');
-        localStorage.removeItem('insightsTimestamps');
         dataUpdatedTimes = {};
-        guidanceData = {};
-        concallTimestamps = {};
-        insightsTimestamps = {};
-        log('✅ localStorage cleared');
+        log('✅ Browser cache cleared');
         
-        // Clear IndexedDB
-        return new Promise((resolve) => {
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onerror = () => {
-                log('⚠️ Could not open IndexedDB, loading fresh data anyway');
-                masterData = [];
-                loadFreshData().then(resolve);
-            };
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                if (db.objectStoreNames.contains(STORE_NAME)) {
-                    var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                    var clearStore = clearTx.objectStore(STORE_NAME);
-                    clearStore.clear();
-                    clearTx.oncomplete = () => {
-                        log('✅ IndexedDB cleared');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
-                    clearTx.onerror = () => {
-                        log('⚠️ Error clearing IndexedDB, loading fresh data anyway');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
-                } else {
-                    log('⚠️ STORE_NAME not in IndexedDB, loading fresh data');
-                    masterData = [];
-                    loadFreshData().then(resolve).catch((err) => {
-                        log(`❌ Error loading fresh data: ${err.message}`);
-                        resolve();
-                    });
-                }
-            };
-        });
-    }
-    
-    async function loadFreshData() {
+        // Step 2: Load fresh data from GitHub (sequential for reliability)
         log('📡 Fetching fresh data from GitHub (sequential)...');
         updateStatusButton('⏳ Loading');
-        
-        // Clear guidance data to ensure fresh data
-        guidanceData = {};
         
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
@@ -2228,32 +2118,25 @@ CRITICAL RULES:
             log(`⚠️ Could not fetch guidance.json: ${e.message}`);
         }
         
-        log(`📍 ENTERING MERGE SECTION: results.length=${results.length}`);
         let symbolsData = results[0];
-        log(`🔍 TRACE: symbolsData type: ${typeof symbolsData}, isArray: ${Array.isArray(symbolsData)}`);
         let symbolsList = null;
         
         if (Array.isArray(symbolsData)) {
             symbolsList = symbolsData;
-            log(`✅ Using symbolsData as array, length: ${symbolsList.length}`);
         } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
             symbolsList = symbolsData.symbols;
-            log(`✅ Using symbolsData.symbols, length: ${symbolsList.length}`);
         } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
             symbolsList = symbolsData.stocks;
-            log(`✅ Using symbolsData.stocks, length: ${symbolsList.length}`);
-        } else if (symbolsData && symbolsData.data && Array.isArray(symbolsData.data)) {
-            symbolsList = symbolsData.data;
-            log(`✅ Using symbolsData.data, length: ${symbolsList.length}`);
         } else if (symbolsData && typeof symbolsData === 'object') {
-            symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
-            log(`✅ Filtered symbolsData object values, length: ${symbolsList.length}`);
+            symbolsList = Object.values(symbolsData);
         }
         
-        // DEBUG: Log first stock to verify it's fresh
+        // Debug: Check symbol structure
         if (symbolsList && symbolsList.length > 0) {
-            const firstStock = symbolsList[0];
-            log(`🔍 First stock: ticker=${firstStock.ticker}, qty=${firstStock.qty}, avg=${firstStock.avg}`);
+            const firstSym = symbolsList[0];
+            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
+                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
+            }
         }
         
         if (!symbolsList || symbolsList.length === 0) {
@@ -2269,47 +2152,25 @@ CRITICAL RULES:
         
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
-            log(`🔍 DEBUG: guidanceFileData keys: ${Object.keys(guidanceFileData).join(', ')}`);
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    
-
-                    
-                    // Store ISO timestamp from guidance.date (now using 'date' field instead of 'updated')
-                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
-                        var dateStr = guidanceFileData[ticker].guidance.date;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        concallTimestamps[ticker] = isoDate;
-                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.date)`);
-                    }
-                    // Fallback to old 'updated' field if it exists
-                    else if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
+                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
+                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
                         var dateStr = guidanceFileData[ticker].guidance.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
-                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.updated - legacy)`);
                     }
-                    
-                    // Store ISO timestamp from insights.date (now using 'date' field instead of 'updated')
-                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.date) {
-                        var dateStr = guidanceFileData[ticker].insights.date;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        insightsTimestamps[ticker] = isoDate;
-                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.date)`);
-                    }
-                    // Fallback to old 'updated' field if it exists
-                    else if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
+                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
                         var dateStr = guidanceFileData[ticker].insights.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
-                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.updated - legacy)`);
                     }
                 }
             });
             log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items: ${JSON.stringify(concallTimestamps)}`);
-            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items: ${JSON.stringify(insightsTimestamps)}`);
+            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items`);
+            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items`);
         }
             saveGuidanceToStorage();
             log(`💾 Saved timestamps to localStorage`);
@@ -2381,43 +2242,54 @@ CRITICAL RULES:
         req.onsuccess = (e) => {
             var db = e.target.result;
             try {
-                log('📥 Saving stocks to IndexedDB...');
+                log('📥 Saving 91 stocks to IndexedDB...');
                 
-                // Don't clear here - already cleared in loadAllData
-                masterData = mergedStocks;
-                // Use the actual unified-symbols.json updated timestamp
-                const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
-                let savedCount = 0;
+                // Clear old data first
+                var clearTx = db.transaction(STORE_NAME, 'readwrite');
+                var clearStore = clearTx.objectStore(STORE_NAME);
+                clearStore.clear();
                 
-                // Process stocks sequentially with promise chain
-                function saveNext(index) {
-                    if (index >= mergedStocks.length) {
-                        log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
-                        updateHeader();
-                        renderSymbols();
-                        renderDataSources();
-                        updateStatusButton('✅ Ready');
-                        showToast('✅ Load complete!');
-                        return;
+                clearTx.oncomplete = () => {
+                    // Now save new data
+                    masterData = mergedStocks;
+                    // Use the actual unified-symbols.json updated timestamp
+                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
+                    let savedCount = 0;
+                    
+                    // Process stocks sequentially with promise chain
+                    function saveNext(index) {
+                        if (index >= mergedStocks.length) {
+                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                            updateHeader();
+                            renderSymbols();
+                            renderDataSources();
+                            updateStatusButton('✅ Ready');
+                            showToast('✅ Load complete!');
+                            return;
+                        }
+                        
+                        var transaction = db.transaction(STORE_NAME, 'readwrite');
+                        var store = transaction.objectStore(STORE_NAME);
+                        var stock = mergedStocks[index];
+                        stock.updated = symbolsUpdateTime;
+                        
+                        var putReq = store.put(stock);
+                        putReq.onsuccess = () => {
+                            savedCount++;
+                            saveNext(index + 1);
+                        };
+                        putReq.onerror = () => {
+                            log(`⚠️ Failed to save ${stock.ticker}`);
+                            saveNext(index + 1);
+                        };
                     }
                     
-                    var transaction = db.transaction(STORE_NAME, 'readwrite');
-                    var store = transaction.objectStore(STORE_NAME);
-                    var stock = mergedStocks[index];
-                    stock.updated = symbolsUpdateTime;
-                    
-                    var putReq = store.put(stock);
-                    putReq.onsuccess = () => {
-                        savedCount++;
-                        saveNext(index + 1);
-                    };
-                    putReq.onerror = () => {
-                        log(`⚠️ Failed to save ${stock.ticker}`);
-                        saveNext(index + 1);
-                    };
-                }
+                    saveNext(0);
+                };
                 
-                saveNext(0);
+                clearTx.onerror = () => {
+                    log(`⚠️ Error clearing store`);
+                };
                 
             } catch (err) {
                 log(`❌ Error: ${err.message}`);
@@ -2432,25 +2304,16 @@ CRITICAL RULES:
         };
     }
     
-    function convertDDMMYYtoISO(dateStr) {
+    function convertDDMMYYtoISO(ddmmyyStr) {
         try {
-            // Handle multiple formats
-            
-            // Format 1: "YYYY-MM-DD" (ISO date already)
-            if (dateStr && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                return dateStr + 'T00:00:00Z';
-            }
-            
-            // Format 2: "DD/MM/YY" → 2026-04-16
-            if (dateStr && dateStr.includes('/')) {
-                var parts = dateStr.split('/');
-                if (parts.length === 3) {
-                    var day = String(parts[0]).padStart(2, '0');
-                    var month = String(parts[1]).padStart(2, '0');
-                    var year = '20' + parts[2];
-                    var isoStr = `${year}-${month}-${day}T00:00:00Z`;
-                    return isoStr;
-                }
+            // Format: "16/04/26" → 2026-04-16
+            var parts = ddmmyyStr.split('/');
+            if (parts.length === 3) {
+                var day = String(parts[0]).padStart(2, '0');
+                var month = String(parts[1]).padStart(2, '0');
+                var year = '20' + parts[2];
+                var isoStr = `${year}-${month}-${day}T00:00:00Z`;
+                return isoStr;
             }
         } catch(e) {}
         return new Date().toISOString();
