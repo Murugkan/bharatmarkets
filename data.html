@@ -470,10 +470,13 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            const url = `${RAW_GITHUB_URL}/${filePath}?cache=${Date.now()}`;
+            // Normalize path - remove leading slash if present
+            const cleanPath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+            const url = `${RAW_GITHUB_URL}/${cleanPath}?cache=${Date.now()}`;
             const fetchTime = new Date().toISOString();
             
-            log(`📡 Fetching: ${filePath}`);
+            log(`📡 Fetching: ${cleanPath}`);
+            log(`🔗 URL: ${url}`);
             
             // Add 30 second timeout
             const controller = new AbortController();
@@ -483,11 +486,33 @@
                 const response = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeout);
                 
+                log(`📥 Response status: ${response.status} for ${cleanPath}`);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    const errorText = await response.text();
+                    log(`❌ HTTP Error ${response.status}: ${errorText.substring(0, 100)}`);
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
                 }
                 
-                const data = await response.json();
+                const text = await response.text();
+                log(`✅ Received ${text.length} bytes from ${cleanPath}`);
+                
+                // Parse JSON with error handling
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseErr) {
+                    log(`❌ JSON PARSE ERROR in ${cleanPath}: ${parseErr.message}`);
+                    log(`🔍 First 200 chars: ${text.substring(0, 200)}`);
+                    return null;
+                }
+                
+                // Verify data is not empty
+                if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+                    log(`⚠️ Warning: ${cleanPath} appears empty but valid JSON`);
+                } else {
+                    log(`✅ ${cleanPath} parsed successfully - ${typeof data} with ${Object.keys(data).length} keys`);
+                }
                 
                 // CRITICAL: Sanitize immediately after fetching to prevent corruption spread
                 const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
@@ -496,38 +521,28 @@
                 // Priority 1: Check HTTP Last-Modified header (most reliable)
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
-                    dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
-                    if (filePath.includes('unified-symbols')) {
-                        log(`✅ USED: HTTP Last-Modified header: ${dataUpdatedTimes[filePath]}`);
-                    }
+                    dataUpdatedTimes[cleanPath] = new Date(lastModified).toISOString();
+                    log(`✅ ${cleanPath} timestamp: HTTP Last-Modified = ${dataUpdatedTimes[cleanPath]}`);
                 }
                 // Priority 2: Check for _metadata.updated in data
                 else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
-                    dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
-                    if (filePath.includes('unified-symbols')) {
-                        log(`✅ USED: _metadata.updated: ${dataUpdatedTimes[filePath]}`);
-                    }
+                    dataUpdatedTimes[cleanPath] = sanitizedData._metadata.updated;
+                    log(`✅ ${cleanPath} timestamp: _metadata.updated = ${dataUpdatedTimes[cleanPath]}`);
                 }
                 // Priority 3: Check for top-level updated field
                 else if (sanitizedData && sanitizedData.updated) {
-                    dataUpdatedTimes[filePath] = sanitizedData.updated;
-                    if (filePath.includes('unified-symbols')) {
-                        log(`✅ USED: top-level updated: ${dataUpdatedTimes[filePath]}`);
-                    }
+                    dataUpdatedTimes[cleanPath] = sanitizedData.updated;
+                    log(`✅ ${cleanPath} timestamp: top-level updated = ${dataUpdatedTimes[cleanPath]}`);
                 }
                 // Priority 4: Check for lastLoadedAt
                 else if (sanitizedData && sanitizedData.lastLoadedAt) {
-                    dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
-                    if (filePath.includes('unified-symbols')) {
-                        log(`✅ USED: lastLoadedAt: ${dataUpdatedTimes[filePath]}`);
-                    }
+                    dataUpdatedTimes[cleanPath] = sanitizedData.lastLoadedAt;
+                    log(`✅ ${cleanPath} timestamp: lastLoadedAt = ${dataUpdatedTimes[cleanPath]}`);
                 }
                 // Fallback: Use fetch time
                 else {
-                    dataUpdatedTimes[filePath] = fetchTime;
-                    if (filePath.includes('unified-symbols')) {
-                        log(`⚠️ FALLBACK to fetch time: ${dataUpdatedTimes[filePath]}`);
-                    }
+                    dataUpdatedTimes[cleanPath] = fetchTime;
+                    log(`⚠️ ${cleanPath} timestamp: FALLBACK to fetch time = ${dataUpdatedTimes[cleanPath]}`);
                 }
             
                 // Save to localStorage
@@ -538,14 +553,16 @@
             } catch (abortErr) {
                 clearTimeout(timeout);
                 if (abortErr.name === 'AbortError') {
-                    log(`⏱️ Timeout fetching ${filePath} (30s)`);
+                    log(`⏱️ TIMEOUT: ${cleanPath} exceeded 30 second limit`);
+                } else if (abortErr instanceof SyntaxError) {
+                    log(`❌ JSON SYNTAX ERROR in ${cleanPath}: ${abortErr.message}`);
                 } else {
-                    log(`❌ Network error: ${filePath}`);
+                    log(`❌ Network error for ${cleanPath}: ${abortErr.message}`);
                 }
                 return null;
             }
         } catch (e) {
-            log(`❌ Error parsing ${filePath}: ${e.message}`);
+            log(`❌ Fatal error in fetchGitHubData: ${e.message}`);
             return null;
         }
     }
