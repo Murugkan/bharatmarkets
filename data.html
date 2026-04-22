@@ -480,7 +480,15 @@
             const timeout = setTimeout(() => controller.abort(), 30000);
             
             try {
-                const response = await fetch(url, { signal: controller.signal });
+                const response = await fetch(url, { 
+                    signal: controller.signal,
+                    cache: 'no-store',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                });
                 clearTimeout(timeout);
                 
                 if (!response.ok) {
@@ -2127,7 +2135,8 @@ CRITICAL RULES:
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
-        // Clear localStorage
+        // STEP 1: Clear all memory caches FIRST
+        masterData = [];
         localStorage.removeItem('dataUpdatedTimes');
         localStorage.removeItem('guidanceData');
         localStorage.removeItem('concallTimestamps');
@@ -2136,48 +2145,41 @@ CRITICAL RULES:
         guidanceData = {};
         concallTimestamps = {};
         insightsTimestamps = {};
-        log('✅ localStorage cleared');
+        log('✅ Memory and localStorage cleared');
         
-        // Clear IndexedDB
-        return new Promise((resolve) => {
+        // STEP 2: Clear IndexedDB completely
+        await new Promise((resolve) => {
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onerror = () => {
-                log('⚠️ Could not open IndexedDB, loading fresh data anyway');
-                masterData = [];
-                loadFreshData().then(resolve);
+                log('⚠️ Could not open IndexedDB for clearing');
+                resolve();
             };
             req.onsuccess = (e) => {
                 var db = e.target.result;
                 if (db.objectStoreNames.contains(STORE_NAME)) {
-                    var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                    var clearStore = clearTx.objectStore(STORE_NAME);
-                    clearStore.clear();
-                    clearTx.oncomplete = () => {
-                        log('✅ IndexedDB cleared');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
-                    clearTx.onerror = () => {
-                        log('⚠️ Error clearing IndexedDB, loading fresh data anyway');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
-                } else {
-                    log('⚠️ STORE_NAME not in IndexedDB, loading fresh data');
-                    masterData = [];
-                    loadFreshData().then(resolve).catch((err) => {
-                        log(`❌ Error loading fresh data: ${err.message}`);
+                    try {
+                        var clearTx = db.transaction(STORE_NAME, 'readwrite');
+                        var clearStore = clearTx.objectStore(STORE_NAME);
+                        var clearReq = clearStore.clear();
+                        clearReq.onsuccess = () => log('✅ IndexedDB cleared');
+                        clearReq.onerror = () => log('⚠️ Error clearing IndexedDB');
+                        clearTx.oncomplete = () => resolve();
+                        clearTx.onerror = () => resolve();
+                    } catch(e) {
+                        log(`⚠️ Error in clearTx: ${e.message}`);
                         resolve();
-                    });
+                    }
+                } else {
+                    resolve();
                 }
             };
         });
+        
+        // STEP 3: Fetch fresh data from GitHub
+        log('📡 Fetching fresh data from GitHub...');
+        await loadFreshData();
+        
+        log('✅ Complete data load cycle finished');
     }
     
     async function loadFreshData() {
