@@ -2372,15 +2372,20 @@ CRITICAL RULES:
         req.onsuccess = (e) => {
             var db = e.target.result;
             try {
-                log('📥 Saving 91 stocks to IndexedDB...');
+                log('📥 Clearing old data and saving fresh stocks to IndexedDB...');
                 
                 // Clear old data first
                 var clearTx = db.transaction(STORE_NAME, 'readwrite');
                 var clearStore = clearTx.objectStore(STORE_NAME);
-                clearStore.clear();
+                var clearReq = clearStore.clear();
+                
+                clearReq.onsuccess = () => {
+                    log('✅ Old data cleared from IndexedDB');
+                };
                 
                 clearTx.oncomplete = () => {
-                    // Now save new data
+                    // Now save new data - fresh load with cleared memory cache
+                    masterData = []; // Clear the in-memory cache first
                     masterData = mergedStocks;
                     // Use the actual unified-symbols.json updated timestamp
                     const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
@@ -2389,12 +2394,12 @@ CRITICAL RULES:
                     // Process stocks sequentially with promise chain
                     function saveNext(index) {
                         if (index >= mergedStocks.length) {
-                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                            log(`✅ Saved ${savedCount}/${mergedStocks.length} fresh records to IndexedDB`);
                             updateHeader();
                             renderSymbols();
                             renderDataSources();
                             updateStatusButton('✅ Ready');
-                            showToast('✅ Load complete!');
+                            showToast('✅ Fresh load complete!');
                             return;
                         }
                         
@@ -2419,6 +2424,7 @@ CRITICAL RULES:
                 
                 clearTx.onerror = () => {
                     log(`⚠️ Error clearing store`);
+                    showToast('⚠️ Error clearing old data');
                 };
                 
             } catch (err) {
