@@ -2198,6 +2198,7 @@ CRITICAL RULES:
         
         guidanceData = {};
         apolloQtyFromJSON = null;  // Reset for fresh load
+        log(`   JSON SOURCE tracking enabled`);
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
             const source = DATA_SOURCES[i];
@@ -2225,7 +2226,9 @@ CRITICAL RULES:
                 const apolloData = data.find(s => s.ticker === 'APOLLOHOSP');
                 if (apolloData) {
                     apolloQtyFromJSON = apolloData.qty;  // Capture source
-                    log(`      └─ [SOURCE] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
+                    log(`      ✅ [SOURCE] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
+                } else {
+                    log(`      ⚠️ APOLLOHOSP not found in JSON`);
                 }
             }
         }
@@ -2481,7 +2484,7 @@ CRITICAL RULES:
     }
 
     async function reloadAuto() {
-        log('🔄 REFRESH: Loading fresh data...');
+        clearLogPanel();  // Clear old logs on refresh
         // Call the same full load process as "LOAD JSON" button
         await loadAllData();
     }
