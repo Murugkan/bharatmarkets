@@ -650,16 +650,21 @@
     }
 
     function log(msg) {
-        var ts = new Date().toLocaleTimeString();
+        var ts = new Date().toLocaleTimeString('en-US', { 
+            hour12: false, 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit'
+        });
         var fullMsg = `[${ts}] ${msg}`;
         logMessages.push(fullMsg);
         var logBox = document.getElementById('live-log');
         if (logBox) {
-            logBox.textContent = logMessages.slice(-30).reverse().join('\n');
+            logBox.textContent = logMessages.slice(-50).reverse().join('\n');
             logBox.scrollTop = 0;
         }
         saveLogs();
-        console.log(msg);
+        console.log(fullMsg);
     }
     
     function showToast(msg) {
@@ -2350,6 +2355,10 @@ CRITICAL RULES:
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
         
+        // DEBUG: Track Apollo after merge
+        const apolloMerged = mergedStocks.find(s => s.ticker === 'APOLLOHOSP');
+        log(`🔍 MERGE RESULT: APOLLOHOSP qty=${apolloMerged?.qty}, avg=${apolloMerged?.avg}`);
+        
         if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
         if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
         
@@ -2380,26 +2389,34 @@ CRITICAL RULES:
                 clearStore.clear();
                 
                 clearTx.oncomplete = () => {
-                    // CRITICAL: Set masterData to fresh data IMMEDIATELY
+                    // Now save new data
                     masterData = mergedStocks;
-                    const apolloCheck = mergedStocks.find(s => s.ticker === 'APOLLOHOSP');
-                    log(`✅ masterData updated: APOLLOHOSP qty=${apolloCheck?.qty}`);
+                    const apolloSet = masterData.find(s => s.ticker === 'APOLLOHOSP');
+                    log(`🔄 SET masterData: APOLLOHOSP qty=${apolloSet?.qty}, avg=${apolloSet?.avg}`);
                     
-                    // Render UI immediately with fresh data
-                    renderSymbols();
-                    renderDataSources();
-                    updateHeader();
-                    updateStatusButton('✅ Ready');
-                    showToast('✅ Fresh data loaded!');
-                    
-                    // Now save to IndexedDB in background (doesn't block UI)
+                    // Use the actual unified-symbols.json updated timestamp
                     const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
                     let savedCount = 0;
                     
                     // Process stocks sequentially with promise chain
                     function saveNext(index) {
                         if (index >= mergedStocks.length) {
-                            log(`✅ Background save complete: ${savedCount}/${mergedStocks.length} to IndexedDB`);
+                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                            
+                            // DEBUG: Check what's in masterData BEFORE render
+                            const apolloBeforeRender = masterData.find(s => s.ticker === 'APOLLOHOSP');
+                            log(`📍 BEFORE renderSymbols(): masterData APOLLOHOSP qty=${apolloBeforeRender?.qty}`);
+                            
+                            updateHeader();
+                            renderSymbols();
+                            
+                            // DEBUG: Check what renderSymbols shows
+                            const apolloAfterRender = masterData.find(s => s.ticker === 'APOLLOHOSP');
+                            log(`📍 AFTER renderSymbols(): masterData APOLLOHOSP qty=${apolloAfterRender?.qty}`);
+                            
+                            renderDataSources();
+                            updateStatusButton('✅ Ready');
+                            showToast('✅ Load complete!');
                             return;
                         }
                         
@@ -2411,9 +2428,6 @@ CRITICAL RULES:
                         var putReq = store.put(stock);
                         putReq.onsuccess = () => {
                             savedCount++;
-                            if (stock.ticker === 'APOLLOHOSP') {
-                                log(`💾 SAVE→DB: APOLLOHOSP qty=${stock.qty}, avg=${stock.avg}`);
-                            }
                             saveNext(index + 1);
                         };
                         putReq.onerror = () => {
@@ -2427,12 +2441,6 @@ CRITICAL RULES:
                 
                 clearTx.onerror = () => {
                     log(`⚠️ Error clearing store`);
-                    // Even if clear fails, use fresh data anyway
-                    masterData = mergedStocks;
-                    renderSymbols();
-                    renderDataSources();
-                    updateHeader();
-                    updateStatusButton('⚠️ Partial load');
                 };
                 
             } catch (err) {
@@ -2479,6 +2487,9 @@ CRITICAL RULES:
         try {
             // Just reload from IndexedDB - no fetch, no clear
             await loadFromIndexedDB();
+            const apolloFromDB = masterData.find(s => s.ticker === 'APOLLOHOSP');
+            log(`📂 LOADED FROM DB: APOLLOHOSP qty=${apolloFromDB?.qty}`);
+            
             loadGuidanceFromStorage();
             
             renderDataSources();
