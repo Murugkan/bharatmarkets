@@ -380,7 +380,9 @@
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
+                        <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
                         <th style="color:#f59e0b; font-weight:700; padding:10px 4px; text-align:center;">INSIGHTS</th>
+                        <th style="color:#ffaa44; font-weight:700; padding:10px 4px; text-align:center; width:75px;">INSIGHTS DATE</th>
                         <th style="color:#ff4444; font-weight:700; padding:10px 4px; text-align:center; width:40px;">DEL</th>
                     </tr>
                 </thead>
@@ -468,7 +470,7 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            const url = `${RAW_GITHUB_URL}/${filePath}`;
+            const url = `${RAW_GITHUB_URL}/${filePath}?cache=${Date.now()}`;
             const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
@@ -495,27 +497,37 @@
                 const lastModified = response.headers.get('last-modified');
                 if (lastModified) {
                     dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
-                    log(`✅ Loaded: ${filePath}`)
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: HTTP Last-Modified header: ${dataUpdatedTimes[filePath]}`);
+                    }
                 }
                 // Priority 2: Check for _metadata.updated in data
                 else if (sanitizedData && sanitizedData._metadata && sanitizedData._metadata.updated) {
                     dataUpdatedTimes[filePath] = sanitizedData._metadata.updated;
-                    log(`✅ Loaded: ${filePath}`)
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: _metadata.updated: ${dataUpdatedTimes[filePath]}`);
+                    }
                 }
                 // Priority 3: Check for top-level updated field
                 else if (sanitizedData && sanitizedData.updated) {
                     dataUpdatedTimes[filePath] = sanitizedData.updated;
-                    log(`✅ Loaded: ${filePath}`)
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: top-level updated: ${dataUpdatedTimes[filePath]}`);
+                    }
                 }
                 // Priority 4: Check for lastLoadedAt
                 else if (sanitizedData && sanitizedData.lastLoadedAt) {
                     dataUpdatedTimes[filePath] = sanitizedData.lastLoadedAt;
-                    log(`✅ Loaded: ${filePath}`)
+                    if (filePath.includes('unified-symbols')) {
+                        log(`✅ USED: lastLoadedAt: ${dataUpdatedTimes[filePath]}`);
+                    }
                 }
                 // Fallback: Use fetch time
                 else {
                     dataUpdatedTimes[filePath] = fetchTime;
-                    log(`✅ Loaded: ${filePath}`)
+                    if (filePath.includes('unified-symbols')) {
+                        log(`⚠️ FALLBACK to fetch time: ${dataUpdatedTimes[filePath]}`);
+                    }
                 }
             
                 // Save to localStorage
@@ -659,6 +671,8 @@
 
     function renderDataSources() {
         var html = '';
+        log(`🔍 DEBUG: dataUpdatedTimes keys: ${Object.keys(dataUpdatedTimes).join(', ')}`);
+        
         DATA_SOURCES.forEach((s, index) => {
             // Fetch count from GitHub with cache bust
             var count = '⏳ Loading...';
@@ -692,6 +706,7 @@
             
             // Get the actual timestamp from dataUpdatedTimes
             var jsonTime = dataUpdatedTimes[s.path] || '—';
+            log(`🔍 DEBUG: Looking up s.path="${s.path}", found="${jsonTime}"`);
             
             // Convert ISO to IST (UTC+5:30)
             var istTime = '—';
@@ -699,6 +714,7 @@
                 try {
                     var date = new Date(jsonTime);
                     istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    log(`🔍 DEBUG: Converted "${jsonTime}" to IST: "${istTime}"`);
                 } catch(e) {
                     istTime = jsonTime;
                 }
@@ -872,9 +888,13 @@
             try {
                 concallTimestamps = JSON.parse(storedConcall);
                 log(`📥 Loaded concallTimestamps: ${Object.keys(concallTimestamps).length} items`);
+                log(`🔍 DEBUG concallTimestamps: ${JSON.stringify(concallTimestamps)}`);
             } catch(e) {
                 concallTimestamps = {};
+                log(`⚠️ Failed to parse concallTimestamps`);
             }
+        } else {
+            log(`⚠️ No concallTimestamps in localStorage`);
         }
         
         const storedInsights = localStorage.getItem('insightsTimestamps');
@@ -882,6 +902,8 @@
             try {
                 insightsTimestamps = JSON.parse(storedInsights);
                 log(`📥 Loaded insightsTimestamps: ${Object.keys(insightsTimestamps).length} items`);
+                log(`🔍 DEBUG insightsTimestamps: ${JSON.stringify(insightsTimestamps)}`);
+
             } catch(e) {
                 insightsTimestamps = {};
             }
@@ -901,7 +923,7 @@
         var html = '';
         
         if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="7" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
+            html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
         } else {
             masterData.slice(0, 50).forEach(stock => {
                 var ticker = stock.ticker || '—';
@@ -915,20 +937,20 @@
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center;">
-                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
-                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—'}</div>
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
+                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
                         </div>
                     </td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—'}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center;">
-                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
-                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:50px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                            <div style="font-size:8px; color:#00ffaa; font-weight:700; min-width:55px;">${insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—'}</div>
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
+                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
                         </div>
                     </td>
-                    <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:50px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—'}</td>
+                    <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
                 </tr>`;
             });
         }
@@ -1552,6 +1574,43 @@ CRITICAL RULES:
                 }
             };
             
+            // NOW UPDATE unified-symbols.json with updated timestamp and count
+            const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
+            fetch(symbolsUrl, {
+                headers: { 'Authorization': `token ${pat}` }
+            })
+            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+            .then(fileData => {
+                var symbolsContent = JSON.parse(atob(fileData.content));
+                // Add updated and count if missing
+                symbolsContent.updated = new Date().toISOString();
+                if (symbolsContent.symbols && Array.isArray(symbolsContent.symbols)) {
+                    symbolsContent.count = symbolsContent.symbols.length;
+                }
+                const encodedSymbols = utf8ToBase64(JSON.stringify(symbolsContent, null, 2));
+                return fetch(symbolsUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${pat}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `Update unified-symbols.json - guidance saved for ${ticker}`,
+                        content: encodedSymbols,
+                        sha: fileData.sha,
+                        branch: GITHUB_CONFIG.BRANCH
+                    })
+                });
+            })
+            .then(r => {
+                if (r?.ok) {
+                    log(`✅ Updated unified-symbols.json`);
+                }
+            })
+            .catch(e => {
+                log(`⚠️ Could not update unified-symbols.json: ${e.message}`);
+            });
+            
             renderSymbols();
         })
         .catch(e => {
@@ -1915,8 +1974,13 @@ CRITICAL RULES:
                 })
                 .then(r => r.json())
                 .then(fileInfo => {
-                    const fileContent = JSON.stringify({ symbols }, null, 2);
-                    const encodedContent = btoa(fileContent);
+                    // Create file content with updated and count fields
+                    const fileContent = {
+                        updated: new Date().toISOString(),
+                        count: symbols.length,
+                        symbols: symbols
+                    };
+                    const encodedContent = utf8ToBase64(JSON.stringify(fileContent, null, 2));
                     
                     return fetch(url, {
                         method: 'PUT',
@@ -2068,9 +2132,16 @@ CRITICAL RULES:
         dataUpdatedTimes = {};
         log('✅ Browser cache cleared');
         
-        // Step 2: Load fresh data from GitHub (sequential for reliability)
+        // Load fresh data from GitHub
+        return loadFreshData();
+    }
+    
+    async function loadFreshData() {
         log('📡 Fetching fresh data from GitHub (sequential)...');
         updateStatusButton('⏳ Loading');
+        
+        // Clear guidance data to ensure fresh data
+        guidanceData = {};
         
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
@@ -2105,8 +2176,10 @@ CRITICAL RULES:
             symbolsList = symbolsData.symbols;
         } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
             symbolsList = symbolsData.stocks;
+        } else if (symbolsData && symbolsData.data && Array.isArray(symbolsData.data)) {
+            symbolsList = symbolsData.data;
         } else if (symbolsData && typeof symbolsData === 'object') {
-            symbolsList = Object.values(symbolsData);
+            symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
         }
         
         // Debug: Check symbol structure
@@ -2130,25 +2203,60 @@ CRITICAL RULES:
         
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
+            log(`🔍 DEBUG: guidanceFileData keys: ${Object.keys(guidanceFileData).join(', ')}`);
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    // Store ISO timestamp from guidance.updated (DD/MM/YY format)
-                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
+                    
+                    // DEBUG: Log the full structure of this ticker
+                    log(`🔍 DEBUG ${ticker}: ${JSON.stringify(guidanceFileData[ticker]).substring(0, 200)}`);
+                    
+                    // Check if guidance exists
+                    if (guidanceFileData[ticker].guidance) {
+                        log(`🔍 DEBUG ${ticker}.guidance: ${JSON.stringify(guidanceFileData[ticker].guidance).substring(0, 200)}`);
+                        log(`🔍 DEBUG ${ticker}.guidance.date = ${guidanceFileData[ticker].guidance.date}`);
+                    }
+                    
+                    // Check if insights exists
+                    if (guidanceFileData[ticker].insights) {
+                        log(`🔍 DEBUG ${ticker}.insights: ${JSON.stringify(guidanceFileData[ticker].insights).substring(0, 200)}`);
+                        log(`🔍 DEBUG ${ticker}.insights.date = ${guidanceFileData[ticker].insights.date}`);
+                    }
+                    
+                    // Store ISO timestamp from guidance.date (now using 'date' field instead of 'updated')
+                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
+                        var dateStr = guidanceFileData[ticker].guidance.date;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        concallTimestamps[ticker] = isoDate;
+                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.date)`);
+                    }
+                    // Fallback to old 'updated' field if it exists
+                    else if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
                         var dateStr = guidanceFileData[ticker].guidance.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
+                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.updated - legacy)`);
                     }
-                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
+                    
+                    // Store ISO timestamp from insights.date (now using 'date' field instead of 'updated')
+                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.date) {
+                        var dateStr = guidanceFileData[ticker].insights.date;
+                        var isoDate = convertDDMMYYtoISO(dateStr);
+                        insightsTimestamps[ticker] = isoDate;
+                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.date)`);
+                    }
+                    // Fallback to old 'updated' field if it exists
+                    else if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
                         var dateStr = guidanceFileData[ticker].insights.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
+                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.updated - legacy)`);
                     }
                 }
             });
             log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items`);
-            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items`);
+            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items: ${JSON.stringify(concallTimestamps)}`);
+            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items: ${JSON.stringify(insightsTimestamps)}`);
         }
             saveGuidanceToStorage();
             log(`💾 Saved timestamps to localStorage`);
@@ -2230,7 +2338,8 @@ CRITICAL RULES:
                 clearTx.oncomplete = () => {
                     // Now save new data
                     masterData = mergedStocks;
-                    const now = new Date().toLocaleTimeString();
+                    // Use the actual unified-symbols.json updated timestamp
+                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
                     let savedCount = 0;
                     
                     // Process stocks sequentially with promise chain
@@ -2248,7 +2357,7 @@ CRITICAL RULES:
                         var transaction = db.transaction(STORE_NAME, 'readwrite');
                         var store = transaction.objectStore(STORE_NAME);
                         var stock = mergedStocks[index];
-                        stock.updated = now;
+                        stock.updated = symbolsUpdateTime;
                         
                         var putReq = store.put(stock);
                         putReq.onsuccess = () => {
@@ -2281,16 +2390,25 @@ CRITICAL RULES:
         };
     }
     
-    function convertDDMMYYtoISO(ddmmyyStr) {
+    function convertDDMMYYtoISO(dateStr) {
         try {
-            // Format: "16/04/26" → 2026-04-16
-            var parts = ddmmyyStr.split('/');
-            if (parts.length === 3) {
-                var day = String(parts[0]).padStart(2, '0');
-                var month = String(parts[1]).padStart(2, '0');
-                var year = '20' + parts[2];
-                var isoStr = `${year}-${month}-${day}T00:00:00Z`;
-                return isoStr;
+            // Handle multiple formats
+            
+            // Format 1: "YYYY-MM-DD" (ISO date already)
+            if (dateStr && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return dateStr + 'T00:00:00Z';
+            }
+            
+            // Format 2: "DD/MM/YY" → 2026-04-16
+            if (dateStr && dateStr.includes('/')) {
+                var parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    var day = String(parts[0]).padStart(2, '0');
+                    var month = String(parts[1]).padStart(2, '0');
+                    var year = '20' + parts[2];
+                    var isoStr = `${year}-${month}-${day}T00:00:00Z`;
+                    return isoStr;
+                }
             }
         } catch(e) {}
         return new Date().toISOString();
