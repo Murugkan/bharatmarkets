@@ -1780,7 +1780,7 @@ CRITICAL RULES:
     function toggleEditMode() {
         editMode = !editMode;
         document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
-            el.disabled = !editMode;
+            el.readOnly = !editMode;
         });
         event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
         if (editMode) {
@@ -1905,15 +1905,39 @@ CRITICAL RULES:
     }
 
     function saveChanges() {
-        // Do nothing - edits are temporary only
-        // Do NOT save to IndexedDB or modify masterData
-        showToast('⚠️ Edits are temporary (session only) - refresh to revert');
+        var pat = document.getElementById('patToken').value;
+        if (!pat) {
+            showToast('❌ PAT required to save');
+            return;
+        }
         
-        // Just exit edit mode
+        log('💾 Saving to JSON only...');
+        
+        // Get all edited values and update masterData temporarily
+        document.querySelectorAll('.qty-input').forEach(input => {
+            var ticker = input.dataset.ticker;
+            var newQty = parseFloat(input.value) || 0;
+            var stock = masterData.find(s => s.ticker === ticker);
+            if (stock) stock.qty = newQty;
+        });
+        
+        document.querySelectorAll('.avg-input').forEach(input => {
+            var ticker = input.dataset.ticker;
+            var newAvg = parseFloat(input.value) || 0;
+            var stock = masterData.find(s => s.ticker === ticker);
+            if (stock) stock.avg = newAvg;
+        });
+        
+        // Save to JSON only (NOT to DB)
+        uploadUnifiedSymbols(pat);
+        
+        // Exit edit mode
         editMode = false;
         document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
         document.getElementById('save-section').style.display = 'none';
         document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
+        
+        log('✅ Saved to JSON (use LOAD JSON to refresh UI)');
     }
     
     function uploadUnifiedSymbols(pat) {
