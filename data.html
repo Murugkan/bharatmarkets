@@ -2199,7 +2199,26 @@ CRITICAL RULES:
             const data = await fetchGitHubData(source.path);
             results.push(data);
             
-            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
+            // Log the actual count from JSON
+            let count = 0;
+            if (Array.isArray(data)) {
+                count = data.length;
+            } else if (data && data.symbols && Array.isArray(data.symbols)) {
+                count = data.symbols.length;
+            } else if (data && data.stocks && typeof data.stocks === 'object') {
+                count = Object.keys(data.stocks).length;
+            } else if (data && data.quotes && typeof data.quotes === 'object') {
+                count = Object.keys(data.quotes).length;
+            } else if (data && typeof data === 'object') {
+                count = Object.keys(data).length;
+            }
+            log(`✅ File: ${filename} - ${count} items (${i + 1}/${DATA_SOURCES.length})`);
+            
+            // For unified-symbols.json, show Apollo qty
+            if (filename === 'unified-symbols.json' && Array.isArray(data)) {
+                const apollo = data.find(s => s.ticker === 'APOLLOHOSP');
+                log(`📥 JSON RAW: APOLLOHOSP qty=${apollo?.qty}, avg=${apollo?.avg}`);
+            }
         }
         
         log('✅ All files loaded from GitHub');
