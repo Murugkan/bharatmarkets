@@ -664,7 +664,6 @@
 
     function renderDataSources() {
         var html = '';
-        log(`🔍 DEBUG: dataUpdatedTimes keys: ${Object.keys(dataUpdatedTimes).join(', ')}`);
         
         DATA_SOURCES.forEach((s, index) => {
             // Fetch count from GitHub with cache bust
@@ -699,7 +698,6 @@
             
             // Get the actual timestamp from dataUpdatedTimes
             var jsonTime = dataUpdatedTimes[s.path] || '—';
-            log(`🔍 DEBUG: Looking up s.path="${s.path}", found="${jsonTime}"`);
             
             // Convert ISO to IST (UTC+5:30)
             var istTime = '—';
@@ -707,7 +705,6 @@
                 try {
                     var date = new Date(jsonTime);
                     istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-                    log(`🔍 DEBUG: Converted "${jsonTime}" to IST: "${istTime}"`);
                 } catch(e) {
                     istTime = jsonTime;
                 }
@@ -2241,7 +2238,6 @@ CRITICAL RULES:
         
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
-            log(`🔍 DEBUG: guidanceFileData keys: ${Object.keys(guidanceFileData).join(', ')}`);
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
@@ -2266,14 +2262,12 @@ CRITICAL RULES:
                         var dateStr = guidanceFileData[ticker].guidance.date;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
-                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.date)`);
                     }
                     // Fallback to old 'updated' field if it exists
                     else if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
                         var dateStr = guidanceFileData[ticker].guidance.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
-                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.updated - legacy)`);
                     }
                     
                     // Store ISO timestamp from insights.date (now using 'date' field instead of 'updated')
@@ -2281,20 +2275,16 @@ CRITICAL RULES:
                         var dateStr = guidanceFileData[ticker].insights.date;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
-                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.date)`);
                     }
                     // Fallback to old 'updated' field if it exists
                     else if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
                         var dateStr = guidanceFileData[ticker].insights.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
-                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.updated - legacy)`);
                     }
                 }
             });
             log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items: ${JSON.stringify(concallTimestamps)}`);
-            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items: ${JSON.stringify(insightsTimestamps)}`);
         }
             saveGuidanceToStorage();
             log(`💾 Saved timestamps to localStorage`);
@@ -2390,6 +2380,16 @@ CRITICAL RULES:
                             updateHeader();
                             renderSymbols();
                             renderDataSources();
+                            
+                            // ✅ Clean summary
+                            log(`\n📋 LOAD SUMMARY:`);
+                            log(`  ✅ Files: 4 loaded fresh from GitHub`);
+                            log(`  ✅ Stocks: ${mergedStocks.length} merged`);
+                            const guidanceCount = Object.keys(guidanceData).length;
+                            log(`  ✅ Guidance: ${guidanceCount} stocks with management data`);
+                            log(`  ✅ Database: IndexedDB updated`);
+                            log(`  ✅ Status: Ready for analysis\n`);
+                            
                             updateStatusButton('✅ Ready');
                             showToast('✅ Load complete!');
                             return;
