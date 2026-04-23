@@ -2237,20 +2237,15 @@ CRITICAL RULES:
             }
             log(`   ${filename}: ${count} items`);
             
-            // Debug: Show all filenames
+            // Only unified-symbols.json has qty/avg for holdings
             if (filename === 'unified-symbols.json') {
                 log(`   ✅ Processing unified-symbols.json`);
-                // Now check the symbols array
+                // Read directly from the fresh response
                 if (symbolsArray && Array.isArray(symbolsArray)) {
                     const apolloData = symbolsArray.find(s => s.ticker === 'APOLLOHOSP');
                     if (apolloData) {
-                        apolloQtyFromJSON = apolloData.qty;  // Capture source
-                        log(`      ✅ [SOURCE] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
-                    } else {
-                        log(`      ⚠️ APOLLOHOSP not found in symbols array`);
+                        log(`      ✅ [SOURCE FROM JSON] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
                     }
-                } else {
-                    log(`      ⚠️ symbols array not found in JSON`);
                 }
             }
         }
