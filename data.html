@@ -1475,6 +1475,11 @@ CRITICAL RULES:
                 throw new Error('Guidance data is empty');
             }
             
+            // Normalize signal value if it exists (handle POSITIVE -> Positive, etc)
+            if (newGuidance.signal) {
+                newGuidance.signal = String(newGuidance.signal).charAt(0).toUpperCase() + String(newGuidance.signal).slice(1).toLowerCase();
+            }
+            
         } catch(e) {
             showToast(`❌ Error: ${e.message}`);
             updateStatusButton('❌ Error');
