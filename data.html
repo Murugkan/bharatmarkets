@@ -687,7 +687,6 @@
 
     function renderDataSources() {
         var html = '';
-        log(`🔍 DEBUG: dataUpdatedTimes keys: ${Object.keys(dataUpdatedTimes).join(', ')}`);
         
         DATA_SOURCES.forEach((s, index) => {
             // Fetch count from GitHub with cache bust
@@ -722,7 +721,6 @@
             
             // Get the actual timestamp from dataUpdatedTimes
             var jsonTime = dataUpdatedTimes[s.path] || '—';
-            log(`🔍 DEBUG: Looking up s.path="${s.path}", found="${jsonTime}"`);
             
             // Convert ISO to IST (UTC+5:30)
             var istTime = '—';
@@ -730,7 +728,6 @@
                 try {
                     var date = new Date(jsonTime);
                     istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-                    log(`🔍 DEBUG: Converted "${jsonTime}" to IST: "${istTime}"`);
                 } catch(e) {
                     istTime = jsonTime;
                 }
@@ -903,23 +900,15 @@
         if (storedConcall) {
             try {
                 concallTimestamps = JSON.parse(storedConcall);
-                log(`📥 Loaded concallTimestamps: ${Object.keys(concallTimestamps).length} items`);
-                log(`🔍 DEBUG concallTimestamps: ${JSON.stringify(concallTimestamps)}`);
             } catch(e) {
                 concallTimestamps = {};
-                log(`⚠️ Failed to parse concallTimestamps`);
             }
-        } else {
-            log(`⚠️ No concallTimestamps in localStorage`);
         }
         
         const storedInsights = localStorage.getItem('insightsTimestamps');
         if (storedInsights) {
             try {
                 insightsTimestamps = JSON.parse(storedInsights);
-                log(`📥 Loaded insightsTimestamps: ${Object.keys(insightsTimestamps).length} items`);
-                log(`🔍 DEBUG insightsTimestamps: ${JSON.stringify(insightsTimestamps)}`);
-
             } catch(e) {
                 insightsTimestamps = {};
             }
@@ -2319,17 +2308,13 @@ CRITICAL RULES:
                     }
                 }
             });
-            log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items: ${JSON.stringify(concallTimestamps)}`);
-            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items: ${JSON.stringify(insightsTimestamps)}`);
+            log(`✅ Step 4: Guidance loaded - ${Object.keys(guidanceData).length} stocks`);
         }
             saveGuidanceToStorage();
-            log(`💾 Saved timestamps to localStorage`);
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
             priceMap = pricesData.quotes;
-            log('✅ Found prices in "quotes" wrapper');
         } else {
             priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
         }
@@ -2337,7 +2322,6 @@ CRITICAL RULES:
         let fundMap = {};
         if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
             fundMap = fundamentalsData.stocks;
-            log('✅ Found fundamentals in "stocks" wrapper');
         } else {
             fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
         }
