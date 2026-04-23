@@ -434,7 +434,7 @@
 
 <script>
     const DB_NAME = 'OnyxPortfolioDB';
-    const DB_VERSION = 8;
+    const DB_VERSION = 10;  // Incremented to force rebuild
     const STORE_NAME = 'Stocks';
 
     let masterData = [];
@@ -554,19 +554,6 @@
         loadSavedLogs();  // Restore previous logs
         updateStatusButton('⏳ Loading...');
         log('🚀 ETL Center starting...');
-        
-        // CRITICAL: Clear any stale cache on page load
-        try {
-            // Clear the problematic IndexedDB stores
-            const dbs = ['OnyxPortfolioDB'];
-            for (let dbName of dbs) {
-                const deleteReq = indexedDB.deleteDatabase(dbName);
-                deleteReq.onsuccess = () => log(`✅ Cleared IndexedDB: ${dbName}`);
-                deleteReq.onerror = () => log(`⚠️ Could not delete ${dbName}`);
-            }
-        } catch(e) {
-            log(`⚠️ Error clearing IndexedDB on init: ${e.message}`);
-        }
         
         // Load PAT from storage
         loadPatFromStorage();
@@ -934,12 +921,6 @@
 
     function renderSymbols() {
         var html = '';
-        
-        // FORCE: Always use fresh masterData, never stale cache
-        console.log('🔍 renderSymbols - masterData count:', masterData.length);
-        if (masterData && masterData.length > 0) {
-            console.log('🔍 First stock:', masterData[0]);
-        }
         
         if (!masterData || masterData.length === 0) {
             html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
@@ -2372,17 +2353,20 @@ CRITICAL RULES:
         if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
         if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
         
-        // Open DB without incrementing version - handle store deletion properly
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        // Open DB and increment version to force store recreation
+        var req = indexedDB.open(DB_NAME, DB_VERSION + 1);
         
         req.onupgradeneeded = (e) => {
             var db = e.target.result;
             try {
+                // Delete old store if it exists
                 if (db.objectStoreNames.contains(STORE_NAME)) {
                     db.deleteObjectStore(STORE_NAME);
+                    log('✅ Old store deleted');
                 }
+                // Create fresh new store
                 db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                log('✅ Object store created');
+                log('✅ New object store created');
             } catch(err) {
                 log(`⚠️ Upgrade error: ${err.message}`);
             }
@@ -2391,54 +2375,46 @@ CRITICAL RULES:
         req.onsuccess = (e) => {
             var db = e.target.result;
             try {
-                log('📥 Saving 91 stocks to IndexedDB...');
+                log(`📥 Saving ${mergedStocks.length} stocks to NEW IndexedDB...`);
                 
-                // Clear old data first
-                var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                var clearStore = clearTx.objectStore(STORE_NAME);
-                clearStore.clear();
+                // Set masterData immediately
+                masterData = mergedStocks;
+                const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
+                let savedCount = 0;
                 
-                clearTx.oncomplete = () => {
-                    // Now save new data
-                    masterData = mergedStocks;
-                    // Use the actual unified-symbols.json updated timestamp
-                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
-                    let savedCount = 0;
-                    
-                    // Process stocks sequentially with promise chain
-                    function saveNext(index) {
-                        if (index >= mergedStocks.length) {
-                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
-                            updateHeader();
-                            renderSymbols();
-                            renderDataSources();
-                            updateStatusButton('✅ Ready');
-                            showToast('✅ Load complete!');
-                            return;
-                        }
-                        
-                        var transaction = db.transaction(STORE_NAME, 'readwrite');
-                        var store = transaction.objectStore(STORE_NAME);
-                        var stock = mergedStocks[index];
-                        stock.updated = symbolsUpdateTime;
-                        
-                        var putReq = store.put(stock);
-                        putReq.onsuccess = () => {
-                            savedCount++;
-                            saveNext(index + 1);
-                        };
-                        putReq.onerror = () => {
-                            log(`⚠️ Failed to save ${stock.ticker}`);
-                            saveNext(index + 1);
-                        };
+                // Process stocks sequentially
+                function saveNext(index) {
+                    if (index >= mergedStocks.length) {
+                        log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                        log(`✅ Apollo Hospitals saved with qty=${mergedStocks.find(s => s.ticker === 'APOLLOHOSP')?.qty || 0}`);
+                        updateHeader();
+                        renderSymbols();
+                        renderDataSources();
+                        updateStatusButton('✅ Ready');
+                        showToast('✅ Fresh data loaded!');
+                        return;
                     }
                     
-                    saveNext(0);
-                };
+                    var transaction = db.transaction(STORE_NAME, 'readwrite');
+                    var store = transaction.objectStore(STORE_NAME);
+                    var stock = mergedStocks[index];
+                    stock.updated = symbolsUpdateTime;
+                    
+                    var putReq = store.put(stock);
+                    putReq.onsuccess = () => {
+                        savedCount++;
+                        if (stock.ticker === 'APOLLOHOSP') {
+                            log(`✅ Saved APOLLOHOSP: qty=${stock.qty}, avg=${stock.avg}`);
+                        }
+                        saveNext(index + 1);
+                    };
+                    putReq.onerror = () => {
+                        log(`⚠️ Failed to save ${stock.ticker}: ${putReq.error}`);
+                        saveNext(index + 1);
+                    };
+                }
                 
-                clearTx.onerror = () => {
-                    log(`⚠️ Error clearing store`);
-                };
+                saveNext(0);
                 
             } catch (err) {
                 log(`❌ Error: ${err.message}`);
