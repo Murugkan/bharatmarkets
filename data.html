@@ -471,8 +471,9 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            const randomBust = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            const url = `${RAW_GITHUB_URL}/${filePath}?cb=${randomBust}`;
+            // Force fresh fetch with current timestamp
+            const timestamp = new Date().getTime();
+            const url = `${RAW_GITHUB_URL}/${filePath}?v=${timestamp}`;
             const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
@@ -482,10 +483,12 @@
             const timeout = setTimeout(() => controller.abort(), 30000);
             
             try {
+                log(`   Fetching ${filePath}...`);
                 const response = await fetch(url, { 
                     signal: controller.signal,
                     cache: 'no-store'
                 });
+                log(`   ✓ Response received for ${filePath}`);
                 clearTimeout(timeout);
                 
                 if (!response.ok) {
@@ -2237,15 +2240,30 @@ CRITICAL RULES:
             }
             log(`   ${filename}: ${count} items`);
             
-            // Only unified-symbols.json has qty/avg for holdings
+            // Extract and log APOLLOHOSP qty directly from JSON
             if (filename === 'unified-symbols.json') {
-                log(`   ✅ Processing unified-symbols.json`);
-                // Read directly from the fresh response
-                if (symbolsArray && Array.isArray(symbolsArray)) {
-                    const apolloData = symbolsArray.find(s => s.ticker === 'APOLLOHOSP');
-                    if (apolloData) {
-                        log(`      ✅ [SOURCE FROM JSON] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
+                let apolloQty = null;
+                let apolloAvg = null;
+                
+                // Try to find Apollo in the data
+                if (data.symbols && Array.isArray(data.symbols)) {
+                    const apollo = data.symbols.find(s => s.ticker === 'APOLLOHOSP');
+                    if (apollo) {
+                        apolloQty = apollo.qty;
+                        apolloAvg = apollo.avg;
                     }
+                } else if (Array.isArray(data)) {
+                    const apollo = data.find(s => s.ticker === 'APOLLOHOSP');
+                    if (apollo) {
+                        apolloQty = apollo.qty;
+                        apolloAvg = apollo.avg;
+                    }
+                }
+                
+                if (apolloQty !== null) {
+                    log(`      ✅ [JSON SOURCE] APOLLOHOSP: qty=${apolloQty}, avg=${apolloAvg}`);
+                } else {
+                    log(`      ⚠️ APOLLOHOSP not found in JSON`);
                 }
             }
         }
