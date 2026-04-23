@@ -481,7 +481,9 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            const url = `${RAW_GITHUB_URL}/${filePath}?cache=${Date.now()}`;
+            // ✅ CRITICAL: Random parameter forces GitHub CDN to always serve fresh
+            const cacheBreaker = Math.random().toString(36).substring(7);
+            const url = `${RAW_GITHUB_URL}/${filePath}?nocache=${cacheBreaker}`;
             const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
@@ -491,7 +493,7 @@
             const timeout = setTimeout(() => controller.abort(), 30000);
             
             try {
-                // ✅ CRITICAL FIX: Use cache: 'no-store' to bypass browser cache
+                // ✅ CRITICAL FIX: cache: 'no-store' + random URL param = forces fresh data
                 const response = await fetch(url, {
                     signal: controller.signal,
                     cache: 'no-store'
