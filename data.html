@@ -2206,6 +2206,14 @@ CRITICAL RULES:
             const data = await fetchGitHubData(source.path);
             results.push(data);
             
+            // Extract actual symbols array
+            let symbolsArray = null;
+            if (Array.isArray(data)) {
+                symbolsArray = data;
+            } else if (data && data.symbols && Array.isArray(data.symbols)) {
+                symbolsArray = data.symbols;
+            }
+            
             // Count items
             let count = 0;
             if (Array.isArray(data)) {
@@ -2221,14 +2229,20 @@ CRITICAL RULES:
             }
             log(`   ${filename}: ${count} items`);
             
-            // Only unified-symbols.json has qty/avg for holdings
-            if (filename === 'unified-symbols.json' && Array.isArray(data)) {
-                const apolloData = data.find(s => s.ticker === 'APOLLOHOSP');
-                if (apolloData) {
-                    apolloQtyFromJSON = apolloData.qty;  // Capture source
-                    log(`      ✅ [SOURCE] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
+            // Debug: Show all filenames
+            if (filename === 'unified-symbols.json') {
+                log(`   ✅ Processing unified-symbols.json`);
+                // Now check the symbols array
+                if (symbolsArray && Array.isArray(symbolsArray)) {
+                    const apolloData = symbolsArray.find(s => s.ticker === 'APOLLOHOSP');
+                    if (apolloData) {
+                        apolloQtyFromJSON = apolloData.qty;  // Capture source
+                        log(`      ✅ [SOURCE] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
+                    } else {
+                        log(`      ⚠️ APOLLOHOSP not found in symbols array`);
+                    }
                 } else {
-                    log(`      ⚠️ APOLLOHOSP not found in JSON`);
+                    log(`      ⚠️ symbols array not found in JSON`);
                 }
             }
         }
