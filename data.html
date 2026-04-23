@@ -471,7 +471,8 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            const url = `${RAW_GITHUB_URL}/${filePath}?cache=${Date.now()}`;
+            const randomBust = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            const url = `${RAW_GITHUB_URL}/${filePath}?cb=${randomBust}`;
             const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
@@ -482,7 +483,8 @@
             
             try {
                 const response = await fetch(url, { 
-                    signal: controller.signal
+                    signal: controller.signal,
+                    cache: 'no-store'
                 });
                 clearTimeout(timeout);
                 
