@@ -2377,11 +2377,16 @@ CRITICAL RULES:
             if (priceData) priceMatches++;
             if (fundData) fundMatches++;
             
+            // ✅ FIX: Preserve symbol qty/avg - don't overwrite with fundamentals data
             const merged = {
-                ...symbol,
-                ...(fundData || {}),
-                ...(priceData || {}),
-                ticker: ticker,
+                ...symbol,                    // Base: ticker, name, qty, avg, etc.
+                ...(fundData || {}),          // Add fundamentals (PE, ROE, etc.)
+                ...(priceData || {}),         // Add prices (ltp, prev, etc.)
+                // But restore original symbol fields (qty, avg, etc.)
+                ticker: symbol.ticker || ticker,
+                qty: symbol.qty,              // ✅ Preserve original qty
+                avg: symbol.avg,              // ✅ Preserve original avg
+                name: symbol.name,            // ✅ Preserve original name
                 guidance: guidData ? guidData.guidance : null,
                 insights: guidData ? guidData.insights : null
             };
