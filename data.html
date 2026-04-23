@@ -481,7 +481,14 @@
             const timeout = setTimeout(() => controller.abort(), 30000);
             
             try {
-                const response = await fetch(url, { signal: controller.signal });
+                const response = await fetch(url, { 
+                    signal: controller.signal,
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                });
                 clearTimeout(timeout);
                 
                 if (!response.ok) {
@@ -2141,11 +2148,15 @@ CRITICAL RULES:
         localStorage.removeItem('guidanceData');
         localStorage.removeItem('concallTimestamps');
         localStorage.removeItem('insightsTimestamps');
+        localStorage.removeItem('masterData');  // Clear edited stocks
+        localStorage.removeItem('stocks');
+        localStorage.removeItem('symbols');
+        localStorage.removeItem('unified-symbols');
         dataUpdatedTimes = {};
         guidanceData = {};
         concallTimestamps = {};
         insightsTimestamps = {};
-        log('✅ localStorage cleared');
+        log('✅ localStorage cleared (including all symbol caches)');
         
         // Clear masterData immediately in memory
         masterData = [];
@@ -2275,6 +2286,13 @@ CRITICAL RULES:
         } else if (symbolsData && typeof symbolsData === 'object') {
             symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
         }
+        
+        // DEBUG: Check APOLLO in raw fetch vs parsed
+        const apolloInRaw = results[0]?.symbols?.find(s => s.ticker === 'APOLLOHOSP');
+        log(`   [DEBUG] Raw results[0].symbols APOLLOHOSP: qty=${apolloInRaw?.qty}`);
+        
+        const apolloInParsed = symbolsList?.find(s => s.ticker === 'APOLLOHOSP');
+        log(`   [DEBUG] After parsing symbolsList APOLLOHOSP: qty=${apolloInParsed?.qty}`);
         
         // Debug: Check symbol structure
         log('✅ Step 3: Symbols parsed - ' + (symbolsList?.length || 0) + ' items');
