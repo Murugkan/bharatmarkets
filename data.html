@@ -446,6 +446,7 @@
     let editMode = false;
     let logMessages = [];
     let dataUpdatedTimes = {};
+    let apolloQtyFromJSON = null;  // Global to track qty source
 
     const GITHUB_CONFIG = {
         OWNER: 'murugkan',
@@ -470,7 +471,9 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            const url = `${RAW_GITHUB_URL}/${filePath}?cache=${Date.now()}`;
+            // Force fresh fetch with current timestamp
+            const timestamp = new Date().getTime();
+            const url = `${RAW_GITHUB_URL}/${filePath}?v=${timestamp}`;
             const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
@@ -480,7 +483,12 @@
             const timeout = setTimeout(() => controller.abort(), 30000);
             
             try {
-                const response = await fetch(url, { signal: controller.signal });
+                log(`   Fetching ${filePath}...`);
+                const response = await fetch(url, { 
+                    signal: controller.signal,
+                    cache: 'no-store'
+                });
+                log(`   ✓ Response received for ${filePath}`);
                 clearTimeout(timeout);
                 
                 if (!response.ok) {
@@ -667,6 +675,17 @@
         console.log(fullMsg);
     }
     
+    function clearLogPanel() {
+        logMessages = [];
+        var logBox = document.getElementById('live-log');
+        if (logBox) {
+            logBox.textContent = '';
+        }
+        try {
+            localStorage.removeItem('etl_logs');
+        } catch(e) {}
+    }
+    
     function showToast(msg) {
         var el = document.getElementById('toast');
         el.textContent = msg;
@@ -676,7 +695,6 @@
 
     function renderDataSources() {
         var html = '';
-        log(`🔍 DEBUG: dataUpdatedTimes keys: ${Object.keys(dataUpdatedTimes).join(', ')}`);
         
         DATA_SOURCES.forEach((s, index) => {
             // Fetch count from GitHub with cache bust
@@ -711,7 +729,6 @@
             
             // Get the actual timestamp from dataUpdatedTimes
             var jsonTime = dataUpdatedTimes[s.path] || '—';
-            log(`🔍 DEBUG: Looking up s.path="${s.path}", found="${jsonTime}"`);
             
             // Convert ISO to IST (UTC+5:30)
             var istTime = '—';
@@ -719,7 +736,6 @@
                 try {
                     var date = new Date(jsonTime);
                     istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-                    log(`🔍 DEBUG: Converted "${jsonTime}" to IST: "${istTime}"`);
                 } catch(e) {
                     istTime = jsonTime;
                 }
@@ -892,23 +908,15 @@
         if (storedConcall) {
             try {
                 concallTimestamps = JSON.parse(storedConcall);
-                log(`📥 Loaded concallTimestamps: ${Object.keys(concallTimestamps).length} items`);
-                log(`🔍 DEBUG concallTimestamps: ${JSON.stringify(concallTimestamps)}`);
             } catch(e) {
                 concallTimestamps = {};
-                log(`⚠️ Failed to parse concallTimestamps`);
             }
-        } else {
-            log(`⚠️ No concallTimestamps in localStorage`);
         }
         
         const storedInsights = localStorage.getItem('insightsTimestamps');
         if (storedInsights) {
             try {
                 insightsTimestamps = JSON.parse(storedInsights);
-                log(`📥 Loaded insightsTimestamps: ${Object.keys(insightsTimestamps).length} items`);
-                log(`🔍 DEBUG insightsTimestamps: ${JSON.stringify(insightsTimestamps)}`);
-
             } catch(e) {
                 insightsTimestamps = {};
             }
@@ -2128,7 +2136,10 @@ CRITICAL RULES:
     }
 
     async function loadAllData() {
-        log('🚀 LOAD JSON initiated - clearing all caches...');
+        clearLogPanel();  // Clear old logs first
+        log('════════════════════════════════════════════');
+        log('🚀 LOAD JSON: Starting fresh data cycle');
+        log('════════════════════════════════════════════');
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
@@ -2137,11 +2148,19 @@ CRITICAL RULES:
         localStorage.removeItem('guidanceData');
         localStorage.removeItem('concallTimestamps');
         localStorage.removeItem('insightsTimestamps');
+        localStorage.removeItem('masterData');  // Clear edited stocks
+        localStorage.removeItem('stocks');
+        localStorage.removeItem('symbols');
+        localStorage.removeItem('unified-symbols');
         dataUpdatedTimes = {};
         guidanceData = {};
         concallTimestamps = {};
         insightsTimestamps = {};
-        log('✅ localStorage cleared');
+        log('✅ localStorage cleared (including all symbol caches)');
+        
+        // Clear masterData immediately in memory
+        masterData = [];
+        log('✅ masterData cleared in memory');
         
         // Clear IndexedDB
         return new Promise((resolve) => {
@@ -2159,7 +2178,6 @@ CRITICAL RULES:
                     clearStore.clear();
                     clearTx.oncomplete = () => {
                         log('✅ IndexedDB cleared');
-                        masterData = [];
                         loadFreshData().then(resolve).catch((err) => {
                             log(`❌ Error loading fresh data: ${err.message}`);
                             resolve();
@@ -2186,12 +2204,12 @@ CRITICAL RULES:
     }
     
     async function loadFreshData() {
-        log('📡 Fetching fresh data from GitHub (sequential)...');
+        log('📡 Step 1: Fetching fresh data from GitHub');
         updateStatusButton('⏳ Loading');
         
-        // Clear guidance data to ensure fresh data
         guidanceData = {};
-        
+        apolloQtyFromJSON = null;  // Reset for fresh load
+        log(`   JSON SOURCE tracking enabled`);
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
             const source = DATA_SOURCES[i];
@@ -2199,7 +2217,15 @@ CRITICAL RULES:
             const data = await fetchGitHubData(source.path);
             results.push(data);
             
-            // Log the actual count from JSON
+            // Extract actual symbols array
+            let symbolsArray = null;
+            if (Array.isArray(data)) {
+                symbolsArray = data;
+            } else if (data && data.symbols && Array.isArray(data.symbols)) {
+                symbolsArray = data.symbols;
+            }
+            
+            // Count items
             let count = 0;
             if (Array.isArray(data)) {
                 count = data.length;
@@ -2212,16 +2238,37 @@ CRITICAL RULES:
             } else if (data && typeof data === 'object') {
                 count = Object.keys(data).length;
             }
-            log(`✅ File: ${filename} - ${count} items (${i + 1}/${DATA_SOURCES.length})`);
+            log(`   ${filename}: ${count} items`);
             
-            // For unified-symbols.json, show Apollo qty
-            if (filename === 'unified-symbols.json' && Array.isArray(data)) {
-                const apollo = data.find(s => s.ticker === 'APOLLOHOSP');
-                log(`📥 JSON RAW: APOLLOHOSP qty=${apollo?.qty}, avg=${apollo?.avg}`);
+            // Extract and log APOLLOHOSP qty directly from JSON
+            if (filename === 'unified-symbols.json') {
+                let apolloQty = null;
+                let apolloAvg = null;
+                
+                // Try to find Apollo in the data
+                if (data.symbols && Array.isArray(data.symbols)) {
+                    const apollo = data.symbols.find(s => s.ticker === 'APOLLOHOSP');
+                    if (apollo) {
+                        apolloQty = apollo.qty;
+                        apolloAvg = apollo.avg;
+                    }
+                } else if (Array.isArray(data)) {
+                    const apollo = data.find(s => s.ticker === 'APOLLOHOSP');
+                    if (apollo) {
+                        apolloQty = apollo.qty;
+                        apolloAvg = apollo.avg;
+                    }
+                }
+                
+                if (apolloQty !== null) {
+                    log(`      ✅ [JSON SOURCE] APOLLOHOSP: qty=${apolloQty}, avg=${apolloAvg}`);
+                } else {
+                    log(`      ⚠️ APOLLOHOSP not found in JSON`);
+                }
             }
         }
         
-        log('✅ All files loaded from GitHub');
+        log('✅ Step 2: JSON files fetched from GitHub');
         
         // Fetch guidance.json separately (not in DATA_SOURCES display)
         let guidanceFileData = {};
@@ -2250,13 +2297,18 @@ CRITICAL RULES:
             symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
         }
         
+        // DEBUG: Check APOLLO in raw fetch vs parsed
+        const apolloInRaw = results[0]?.symbols?.find(s => s.ticker === 'APOLLOHOSP');
+        log(`   [DEBUG] Raw results[0].symbols APOLLOHOSP: qty=${apolloInRaw?.qty}`);
+        
+        const apolloInParsed = symbolsList?.find(s => s.ticker === 'APOLLOHOSP');
+        log(`   [DEBUG] After parsing symbolsList APOLLOHOSP: qty=${apolloInParsed?.qty}`);
+        
         // Debug: Check symbol structure
-        if (symbolsList && symbolsList.length > 0) {
-            const firstSym = symbolsList[0];
-            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
-                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
-            }
-        }
+        log('✅ Step 3: Symbols parsed - ' + (symbolsList?.length || 0) + ' items');
+        const apolloAfterParse = symbolsList?.find(s => s.ticker === 'APOLLOHOSP');
+        log(`   └─ APOLLOHOSP: qty=${apolloAfterParse?.qty} (vs SOURCE: ${apolloQtyFromJSON})`);
+        log(`      avg=${apolloAfterParse?.avg}`);
         
         if (!symbolsList || symbolsList.length === 0) {
             log('❌ Could not parse symbols data');
@@ -2267,43 +2319,25 @@ CRITICAL RULES:
         const pricesData = results[1] || {};
         const fundamentalsData = results[2] || {};
         
-        log('📦 Parsing results...');
+        log('✅ Step 4: Processing guidance data');
         
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
-            log(`🔍 DEBUG: guidanceFileData keys: ${Object.keys(guidanceFileData).join(', ')}`);
             Object.keys(guidanceFileData).forEach(ticker => {
                 if (ticker !== '_metadata' && guidanceFileData[ticker]) {
                     guidanceData[ticker] = guidanceFileData[ticker];
-                    
-                    // DEBUG: Log the full structure of this ticker
-                    log(`🔍 DEBUG ${ticker}: ${JSON.stringify(guidanceFileData[ticker]).substring(0, 200)}`);
-                    
-                    // Check if guidance exists
-                    if (guidanceFileData[ticker].guidance) {
-                        log(`🔍 DEBUG ${ticker}.guidance: ${JSON.stringify(guidanceFileData[ticker].guidance).substring(0, 200)}`);
-                        log(`🔍 DEBUG ${ticker}.guidance.date = ${guidanceFileData[ticker].guidance.date}`);
-                    }
-                    
-                    // Check if insights exists
-                    if (guidanceFileData[ticker].insights) {
-                        log(`🔍 DEBUG ${ticker}.insights: ${JSON.stringify(guidanceFileData[ticker].insights).substring(0, 200)}`);
-                        log(`🔍 DEBUG ${ticker}.insights.date = ${guidanceFileData[ticker].insights.date}`);
-                    }
                     
                     // Store ISO timestamp from guidance.date (now using 'date' field instead of 'updated')
                     if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
                         var dateStr = guidanceFileData[ticker].guidance.date;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
-                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.date)`);
                     }
                     // Fallback to old 'updated' field if it exists
                     else if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
                         var dateStr = guidanceFileData[ticker].guidance.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         concallTimestamps[ticker] = isoDate;
-                        log(`✅ Set concallTimestamps[${ticker}] = ${isoDate} (from guidance.updated - legacy)`);
                     }
                     
                     // Store ISO timestamp from insights.date (now using 'date' field instead of 'updated')
@@ -2311,28 +2345,22 @@ CRITICAL RULES:
                         var dateStr = guidanceFileData[ticker].insights.date;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
-                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.date)`);
                     }
                     // Fallback to old 'updated' field if it exists
                     else if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
                         var dateStr = guidanceFileData[ticker].insights.updated;
                         var isoDate = convertDDMMYYtoISO(dateStr);
                         insightsTimestamps[ticker] = isoDate;
-                        log(`✅ Set insightsTimestamps[${ticker}] = ${isoDate} (from insights.updated - legacy)`);
                     }
                 }
             });
-            log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-            log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items: ${JSON.stringify(concallTimestamps)}`);
-            log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items: ${JSON.stringify(insightsTimestamps)}`);
+            log(`✅ Step 4: Guidance loaded - ${Object.keys(guidanceData).length} stocks`);
         }
             saveGuidanceToStorage();
-            log(`💾 Saved timestamps to localStorage`);
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
             priceMap = pricesData.quotes;
-            log('✅ Found prices in "quotes" wrapper');
         } else {
             priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
         }
@@ -2340,7 +2368,6 @@ CRITICAL RULES:
         let fundMap = {};
         if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
             fundMap = fundamentalsData.stocks;
-            log('✅ Found fundamentals in "stocks" wrapper');
         } else {
             fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
         }
@@ -2371,15 +2398,11 @@ CRITICAL RULES:
             mergedStocks.push(merged);
         });
         
-        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
-        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
-        
-        // DEBUG: Track Apollo after merge
+        log(`✅ Step 5: Data merged - ${mergedStocks.length} stocks`);
+        log(`   (unified:${symbolsList?.length || 0} + prices:${Object.keys(priceMap).length} + funds:${Object.keys(fundMap).length})`);
         const apolloMerged = mergedStocks.find(s => s.ticker === 'APOLLOHOSP');
-        log(`🔍 MERGE RESULT: APOLLOHOSP qty=${apolloMerged?.qty}, avg=${apolloMerged?.avg}`);
-        
-        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
-        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
+        log(`   └─ APOLLOHOSP: qty=${apolloMerged?.qty} (vs SOURCE: ${apolloQtyFromJSON})`);
+        log(`      avg=${apolloMerged?.avg}`);
         
         // Open DB without incrementing version - handle store deletion properly
         var req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -2411,7 +2434,9 @@ CRITICAL RULES:
                     // Now save new data
                     masterData = mergedStocks;
                     const apolloSet = masterData.find(s => s.ticker === 'APOLLOHOSP');
-                    log(`🔄 SET masterData: APOLLOHOSP qty=${apolloSet?.qty}, avg=${apolloSet?.avg}`);
+                    log(`✅ Step 6: masterData loaded into memory`);
+                    log(`   └─ APOLLOHOSP: qty=${apolloSet?.qty} (vs SOURCE: ${apolloQtyFromJSON})`);
+                    log(`      avg=${apolloSet?.avg}`);
                     
                     // Use the actual unified-symbols.json updated timestamp
                     const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
@@ -2420,20 +2445,21 @@ CRITICAL RULES:
                     // Process stocks sequentially with promise chain
                     function saveNext(index) {
                         if (index >= mergedStocks.length) {
-                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
+                            log(`✅ Step 7: Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
                             
-                            // DEBUG: Check what's in masterData BEFORE render
+                            // Render UI
                             const apolloBeforeRender = masterData.find(s => s.ticker === 'APOLLOHOSP');
-                            log(`📍 BEFORE renderSymbols(): masterData APOLLOHOSP qty=${apolloBeforeRender?.qty}`);
+                            log(`✅ Step 8: Rendering UI`);
+                            log(`   └─ APOLLOHOSP: qty=${apolloBeforeRender?.qty}, avg=${apolloBeforeRender?.avg}`);
                             
                             updateHeader();
                             renderSymbols();
-                            
-                            // DEBUG: Check what renderSymbols shows
-                            const apolloAfterRender = masterData.find(s => s.ticker === 'APOLLOHOSP');
-                            log(`📍 AFTER renderSymbols(): masterData APOLLOHOSP qty=${apolloAfterRender?.qty}`);
-                            
                             renderDataSources();
+                            
+                            const apolloAfterRender = document.querySelector('[data-ticker="APOLLOHOSP"]');
+                            log(`✅ Step 9: UI rendered`);
+                            log('════════════════════════════════════════════');
+                            
                             updateStatusButton('✅ Ready');
                             showToast('✅ Load complete!');
                             return;
@@ -2500,28 +2526,9 @@ CRITICAL RULES:
     }
 
     async function reloadAuto() {
-        log('🔄 REFRESH: Quick reload from IndexedDB...');
-        updateStatusButton('⏳ Syncing...');
-        
-        try {
-            // Just reload from IndexedDB - no fetch, no clear
-            await loadFromIndexedDB();
-            const apolloFromDB = masterData.find(s => s.ticker === 'APOLLOHOSP');
-            log(`📂 LOADED FROM DB: APOLLOHOSP qty=${apolloFromDB?.qty}`);
-            
-            loadGuidanceFromStorage();
-            
-            renderDataSources();
-            renderSymbols();
-            updateHeader();
-            
-            log(`✅ Synced ${masterData.length} records from IndexedDB`);
-            updateStatusButton('✅ Ready');
-            showToast('✅ Quick sync complete!');
-        } catch (e) {
-            log(`❌ Sync failed: ${e.message}`);
-            updateStatusButton('❌ Error');
-        }
+        clearLogPanel();  // Clear old logs on refresh
+        // Call the same full load process as "LOAD JSON" button
+        await loadAllData();
     }
         
 
