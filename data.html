@@ -468,17 +468,6 @@
         { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
     ];
 
-    // ✅ Simple hash function for content validation
-    function simpleHash(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-        }
-        return Math.abs(hash).toString(16);
-    }
-
     async function fetchGitHubData(filePath) {
         try {
             const url = `${RAW_GITHUB_URL}/${filePath}?cache=${Date.now()}`;
@@ -491,25 +480,12 @@
             const timeout = setTimeout(() => controller.abort(), 30000);
             
             try {
-                // ✅ CRITICAL FIX: Add cache-busting headers to force fresh data from GitHub
-                const response = await fetch(url, {
-                    signal: controller.signal,
-                    headers: {
-                        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    },
-                    cache: 'no-store'
-                });
+                const response = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeout);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
-                
-                // ✅ Log response status to verify fresh data (not 304 cached)
-                const statusType = response.status === 304 ? '⚠️ 304 Cached' : '✅ 200 Fresh';
-                log(`  └─ Response: ${statusType} (${response.headers.get('content-length')} bytes)`);
                 
                 const data = await response.json();
                 
@@ -591,13 +567,11 @@
         try {
             // Load from IndexedDB only - don't clear!
             await loadFromIndexedDB();
-            // ✅ FIX: Don't load from localStorage - it may be stale
-            // loadGuidanceFromStorage();  // REMOVED - was loading stale data
+            loadGuidanceFromStorage();
             
             if (masterData.length > 0) {
-                log(`📊 Loaded: ${masterData.length} records from IndexedDB (local cache)`);
-                log(`⚠️ This is cached data - click 🚀 LOAD JSON to refresh from GitHub`);
-                updateStatusButton('✅ Ready (local cache - click LOAD JSON for fresh)');
+                log(`📊 Loaded: ${masterData.length} records from IndexedDB`);
+                updateStatusButton('✅ Ready');
             } else {
                 log('⚠️ No data. Click LOAD JSON to fetch from GitHub');
                 updateStatusButton('⚠️ No Data');
@@ -2153,35 +2127,16 @@ CRITICAL RULES:
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
-        // ✅ FIX: Clear ALL localStorage entries completely
-        const cacheKeys = [
-            'dataUpdatedTimes',
-            'guidanceData',
-            'concallTimestamps',
-            'insightsTimestamps',
-            'etl_logs',
-            'masterData',
-            'stockDetails'
-        ];
-        
-        // Also clear hash-related entries
-        Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('hash_') || key.startsWith('prev_hash_') || key.startsWith('size_')) {
-                cacheKeys.push(key);
-            }
-        });
-        
-        cacheKeys.forEach(key => {
-            localStorage.removeItem(key);
-        });
-        
-        // ✅ Clear in-memory variables
+        // Clear localStorage
+        localStorage.removeItem('dataUpdatedTimes');
+        localStorage.removeItem('guidanceData');
+        localStorage.removeItem('concallTimestamps');
+        localStorage.removeItem('insightsTimestamps');
         dataUpdatedTimes = {};
         guidanceData = {};
         concallTimestamps = {};
         insightsTimestamps = {};
-        masterData = [];
-        log('✅ All caches cleared (localStorage + memory + IndexedDB)');
+        log('✅ localStorage cleared');
         
         // Clear IndexedDB
         return new Promise((resolve) => {
@@ -2347,10 +2302,8 @@ CRITICAL RULES:
             log(`📌 Concall timestamps: ${Object.keys(concallTimestamps).length} items: ${JSON.stringify(concallTimestamps)}`);
             log(`📌 Insights timestamps: ${Object.keys(insightsTimestamps).length} items: ${JSON.stringify(insightsTimestamps)}`);
         }
-        
-        // ✅ FIX: Save fresh guidance to localStorage (don't load stale version)
-        saveGuidanceToStorage();
-        log(`💾 Saved fresh guidance & timestamps to localStorage`);
+            saveGuidanceToStorage();
+            log(`💾 Saved timestamps to localStorage`);
         
         let priceMap = {};
         if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
