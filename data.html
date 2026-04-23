@@ -650,26 +650,16 @@
     }
 
     function log(msg) {
-        // ONLY log Apollo Hospitals messages - filter everything else
-        if (!msg.includes('APOLLOHOSP') && !msg.includes('Apollo') && !msg.includes('Load JSON')) {
-            return; // Silently skip
-        }
-        
-        var ts = new Date().toLocaleTimeString('en-US', { 
-            hour12: false, 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit'
-        });
+        var ts = new Date().toLocaleTimeString();
         var fullMsg = `[${ts}] ${msg}`;
         logMessages.push(fullMsg);
         var logBox = document.getElementById('live-log');
         if (logBox) {
-            logBox.textContent = logMessages.slice(-50).reverse().join('\n');
+            logBox.textContent = logMessages.slice(-30).reverse().join('\n');
             logBox.scrollTop = 0;
         }
         saveLogs();
-        console.log(fullMsg);
+        console.log(msg);
     }
     
     function showToast(msg) {
@@ -851,8 +841,7 @@
 
                         getAllReq.onsuccess = () => {
                             masterData = getAllReq.result || [];
-                            const apolloFromDB = masterData.find(s => s.ticker === 'APOLLOHOSP');
-                            log(`📂 LOAD→DB: APOLLOHOSP qty=${apolloFromDB?.qty}, avg=${apolloFromDB?.avg}`);
+                            log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
                             resolve();
                         };
                         
@@ -932,10 +921,6 @@
 
     function renderSymbols() {
         var html = '';
-        
-        // DEBUG: Track Apollo at UI rendering
-        const apolloAtRender = masterData?.find(s => s.ticker === 'APOLLOHOSP');
-        log(`🖥️  RENDER→UI: APOLLOHOSP qty=${apolloAtRender?.qty}, avg=${apolloAtRender?.avg}`);
         
         if (!masterData || masterData.length === 0) {
             html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
@@ -2260,10 +2245,6 @@ CRITICAL RULES:
         
         log('📦 Parsing results...');
         
-        // DEBUG: Track Apollo from sources (use symbolsList which is properly extracted)
-        const apolloFromSymbols = symbolsList?.find(s => s.ticker === 'APOLLOHOSP');
-        log(`📥 JSON→FETCH: APOLLOHOSP qty=${apolloFromSymbols?.qty}, avg=${apolloFromSymbols?.avg}`);
-        
         // Extract guidance data and timestamps
         if (guidanceFileData && typeof guidanceFileData === 'object') {
             log(`🔍 DEBUG: guidanceFileData keys: ${Object.keys(guidanceFileData).join(', ')}`);
@@ -2369,10 +2350,6 @@ CRITICAL RULES:
         log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
         log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
         
-        // DEBUG: Track Apollo after merge
-        const apolloMerged = mergedStocks.find(s => s.ticker === 'APOLLOHOSP');
-        log(`📦 MERGE→RESULT: APOLLOHOSP qty=${apolloMerged?.qty}, avg=${apolloMerged?.avg}`);
-        
         if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
         if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
         
@@ -2403,21 +2380,26 @@ CRITICAL RULES:
                 clearStore.clear();
                 
                 clearTx.oncomplete = () => {
-                    // Now save new data
+                    // CRITICAL: Set masterData to fresh data IMMEDIATELY
                     masterData = mergedStocks;
-                    // Use the actual unified-symbols.json updated timestamp
+                    const apolloCheck = mergedStocks.find(s => s.ticker === 'APOLLOHOSP');
+                    log(`✅ masterData updated: APOLLOHOSP qty=${apolloCheck?.qty}`);
+                    
+                    // Render UI immediately with fresh data
+                    renderSymbols();
+                    renderDataSources();
+                    updateHeader();
+                    updateStatusButton('✅ Ready');
+                    showToast('✅ Fresh data loaded!');
+                    
+                    // Now save to IndexedDB in background (doesn't block UI)
                     const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
                     let savedCount = 0;
                     
                     // Process stocks sequentially with promise chain
                     function saveNext(index) {
                         if (index >= mergedStocks.length) {
-                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
-                            updateHeader();
-                            renderSymbols();
-                            renderDataSources();
-                            updateStatusButton('✅ Ready');
-                            showToast('✅ Load complete!');
+                            log(`✅ Background save complete: ${savedCount}/${mergedStocks.length} to IndexedDB`);
                             return;
                         }
                         
@@ -2445,6 +2427,12 @@ CRITICAL RULES:
                 
                 clearTx.onerror = () => {
                     log(`⚠️ Error clearing store`);
+                    // Even if clear fails, use fresh data anyway
+                    masterData = mergedStocks;
+                    renderSymbols();
+                    renderDataSources();
+                    updateHeader();
+                    updateStatusButton('⚠️ Partial load');
                 };
                 
             } catch (err) {
