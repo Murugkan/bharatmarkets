@@ -2499,27 +2499,41 @@ CRITICAL RULES:
         return new Date().toISOString();
     }
 
+    function clearIndexedDB() {
+        return new Promise((resolve) => {
+            const req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onsuccess = (e) => {
+                const db = e.target.result;
+                try {
+                    if (db.objectStoreNames.contains(STORE_NAME)) {
+                        const tx = db.transaction(STORE_NAME, 'readwrite');
+                        const store = tx.objectStore(STORE_NAME);
+                        store.clear();
+                        log('✅ Cleared IndexedDB');
+                    }
+                } catch(err) {
+                    log(`⚠️ Error clearing DB: ${err.message}`);
+                }
+                resolve();
+            };
+            req.onerror = () => resolve();
+        });
+    }
+
     async function reloadAuto() {
-        log('🔄 REFRESH: Quick reload from IndexedDB...');
+        log('🔄 REFRESH: Reloading fresh data...');
         updateStatusButton('⏳ Syncing...');
         
         try {
-            // Just reload from IndexedDB - no fetch, no clear
-            await loadFromIndexedDB();
-            const apolloFromDB = masterData.find(s => s.ticker === 'APOLLOHOSP');
-            log(`📂 LOADED FROM DB: APOLLOHOSP qty=${apolloFromDB?.qty}`);
+            // Force reload fresh data from source (bypass IndexedDB cache)
+            clearIndexedDB();  // Clear old data first
+            await loadFreshData();  // Then load fresh from GitHub/local
             
-            loadGuidanceFromStorage();
-            
-            renderDataSources();
-            renderSymbols();
-            updateHeader();
-            
-            log(`✅ Synced ${masterData.length} records from IndexedDB`);
+            log(`✅ Reloaded ${masterData.length} records`);
             updateStatusButton('✅ Ready');
-            showToast('✅ Quick sync complete!');
+            showToast('✅ Data refreshed!');
         } catch (e) {
-            log(`❌ Sync failed: ${e.message}`);
+            log(`❌ Reload failed: ${e.message}`);
             updateStatusButton('❌ Error');
         }
     }
