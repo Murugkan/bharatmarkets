@@ -560,7 +560,24 @@
         
         try {
             await loadFromIndexedDB();
-            // Don't load from localStorage - may be stale
+            
+            // ✅ Load timestamps from localStorage (even if not loading guidance data)
+            const storedConcall = localStorage.getItem('concallTimestamps');
+            if (storedConcall) {
+                try {
+                    concallTimestamps = JSON.parse(storedConcall);
+                } catch(e) {
+                    concallTimestamps = {};
+                }
+            }
+            const storedInsights = localStorage.getItem('insightsTimestamps');
+            if (storedInsights) {
+                try {
+                    insightsTimestamps = JSON.parse(storedInsights);
+                } catch(e) {
+                    insightsTimestamps = {};
+                }
+            }
             
             if (masterData.length > 0) {
                 log(`📊 Loaded: ${masterData.length} records from IndexedDB (local cache)`);
@@ -878,7 +895,6 @@
             try {
                 concallTimestamps = JSON.parse(storedConcall);
                 log(`📥 Loaded concallTimestamps: ${Object.keys(concallTimestamps).length} items`);
-                log(`🔍 DEBUG concallTimestamps: ${JSON.stringify(concallTimestamps)}`);
             } catch(e) {
                 concallTimestamps = {};
                 log(`⚠️ Failed to parse concallTimestamps`);
@@ -892,7 +908,6 @@
             try {
                 insightsTimestamps = JSON.parse(storedInsights);
                 log(`📥 Loaded insightsTimestamps: ${Object.keys(insightsTimestamps).length} items`);
-                log(`🔍 DEBUG insightsTimestamps: ${JSON.stringify(insightsTimestamps)}`);
 
             } catch(e) {
                 insightsTimestamps = {};
