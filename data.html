@@ -2197,6 +2197,7 @@ CRITICAL RULES:
         
         guidanceData = {};
         
+        let apolloQtyFromJSON = null;  // Track qty source
         const results = [];
         for (let i = 0; i < DATA_SOURCES.length; i++) {
             const source = DATA_SOURCES[i];
@@ -2219,20 +2220,13 @@ CRITICAL RULES:
             }
             log(`   ${filename}: ${count} items`);
             
-            // For all symbol data, show Apollo qty/avg
-            let apolloData = null;
+            // Only unified-symbols.json has qty/avg for holdings
             if (filename === 'unified-symbols.json' && Array.isArray(data)) {
-                apolloData = data.find(s => s.ticker === 'APOLLOHOSP');
-            } else if (filename === 'prices.json') {
-                if (data.quotes) apolloData = data.quotes['APOLLOHOSP'];
-                else apolloData = data['APOLLOHOSP'];
-            } else if (filename === 'fundamentals.json') {
-                if (data.stocks) apolloData = data.stocks['APOLLOHOSP'];
-                else apolloData = data['APOLLOHOSP'];
-            }
-            
-            if (apolloData) {
-                log(`   └─ APOLLOHOSP: qty=${apolloData?.qty || apolloData?.qty_held || '—'}, avg=${apolloData?.avg || apolloData?.average || '—'}`);
+                const apolloData = data.find(s => s.ticker === 'APOLLOHOSP');
+                if (apolloData) {
+                    apolloQtyFromJSON = apolloData.qty;  // Capture source
+                    log(`      └─ [SOURCE] APOLLOHOSP: qty=${apolloData.qty}, avg=${apolloData.avg}`);
+                }
             }
         }
         
@@ -2268,7 +2262,8 @@ CRITICAL RULES:
         // Debug: Check symbol structure
         log('✅ Step 3: Symbols parsed - ' + (symbolsList?.length || 0) + ' items');
         const apolloAfterParse = symbolsList?.find(s => s.ticker === 'APOLLOHOSP');
-        log(`   └─ APOLLOHOSP: qty=${apolloAfterParse?.qty}, avg=${apolloAfterParse?.avg}`);
+        log(`   └─ APOLLOHOSP: qty=${apolloAfterParse?.qty} (vs SOURCE: ${apolloQtyFromJSON})`);
+        log(`      avg=${apolloAfterParse?.avg}`);
         
         if (!symbolsList || symbolsList.length === 0) {
             log('❌ Could not parse symbols data');
@@ -2363,8 +2358,10 @@ CRITICAL RULES:
         });
         
         log(`✅ Step 5: Data merged - ${mergedStocks.length} stocks`);
+        log(`   (unified:${symbolsList?.length || 0} + prices:${Object.keys(priceMap).length} + funds:${Object.keys(fundMap).length})`);
         const apolloMerged = mergedStocks.find(s => s.ticker === 'APOLLOHOSP');
-        log(`   └─ APOLLOHOSP: qty=${apolloMerged?.qty}, avg=${apolloMerged?.avg}`);
+        log(`   └─ APOLLOHOSP: qty=${apolloMerged?.qty} (vs SOURCE: ${apolloQtyFromJSON})`);
+        log(`      avg=${apolloMerged?.avg}`);
         
         // Open DB without incrementing version - handle store deletion properly
         var req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -2397,7 +2394,8 @@ CRITICAL RULES:
                     masterData = mergedStocks;
                     const apolloSet = masterData.find(s => s.ticker === 'APOLLOHOSP');
                     log(`✅ Step 6: masterData loaded into memory`);
-                    log(`   └─ APOLLOHOSP: qty=${apolloSet?.qty}, avg=${apolloSet?.avg}`);
+                    log(`   └─ APOLLOHOSP: qty=${apolloSet?.qty} (vs SOURCE: ${apolloQtyFromJSON})`);
+                    log(`      avg=${apolloSet?.avg}`);
                     
                     // Use the actual unified-symbols.json updated timestamp
                     const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
