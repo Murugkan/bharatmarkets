@@ -481,9 +481,12 @@
 
     async function fetchGitHubData(filePath) {
         try {
-            // ✅ CRITICAL: Random parameter forces GitHub CDN to always serve fresh
-            const cacheBreaker = Math.random().toString(36).substring(7);
-            const url = `${RAW_GITHUB_URL}/${filePath}?nocache=${cacheBreaker}`;
+            // ✅ Get PAT from storage for authenticated requests (no cache)
+            const pat = localStorage.getItem('github_pat');
+            
+            // ✅ Use GitHub API instead of raw.githubusercontent.com (API bypasses all caching with auth)
+            const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filePath}?ref=${GITHUB_CONFIG.BRANCH}`;
+            
             const fetchTime = new Date().toISOString();
             
             log(`📡 Fetching: ${filePath}`);
@@ -493,9 +496,12 @@
             const timeout = setTimeout(() => controller.abort(), 30000);
             
             try {
-                // ✅ CRITICAL FIX: cache: 'no-store' + random URL param = forces fresh data
-                const response = await fetch(url, {
+                // ✅ CRITICAL FIX: Use GitHub API with PAT - no caching possible
+                const headers = pat ? { 'Authorization': `token ${pat}` } : {};
+                
+                const response = await fetch(apiUrl, {
                     signal: controller.signal,
+                    headers: headers,
                     cache: 'no-store'
                 });
                 clearTimeout(timeout);
@@ -504,11 +510,13 @@
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
-                // ✅ Log response status to verify fresh data (not 304 cached)
-                const statusType = response.status === 304 ? '⚠️ 304 Cached' : '✅ 200 Fresh';
-                log(`  └─ Response: ${statusType} (${response.headers.get('content-length')} bytes)`);
+                // ✅ Log response status
+                log(`  └─ Response: ✅ 200 Fresh (${response.headers.get('content-length')} bytes)`);
                 
-                const data = await response.json();
+                // ✅ GitHub API returns base64 encoded content
+                const apiResponse = await response.json();
+                const decodedContent = atob(apiResponse.content);
+                const data = JSON.parse(decodedContent);
                 
                 // CRITICAL: Sanitize immediately after fetching to prevent corruption spread
                 const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
