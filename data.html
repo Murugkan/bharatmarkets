@@ -1905,57 +1905,15 @@ CRITICAL RULES:
     }
 
     function saveChanges() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT required to save');
-            return;
-        }
+        // Do nothing - edits are temporary only
+        // Do NOT save to IndexedDB or modify masterData
+        showToast('⚠️ Edits are temporary (session only) - refresh to revert');
         
-        log('💾 Saving changes...');
-        
-        // Get all edited values
-        document.querySelectorAll('.qty-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newQty = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.qty = newQty;
-        });
-        
-        document.querySelectorAll('.avg-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newAvg = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.avg = newAvg;
-        });
-        
-        // Upload to GitHub
-        uploadUnifiedSymbols(pat);
-        
-        // Save to IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            var transaction = db.transaction(STORE_NAME, 'readwrite');
-            var store = transaction.objectStore(STORE_NAME);
-            
-            // Add updated timestamp to all stocks
-            const now = new Date().toLocaleTimeString();
-            masterData.forEach(stock => {
-                stock.updated = now;
-                store.put(stock);
-            });
-            
-            transaction.oncomplete = () => {
-                log('✅ Changes saved to IndexedDB');
-                editMode = false;
-                document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
-                document.getElementById('save-section').style.display = 'none';
-                document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
-                updateHeader();
-                renderSymbols();
-                showToast('✅ Saved!');
-            };
-        };
+        // Just exit edit mode
+        editMode = false;
+        document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+        document.getElementById('save-section').style.display = 'none';
+        document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
     }
     
     function uploadUnifiedSymbols(pat) {
