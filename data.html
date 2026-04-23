@@ -2219,10 +2219,20 @@ CRITICAL RULES:
             }
             log(`   ${filename}: ${count} items`);
             
-            // For unified-symbols.json, show Apollo qty
+            // For all symbol data, show Apollo qty/avg
+            let apolloData = null;
             if (filename === 'unified-symbols.json' && Array.isArray(data)) {
-                const apollo = data.find(s => s.ticker === 'APOLLOHOSP');
-                log(`   └─ APOLLOHOSP: qty=${apollo?.qty}, avg=${apollo?.avg}`);
+                apolloData = data.find(s => s.ticker === 'APOLLOHOSP');
+            } else if (filename === 'prices.json') {
+                if (data.quotes) apolloData = data.quotes['APOLLOHOSP'];
+                else apolloData = data['APOLLOHOSP'];
+            } else if (filename === 'fundamentals.json') {
+                if (data.stocks) apolloData = data.stocks['APOLLOHOSP'];
+                else apolloData = data['APOLLOHOSP'];
+            }
+            
+            if (apolloData) {
+                log(`   └─ APOLLOHOSP: qty=${apolloData?.qty || apolloData?.qty_held || '—'}, avg=${apolloData?.avg || apolloData?.average || '—'}`);
             }
         }
         
