@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
     <title>Onyx | Drill Analysis</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root{--bg:#060c18;--s1:#0a0e1a;--card:#0d1222;--b1:#1a2332;--tx1:#f0f6ff;--tx3:#7a8fa0;--ac:#00f2ff;--gr:#00e896;--rd:#ff6b85;--yw:#ffbf47}
         *{margin:0;padding:0;box-sizing:border-box}
@@ -43,9 +42,6 @@
         
         .placeholder{text-align:center;padding:40px 20px;color:var(--tx3)}
         .placeholder-emoji{font-size:32px;margin-bottom:12px}
-        .chart-wrapper{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;overflow:hidden}
-        #mainChart{width:100%;height:400px}
-        #volumeChart{width:100%;height:100px}
         .tbd{color:#ff9800;opacity:.7;font-weight:700}
         
         /* TBD Link - Clickable */
@@ -139,11 +135,6 @@ const tbdLink = (label) => {
 // Get URL param
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
-
-let chartCache = {}, mainChart = null, volumeChart = null, chartSeries = {};
-let durationState = "1d";
-let indicatorState = {sma20:true, sma50:true, ema200:true, volume:true};
-let metricState = "";  // No metric selected initially
 
 console.log('URL Search:', window.location.search);
 console.log('Ticker from URL:', ticker);
@@ -564,90 +555,56 @@ function renderTab(tab) {
             
             </div>
         `;
-        } else if (tab === 'technical') {
-        const s = currentStock;
-        const sym = s.sym || s.ticker || s.symbol;
-        const ltp = num(get(s, 'ltp'));
-        
-        html = `
-            <div style="padding:0;padding-bottom:100px">
-                <!-- Control Row: 3 Dropdowns + Chart Title -->
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;align-items:start">
-                    <!-- Duration Dropdown -->
-                    <div>
-                        <label style="font-size:8px;color:var(--tx3);text-transform:uppercase;display:block;margin-bottom:4px">Duration</label>
-                        <select id="durationSelect" onchange="changeDuration(this.value)" style="width:100%;padding:8px;background:var(--card);border:1px solid var(--b1);color:var(--tx1);border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">
-                            <option value="1d" ${durationState === '1d' ? 'selected' : ''}>1D</option>
-                            <option value="week" ${durationState === 'week' ? 'selected' : ''}>1W</option>
-                            <option value="month" ${durationState === 'month' ? 'selected' : ''}>1M</option>
-                        </select>
-                    </div>
-                    
-                    <!-- Overlays Multiselect -->
-                    <div>
-                        <label style="font-size:8px;color:var(--tx3);text-transform:uppercase;display:block;margin-bottom:4px">Overlays</label>
-                        <div style="position:relative;display:inline-block;width:100%">
-                            <button onclick="toggleDropdown('overlaysDropdown')" style="width:100%;padding:8px;background:var(--card);border:1px solid var(--b1);color:var(--tx1);border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center">
-                                <span>Select</span> <span style="font-size:8px">▼</span>
-                            </button>
-                            <div id="overlaysDropdown" style="position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--card);border:1px solid var(--b1);border-radius:4px;z-index:100;display:none;padding:8px;min-width:180px;box-shadow:0 4px 12px rgba(0,0,0,.3)">
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_sma20" ${indicatorState.sma20 ? 'checked' : ''} onchange="toggleIndicator('sma20')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>SMA20</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_sma50" ${indicatorState.sma50 ? 'checked' : ''} onchange="toggleIndicator('sma50')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>SMA50</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_ema200" ${indicatorState.ema200 ? 'checked' : ''} onchange="toggleIndicator('ema200')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>EMA200</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_volume" ${indicatorState.volume ? 'checked' : ''} onchange="toggleIndicator('volume')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>Volume</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Metrics Dropdown -->
-                    <div>
-                        <label style="font-size:8px;color:var(--tx3);text-transform:uppercase;display:block;margin-bottom:4px">Metric</label>
-                        <select id="metricSelect" onchange="changeMetric(this.value)" style="width:100%;padding:8px;background:var(--card);border:1px solid var(--b1);color:var(--tx1);border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">
-                            <option value="">None</option>
-                            <option value="eps">EPS</option>
-                            <option value="net">Net Income</option>
-                            <option value="rev">Revenue</option>
-                            <option value="ebitda">EBITDA</option>
-                            <option value="roe">ROE %</option>
-                            <option value="opm">OPM %</option>
-                            <option value="debt_eq">Debt/Eq</option>
-                            <option value="cfo">Cash Flow Op</option>
-                        </select>
-                    </div>
-                    
-                    <!-- Chart Title + Price -->
-                    <div style="text-align:right;padding-top:8px">
-                        <div style="font-size:10px;color:var(--ac);font-weight:700">${sym}</div>
-                        <div style="font-size:12px;color:var(--tx1);font-weight:800">₹${Math.round(ltp)}</div>
-                    </div>
-                </div>
-                
-                <!-- Chart -->
-                <div class="chart-wrapper">
-                    <div id="mainChart" style="width:100%;height:400px;"></div>
-                </div>
-                
-                <!-- Volume Chart -->
-                <div class="chart-wrapper" style="margin-top:12px">
-                    <div id="volumeChart" style="width:100%;height:100px;"></div>
+    } else if (tab === 'technical') {
+        html = `<div style="padding:0;padding-bottom:100px">
+            <!-- METRICS MULTI-SELECT CONTROLS -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:12px">
+                <div style="font-size:9px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:8px">📊 Select Metrics (Multi-Select) - Real Quarterly Data</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                    <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;background:rgba(0,242,255,.05);transition:all .2s">
+                        <input type="checkbox" id="metric_eps" onchange="toggleMetric('eps')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer">
+                        <span>EPS</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;background:rgba(0,242,255,.05);transition:all .2s">
+                        <input type="checkbox" id="metric_net" onchange="toggleMetric('net')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer">
+                        <span>Net Income</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;background:rgba(0,242,255,.05);transition:all .2s">
+                        <input type="checkbox" id="metric_rev" onchange="toggleMetric('rev')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer">
+                        <span>Revenue</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;background:rgba(0,242,255,.05);transition:all .2s">
+                        <input type="checkbox" id="metric_ebitda" onchange="toggleMetric('ebitda')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer">
+                        <span>EBITDA</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;background:rgba(0,242,255,.05);transition:all .2s">
+                        <input type="checkbox" id="metric_opm" onchange="toggleMetric('opm')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer">
+                        <span>OPM %</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;background:rgba(0,242,255,.05);transition:all .2s">
+                        <input type="checkbox" id="metric_debt" onchange="toggleMetric('debt')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer">
+                        <span>Debt</span>
+                    </label>
                 </div>
             </div>
-        `;
-        
-        setTimeout(() => loadAndRenderChart(sym), 500);
 
+            <!-- PRICE + METRICS CHART -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
+                <div id="technicalChart" style="width:100%;height:450px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+                <div style="font-size:8px;color:var(--tx3);margin-top:6px;padding:6px;text-align:center">
+                    💡 <strong>Scroll to zoom</strong> | Drag to pan | Right-click to reset zoom
+                </div>
+            </div>
+
+            <!-- METRIC HISTORY INFO -->
+            <div id="metricInfo" style="font-size:9px;color:var(--tx3);padding:10px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1);margin-bottom:12px">
+                Select metrics to display quarterly historical trends with real data from fundamentals
+            </div>
+        </div>`;
+
+        setTimeout(() => {
+            loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+        }, 500);
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -1044,244 +1001,146 @@ function renderInsightsTab(ticker, insights) {
     document.getElementById('content').innerHTML = html;
 }
 
+// TECHNICAL TAB - METRICS
+let metricsState = {};  // Track which metrics are selected
+let technicalChart = null;
+let metricSeries = {};
 
-function toggleDropdown(id) {
-    const dropdown = document.getElementById(id);
-    if (dropdown) dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+function toggleMetric(metricKey) {
+    metricsState[metricKey] = !metricsState[metricKey];
+    const checkbox = document.getElementById(`metric_${metricKey}`);
+    if (checkbox) checkbox.checked = metricsState[metricKey];
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
 }
 
-document.addEventListener('click', function(event) {
-    const overlays = document.getElementById('overlaysDropdown');
-    const metrics = document.getElementById('metricsDropdown');
-    if (!event.target.closest('#overlaysDropdown') && !event.target.closest('button[onclick*="overlays"]')) {
-        if (overlays) overlays.style.display = 'none';
-    }
-    if (!event.target.closest('#metricsDropdown') && !event.target.closest('button[onclick*="metrics"]')) {
-        if (metrics) metrics.style.display = 'none';
-    }
-});
-
-document.addEventListener('click', function(event) {
-    if (event.target.closest('#overlaysDropdown') || event.target.closest('#metricsDropdown')) {
-        event.stopPropagation();
-    }
-});
-
-function changeDuration(duration) {
-    durationState = duration;
-    const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
-    if (chartCache[sym]) renderTVChart(sym, chartCache[sym]);
-}
-
-function toggleIndicator(name) {
-    indicatorState[name] = !indicatorState[name];
-    const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
-    if (chartCache[sym]) renderTVChart(sym, chartCache[sym]);
-}
-
-function changeMetric(metricKey) {
-    metricState = metricKey;
-    const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
-    if (chartCache[sym]) renderTVChart(sym, chartCache[sym]);
-}
-
-async function loadAndRenderChart(sym) {
-    const container = document.getElementById('mainChart');
-    if (!container) {
-        console.error('Chart container not found');
+async function loadAndRenderTechnicalChart(sym) {
+    const container = document.getElementById('technicalChart');
+    const infoDiv = document.getElementById('metricInfo');
+    
+    if (!container || !currentStock) {
+        console.error('Chart container or stock not found');
         return;
     }
-    
-    console.log(`Loading chart for ${sym}...`);
-    
-    if (chartCache[sym]) {
-        console.log(`Using cached data for ${sym}`);
-        renderTVChart(sym, chartCache[sym]);
-        return;
-    }
-    
+
     try {
+        // Get price bars from ./charts/{SYM}.json
         const url = `./charts/${sym}.json`;
-        console.log(`Fetching: ${url}`);
         const res = await fetch(url);
         
         if (!res.ok) {
-            console.error(`Failed to fetch: ${res.status} ${res.statusText}`);
-            container.innerHTML = `<div style="padding:20px;color:red">Failed to load chart data (${res.status})</div>`;
+            container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Failed to load chart (${res.status})</div>`;
             return;
         }
         
         const data = await res.json();
-        console.log(`Loaded ${data.bars ? data.bars.length : 0} bars`);
+        const bars = data.bars || [];
         
-        if (data.bars && data.bars.length > 0) {
-            chartCache[sym] = data.bars;
-            console.log(`Chart data cached, rendering...`);
-            renderTVChart(sym, data.bars);
+        if (bars.length === 0) {
+            container.innerHTML = '<div style="padding:20px;color:red;font-size:10px">No price data</div>';
+            return;
+        }
+
+        // Render price chart with metrics
+        renderPriceAndMetricsChart(container, sym, bars);
+        
+        // Update metric info
+        const selected = Object.keys(metricsState).filter(k => metricsState[k]);
+        if (selected.length === 0) {
+            infoDiv.textContent = '📊 Select metrics above to display quarterly historical trends';
         } else {
-            console.error('No bars in response');
-            container.innerHTML = '<div style="padding:20px;color:red">No chart data available</div>';
-        }
-    } catch (e) {
-        console.error('Chart loading error:', e);
-        container.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`;
-    }
-}
-
-function aggregateBars(allBars, duration) {
-    if (duration === '1d') return allBars.slice(-10);
-    if (duration === 'week') {
-        const grouped = {};
-        allBars.forEach(bar => {
-            const date = new Date(bar.d);
-            const dayOfWeek = date.getDay();
-            if (dayOfWeek === 0 || dayOfWeek === 6) return;
-            const day = date.getDate();
-            const month = date.getMonth();
-            const year = date.getFullYear();
-            const currDate = new Date(year, month, day);
-            const first = currDate.getDate() - currDate.getDay() + 1;
-            const weekStart = new Date(year, month, first);
-            const weekKey = weekStart.toISOString().split('T')[0];
-            if (!grouped[weekKey]) grouped[weekKey] = {d: bar.d, o: parseFloat(bar.o), h: parseFloat(bar.h), l: parseFloat(bar.l), c: parseFloat(bar.c), v: parseFloat(bar.v)};
-            else { grouped[weekKey].h = Math.max(grouped[weekKey].h, parseFloat(bar.h)); grouped[weekKey].l = Math.min(grouped[weekKey].l, parseFloat(bar.l)); grouped[weekKey].c = parseFloat(bar.c); grouped[weekKey].v += parseFloat(bar.v); grouped[weekKey].d = bar.d; }
-        });
-        return Object.values(grouped).slice(-52);
-    }
-    if (duration === 'month') {
-        const grouped = {};
-        allBars.forEach(bar => {
-            const date = new Date(bar.d);
-            const dayOfWeek = date.getDay();
-            if (dayOfWeek === 0 || dayOfWeek === 6) return;
-            const monthKey = date.toISOString().substring(0, 7);
-            if (!grouped[monthKey]) grouped[monthKey] = {d: bar.d, o: parseFloat(bar.o), h: parseFloat(bar.h), l: parseFloat(bar.l), c: parseFloat(bar.c), v: parseFloat(bar.v)};
-            else { grouped[monthKey].h = Math.max(grouped[monthKey].h, parseFloat(bar.h)); grouped[monthKey].l = Math.min(grouped[monthKey].l, parseFloat(bar.l)); grouped[monthKey].c = parseFloat(bar.c); grouped[monthKey].v += parseFloat(bar.v); grouped[monthKey].d = bar.d; }
-        });
-        return Object.values(grouped).slice(-60);
-    }
-    return allBars;
-}
-
-function renderTVChart(sym, allBars) {
-    const mc = document.getElementById('mainChart'), vc = document.getElementById('volumeChart');
-    if (!mc) {
-        console.error('mainChart container not found');
-        return;
-    }
-    
-    if (mainChart) mainChart.remove();
-    if (volumeChart) volumeChart.remove();
-    
-    const bars = aggregateBars(allBars, durationState);
-    console.log(`renderTVChart: ${durationState}, bars=${bars.length}, allBars=${allBars.length}`);
-    
-    if (!bars || bars.length === 0) {
-        mc.innerHTML = '<div style="padding:20px;color:red">No data available</div>';
-        return;
-    }
-    
-    const containerWidth = mc.clientWidth;
-    console.log(`Container width: ${containerWidth}px, bars: ${bars.length}`);
-    
-    if (containerWidth < 100) {
-        console.warn('Container too narrow, waiting...');
-        setTimeout(() => renderTVChart(sym, allBars), 300);
-        return;
-    }
-    
-    let barSpacing = Math.max(2, Math.floor(containerWidth / bars.length * 0.9));
-    barSpacing = Math.max(6, Math.min(30, barSpacing));
-    console.log(`Bar spacing: ${barSpacing}px`);
-    
-    const opts = {
-        layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},
-        timeScale:{timeVisible:false,secondsVisible:false,barSpacing:barSpacing,fixLeftEdge:true,fixRightEdge:false},
-        rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332',autoScale:true,formatPrice:(p)=>Math.round(p).toString()},
-        grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}
-    };
-    
-    try {
-        mainChart = LightweightCharts.createChart(mc, opts);
-        chartSeries = {};
-        
-        const cs = mainChart.addCandlestickSeries({upColor:'#00d084',downColor:'#ff3b5c',borderUpColor:'#00e896',borderDownColor:'#ff6b85',wickUpColor:'#00e896',wickDownColor:'#ff6b85'});
-        const cd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),open:parseFloat(b.o),high:parseFloat(b.h),low:parseFloat(b.l),close:parseFloat(b.c)}));
-        cs.setData(cd);
-        chartSeries.candle = cs;
-        console.log(`Candlestick data: ${cd.length} points`);
-        
-        if (indicatorState.sma20) addMA(bars, cd, 20, '#f59e0b', 'SMA20', mainChart);
-        if (indicatorState.sma50) addMA(bars, cd, 50, '#3b82f6', 'SMA50', mainChart);
-        if (indicatorState.ema200) addEMA(bars, cd, 200, '#a855f7', 'EMA200', mainChart);
-        
-        const ltp = num(get(currentStock, 'ltp'));
-        const ls = mainChart.addLineSeries({color:'#00f2ff',lineWidth:2,lineStyle:1,title:'LTP'});
-        ls.setData(cd.map(c => ({time:c.time,value:ltp})));
-        chartSeries.LTP = ls;
-        console.log(`LTP line: ${ltp}`);
-        
-        // Add metric overlay if selected
-        if (metricState && currentStock.quarterly && currentStock.quarterly.length > 0) {
-            addMetricOverlay(currentStock.quarterly, cd, metricState, mainChart);
+            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()} | Data: Real quarterly fundamentals from ${currentStock.quarterly ? currentStock.quarterly.length : 0} quarters`;
         }
         
-        mainChart.timeScale().fitContent();
-        
-        if (indicatorState.volume && vc) {
-            const vopts = {layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},timeScale:{timeVisible:false,secondsVisible:false,barSpacing:barSpacing,fixLeftEdge:true,fixRightEdge:false},rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332'},grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}};
-            volumeChart = LightweightCharts.createChart(vc, vopts);
-            const vs = volumeChart.addHistogramSeries({color:'rgba(0,232,150,.2)'});
-            const vd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),value:parseFloat(b.v)/1000000,color:b.c>=b.o?'rgba(0,232,150,.3)':'rgba(255,107,133,.3)'}));
-            vs.setData(vd);
-            volumeChart.timeScale().fitContent();
-            mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => {if(volumeChart)volumeChart.timeScale().setVisibleLogicalRange(r);});
-            console.log(`Volume chart: ${vd.length} bars`);
-        }
-        
-        console.log('✅ Chart rendered successfully');
     } catch (e) {
         console.error('Chart error:', e);
-        mc.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`;
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
     }
 }
 
-function addMA(bars, cd, period, color, name, chart) {
-    if (bars.length < period) return;
-    const vals = [];
-    for (let i = 0; i < bars.length; i++) {
-        if (i < period - 1) vals.push(null);
-        else { const sum = bars.slice(i-period+1,i+1).reduce((a,b)=>a+parseFloat(b.c),0); vals.push(sum/period); }
+function renderPriceAndMetricsChart(container, sym, bars) {
+    if (technicalChart) technicalChart.remove();
+    if (!container.clientWidth || container.clientWidth < 100) {
+        setTimeout(() => renderPriceAndMetricsChart(container, sym, bars), 300);
+        return;
     }
-    const ls = chart.addLineSeries({color:color,lineWidth:1.5,title:name});
-    const ld = cd.map((c,i)=>({time:c.time,value:vals[i]})).filter(d=>d.value!==null);
-    ls.setData(ld);
-    chartSeries[name] = ls;
+
+    const opts = {
+        layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
+        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
+        leftPriceScale: {
+            textColor: '#7a8fa0',
+            borderColor: '#1a2332',
+            autoScale: true,
+            formatPrice: (p) => {
+                // Format with NO decimals
+                if (typeof p === 'number') {
+                    return Math.round(p).toString();
+                }
+                return p;
+            }
+        },
+        rightPriceScale: {
+            textColor: '#7a8fa0',
+            borderColor: '#1a2332',
+            autoScale: true,
+            formatPrice: (p) => {
+                // Format with NO decimals
+                if (typeof p === 'number') {
+                    return Math.round(p).toString();
+                }
+                return p;
+            }
+        },
+        grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
+    };
+
+    try {
+        technicalChart = LightweightCharts.createChart(container, opts);
+        metricSeries = {};
+
+        // Add candlesticks
+        const cs = technicalChart.addCandlestickSeries({
+            upColor: '#00d084', downColor: '#ff3b5c',
+            borderUpColor: '#00e896', borderDownColor: '#ff6b85',
+            wickUpColor: '#00e896', wickDownColor: '#ff6b85'
+        });
+
+        const cd = bars.map(b => ({
+            time: Math.floor(new Date(b.d).getTime() / 1000),
+            open: parseFloat(b.o),
+            high: parseFloat(b.h),
+            low: parseFloat(b.l),
+            close: parseFloat(b.c)
+        }));
+
+        cs.setData(cd);
+        metricSeries.candle = cs;
+        console.log(`✅ Price chart: ${cd.length} bars`);
+
+        // Add selected metrics as lines
+        const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
+        
+        selectedMetrics.forEach(metricKey => {
+            addMetricSeries(metricKey, cd, technicalChart);
+        });
+
+        technicalChart.timeScale().fitContent();
+        console.log(`✅ Technical chart rendered`);
+        
+    } catch (e) {
+        console.error('Render error:', e);
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
+    }
 }
 
-function addEMA(bars, cd, period, color, name, chart) {
-    if (bars.length < period) return;
-    const k = 2/(period+1);
-    const vals = [];
-    let ema = null;
-    for (let i = 0; i < bars.length; i++) {
-        const p = parseFloat(bars[i].c);
-        ema = i === 0 ? p : p*k + ema*(1-k);
-        vals.push(ema);
-    }
-    const ls = chart.addLineSeries({color:color,lineWidth:1.5,title:name});
-    const ld = cd.map((c,i)=>({time:c.time,value:vals[i]}));
-    ls.setData(ld);
-    chartSeries[name] = ls;
-}
+function addMetricSeries(metricKey, cd, chart) {
+    const s = currentStock;
+    if (!s || !s.quarterly || s.quarterly.length === 0) return;
 
-function addMetricOverlay(quarterly, cd, metricKey, chart) {
-    if (!quarterly || quarterly.length === 0) return;
+    // Get all quarterly data points
+    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
     
-    // Sort quarterly data by date
-    const sorted = [...quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
-    
-    // Extract metric values with dates
+    // Filter metric data that exists
     const metricData = sorted
         .filter(q => q[metricKey] !== undefined && q[metricKey] !== null)
         .map(q => ({
@@ -1289,31 +1148,40 @@ function addMetricOverlay(quarterly, cd, metricKey, chart) {
             value: parseFloat(q[metricKey]),
             time: Math.floor(new Date(q.d).getTime() / 1000)
         }));
-    
+
     if (metricData.length === 0) {
         console.warn(`No data for metric: ${metricKey}`);
         return;
     }
-    
-    // Create a separate right price scale for this metric
-    const metricColor = '#e11d48';  // Rose color
-    const metricLabel = {eps:'EPS', net:'Net Inc', rev:'Revenue', ebitda:'EBITDA', roe:'ROE%', opm:'OPM%', debt_eq:'D/E', cfo:'CFO'}[metricKey] || metricKey;
-    
+
+    // Color mapping
+    const config = {
+        eps: {color: '#f59e0b', label: 'EPS'},
+        net: {color: '#26de81', label: 'Net Inc'},
+        rev: {color: '#00d2d3', label: 'Revenue'},
+        ebitda: {color: '#9f7aea', label: 'EBITDA'},
+        opm: {color: '#3b82f6', label: 'OPM%'},
+        debt: {color: '#ff6b6b', label: 'Debt'}
+    };
+
+    const cfg = config[metricKey] || {color: '#00f2ff', label: metricKey};
+
+    // Add as line series on SAME chart (using default left price scale)
+    // This overlays it on the candlestick chart
     const ls = chart.addLineSeries({
-        color: metricColor,
+        color: cfg.color,
         lineWidth: 2,
-        title: metricLabel,
-        priceScaleId: 'right'
+        lineStyle: 1,  // Solid line
+        title: `${cfg.label} (Quarterly)`
     });
-    
+
     ls.setData(metricData.map(m => ({time: m.time, value: m.value})));
-    chartSeries[metricLabel] = ls;
-    
-    console.log(`Metric overlay: ${metricLabel}, ${metricData.length} points`);
+    metricSeries[cfg.label] = ls;
+
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters, range [${Math.min(...metricData.map(m=>m.value)).toFixed(2)}, ${Math.max(...metricData.map(m=>m.value)).toFixed(2)}]`);
 }
 
 
-</script>
 
 </body>
 </html>
