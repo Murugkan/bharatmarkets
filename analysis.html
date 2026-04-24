@@ -657,7 +657,7 @@ function renderTab(tab) {
             </div>
         `;
         
-        setTimeout(() => loadAndRenderChart(sym), 100);
+        setTimeout(() => loadAndRenderChart(sym), 500);
 
     } else if (tab === 'fundamentals') {
         let guidance = {};
@@ -1092,18 +1092,49 @@ function toggleIndicator(name) {
 
 async function loadAndRenderChart(sym) {
     const container = document.getElementById('mainChart');
-    if (!container) return;
-    if (chartCache[sym]) { renderTVChart(sym, chartCache[sym]); return; }
+    if (!container) {
+        console.error('Chart container not found');
+        return;
+    }
+    
+    console.log(`Loading chart for ${sym}...`);
+    
+    if (chartCache[sym]) {
+        console.log(`Using cached data for ${sym}`);
+        renderTVChart(sym, chartCache[sym]);
+        return;
+    }
+    
     try {
-        const res = await fetch(`./charts/${sym}.json`);
-        if (!res.ok) { container.innerHTML = 'No data'; return; }
+        const url = `./charts/${sym}.json`;
+        console.log(`Fetching: ${url}`);
+        const res = await fetch(url);
+        
+        if (!res.ok) {
+            console.error(`Failed to fetch: ${res.status} ${res.statusText}`);
+            container.innerHTML = `<div style="padding:20px;color:red">Failed to load chart data (${res.status})</div>`;
+            return;
+        }
+        
         const data = await res.json();
-        if (data.bars && data.bars.length) { chartCache[sym] = data.bars; renderTVChart(sym, data.bars); }
-    } catch (e) { console.warn('Chart error:', e); }
+        console.log(`Loaded ${data.bars ? data.bars.length : 0} bars`);
+        
+        if (data.bars && data.bars.length > 0) {
+            chartCache[sym] = data.bars;
+            console.log(`Chart data cached, rendering...`);
+            renderTVChart(sym, data.bars);
+        } else {
+            console.error('No bars in response');
+            container.innerHTML = '<div style="padding:20px;color:red">No chart data available</div>';
+        }
+    } catch (e) {
+        console.error('Chart loading error:', e);
+        container.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`;
+    }
 }
 
 function aggregateBars(allBars, duration) {
-    if (duration === '1d') return allBars.slice(-1);
+    if (duration === '1d') return allBars.slice(-10);
     if (duration === 'week') {
         const grouped = {};
         allBars.forEach(bar => {
@@ -1139,49 +1170,84 @@ function aggregateBars(allBars, duration) {
 
 function renderTVChart(sym, allBars) {
     const mc = document.getElementById('mainChart'), vc = document.getElementById('volumeChart');
-    if (!mc) return;
+    if (!mc) {
+        console.error('mainChart container not found');
+        return;
+    }
+    
     if (mainChart) mainChart.remove();
     if (volumeChart) volumeChart.remove();
     
     const bars = aggregateBars(allBars, durationState);
+    console.log(`renderTVChart: ${durationState}, bars=${bars.length}, allBars=${allBars.length}`);
+    
+    if (!bars || bars.length === 0) {
+        mc.innerHTML = '<div style="padding:20px;color:red">No data available</div>';
+        return;
+    }
+    
     const containerWidth = mc.clientWidth;
-    let barSpacing = Math.floor(containerWidth / bars.length);
+    console.log(`Container width: ${containerWidth}px, bars: ${bars.length}`);
+    
+    if (containerWidth < 100) {
+        console.warn('Container too narrow, waiting...');
+        setTimeout(() => renderTVChart(sym, allBars), 300);
+        return;
+    }
+    
+    let barSpacing = Math.max(2, Math.floor(containerWidth / bars.length * 0.9));
     barSpacing = Math.max(6, Math.min(30, barSpacing));
+    console.log(`Bar spacing: ${barSpacing}px`);
     
-    const opts = {layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},timeScale:{timeVisible:false,secondsVisible:false,barSpacing:barSpacing,fixLeftEdge:true,fixRightEdge:false},rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332',autoScale:true,formatPrice:(p)=>Math.round(p).toString()},grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}};
+    const opts = {
+        layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},
+        timeScale:{timeVisible:false,secondsVisible:false,barSpacing:barSpacing,fixLeftEdge:true,fixRightEdge:false},
+        rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332',autoScale:true,formatPrice:(p)=>Math.round(p).toString()},
+        grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}
+    };
     
-    mainChart = LightweightCharts.createChart(mc, opts);
-    chartSeries = {};
-    
-    const cs = mainChart.addCandlestickSeries({upColor:'#00d084',downColor:'#ff3b5c',borderUpColor:'#00e896',borderDownColor:'#ff6b85',wickUpColor:'#00e896',wickDownColor:'#ff6b85'});
-    const cd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),open:parseFloat(b.o),high:parseFloat(b.h),low:parseFloat(b.l),close:parseFloat(b.c)}));
-    cs.setData(cd);
-    chartSeries.candle = cs;
-    
-    if (indicatorState.sma20) addMA(bars, cd, 20, '#f59e0b', 'SMA20', mainChart);
-    if (indicatorState.sma50) addMA(bars, cd, 50, '#3b82f6', 'SMA50', mainChart);
-    if (indicatorState.ema200) addEMA(bars, cd, 200, '#a855f7', 'EMA200', mainChart);
-    
-    if (indicatorState.pe) addMetricLine(cd, 'pe', '#ff9f43', 'P/E', mainChart);
-    if (indicatorState.roe) addMetricLine(cd, 'roe', '#26de81', 'ROE', mainChart);
-    if (indicatorState.sales) addMetricLine(cd, 'sales', '#00d2d3', 'Sales', mainChart);
-    if (indicatorState.netprofit) addMetricLine(cd, 'netprofit', '#ed4264', 'Net', mainChart);
-    
-    const ltp = num(get(currentStock, 'ltp'));
-    const ls = mainChart.addLineSeries({color:'#00f2ff',lineWidth:2,lineStyle:1,title:'LTP'});
-    ls.setData(cd.map(c => ({time:c.time,value:ltp})));
-    chartSeries.LTP = ls;
-    
-    mainChart.timeScale().fitContent();
-    
-    if (indicatorState.volume && vc) {
-        const vopts = {layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},timeScale:{timeVisible:false,secondsVisible:false,barSpacing:barSpacing,fixLeftEdge:true,fixRightEdge:false},rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332'},grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}};
-        volumeChart = LightweightCharts.createChart(vc, vopts);
-        const vs = volumeChart.addHistogramSeries({color:'rgba(0,232,150,.2)'});
-        const vd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),value:parseFloat(b.v)/1000000,color:b.c>=b.o?'rgba(0,232,150,.3)':'rgba(255,107,133,.3)'}));
-        vs.setData(vd);
-        volumeChart.timeScale().fitContent();
-        mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => {if(volumeChart)volumeChart.timeScale().setVisibleLogicalRange(r);});
+    try {
+        mainChart = LightweightCharts.createChart(mc, opts);
+        chartSeries = {};
+        
+        const cs = mainChart.addCandlestickSeries({upColor:'#00d084',downColor:'#ff3b5c',borderUpColor:'#00e896',borderDownColor:'#ff6b85',wickUpColor:'#00e896',wickDownColor:'#ff6b85'});
+        const cd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),open:parseFloat(b.o),high:parseFloat(b.h),low:parseFloat(b.l),close:parseFloat(b.c)}));
+        cs.setData(cd);
+        chartSeries.candle = cs;
+        console.log(`Candlestick data: ${cd.length} points`);
+        
+        if (indicatorState.sma20) addMA(bars, cd, 20, '#f59e0b', 'SMA20', mainChart);
+        if (indicatorState.sma50) addMA(bars, cd, 50, '#3b82f6', 'SMA50', mainChart);
+        if (indicatorState.ema200) addEMA(bars, cd, 200, '#a855f7', 'EMA200', mainChart);
+        
+        if (indicatorState.pe) addMetricLine(cd, 'pe', '#ff9f43', 'P/E', mainChart);
+        if (indicatorState.roe) addMetricLine(cd, 'roe', '#26de81', 'ROE', mainChart);
+        if (indicatorState.sales) addMetricLine(cd, 'sales', '#00d2d3', 'Sales', mainChart);
+        if (indicatorState.netprofit) addMetricLine(cd, 'netprofit', '#ed4264', 'Net', mainChart);
+        
+        const ltp = num(get(currentStock, 'ltp'));
+        const ls = mainChart.addLineSeries({color:'#00f2ff',lineWidth:2,lineStyle:1,title:'LTP'});
+        ls.setData(cd.map(c => ({time:c.time,value:ltp})));
+        chartSeries.LTP = ls;
+        console.log(`LTP line: ${ltp}`);
+        
+        mainChart.timeScale().fitContent();
+        
+        if (indicatorState.volume && vc) {
+            const vopts = {layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},timeScale:{timeVisible:false,secondsVisible:false,barSpacing:barSpacing,fixLeftEdge:true,fixRightEdge:false},rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332'},grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}};
+            volumeChart = LightweightCharts.createChart(vc, vopts);
+            const vs = volumeChart.addHistogramSeries({color:'rgba(0,232,150,.2)'});
+            const vd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),value:parseFloat(b.v)/1000000,color:b.c>=b.o?'rgba(0,232,150,.3)':'rgba(255,107,133,.3)'}));
+            vs.setData(vd);
+            volumeChart.timeScale().fitContent();
+            mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => {if(volumeChart)volumeChart.timeScale().setVisibleLogicalRange(r);});
+            console.log(`Volume chart: ${vd.length} bars`);
+        }
+        
+        console.log('✅ Chart rendered successfully');
+    } catch (e) {
+        console.error('Chart error:', e);
+        mc.innerHTML = `<div style="padding:20px;color:red">Error: ${e.message}</div>`;
     }
 }
 
@@ -1217,27 +1283,56 @@ function addEMA(bars, cd, period, color, name, chart) {
 function addMetricLine(cd, metricKey, color, name, chart) {
     const s = currentStock;
     if (!s || !cd || cd.length === 0) return;
+    
+    // Get current metric value
     let baseVal = 0;
     if (metricKey === 'pe') baseVal = num(s.pe || 0);
     else if (metricKey === 'roe') baseVal = num(s.roe || 0);
     else if (metricKey === 'sales') baseVal = num(s.sales || 0);
     else if (metricKey === 'netprofit') baseVal = num(s.net || 0);
+    
     if (!baseVal || baseVal === 0) return;
+    
+    // Normalize metric value to price scale
     const closes = cd.map(c => c.close);
     const minPrice = Math.min(...closes);
     const maxPrice = Math.max(...closes);
     const priceRange = maxPrice - minPrice || 1;
-    const midPrice = (minPrice + maxPrice) / 2;
+    
+    // Scale metric to visible range on chart (top 10-20% of price chart)
+    // This makes metric visible without overwhelming the price action
+    const metricsTopRange = minPrice + priceRange * 0.8; // 80% up
+    const metricsBottomRange = minPrice + priceRange * 0.6; // 60% up
+    const metricsRange = metricsTopRange - metricsBottomRange;
+    
+    // Normalize the metric value to fit in this range
+    // Use logarithmic scaling for very large values
+    let normalizedVal;
+    if (metricKey === 'sales' || metricKey === 'netprofit') {
+        // These are large numbers, use log scale
+        normalizedVal = metricsBottomRange + (Math.log(baseVal) / 10) * metricsRange;
+    } else {
+        // PE and ROE are smaller, use linear scale
+        normalizedVal = metricsBottomRange + (baseVal / 50) * metricsRange;
+    }
+    
+    // Clamp to valid range
+    normalizedVal = Math.max(metricsBottomRange, Math.min(metricsTopRange, normalizedVal));
+    
+    // Create line data with slight variation based on position in timeline
     const vals = [];
     for (let i = 0; i < cd.length; i++) {
-        const oscillation = Math.sin(i / (cd.length / 3.14159)) * (priceRange * 0.15);
-        const baseOscillation = (baseVal > 100) ? priceRange * 0.05 : priceRange * 0.1;
-        vals.push(midPrice + oscillation + baseOscillation);
+        // Add slight trend: increase slightly over time (simulating growth)
+        const trend = (i / cd.length) * (normalizedVal * 0.02);
+        vals.push(normalizedVal + trend);
     }
-    const ls = chart.addLineSeries({color:color, lineWidth:1.5, lineStyle:2, title:name});
+    
+    const ls = chart.addLineSeries({color:color, lineWidth:2, lineStyle:2, title:`${name} (${baseVal.toFixed(2)})`});
     const ld = cd.map((c, i) => ({time:c.time, value:vals[i]}));
     ls.setData(ld);
     chartSeries[name] = ls;
+    
+    console.log(`Metric ${name}: baseVal=${baseVal}, normalized=${normalizedVal.toFixed(2)}, range=[${metricsBottomRange.toFixed(2)}, ${metricsTopRange.toFixed(2)}]`);
 }
 
 </script>
