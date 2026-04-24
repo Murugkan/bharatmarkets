@@ -43,24 +43,24 @@
         
         .placeholder{text-align:center;padding:40px 20px;color:var(--tx3)}
         .placeholder-emoji{font-size:32px;margin-bottom:12px}
+        .tbd{color:#ff9800;opacity:.7;font-weight:700}
         
-        /* Technical Chart Styles */
+        /* Chart Styles */
         .chart-wrapper{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;overflow:hidden}
-        .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-        .chart-title{font-size:10px;color:var(--ac);font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+        .chart-title{font-size:10px;color:var(--ac);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
         #mainChart{width:100%;height:350px}
         #volumeChart{width:100%;height:80px;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px}
         
         /* Indicator Controls */
         .indicators-panel{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:12px}
         .panel-title{font-size:9px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
-        .control-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+        .control-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
         .control-item{display:flex;align-items:center;gap:6px;padding:6px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1);cursor:pointer;transition:all .2s}
         .control-item:hover{border-color:var(--ac);background:rgba(0,242,255,.1)}
         .control-item input{width:12px;height:12px;cursor:pointer;accent-color:var(--ac)}
         .control-item label{font-size:9px;cursor:pointer;flex:1}
         
-        /* KPI Display */
+        /* KPI Styles */
         .kpi-section{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px}
         .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
         .kpi-item{background:rgba(0,242,255,.05);border:1px solid var(--b1);border-radius:4px;padding:10px;cursor:pointer;transition:all .2s}
@@ -68,7 +68,6 @@
         .kpi-label{font-size:8px;color:var(--tx3);text-transform:uppercase;margin-bottom:4px}
         .kpi-value{font-size:13px;font-weight:700;color:var(--ac)}
         .kpi-item.disabled{opacity:0.4;pointer-events:none}
-        .tbd{color:#ff9800;opacity:.7;font-weight:700}
         
         /* TBD Link - Clickable */
         .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
@@ -141,6 +140,27 @@ let currentStock = null;
 let currentTab = "overview";
 let dataSource = null; // Track where data comes from: 'db' or 'json'
 
+// Helpers
+const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
+const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
+const get = (obj, ...keys) => {
+    for (let k of keys) {
+        if (obj[k] !== undefined) return obj[k];
+    }
+    return '—';
+};
+
+// Generate TBD link with search capability
+const tbdLink = (label) => {
+    const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
+    const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
+};
+
+// Get URL param
+const urlParams = new URLSearchParams(window.location.search);
+const ticker = urlParams.get('drill') || urlParams.get('t');
+
 // Chart and Indicator State
 let chartCache = {};
 let mainChart = null;
@@ -164,28 +184,6 @@ let kpiState = {
     eps: true,
     mcap: true
 };
-
-const urlParams = new URLSearchParams(window.location.search);
-const ticker = urlParams.get('drill') || urlParams.get('t');
-const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
-const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
-const get = (obj, ...keys) => {
-    for (let k of keys) {
-        if (obj[k] !== undefined) return obj[k];
-    }
-    return '—';
-};
-
-// Generate TBD link with search capability
-const tbdLink = (label) => {
-    const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
-    const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
-    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
-};
-
-// Get URL param
-const urlParams = new URLSearchParams(window.location.search);
-const ticker = urlParams.get('drill') || urlParams.get('t');
 
 console.log('URL Search:', window.location.search);
 console.log('Ticker from URL:', ticker);
@@ -615,7 +613,7 @@ function renderTab(tab) {
         
         html = `
             <div style="padding:0;padding-bottom:100px">
-                <!-- Moving Average Controls -->
+                <!-- Indicator Controls -->
                 <div class="indicators-panel">
                     <div class="panel-title">📊 Moving Averages & Volume</div>
                     <div class="control-grid">
@@ -679,9 +677,7 @@ function renderTab(tab) {
                 
                 <!-- Professional Charts -->
                 <div class="chart-wrapper">
-                    <div class="chart-header">
-                        <div class="chart-title">${sym} - Professional Technical Analysis</div>
-                    </div>
+                    <div class="chart-title">${sym} - Professional Technical Analysis</div>
                     <div id="mainChart" style="width:100%;height:350px"></div>
                     <div id="volumeChart" style="width:100%;height:80px;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px"></div>
                 </div>
@@ -689,19 +685,19 @@ function renderTab(tab) {
                 <!-- Price Levels -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px">
                     <div style="font-size:10px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase">Price Levels</div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1)">
+                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1)">
                         <span style="font-size:10px;color:var(--tx3)">Current</span>
                         <span style="font-size:12px;font-weight:700;color:var(--ac)">₹${fmt(ltp)}</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1)">
+                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1)">
                         <span style="font-size:10px;color:var(--tx3)">52W High</span>
                         <span style="font-size:12px;font-weight:700;color:#00e896">₹${fmt(w52h)}</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1)">
+                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1)">
                         <span style="font-size:10px;color:var(--tx3)">52W Low</span>
                         <span style="font-size:12px;font-weight:700;color:#ff6b85">₹${fmt(w52l)}</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+                    <div style="display:flex;justify-content:space-between;padding:8px 0">
                         <span style="font-size:10px;color:var(--tx3)">Position</span>
                         <span style="font-size:12px;font-weight:700;color:var(--ac)">${w52h && w52l ? ((ltp - w52l) / (w52h - w52l) * 100).toFixed(1) : '—'}%</span>
                     </div>
@@ -1107,7 +1103,7 @@ function renderInsightsTab(ticker, insights) {
 }
 
 // ============================================
-// TECHNICAL TAB - Professional Charts with Overlays
+// TECHNICAL TAB - Professional Chart Functions
 // ============================================
 
 function toggleIndicator(name) {
@@ -1156,89 +1152,50 @@ function renderTVChart(sym, bars) {
     const volumeContainer = document.getElementById('volumeChart');
     if (!mainContainer) return;
     
-    // Destroy previous charts
     if (mainChart) mainChart.remove();
     if (volumeChart) volumeChart.remove();
     
-    // Main Chart - Price with MAs
     const mainOptions = {
-        layout: {
-            textColor: '#7a8fa0',
-            background: { color: '#0a0e1a' }
-        },
-        timeScale: {
-            timeVisible: false,
-            secondsVisible: false
-        },
-        rightPriceScale: {
-            textColor: '#7a8fa0',
-            borderColor: '#1a2332',
-            autoScale: true,
-            scaleMargins: { top: 0.1, bottom: 0.1 }
-        },
-        grid: {
-            horzLines: { color: 'rgba(255,255,255,.05)' },
-            vertLines: { color: 'rgba(255,255,255,.05)' }
-        }
+        layout: { textColor: '#7a8fa0', background: { color: '#0a0e1a' } },
+        timeScale: { timeVisible: false, secondsVisible: false },
+        rightPriceScale: { textColor: '#7a8fa0', borderColor: '#1a2332', autoScale: true },
+        grid: { horzLines: { color: 'rgba(255,255,255,.05)' }, vertLines: { color: 'rgba(255,255,255,.05)' } }
     };
     
     mainChart = LightweightCharts.createChart(mainContainer, mainOptions);
     chartSeries = {};
     
-    // Candlestick Series
     const candleSeries = mainChart.addCandlestickSeries({
-        upColor: '#00d084',
-        downColor: '#ff3b5c',
-        borderUpColor: '#00e896',
-        borderDownColor: '#ff6b85',
-        wickUpColor: '#00e896',
-        wickDownColor: '#ff6b85'
+        upColor: '#00d084', downColor: '#ff3b5c',
+        borderUpColor: '#00e896', borderDownColor: '#ff6b85',
+        wickUpColor: '#00e896', wickDownColor: '#ff6b85'
     });
     
     const candleData = bars.map(bar => ({
         time: Math.floor(new Date(bar.d).getTime() / 1000),
-        open: parseFloat(bar.o),
-        high: parseFloat(bar.h),
-        low: parseFloat(bar.l),
-        close: parseFloat(bar.c)
+        open: parseFloat(bar.o), high: parseFloat(bar.h),
+        low: parseFloat(bar.l), close: parseFloat(bar.c)
     }));
     
     candleSeries.setData(candleData);
     chartSeries.candle = candleSeries;
     
-    // Add Moving Averages to main chart
     if (indicatorState.sma20) addMovingAverage(bars, candleData, 20, '#f59e0b', 'SMA20', mainChart);
     if (indicatorState.sma50) addMovingAverage(bars, candleData, 50, '#3b82f6', 'SMA50', mainChart);
     if (indicatorState.ema200) addEMA(bars, candleData, 200, '#a855f7', 'EMA200', mainChart);
     
     mainChart.timeScale().fitContent();
     
-    // Volume Chart - Separate below
     if (indicatorState.volume && volumeContainer) {
         const volumeOptions = {
-            layout: {
-                textColor: '#7a8fa0',
-                background: { color: '#0a0e1a' }
-            },
-            timeScale: {
-                timeVisible: false,
-                secondsVisible: false
-            },
-            rightPriceScale: {
-                textColor: '#7a8fa0',
-                borderColor: '#1a2332',
-                scaleMargins: { top: 0.1, bottom: 0.1 }
-            },
-            grid: {
-                horzLines: { color: 'rgba(255,255,255,.05)' },
-                vertLines: { color: 'rgba(255,255,255,.05)' }
-            }
+            layout: { textColor: '#7a8fa0', background: { color: '#0a0e1a' } },
+            timeScale: { timeVisible: false, secondsVisible: false },
+            rightPriceScale: { textColor: '#7a8fa0', borderColor: '#1a2332', scaleMargins: { top: 0.1, bottom: 0.1 } },
+            grid: { horzLines: { color: 'rgba(255,255,255,.05)' }, vertLines: { color: 'rgba(255,255,255,.05)' } }
         };
         
         volumeChart = LightweightCharts.createChart(volumeContainer, volumeOptions);
-        const volumeSeries = volumeChart.addHistogramSeries({
-            color: 'rgba(0,232,150,.2)'
-        });
+        const volumeSeries = volumeChart.addHistogramSeries({ color: 'rgba(0,232,150,.2)' });
         
         const volumeData = bars.map(bar => ({
             time: Math.floor(new Date(bar.d).getTime() / 1000),
@@ -1249,25 +1206,15 @@ function renderTVChart(sym, bars) {
         volumeSeries.setData(volumeData);
         volumeChart.timeScale().fitContent();
         
-        // Sync time scales between main and volume charts
         mainChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-            if (volumeChart) {
-                volumeChart.timeScale().setVisibleLogicalRange(range);
-            }
+            if (volumeChart) volumeChart.timeScale().setVisibleLogicalRange(range);
         });
     }
     
-    // Responsive resize handler
-    const handleResize = () => {
-        if (mainChart && mainContainer) {
-            mainChart.applyOptions({ width: mainContainer.clientWidth });
-        }
-        if (volumeChart && volumeContainer) {
-            volumeChart.applyOptions({ width: volumeContainer.clientWidth });
-        }
-    };
-    
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', () => {
+        if (mainChart && mainContainer) mainChart.applyOptions({ width: mainContainer.clientWidth });
+        if (volumeChart && volumeContainer) volumeChart.applyOptions({ width: volumeContainer.clientWidth });
+    });
 }
 
 function addMovingAverage(bars, candleData, period, color, name, chart) {
@@ -1281,17 +1228,8 @@ function addMovingAverage(bars, candleData, period, color, name, chart) {
         }
     }
     
-    const lineSeries = chart.addLineSeries({
-        color: color,
-        lineWidth: 1.5,
-        title: name
-    });
-    
-    const lineData = candleData.map((c, i) => ({
-        time: c.time,
-        value: values[i]
-    })).filter(d => d.value !== null);
-    
+    const lineSeries = chart.addLineSeries({ color: color, lineWidth: 1.5, title: name });
+    const lineData = candleData.map((c, i) => ({ time: c.time, value: values[i] })).filter(d => d.value !== null);
     lineSeries.setData(lineData);
     chartSeries[name] = lineSeries;
 }
@@ -1303,25 +1241,12 @@ function addEMA(bars, candleData, period, color, name, chart) {
     
     for (let i = 0; i < bars.length; i++) {
         const price = parseFloat(bars[i].c);
-        if (i === 0) {
-            ema = price;
-        } else {
-            ema = price * k + ema * (1 - k);
-        }
+        ema = i === 0 ? price : price * k + ema * (1 - k);
         values.push(ema);
     }
     
-    const lineSeries = chart.addLineSeries({
-        color: color,
-        lineWidth: 1.5,
-        title: name
-    });
-    
-    const lineData = candleData.map((c, i) => ({
-        time: c.time,
-        value: values[i]
-    }));
-    
+    const lineSeries = chart.addLineSeries({ color: color, lineWidth: 1.5, title: name });
+    const lineData = candleData.map((c, i) => ({ time: c.time, value: values[i] }));
     lineSeries.setData(lineData);
     chartSeries[name] = lineSeries;
 }
