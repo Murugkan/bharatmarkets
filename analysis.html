@@ -560,25 +560,41 @@ function renderTab(tab) {
         const ltp = num(get(s, 'ltp'));
         const w52h = num(get(s, 'w52h'));
         const w52l = num(get(s, 'w52l'));
+        const sym = s.sym || s.ticker || s.symbol;
         
-        html = `<div style="padding:20px 12px;padding-bottom:80px">
-            
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:16px;text-align:center">
-                <div style="font-size:16px;margin-bottom:12px">📊</div>
-                <div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:8px">Interactive Charts</div>
-                <div style="font-size:11px;color:var(--tx3);margin-bottom:16px;line-height:1.6">
-                    View candlestick charts, moving averages, technical indicators (RSI, MACD, ADX) and more in the detailed drill view.
+        html = `
+            <div style="padding:12px 0;padding-bottom:80px">
+                <!-- Candlestick Chart -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:10px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase">${sym} - Price Chart (Last 60 Days)</div>
+                    <canvas id="candleChart" width="400" height="250" style="border:1px solid var(--b1);border-radius:4px;width:100%;height:auto;display:block"></canvas>
                 </div>
                 
-                <button onclick="openDrillTechnical('${s.ticker || s.symbol || s.sym}')" 
-                  style="background:var(--ac);color:var(--bg);padding:12px 20px;
-                  border-radius:6px;border:none;font-weight:700;cursor:pointer;
-                  font-size:12px;transition:all .2s;font-family:inherit;width:100%">
-                  📈 Open Full Charts
-                </button>
+                <!-- Price Levels -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:10px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase">Price Levels</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1)">
+                        <span style="font-size:10px;color:var(--tx3)">Current Price</span>
+                        <span style="font-size:12px;font-weight:700;color:var(--ac)">₹${fmt(ltp)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1)">
+                        <span style="font-size:10px;color:var(--tx3)">52W High</span>
+                        <span style="font-size:12px;font-weight:700;color:#00e896">₹${fmt(w52h)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1)">
+                        <span style="font-size:10px;color:var(--tx3)">52W Low</span>
+                        <span style="font-size:12px;font-weight:700;color:#ff6b85">₹${fmt(w52l)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+                        <span style="font-size:10px;color:var(--tx3)">Position from Low</span>
+                        <span style="font-size:12px;font-weight:700;color:var(--ac)">${w52h && w52l ? ((ltp - w52l) / (w52h - w52l) * 100).toFixed(1) : '—'}%</span>
+                    </div>
+                </div>
             </div>
-            
-        </div>`;
+        `;
+        
+        // Schedule chart rendering after HTML is rendered
+        setTimeout(() => drawCandleChart(sym), 100);
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -975,12 +991,121 @@ function renderInsightsTab(ticker, insights) {
     document.getElementById('content').innerHTML = html;
 }
 
-// Open app-drill.js for full technical analysis
-function openDrillTechnical(ticker) {
-    if (ticker && ticker !== '—') {
-        window.open(`./index.html?page=drill&symbol=${ticker}&tab=technical`, '_blank');
+// Chart drawing function
+let chartCache = {};
+async function drawCandleChart(sym) {
+    // sym can be string (ticker) or object, normalize it
+    if (typeof sym === 'object') {
+        sym = sym.sym || sym.ticker || sym.symbol;
+    }
+    
+    const canvas = document.getElementById('candleChart');
+    if (!canvas || !sym) return;
+    
+    // Try to load from cache first
+    if (chartCache[sym]) {
+        renderCandle(canvas, chartCache[sym]);
+        return;
+    }
+    
+    // Fetch chart data from ./charts/{SYMBOL}.json
+    try {
+        const res = await fetch(`./charts/${sym}.json`);
+        if (!res.ok) {
+            canvas.parentElement.innerHTML = '<div style="padding:20px;text-align:center;color:var(--tx3);font-size:11px">📊 Chart data not available</div>';
+            return;
+        }
+        const data = await res.json();
+        if (data.bars && data.bars.length) {
+            chartCache[sym] = data.bars;
+            renderCandle(canvas, data.bars);
+        }
+    } catch (e) {
+        console.warn('Chart load error:', e);
+        canvas.parentElement.innerHTML = '<div style="padding:20px;text-align:center;color:var(--tx3);font-size:11px">⚠️ Error loading chart</div>';
     }
 }
+
+function renderCandle(canvas, bars) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    
+    // Get last 60 bars
+    const data = bars.slice(-60);
+    if (!data.length) {
+        ctx.fillStyle = '#7a8fa0';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('No data', w/2, h/2);
+        return;
+    }
+    
+    // Get price range
+    let mn = Infinity, mx = -Infinity;
+    data.forEach(d => {
+        mn = Math.min(mn, d.l);
+        mx = Math.max(mx, d.h);
+    });
+    const range = mx - mn || 1;
+    
+    // Draw background
+    ctx.fillStyle = '#0a0e1a';
+    ctx.fillRect(0, 0, w, h);
+    
+    // Draw grid
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+        const y = (h / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(40, y);
+        ctx.lineTo(w - 20, y);
+        ctx.stroke();
+    }
+    
+    // Draw price labels
+    ctx.fillStyle = '#7a8fa0';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const price = mx - (mx - mn) * (i / 4);
+        const y = (h / 4) * i + 3;
+        ctx.fillText('₹' + Math.round(price), w - 2, y);
+    }
+    
+    // Draw candles
+    const gap = (w - 60) / data.length;
+    const bw = Math.max(2, gap * 0.6);
+    
+    data.forEach((bar, i) => {
+        const x = 40 + i * gap + gap / 2;
+        const bull = bar.c >= bar.o;
+        
+        // Scale function
+        const toY = (price) => h - ((price - mn) / range) * (h - 20) - 10;
+        
+        // Wick
+        ctx.strokeStyle = bull ? '#00e896' : '#ff6b85';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x, toY(bar.h));
+        ctx.lineTo(x, toY(bar.l));
+        ctx.stroke();
+        
+        // Body
+        ctx.fillStyle = bull ? '#00d084' : '#ff3b5c';
+        const bodyTop = toY(Math.max(bar.o, bar.c));
+        const bodyH = Math.max(1, Math.abs(toY(bar.o) - toY(bar.c)));
+        ctx.fillRect(x - bw/2, bodyTop, bw, bodyH);
+    });
+}
+
 
 </script>
 
