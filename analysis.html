@@ -142,7 +142,8 @@ const ticker = urlParams.get('drill') || urlParams.get('t');
 
 let chartCache = {}, mainChart = null, volumeChart = null, chartSeries = {};
 let durationState = "1d";
-let indicatorState = {sma20:true, sma50:true, ema200:true, volume:true, pe:false, roe:false, sales:false, netprofit:false};
+let indicatorState = {sma20:true, sma50:true, ema200:true, volume:true};
+let metricState = "";  // No metric selected initially
 
 console.log('URL Search:', window.location.search);
 console.log('Ticker from URL:', ticker);
@@ -571,7 +572,7 @@ function renderTab(tab) {
         html = `
             <div style="padding:0;padding-bottom:100px">
                 <!-- Control Row: 3 Dropdowns + Chart Title -->
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;align-items:start">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;align-items:start">
                     <!-- Duration Dropdown -->
                     <div>
                         <label style="font-size:8px;color:var(--tx3);text-transform:uppercase;display:block;margin-bottom:4px">Duration</label>
@@ -610,32 +611,20 @@ function renderTab(tab) {
                         </div>
                     </div>
                     
-                    <!-- Metrics Multiselect -->
+                    <!-- Metrics Dropdown -->
                     <div>
-                        <label style="font-size:8px;color:var(--tx3);text-transform:uppercase;display:block;margin-bottom:4px">Metrics</label>
-                        <div style="position:relative;display:inline-block;width:100%">
-                            <button onclick="toggleDropdown('metricsDropdown')" style="width:100%;padding:8px;background:var(--card);border:1px solid var(--b1);color:var(--tx1);border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center">
-                                <span>Select</span> <span style="font-size:8px">▼</span>
-                            </button>
-                            <div id="metricsDropdown" style="position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--card);border:1px solid var(--b1);border-radius:4px;z-index:100;display:none;padding:8px;min-width:180px;box-shadow:0 4px 12px rgba(0,0,0,.3)">
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_pe" ${indicatorState.pe ? 'checked' : ''} onchange="toggleIndicator('pe')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>P/E</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_roe" ${indicatorState.roe ? 'checked' : ''} onchange="toggleIndicator('roe')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>ROE</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_sales" ${indicatorState.sales ? 'checked' : ''} onchange="toggleIndicator('sales')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>Sales</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;transition:all .2s" onmouseover="this.style.background='rgba(0,242,255,.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" id="chk_netprofit" ${indicatorState.netprofit ? 'checked' : ''} onchange="toggleIndicator('netprofit')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer"> 
-                                    <span>Net Profit</span>
-                                </label>
-                            </div>
-                        </div>
+                        <label style="font-size:8px;color:var(--tx3);text-transform:uppercase;display:block;margin-bottom:4px">Metric</label>
+                        <select id="metricSelect" onchange="changeMetric(this.value)" style="width:100%;padding:8px;background:var(--card);border:1px solid var(--b1);color:var(--tx1);border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">
+                            <option value="">None</option>
+                            <option value="eps">EPS</option>
+                            <option value="net">Net Income</option>
+                            <option value="rev">Revenue</option>
+                            <option value="ebitda">EBITDA</option>
+                            <option value="roe">ROE %</option>
+                            <option value="opm">OPM %</option>
+                            <option value="debt_eq">Debt/Eq</option>
+                            <option value="cfo">Cash Flow Op</option>
+                        </select>
                     </div>
                     
                     <!-- Chart Title + Price -->
@@ -1090,6 +1079,12 @@ function toggleIndicator(name) {
     if (chartCache[sym]) renderTVChart(sym, chartCache[sym]);
 }
 
+function changeMetric(metricKey) {
+    metricState = metricKey;
+    const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
+    if (chartCache[sym]) renderTVChart(sym, chartCache[sym]);
+}
+
 async function loadAndRenderChart(sym) {
     const container = document.getElementById('mainChart');
     if (!container) {
@@ -1220,16 +1215,16 @@ function renderTVChart(sym, allBars) {
         if (indicatorState.sma50) addMA(bars, cd, 50, '#3b82f6', 'SMA50', mainChart);
         if (indicatorState.ema200) addEMA(bars, cd, 200, '#a855f7', 'EMA200', mainChart);
         
-        if (indicatorState.pe) addMetricLine(cd, 'pe', '#ff9f43', 'P/E', mainChart);
-        if (indicatorState.roe) addMetricLine(cd, 'roe', '#26de81', 'ROE', mainChart);
-        if (indicatorState.sales) addMetricLine(cd, 'sales', '#00d2d3', 'Sales', mainChart);
-        if (indicatorState.netprofit) addMetricLine(cd, 'netprofit', '#ed4264', 'Net', mainChart);
-        
         const ltp = num(get(currentStock, 'ltp'));
         const ls = mainChart.addLineSeries({color:'#00f2ff',lineWidth:2,lineStyle:1,title:'LTP'});
         ls.setData(cd.map(c => ({time:c.time,value:ltp})));
         chartSeries.LTP = ls;
         console.log(`LTP line: ${ltp}`);
+        
+        // Add metric overlay if selected
+        if (metricState && currentStock.quarterly && currentStock.quarterly.length > 0) {
+            addMetricOverlay(currentStock.quarterly, cd, metricState, mainChart);
+        }
         
         mainChart.timeScale().fitContent();
         
@@ -1280,60 +1275,43 @@ function addEMA(bars, cd, period, color, name, chart) {
     chartSeries[name] = ls;
 }
 
-function addMetricLine(cd, metricKey, color, name, chart) {
-    const s = currentStock;
-    if (!s || !cd || cd.length === 0) return;
+function addMetricOverlay(quarterly, cd, metricKey, chart) {
+    if (!quarterly || quarterly.length === 0) return;
     
-    // Get current metric value
-    let baseVal = 0;
-    if (metricKey === 'pe') baseVal = num(s.pe || 0);
-    else if (metricKey === 'roe') baseVal = num(s.roe || 0);
-    else if (metricKey === 'sales') baseVal = num(s.sales || 0);
-    else if (metricKey === 'netprofit') baseVal = num(s.net || 0);
+    // Sort quarterly data by date
+    const sorted = [...quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
     
-    if (!baseVal || baseVal === 0) return;
+    // Extract metric values with dates
+    const metricData = sorted
+        .filter(q => q[metricKey] !== undefined && q[metricKey] !== null)
+        .map(q => ({
+            date: q.d,
+            value: parseFloat(q[metricKey]),
+            time: Math.floor(new Date(q.d).getTime() / 1000)
+        }));
     
-    // Normalize metric value to price scale
-    const closes = cd.map(c => c.close);
-    const minPrice = Math.min(...closes);
-    const maxPrice = Math.max(...closes);
-    const priceRange = maxPrice - minPrice || 1;
-    
-    // Scale metric to visible range on chart (top 10-20% of price chart)
-    // This makes metric visible without overwhelming the price action
-    const metricsTopRange = minPrice + priceRange * 0.8; // 80% up
-    const metricsBottomRange = minPrice + priceRange * 0.6; // 60% up
-    const metricsRange = metricsTopRange - metricsBottomRange;
-    
-    // Normalize the metric value to fit in this range
-    // Use logarithmic scaling for very large values
-    let normalizedVal;
-    if (metricKey === 'sales' || metricKey === 'netprofit') {
-        // These are large numbers, use log scale
-        normalizedVal = metricsBottomRange + (Math.log(baseVal) / 10) * metricsRange;
-    } else {
-        // PE and ROE are smaller, use linear scale
-        normalizedVal = metricsBottomRange + (baseVal / 50) * metricsRange;
+    if (metricData.length === 0) {
+        console.warn(`No data for metric: ${metricKey}`);
+        return;
     }
     
-    // Clamp to valid range
-    normalizedVal = Math.max(metricsBottomRange, Math.min(metricsTopRange, normalizedVal));
+    // Create a separate right price scale for this metric
+    const metricColor = '#e11d48';  // Rose color
+    const metricLabel = {eps:'EPS', net:'Net Inc', rev:'Revenue', ebitda:'EBITDA', roe:'ROE%', opm:'OPM%', debt_eq:'D/E', cfo:'CFO'}[metricKey] || metricKey;
     
-    // Create line data with slight variation based on position in timeline
-    const vals = [];
-    for (let i = 0; i < cd.length; i++) {
-        // Add slight trend: increase slightly over time (simulating growth)
-        const trend = (i / cd.length) * (normalizedVal * 0.02);
-        vals.push(normalizedVal + trend);
-    }
+    const ls = chart.addLineSeries({
+        color: metricColor,
+        lineWidth: 2,
+        title: metricLabel,
+        priceScaleId: 'right'
+    });
     
-    const ls = chart.addLineSeries({color:color, lineWidth:2, lineStyle:2, title:`${name} (${baseVal.toFixed(2)})`});
-    const ld = cd.map((c, i) => ({time:c.time, value:vals[i]}));
-    ls.setData(ld);
-    chartSeries[name] = ls;
+    ls.setData(metricData.map(m => ({time: m.time, value: m.value})));
+    chartSeries[metricLabel] = ls;
     
-    console.log(`Metric ${name}: baseVal=${baseVal}, normalized=${normalizedVal.toFixed(2)}, range=[${metricsBottomRange.toFixed(2)}, ${metricsTopRange.toFixed(2)}]`);
+    console.log(`Metric overlay: ${metricLabel}, ${metricData.length} points`);
 }
+
 
 </script>
 
