@@ -1094,16 +1094,26 @@ function renderTVChart(sym, bars) {
         wickDownColor: '#ff6b85'
     });
     
-    // Format data for TradingView
-    const chartData = bars.map(bar => ({
-        time: bar.d.replace(/-/g, ''),
-        open: bar.o,
-        high: bar.h,
-        low: bar.l,
-        close: bar.c
-    }));
+    // Format data for TradingView - convert date string to unix timestamp
+    const chartData = bars.map(bar => {
+        const [year, month, day] = bar.d.split('-');
+        const time = Math.floor(new Date(year, month - 1, day).getTime() / 1000);
+        return {
+            time: time,
+            open: parseFloat(bar.o),
+            high: parseFloat(bar.h),
+            low: parseFloat(bar.l),
+            close: parseFloat(bar.c)
+        };
+    });
     
-    candleSeries.setData(chartData);
+    try {
+        candleSeries.setData(chartData);
+    } catch (e) {
+        console.error('Error setting candle data:', e);
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3);font-size:11px">⚠️ Error rendering chart data</div>';
+        return;
+    }
     
     // Add volume histogram
     const volumeSeries = tvChart.addHistogramSeries({
@@ -1111,14 +1121,22 @@ function renderTVChart(sym, bars) {
         title: 'Volume'
     });
     
-    const volumeData = bars.map(bar => ({
-        time: bar.d.replace(/-/g, ''),
-        value: bar.v / 1000000,
-        color: bar.c >= bar.o ? 'rgba(0,232,150,.3)' : 'rgba(255,107,133,.3)'
-    }));
+    const volumeData = bars.map(bar => {
+        const [year, month, day] = bar.d.split('-');
+        const time = Math.floor(new Date(year, month - 1, day).getTime() / 1000);
+        return {
+            time: time,
+            value: parseFloat(bar.v) / 1000000,
+            color: bar.c >= bar.o ? 'rgba(0,232,150,.3)' : 'rgba(255,107,133,.3)'
+        };
+    });
     
-    volumeSeries.setData(volumeData);
-    volumeSeries.priceScale().alignToOtherScale(candleSeries.priceScale());
+    try {
+        volumeSeries.setData(volumeData);
+        volumeSeries.priceScale().alignToOtherScale(candleSeries.priceScale());
+    } catch (e) {
+        console.warn('Volume data error:', e);
+    }
     
     // Fit content to view
     tvChart.timeScale().fitContent();
