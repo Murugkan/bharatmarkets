@@ -556,7 +556,26 @@ function renderTab(tab) {
             </div>
         `;
     } else if (tab === 'technical') {
-        html = '<div class="placeholder"><div class="placeholder-emoji">📉</div><div>Technical Analysis</div><div style="font-size:9px;color:#ff9800;margin-top:8px">Coming Soon</div></div>';
+        html = `<div style="padding:40px 20px;text-align:center">
+            <div style="font-size:18px;font-weight:700;color:var(--ac);margin-bottom:12px">
+              📊 Technical Analysis
+            </div>
+            <div style="color:var(--tx3);margin-bottom:24px;line-height:1.6">
+              Interactive candlestick charts with indicators:<br/>
+              Moving Averages, RSI, MACD, ADX, Support/Resistance
+            </div>
+            
+            <button onclick="openDrillTechnical('${s.ticker}')" 
+              style="background:var(--ac);color:var(--bg);padding:14px 28px;
+              border-radius:8px;border:none;font-weight:700;cursor:pointer;
+              font-size:13px;transition:all .2s;font-family:inherit">
+              📈 Open Full Technical Analysis
+            </button>
+            
+            <div style="font-size:10px;color:var(--tx3);margin-top:16px">
+              Opens detailed drill view with interactive charting
+            </div>
+          </div>`;
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -951,6 +970,13 @@ function renderInsightsTab(ticker, insights) {
     `;
     
     document.getElementById('content').innerHTML = html;
+}
+
+// Open app-drill.js for full technical analysis
+function openDrillTechnical(ticker) {
+    if (ticker && ticker !== '—') {
+        window.open(`./index.html?page=drill&symbol=${ticker}&tab=technical`, '_blank');
+    }
 }
 
 </script>
