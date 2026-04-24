@@ -43,37 +43,28 @@
         
         .placeholder{text-align:center;padding:40px 20px;color:var(--tx3)}
         .placeholder-emoji{font-size:32px;margin-bottom:12px}
-        .tbd{color:#ff9800;opacity:.7;font-weight:700}
-        
-        /* Chart Styles */
+        /* Duration & Chart Styles */
+        .duration-controls{display:flex;gap:6px;margin-bottom:12px}
+        .duration-btn{padding:6px 12px;background:rgba(0,242,255,.05);border:1px solid var(--b1);border-radius:4px;color:var(--tx3);font-size:9px;font-weight:700;cursor:pointer;transition:all .2s;text-transform:uppercase}
+        .duration-btn.active{border-color:var(--ac);background:rgba(0,242,255,.15);color:var(--ac)}
         .chart-wrapper{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;overflow:hidden}
-        .chart-title{font-size:10px;color:var(--ac);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
-        #mainChart{width:100%;height:350px}
+        .chart-title{font-size:10px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:8px}
+        #mainChart{width:100%;height:400px}
         #volumeChart{width:100%;height:80px;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px}
-        
-        /* Indicator Controls */
         .indicators-panel{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:12px}
-        .panel-title{font-size:9px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
-        .control-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-        .control-item{display:flex;align-items:center;gap:6px;padding:6px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1);cursor:pointer;transition:all .2s}
-        .control-item:hover{border-color:var(--ac);background:rgba(0,242,255,.1)}
+        .panel-title{font-size:9px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase}
+        .control-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+        .control-item{display:flex;align-items:center;gap:6px;padding:6px;background:rgba(0,242,255,.05);border:1px solid var(--b1);border-radius:4px;cursor:pointer}
         .control-item input{width:12px;height:12px;cursor:pointer;accent-color:var(--ac)}
         .control-item label{font-size:9px;cursor:pointer;flex:1}
-        
-        /* KPI Styles */
         .kpi-section{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px}
         .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-        .kpi-item{background:rgba(0,242,255,.05);border:1px solid var(--b1);border-radius:4px;padding:10px;cursor:pointer;transition:all .2s}
-        .kpi-item:hover{border-color:var(--ac);background:rgba(0,242,255,.1)}
+        .kpi-item{background:rgba(0,242,255,.05);border:1px solid var(--b1);border-radius:4px;padding:10px;cursor:pointer}
         .kpi-label{font-size:8px;color:var(--tx3);text-transform:uppercase;margin-bottom:4px}
         .kpi-value{font-size:13px;font-weight:700;color:var(--ac)}
         .kpi-item.disabled{opacity:0.4;pointer-events:none}
         
-        /* Metrics Charts */
-        .metrics-charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-        .metric-chart{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
-        .metric-chart-title{font-size:9px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:8px}
-        .metric-chart-canvas{width:100%;height:120px}
+        .tbd{color:#ff9800;opacity:.7;font-weight:700}
         
         /* TBD Link - Clickable */
         .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
@@ -167,29 +158,16 @@ const tbdLink = (label) => {
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
 
-// Chart and Indicator State
+// Chart state
 let chartCache = {};
 let mainChart = null;
 let volumeChart = null;
 let chartSeries = {};
+let durationState = '1d';
 
-let indicatorState = {
-    sma20: true,
-    sma50: true,
-    ema200: true,
-    volume: true
-};
+let indicatorState = {sma20: true, sma50: true, ema200: true, volume: true, pe: false, roe: false, sales: false, netprofit: false};
+let kpiState = {pe: true, pb: true, roe: true, cfo: true, sales: true, net: true, eps: true, mcap: true};
 
-let kpiState = {
-    pe: true,
-    pb: true,
-    roe: true,
-    cfo: true,
-    sales: true,
-    net: true,
-    eps: true,
-    mcap: true
-};
 
 console.log('URL Search:', window.location.search);
 console.log('Ticker from URL:', ticker);
@@ -610,105 +588,64 @@ function renderTab(tab) {
             
             </div>
         `;
-    } else if (tab === 'technical') {
+        } else if (tab === 'technical') {
         const s = currentStock;
         const ltp = num(get(s, 'ltp'));
-        const w52h = num(get(s, 'w52h'));
-        const w52l = num(get(s, 'w52l'));
         const sym = s.sym || s.ticker || s.symbol;
         
         html = `
             <div style="padding:0;padding-bottom:100px">
-                <!-- Indicator Controls -->
+                <!-- Duration Controls -->
+                <div class="duration-controls">
+                    <button class="duration-btn ${durationState === '1d' ? 'active' : ''}" onclick="changeDuration('1d', this)">1D</button>
+                    <button class="duration-btn ${durationState === 'week' ? 'active' : ''}" onclick="changeDuration('week', this)">1W</button>
+                    <button class="duration-btn ${durationState === 'month' ? 'active' : ''}" onclick="changeDuration('month', this)">1M</button>
+                </div>
+                
+                <!-- Chart Controls -->
                 <div class="indicators-panel">
-                    <div class="panel-title">📊 Moving Averages & Volume</div>
+                    <div class="panel-title">Chart Overlays</div>
                     <div class="control-grid">
-                        <div class="control-item">
-                            <input type="checkbox" id="sma20" ${indicatorState.sma20 ? 'checked' : ''} onchange="toggleIndicator('sma20')">
-                            <label for="sma20">SMA 20</label>
-                        </div>
-                        <div class="control-item">
-                            <input type="checkbox" id="sma50" ${indicatorState.sma50 ? 'checked' : ''} onchange="toggleIndicator('sma50')">
-                            <label for="sma50">SMA 50</label>
-                        </div>
-                        <div class="control-item">
-                            <input type="checkbox" id="ema200" ${indicatorState.ema200 ? 'checked' : ''} onchange="toggleIndicator('ema200')">
-                            <label for="ema200">EMA 200</label>
-                        </div>
-                        <div class="control-item">
-                            <input type="checkbox" id="volume" ${indicatorState.volume ? 'checked' : ''} onchange="toggleIndicator('volume')">
-                            <label for="volume">Volume</label>
-                        </div>
+                        <div class="control-item"><input type="checkbox" id="sma20" ${indicatorState.sma20 ? 'checked' : ''} onchange="toggleIndicator('sma20')"><label for="sma20">SMA 20</label></div>
+                        <div class="control-item"><input type="checkbox" id="sma50" ${indicatorState.sma50 ? 'checked' : ''} onchange="toggleIndicator('sma50')"><label for="sma50">SMA 50</label></div>
+                        <div class="control-item"><input type="checkbox" id="ema200" ${indicatorState.ema200 ? 'checked' : ''} onchange="toggleIndicator('ema200')"><label for="ema200">EMA 200</label></div>
+                        <div class="control-item"><input type="checkbox" id="volume" ${indicatorState.volume ? 'checked' : ''} onchange="toggleIndicator('volume')"><label for="volume">Volume</label></div>
+                    </div>
+                    <div class="panel-title" style="margin-top:12px">Metrics</div>
+                    <div class="control-grid">
+                        <div class="control-item"><input type="checkbox" id="pe" ${indicatorState.pe ? 'checked' : ''} onchange="toggleIndicator('pe')"><label for="pe">P/E</label></div>
+                        <div class="control-item"><input type="checkbox" id="roe" ${indicatorState.roe ? 'checked' : ''} onchange="toggleIndicator('roe')"><label for="roe">ROE</label></div>
+                        <div class="control-item"><input type="checkbox" id="sales" ${indicatorState.sales ? 'checked' : ''} onchange="toggleIndicator('sales')"><label for="sales">Sales</label></div>
+                        <div class="control-item"><input type="checkbox" id="netprofit" ${indicatorState.netprofit ? 'checked' : ''} onchange="toggleIndicator('netprofit')"><label for="netprofit">Net</label></div>
                     </div>
                 </div>
                 
-                <!-- KPI Metrics Panel -->
+                <!-- KPI Cards -->
                 <div class="kpi-section">
-                    <div class="panel-title">📈 Key Metrics (Click to Toggle)</div>
+                    <div class="panel-title">Key Metrics</div>
                     <div class="kpi-grid">
-                        <div class="kpi-item ${kpiState.pe ? '' : 'disabled'}" onclick="toggleKPI('pe')">
-                            <div class="kpi-label">P/E Ratio</div>
-                            <div class="kpi-value">${fmt(get(s, 'pe'))}</div>
-                        </div>
-                        <div class="kpi-item ${kpiState.pb ? '' : 'disabled'}" onclick="toggleKPI('pb')">
-                            <div class="kpi-label">P/B Ratio</div>
-                            <div class="kpi-value">${fmt(get(s, 'pb'))}</div>
-                        </div>
-                        <div class="kpi-item ${kpiState.roe ? '' : 'disabled'}" onclick="toggleKPI('roe')">
-                            <div class="kpi-label">ROE %</div>
-                            <div class="kpi-value">${fmt(get(s, 'roe'))}%</div>
-                        </div>
-                        <div class="kpi-item ${kpiState.eps ? '' : 'disabled'}" onclick="toggleKPI('eps')">
-                            <div class="kpi-label">EPS</div>
-                            <div class="kpi-value">₹${fmt(get(s, 'eps'))}</div>
-                        </div>
-                        <div class="kpi-item ${kpiState.cfo ? '' : 'disabled'}" onclick="toggleKPI('cfo')">
-                            <div class="kpi-label">CFO</div>
-                            <div class="kpi-value">₹${fmt(get(s, 'cfo')/10)}Cr</div>
-                        </div>
-                        <div class="kpi-item ${kpiState.sales ? '' : 'disabled'}" onclick="toggleKPI('sales')">
-                            <div class="kpi-label">Sales</div>
-                            <div class="kpi-value">₹${fmt(get(s, 'sales')/10)}Cr</div>
-                        </div>
-                        <div class="kpi-item ${kpiState.net ? '' : 'disabled'}" onclick="toggleKPI('net')">
-                            <div class="kpi-label">Net Profit</div>
-                            <div class="kpi-value">₹${fmt(get(s, 'net')/10)}Cr</div>
-                        </div>
-                        <div class="kpi-item ${kpiState.mcap ? '' : 'disabled'}" onclick="toggleKPI('mcap')">
-                            <div class="kpi-label">Market Cap</div>
-                            <div class="kpi-value">₹${fmt(get(s, 'mcap')/1000)}K Cr</div>
-                        </div>
+                        <div class="kpi-item ${kpiState.pe ? '' : 'disabled'}" onclick="toggleKPI('pe')"><div class="kpi-label">P/E</div><div class="kpi-value">${fmt(get(s, 'pe'))}</div></div>
+                        <div class="kpi-item ${kpiState.pb ? '' : 'disabled'}" onclick="toggleKPI('pb')"><div class="kpi-label">P/B</div><div class="kpi-value">${fmt(get(s, 'pb'))}</div></div>
+                        <div class="kpi-item ${kpiState.roe ? '' : 'disabled'}" onclick="toggleKPI('roe')"><div class="kpi-label">ROE</div><div class="kpi-value">${fmt(get(s, 'roe'))}%</div></div>
+                        <div class="kpi-item ${kpiState.eps ? '' : 'disabled'}" onclick="toggleKPI('eps')"><div class="kpi-label">EPS</div><div class="kpi-value">₹${fmt(get(s, 'eps'))}</div></div>
+                        <div class="kpi-item ${kpiState.cfo ? '' : 'disabled'}" onclick="toggleKPI('cfo')"><div class="kpi-label">CFO</div><div class="kpi-value">₹${fmt(get(s, 'cfo')/10)}Cr</div></div>
+                        <div class="kpi-item ${kpiState.sales ? '' : 'disabled'}" onclick="toggleKPI('sales')"><div class="kpi-label">Sales</div><div class="kpi-value">₹${fmt(get(s, 'sales')/10)}Cr</div></div>
+                        <div class="kpi-item ${kpiState.net ? '' : 'disabled'}" onclick="toggleKPI('net')"><div class="kpi-label">Net</div><div class="kpi-value">₹${fmt(get(s, 'net')/10)}Cr</div></div>
+                        <div class="kpi-item ${kpiState.mcap ? '' : 'disabled'}" onclick="toggleKPI('mcap')"><div class="kpi-label">MCap</div><div class="kpi-value">₹${fmt(get(s, 'mcap')/1000)}K</div></div>
                     </div>
                 </div>
                 
-                <!-- Metrics Trend Charts -->
-                <div class="metrics-charts">
-                    <div class="metric-chart">
-                        <div class="metric-chart-title">📊 PE Ratio Trend</div>
-                        <canvas id="peChart" class="metric-chart-canvas"></canvas>
-                    </div>
-                    <div class="metric-chart">
-                        <div class="metric-chart-title">💰 ROE Trend</div>
-                        <canvas id="roeChart" class="metric-chart-canvas"></canvas>
-                    </div>
-                    <div class="metric-chart">
-                        <div class="metric-chart-title">📈 Sales Trend</div>
-                        <canvas id="salesChart" class="metric-chart-canvas"></canvas>
-                    </div>
-                    <div class="metric-chart">
-                        <div class="metric-chart-title">💵 Net Profit Trend</div>
-                        <canvas id="netChart" class="metric-chart-canvas"></canvas>
-                    </div>
-                </div>
-                
-                    <div class="chart-title">${sym} - Professional Technical Analysis</div>
-                    <div id="mainChart" style="width:100%;height:350px"></div>
-                    <div id="volumeChart" style="width:100%;height:80px;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px"></div>
+                <!-- Chart -->
+                <div class="chart-wrapper">
+                    <div class="chart-title">${sym} @ ₹${Math.round(ltp)}</div>
+                    <div id="mainChart" style="width:100%;height:400px;"></div>
+                    <div id="volumeChart" style="width:100%;height:80px;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px;"></div>
                 </div>
             </div>
         `;
         
         setTimeout(() => loadAndRenderChart(sym), 100);
+
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -1105,292 +1042,108 @@ function renderInsightsTab(ticker, insights) {
     document.getElementById('content').innerHTML = html;
 }
 
-// ============================================
-// TECHNICAL TAB - Professional Chart Functions
-// ============================================
+
+function changeDuration(duration, btn) {
+    durationState = duration;
+    document.querySelectorAll('.duration-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
+    if (chartCache[sym]) renderTVChart(sym, chartCache[sym]);
+}
 
 function toggleIndicator(name) {
     indicatorState[name] = !indicatorState[name];
     const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
-    if (chartCache[sym]) {
-        // Just update the series, don't recreate the entire chart
-        updateChartSeries(chartCache[sym], mainChart);
-    }
-}
-
-function updateChartSeries(bars, chart) {
-    if (!chart) return;
-    
-    // Remove old MA series
-    if (chartSeries['SMA20']) {
-        chart.removeSeries(chartSeries['SMA20']);
-        delete chartSeries['SMA20'];
-    }
-    if (chartSeries['SMA50']) {
-        chart.removeSeries(chartSeries['SMA50']);
-        delete chartSeries['SMA50'];
-    }
-    if (chartSeries['EMA200']) {
-        chart.removeSeries(chartSeries['EMA200']);
-        delete chartSeries['EMA200'];
-    }
-    
-    // Re-add based on current state
-    const candleData = bars.map(bar => ({
-        time: Math.floor(new Date(bar.d).getTime() / 1000),
-        open: parseFloat(bar.o), high: parseFloat(bar.h),
-        low: parseFloat(bar.l), close: parseFloat(bar.c)
-    }));
-    
-    if (indicatorState.sma20) addMovingAverage(bars, candleData, 20, '#f59e0b', 'SMA20', chart);
-    if (indicatorState.sma50) addMovingAverage(bars, candleData, 50, '#3b82f6', 'SMA50', chart);
-    if (indicatorState.ema200) addEMA(bars, candleData, 200, '#a855f7', 'EMA200', chart);
+    if (chartCache[sym]) renderTVChart(sym, chartCache[sym]);
 }
 
 function toggleKPI(name) {
     kpiState[name] = !kpiState[name];
-    const kpiElement = document.querySelector(`[onclick="toggleKPI('${name}')"]`);
-    if (kpiElement) {
-        kpiElement.classList.toggle('disabled');
-    }
+    const el = document.querySelector(`[onclick="toggleKPI('${name}')"]`);
+    if (el) el.classList.toggle('disabled');
 }
 
 async function loadAndRenderChart(sym) {
     const container = document.getElementById('mainChart');
     if (!container) return;
-    
-    if (chartCache[sym]) {
-        renderTVChart(sym, chartCache[sym]);
-        return;
-    }
-    
+    if (chartCache[sym]) { renderTVChart(sym, chartCache[sym]); return; }
     try {
         const res = await fetch(`./charts/${sym}.json`);
-        if (!res.ok) {
-            container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3)">Chart data not available</div>';
-            return;
-        }
+        if (!res.ok) { container.innerHTML = 'No data'; return; }
         const data = await res.json();
-        if (data.bars && data.bars.length) {
-            chartCache[sym] = data.bars;
-            renderTVChart(sym, data.bars);
-        }
-    } catch (e) {
-        console.warn('Chart load error:', e);
-    }
+        if (data.bars && data.bars.length) { chartCache[sym] = data.bars; renderTVChart(sym, data.bars); }
+    } catch (e) { console.warn('Chart error:', e); }
 }
 
-function renderTVChart(sym, bars) {
-    const mainContainer = document.getElementById('mainChart');
-    const volumeContainer = document.getElementById('volumeChart');
-    if (!mainContainer) return;
-    
+function renderTVChart(sym, allBars) {
+    const mc = document.getElementById('mainChart'), vc = document.getElementById('volumeChart');
+    if (!mc) return;
     if (mainChart) mainChart.remove();
     if (volumeChart) volumeChart.remove();
     
-    const mainOptions = {
-        layout: { textColor: '#7a8fa0', background: { color: '#0a0e1a' } },
-        timeScale: { timeVisible: false, secondsVisible: false },
-        rightPriceScale: { 
-            textColor: '#7a8fa0', 
-            borderColor: '#1a2332', 
-            autoScale: true,
-            formatPrice: (price) => Math.round(price).toString()
-        },
-        grid: { horzLines: { color: 'rgba(255,255,255,.05)' }, vertLines: { color: 'rgba(255,255,255,.05)' } }
-    };
+    let bars = allBars;
+    const now = new Date();
+    if (durationState === '1d') bars = allBars.slice(-5);
+    else if (durationState === 'week') bars = allBars.filter(b => new Date(b.d) > new Date(now.getTime() - 7*24*3600*1000));
+    else if (durationState === 'month') bars = allBars.filter(b => new Date(b.d) > new Date(now.getTime() - 30*24*3600*1000));
     
-    mainChart = LightweightCharts.createChart(mainContainer, mainOptions);
+    const opts = {layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},timeScale:{timeVisible:false,secondsVisible:false},rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332',autoScale:true,formatPrice:(p)=>Math.round(p).toString()},grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}};
+    
+    mainChart = LightweightCharts.createChart(mc, opts);
     chartSeries = {};
     
-    const candleSeries = mainChart.addCandlestickSeries({
-        upColor: '#00d084', downColor: '#ff3b5c',
-        borderUpColor: '#00e896', borderDownColor: '#ff6b85',
-        wickUpColor: '#00e896', wickDownColor: '#ff6b85'
-    });
+    const cs = mainChart.addCandlestickSeries({upColor:'#00d084',downColor:'#ff3b5c',borderUpColor:'#00e896',borderDownColor:'#ff6b85',wickUpColor:'#00e896',wickDownColor:'#ff6b85'});
+    const cd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),open:parseFloat(b.o),high:parseFloat(b.h),low:parseFloat(b.l),close:parseFloat(b.c)}));
+    cs.setData(cd);
+    chartSeries.candle = cs;
     
-    const candleData = bars.map(bar => ({
-        time: Math.floor(new Date(bar.d).getTime() / 1000),
-        open: parseFloat(bar.o), high: parseFloat(bar.h),
-        low: parseFloat(bar.l), close: parseFloat(bar.c)
-    }));
+    if (indicatorState.sma20) addMA(bars, cd, 20, '#f59e0b', 'SMA20', mainChart);
+    if (indicatorState.sma50) addMA(bars, cd, 50, '#3b82f6', 'SMA50', mainChart);
+    if (indicatorState.ema200) addEMA(bars, cd, 200, '#a855f7', 'EMA200', mainChart);
     
-    candleSeries.setData(candleData);
-    chartSeries.candle = candleSeries;
-    
-    if (indicatorState.sma20) addMovingAverage(bars, candleData, 20, '#f59e0b', 'SMA20', mainChart);
-    if (indicatorState.sma50) addMovingAverage(bars, candleData, 50, '#3b82f6', 'SMA50', mainChart);
-    if (indicatorState.ema200) addEMA(bars, candleData, 200, '#a855f7', 'EMA200', mainChart);
+    const ltp = num(get(currentStock, 'ltp'));
+    const ls = mainChart.addLineSeries({color:'#00f2ff',lineWidth:2,lineStyle:1,title:'LTP'});
+    ls.setData(cd.map(c => ({time:c.time,value:ltp})));
+    chartSeries.LTP = ls;
     
     mainChart.timeScale().fitContent();
     
-    if (indicatorState.volume && volumeContainer) {
-        const volumeOptions = {
-            layout: { textColor: '#7a8fa0', background: { color: '#0a0e1a' } },
-            timeScale: { timeVisible: false, secondsVisible: false },
-            rightPriceScale: { textColor: '#7a8fa0', borderColor: '#1a2332', scaleMargins: { top: 0.1, bottom: 0.1 } },
-            grid: { horzLines: { color: 'rgba(255,255,255,.05)' }, vertLines: { color: 'rgba(255,255,255,.05)' } }
-        };
-        
-        volumeChart = LightweightCharts.createChart(volumeContainer, volumeOptions);
-        const volumeSeries = volumeChart.addHistogramSeries({ color: 'rgba(0,232,150,.2)' });
-        
-        const volumeData = bars.map(bar => ({
-            time: Math.floor(new Date(bar.d).getTime() / 1000),
-            value: parseFloat(bar.v) / 1000000,
-            color: bar.c >= bar.o ? 'rgba(0,232,150,.3)' : 'rgba(255,107,133,.3)'
-        }));
-        
-        volumeSeries.setData(volumeData);
+    if (indicatorState.volume && vc) {
+        const vopts = {layout:{textColor:'#7a8fa0',background:{color:'#0a0e1a'}},timeScale:{timeVisible:false,secondsVisible:false},rightPriceScale:{textColor:'#7a8fa0',borderColor:'#1a2332'},grid:{horzLines:{color:'rgba(255,255,255,.05)'},vertLines:{color:'rgba(255,255,255,.05)'}}};
+        volumeChart = LightweightCharts.createChart(vc, vopts);
+        const vs = volumeChart.addHistogramSeries({color:'rgba(0,232,150,.2)'});
+        const vd = bars.map(b => ({time:Math.floor(new Date(b.d).getTime()/1000),value:parseFloat(b.v)/1000000,color:b.c>=b.o?'rgba(0,232,150,.3)':'rgba(255,107,133,.3)'}));
+        vs.setData(vd);
         volumeChart.timeScale().fitContent();
-        
-        mainChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-            if (volumeChart) volumeChart.timeScale().setVisibleLogicalRange(range);
-        });
+        mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => {if(volumeChart)volumeChart.timeScale().setVisibleLogicalRange(r);});
     }
-    
-    // Render metrics charts
-    setTimeout(() => renderMetricsCharts(), 200);
-    
-    window.addEventListener('resize', () => {
-        if (mainChart && mainContainer) mainChart.applyOptions({ width: mainContainer.clientWidth });
-        if (volumeChart && volumeContainer) volumeChart.applyOptions({ width: volumeContainer.clientWidth });
-    });
 }
 
-function renderMetricsCharts() {
-    const s = currentStock;
-    if (!s) return;
-    
-    // Generate trend data (simulated with some variation)
-    const generateTrend = (base, variance) => {
-        const trend = [];
-        let val = base;
-        for (let i = 0; i < 12; i++) {
-            val = val * (1 + (Math.random() - 0.5) * variance);
-            trend.push(Math.round(val * 10) / 10);
-        }
-        return trend;
-    };
-    
-    const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-    
-    // PE Chart
-    const peChart = document.getElementById('peChart');
-    if (peChart) drawTrendChart(peChart, generateTrend(num(get(s, 'pe')), 0.2), 'PE Ratio', '#f59e0b', months);
-    
-    // ROE Chart
-    const roeChart = document.getElementById('roeChart');
-    if (roeChart) drawTrendChart(roeChart, generateTrend(num(get(s, 'roe')), 0.15), 'ROE %', '#00e896', months);
-    
-    // Sales Chart
-    const salesChart = document.getElementById('salesChart');
-    if (salesChart) drawTrendChart(salesChart, generateTrend(num(get(s, 'sales'))/10, 0.25), 'Sales (Cr)', '#3b82f6', months);
-    
-    // Net Profit Chart
-    const netChart = document.getElementById('netChart');
-    if (netChart) drawTrendChart(netChart, generateTrend(num(get(s, 'net'))/10, 0.30), 'Net Profit (Cr)', '#a855f7', months);
-}
-
-function drawTrendChart(canvas, data, label, color, labels) {
-    const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
-    const w = canvas.width = rect.width;
-    const h = canvas.height = rect.height;
-    const dpr = window.devicePixelRatio || 1;
-    
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    ctx.scale(dpr, dpr);
-    
-    // Get min/max
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    const range = max - min || 1;
-    
-    // Draw background
-    ctx.fillStyle = '#0a0e1a';
-    ctx.fillRect(0, 0, w, h);
-    
-    // Draw grid
-    ctx.strokeStyle = 'rgba(255,255,255,.05)';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i <= 4; i++) {
-        const y = (h / 4) * i;
-        ctx.beginPath();
-        ctx.moveTo(30, y);
-        ctx.lineTo(w - 10, y);
-        ctx.stroke();
-    }
-    
-    // Draw values on right
-    ctx.fillStyle = '#7a8fa0';
-    ctx.font = '8px monospace';
-    ctx.textAlign = 'right';
-    for (let i = 0; i <= 4; i++) {
-        const val = max - (max - min) * (i / 4);
-        const y = (h / 4) * i + 3;
-        ctx.fillText(Math.round(val).toString(), w - 2, y);
-    }
-    
-    // Draw line chart
-    const gap = (w - 40) / data.length;
-    
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    
-    data.forEach((val, i) => {
-        const x = 30 + i * gap + gap / 2;
-        const y = h - ((val - min) / range) * (h - 20) - 10;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    
-    // Draw points
-    ctx.fillStyle = color;
-    data.forEach((val, i) => {
-        const x = 30 + i * gap + gap / 2;
-        const y = h - ((val - min) / range) * (h - 20) - 10;
-        ctx.beginPath();
-        ctx.arc(x, y, 2, 0, Math.PI * 2);
-        ctx.fill();
-    });
-}
-
-function addMovingAverage(bars, candleData, period, color, name, chart) {
-    const values = [];
+function addMA(bars, cd, period, color, name, chart) {
+    const vals = [];
     for (let i = 0; i < bars.length; i++) {
-        if (i < period - 1) {
-            values.push(null);
-        } else {
-            const sum = bars.slice(i - period + 1, i + 1).reduce((a, b) => a + parseFloat(b.c), 0);
-            values.push(sum / period);
-        }
+        if (i < period - 1) vals.push(null);
+        else { const sum = bars.slice(i-period+1,i+1).reduce((a,b)=>a+parseFloat(b.c),0); vals.push(sum/period); }
     }
-    
-    const lineSeries = chart.addLineSeries({ color: color, lineWidth: 1.5, title: name });
-    const lineData = candleData.map((c, i) => ({ time: c.time, value: values[i] })).filter(d => d.value !== null);
-    lineSeries.setData(lineData);
-    chartSeries[name] = lineSeries;
+    const ls = chart.addLineSeries({color:color,lineWidth:1.5,title:name});
+    const ld = cd.map((c,i)=>({time:c.time,value:vals[i]})).filter(d=>d.value!==null);
+    ls.setData(ld);
+    chartSeries[name] = ls;
 }
 
-function addEMA(bars, candleData, period, color, name, chart) {
-    const k = 2 / (period + 1);
-    const values = [];
+function addEMA(bars, cd, period, color, name, chart) {
+    const k = 2/(period+1);
+    const vals = [];
     let ema = null;
-    
     for (let i = 0; i < bars.length; i++) {
-        const price = parseFloat(bars[i].c);
-        ema = i === 0 ? price : price * k + ema * (1 - k);
-        values.push(ema);
+        const p = parseFloat(bars[i].c);
+        ema = i === 0 ? p : p*k + ema*(1-k);
+        vals.push(ema);
     }
-    
-    const lineSeries = chart.addLineSeries({ color: color, lineWidth: 1.5, title: name });
-    const lineData = candleData.map((c, i) => ({ time: c.time, value: values[i] }));
-    lineSeries.setData(lineData);
-    chartSeries[name] = lineSeries;
+    const ls = chart.addLineSeries({color:color,lineWidth:1.5,title:name});
+    const ld = cd.map((c,i)=>({time:c.time,value:vals[i]}));
+    ls.setData(ld);
+    chartSeries[name] = ls;
 }
 
 </script>
