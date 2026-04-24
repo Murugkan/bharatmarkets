@@ -44,10 +44,18 @@
         .placeholder{text-align:center;padding:40px 20px;color:var(--tx3)}
         .placeholder-emoji{font-size:32px;margin-bottom:12px}
         
-        /* Technical Chart Styles */
+        /* Technical Chart & Indicators CSS */
         .chart-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px;overflow:hidden}
         .chart-title{font-size:10px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
-        #technicalChart{width:100%;height:400px;border-radius:4px}
+        #technicalChart{width:100%;height:500px;border-radius:4px}
+        
+        .indicators-panel{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:12px}
+        .indicators-title{font-size:9px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
+        .indicator-group{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+        .indicator-item{display:flex;align-items:center;gap:6px;padding:6px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1);cursor:pointer;transition:all .2s}
+        .indicator-item:hover{border-color:var(--ac);background:rgba(0,242,255,.1)}
+        .indicator-item input{width:12px;height:12px;cursor:pointer;accent-color:var(--ac)}
+        .indicator-item label{font-size:9px;cursor:pointer;flex:1}
         .tbd{color:#ff9800;opacity:.7;font-weight:700}
         
         /* TBD Link - Clickable */
@@ -569,11 +577,50 @@ function renderTab(tab) {
         const sym = s.sym || s.ticker || s.symbol;
         
         html = `
-            <div style="padding:0;padding-bottom:80px">
+            <div style="padding:0;padding-bottom:100px">
+                <!-- Indicator Controls Panel -->
+                <div class="indicators-panel">
+                    <div class="indicators-title">📊 Moving Averages</div>
+                    <div class="indicator-group">
+                        <div class="indicator-item">
+                            <input type="checkbox" id="sma20" ${indicatorState.sma20 ? 'checked' : ''} onchange="toggleIndicator('sma20')">
+                            <label for="sma20">SMA 20</label>
+                        </div>
+                        <div class="indicator-item">
+                            <input type="checkbox" id="sma50" ${indicatorState.sma50 ? 'checked' : ''} onchange="toggleIndicator('sma50')">
+                            <label for="sma50">SMA 50</label>
+                        </div>
+                        <div class="indicator-item">
+                            <input type="checkbox" id="ema200" ${indicatorState.ema200 ? 'checked' : ''} onchange="toggleIndicator('ema200')">
+                            <label for="ema200">EMA 200</label>
+                        </div>
+                        <div class="indicator-item">
+                            <input type="checkbox" id="volume" ${indicatorState.volume ? 'checked' : ''} onchange="toggleIndicator('volume')">
+                            <label for="volume">Volume</label>
+                        </div>
+                    </div>
+                    
+                    <div class="indicators-title" style="margin-top:12px">📈 Indicators</div>
+                    <div class="indicator-group">
+                        <div class="indicator-item">
+                            <input type="checkbox" id="rsi" ${indicatorState.rsi ? 'checked' : ''} onchange="toggleIndicator('rsi')">
+                            <label for="rsi">RSI (14)</label>
+                        </div>
+                        <div class="indicator-item">
+                            <input type="checkbox" id="macd" ${indicatorState.macd ? 'checked' : ''} onchange="toggleIndicator('macd')">
+                            <label for="macd">MACD</label>
+                        </div>
+                        <div class="indicator-item">
+                            <input type="checkbox" id="bollinger" ${indicatorState.bollinger ? 'checked' : ''} onchange="toggleIndicator('bollinger')">
+                            <label for="bollinger">Bollinger Bands</label>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Professional Candlestick Chart -->
                 <div class="chart-container">
-                    <div class="chart-title">${sym} - Candlestick Chart (Professional Grade)</div>
-                    <div id="technicalChart" style="width:100%;height:400px;border-radius:4px;background:var(--s1)"></div>
+                    <div class="chart-title">${sym} - Professional Technical Analysis</div>
+                    <div id="technicalChart" style="width:100%;height:500px;border-radius:4px;background:var(--s1)"></div>
                 </div>
                 
                 <!-- Price Levels -->
@@ -599,7 +646,6 @@ function renderTab(tab) {
             </div>
         `;
         
-        // Schedule chart rendering after HTML is rendered
         setTimeout(() => loadAndRenderChart(sym), 100);
     } else if (tab === 'fundamentals') {
         let guidance = {};
@@ -998,22 +1044,39 @@ function renderInsightsTab(ticker, insights) {
 }
 
 // ============================================
-// TECHNICAL TAB - Professional Chart using TradingView Lightweight Charts
+// TECHNICAL TAB - Professional Chart with Complete Indicators
 // ============================================
 let chartCache = {};
 let tvChart = null;
+let chartSeries = {};
+
+let indicatorState = {
+    sma20: true,
+    sma50: true,
+    ema200: true,
+    volume: true,
+    rsi: false,
+    macd: false,
+    bollinger: false
+};
+
+function toggleIndicator(name) {
+    indicatorState[name] = !indicatorState[name];
+    const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
+    if (chartCache[sym]) {
+        renderTVChart(sym, chartCache[sym]);
+    }
+}
 
 async function loadAndRenderChart(sym) {
     const container = document.getElementById('technicalChart');
     if (!container) return;
     
-    // Try cache first
     if (chartCache[sym]) {
         renderTVChart(sym, chartCache[sym]);
         return;
     }
     
-    // Fetch chart data from ./charts/{SYMBOL}.json
     try {
         const res = await fetch(`./charts/${sym}.json`);
         if (!res.ok) {
@@ -1035,12 +1098,10 @@ function renderTVChart(sym, bars) {
     const container = document.getElementById('technicalChart');
     if (!container) return;
     
-    // Destroy previous chart if exists
     if (tvChart) {
         tvChart.remove();
     }
     
-    // Create TradingView Lightweight Chart with professional styling
     const chartOptions = {
         layout: {
             textColor: '#7a8fa0',
@@ -1048,43 +1109,23 @@ function renderTVChart(sym, bars) {
         },
         timeScale: {
             timeVisible: true,
-            secondsVisible: false,
-            fixLeftEdge: false,
-            lockRange: false
+            secondsVisible: false
         },
         rightPriceScale: {
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: true,
-            scaleMargins: {
-                top: 0.3,
-                bottom: 0.2
-            }
-        },
-        leftPriceScale: {
-            visible: false
+            autoScale: true
         },
         grid: {
-            horzLines: {
-                color: 'rgba(255,255,255,.05)',
-                visible: true
-            },
-            vertLines: {
-                color: 'rgba(255,255,255,.05)',
-                visible: true
-            }
-        },
-        watermark: {
-            visible: false
-        },
-        crosshair: {
-            mode: LightweightCharts.CrosshairMode.Normal
+            horzLines: { color: 'rgba(255,255,255,.05)' },
+            vertLines: { color: 'rgba(255,255,255,.05)' }
         }
     };
     
     tvChart = LightweightCharts.createChart(container, chartOptions);
+    chartSeries = {};
     
-    // Add candlestick series with professional colors
+    // Candlestick Series
     const candleSeries = tvChart.addCandlestickSeries({
         upColor: '#00d084',
         downColor: '#ff3b5c',
@@ -1094,61 +1135,106 @@ function renderTVChart(sym, bars) {
         wickDownColor: '#ff6b85'
     });
     
-    // Format data for TradingView - convert date string to unix timestamp
-    const chartData = bars.map(bar => {
-        const [year, month, day] = bar.d.split('-');
-        const time = Math.floor(new Date(year, month - 1, day).getTime() / 1000);
-        return {
-            time: time,
-            open: parseFloat(bar.o),
-            high: parseFloat(bar.h),
-            low: parseFloat(bar.l),
-            close: parseFloat(bar.c)
-        };
-    });
+    const candleData = bars.map(bar => ({
+        time: Math.floor(new Date(bar.d).getTime() / 1000),
+        open: parseFloat(bar.o),
+        high: parseFloat(bar.h),
+        low: parseFloat(bar.l),
+        close: parseFloat(bar.c)
+    }));
     
-    try {
-        candleSeries.setData(chartData);
-    } catch (e) {
-        console.error('Error setting candle data:', e);
-        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3);font-size:11px">⚠️ Error rendering chart data</div>';
-        return;
-    }
+    candleSeries.setData(candleData);
+    chartSeries.candle = candleSeries;
     
-    // Add volume histogram
-    const volumeSeries = tvChart.addHistogramSeries({
-        color: 'rgba(0,232,150,.2)',
-        title: 'Volume'
-    });
-    
-    const volumeData = bars.map(bar => {
-        const [year, month, day] = bar.d.split('-');
-        const time = Math.floor(new Date(year, month - 1, day).getTime() / 1000);
-        return {
-            time: time,
+    // Volume
+    if (indicatorState.volume) {
+        const volumeSeries = tvChart.addHistogramSeries({
+            color: 'rgba(0,232,150,.2)'
+        });
+        const volumeData = bars.map(bar => ({
+            time: Math.floor(new Date(bar.d).getTime() / 1000),
             value: parseFloat(bar.v) / 1000000,
             color: bar.c >= bar.o ? 'rgba(0,232,150,.3)' : 'rgba(255,107,133,.3)'
-        };
-    });
-    
-    try {
+        }));
         volumeSeries.setData(volumeData);
         volumeSeries.priceScale().alignToOtherScale(candleSeries.priceScale());
-    } catch (e) {
-        console.warn('Volume data error:', e);
+        chartSeries.volume = volumeSeries;
     }
     
-    // Fit content to view
+    // Moving Averages
+    if (indicatorState.sma20) {
+        addMovingAverage(bars, candleData, 20, '#f59e0b', 'SMA20');
+    }
+    if (indicatorState.sma50) {
+        addMovingAverage(bars, candleData, 50, '#3b82f6', 'SMA50');
+    }
+    if (indicatorState.ema200) {
+        addEMA(bars, candleData, 200, '#a855f7', 'EMA200');
+    }
+    
     tvChart.timeScale().fitContent();
     
-    // Handle window resize
-    const handleResize = () => {
+    window.addEventListener('resize', () => {
         if (tvChart && container) {
             tvChart.applyOptions({ width: container.clientWidth });
         }
-    };
+    });
+}
+
+function addMovingAverage(bars, candleData, period, color, name) {
+    const values = [];
+    for (let i = 0; i < bars.length; i++) {
+        if (i < period - 1) {
+            values.push(null);
+        } else {
+            const sum = bars.slice(i - period + 1, i + 1).reduce((a, b) => a + parseFloat(b.c), 0);
+            values.push(sum / period);
+        }
+    }
     
-    window.addEventListener('resize', handleResize);
+    const lineSeries = tvChart.addLineSeries({
+        color: color,
+        lineWidth: 1,
+        title: name
+    });
+    
+    const lineData = candleData.map((c, i) => ({
+        time: c.time,
+        value: values[i]
+    })).filter(d => d.value !== null);
+    
+    lineSeries.setData(lineData);
+    chartSeries[name] = lineSeries;
+}
+
+function addEMA(bars, candleData, period, color, name) {
+    const k = 2 / (period + 1);
+    const values = [];
+    let ema = null;
+    
+    for (let i = 0; i < bars.length; i++) {
+        const price = parseFloat(bars[i].c);
+        if (i === 0) {
+            ema = price;
+        } else {
+            ema = price * k + ema * (1 - k);
+        }
+        values.push(ema);
+    }
+    
+    const lineSeries = tvChart.addLineSeries({
+        color: color,
+        lineWidth: 1,
+        title: name
+    });
+    
+    const lineData = candleData.map((c, i) => ({
+        time: c.time,
+        value: values[i]
+    }));
+    
+    lineSeries.setData(lineData);
+    chartSeries[name] = lineSeries;
 }
 
 </script>
