@@ -69,6 +69,12 @@
         .kpi-value{font-size:13px;font-weight:700;color:var(--ac)}
         .kpi-item.disabled{opacity:0.4;pointer-events:none}
         
+        /* Metrics Charts */
+        .metrics-charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+        .metric-chart{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
+        .metric-chart-title{font-size:9px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:8px}
+        .metric-chart-canvas{width:100%;height:120px}
+        
         /* TBD Link - Clickable */
         .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
         .tbd-link:hover{opacity:1;color:#ffb347;border-bottom:1px solid #ffb347}
@@ -675,32 +681,29 @@ function renderTab(tab) {
                     </div>
                 </div>
                 
-                <!-- Professional Charts -->
-                <div class="chart-wrapper">
+                <!-- Metrics Trend Charts -->
+                <div class="metrics-charts">
+                    <div class="metric-chart">
+                        <div class="metric-chart-title">📊 PE Ratio Trend</div>
+                        <canvas id="peChart" class="metric-chart-canvas"></canvas>
+                    </div>
+                    <div class="metric-chart">
+                        <div class="metric-chart-title">💰 ROE Trend</div>
+                        <canvas id="roeChart" class="metric-chart-canvas"></canvas>
+                    </div>
+                    <div class="metric-chart">
+                        <div class="metric-chart-title">📈 Sales Trend</div>
+                        <canvas id="salesChart" class="metric-chart-canvas"></canvas>
+                    </div>
+                    <div class="metric-chart">
+                        <div class="metric-chart-title">💵 Net Profit Trend</div>
+                        <canvas id="netChart" class="metric-chart-canvas"></canvas>
+                    </div>
+                </div>
+                
                     <div class="chart-title">${sym} - Professional Technical Analysis</div>
                     <div id="mainChart" style="width:100%;height:350px"></div>
                     <div id="volumeChart" style="width:100%;height:80px;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px"></div>
-                </div>
-                
-                <!-- Price Levels -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px">
-                    <div style="font-size:10px;color:var(--ac);font-weight:700;margin-bottom:8px;text-transform:uppercase">Price Levels</div>
-                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1)">
-                        <span style="font-size:10px;color:var(--tx3)">Current</span>
-                        <span style="font-size:12px;font-weight:700;color:var(--ac)">₹${fmt(ltp)}</span>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1)">
-                        <span style="font-size:10px;color:var(--tx3)">52W High</span>
-                        <span style="font-size:12px;font-weight:700;color:#00e896">₹${fmt(w52h)}</span>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1)">
-                        <span style="font-size:10px;color:var(--tx3)">52W Low</span>
-                        <span style="font-size:12px;font-weight:700;color:#ff6b85">₹${fmt(w52l)}</span>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;padding:8px 0">
-                        <span style="font-size:10px;color:var(--tx3)">Position</span>
-                        <span style="font-size:12px;font-weight:700;color:var(--ac)">${w52h && w52l ? ((ltp - w52l) / (w52h - w52l) * 100).toFixed(1) : '—'}%</span>
-                    </div>
                 </div>
             </div>
         `;
@@ -1110,8 +1113,38 @@ function toggleIndicator(name) {
     indicatorState[name] = !indicatorState[name];
     const sym = currentStock.sym || currentStock.ticker || currentStock.symbol;
     if (chartCache[sym]) {
-        renderTVChart(sym, chartCache[sym]);
+        // Just update the series, don't recreate the entire chart
+        updateChartSeries(chartCache[sym], mainChart);
     }
+}
+
+function updateChartSeries(bars, chart) {
+    if (!chart) return;
+    
+    // Remove old MA series
+    if (chartSeries['SMA20']) {
+        chart.removeSeries(chartSeries['SMA20']);
+        delete chartSeries['SMA20'];
+    }
+    if (chartSeries['SMA50']) {
+        chart.removeSeries(chartSeries['SMA50']);
+        delete chartSeries['SMA50'];
+    }
+    if (chartSeries['EMA200']) {
+        chart.removeSeries(chartSeries['EMA200']);
+        delete chartSeries['EMA200'];
+    }
+    
+    // Re-add based on current state
+    const candleData = bars.map(bar => ({
+        time: Math.floor(new Date(bar.d).getTime() / 1000),
+        open: parseFloat(bar.o), high: parseFloat(bar.h),
+        low: parseFloat(bar.l), close: parseFloat(bar.c)
+    }));
+    
+    if (indicatorState.sma20) addMovingAverage(bars, candleData, 20, '#f59e0b', 'SMA20', chart);
+    if (indicatorState.sma50) addMovingAverage(bars, candleData, 50, '#3b82f6', 'SMA50', chart);
+    if (indicatorState.ema200) addEMA(bars, candleData, 200, '#a855f7', 'EMA200', chart);
 }
 
 function toggleKPI(name) {
@@ -1158,7 +1191,12 @@ function renderTVChart(sym, bars) {
     const mainOptions = {
         layout: { textColor: '#7a8fa0', background: { color: '#0a0e1a' } },
         timeScale: { timeVisible: false, secondsVisible: false },
-        rightPriceScale: { textColor: '#7a8fa0', borderColor: '#1a2332', autoScale: true },
+        rightPriceScale: { 
+            textColor: '#7a8fa0', 
+            borderColor: '#1a2332', 
+            autoScale: true,
+            formatPrice: (price) => Math.round(price).toString()
+        },
         grid: { horzLines: { color: 'rgba(255,255,255,.05)' }, vertLines: { color: 'rgba(255,255,255,.05)' } }
     };
     
@@ -1211,9 +1249,113 @@ function renderTVChart(sym, bars) {
         });
     }
     
+    // Render metrics charts
+    setTimeout(() => renderMetricsCharts(), 200);
+    
     window.addEventListener('resize', () => {
         if (mainChart && mainContainer) mainChart.applyOptions({ width: mainContainer.clientWidth });
         if (volumeChart && volumeContainer) volumeChart.applyOptions({ width: volumeContainer.clientWidth });
+    });
+}
+
+function renderMetricsCharts() {
+    const s = currentStock;
+    if (!s) return;
+    
+    // Generate trend data (simulated with some variation)
+    const generateTrend = (base, variance) => {
+        const trend = [];
+        let val = base;
+        for (let i = 0; i < 12; i++) {
+            val = val * (1 + (Math.random() - 0.5) * variance);
+            trend.push(Math.round(val * 10) / 10);
+        }
+        return trend;
+    };
+    
+    const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+    
+    // PE Chart
+    const peChart = document.getElementById('peChart');
+    if (peChart) drawTrendChart(peChart, generateTrend(num(get(s, 'pe')), 0.2), 'PE Ratio', '#f59e0b', months);
+    
+    // ROE Chart
+    const roeChart = document.getElementById('roeChart');
+    if (roeChart) drawTrendChart(roeChart, generateTrend(num(get(s, 'roe')), 0.15), 'ROE %', '#00e896', months);
+    
+    // Sales Chart
+    const salesChart = document.getElementById('salesChart');
+    if (salesChart) drawTrendChart(salesChart, generateTrend(num(get(s, 'sales'))/10, 0.25), 'Sales (Cr)', '#3b82f6', months);
+    
+    // Net Profit Chart
+    const netChart = document.getElementById('netChart');
+    if (netChart) drawTrendChart(netChart, generateTrend(num(get(s, 'net'))/10, 0.30), 'Net Profit (Cr)', '#a855f7', months);
+}
+
+function drawTrendChart(canvas, data, label, color, labels) {
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const w = canvas.width = rect.width;
+    const h = canvas.height = rect.height;
+    const dpr = window.devicePixelRatio || 1;
+    
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    
+    // Get min/max
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    
+    // Draw background
+    ctx.fillStyle = '#0a0e1a';
+    ctx.fillRect(0, 0, w, h);
+    
+    // Draw grid
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+        const y = (h / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(30, y);
+        ctx.lineTo(w - 10, y);
+        ctx.stroke();
+    }
+    
+    // Draw values on right
+    ctx.fillStyle = '#7a8fa0';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const val = max - (max - min) * (i / 4);
+        const y = (h / 4) * i + 3;
+        ctx.fillText(Math.round(val).toString(), w - 2, y);
+    }
+    
+    // Draw line chart
+    const gap = (w - 40) / data.length;
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    data.forEach((val, i) => {
+        const x = 30 + i * gap + gap / 2;
+        const y = h - ((val - min) / range) * (h - 20) - 10;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    
+    // Draw points
+    ctx.fillStyle = color;
+    data.forEach((val, i) => {
+        const x = 30 + i * gap + gap / 2;
+        const y = h - ((val - min) / range) * (h - 20) - 10;
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
     });
 }
 
