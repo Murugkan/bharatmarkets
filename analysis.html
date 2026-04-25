@@ -1315,25 +1315,50 @@ function renderPriceChart(container, sym, bars) {
     }
 
     try {
+        // FIX: Validate bars data
+        if (!bars || !Array.isArray(bars) || bars.length === 0) {
+            container.innerHTML = '<div style="padding:20px;color:#ff6b85;font-size:10px">❌ Invalid chart data format</div>';
+            return;
+        }
+        
         // Dispose old chart if exists
         if (priceChart) {
             priceChart.dispose();
         }
 
         // Initialize ECharts
+        if (typeof echarts === 'undefined') {
+            container.innerHTML = '<div style="padding:20px;color:#ff6b85;font-size:10px">⚠️ ECharts library not loaded</div>';
+            return;
+        }
+
         priceChart = echarts.init(container, 'dark');
         priceSeries = {};
 
         // Prepare candlestick data: [open, close, low, high]
-        const ohlcData = bars.map(b => [
-            parseFloat(b.o),
-            parseFloat(b.c),
-            parseFloat(b.l),
-            parseFloat(b.h)
-        ]);
+        // FIX: Validate each bar has required properties
+        const ohlcData = bars.map((b, idx) => {
+            if (!b || typeof b !== 'object') return null;
+            const o = parseFloat(b.o);
+            const c = parseFloat(b.c);
+            const l = parseFloat(b.l);
+            const h = parseFloat(b.h);
+            
+            // FIX: Check all values are valid numbers
+            if (isNaN(o) || isNaN(c) || isNaN(l) || isNaN(h)) {
+                console.warn(`Invalid bar data at index ${idx}:`, b);
+                return null;
+            }
+            return [o, c, l, h];
+        }).filter(d => d !== null);
+        
+        if (ohlcData.length === 0) {
+            container.innerHTML = '<div style="padding:20px;color:#ff6b85;font-size:10px">❌ No valid price data</div>';
+            return;
+        }
 
-        const dates = bars.map(b => b.d);
-        const closes = bars.map(b => parseFloat(b.c));
+        const dates = bars.filter((b, idx) => ohlcData[idx] !== null).map(b => b.d || '');
+        const closes = ohlcData.map(d => d[1]);
 
         // Calculate RSI and EMA for selected indicators
         const indicatorDataSets = {};
@@ -1535,12 +1560,21 @@ function renderPriceChart(container, sym, bars) {
             series: series
         };
 
+        // FIX: Validate before setting option
+        if (!priceChart || typeof priceChart.setOption !== 'function') {
+            throw new Error('ECharts instance not properly initialized');
+        }
+
         priceChart.setOption(option);
         console.log(`✅ ECharts Unified Chart: Candlesticks + RSI + EMA + Metrics (Zoomable)`);
         
     } catch (e) {
         console.error('ECharts Price chart error:', e);
-        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
+        // FIX: Better error message
+        container.innerHTML = `<div style="padding:20px;color:#ff6b85;font-size:10px">
+            ❌ Chart Error: ${e.message}<br/>
+            <span style="color:#7a8fa0;font-size:9px;margin-top:8px;display:block">Check console for details</span>
+        </div>`;
     }
 }
 
