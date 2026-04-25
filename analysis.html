@@ -2343,16 +2343,14 @@ async function renderTechnicalPro(stock) {
         series: [{
             name: 'Price',
             type: 'candlestick',
-            data: chartBars.map((bar, i) => [
-                new Date(bar.d).getTime(),
-                parseFloat(bar.o),
-                parseFloat(bar.h),
-                parseFloat(bar.l),
-                parseFloat(bar.c)
-            ])
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: [parseFloat(bar.o), parseFloat(bar.h), parseFloat(bar.l), parseFloat(bar.c)]
+            }))
         }, {
             name: 'EMA(20)',
             type: 'line',
+            color: '#26de81',
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
                 y: displayEMA20[i]
@@ -2360,6 +2358,7 @@ async function renderTechnicalPro(stock) {
         }, {
             name: 'EMA(50)',
             type: 'line',
+            color: '#f59e0b',
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
                 y: displayEMA50[i]
@@ -2367,6 +2366,7 @@ async function renderTechnicalPro(stock) {
         }, {
             name: 'EMA(200)',
             type: 'line',
+            color: '#ff6b85',
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
                 y: displayEMA200[i]
@@ -2380,7 +2380,7 @@ async function renderTechnicalPro(stock) {
         },
         yaxis: [{
             title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '11px', fontWeight: 700 } },
-            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => typeof v === 'number' ? v.toFixed(0) : '' },
             opposite: true
         }],
         tooltip: {
@@ -2418,6 +2418,25 @@ async function renderTechnicalPro(stock) {
     if (validPrices.length === 0) {
         console.error(`❌ No valid price data! Check if close prices are null.`);
     }
+    
+    // VALIDATE EMA SERIES
+    console.log('🔍 EMA Series Validation:');
+    options1.series.forEach((series, idx) => {
+        if (idx === 0) return; // Skip price
+        const seriesName = series.name;
+        const seriesType = series.type;
+        const seriesData = series.data;
+        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
+        
+        if (!validPoints || validPoints.length === 0) {
+            console.error(`❌ ${seriesName}: NO valid data points! Type: ${seriesType}`);
+        } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points, type: ${seriesType}`);
+        }
+    });
+    
+    console.log(`📌 Chart Type: ${options1.chart.type}`);
+    console.log(`📌 Total Series: ${options1.series.length}`);
     
     try {
         console.log('🎨 Creating Chart 1...');
@@ -2506,6 +2525,23 @@ async function renderTechnicalPro(stock) {
         stroke: { width: 2, curve: 'smooth' },
         legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
     };
+    
+    // VALIDATE CHART 2 SERIES
+    console.log('🔍 Chart 2 Series Validation:');
+    chart2Data.forEach((series, idx) => {
+        const seriesName = series.name;
+        const seriesData = series.data;
+        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
+        
+        if (!validPoints || validPoints.length === 0) {
+            console.error(`❌ ${seriesName}: NO valid data points!`);
+        } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points`);
+        }
+    });
+    
+    console.log(`📌 Chart 2 Type: ${options2.chart.type}`);
+    console.log(`📌 Chart 2 Series Count: ${chart2Data.length}`);
     
     try {
         console.log('🎨 Creating Chart 2...');
