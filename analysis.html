@@ -560,7 +560,7 @@ function renderTab(tab) {
     } else if (tab === 'technical') {
         html = `<div style="padding:0;padding-bottom:100px">
             <!-- METRICS MULTI-SELECT CONTROLS + DURATION -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:12px">
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:8px">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                     <div style="font-size:9px;color:var(--ac);font-weight:700;text-transform:uppercase">📊 Select Metrics - Real Quarterly Data</div>
                     <select id="durationSelect" onchange="changeDuration(this.value)" style="background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;padding:4px 6px;font-size:8px;font-weight:700;cursor:pointer;transition:all .2s">
@@ -597,29 +597,44 @@ function renderTab(tab) {
                 </div>
             </div>
 
-            <!-- PRICE + VOLUME CHART (60% height) -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
-                <div id="priceChart" style="width:100%;height:350px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
-                <div style="font-size:8px;color:var(--tx3);margin-top:6px;padding:6px;text-align:center">
-                    💡 Candlesticks + Volume | Scroll to zoom | Drag to pan | Right-click to reset
-                </div>
+            <!-- RSI OVERLAY SELECTOR -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:8px">
+                <div style="font-size:9px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📈 RSI Overlays</div>
+                <select id="rsiSelect" multiple onchange="toggleRSI()" style="width:100%;padding:8px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:9px;font-weight:700;min-height:100px;cursor:pointer">
+                    <option value="rsi_5">RSI(5) - Very Fast</option>
+                    <option value="rsi_9">RSI(9) - Fast</option>
+                    <option value="rsi_14" selected>RSI(14) - Standard</option>
+                    <option value="rsi_21">RSI(21) - Slow</option>
+                </select>
+                <div style="font-size:7px;color:var(--tx3);margin-top:4px">Hold Ctrl/Cmd to select multiple</div>
             </div>
 
-            <!-- METRICS CHART (40% height) -->
+            <!-- PRICE + RSI OVERLAYS CHART -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:8px">
+                <div id="priceChart" style="width:100%;height:350px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+            </div>
+
+            <!-- METRICS CHART -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
                 <div id="metricsChart" style="width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
-                <div style="font-size:8px;color:var(--tx3);margin-top:6px;padding:6px;text-align:center">
-                    📊 Normalized Metrics (Q1=100) | Synchronized X-axis with price chart above
-                </div>
             </div>
 
             <!-- CHART INFO -->
             <div id="metricInfo" style="font-size:9px;color:var(--tx3);padding:10px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1);margin-bottom:12px">
-                Price chart with volume above | Metrics synchronized below
+                Price chart with RSI overlays | Metrics synced below
             </div>
         </div>`;
 
         setTimeout(() => {
+            // Initialize RSI state with default RSI(14)
+            rsiState = { rsi_14: true };
+            const rsiSelect = document.getElementById('rsiSelect');
+            if (rsiSelect) {
+                // Set RSI(14) as selected by default
+                for (let option of rsiSelect.options) {
+                    option.selected = option.value === 'rsi_14';
+                }
+            }
             loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
         }, 500);
     } else if (tab === 'fundamentals') {
@@ -1020,15 +1035,28 @@ function renderInsightsTab(ticker, insights) {
 
 // TECHNICAL TAB - METRICS
 let metricsState = {};  // Track which metrics are selected
-let priceChart = null;  // Price + Volume chart
+let rsiState = {};  // Track which RSI periods are selected
+let priceChart = null;  // Price + RSI chart
 let metricsChart = null;  // Metrics chart
-let priceSeries = {};  // Price series (candlestick, volume)
+let priceSeries = {};  // Price series (candlestick, RSI)
 let metricSeries = {};  // Metric lines
 
 function toggleMetric(metricKey) {
     metricsState[metricKey] = !metricsState[metricKey];
     const checkbox = document.getElementById(`metric_${metricKey}`);
     if (checkbox) checkbox.checked = metricsState[metricKey];
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+function toggleRSI() {
+    const rsiSelect = document.getElementById('rsiSelect');
+    rsiState = {};
+    if (rsiSelect && rsiSelect.selectedOptions) {
+        for (let option of rsiSelect.selectedOptions) {
+            rsiState[option.value] = true;
+        }
+    }
+    console.log('RSI Selected:', Object.keys(rsiState));
     loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
 }
 
@@ -1186,6 +1214,49 @@ async function loadAndRenderTechnicalChart(sym) {
     }
 }
 
+function calculateRSI(candleData, period = 14) {
+    if (!candleData || candleData.length < period) return [];
+    
+    const gains = [];
+    const losses = [];
+    
+    // Calculate price changes
+    for (let i = 1; i < candleData.length; i++) {
+        const change = candleData[i].close - candleData[i - 1].close;
+        gains.push(change > 0 ? change : 0);
+        losses.push(change < 0 ? Math.abs(change) : 0);
+    }
+    
+    // Calculate initial averages
+    let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    
+    const rsiData = [];
+    
+    // Calculate RSI for each period
+    for (let i = period; i < candleData.length; i++) {
+        if (avgLoss === 0) {
+            rsiData.push({
+                time: candleData[i].time,
+                value: gains[i - 1] > 0 ? 100 : 0
+            });
+        } else {
+            const rs = avgGain / avgLoss;
+            const rsi = 100 - (100 / (1 + rs));
+            rsiData.push({
+                time: candleData[i].time,
+                value: rsi
+            });
+        }
+        
+        // Update averages (smoothed)
+        avgGain = (avgGain * (period - 1) + gains[i]) / period;
+        avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+    }
+    
+    return rsiData;
+}
+
 function renderPriceChart(container, sym, bars) {
     if (priceChart) priceChart.remove();
     if (!container.clientWidth || container.clientWidth < 100) {
@@ -1247,30 +1318,42 @@ function renderPriceChart(container, sym, bars) {
         priceSeries.candle = cs;
         console.log(`✅ Candlesticks: ${cd.length} bars`);
 
-        // Add volume bars on RIGHT scale (SEPARATE - won't affect candlestick scale)
-        if (bars[0] && bars[0].v) {
-            const vs = priceChart.addHistogramSeries({
-                color: 'rgba(0, 242, 255, 0.2)',  // Very transparent so candlesticks visible
-                priceScaleId: 'right'
+        // Add RSI overlays on RIGHT scale
+        const selectedRSIs = Object.keys(rsiState);
+        if (selectedRSIs.length > 0) {
+            // RSI color mapping
+            const rsiColors = {
+                rsi_5: '#ff6b9d',    // Pink
+                rsi_9: '#c0ff00',    // Lime
+                rsi_14: '#00d4ff',   // Cyan
+                rsi_21: '#ffa500'    // Orange
+            };
+            
+            selectedRSIs.forEach(rsiKey => {
+                const period = parseInt(rsiKey.replace('rsi_', ''));
+                const rsiData = calculateRSI(cd, period);
+                
+                if (rsiData.length > 0) {
+                    const rsiSeries = priceChart.addLineSeries({
+                        color: rsiColors[rsiKey] || '#00f2ff',
+                        lineWidth: 2,
+                        priceScaleId: 'right',
+                        title: `RSI(${period})`
+                    });
+                    
+                    rsiSeries.setData(rsiData);
+                    priceSeries[rsiKey] = rsiSeries;
+                    console.log(`✅ RSI(${period}): ${rsiData.length} points`);
+                }
             });
             
-            const volumeData = cd.map((c, idx) => ({
-                time: c.time,
-                value: parseFloat(bars[idx].v) || 0
-            }));
-            
-            vs.setData(volumeData);
-            priceSeries.volume = vs;
-            
-            // Lock left scale to candlestick data ONLY after volume is added
-            // This ensures candlesticks always display properly regardless of volume
-            const leftScale = priceChart.priceScale('left');
-            leftScale.applyOptions({
-                autoScale: true,
-                alignLabels: true
+            // Set right scale for RSI (0-100 range)
+            priceChart.priceScale('right').applyOptions({
+                autoScale: false,
+                minPrice: 0,
+                maxPrice: 100,
+                formatPrice: (p) => p.toFixed(0)
             });
-            
-            console.log(`✅ Volume: ${volumeData.length} bars (right scale, transparent)`);
         }
 
         priceChart.timeScale().fitContent();
@@ -1310,7 +1393,19 @@ function renderMetricsChart(container, sym, bars) {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         leftPriceScale: {
-            visible: false  // HIDE volume scale
+            visible: true,  // SHOW volume scale
+            textColor: '#7a8fa0',
+            borderColor: '#1a2332',
+            autoScale: true,
+            formatPrice: (p) => {
+                if (typeof p === 'number') {
+                    if (p >= 10000000) return (p / 10000000).toFixed(1) + 'Cr';
+                    if (p >= 100000) return (p / 100000).toFixed(1) + 'L';
+                    if (p >= 1000) return (p / 1000).toFixed(1) + 'K';
+                    return p.toFixed(0);
+                }
+                return p;
+            }
         },
         rightPriceScale: {
             visible: false  // HIDE metrics scale
