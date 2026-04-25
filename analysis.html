@@ -1274,7 +1274,24 @@ function renderPriceChart(container, sym, bars) {
         }
 
         priceChart.timeScale().fitContent();
-        console.log(`✅ Price chart rendered with candlesticks (left) + volume (right)`);
+        
+        // Setup sync: when price chart is zoomed/panned, update metrics chart
+        let syncInProgress = false;
+        priceChart.timeScale().subscribeVisibleTimeRangeChange((newRange) => {
+            if (!syncInProgress && metricsChart) {
+                syncInProgress = true;
+                try {
+                    metricsChart.timeScale().setVisibleRange({
+                        from: newRange.from,
+                        to: newRange.to
+                    });
+                } finally {
+                    syncInProgress = false;
+                }
+            }
+        });
+        
+        console.log(`✅ Price chart rendered with candlesticks (left) + volume (right) | Zoom synced to metrics`);
         
     } catch (e) {
         console.error('Price chart error:', e);
@@ -1292,8 +1309,11 @@ function renderMetricsChart(container, sym, bars) {
     const opts = {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
+        leftPriceScale: {
+            visible: false  // HIDE volume scale
+        },
         rightPriceScale: {
-            visible: false  // HIDE Y-axis completely
+            visible: false  // HIDE metrics scale
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1302,25 +1322,61 @@ function renderMetricsChart(container, sym, bars) {
         metricsChart = LightweightCharts.createChart(container, opts);
         metricSeries = {};
 
-        // Add selected metrics as lines
+        // Convert bars to chart data format
         const cd = bars.map(b => ({
             time: Math.floor(new Date(b.d).getTime() / 1000),
             open: parseFloat(b.o),
             high: parseFloat(b.h),
             low: parseFloat(b.l),
-            close: parseFloat(b.c)
+            close: parseFloat(b.c),
+            volume: parseFloat(b.v) || 0
         }));
 
+        // Add volume bars on left scale
+        if (cd.some(c => c.volume > 0)) {
+            const volumeSeries = metricsChart.addHistogramSeries({
+                color: 'rgba(0, 242, 255, 0.3)',
+                priceScaleId: 'left',
+                title: 'Volume'
+            });
+            
+            volumeSeries.setData(cd.map(c => ({
+                time: c.time,
+                value: c.volume
+            })));
+            
+            metricSeries['Volume'] = volumeSeries;
+        }
+
+        // Add selected metrics as lines on right scale
         const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
         
         selectedMetrics.forEach(metricKey => {
             addMetricSeries(metricKey, cd, metricsChart);
         });
 
-        // NOW sync the timeScales AFTER both charts are created
-        syncTimeScales();
+        // Fit content and setup sync
+        metricsChart.timeScale().fitContent();
+        
+        // When metrics chart is zoomed/panned, sync price chart
+        const metricsTimeScale = metricsChart.timeScale();
+        let syncInProgress = false;
+        
+        metricsTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
+            if (!syncInProgress && priceChart) {
+                syncInProgress = true;
+                try {
+                    priceChart.timeScale().setVisibleRange({
+                        from: newRange.from,
+                        to: newRange.to
+                    });
+                } finally {
+                    syncInProgress = false;
+                }
+            }
+        });
 
-        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced`);
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics + volume | Common X-axis synced & zoomable`);
         
     } catch (e) {
         console.error('Metrics chart error:', e);
