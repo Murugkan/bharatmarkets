@@ -715,6 +715,52 @@ function renderTab(tab) {
         </div>`;
         document.getElementById('content').innerHTML = html;
         
+        // Initialize debug window
+        const debugWindow = document.createElement('div');
+        debugWindow.id = 'debug-window';
+        debugWindow.style.cssText = `
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 300px;
+            max-height: 200px;
+            background: rgba(0,0,0,.95);
+            border: 1px solid #00f2ff;
+            border-radius: 4px;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 8px;
+            color: #00f2ff;
+            overflow-y: auto;
+            z-index: 9999;
+            display: none;
+        `;
+        document.body.appendChild(debugWindow);
+        
+        // Capture console.log
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const debugWin = document.getElementById('debug-window');
+            if (debugWin) {
+                const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+                debugWin.innerHTML += `<div>${line}</div>`;
+                debugWin.scrollTop = debugWin.scrollHeight;
+            }
+        };
+        
+        // Toggle debug window with Ctrl+D
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'd') {
+                const debugWin = document.getElementById('debug-window');
+                if (debugWin) {
+                    debugWin.style.display = debugWin.style.display === 'none' ? 'block' : 'none';
+                }
+            }
+        });
+        
+        console.log('🔍 Debug window ready - Press Ctrl+D to toggle');
+        
         // Load and render new technical pro charts
         renderTechnicalPro(currentStock);
     } else if (tab === 'fundamentals') {
@@ -2365,8 +2411,16 @@ async function renderTechnicalPro(stock) {
         console.error(`❌ No valid price data! Check if close prices are null.`);
     }
     
-    proCharts.chart1 = new ApexCharts(document.getElementById('chartPro1'), options1);
-    proCharts.chart1.render();
+    try {
+        console.log('🎨 Creating Chart 1...');
+        proCharts.chart1 = new ApexCharts(document.getElementById('chartPro1'), options1);
+        console.log('📊 Rendering Chart 1...');
+        proCharts.chart1.render();
+        console.log('✅ Chart 1 rendered successfully');
+    } catch (err) {
+        console.error('❌ Chart 1 error:', err.message);
+        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
+    }
     
     // Chart 2: RSI + Metrics
     const options2 = {
@@ -2429,8 +2483,16 @@ async function renderTechnicalPro(stock) {
         legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
     };
     
-    proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
-    proCharts.chart2.render();
+    try {
+        console.log('🎨 Creating Chart 2...');
+        proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
+        console.log('📊 Rendering Chart 2...');
+        proCharts.chart2.render();
+        console.log('✅ Chart 2 rendered successfully');
+    } catch (err) {
+        console.error('❌ Chart 2 error:', err.message);
+        document.getElementById('chartPro2').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
+    }
     
     } catch (error) {
         console.error('Technical Pro rendering error:', error);
