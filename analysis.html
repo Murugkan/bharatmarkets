@@ -145,49 +145,13 @@ console.log('Ticker from URL:', ticker);
 // Load data
 async function loadStock() {
     if (!ticker) {
-        // Try to get list of stocks for user guidance
-        let stockList = 'ABCAPITAL, ABFRL, ADANIPORTS, ... (load data.html first)';
-        try {
-            const db = await new Promise(r => {
-                const req = indexedDB.open(DB);
-                req.onsuccess = () => r(req.result);
-                req.onerror = () => r(null);
-            });
-            if (db && db.objectStoreNames && db.objectStoreNames.contains(STORE)) {
-                try {
-                    const tx = db.transaction(STORE, 'readonly');
-                    const store = tx.objectStore(STORE);
-                    
-                    if (store) {
-                        const keys = await new Promise(r => {
-                            const req = store.getAllKeys();
-                            if (!req) {
-                                r([]);
-                                return;
-                            }
-                            req.onsuccess = () => r(req.result);
-                            req.onerror = () => r([]);
-                        });
-                        if (keys && keys.length > 0) {
-                            stockList = keys.slice(0, 10).join(', ') + (keys.length > 10 ? '...' : '');
-                        }
-                    }
-                } catch (txErr) {
-                    console.warn('Transaction failed:', txErr.message);
-                }
-            }
-        } catch (e) {
-            console.warn('Stock list load failed:', e.message);
-        }
-        
         document.getElementById('content').innerHTML = `
             <div class="placeholder">
                 <div class="placeholder-emoji">❌</div>
                 <div>No stock selected</div>
                 <div style="font-size:9px;color:#ff9800;margin-top:8px">
                     Use: analysis.html?drill=TICKER<br/>
-                    Example: analysis.html?drill=ABCAPITAL<br/>
-                    Available: ${stockList}
+                    Example: analysis.html?drill=ASALCBR
                 </div>
             </div>
         `;
@@ -197,72 +161,18 @@ async function loadStock() {
     
     console.log('Loading ticker:', ticker);
     
-    const db = await new Promise(r => {
-        const req = indexedDB.open(DB);
-        req.onsuccess = () => {
-            console.log('DB opened');
-            r(req.result);
-        };
-        req.onerror = () => {
-            console.error('DB error:', req.error);
-            r(null);
-        };
-    });
+    // Create minimal stock object - NO database
+    currentStock = {
+        ticker: ticker,
+        sym: ticker,
+        name: ticker,
+        ltp: 0,
+        change: 0,
+        changePct: 0
+    };
     
-    if (!db) {
-        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">⚠️</div>Database error</div>';
-        return;
-    }
-    
-    try {
-        const tx = db.transaction(STORE, 'readonly');
-        const store = tx.objectStore(STORE);
-        
-        if (!store) {
-            throw new Error('Store not initialized');
-        }
-        
-        currentStock = await new Promise(r => {
-            try {
-                const req = store.get(ticker);
-                if (!req) {
-                    r(null);
-                    return;
-                }
-                req.onsuccess = () => {
-                    r(req.result || null);
-                };
-                req.onerror = () => {
-                    console.error('Store query error:', req.error);
-                    r(null);
-                };
-            } catch (e) {
-                console.error('store.get() error:', e.message);
-                r(null);
-            }
-        });
-    } catch (storeError) {
-        console.warn('Database transaction failed:', storeError.message);
-        currentStock = null;
-    }
-    
-    // Fallback: Create minimal stock object with just ticker
-    if (!currentStock) {
-        console.log('Using fallback stock object');
-        currentStock = {
-            ticker: ticker,
-            sym: ticker,
-            name: ticker,
-            // No quarterly data - metrics won't show
-        };
-    }
-    
-    console.log('Stock object ready:', currentStock.sym || currentStock.ticker);
-        
-    // Determine data source
-    dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
-    console.log('Data Source:', dataSource);
-    console.log('Full stock object:', currentStock);
+    console.log('Stock object created (no DB):', currentStock.sym);
+    dataSource = 'local';
     
     console.log('Rendering header and overview...');
     renderHeader();
