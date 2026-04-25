@@ -646,8 +646,8 @@ function renderTab(tab) {
                     <button onclick="switchTimeframe('monthly')" class="timeframe-btn" data-tf="monthly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Monthly</button>
                 </div>
             </div>
-            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden">
-                <div id="chartPro1" style="width:100%;height:400px"></div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;max-width:100vw">
+                <div id="chartPro1" style="width:100%;height:400px;display:block"></div>
             </div>
             
             <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
@@ -2356,21 +2356,21 @@ async function renderTechnicalPro(stock) {
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
                 y: displayEMA20[i]
-            }))
+            })).filter(p => p.y !== null && p.y !== undefined)
         }, {
             name: 'EMA(50)',
             type: 'line',
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
                 y: displayEMA50[i]
-            }))
+            })).filter(p => p.y !== null && p.y !== undefined)
         }, {
             name: 'EMA(200)',
             type: 'line',
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
                 y: displayEMA200[i]
-            }))
+            })).filter(p => p.y !== null && p.y !== undefined)
         }, {
             name: 'Volume',
             type: 'column',
@@ -2429,6 +2429,13 @@ async function renderTechnicalPro(stock) {
         proCharts.chart1 = new ApexCharts(document.getElementById('chartPro1'), options1);
         console.log('📊 Rendering Chart 1...');
         proCharts.chart1.render();
+        
+        // Force redraw after a brief delay
+        setTimeout(() => {
+            proCharts.chart1.resetSeries();
+            proCharts.chart1.rerender();
+        }, 100);
+        
         console.log('✅ Chart 1 rendered successfully');
     } catch (err) {
         console.error('❌ Chart 1 error:', err.message);
