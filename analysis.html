@@ -2343,10 +2343,13 @@ async function renderTechnicalPro(stock) {
         series: [{
             name: 'Price',
             type: 'candlestick',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: [bar.o, bar.h, bar.l, bar.c]
-            }))
+            data: chartBars.map((bar, i) => [
+                new Date(bar.d).getTime(),
+                parseFloat(bar.o),
+                parseFloat(bar.h),
+                parseFloat(bar.l),
+                parseFloat(bar.c)
+            ])
         }, {
             name: 'EMA(20)',
             type: 'line',
@@ -2386,10 +2389,10 @@ async function renderTechnicalPro(stock) {
             x: { formatter: (v) => new Date(v).toLocaleDateString() },
             y: { 
                 formatter: (v) => {
-                    if (Array.isArray(v)) {
-                        return `O: ${v[0]?.toFixed(2)} H: ${v[1]?.toFixed(2)} L: ${v[2]?.toFixed(2)} C: ${v[3]?.toFixed(2)}`;
+                    if (typeof v === 'number') {
+                        return v.toFixed(2);
                     }
-                    return typeof v === 'number' ? v.toFixed(2) : '';
+                    return '';
                 }
             }
         },
