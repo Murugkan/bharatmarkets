@@ -2,20 +2,6 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    paths:
-      - 'index.html'
-      - 'analysis.html'
-      - 'data.html'
-      - 'app-core.js'
-      - 'app-import.js'
-      - 'app-portfolio.js'
-      - 'app-watchlist.js'
-      - 'app-drill.js'
-      - 'app-analysis.js'
-      - 'app-settings.js'
-      - 'app-engine.js'
-      - 'app-boot.js'
-      - '.github/workflows/pages.yml'
     branches:
       - main
   workflow_dispatch:
@@ -25,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read
@@ -35,41 +21,45 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
+      # Checkout repo
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Use Node 24 (future-proof)
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
+      # Minify JS files
       - name: Minify JS modules
         run: |
           for f in app-core.js app-import.js app-portfolio.js app-watchlist.js app-drill.js app-analysis.js app-settings.js app-engine.js app-boot.js; do
             if [ -f "$f" ]; then
-              npx --yes terser "$f" --compress --mangle --output "${f%.js}.min.js"
+              npx --yes terser@5 "$f" --compress --mangle --output "${f%.js}.min.js"
               echo "✅ Minified $f"
             fi
           done
 
+      # Replace JS references in index.html
       - name: Patch index.html
         run: |
           for f in app-core app-import app-portfolio app-watchlist app-drill app-analysis app-settings app-engine app-boot; do
             sed -i "s/src=\"${f}\.js\"/src=\"${f}.min.js\"/g" index.html
           done
 
+      # Configure GitHub Pages
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
+      # Upload site files
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
 
+      # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
-        id: deployment
         uses: actions/deploy-pages@v4
