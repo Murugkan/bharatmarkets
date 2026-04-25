@@ -122,7 +122,6 @@ let dataSource = null; // Track where data comes from: 'db' or 'json'
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
 const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
 const get = (obj, ...keys) => {
-    if (!obj) return '—';  // FIX: Added null safety check
     for (let k of keys) {
         if (obj[k] !== undefined) return obj[k];
     }
@@ -206,59 +205,40 @@ async function loadStock() {
         const tx = db.transaction(STORE, 'readonly');
         const store = tx.objectStore(STORE);
         
-        if (!store) {
-            throw new Error('Store not initialized');
+        currentStock = await new Promise(r => {
+            const req = store.get(ticker);
+            req.onsuccess = () => {
+                console.log('Stock loaded:', req.result);
+                r(req.result);
+            };
+            req.onerror = () => {
+                console.error('Store error:', req.error);
+                r(null);
+            };
+        });
+        
+        if (!currentStock) {
+            console.error('Stock not found:', ticker);
+            document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
+            return;
         }
         
-        currentStock = await new Promise(r => {
-            try {
-                const req = store.get(ticker);
-                if (!req) {
-                    r(null);
-                    return;
-                }
-                req.onsuccess = () => {
-                    r(req.result || null);
-                };
-                req.onerror = () => {
-                    console.error('Store query error:', req.error);
-                    r(null);
-                };
-            } catch (e) {
-                console.error('store.get() error:', e.message);
-                r(null);
-            }
-        });
-    } catch (storeError) {
-        console.warn('Database transaction failed:', storeError.message);
-        currentStock = null;
-    }
-    
-    // Fallback: Create minimal stock object with just ticker
-    if (!currentStock) {
-        console.log('Using fallback stock object');
-        currentStock = {
-            ticker: ticker,
-            sym: ticker,
-            name: ticker,
-            // No quarterly data - metrics won't show
-        };
-    }
-    
-    console.log('Stock object ready:', currentStock.sym || currentStock.ticker);
+        // Determine data source
+        dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
+        console.log('Data Source:', dataSource);
+        console.log('Full stock object:', currentStock);
         
-    // Determine data source
-    dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
-    console.log('Data Source:', dataSource);
-    console.log('Full stock object:', currentStock);
-    
-    console.log('Rendering header and overview...');
-    renderHeader();
-    
-    // Load guidance data from localStorage or external source
-    loadGuidanceData(ticker);
-    
-    renderTab('overview');
+        console.log('Rendering header and overview...');
+        renderHeader();
+        
+        // Load guidance data from localStorage or external source
+        loadGuidanceData(ticker);
+        
+        renderTab('overview');
+    } catch(e) {
+        console.error('Error:', e);
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
+    }
 }
 
 // Render header
@@ -295,10 +275,7 @@ async function loadGuidanceData(ticker) {
 function switchTab(tab) {
     currentTab = tab;
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    // FIX: Added event validation
-    if (event && event.target) {
-        event.target.classList.add('active');
-    }
+    event.target.classList.add('active');
     renderTab(tab);
 }
 
@@ -615,28 +592,30 @@ function renderTab(tab) {
                 <!-- Metrics Multi-Select -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
                     <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 Metrics</div>
-                    <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:100px">
-                        <option value="metric_eps">EPS</option>
-                        <option value="metric_net_inc">Net Inc</option>
-                        <option value="metric_revenue">Revenue</option>
-                        <option value="metric_ebitda">EBITDA</option>
-                        <option value="metric_opm">OPM%</option>
-                        <option value="metric_debt">Debt</option>
+                    <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
+                        <option value="eps">EPS</option>
+                        <option value="net">Net Inc</option>
+                        <option value="rev">Revenue</option>
+                        <option value="ebitda">EBITDA</option>
+                        <option value="opm">OPM%</option>
+                        <option value="debt">Debt</option>
                     </select>
                 </div>
             </div>
 
-            <!-- UNIFIED PRICE + RSI + EMA + METRICS CHART -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
-                <div id="priceChart" style="width:100%;height:450px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+            <!-- PRICE + RSI CHART -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:8px">
+                <div id="priceChart" style="width:100%;height:350px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
             </div>
 
-            <!-- METRICS CHART (HIDDEN - Consolidated into top chart) -->
-            <div id="metricsChart" style="display:none;width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+            <!-- METRICS + VOLUME CHART -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
+                <div id="metricsChart" style="width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+            </div>
 
             <!-- INFO -->
             <div id="metricInfo" style="font-size:8px;color:var(--tx3);padding:8px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1)">
-                ✅ All indicators consolidated
+                Charts synced
             </div>
         </div>`;
 
@@ -1074,15 +1053,11 @@ function updateRSI() {
 }
 
 function updateMetrics() {
+    metricsState = {};
     const metricsSelect = document.getElementById('metricsSelect');
     if (metricsSelect) {
         for (let option of metricsSelect.selectedOptions) {
-            rsiState[option.value] = true;
-        }
-        for (let option of metricsSelect.options) {
-            if (!option.selected && option.value.startsWith('metric_')) {
-                delete rsiState[option.value];
-            }
+            metricsState[option.value] = true;
         }
     }
     loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
@@ -1315,56 +1290,30 @@ function renderPriceChart(container, sym, bars) {
     }
 
     try {
-        // FIX: Validate bars data
-        if (!bars || !Array.isArray(bars) || bars.length === 0) {
-            container.innerHTML = '<div style="padding:20px;color:#ff6b85;font-size:10px">❌ Invalid chart data format</div>';
-            return;
-        }
-        
         // Dispose old chart if exists
         if (priceChart) {
             priceChart.dispose();
         }
 
         // Initialize ECharts
-        if (typeof echarts === 'undefined') {
-            container.innerHTML = '<div style="padding:20px;color:#ff6b85;font-size:10px">⚠️ ECharts library not loaded</div>';
-            return;
-        }
-
         priceChart = echarts.init(container, 'dark');
         priceSeries = {};
 
         // Prepare candlestick data: [open, close, low, high]
-        // FIX: Validate each bar has required properties
-        const ohlcData = bars.map((b, idx) => {
-            if (!b || typeof b !== 'object') return null;
-            const o = parseFloat(b.o);
-            const c = parseFloat(b.c);
-            const l = parseFloat(b.l);
-            const h = parseFloat(b.h);
-            
-            // FIX: Check all values are valid numbers
-            if (isNaN(o) || isNaN(c) || isNaN(l) || isNaN(h)) {
-                console.warn(`Invalid bar data at index ${idx}:`, b);
-                return null;
-            }
-            return [o, c, l, h];
-        }).filter(d => d !== null);
-        
-        if (ohlcData.length === 0) {
-            container.innerHTML = '<div style="padding:20px;color:#ff6b85;font-size:10px">❌ No valid price data</div>';
-            return;
-        }
+        const ohlcData = bars.map(b => [
+            parseFloat(b.o),
+            parseFloat(b.c),
+            parseFloat(b.l),
+            parseFloat(b.h)
+        ]);
 
-        const dates = bars.filter((b, idx) => ohlcData[idx] !== null).map(b => b.d || '');
-        const closes = ohlcData.map(d => d[1]);
+        const dates = bars.map(b => b.d);
+        const closes = bars.map(b => parseFloat(b.c));
 
         // Calculate RSI and EMA for selected indicators
         const indicatorDataSets = {};
         const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
         const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
-        const metricColors = { eps: '#ff6b9d', net_inc: '#00d4ff', revenue: '#00ff00', ebitda: '#ffff00', opm: '#ff00ff', debt: '#ff9999' };
         
         Object.keys(rsiState).forEach(key => {
             // Handle RSI
@@ -1411,60 +1360,6 @@ function renderPriceChart(container, sym, bars) {
                     };
                 }
             }
-            
-            // Handle Metrics (skip if no quarterly data)
-            if (key.startsWith('metric_')) {
-                try {
-                    const metricKey = key.replace('metric_', '');
-                    const s = currentStock;
-                    
-                    // Only render if quarterly data exists
-                    if (!s || !s.quarterly || !Array.isArray(s.quarterly) || s.quarterly.length === 0) {
-                        return; // Skip this metric
-                    }
-                    
-                    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
-                    
-                    // Map metric keys to data keys
-                    const keyMap = {
-                        'eps': 'e',
-                        'net_inc': 'n',
-                        'revenue': 'r',
-                        'ebitda': 'eb',
-                        'opm': 'op',
-                        'debt': 'd'
-                    };
-                    
-                    const dataKey = keyMap[metricKey] || metricKey;
-                    
-                    // Get metric values
-                    const metricData = sorted.map(q => {
-                        const val = q[dataKey];
-                        return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
-                    }).filter(d => d !== null);
-                    
-                    if (metricData.length > 0) {
-                        // Normalize to first value = 100
-                        const firstVal = metricData[0][1];
-                        if (firstVal !== 0) {
-                            const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
-                            
-                            indicatorDataSets[key] = {
-                                name: metricKey.toUpperCase(),
-                                type: 'line',
-                                xAxisIndex: 0,
-                                yAxisIndex: 2,
-                                data: normalized,
-                                lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
-                                smooth: true,
-                                symbol: 'none'
-                            };
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`Metric ${key} render failed:`, e.message);
-                }
-            }
         });
 
         // Build series
@@ -1490,104 +1385,51 @@ function renderPriceChart(container, sym, bars) {
             series.push(series_item);
         });
 
-        // ECharts option - All in one chart
+        // ECharts option
         const option = {
-            tooltip: { 
-                trigger: 'axis',
-                axisPointer: { type: 'cross' }
-            },
-            dataZoom: [
-                { 
-                    type: 'slider',
-                    show: true,
-                    xAxisIndex: [0],
-                    start: 0,
-                    end: 100
-                },
-                {
-                    type: 'inside',
-                    xAxisIndex: [0]
-                }
-            ],
+            tooltip: { trigger: 'axis' },
             grid: [
-                { left: '8%', right: '15%', top: '5%', bottom: '8%', height: '90%' }
+                { left: '8%', right: '8%', top: '5%', height: '70%' },
+                { left: '8%', right: '8%', top: '78%', height: '18%' }
             ],
             xAxis: [
-                { gridIndex: 0, type: 'category', data: dates, boundaryGap: false }
+                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true },
+                { gridIndex: 1, type: 'category', data: dates, boundaryGap: true }
             ],
             yAxis: [
                 { 
                     gridIndex: 0, 
-                    position: 'right',
                     type: 'value', 
                     scale: true, 
                     splitNumber: 4,
-                    name: 'Price',
-                    nameTextStyle: { color: '#7a8fa0', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString(),
-                        color: '#7a8fa0'
+                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString()
                     }
                 },
                 { 
-                    gridIndex: 0, 
-                    position: 'right',
-                    offset: 60,
+                    gridIndex: 1, 
                     type: 'value', 
                     min: 0, 
                     max: 100,
                     splitNumber: 5,
-                    name: 'RSI (0-100)',
-                    nameTextStyle: { color: '#00d4ff', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => Math.round(p).toString(),
-                        color: '#7a8fa0'
-                    }
-                },
-                { 
-                    gridIndex: 0, 
-                    position: 'right',
-                    offset: 120,
-                    type: 'value',
-                    name: 'Metrics (Indexed)',
-                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
-                    axisLabel: {
-                        formatter: (p) => Math.round(p).toString(),
-                        color: '#7a8fa0'
+                        formatter: (p) => Math.round(p).toString()  // NO decimals
                     }
                 }
             ],
             series: series
         };
 
-        // FIX: Validate before setting option
-        if (!priceChart || typeof priceChart.setOption !== 'function') {
-            throw new Error('ECharts instance not properly initialized');
-        }
-
         priceChart.setOption(option);
-        console.log(`✅ ECharts Unified Chart: Candlesticks + RSI + EMA + Metrics (Zoomable)`);
+        console.log(`✅ ECharts Price Chart: Candlesticks + ${Object.keys(rsiState).length} RSI overlays`);
         
     } catch (e) {
         console.error('ECharts Price chart error:', e);
-        // FIX: Better error message
-        container.innerHTML = `<div style="padding:20px;color:#ff6b85;font-size:10px">
-            ❌ Chart Error: ${e.message}<br/>
-            <span style="color:#7a8fa0;font-size:9px;margin-top:8px;display:block">Check console for details</span>
-        </div>`;
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
 }
 
 function renderMetricsChart(container, sym, bars) {
-    // FIX: Added library validation
-    if (typeof LightweightCharts === 'undefined') {
-        console.error('LightweightCharts library not loaded');
-        if (container) {
-            container.innerHTML = '<div style="padding:20px;color:#ff6b85;font-size:10px">⚠️ Chart library not loaded</div>';
-        }
-        return;
-    }
-    
     if (metricsChart) metricsChart.remove();
     if (!container.clientWidth || container.clientWidth < 100) {
         setTimeout(() => renderMetricsChart(container, sym, bars), 300);
@@ -1646,22 +1488,18 @@ function renderMetricsChart(container, sym, bars) {
             metricSeries['Volume'] = volumeSeries;
             
             // Explicitly apply right scale formatting for volume
-            // FIX: Added null safety check for priceScale
-            const rightScale = metricsChart.priceScale('right');
-            if (rightScale) {
-                rightScale.applyOptions({
-                    autoScale: true,
-                    formatPrice: (p) => {
-                        if (typeof p === 'number') {
-                            if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
-                            if (p >= 100000) return Math.round(p / 100000) + 'L';
-                            if (p >= 1000) return Math.round(p / 1000) + 'K';
-                            return Math.round(p).toString();
-                        }
-                        return p;
+            metricsChart.priceScale('right').applyOptions({
+                autoScale: true,
+                formatPrice: (p) => {
+                    if (typeof p === 'number') {
+                        if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                        if (p >= 100000) return Math.round(p / 100000) + 'L';
+                        if (p >= 1000) return Math.round(p / 1000) + 'K';
+                        return Math.round(p).toString();
                     }
-                });
-            }
+                    return p;
+                }
+            });
         }
 
         const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
@@ -1711,8 +1549,7 @@ function renderMetricsChart(container, sym, bars) {
                     infoDiv.textContent = '📊 Hover over metrics to see real values';
                 }
             } else {
-                // FIX: Use cached infoDiv reference instead of querying DOM again
-                infoDiv.textContent = '📊 Hover over metrics to see real values';
+                document.getElementById('metricInfo').textContent = '📊 Hover over metrics to see real values';
             }
         });
 
@@ -1737,12 +1574,6 @@ function syncTimeScales() {
 function addMetricSeries(metricKey, cd, chart) {
     const s = currentStock;
     if (!s || !s.quarterly || s.quarterly.length === 0) return;
-    
-    // FIX: Added chart validation
-    if (!chart || typeof chart.addLineSeries !== 'function') {
-        console.warn(`Chart object invalid for metric: ${metricKey}`);
-        return;
-    }
 
     // Get all quarterly data points
     const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
