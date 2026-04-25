@@ -1237,21 +1237,17 @@ function renderPriceChart(container, sym, bars) {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         leftPriceScale: {
-            visible: false
+            visible: false,  // Hide price scale labels
+            autoScale: true
         },
         rightPriceScale: {
             visible: true,
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: true,
-            formatPrice: (p) => {
-                if (typeof p === 'number') {
-                    if (p > 1000) return '₹' + Math.round(p);
-                    if (p > 100) return '₹' + p.toFixed(0);
-                    return '₹' + p.toFixed(2);
-                }
-                return p;
-            }
+            autoScale: false,
+            minPrice: 0,
+            maxPrice: 100,
+            formatPrice: (p) => Math.round(p).toString()
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1265,7 +1261,7 @@ function renderPriceChart(container, sym, bars) {
             upColor: '#00d084', downColor: '#ff3b5c',
             borderUpColor: '#00e896', borderDownColor: '#ff6b85',
             wickUpColor: '#00e896', wickDownColor: '#ff6b85',
-            priceScaleId: 'right'
+            priceScaleId: 'left'
         });
 
         const cd = bars.map(b => ({
@@ -1332,7 +1328,8 @@ function renderMetricsChart(container, sym, bars) {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         leftPriceScale: {
-            visible: false
+            visible: false,  // Hide metrics scale labels
+            autoScale: true
         },
         rightPriceScale: {
             visible: true,
@@ -1483,7 +1480,7 @@ function addMetricSeries(metricKey, cd, chart) {
     const minValue = Math.min(...normalizedData.map(d => d.value));
     const maxValue = Math.max(...normalizedData.map(d => d.value));
 
-    // Add as line series on RIGHT price scale with fixed normalized range
+    // Add as line series on LEFT price scale (hidden labels)
     // Use marker to show data points clearly
     const ls = chart.addLineSeries({
         color: cfg.color,
@@ -1492,24 +1489,7 @@ function addMetricSeries(metricKey, cd, chart) {
         pointMarkersVisible: true,  // Show points at data locations
         pointMarkersRadius: 3,
         title: `${cfg.label} (Q1=100)`,
-        priceScaleId: 'right'  // Use RIGHT scale for metrics
-    });
-    
-    // Apply scale for metrics - visible on RIGHT side
-    chart.priceScale('right').applyOptions({
-        textColor: '#7a8fa0',
-        borderColor: '#1a2332',
-        visible: true,  // SHOW the Y-axis on right
-        autoScale: true,
-        formatPrice: (p) => {
-            if (typeof p === 'number') {
-                if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
-                if (p >= 100000) return Math.round(p / 100000) + 'L';
-                if (p >= 1000) return Math.round(p / 1000) + 'K';
-                return Math.round(p).toString();
-            }
-            return p;
-        }
+        priceScaleId: 'left'  // Use LEFT scale for metrics (labels hidden)
     });
 
     ls.setData(normalizedData.map(d => ({time: d.time, value: d.value})));
