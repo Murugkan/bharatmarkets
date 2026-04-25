@@ -2413,7 +2413,7 @@ async function renderTechnicalPro(stock) {
     const priceData = options1.series[0].data;
     const validPrices = priceData.filter(p => p && p.y !== null && p.y !== undefined);
     console.log(`   Valid price points: ${validPrices.length}/${priceData.length}`);
-    console.log(`   Price Y-values (first 3): ${validPrices.slice(0,3).map(p => p.y?.toFixed(2)).join(', ')}`);
+    console.log(`   Price Y-values (first 3 candlesticks): ${validPrices.slice(0,3).map(p => Array.isArray(p.y) ? `[${p.y.map(v => v?.toFixed(0)).join(',')}]` : p.y?.toFixed(2)).join(', ')}`);
     
     if (validPrices.length === 0) {
         console.error(`❌ No valid price data! Check if close prices are null.`);
