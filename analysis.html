@@ -608,23 +608,31 @@ function renderTab(tab) {
                 </div>
             </div>
 
-            <!-- PRICE CHART -->
+            <!-- PRICE + RSI CHART -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:8px">
                 <div id="priceChart" style="width:100%;height:350px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
             </div>
 
-            <!-- METRICS CHART -->
+            <!-- METRICS + VOLUME CHART -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
                 <div id="metricsChart" style="width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
             </div>
 
             <!-- INFO -->
             <div id="metricInfo" style="font-size:8px;color:var(--tx3);padding:8px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1)">
-                Charts ready
+                Charts synced
             </div>
         </div>`;
 
         setTimeout(() => {
+            // Initialize RSI state with default RSI(14)
+            rsiState = { rsi_14: true };
+            const rsiSelect = document.getElementById('rsiSelect');
+            if (rsiSelect) {
+                for (let option of rsiSelect.options) {
+                    option.selected = option.value === 'rsi_14';
+                }
+            }
             loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
         }, 500);
     } else if (tab === 'fundamentals') {
@@ -1023,11 +1031,11 @@ function renderInsightsTab(ticker, insights) {
     document.getElementById('content').innerHTML = html;
 }
 
-// TECHNICAL TAB - METRICS
+// TECHNICAL TAB - METRICS & RSI
 let metricsState = {};  // Track which metrics are selected
 let rsiState = {};  // Track which RSI periods are selected
 let priceChart = null;  // Price + RSI chart
-let metricsChart = null;  // Metrics chart
+let metricsChart = null;  // Metrics + Volume chart
 let priceSeries = {};  // Price series (candlestick, RSI)
 let metricSeries = {};  // Metric lines
 
@@ -1237,17 +1245,19 @@ function renderPriceChart(container, sym, bars) {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         leftPriceScale: {
-            visible: false,  // Hide price scale labels
-            autoScale: true
+            visible: false
         },
         rightPriceScale: {
             visible: true,
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: false,
-            minPrice: 0,
-            maxPrice: 100,
-            formatPrice: (p) => Math.round(p).toString()
+            autoScale: true,
+            formatPrice: (p) => {
+                if (typeof p === 'number') {
+                    return (p > 100 ? Math.round(p) : p.toFixed(2)).toString();
+                }
+                return p;
+            }
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1256,12 +1266,12 @@ function renderPriceChart(container, sym, bars) {
         priceChart = LightweightCharts.createChart(container, opts);
         priceSeries = {};
 
-        // Add candlesticks on LEFT scale (PRIORITY)
+        // Add candlesticks on RIGHT scale (auto-scales with RSI)
         const cs = priceChart.addCandlestickSeries({
             upColor: '#00d084', downColor: '#ff3b5c',
             borderUpColor: '#00e896', borderDownColor: '#ff6b85',
             wickUpColor: '#00e896', wickDownColor: '#ff6b85',
-            priceScaleId: 'left'
+            priceScaleId: 'right'
         });
 
         const cd = bars.map(b => ({
@@ -1279,19 +1289,16 @@ function renderPriceChart(container, sym, bars) {
         // Add RSI overlays on RIGHT scale
         const rsiColors = { rsi_5: '#ff6b9d', rsi_9: '#c0ff00', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
         const closes = cd.map(c => c.close);
-        const rsiValues = {};
         
         Object.keys(rsiState).forEach(rsiKey => {
             const period = parseInt(rsiKey.replace('rsi_', ''));
             const rsiArray = calculateRSI(closes, period);
-            rsiValues[rsiKey] = rsiArray;
             
             if (rsiArray.length > 0) {
-                // Map RSI values starting from period index to align with candlesticks
                 const rsiData = [];
                 for (let i = 0; i < rsiArray.length; i++) {
                     rsiData.push({
-                        time: cd[period + i].time,  // Align time with candlestick at period+i
+                        time: cd[period + i].time,
                         value: rsiArray[i]
                     });
                 }
@@ -1304,12 +1311,12 @@ function renderPriceChart(container, sym, bars) {
                 });
                 rsiSeries.setData(rsiData);
                 priceSeries[rsiKey] = rsiSeries;
+                console.log(`✅ RSI(${period}): ${rsiData.length} points`);
             }
         });
-        
-        // Right scale auto-scales for both candlesticks and RSI
+
         priceChart.timeScale().fitContent();
-        console.log(`✅ Price chart rendered with candlesticks + RSI overlays`);
+        console.log(`✅ Price chart: Candlesticks + RSI overlays`);
         
     } catch (e) {
         console.error('Price chart error:', e);
@@ -1328,11 +1335,10 @@ function renderMetricsChart(container, sym, bars) {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         leftPriceScale: {
-            visible: false,  // Hide metrics scale labels
-            autoScale: true
+            visible: false  // Hide metrics scale
         },
         rightPriceScale: {
-            visible: true,
+            visible: true,  // Show volume scale
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
             autoScale: true,
@@ -1386,7 +1392,7 @@ function renderMetricsChart(container, sym, bars) {
         // NOW sync the timeScales AFTER both charts are created
         syncTimeScales();
 
-        console.log(`✅ Metrics chart rendered with volume + ${selectedMetrics.length} metrics | X-axis synced`);
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced`);
         
     } catch (e) {
         console.error('Metrics chart error:', e);
@@ -1400,30 +1406,45 @@ function syncTimeScales() {
     const priceTimeScale = priceChart.timeScale();
     const metricsTimeScale = metricsChart.timeScale();
     
-    let isUpdating = false;
+    let isUpdating = false;  // Guard flag to prevent feedback loops
     
     // When price chart time range changes, update metrics chart
     priceTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;
+        if (isUpdating) return;  // Prevent loop
         isUpdating = true;
-        metricsTimeScale.setVisibleRange({from: newRange.from, to: newRange.to});
+        
+        metricsTimeScale.setVisibleRange({
+            from: newRange.from,
+            to: newRange.to
+        });
+        
         isUpdating = false;
     });
     
     // When metrics chart time range changes, update price chart  
     metricsTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;
+        if (isUpdating) return;  // Prevent loop
         isUpdating = true;
-        priceTimeScale.setVisibleRange({from: newRange.from, to: newRange.to});
+        
+        priceTimeScale.setVisibleRange({
+            from: newRange.from,
+            to: newRange.to
+        });
+        
         isUpdating = false;
     });
     
-    // Set both to SAME initial range
+    // Set both to same initial range (fit all content)
     priceTimeScale.fitContent();
     const range = priceTimeScale.getVisibleRange();
     if (range) {
-        metricsTimeScale.setVisibleRange({from: range.from, to: range.to});
+        metricsTimeScale.setVisibleRange({
+            from: range.from,
+            to: range.to
+        });
     }
+    
+    console.log('🔗 TimeScales synced with guard flag');
 }
 
 function addMetricSeries(metricKey, cd, chart) {
@@ -1480,7 +1501,7 @@ function addMetricSeries(metricKey, cd, chart) {
     const minValue = Math.min(...normalizedData.map(d => d.value));
     const maxValue = Math.max(...normalizedData.map(d => d.value));
 
-    // Add as line series on LEFT price scale (hidden labels)
+    // Add as line series on LEFT price scale (labels hidden)
     // Use marker to show data points clearly
     const ls = chart.addLineSeries({
         color: cfg.color,
@@ -1489,13 +1510,13 @@ function addMetricSeries(metricKey, cd, chart) {
         pointMarkersVisible: true,  // Show points at data locations
         pointMarkersRadius: 3,
         title: `${cfg.label} (Q1=100)`,
-        priceScaleId: 'left'  // Use LEFT scale for metrics (labels hidden)
+        priceScaleId: 'left'  // Use LEFT scale for metrics (hidden)
     });
-
+    
     ls.setData(normalizedData.map(d => ({time: d.time, value: d.value})));
     metricSeries[cfg.label] = ls;
 
-    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Normalized [${minValue.toFixed(1)}, ${maxValue.toFixed(1)}] | Base Q1: ${baseValue.toFixed(2)}`);
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters`);
 }
 
 </script>
