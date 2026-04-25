@@ -2384,7 +2384,14 @@ async function renderTechnicalPro(stock) {
             theme: 'dark',
             style: { fontSize: '10px' },
             x: { formatter: (v) => new Date(v).toLocaleDateString() },
-            y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
+            y: { 
+                formatter: (v) => {
+                    if (Array.isArray(v)) {
+                        return `O: ${v[0]?.toFixed(2)} H: ${v[1]?.toFixed(2)} L: ${v[2]?.toFixed(2)} C: ${v[3]?.toFixed(2)}`;
+                    }
+                    return typeof v === 'number' ? v.toFixed(2) : '';
+                }
+            }
         },
         grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
         stroke: { width: 2, curve: 'smooth' },
