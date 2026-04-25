@@ -205,40 +205,59 @@ async function loadStock() {
         const tx = db.transaction(STORE, 'readonly');
         const store = tx.objectStore(STORE);
         
-        currentStock = await new Promise(r => {
-            const req = store.get(ticker);
-            req.onsuccess = () => {
-                console.log('Stock loaded:', req.result);
-                r(req.result);
-            };
-            req.onerror = () => {
-                console.error('Store error:', req.error);
-                r(null);
-            };
-        });
-        
-        if (!currentStock) {
-            console.error('Stock not found:', ticker);
-            document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
-            return;
+        if (!store) {
+            throw new Error('Store not initialized');
         }
         
-        // Determine data source
-        dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
-        console.log('Data Source:', dataSource);
-        console.log('Full stock object:', currentStock);
-        
-        console.log('Rendering header and overview...');
-        renderHeader();
-        
-        // Load guidance data from localStorage or external source
-        loadGuidanceData(ticker);
-        
-        renderTab('overview');
-    } catch(e) {
-        console.error('Error:', e);
-        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
+        currentStock = await new Promise(r => {
+            try {
+                const req = store.get(ticker);
+                if (!req) {
+                    r(null);
+                    return;
+                }
+                req.onsuccess = () => {
+                    r(req.result || null);
+                };
+                req.onerror = () => {
+                    console.error('Store query error:', req.error);
+                    r(null);
+                };
+            } catch (e) {
+                console.error('store.get() error:', e.message);
+                r(null);
+            }
+        });
+    } catch (storeError) {
+        console.warn('Database transaction failed:', storeError.message);
+        currentStock = null;
     }
+    
+    // Fallback: Create minimal stock object with just ticker
+    if (!currentStock) {
+        console.log('Using fallback stock object');
+        currentStock = {
+            ticker: ticker,
+            sym: ticker,
+            name: ticker,
+            // No quarterly data - metrics won't show
+        };
+    }
+    
+    console.log('Stock object ready:', currentStock.sym || currentStock.ticker);
+        
+    // Determine data source
+    dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
+    console.log('Data Source:', dataSource);
+    console.log('Full stock object:', currentStock);
+    
+    console.log('Rendering header and overview...');
+    renderHeader();
+    
+    // Load guidance data from localStorage or external source
+    loadGuidanceData(ticker);
+    
+    renderTab('overview');
 }
 
 // Render header
