@@ -715,27 +715,50 @@ function renderTab(tab) {
         </div>`;
         document.getElementById('content').innerHTML = html;
         
-        // Initialize debug window
+        // Initialize debug window for MOBILE
         const debugWindow = document.createElement('div');
         debugWindow.id = 'debug-window';
         debugWindow.style.cssText = `
             position: fixed;
-            bottom: 0;
-            right: 0;
-            width: 300px;
-            max-height: 200px;
-            background: rgba(0,0,0,.95);
-            border: 1px solid #00f2ff;
-            border-radius: 4px;
+            bottom: 60px;
+            left: 12px;
+            right: 12px;
+            max-height: 150px;
+            background: rgba(0,0,0,.98);
+            border: 2px solid #00f2ff;
+            border-radius: 6px;
             padding: 8px;
             font-family: monospace;
-            font-size: 8px;
+            font-size: 9px;
             color: #00f2ff;
             overflow-y: auto;
             z-index: 9999;
-            display: none;
+            display: block;
         `;
         document.body.appendChild(debugWindow);
+        
+        // Add debug toggle button
+        const debugBtn = document.createElement('button');
+        debugBtn.style.cssText = `
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            width: 40px;
+            height: 40px;
+            background: #00f2ff;
+            border: none;
+            border-radius: 50%;
+            color: #000;
+            font-weight: bold;
+            z-index: 10000;
+            cursor: pointer;
+            font-size: 18px;
+        `;
+        debugBtn.textContent = '🐛';
+        debugBtn.onclick = () => {
+            debugWindow.style.display = debugWindow.style.display === 'none' ? 'block' : 'none';
+        };
+        document.body.appendChild(debugBtn);
         
         // Capture console.log
         const originalLog = console.log;
@@ -744,22 +767,12 @@ function renderTab(tab) {
             const debugWin = document.getElementById('debug-window');
             if (debugWin) {
                 const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-                debugWin.innerHTML += `<div>${line}</div>`;
+                debugWin.innerHTML += `<div style="white-space:pre-wrap;word-break:break-word">${line}</div>`;
                 debugWin.scrollTop = debugWin.scrollHeight;
             }
         };
         
-        // Toggle debug window with Ctrl+D
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.key === 'd') {
-                const debugWin = document.getElementById('debug-window');
-                if (debugWin) {
-                    debugWin.style.display = debugWin.style.display === 'none' ? 'block' : 'none';
-                }
-            }
-        });
-        
-        console.log('🔍 Debug window ready - Press Ctrl+D to toggle');
+        console.log('🐛 Debug panel ready - Tap bug icon to toggle');
         
         // Load and render new technical pro charts
         renderTechnicalPro(currentStock);
