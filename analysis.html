@@ -1364,35 +1364,57 @@ function renderPriceChart(container, sym, bars) {
                 }
             }
             
-            // Handle Metrics
+            // Handle Metrics (skip if no quarterly data)
             if (key.startsWith('metric_')) {
-                const metricKey = key.replace('metric_', '');
-                const s = currentStock;
-                if (s && s.quarterly && s.quarterly.length > 0) {
+                try {
+                    const metricKey = key.replace('metric_', '');
+                    const s = currentStock;
+                    
+                    // Only render if quarterly data exists
+                    if (!s || !s.quarterly || !Array.isArray(s.quarterly) || s.quarterly.length === 0) {
+                        return; // Skip this metric
+                    }
+                    
                     const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    
+                    // Map metric keys to data keys
+                    const keyMap = {
+                        'eps': 'e',
+                        'net_inc': 'n',
+                        'revenue': 'r',
+                        'ebitda': 'eb',
+                        'opm': 'op',
+                        'debt': 'd'
+                    };
+                    
+                    const dataKey = keyMap[metricKey] || metricKey;
                     
                     // Get metric values
                     const metricData = sorted.map(q => {
-                        const val = q[metricKey];
-                        return val !== undefined && val !== null ? [q.d, val] : null;
+                        const val = q[dataKey];
+                        return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
                     }).filter(d => d !== null);
                     
                     if (metricData.length > 0) {
                         // Normalize to first value = 100
                         const firstVal = metricData[0][1];
-                        const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
-                        
-                        indicatorDataSets[key] = {
-                            name: metricKey.toUpperCase(),
-                            type: 'line',
-                            xAxisIndex: 0,
-                            yAxisIndex: 2,
-                            data: normalized,
-                            lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
-                            smooth: true,
-                            symbol: 'none'
-                        };
+                        if (firstVal !== 0) {
+                            const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
+                            
+                            indicatorDataSets[key] = {
+                                name: metricKey.toUpperCase(),
+                                type: 'line',
+                                xAxisIndex: 0,
+                                yAxisIndex: 2,
+                                data: normalized,
+                                lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
+                                smooth: true,
+                                symbol: 'none'
+                            };
+                        }
                     }
+                } catch (e) {
+                    console.warn(`Metric ${key} render failed:`, e.message);
                 }
             }
         });
