@@ -1168,13 +1168,33 @@ function addMetricSeries(metricKey, cd, chart) {
 
     const cfg = config[metricKey] || {color: '#00f2ff', label: metricKey};
 
-    // Add as line series on SAME chart (using default left price scale)
-    // This overlays it on the candlestick chart
+    // Add as line series on RIGHT price scale for proper visualization
+    // This prevents metric values (millions) from overwhelming price scale (hundreds)
     const ls = chart.addLineSeries({
         color: cfg.color,
         lineWidth: 2,
         lineStyle: 1,  // Solid line
-        title: `${cfg.label} (Quarterly)`
+        title: `${cfg.label} (Quarterly)`,
+        priceScaleId: 'right'  // Use right scale for metrics
+    });
+
+    // Attach to right price scale with proper formatting
+    chart.priceScale('right').applyOptions({
+        textColor: '#7a8fa0',
+        borderColor: '#1a2332',
+        autoScale: true,
+        formatPrice: (p) => {
+            if (typeof p === 'number') {
+                // Format large numbers (millions) with K/M suffix
+                if (p >= 1000000) {
+                    return (p / 1000000).toFixed(1) + 'M';
+                } else if (p >= 1000) {
+                    return (p / 1000).toFixed(1) + 'K';
+                }
+                return p.toFixed(2);
+            }
+            return p;
+        }
     });
 
     ls.setData(metricData.map(m => ({time: m.time, value: m.value})));
