@@ -640,20 +640,14 @@ function renderTab(tab) {
     } else if (tab === 'technicalPro') {
         html = `<div style="padding:12px;padding-bottom:100px">
             <div style="margin-bottom:16px">
-                <div style="display:flex;gap:16px;margin-bottom:12px;align-items:center">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10px;font-weight:700;color:var(--tx1)">
-                        <input type="radio" name="timeframe" value="daily" onchange="switchTimeframe('daily')" checked style="cursor:pointer;width:16px;height:16px"> 📅 Daily
-                    </label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10px;font-weight:700;color:var(--tx1)">
-                        <input type="radio" name="timeframe" value="weekly" onchange="switchTimeframe('weekly')" style="cursor:pointer;width:16px;height:16px"> 📅 Weekly
-                    </label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10px;font-weight:700;color:var(--tx1)">
-                        <input type="radio" name="timeframe" value="monthly" onchange="switchTimeframe('monthly')" style="cursor:pointer;width:16px;height:16px"> 📅 Monthly
-                    </label>
+                <div style="display:flex;gap:8px;margin-bottom:12px;overflow-x:auto;flex-wrap:wrap">
+                    <button onclick="switchTimeframe('daily')" class="timeframe-btn" data-tf="daily" style="padding:8px 16px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Daily</button>
+                    <button onclick="switchTimeframe('weekly')" class="timeframe-btn" data-tf="weekly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Weekly</button>
+                    <button onclick="switchTimeframe('monthly')" class="timeframe-btn" data-tf="monthly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Monthly</button>
                 </div>
             </div>
-            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;position:relative;margin-bottom:16px;-webkit-user-select:none;user-select:none">
-                <div id="chartPro1" style="width:100%;height:400px;display:block;-webkit-touch-callout:none"></div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;max-width:100vw">
+                <div id="chartPro1" style="width:100%;height:400px;display:block"></div>
             </div>
             
             <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:visible;margin-top:16px;position:relative;z-index:1">
@@ -678,14 +672,7 @@ function renderTab(tab) {
                     </div>
                 </div>
                 
-                <div style="flex:1;min-width:120px;position:relative">
-                    <select id="ema-select" onchange="selectEMA(this.value)" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace">
-                        <option value="" style="color:var(--tx3)">📈 Select EMA</option>
-                        <option value="ema20" style="color:var(--tx1)">EMA(20)</option>
-                        <option value="ema50" style="color:var(--tx1)">EMA(50)</option>
-                        <option value="ema200" style="color:var(--tx1)">EMA(200)</option>
-                    </select>
-                </div>
+                
 
                 <div style="flex:1;min-width:120px;position:relative">
                     <button onclick="toggleDropdown('metric-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
@@ -731,7 +718,7 @@ function renderTab(tab) {
             color: #00f2ff;
             overflow-y: auto;
             z-index: 9999;
-            display: none;
+            display: block;
         `;
         document.body.appendChild(debugWindow);
         
@@ -1920,32 +1907,12 @@ let proCharts = {
 
 function switchTimeframe(tf) {
     proCharts.currentTimeframe = tf;
-    // Update radio buttons
-    document.querySelectorAll('input[name="timeframe"]').forEach(radio => {
-        radio.checked = radio.value === tf;
+    document.querySelectorAll('.timeframe-btn').forEach(btn => {
+        btn.style.background = btn.getAttribute('data-tf') === tf ? 'rgba(0,242,255,.1)' : 'transparent';
+        btn.style.borderColor = btn.getAttribute('data-tf') === tf ? 'rgba(0,242,255,.3)' : 'var(--b1)';
+        btn.style.color = btn.getAttribute('data-tf') === tf ? 'var(--ac)' : 'var(--tx3)';
     });
     renderTechnicalPro(currentStock);
-}
-
-function selectEMA(ema) {
-    if (!ema || !proCharts.chart1) return;
-    
-    const seriesMap = {
-        'ema20': 'EMA(20)',
-        'ema50': 'EMA(50)',
-        'ema200': 'EMA(200)'
-    };
-    
-    const seriesName = seriesMap[ema];
-    
-    try {
-        proCharts.chart1.toggleSeries(seriesName);
-    } catch (e) {
-        console.log(`Toggle series: ${seriesName}`, e.message);
-    }
-    
-    // Reset dropdown
-    document.getElementById('ema-select').value = '';
 }
 
 function toggleDropdown(id) {
@@ -2197,7 +2164,7 @@ async function renderTechnicalPro(stock) {
     console.log(`🔄 Loading bars for ${sym} from ./SYMBOL.json`);
     
     try {
-        // Load OHLCV bars from ./charts/SYMBOL.json
+        // Load OHLCV bars from ./charts/SYMBOL.json (NOT in IndexedDB)
         const barsUrl = `./charts/${sym}.json`;
         console.log(`📥 Fetching: ${barsUrl}`);
         
@@ -2219,24 +2186,14 @@ async function renderTechnicalPro(stock) {
         
         console.log(`✅ Loaded ${bars.length} bars`);
         
+        // Quarterly data comes from IndexedDB (already in currentStock)
+        const quarterly = stock.quarterly || [];
+        console.log(`✅ Quarterly data: ${quarterly.length} quarters available`);
+        
         const tf = proCharts.currentTimeframe;
-        let recentBars;
+        const recentBars = bars.slice(-252); // Last ~1 year
         
-        const screenWidth = window.innerWidth;
-        const barPixelWidth = 6; // Smaller bars: 6px each
-        const visibleBars = Math.floor((screenWidth - 40) / barPixelWidth);
-        
-        console.log(`📱 Screen: ${screenWidth}px → ${visibleBars} bars max`);
-        
-        if (tf === 'daily') {
-            recentBars = bars.slice(-Math.max(20, visibleBars));
-        } else if (tf === 'weekly') {
-            recentBars = bars.slice(-Math.max(visibleBars * 5, 200));
-        } else {
-            recentBars = bars.slice(-Math.max(visibleBars * 10, 400));
-        }
-        
-        // Calculate indicators
+        // Calculate ALL indicators from DAILY bars (never aggregated)
         const rsi7 = calculateRSI(recentBars, 7);
         const rsi14 = calculateRSI(recentBars, 14);
         const rsi21 = calculateRSI(recentBars, 21);
@@ -2244,120 +2201,42 @@ async function renderTechnicalPro(stock) {
         const ema50 = calculateEMA(recentBars, 50);
         const ema200 = calculateEMA(recentBars, 200);
         
-        // Aggregate by timeframe
-        let chartBars, displayEMA20, displayEMA50, displayEMA200;
+        console.log(`✅ Daily indicators calculated from ${recentBars.length} bars`);
+        console.log(`   RSI(7): ${rsi7.filter(r => r !== null).length}, RSI(14): ${rsi14.filter(r => r !== null).length}, RSI(21): ${rsi21.filter(r => r !== null).length}`);
+        console.log(`   EMA(20): ${ema20.filter(e => e !== null).length}, EMA(50): ${ema50.filter(e => e !== null).length}, EMA(200): ${ema200.filter(e => e !== null).length}`);
+        
+        // Aggregate price bars by timeframe
+        let chartBars, displayRSI7, displayRSI14, displayRSI21, displayEMA20, displayEMA50, displayEMA200;
         
         if (tf === 'daily') {
             chartBars = recentBars;
-            displayEMA20 = ema20;
-            displayEMA50 = ema50;
-            displayEMA200 = ema200;
-        } else if (tf === 'weekly') {
-            chartBars = aggregateToWeekly(recentBars);
-            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
-            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
-            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
-        } else {
-            chartBars = aggregateToMonthly(recentBars);
-            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
-            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
-            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
-        }
-        
-        console.log(`📊 Timeframe: ${tf}, Bars: ${chartBars.length}`);
-        
-        // Use Lightweight-Charts for Chart 1
-        const container = document.getElementById('chartPro1');
-        container.innerHTML = '';
-        
-        const chart = LightweightCharts.createChart(container, {
-            layout: { background: { color: '#060c18' }, textColor: '#7a8fa0' },
-            width: container.offsetWidth,
-            height: 400,
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-                rightOffset: 10,
-                fixLeftEdge: false,
-                fixRightEdge: false
-            },
-            rightPriceScale: {
-                autoScale: true,
-                mode: 0
-            }
-        });
-        
-        // Candlestick series
-        const candleData = chartBars.map(bar => ({
-            time: Math.floor(new Date(bar.d).getTime() / 1000),
-            open: parseFloat(bar.o),
-            high: parseFloat(bar.h),
-            low: parseFloat(bar.l),
-            close: parseFloat(bar.c)
-        }));
-        
-        const candleSeries = chart.addCandlestickSeries({
-            upColor: '#26de81',
-            downColor: '#ff6b85',
-            wickUpColor: '#26de81',
-            wickDownColor: '#ff6b85',
-            borderUpColor: '#26de81',
-            borderDownColor: '#ff6b85'
-        });
-        candleSeries.setData(candleData);
-        
-        // EMA lines
-        const ema20Data = chartBars.map((bar, i) => ({
-            time: Math.floor(new Date(bar.d).getTime() / 1000),
-            value: displayEMA20[i]
-        })).filter(d => d.value !== null && d.value !== undefined);
-        
-        const ema50Data = chartBars.map((bar, i) => ({
-            time: Math.floor(new Date(bar.d).getTime() / 1000),
-            value: displayEMA50[i]
-        })).filter(d => d.value !== null && d.value !== undefined);
-        
-        const ema200Data = chartBars.map((bar, i) => ({
-            time: Math.floor(new Date(bar.d).getTime() / 1000),
-            value: displayEMA200[i]
-        })).filter(d => d.value !== null && d.value !== undefined);
-        
-        const lineSeries20 = chart.addLineSeries({ color: '#26de81', lineWidth: 1 });
-        lineSeries20.setData(ema20Data);
-        
-        const lineSeries50 = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1 });
-        lineSeries50.setData(ema50Data);
-        
-        const lineSeries200 = chart.addLineSeries({ color: '#ff6b85', lineWidth: 1 });
-        lineSeries200.setData(ema200Data);
-        
-        // Auto fit content
-        chart.timeScale().fitContent();
-        
-        proCharts.chart1 = chart;
-        proCharts.candleSeries = candleSeries;
-        proCharts.lineSeries = { ema20: lineSeries20, ema50: lineSeries50, ema200: lineSeries200 };
-        
-        console.log('✅ Lightweight-Charts rendered - Pan/Zoom on x-axis enabled');
-        
-        // Chart 2: RSI (keep ApexCharts for now)
-        
-        // Get RSI data for Chart 2
-        let displayRSI7, displayRSI14, displayRSI21;
-        
-        if (tf === 'daily') {
             displayRSI7 = rsi7;
             displayRSI14 = rsi14;
             displayRSI21 = rsi21;
+            displayEMA20 = ema20;
+            displayEMA50 = ema50;
+            displayEMA200 = ema200;
+            console.log(`📊 Daily: ${chartBars.length} bars`);
         } else if (tf === 'weekly') {
+            chartBars = aggregateToWeekly(recentBars);
             displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
             displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
             displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
+            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
+            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
+            console.log(`📊 Weekly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
         } else {
+            chartBars = aggregateToMonthly(recentBars);
             displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
             displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
             displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
+            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
+            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
+            console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
         }
+    
         
         const chart2Data = [{
             name: 'RSI(7)',
@@ -2415,28 +2294,281 @@ async function renderTechnicalPro(stock) {
             });
         }
     
-    // Destroy old charts properly
-    if (proCharts.chart1) {
-        try {
-            proCharts.chart1.destroy();
-        } catch (e) {
-            console.log('Chart1 destroy:', e.message);
-        }
+    // Destroy old charts
+    if (proCharts.chart1) proCharts.chart1.destroy();
+    if (proCharts.chart2) proCharts.chart2.destroy();
+    
+    // Chart 1: Price + EMA + Volume (using line instead of candlestick for mixed charts)
+    const options1 = {
+        chart: {
+            type: 'candlestick',
+            background: 'transparent',
+            foreColor: '#7a8fa0',
+            toolbar: { 
+                show: true,
+                autoSelected: 'pan',
+                tools: {
+                    download: false,
+                    selection: false,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                type: 'xy',
+                autoScaleYaxis: true,
+                zoomedArea: {
+                    fill: { color: '#90CAF9', opacity: 0.4 },
+                    border: { color: '#0D47A1', opacity: 0.4 }
+                }
+            },
+            selection: {
+                enabled: true,
+                xaxis: { min: undefined, max: undefined },
+                yaxis: { min: undefined, max: undefined }
+            },
+            animations: { enabled: false },
+            sparkline: { enabled: false }
+        },
+        plotOptions: {
+            candlestick: {
+                colors: { upward: '#26de81', downward: '#ff6b85' },
+                wick: { useFillColor: true }
+            }
+        },
+        series: [{
+            name: 'Price',
+            type: 'candlestick',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: [parseFloat(bar.o), parseFloat(bar.h), parseFloat(bar.l), parseFloat(bar.c)]
+            }))
+        }, {
+            name: 'EMA(20)',
+            type: 'line',
+            color: '#26de81',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA20[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }, {
+            name: 'EMA(50)',
+            type: 'line',
+            color: '#f59e0b',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA50[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }, {
+            name: 'EMA(200)',
+            type: 'line',
+            color: '#ff6b85',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA200[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }],
+        xaxis: {
+            type: 'datetime',
+            axisBorder: { show: true, color: '#1a2332' },
+            axisTicks: { show: true },
+            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
+        },
+        yaxis: [{
+            title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '11px', fontWeight: 700 } },
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => typeof v === 'number' ? v.toFixed(0) : '' },
+            opposite: true
+        }],
+        tooltip: {
+            theme: 'dark',
+            style: { fontSize: '10px' },
+            x: { formatter: (v) => new Date(v).toLocaleDateString() },
+            y: { 
+                formatter: (v) => {
+                    if (typeof v === 'number') {
+                        return v.toFixed(2);
+                    }
+                    return '';
+                }
+            }
+        },
+        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
+        stroke: { width: 2, curve: 'smooth' },
+        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
+    };
+    
+    // Debug: Check data before rendering
+    console.log(`🔍 Chart1 Data Check:`);
+    console.log(`   chartBars: ${chartBars.length} bars`);
+    console.log(`   Sample bar: o=${chartBars[0]?.o}, h=${chartBars[0]?.h}, l=${chartBars[0]?.l}, c=${chartBars[0]?.c}`);
+    console.log(`   Price values (first 3): ${chartBars.slice(0,3).map(b => b.c).join(', ')}`);
+    console.log(`   displayEMA20 (first 3): ${displayEMA20.slice(0,3).map(e => e?.toFixed(2)).join(', ')}`);
+    console.log(`   Volume (first 3): ${chartBars.slice(0,3).map(b => b.v).join(', ')}`);
+    
+    // Validate series data
+    const priceData = options1.series[0].data;
+    const validPrices = priceData.filter(p => p && p.y !== null && p.y !== undefined);
+    console.log(`   Valid price points: ${validPrices.length}/${priceData.length}`);
+    console.log(`   Price Y-values (first 3 candlesticks): ${validPrices.slice(0,3).map(p => Array.isArray(p.y) ? `[${p.y.map(v => v?.toFixed(0)).join(',')}]` : p.y?.toFixed(2)).join(', ')}`);
+    
+    if (validPrices.length === 0) {
+        console.error(`❌ No valid price data! Check if close prices are null.`);
     }
-    if (proCharts.chart2) {
-        try {
-            proCharts.chart2.destroy();
-        } catch (e) {
-            console.log('Chart2 destroy:', e.message);
+    
+    // VALIDATE EMA SERIES
+    console.log('🔍 EMA Series Validation:');
+    options1.series.forEach((series, idx) => {
+        if (idx === 0) return; // Skip price
+        const seriesName = series.name;
+        const seriesType = series.type;
+        const seriesData = series.data;
+        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
+        
+        if (!validPoints || validPoints.length === 0) {
+            console.error(`❌ ${seriesName}: NO valid data points! Type: ${seriesType}`);
+        } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points, type: ${seriesType}`);
         }
+    });
+    
+    console.log(`📌 Chart Type: ${options1.chart.type}`);
+    console.log(`📌 Total Series: ${options1.series.length}`);
+    
+    try {
+        console.log('🎨 Creating Chart 1...');
+        proCharts.chart1 = new ApexCharts(document.getElementById('chartPro1'), options1);
+        console.log('📊 Rendering Chart 1...');
+        proCharts.chart1.render();
+        
+        // Force redraw after a brief delay
+        setTimeout(() => {
+            proCharts.chart1.resetSeries();
+            proCharts.chart1.rerender();
+        }, 100);
+        
+        console.log('✅ Chart 1 rendered successfully');
+        
+        // iPhone Pan & Zoom - Filter data and update series
+        setTimeout(() => {
+            const chartDiv = document.getElementById('chartPro1');
+            let initialDistance = 0;
+            let panStartX = 0;
+            const minDate = new Date(chartBars[0].d).getTime();
+            const maxDate = new Date(chartBars[chartBars.length - 1].d).getTime();
+            let currentMin = minDate;
+            let currentMax = maxDate;
+            
+            // Function to filter and update chart data
+            function updateChartView() {
+                const filtered = chartBars.filter(bar => {
+                    const t = new Date(bar.d).getTime();
+                    return t >= currentMin && t <= currentMax;
+                });
+                
+                if (filtered.length === 0) return;
+                
+                // Update all series with filtered data
+                proCharts.chart1.updateSeries([
+                    {
+                        name: 'Price',
+                        data: filtered.map(bar => ({
+                            x: new Date(bar.d),
+                            y: [parseFloat(bar.o), parseFloat(bar.h), parseFloat(bar.l), parseFloat(bar.c)]
+                        }))
+                    },
+                    {
+                        name: 'EMA(20)',
+                        data: filtered.map(bar => {
+                            const idx = chartBars.indexOf(bar);
+                            return { x: new Date(bar.d), y: displayEMA20[idx] };
+                        }).filter(p => p.y !== null)
+                    },
+                    {
+                        name: 'EMA(50)',
+                        data: filtered.map(bar => {
+                            const idx = chartBars.indexOf(bar);
+                            return { x: new Date(bar.d), y: displayEMA50[idx] };
+                        }).filter(p => p.y !== null)
+                    },
+                    {
+                        name: 'EMA(200)',
+                        data: filtered.map(bar => {
+                            const idx = chartBars.indexOf(bar);
+                            return { x: new Date(bar.d), y: displayEMA200[idx] };
+                        }).filter(p => p.y !== null)
+                    }
+                ]);
+            }
+            
+            chartDiv.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    initialDistance = Math.sqrt(dx*dx + dy*dy);
+                    console.log('📱 Pinch start');
+                } else if (e.touches.length === 1) {
+                    panStartX = e.touches[0].clientX;
+                    console.log('📱 Pan start');
+                }
+            }, false);
+            
+            chartDiv.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 2 && initialDistance > 0) {
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    const scale = dist / initialDistance;
+                    const range = currentMax - currentMin;
+                    const center = (currentMin + currentMax) / 2;
+                    
+                    if (scale > 1.15) {
+                        currentMin = Math.max(minDate, center - range / 2.4);
+                        currentMax = Math.min(maxDate, center + range / 2.4);
+                        updateChartView();
+                        initialDistance = dist;
+                        console.log('🔍 Zoom in');
+                    } else if (scale < 0.85) {
+                        currentMin = Math.max(minDate, center - range * 0.6);
+                        currentMax = Math.min(maxDate, center + range * 0.6);
+                        updateChartView();
+                        initialDistance = dist;
+                        console.log('🔍 Zoom out');
+                    }
+                } else if (e.touches.length === 1 && panStartX > 0) {
+                    const diff = e.touches[0].clientX - panStartX;
+                    const range = currentMax - currentMin;
+                    const shift = -(diff / chartDiv.offsetWidth) * range;
+                    
+                    const newMin = Math.max(minDate, currentMin + shift);
+                    const newMax = Math.min(maxDate, currentMax + shift);
+                    
+                    if (newMax - newMin === range) {
+                        currentMin = newMin;
+                        currentMax = newMax;
+                        updateChartView();
+                        console.log('👉 Pan');
+                    }
+                }
+            }, { passive: false });
+            
+            chartDiv.addEventListener('touchend', () => {
+                initialDistance = 0;
+                panStartX = 0;
+                console.log('✅ Touch end');
+            }, false);
+            
+            console.log('✅ Pan/Zoom enabled - pinch & swipe to navigate');
+        }, 200);
+    } catch (err) {
+        console.error('❌ Chart 1 error:', err.message);
+        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
     }
     
-    // Clear chart containers
-    document.getElementById('chartPro1').innerHTML = '';
-    document.getElementById('chartPro2').innerHTML = '';
-    
-    
-    // Chart 2: RSI + Metrics
     // Chart 2: RSI + Metrics
     const options2 = {
         chart: {
