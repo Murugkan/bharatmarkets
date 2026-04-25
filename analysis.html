@@ -592,30 +592,28 @@ function renderTab(tab) {
                 <!-- Metrics Multi-Select -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
                     <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 Metrics</div>
-                    <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
-                        <option value="eps">EPS</option>
-                        <option value="net">Net Inc</option>
-                        <option value="rev">Revenue</option>
-                        <option value="ebitda">EBITDA</option>
-                        <option value="opm">OPM%</option>
-                        <option value="debt">Debt</option>
+                    <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:100px">
+                        <option value="metric_eps">EPS</option>
+                        <option value="metric_net_inc">Net Inc</option>
+                        <option value="metric_revenue">Revenue</option>
+                        <option value="metric_ebitda">EBITDA</option>
+                        <option value="metric_opm">OPM%</option>
+                        <option value="metric_debt">Debt</option>
                     </select>
                 </div>
             </div>
 
-            <!-- PRICE + RSI CHART -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:8px">
-                <div id="priceChart" style="width:100%;height:350px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+            <!-- UNIFIED PRICE + RSI + EMA + METRICS CHART -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
+                <div id="priceChart" style="width:100%;height:450px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
             </div>
 
-            <!-- METRICS + VOLUME CHART -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
-                <div id="metricsChart" style="width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
-            </div>
+            <!-- METRICS CHART (HIDDEN - Consolidated into top chart) -->
+            <div id="metricsChart" style="display:none;width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
 
             <!-- INFO -->
             <div id="metricInfo" style="font-size:8px;color:var(--tx3);padding:8px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1)">
-                Charts synced
+                ✅ All indicators consolidated
             </div>
         </div>`;
 
@@ -1053,11 +1051,15 @@ function updateRSI() {
 }
 
 function updateMetrics() {
-    metricsState = {};
     const metricsSelect = document.getElementById('metricsSelect');
     if (metricsSelect) {
         for (let option of metricsSelect.selectedOptions) {
-            metricsState[option.value] = true;
+            rsiState[option.value] = true;
+        }
+        for (let option of metricsSelect.options) {
+            if (!option.selected && option.value.startsWith('metric_')) {
+                delete rsiState[option.value];
+            }
         }
     }
     loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
@@ -1314,6 +1316,7 @@ function renderPriceChart(container, sym, bars) {
         const indicatorDataSets = {};
         const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
         const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
+        const metricColors = { eps: '#ff6b9d', net_inc: '#00d4ff', revenue: '#00ff00', ebitda: '#ffff00', opm: '#ff00ff', debt: '#ff9999' };
         
         Object.keys(rsiState).forEach(key => {
             // Handle RSI
@@ -1360,6 +1363,38 @@ function renderPriceChart(container, sym, bars) {
                     };
                 }
             }
+            
+            // Handle Metrics
+            if (key.startsWith('metric_')) {
+                const metricKey = key.replace('metric_', '');
+                const s = currentStock;
+                if (s && s.quarterly && s.quarterly.length > 0) {
+                    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    
+                    // Get metric values
+                    const metricData = sorted.map(q => {
+                        const val = q[metricKey];
+                        return val !== undefined && val !== null ? [q.d, val] : null;
+                    }).filter(d => d !== null);
+                    
+                    if (metricData.length > 0) {
+                        // Normalize to first value = 100
+                        const firstVal = metricData[0][1];
+                        const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
+                        
+                        indicatorDataSets[key] = {
+                            name: metricKey.toUpperCase(),
+                            type: 'line',
+                            xAxisIndex: 0,
+                            yAxisIndex: 2,
+                            data: normalized,
+                            lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
+                            smooth: true,
+                            symbol: 'none'
+                        };
+                    }
+                }
+            }
         });
 
         // Build series
@@ -1385,35 +1420,70 @@ function renderPriceChart(container, sym, bars) {
             series.push(series_item);
         });
 
-        // ECharts option
+        // ECharts option - All in one chart
         const option = {
-            tooltip: { trigger: 'axis' },
+            tooltip: { 
+                trigger: 'axis',
+                axisPointer: { type: 'cross' }
+            },
+            dataZoom: [
+                { 
+                    type: 'slider',
+                    show: true,
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100
+                },
+                {
+                    type: 'inside',
+                    xAxisIndex: [0]
+                }
+            ],
             grid: [
-                { left: '8%', right: '8%', top: '5%', height: '70%' },
-                { left: '8%', right: '8%', top: '78%', height: '18%' }
+                { left: '8%', right: '15%', top: '5%', bottom: '8%', height: '90%' }
             ],
             xAxis: [
-                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true },
-                { gridIndex: 1, type: 'category', data: dates, boundaryGap: true }
+                { gridIndex: 0, type: 'category', data: dates, boundaryGap: false }
             ],
             yAxis: [
                 { 
                     gridIndex: 0, 
+                    position: 'right',
                     type: 'value', 
                     scale: true, 
                     splitNumber: 4,
+                    name: 'Price',
+                    nameTextStyle: { color: '#7a8fa0', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString()
+                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString(),
+                        color: '#7a8fa0'
                     }
                 },
                 { 
-                    gridIndex: 1, 
+                    gridIndex: 0, 
+                    position: 'right',
+                    offset: 60,
                     type: 'value', 
                     min: 0, 
                     max: 100,
                     splitNumber: 5,
+                    name: 'RSI (0-100)',
+                    nameTextStyle: { color: '#00d4ff', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => Math.round(p).toString()  // NO decimals
+                        formatter: (p) => Math.round(p).toString(),
+                        color: '#7a8fa0'
+                    }
+                },
+                { 
+                    gridIndex: 0, 
+                    position: 'right',
+                    offset: 120,
+                    type: 'value',
+                    name: 'Metrics (Indexed)',
+                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
+                    axisLabel: {
+                        formatter: (p) => Math.round(p).toString(),
+                        color: '#7a8fa0'
                     }
                 }
             ],
@@ -1421,7 +1491,7 @@ function renderPriceChart(container, sym, bars) {
         };
 
         priceChart.setOption(option);
-        console.log(`✅ ECharts Price Chart: Candlesticks + ${Object.keys(rsiState).length} RSI overlays`);
+        console.log(`✅ ECharts Unified Chart: Candlesticks + RSI + EMA + Metrics (Zoomable)`);
         
     } catch (e) {
         console.error('ECharts Price chart error:', e);
