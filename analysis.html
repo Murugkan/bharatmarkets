@@ -2533,19 +2533,7 @@ async function renderTechnicalPro(stock) {
             rightPriceScale: {
                 textColor: '#7a8fa0',
                 autoScale: true,
-                mode: LightweightCharts.PriceScaleMode.Normal,
-                priceFormatter: (price) => {
-                    if (price >= 1000) {
-                        return (price / 1000).toFixed(0) + 'k';
-                    }
-                    return Math.floor(price).toString();
-                },
-                format: (price) => {
-                    if (price >= 1000) {
-                        return (price / 1000).toFixed(0) + 'k';
-                    }
-                    return Math.floor(price).toString();
-                }
+                mode: LightweightCharts.PriceScaleMode.Normal
             },
             grid: {
                 horzLines: { visible: false },
@@ -2666,6 +2654,16 @@ async function renderTechnicalPro(stock) {
         
         // Auto-fit
         chart.timeScale().fitContent();
+        
+        // Format price scale labels - NO DECIMALS, k for thousands
+        chart.priceScale('right').applyOptions({
+            format: (price) => {
+                if (price >= 1000) {
+                    return (price / 1000).toFixed(0) + 'k';
+                }
+                return Math.floor(price).toString();
+            }
+        });
         
         // Store chart reference
         proCharts.chart1 = chart;
