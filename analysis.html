@@ -593,12 +593,12 @@ function renderTab(tab) {
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
                     <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 Metrics</div>
                     <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
-                        <option value="eps">EPS</option>
-                        <option value="net">Net Inc</option>
-                        <option value="rev">Revenue</option>
-                        <option value="ebitda">EBITDA</option>
-                        <option value="opm">OPM%</option>
-                        <option value="debt">Debt</option>
+                        <option value="metric_eps">EPS</option>
+                        <option value="metric_net">Net Inc</option>
+                        <option value="metric_rev">Revenue</option>
+                        <option value="metric_ebitda">EBITDA</option>
+                        <option value="metric_opm">OPM%</option>
+                        <option value="metric_debt">Debt</option>
                     </select>
                 </div>
             </div>
@@ -623,6 +623,16 @@ function renderTab(tab) {
                     option.selected = option.value === 'rsi_14';
                 }
             }
+            
+            // FIX: Initialize metrics state with default metric (EPS)
+            metricsState = { metric_eps: true };
+            const metricsSelect = document.getElementById('metricsSelect');
+            if (metricsSelect) {
+                for (let option of metricsSelect.options) {
+                    option.selected = option.value === 'metric_eps';
+                }
+            }
+            
             loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
         }, 500);
     } else if (tab === 'fundamentals') {
@@ -1426,13 +1436,13 @@ function renderPriceChart(container, sym, bars) {
             series.push(series_item);
         });
 
-        // ECharts option with 3 grids
+        // ECharts option with 3 grids - properly sized
         const option = {
             tooltip: { trigger: 'axis' },
             grid: [
-                { left: '8%', right: '8%', top: '5%', height: '50%' },     // Price grid
-                { left: '8%', right: '8%', top: '58%', height: '15%' },    // RSI grid
-                { left: '8%', right: '8%', top: '76%', height: '20%' }     // Metrics grid
+                { left: '8%', right: '8%', top: '5%', height: '52%' },     // Price grid
+                { left: '8%', right: '8%', top: '60%', height: '15%' },    // RSI grid
+                { left: '8%', right: '8%', top: '78%', height: '18%' }     // Metrics grid
             ],
             xAxis: [
                 { gridIndex: 0, type: 'category', data: dates, boundaryGap: true },
