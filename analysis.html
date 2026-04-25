@@ -2546,18 +2546,22 @@ async function renderTechnicalPro(stock) {
                     console.log(`📱 1 finger, panStartX=${panStartX}`);
                     const currentX = e.touches[0].clientX;
                     const diff = currentX - panStartX;
-                    const range = currentMax - currentMin;
-                    const shift = -(diff / chartDiv.offsetWidth) * range * 0.3;
                     
-                    const newMin = Math.max(minDate, currentMin + shift);
-                    const newMax = Math.min(maxDate, currentMax + shift);
-                    
-                    if (newMax - newMin === range && Math.abs(diff) > 5) {
-                        currentMin = newMin;
-                        currentMax = newMax;
-                        panStartX = currentX;  // Update for next move
-                        updateChartView();
-                        console.log('👉 Pan');
+                    if (Math.abs(diff) > 5) {
+                        const range = currentMax - currentMin;
+                        const shift = -(diff / chartDiv.offsetWidth) * range * 0.3;
+                        
+                        const newMin = Math.max(minDate, currentMin + shift);
+                        const newMax = Math.min(maxDate, currentMax + shift);
+                        
+                        // Only pan if both min and max are within bounds
+                        if (newMin >= minDate && newMax <= maxDate && newMin < newMax) {
+                            currentMin = newMin;
+                            currentMax = newMax;
+                            panStartX = currentX;
+                            updateChartView();
+                            console.log('👉 Pan');
+                        }
                     }
                 }
             }, true);  // USE CAPTURING PHASE
