@@ -603,14 +603,9 @@ function renderTab(tab) {
                 </div>
             </div>
 
-            <!-- PRICE + RSI CHART -->
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:8px">
-                <div id="priceChart" style="width:100%;height:350px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
-            </div>
-
-            <!-- METRICS + VOLUME CHART -->
+            <!-- PRICE + RSI + METRICS CHART (UNIFIED) -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
-                <div id="metricsChart" style="width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+                <div id="priceChart" style="width:100%;height:500px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
             </div>
 
             <!-- INFO -->
@@ -1156,10 +1151,9 @@ function changeDuration(duration) {
 
 async function loadAndRenderTechnicalChart(sym) {
     const priceContainer = document.getElementById('priceChart');
-    const metricsContainer = document.getElementById('metricsChart');
     const infoDiv = document.getElementById('metricInfo');
     
-    if (!priceContainer || !metricsContainer || !currentStock) {
+    if (!priceContainer || !currentStock) {
         console.error('Chart containers or stock not found');
         return;
     }
@@ -1191,24 +1185,16 @@ async function loadAndRenderTechnicalChart(sym) {
             return;
         }
 
-        // Render price chart with volume
+        // FIX: Render unified chart with price + RSI + EMA + Metrics all in one
         renderPriceChart(priceContainer, sym, bars);
-        
-        // Render metrics chart (only if monthly duration)
-        if (duration === 'monthly') {
-            renderMetricsChart(metricsContainer, sym, bars);
-        } else {
-            metricsContainer.innerHTML = `<div style="padding:20px;color:#7a8fa0;font-size:10px;text-align:center">📊 Metrics available only in Monthly view</div>`;
-        }
         
         // Update info
         const selected = Object.keys(metricsState).filter(k => metricsState[k]);
-        if (duration !== 'monthly') {
-            infoDiv.innerHTML = `<strong>📊 ${duration.toUpperCase()} View:</strong> Price + Volume only`;
-        } else if (selected.length === 0) {
-            infoDiv.innerHTML = `<strong>📊 MONTHLY VIEW:</strong> Select metrics above to display in lower chart`;
+        if (selected.length === 0) {
+            infoDiv.innerHTML = `<strong>📊 CHART:</strong> Candlesticks + RSI/EMA - Select metrics to display`;
         } else {
-            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()} (Normalized Q1=100)`;
+            const hasMetrics = Object.keys(metricsState).some(k => k.startsWith('metric_'));
+            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()}${hasMetrics ? ' (Normalized Q1=100)' : ''}`;
         }
         
     } catch (e) {
@@ -1314,6 +1300,7 @@ function renderPriceChart(container, sym, bars) {
         const indicatorDataSets = {};
         const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
         const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
+        const metricColors = { eps: '#f59e0b', net: '#26de81', rev: '#00d2d3', ebitda: '#9f7aea', opm: '#3b82f6', debt: '#ff6b6b' };
         
         Object.keys(rsiState).forEach(key => {
             // Handle RSI
@@ -1360,6 +1347,60 @@ function renderPriceChart(container, sym, bars) {
                     };
                 }
             }
+            
+            // FIX: Handle Metrics (NEW)
+            if (key.startsWith('metric_')) {
+                try {
+                    const metricKey = key.replace('metric_', '');
+                    const s = currentStock;
+                    
+                    // Only render if quarterly data exists
+                    if (!s || !s.quarterly || !Array.isArray(s.quarterly) || s.quarterly.length === 0) {
+                        return; // Skip this metric
+                    }
+                    
+                    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    
+                    // Map metric keys to data keys
+                    const keyMap = {
+                        'eps': 'e',
+                        'net': 'n',
+                        'rev': 'r',
+                        'ebitda': 'eb',
+                        'opm': 'op',
+                        'debt': 'd'
+                    };
+                    
+                    const dataKey = keyMap[metricKey] || metricKey;
+                    
+                    // Get metric values
+                    const metricData = sorted.map(q => {
+                        const val = q[dataKey];
+                        return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
+                    }).filter(d => d !== null);
+                    
+                    if (metricData.length > 0) {
+                        // Normalize to first value = 100
+                        const firstVal = metricData[0][1];
+                        if (firstVal !== 0) {
+                            const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
+                            
+                            indicatorDataSets[key] = {
+                                name: metricKey.toUpperCase(),
+                                type: 'line',
+                                xAxisIndex: 0,
+                                yAxisIndex: 2,
+                                data: normalized,
+                                lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
+                                smooth: true,
+                                symbol: 'none'
+                            };
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Metric ${key} render failed:`, e.message);
+                }
+            }
         });
 
         // Build series
@@ -1385,16 +1426,18 @@ function renderPriceChart(container, sym, bars) {
             series.push(series_item);
         });
 
-        // ECharts option
+        // ECharts option with 3 grids
         const option = {
             tooltip: { trigger: 'axis' },
             grid: [
-                { left: '8%', right: '8%', top: '5%', height: '70%' },
-                { left: '8%', right: '8%', top: '78%', height: '18%' }
+                { left: '8%', right: '8%', top: '5%', height: '50%' },     // Price grid
+                { left: '8%', right: '8%', top: '58%', height: '15%' },    // RSI grid
+                { left: '8%', right: '8%', top: '76%', height: '20%' }     // Metrics grid
             ],
             xAxis: [
                 { gridIndex: 0, type: 'category', data: dates, boundaryGap: true },
-                { gridIndex: 1, type: 'category', data: dates, boundaryGap: true }
+                { gridIndex: 1, type: 'category', data: dates, boundaryGap: true },
+                { gridIndex: 2, type: 'category', data: dates, boundaryGap: true }
             ],
             yAxis: [
                 { 
@@ -1402,8 +1445,11 @@ function renderPriceChart(container, sym, bars) {
                     type: 'value', 
                     scale: true, 
                     splitNumber: 4,
+                    name: 'Price',
+                    nameTextStyle: { color: '#7a8fa0', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString()
+                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString(),
+                        color: '#7a8fa0'
                     }
                 },
                 { 
@@ -1412,8 +1458,21 @@ function renderPriceChart(container, sym, bars) {
                     min: 0, 
                     max: 100,
                     splitNumber: 5,
+                    name: 'RSI (0-100)',
+                    nameTextStyle: { color: '#00d4ff', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => Math.round(p).toString()  // NO decimals
+                        formatter: (p) => Math.round(p).toString(),
+                        color: '#7a8fa0'
+                    }
+                },
+                { 
+                    gridIndex: 2, 
+                    type: 'value',
+                    name: 'Metrics (Indexed)',
+                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
+                    axisLabel: {
+                        formatter: (p) => Math.round(p).toString(),
+                        color: '#7a8fa0'
                     }
                 }
             ],
