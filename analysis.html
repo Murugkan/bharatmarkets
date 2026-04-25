@@ -1227,7 +1227,7 @@ function renderPriceChart(container, sym, bars) {
         priceChart = LightweightCharts.createChart(container, opts);
         priceSeries = {};
 
-        // Add candlesticks
+        // Add candlesticks on LEFT scale (PRIORITY)
         const cs = priceChart.addCandlestickSeries({
             upColor: '#00d084', downColor: '#ff3b5c',
             borderUpColor: '#00e896', borderDownColor: '#ff6b85',
@@ -1245,27 +1245,36 @@ function renderPriceChart(container, sym, bars) {
 
         cs.setData(cd);
         priceSeries.candle = cs;
-        console.log(`✅ Price chart: ${cd.length} bars`);
+        console.log(`✅ Candlesticks: ${cd.length} bars`);
 
-        // Add volume bars if available
+        // Add volume bars on RIGHT scale (SEPARATE - won't affect candlestick scale)
         if (bars[0] && bars[0].v) {
             const vs = priceChart.addHistogramSeries({
-                color: 'rgba(0, 242, 255, 0.3)',
+                color: 'rgba(0, 242, 255, 0.2)',  // Very transparent so candlesticks visible
                 priceScaleId: 'right'
             });
             
-            const volumeData = cd.map(c => ({
+            const volumeData = cd.map((c, idx) => ({
                 time: c.time,
-                value: parseFloat(bars[cd.indexOf(c)].v) || 0
+                value: parseFloat(bars[idx].v) || 0
             }));
             
             vs.setData(volumeData);
             priceSeries.volume = vs;
-            console.log(`✅ Volume added`);
+            
+            // Lock left scale to candlestick data ONLY after volume is added
+            // This ensures candlesticks always display properly regardless of volume
+            const leftScale = priceChart.priceScale('left');
+            leftScale.applyOptions({
+                autoScale: true,
+                alignLabels: true
+            });
+            
+            console.log(`✅ Volume: ${volumeData.length} bars (right scale, transparent)`);
         }
 
         priceChart.timeScale().fitContent();
-        console.log(`✅ Price chart rendered`);
+        console.log(`✅ Price chart rendered with candlesticks (left) + volume (right)`);
         
     } catch (e) {
         console.error('Price chart error:', e);
@@ -1282,9 +1291,9 @@ function renderMetricsChart(container, sym, bars) {
 
     const opts = {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
-        timeScale: priceChart.timeScale(),  // SHARE the exact same timeScale from price chart
+        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         rightPriceScale: {
-            visible: false  // HIDE Y-axis completely - no labels, no borders
+            visible: false  // HIDE Y-axis completely
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1308,12 +1317,62 @@ function renderMetricsChart(container, sym, bars) {
             addMetricSeries(metricKey, cd, metricsChart);
         });
 
-        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced with price chart`);
+        // NOW sync the timeScales AFTER both charts are created
+        syncTimeScales();
+
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced`);
         
     } catch (e) {
         console.error('Metrics chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
+}
+
+function syncTimeScales() {
+    if (!priceChart || !metricsChart) return;
+    
+    const priceTimeScale = priceChart.timeScale();
+    const metricsTimeScale = metricsChart.timeScale();
+    
+    let isUpdating = false;  // Guard flag to prevent feedback loops
+    
+    // When price chart time range changes, update metrics chart
+    priceTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
+        if (isUpdating) return;  // Prevent loop
+        isUpdating = true;
+        
+        metricsTimeScale.setVisibleRange({
+            from: newRange.from,
+            to: newRange.to
+        });
+        
+        isUpdating = false;
+    });
+    
+    // When metrics chart time range changes, update price chart  
+    metricsTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
+        if (isUpdating) return;  // Prevent loop
+        isUpdating = true;
+        
+        priceTimeScale.setVisibleRange({
+            from: newRange.from,
+            to: newRange.to
+        });
+        
+        isUpdating = false;
+    });
+    
+    // Set both to same initial range (fit all content)
+    priceTimeScale.fitContent();
+    const range = priceTimeScale.getVisibleRange();
+    if (range) {
+        metricsTimeScale.setVisibleRange({
+            from: range.from,
+            to: range.to
+        });
+    }
+    
+    console.log('🔗 TimeScales synced with guard flag');
 }
 
 function addMetricSeries(metricKey, cd, chart) {
