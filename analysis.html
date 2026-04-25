@@ -649,6 +649,25 @@ function renderTab(tab) {
             <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden">
                 <div id="chartPro1" style="width:100%;height:400px"></div>
             </div>
+            
+            <div style="margin-top:16px;padding:12px;background:rgba(13,18,34,.5);border:1px solid var(--b1);border-radius:6px">
+                <div style="font-size:11px;font-weight:700;color:var(--tx1);margin-bottom:8px;text-transform:uppercase">📊 RSI Indicators</div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10px;color:var(--tx3)">
+                        <input type="checkbox" id="rsi7-toggle" onchange="toggleRSI('rsi7')" checked style="cursor:pointer;width:14px;height:14px">
+                        <span style="color:#5b95ff">●</span> RSI(7) - Fast
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10px;color:var(--tx3)">
+                        <input type="checkbox" id="rsi14-toggle" onchange="toggleRSI('rsi14')" checked style="cursor:pointer;width:14px;height:14px">
+                        <span style="color:#00f2ff">●</span> RSI(14) - Standard
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10px;color:var(--tx3)">
+                        <input type="checkbox" id="rsi21-toggle" onchange="toggleRSI('rsi21')" checked style="cursor:pointer;width:14px;height:14px">
+                        <span style="color:#ffbf47">●</span> RSI(21) - Slow
+                    </label>
+                </div>
+            </div>
+            
             <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;margin-top:16px">
                 <div id="chartPro2" style="width:100%;height:400px"></div>
             </div>
@@ -1811,6 +1830,22 @@ function switchTimeframe(tf) {
     renderTechnicalPro(currentStock);
 }
 
+function toggleRSI(rsiType) {
+    if (!proCharts.chart2) return;
+    
+    const seriesNameMap = {
+        'rsi7': 'RSI(7)',
+        'rsi14': 'RSI(14)',
+        'rsi21': 'RSI(21)'
+    };
+    
+    const seriesName = seriesNameMap[rsiType];
+    const isChecked = document.getElementById(rsiType + '-toggle').checked;
+    
+    // Toggle series visibility
+    proCharts.chart2.toggleSeries(seriesName);
+}
+
 function aggregateToWeekly(dailyBars) {
     if (!dailyBars || dailyBars.length === 0) return [];
     
@@ -2146,30 +2181,41 @@ async function renderTechnicalPro(stock) {
     if (proCharts.chart1) proCharts.chart1.destroy();
     if (proCharts.chart2) proCharts.chart2.destroy();
     
-    // Chart 1: Price + EMA + Volume
+    // Chart 1: Price + EMA + Volume (using line instead of candlestick for mixed charts)
     const options1 = {
         chart: {
-            type: 'candlestick',
+            type: 'line',
             background: 'transparent',
             foreColor: '#7a8fa0',
             toolbar: { 
                 show: true,
-                autoSelected: 'zoom'
+                autoSelected: 'pan',
+                tools: {
+                    download: false,
+                    selection: false,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                type: 'xy'
             },
             animations: { enabled: false },
             sparkline: { enabled: false }
         },
         plotOptions: {
-            candlestick: {
-                colors: { upward: '#26de81', downward: '#ff6b85' },
-                wick: { useFillColor: true }
-            }
+            bar: { columnWidth: '60%' }
         },
         series: [{
             name: 'Price',
+            type: 'line',
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
-                y: [bar.o, bar.h, bar.l, bar.c]
+                y: bar.c
             }))
         }, {
             name: 'EMA(20)',
@@ -2227,6 +2273,14 @@ async function renderTechnicalPro(stock) {
         legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
     };
     
+    // Debug: Check data before rendering
+    console.log(`🔍 Chart1 Data Check:`);
+    console.log(`   chartBars: ${chartBars.length} bars`);
+    console.log(`   Sample bar: o=${chartBars[0]?.o}, h=${chartBars[0]?.h}, l=${chartBars[0]?.l}, c=${chartBars[0]?.c}`);
+    console.log(`   displayEMA20[0]: ${displayEMA20[0]}, displayEMA50[0]: ${displayEMA50[0]}, displayEMA200[0]: ${displayEMA200[0]}`);
+    console.log(`   series[0] (Price) data points: ${options1.series[0].data.length}`);
+    console.log(`   series[1] (EMA20) data points: ${options1.series[1].data.length}`);
+    
     proCharts.chart1 = new ApexCharts(document.getElementById('chartPro1'), options1);
     proCharts.chart1.render();
     
@@ -2238,11 +2292,34 @@ async function renderTechnicalPro(stock) {
             foreColor: '#7a8fa0',
             toolbar: {
                 show: true,
-                autoSelected: 'zoom'
+                autoSelected: 'pan',
+                tools: {
+                    download: false,
+                    selection: false,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                type: 'xy'
             },
             animations: { enabled: false }
         },
         series: chart2Data,
+        
+        // Debug: Check chart2 data
+        ...(()=> { 
+            console.log(`🔍 Chart2 Data Check:`);
+            console.log(`   chart2Data series count: ${chart2Data.length}`);
+            chart2Data.forEach((s, i) => {
+                console.log(`   ${s.name}: ${s.data.length} points, first value: ${s.data[0]?.y}`);
+            });
+            return {}; 
+        })(),
         xaxis: {
             type: 'datetime',
             axisBorder: { show: true, color: '#1a2332' },
