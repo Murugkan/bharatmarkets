@@ -95,6 +95,7 @@
     <div class="tabs">
         <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
         <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
+        <button class="tab" onclick="switchTab('technicalPro')">📈 Technical Pro</button>
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
@@ -110,6 +111,7 @@
 
 <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/apexcharts/3.45.0/apexcharts.min.js"></script>
 
 <script>
 const DB = "OnyxPortfolioDB";
@@ -635,6 +637,22 @@ function renderTab(tab) {
             
             loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
         }, 500);
+    } else if (tab === 'technicalPro') {
+        html = `<div style="padding:12px;padding-bottom:100px">
+            <div style="margin-bottom:16px;display:flex;gap:8px;overflow-x:auto">
+                <button onclick="switchTimeframe('daily')" class="timeframe-btn" data-tf="daily" style="padding:8px 16px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">Daily</button>
+                <button onclick="switchTimeframe('weekly')" class="timeframe-btn" data-tf="weekly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">Weekly</button>
+                <button onclick="switchTimeframe('monthly')" class="timeframe-btn" data-tf="monthly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">Monthly</button>
+            </div>
+            <div id="chartPro1" style="width:100%;height:320px;background:rgba(13,18,34,.5);border-radius:6px;border:1px solid var(--b1)"></div>
+            <div id="chartPro2" style="width:100%;height:380px;background:rgba(13,18,34,.5);border-radius:6px;border:1px solid var(--b1);margin-top:16px"></div>
+        </div>`;
+        document.getElementById('content').innerHTML = html;
+        
+        // Load and render new technical pro charts
+        setTimeout(() => {
+            renderTechnicalPro(currentStock);
+        }, 100);
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -1764,6 +1782,336 @@ function addMetricSeries(metricKey, cd, chart) {
     metricSeries[cfg.label] = ls;
 
     console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Real values stored for hover`);
+}
+
+// ==================== TECHNICAL PRO CHARTS ====================
+
+let proCharts = {
+    chart1: null,
+    chart2: null,
+    currentTimeframe: 'daily',
+    data: {
+        daily: null,
+        weekly: null,
+        monthly: null
+    }
+};
+
+function switchTimeframe(tf) {
+    proCharts.currentTimeframe = tf;
+    document.querySelectorAll('.timeframe-btn').forEach(btn => {
+        btn.style.background = btn.getAttribute('data-tf') === tf ? 'rgba(0,242,255,.1)' : 'transparent';
+        btn.style.borderColor = btn.getAttribute('data-tf') === tf ? 'rgba(0,242,255,.3)' : 'var(--b1)';
+        btn.style.color = btn.getAttribute('data-tf') === tf ? 'var(--ac)' : 'var(--tx3)';
+    });
+    renderTechnicalPro(currentStock);
+}
+
+function aggregateToWeekly(dailyBars) {
+    const weekly = [];
+    let week = [];
+    let weekStart = null;
+    
+    dailyBars.forEach(bar => {
+        const d = new Date(bar.d);
+        if (!weekStart) weekStart = new Date(d);
+        
+        const dayOfWeek = d.getDay();
+        week.push(bar);
+        
+        if (dayOfWeek === 5 || bar === dailyBars[dailyBars.length - 1]) {
+            if (week.length > 0) {
+                const o = week[0].o;
+                const h = Math.max(...week.map(b => b.h));
+                const l = Math.min(...week.map(b => b.l));
+                const c = week[week.length - 1].c;
+                const v = week.reduce((sum, b) => sum + b.v, 0);
+                const d_str = week[week.length - 1].d;
+                weekly.push({ d: d_str, o, h, l, c, v });
+            }
+            week = [];
+            weekStart = null;
+        }
+    });
+    
+    return weekly;
+}
+
+function aggregateToMonthly(dailyBars) {
+    const monthly = [];
+    let month = [];
+    let prevMonth = null;
+    
+    dailyBars.forEach(bar => {
+        const d = new Date(bar.d);
+        const currentMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        
+        if (prevMonth && prevMonth !== currentMonth && month.length > 0) {
+            const o = month[0].o;
+            const h = Math.max(...month.map(b => b.h));
+            const l = Math.min(...month.map(b => b.l));
+            const c = month[month.length - 1].c;
+            const v = month.reduce((sum, b) => sum + b.v, 0);
+            const d_str = month[month.length - 1].d;
+            monthly.push({ d: d_str, o, h, l, c, v });
+            month = [];
+        }
+        
+        month.push(bar);
+        prevMonth = currentMonth;
+    });
+    
+    if (month.length > 0) {
+        const o = month[0].o;
+        const h = Math.max(...month.map(b => b.h));
+        const l = Math.min(...month.map(b => b.l));
+        const c = month[month.length - 1].c;
+        const v = month.reduce((sum, b) => sum + b.v, 0);
+        const d_str = month[month.length - 1].d;
+        monthly.push({ d: d_str, o, h, l, c, v });
+    }
+    
+    return monthly;
+}
+
+function calculateEMA(bars, period = 20) {
+    const ema = [];
+    let sum = 0;
+    const multiplier = 2 / (period + 1);
+    
+    bars.forEach((bar, i) => {
+        if (i < period - 1) {
+            sum += bar.c;
+            ema.push(null);
+        } else if (i === period - 1) {
+            sum += bar.c;
+            ema.push(sum / period);
+        } else {
+            const prevEMA = ema[i - 1];
+            const newEMA = bar.c * multiplier + prevEMA * (1 - multiplier);
+            ema.push(newEMA);
+        }
+    });
+    
+    return ema;
+}
+
+function calculateRSI(bars, period = 14) {
+    const rsi = [];
+    let gains = 0, losses = 0;
+    
+    bars.forEach((bar, i) => {
+        if (i === 0) {
+            rsi.push(50);
+            return;
+        }
+        
+        const change = bar.c - bars[i - 1].c;
+        const gain = change > 0 ? change : 0;
+        const loss = change < 0 ? -change : 0;
+        
+        if (i < period) {
+            gains += gain;
+            losses += loss;
+            rsi.push(50);
+        } else if (i === period) {
+            gains += gain;
+            losses += loss;
+            const avgGain = gains / period;
+            const avgLoss = losses / period;
+            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+            rsi.push(100 - (100 / (1 + rs)));
+        } else {
+            const prevAvgGain = (rsi[i - 1] ? (100 / rsi[i - 1]) : 1) / 100;
+            const avgGain = (prevAvgGain * (period - 1) + gain) / period;
+            const avgLoss = ((1 - prevAvgGain) * (period - 1) + loss) / period;
+            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+            rsi.push(100 - (100 / (1 + rs)));
+        }
+    });
+    
+    return rsi;
+}
+
+function formatVolume(v) {
+    if (v >= 10000000) return (v / 10000000).toFixed(1) + 'Cr';
+    if (v >= 100000) return (v / 100000).toFixed(1) + 'L';
+    return (v / 1000).toFixed(0) + 'K';
+}
+
+function renderTechnicalPro(stock) {
+    if (!stock || !stock.bars || stock.bars.length === 0) {
+        document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">No data available</div>';
+        return;
+    }
+    
+    const tf = proCharts.currentTimeframe;
+    const bars = stock.bars.slice(-252); // Last ~1 year of daily data
+    
+    // Prepare data based on timeframe
+    let chartBars, ema, rsi;
+    
+    if (tf === 'daily') {
+        chartBars = bars;
+    } else if (tf === 'weekly') {
+        chartBars = aggregateToWeekly(bars);
+    } else {
+        chartBars = aggregateToMonthly(bars);
+    }
+    
+    ema = calculateEMA(chartBars, 20);
+    rsi = calculateRSI(chartBars, 14);
+    
+    // Prepare chart data
+    const chart1Data = [{
+        name: 'Price',
+        data: chartBars.map((bar, i) => ({
+            x: new Date(bar.d),
+            y: [bar.o, bar.h, bar.l, bar.c]
+        }))
+    }, {
+        name: 'EMA',
+        data: chartBars.map((bar, i) => ({
+            x: new Date(bar.d),
+            y: ema[i]
+        }))
+    }, {
+        name: 'Volume',
+        data: chartBars.map((bar, i) => ({
+            x: new Date(bar.d),
+            y: bar.v
+        }))
+    }];
+    
+    const chart2Data = [{
+        name: 'RSI',
+        data: chartBars.map((bar, i) => ({
+            x: new Date(bar.d),
+            y: rsi[i]
+        }))
+    }];
+    
+    // Get quarterly metrics for monthly view
+    if (tf === 'monthly' && stock.quarterly && stock.quarterly.length > 0) {
+        const metricNames = ['eps', 'net', 'rev', 'opm', 'debt'];
+        const metricLabels = {
+            eps: 'EPS',
+            net: 'Net Inc',
+            rev: 'Revenue',
+            opm: 'OPM%',
+            debt: 'Debt'
+        };
+        const metricColors = {
+            eps: '#f59e0b',
+            net: '#26de81',
+            rev: '#00d2d3',
+            opm: '#3b82f6',
+            debt: '#ff6b6b'
+        };
+        
+        metricNames.forEach(metric => {
+            const metricData = stock.quarterly
+                .filter(q => q[metric] !== undefined && q[metric] !== null)
+                .map(q => ({
+                    x: new Date(q.d),
+                    y: num(q[metric])
+                }));
+            
+            if (metricData.length > 0) {
+                chart2Data.push({
+                    name: metricLabels[metric],
+                    data: metricData,
+                    color: metricColors[metric]
+                });
+            }
+        });
+    }
+    
+    // Destroy old charts
+    if (proCharts.chart1) proCharts.chart1.destroy();
+    if (proCharts.chart2) proCharts.chart2.destroy();
+    
+    // Chart 1: Price + EMA + Volume
+    const options1 = {
+        chart: {
+            type: 'candlestick',
+            background: 'transparent',
+            foreColor: '#7a8fa0',
+            toolbar: { show: true, tools: { download: true, selection: true, zoom: true, zoomin: true, zoomout: true, pan: true, reset: true } },
+            animations: { enabled: false },
+            sparkline: { enabled: false }
+        },
+        plotOptions: {
+            candlestick: {
+                colors: { upward: '#26de81', downward: '#ff6b85' },
+                wick: { useFillColor: true }
+            }
+        },
+        series: chart1Data,
+        xaxis: {
+            type: 'datetime',
+            axisBorder: { show: true, color: '#1a2332' },
+            axisTicks: { show: false },
+            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
+        },
+        yaxis: [{
+            title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '10px' } },
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
+            opposite: true
+        }, {
+            title: { text: 'Volume', style: { color: '#00f2ff', fontSize: '10px' } },
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => formatVolume(v) },
+            opposite: true
+        }],
+        tooltip: {
+            theme: 'dark',
+            style: { fontSize: '10px' },
+            x: { formatter: (v) => new Date(v).toLocaleDateString() },
+            y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
+        },
+        grid: { borderColor: '#1a2332', show: true },
+        stroke: { width: 2 }
+    };
+    
+    proCharts.chart1 = new ApexCharts(document.getElementById('chartPro1'), options1);
+    proCharts.chart1.render();
+    
+    // Chart 2: RSI + Metrics
+    const options2 = {
+        chart: {
+            type: 'line',
+            background: 'transparent',
+            foreColor: '#7a8fa0',
+            toolbar: { show: true, tools: { download: true, selection: true, zoom: true, zoomin: true, zoomout: true, pan: true, reset: true } },
+            animations: { enabled: false }
+        },
+        series: chart2Data,
+        xaxis: {
+            type: 'datetime',
+            axisBorder: { show: true, color: '#1a2332' },
+            axisTicks: { show: false },
+            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
+        },
+        yaxis: [{
+            title: { text: 'RSI', style: { color: '#00f2ff', fontSize: '10px' } },
+            min: 0,
+            max: 100,
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
+            opposite: true
+        }],
+        tooltip: {
+            theme: 'dark',
+            style: { fontSize: '10px' },
+            x: { formatter: (v) => new Date(v).toLocaleDateString() },
+            y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
+        },
+        grid: { borderColor: '#1a2332', show: true },
+        stroke: { width: 2 },
+        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
+    };
+    
+    proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
+    proCharts.chart2.render();
 }
 
 </script>
