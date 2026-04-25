@@ -559,51 +559,38 @@ function renderTab(tab) {
         `;
     } else if (tab === 'technical') {
         html = `<div style="padding:0;padding-bottom:100px">
-            <!-- METRICS & RSI SELECTOR -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-                <!-- Metrics -->
+            <!-- CONTROLS: Duration, RSI, Metrics - All in ONE ROW -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-bottom:8px">
+                <!-- Duration -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
-                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 Metrics</div>
-                    <select id="durationSelect" onchange="changeDuration(this.value)" style="width:100%;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;padding:4px 6px;font-size:8px;font-weight:700;margin-bottom:8px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📅 Duration</div>
+                    <select id="durationSelect" onchange="changeDuration(this.value)" style="width:100%;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;padding:6px;font-size:8px;font-weight:700">
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
                         <option value="monthly" selected>Monthly</option>
                     </select>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:8px">
-                        <label style="display:flex;align-items:center;gap:4px;padding:4px;cursor:pointer;border-radius:3px;background:rgba(0,242,255,.05)">
-                            <input type="checkbox" id="metric_eps" onchange="toggleMetric('eps')" style="width:12px;height:12px;accent-color:var(--ac)">
-                            <span>EPS</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;padding:4px;cursor:pointer;border-radius:3px;background:rgba(0,242,255,.05)">
-                            <input type="checkbox" id="metric_net" onchange="toggleMetric('net')" style="width:12px;height:12px;accent-color:var(--ac)">
-                            <span>Net Inc</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;padding:4px;cursor:pointer;border-radius:3px;background:rgba(0,242,255,.05)">
-                            <input type="checkbox" id="metric_rev" onchange="toggleMetric('rev')" style="width:12px;height:12px;accent-color:var(--ac)">
-                            <span>Revenue</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;padding:4px;cursor:pointer;border-radius:3px;background:rgba(0,242,255,.05)">
-                            <input type="checkbox" id="metric_ebitda" onchange="toggleMetric('ebitda')" style="width:12px;height:12px;accent-color:var(--ac)">
-                            <span>EBITDA</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;padding:4px;cursor:pointer;border-radius:3px;background:rgba(0,242,255,.05)">
-                            <input type="checkbox" id="metric_opm" onchange="toggleMetric('opm')" style="width:12px;height:12px;accent-color:var(--ac)">
-                            <span>OPM%</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;padding:4px;cursor:pointer;border-radius:3px;background:rgba(0,242,255,.05)">
-                            <input type="checkbox" id="metric_debt" onchange="toggleMetric('debt')" style="width:12px;height:12px;accent-color:var(--ac)">
-                            <span>Debt</span>
-                        </label>
-                    </div>
                 </div>
-                <!-- RSI -->
+                
+                <!-- RSI Multi-Select -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
                     <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📈 RSI</div>
-                    <select id="rsiSelect" multiple onchange="updateRSI()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:90px">
-                        <option value="rsi_5">RSI(5)</option>
-                        <option value="rsi_9">RSI(9)</option>
-                        <option value="rsi_14" selected>RSI(14)</option>
-                        <option value="rsi_21">RSI(21)</option>
+                    <select id="rsiSelect" multiple onchange="updateRSI()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
+                        <option value="rsi_7">RSI(7) - Fast</option>
+                        <option value="rsi_14" selected>RSI(14) - Standard</option>
+                        <option value="rsi_21">RSI(21) - Slow</option>
+                    </select>
+                </div>
+                
+                <!-- Metrics Multi-Select -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 Metrics</div>
+                    <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
+                        <option value="eps">EPS</option>
+                        <option value="net">Net Inc</option>
+                        <option value="rev">Revenue</option>
+                        <option value="ebitda">EBITDA</option>
+                        <option value="opm">OPM%</option>
+                        <option value="debt">Debt</option>
                     </select>
                 </div>
             </div>
@@ -1057,6 +1044,17 @@ function updateRSI() {
     loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
 }
 
+function updateMetrics() {
+    metricsState = {};
+    const metricsSelect = document.getElementById('metricsSelect');
+    if (metricsSelect) {
+        for (let option of metricsSelect.selectedOptions) {
+            metricsState[option.value] = true;
+        }
+    }
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
 function filterBarsByDuration(bars, duration) {
     if (!bars || bars.length === 0) return [];
     
@@ -1215,14 +1213,23 @@ function calculateRSI(closes, period = 14) {
     if (!closes || closes.length < period + 1) return [];
     const rsi = [];
     let gains = 0, losses = 0;
+    
+    // Calculate initial average gains and losses from first 'period' changes
     for (let i = 1; i <= period; i++) {
         const diff = closes[i] - closes[i - 1];
         if (diff > 0) gains += diff;
         else losses -= diff;
     }
+    
     let avgGain = gains / period;
     let avgLoss = losses / period;
-    for (let i = period; i < closes.length; i++) {
+    
+    // Push FIRST RSI value (at closes[period])
+    const firstRS = avgLoss === 0 ? (gains > 0 ? 100 : 0) : avgGain / avgLoss;
+    rsi.push(100 - (100 / (1 + firstRS)));
+    
+    // Calculate subsequent RSI values using smoothed average (starting from closes[period+1])
+    for (let i = period + 1; i < closes.length; i++) {
         const diff = closes[i] - closes[i - 1];
         const gain = diff > 0 ? diff : 0;
         const loss = diff < 0 ? -diff : 0;
@@ -1231,6 +1238,7 @@ function calculateRSI(closes, period = 14) {
         const rs = avgLoss === 0 ? (gain > 0 ? 100 : 0) : avgGain / avgLoss;
         rsi.push(100 - (100 / (1 + rs)));
     }
+    
     return rsi;
 }
 
@@ -1287,7 +1295,7 @@ function renderPriceChart(container, sym, bars) {
         console.log(`✅ Candlesticks: ${cd.length} bars`);
 
         // Add RSI overlays on RIGHT scale
-        const rsiColors = { rsi_5: '#ff6b9d', rsi_9: '#c0ff00', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
+        const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
         const closes = cd.map(c => c.close);
         
         Object.keys(rsiState).forEach(rsiKey => {
@@ -1381,12 +1389,77 @@ function renderMetricsChart(container, sym, bars) {
             }));
             volumeSeries.setData(volumeData);
             metricSeries['Volume'] = volumeSeries;
+            
+            // Explicitly apply right scale formatting for volume
+            metricsChart.priceScale('right').applyOptions({
+                autoScale: true,
+                formatPrice: (p) => {
+                    if (typeof p === 'number') {
+                        if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                        if (p >= 100000) return Math.round(p / 100000) + 'L';
+                        if (p >= 1000) return Math.round(p / 1000) + 'K';
+                        return Math.round(p).toString();
+                    }
+                    return p;
+                }
+            });
         }
 
         const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
         
         selectedMetrics.forEach(metricKey => {
             addMetricSeries(metricKey, cd, metricsChart);
+        });
+
+        // Set up crosshair to show real metric values on hover
+        metricsChart.subscribeCrosshairMove((param) => {
+            const infoDiv = document.getElementById('metricInfo');
+            if (!infoDiv) return;
+            
+            if (param.time) {
+                let valueText = `📍 `;
+                const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
+                let foundValues = false;
+                
+                selectedMetrics.forEach(metricKey => {
+                    const config = {
+                        eps: {label: 'EPS'},
+                        net: {label: 'Net Inc'},
+                        rev: {label: 'Revenue'},
+                        ebitda: {label: 'EBITDA'},
+                        opm: {label: 'OPM%'},
+                        debt: {label: 'Debt'}
+                    };
+                    const cfg = config[metricKey] || {label: metricKey};
+                    const seriesName = cfg.label;
+                    
+                    if (metricSeries[seriesName]) {
+                        const data = metricSeries[seriesName].data();
+                        const point = data.find(d => d.time === param.time);
+                        if (point && point.actualValue !== undefined) {
+                            const formatted = typeof point.actualValue === 'number' 
+                                ? point.actualValue.toLocaleString('en-IN', {maximumFractionDigits: 2})
+                                : point.actualValue;
+                            valueText += `${seriesName}: ${formatted} | `;
+                            foundValues = true;
+                        }
+                    }
+                });
+                
+                if (foundValues) {
+                    infoDiv.textContent = valueText.slice(0, -3);  // Remove last " | "
+                } else {
+                    infoDiv.textContent = '📊 Hover over metrics to see real values';
+                }
+            } else {
+                document.getElementById('metricInfo').textContent = '📊 Hover over metrics to see real values';
+            }
+        });
+
+        // Set up price chart crosshair too
+        priceChart.subscribeCrosshairMove((param) => {
+            if (!param.time) return;
+            // Price chart already shows values, but we can enhance if needed
         });
 
         // NOW sync the timeScales AFTER both charts are created
@@ -1406,35 +1479,42 @@ function syncTimeScales() {
     const priceTimeScale = priceChart.timeScale();
     const metricsTimeScale = metricsChart.timeScale();
     
-    let isUpdating = false;  // Guard flag to prevent feedback loops
+    let isUpdating = false;
+    let updateTimeout = null;
+    
+    // Helper to safely update with debounce
+    const updateWithDebounce = (updateFn) => {
+        isUpdating = true;
+        clearTimeout(updateTimeout);
+        updateFn();
+        updateTimeout = setTimeout(() => {
+            isUpdating = false;
+        }, 50);
+    };
     
     // When price chart time range changes, update metrics chart
     priceTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;  // Prevent loop
-        isUpdating = true;
-        
-        metricsTimeScale.setVisibleRange({
-            from: newRange.from,
-            to: newRange.to
+        if (isUpdating) return;
+        updateWithDebounce(() => {
+            metricsTimeScale.setVisibleRange({
+                from: newRange.from,
+                to: newRange.to
+            });
         });
-        
-        isUpdating = false;
     });
     
     // When metrics chart time range changes, update price chart  
     metricsTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;  // Prevent loop
-        isUpdating = true;
-        
-        priceTimeScale.setVisibleRange({
-            from: newRange.from,
-            to: newRange.to
+        if (isUpdating) return;
+        updateWithDebounce(() => {
+            priceTimeScale.setVisibleRange({
+                from: newRange.from,
+                to: newRange.to
+            });
         });
-        
-        isUpdating = false;
     });
     
-    // Set both to same initial range (fit all content)
+    // Set both to same initial range
     priceTimeScale.fitContent();
     const range = priceTimeScale.getVisibleRange();
     if (range) {
@@ -1443,8 +1523,6 @@ function syncTimeScales() {
             to: range.to
         });
     }
-    
-    console.log('🔗 TimeScales synced with guard flag');
 }
 
 function addMetricSeries(metricKey, cd, chart) {
@@ -1509,14 +1587,20 @@ function addMetricSeries(metricKey, cd, chart) {
         lineStyle: 0,  // Solid
         pointMarkersVisible: true,  // Show points at data locations
         pointMarkersRadius: 3,
-        title: `${cfg.label} (Q1=100)`,
+        title: cfg.label,  // REMOVE "(Q1=100)" - just show metric name
         priceScaleId: 'left'  // Use LEFT scale for metrics (hidden)
     });
     
-    ls.setData(normalizedData.map(d => ({time: d.time, value: d.value})));
+    // Store ACTUAL VALUES in data for tooltip display
+    ls.setData(normalizedData.map(d => ({
+        time: d.time, 
+        value: d.value,
+        actualValue: d.actualValue  // Real value for tooltip
+    })));
+    
     metricSeries[cfg.label] = ls;
 
-    console.log(`✅ ${cfg.label}: ${metricData.length} quarters`);
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Real values stored for hover`);
 }
 
 </script>
