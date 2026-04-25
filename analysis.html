@@ -1237,6 +1237,10 @@ function renderPriceChart(container, sym, bars) {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         leftPriceScale: {
+            visible: false
+        },
+        rightPriceScale: {
+            visible: true,
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
             autoScale: true,
@@ -1248,14 +1252,6 @@ function renderPriceChart(container, sym, bars) {
                 }
                 return p;
             }
-        },
-        rightPriceScale: {
-            textColor: '#7a8fa0',
-            borderColor: '#1a2332',
-            autoScale: false,
-            minPrice: 0,
-            maxPrice: 100,
-            formatPrice: (p) => Math.round(p).toString()
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1269,7 +1265,7 @@ function renderPriceChart(container, sym, bars) {
             upColor: '#00d084', downColor: '#ff3b5c',
             borderUpColor: '#00e896', borderDownColor: '#ff6b85',
             wickUpColor: '#00e896', wickDownColor: '#ff6b85',
-            priceScaleId: 'left'
+            priceScaleId: 'right'
         });
 
         const cd = bars.map(b => ({
@@ -1315,16 +1311,7 @@ function renderPriceChart(container, sym, bars) {
             }
         });
         
-        // Configure right scale for RSI (0-100)
-        if (Object.keys(rsiState).length > 0) {
-            priceChart.priceScale('right').applyOptions({
-                autoScale: false,
-                minPrice: 0,
-                maxPrice: 100,
-                formatPrice: (p) => p.toFixed(0)
-            });
-        }
-
+        // Right scale auto-scales for both candlesticks and RSI
         priceChart.timeScale().fitContent();
         console.log(`✅ Price chart rendered with candlesticks + RSI overlays`);
         
@@ -1345,6 +1332,9 @@ function renderMetricsChart(container, sym, bars) {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
         timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
         leftPriceScale: {
+            visible: false
+        },
+        rightPriceScale: {
             visible: true,
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
@@ -1358,13 +1348,6 @@ function renderMetricsChart(container, sym, bars) {
                 }
                 return p;
             }
-        },
-        rightPriceScale: {
-            visible: true,
-            textColor: '#7a8fa0',
-            borderColor: '#1a2332',
-            autoScale: true,
-            formatPrice: (p) => Math.round(p).toString()
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1382,11 +1365,11 @@ function renderMetricsChart(container, sym, bars) {
             close: parseFloat(b.c)
         }));
 
-        // Add volume bars on left scale
+        // Add volume bars on RIGHT scale
         if (bars.some(b => b.v && parseFloat(b.v) > 0)) {
             const volumeSeries = metricsChart.addHistogramSeries({
                 color: 'rgba(0, 242, 255, 0.3)',
-                priceScaleId: 'left',
+                priceScaleId: 'right',
                 title: 'Volume'
             });
             const volumeData = cd.map((c, idx) => ({
@@ -1420,45 +1403,30 @@ function syncTimeScales() {
     const priceTimeScale = priceChart.timeScale();
     const metricsTimeScale = metricsChart.timeScale();
     
-    let isUpdating = false;  // Guard flag to prevent feedback loops
+    let isUpdating = false;
     
     // When price chart time range changes, update metrics chart
     priceTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;  // Prevent loop
+        if (isUpdating) return;
         isUpdating = true;
-        
-        metricsTimeScale.setVisibleRange({
-            from: newRange.from,
-            to: newRange.to
-        });
-        
+        metricsTimeScale.setVisibleRange({from: newRange.from, to: newRange.to});
         isUpdating = false;
     });
     
     // When metrics chart time range changes, update price chart  
     metricsTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;  // Prevent loop
+        if (isUpdating) return;
         isUpdating = true;
-        
-        priceTimeScale.setVisibleRange({
-            from: newRange.from,
-            to: newRange.to
-        });
-        
+        priceTimeScale.setVisibleRange({from: newRange.from, to: newRange.to});
         isUpdating = false;
     });
     
-    // Set both to same initial range (fit all content)
+    // Set both to SAME initial range
     priceTimeScale.fitContent();
     const range = priceTimeScale.getVisibleRange();
     if (range) {
-        metricsTimeScale.setVisibleRange({
-            from: range.from,
-            to: range.to
-        });
+        metricsTimeScale.setVisibleRange({from: range.from, to: range.to});
     }
-    
-    console.log('🔗 TimeScales synced with guard flag');
 }
 
 function addMetricSeries(metricKey, cd, chart) {
@@ -1527,17 +1495,18 @@ function addMetricSeries(metricKey, cd, chart) {
         priceScaleId: 'right'  // Use RIGHT scale for metrics
     });
     
-    // Apply fixed scale for metrics (normalized 80-200%) but HIDDEN from view
+    // Apply scale for metrics - visible on RIGHT side
     chart.priceScale('right').applyOptions({
         textColor: '#7a8fa0',
         borderColor: '#1a2332',
-        visible: false,  // HIDE the Y-axis completely
-        autoScale: false,  // Fixed scale for metrics
-        minPrice: 80,      // 80% baseline
-        maxPrice: 200,     // 200% max
+        visible: true,  // SHOW the Y-axis on right
+        autoScale: true,
         formatPrice: (p) => {
             if (typeof p === 'number') {
-                return p.toFixed(0) + '%';
+                if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                if (p >= 100000) return Math.round(p / 100000) + 'L';
+                if (p >= 1000) return Math.round(p / 1000) + 'K';
+                return Math.round(p).toString();
             }
             return p;
         }
