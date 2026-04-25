@@ -572,13 +572,20 @@ function renderTab(tab) {
                     </select>
                 </div>
                 
-                <!-- RSI Multi-Select -->
+                <!-- RSI & EMA Multi-Select -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
-                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📈 RSI</div>
-                    <select id="rsiSelect" multiple onchange="updateRSI()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
-                        <option value="rsi_7">RSI(7) - Fast</option>
-                        <option value="rsi_14" selected>RSI(14) - Standard</option>
-                        <option value="rsi_21">RSI(21) - Slow</option>
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 RSI & EMA</div>
+                    <select id="rsiSelect" multiple onchange="updateRSI()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:120px">
+                        <optgroup label="RSI (0-100)">
+                            <option value="rsi_7">RSI(7) - Fast</option>
+                            <option value="rsi_14" selected>RSI(14) - Standard</option>
+                            <option value="rsi_21">RSI(21) - Slow</option>
+                        </optgroup>
+                        <optgroup label="EMA (Price)">
+                            <option value="ema_20">EMA(20) - Short</option>
+                            <option value="ema_50">EMA(50) - Medium</option>
+                            <option value="ema_200">EMA(200) - Long</option>
+                        </optgroup>
                     </select>
                 </div>
                 
@@ -1211,36 +1218,69 @@ async function loadAndRenderTechnicalChart(sym) {
 }
 
 function calculateRSI(closes, period = 14) {
-    if (!closes || closes.length < period + 1) return [];
-    const rsi = [];
-    let gains = 0, losses = 0;
+    // Industry Standard: Wilder's RSI (TradingView compatible)
+    // Source: https://en.wikipedia.org/wiki/Relative_strength_index
     
-    // Calculate initial average gains and losses from first 'period' changes
-    for (let i = 1; i <= period; i++) {
-        const diff = closes[i] - closes[i - 1];
-        if (diff > 0) gains += diff;
-        else losses -= diff;
+    if (closes.length < period + 1) return [];
+    
+    // Step 1: Calculate price changes
+    const changes = [];
+    for (let i = 1; i < closes.length; i++) {
+        changes.push(closes[i] - closes[i - 1]);
     }
     
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
+    // Step 2: Separate gains and losses
+    const gains = changes.map(c => c > 0 ? c : 0);
+    const losses = changes.map(c => c < 0 ? -c : 0);
     
-    // Push FIRST RSI value (at closes[period])
-    const firstRS = avgLoss === 0 ? (gains > 0 ? 100 : 0) : avgGain / avgLoss;
-    rsi.push(100 - (100 / (1 + firstRS)));
+    // Step 3: Calculate first average (simple average of first 'period' values)
+    let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
     
-    // Calculate subsequent RSI values using smoothed average (starting from closes[period+1])
-    for (let i = period + 1; i < closes.length; i++) {
-        const diff = closes[i] - closes[i - 1];
-        const gain = diff > 0 ? diff : 0;
-        const loss = diff < 0 ? -diff : 0;
-        avgGain = (avgGain * (period - 1) + gain) / period;
-        avgLoss = (avgLoss * (period - 1) + loss) / period;
-        const rs = avgLoss === 0 ? (gain > 0 ? 100 : 0) : avgGain / avgLoss;
+    // Step 4: Calculate RSI values using Wilder's smoothing
+    const rsi = [];
+    
+    // First RSI at position 'period'
+    const rs1 = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsi.push(100 - (100 / (1 + rs1)));
+    
+    // Subsequent RSI values with exponential smoothing
+    for (let i = period; i < changes.length; i++) {
+        avgGain = (avgGain * (period - 1) + gains[i]) / period;
+        avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+        
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
         rsi.push(100 - (100 / (1 + rs)));
     }
     
     return rsi;
+}
+
+function calculateEMA(closes, period) {
+    // Exponential Moving Average
+    if (closes.length < period) return [];
+    
+    const multiplier = 2 / (period + 1);
+    const ema = [];
+    
+    // First EMA is simple average
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+        sum += closes[i];
+    }
+    ema.push(sum / period);
+    
+    // Subsequent EMAs use exponential smoothing
+    for (let i = period; i < closes.length; i++) {
+        const prevEMA = ema[ema.length - 1];
+        const newEMA = closes[i] * multiplier + prevEMA * (1 - multiplier);
+        ema.push(newEMA);
+    }
+    
+    // Shift array back to align with original closes
+    // EMA[0] is at closes[period-1], so prepend nulls
+    const aligned = Array(period - 1).fill(null).concat(ema);
+    return aligned;
 }
 
 function renderPriceChart(container, sym, bars) {
@@ -1270,31 +1310,55 @@ function renderPriceChart(container, sym, bars) {
         const dates = bars.map(b => b.d);
         const closes = bars.map(b => parseFloat(b.c));
 
-        // Calculate RSI for selected periods
-        const rsiDataSets = {};
+        // Calculate RSI and EMA for selected indicators
+        const indicatorDataSets = {};
         const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
+        const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
         
-        Object.keys(rsiState).forEach(rsiKey => {
-            const period = parseInt(rsiKey.replace('rsi_', ''));
-            const rsiArray = calculateRSI(closes, period);
+        Object.keys(rsiState).forEach(key => {
+            // Handle RSI
+            if (key.startsWith('rsi_')) {
+                const period = parseInt(key.replace('rsi_', ''));
+                const rsiArray = calculateRSI(closes, period);
+                
+                if (rsiArray.length > 0) {
+                    const rsiDates = dates.slice(period);
+                    const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
+                    
+                    indicatorDataSets[key] = {
+                        name: `RSI(${period})`,
+                        type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: rsiData,
+                        lineStyle: { color: rsiColors[key] || '#00f2ff', width: 2 },
+                        smooth: true,
+                        symbol: 'none'
+                    };
+                }
+            }
             
-            if (rsiArray.length > 0) {
-                // RSI values start from index 'period', so use corresponding dates
-                const rsiDates = dates.slice(period);
+            // Handle EMA
+            if (key.startsWith('ema_')) {
+                const period = parseInt(key.replace('ema_', ''));
+                const emaArray = calculateEMA(closes, period);
                 
-                // Pair dates with RSI values: [[date1, rsi1], [date2, rsi2], ...]
-                const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
-                
-                rsiDataSets[rsiKey] = {
-                    name: `RSI(${period})`,
-                    type: 'line',
-                    xAxisIndex: 1,
-                    yAxisIndex: 1,
-                    data: rsiData,  // ✅ Now paired with correct dates
-                    lineStyle: { color: rsiColors[rsiKey] || '#00f2ff', width: 2 },
-                    smooth: true,
-                    symbol: 'none'
-                };
+                if (emaArray.length > 0) {
+                    const emaData = dates.map((date, idx) => 
+                        emaArray[idx] !== null ? [date, emaArray[idx]] : null
+                    ).filter(d => d !== null);
+                    
+                    indicatorDataSets[key] = {
+                        name: `EMA(${period})`,
+                        type: 'line',
+                        xAxisIndex: 0,
+                        yAxisIndex: 0,
+                        data: emaData,
+                        lineStyle: { color: emaColors[key] || '#ffffff', width: 1.5, type: 'dashed' },
+                        smooth: true,
+                        symbol: 'none'
+                    };
+                }
             }
         });
 
@@ -1316,9 +1380,9 @@ function renderPriceChart(container, sym, bars) {
             }
         ];
 
-        // Add RSI series
-        Object.values(rsiDataSets).forEach(rsiSeries => {
-            series.push(rsiSeries);
+        // Add all indicators (RSI & EMA)
+        Object.values(indicatorDataSets).forEach(series_item => {
+            series.push(series_item);
         });
 
         // ECharts option
@@ -1501,55 +1565,10 @@ function renderMetricsChart(container, sym, bars) {
 }
 
 function syncTimeScales() {
-    if (!priceChart || !metricsChart) return;
-    
-    const priceTimeScale = priceChart.timeScale();
-    const metricsTimeScale = metricsChart.timeScale();
-    
-    let isUpdating = false;
-    let updateTimeout = null;
-    
-    // Helper to safely update with debounce
-    const updateWithDebounce = (updateFn) => {
-        isUpdating = true;
-        clearTimeout(updateTimeout);
-        updateFn();
-        updateTimeout = setTimeout(() => {
-            isUpdating = false;
-        }, 50);
-    };
-    
-    // When price chart time range changes, update metrics chart
-    priceTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;
-        updateWithDebounce(() => {
-            metricsTimeScale.setVisibleRange({
-                from: newRange.from,
-                to: newRange.to
-            });
-        });
-    });
-    
-    // When metrics chart time range changes, update price chart  
-    metricsTimeScale.subscribeVisibleTimeRangeChange((newRange) => {
-        if (isUpdating) return;
-        updateWithDebounce(() => {
-            priceTimeScale.setVisibleRange({
-                from: newRange.from,
-                to: newRange.to
-            });
-        });
-    });
-    
-    // Set both to same initial range
-    priceTimeScale.fitContent();
-    const range = priceTimeScale.getVisibleRange();
-    if (range) {
-        metricsTimeScale.setVisibleRange({
-            from: range.from,
-            to: range.to
-        });
-    }
+    // Note: Top chart is ECharts, bottom is LightweightCharts
+    // Full sync between different libraries is complex
+    // For now, each chart manages its own zoom/pan independently
+    console.log('📊 Charts ready (ECharts top, LightweightCharts bottom)');
 }
 
 function addMetricSeries(metricKey, cd, chart) {
