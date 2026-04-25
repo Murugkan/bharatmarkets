@@ -1026,6 +1026,28 @@ function changeDuration(duration) {
     // Store the selected duration
     window.chartDuration = duration;
     console.log(`📅 Duration changed to: ${duration}`);
+    
+    // If not monthly, disable and uncheck metric selections
+    if (duration !== 'monthly') {
+        // Disable all metric checkboxes for daily/weekly
+        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
+            cb.checked = false;
+            cb.disabled = true;
+            cb.parentElement.style.opacity = '0.5';
+            cb.parentElement.style.pointerEvents = 'none';
+            metricsState[cb.id.replace('metric_', '')] = false;
+        });
+        console.log('📊 Metrics disabled for daily/weekly view (price only)');
+    } else {
+        // Enable metrics for monthly view
+        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
+            cb.disabled = false;
+            cb.parentElement.style.opacity = '1';
+            cb.parentElement.style.pointerEvents = 'auto';
+        });
+        console.log('✅ Metrics enabled for monthly view');
+    }
+    
     // Refresh the chart with new duration
     loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
 }
@@ -1060,12 +1082,16 @@ async function loadAndRenderTechnicalChart(sym) {
         // Render price chart with metrics
         renderPriceAndMetricsChart(container, sym, bars);
         
-        // Update metric info
+        // Update metric info based on duration
+        const duration = window.chartDuration || 'monthly';
         const selected = Object.keys(metricsState).filter(k => metricsState[k]);
-        if (selected.length === 0) {
-            infoDiv.textContent = '📊 Select metrics above to display quarterly historical trends';
+        
+        if (duration !== 'monthly') {
+            infoDiv.innerHTML = `<strong>📊 ${duration.toUpperCase()} View:</strong> Price bars only | Switch to Monthly for fundamental metrics`;
+        } else if (selected.length === 0) {
+            infoDiv.innerHTML = `<strong>📊 MONTHLY VIEW:</strong> Select metrics above to display normalized quarterly trends (Base Q1=100) | All metrics scaled equally for comparison`;
         } else {
-            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()} | Data: Real quarterly fundamentals from ${currentStock.quarterly ? currentStock.quarterly.length : 0} quarters`;
+            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()} | <strong>Normalized Scale (Q1=100):</strong> Compare growth trends equally | Data: ${currentStock.quarterly ? currentStock.quarterly.length : 0} quarters`;
         }
         
     } catch (e) {
@@ -1101,14 +1127,9 @@ function renderPriceAndMetricsChart(container, sym, bars) {
             borderColor: '#1a2332',
             autoScale: true,
             formatPrice: (p) => {
-                // Format metrics with K/M suffixes for readability
+                // Format as index (Q1=100)
                 if (typeof p === 'number') {
-                    if (p >= 1000000) {
-                        return (p / 1000000).toFixed(1) + 'M';
-                    } else if (p >= 1000) {
-                        return (p / 1000).toFixed(1) + 'K';
-                    }
-                    return p.toFixed(2);
+                    return p.toFixed(1) + '%';
                 }
                 return p;
             }
@@ -1188,39 +1209,30 @@ function addMetricSeries(metricKey, cd, chart) {
 
     const cfg = config[metricKey] || {color: '#00f2ff', label: metricKey};
 
-    // Add as line series on RIGHT price scale for proper visualization
-    // This prevents metric values (millions) from overwhelming price scale (hundreds)
+    // NORMALIZE: Convert to index (first value = 100)
+    const baseValue = metricData[0].value;
+    const normalizedData = metricData.map(m => ({
+        time: m.time,
+        value: baseValue !== 0 ? (m.value / baseValue) * 100 : 100,
+        actualValue: m.value  // Store original for tooltip
+    }));
+
+    const minValue = Math.min(...normalizedData.map(d => d.value));
+    const maxValue = Math.max(...normalizedData.map(d => d.value));
+
+    // Add as line series on RIGHT price scale
     const ls = chart.addLineSeries({
         color: cfg.color,
         lineWidth: 2,
         lineStyle: 1,  // Solid line
-        title: `${cfg.label} (Quarterly)`,
-        priceScaleId: 'right'  // Use right scale for metrics
+        title: `${cfg.label} (Indexed Q1=100)`,
+        priceScaleId: 'right'  // Use right scale for all metrics
     });
 
-    // Attach to right price scale with proper formatting
-    chart.priceScale('right').applyOptions({
-        textColor: '#7a8fa0',
-        borderColor: '#1a2332',
-        autoScale: true,
-        formatPrice: (p) => {
-            if (typeof p === 'number') {
-                // Format large numbers (millions) with K/M suffix
-                if (p >= 1000000) {
-                    return (p / 1000000).toFixed(1) + 'M';
-                } else if (p >= 1000) {
-                    return (p / 1000).toFixed(1) + 'K';
-                }
-                return p.toFixed(2);
-            }
-            return p;
-        }
-    });
-
-    ls.setData(metricData.map(m => ({time: m.time, value: m.value})));
+    ls.setData(normalizedData.map(d => ({time: d.time, value: d.value})));
     metricSeries[cfg.label] = ls;
 
-    console.log(`✅ ${cfg.label}: ${metricData.length} quarters, range [${Math.min(...metricData.map(m=>m.value)).toFixed(2)}, ${Math.max(...metricData.map(m=>m.value)).toFixed(2)}]`);
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Normalized range [${minValue.toFixed(1)}, ${maxValue.toFixed(1)}] | Base: ${baseValue.toFixed(2)}`);
 }
 
 </script>
