@@ -1295,7 +1295,7 @@ function renderPriceChart(container, sym, bars) {
         priceChart = echarts.init(container, 'dark');
         priceSeries = {};
 
-        // Prepare candlestick data: [open, close, low, high]
+        // Prepare candlestick data: [open, close, low, high] - REALISTIC PRICES
         const ohlcData = bars.map(b => [
             parseFloat(b.o),
             parseFloat(b.c),
@@ -1305,6 +1305,9 @@ function renderPriceChart(container, sym, bars) {
 
         const dates = bars.map(b => b.d);
         const closes = bars.map(b => parseFloat(b.c));
+        
+        // FIX: Keep prices realistic (NOT normalized)
+        // Only normalize for indicators (metrics & RSI calculations)
 
         // Calculate RSI and EMA for selected indicators
         const indicatorDataSets = {};
@@ -1319,21 +1322,18 @@ function renderPriceChart(container, sym, bars) {
             // Handle RSI
             if (key.startsWith('rsi_')) {
                 const period = parseInt(key.replace('rsi_', ''));
-                const rsiArray = calculateRSI(closes, period);
+                const rsiArray = calculateRSI(closes, period);  // FIX: Use original closes
                 
                 if (rsiArray.length > 0) {
                     const rsiDates = dates.slice(period);
                     const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
                     
-                    // FIX: Normalize RSI to 0-100 scale for better overlay visibility
-                    const normalizedRSI = rsiData.map(d => [d[0], d[1]]);
-                    
                     indicatorDataSets[key] = {
                         name: `RSI(${period})`,
                         type: 'line',
                         xAxisIndex: 0,
-                        yAxisIndex: 0,  // Same as price
-                        data: normalizedRSI,
+                        yAxisIndex: 1,  // FIX: Right axis for normalized indicators
+                        data: rsiData,
                         lineStyle: { color: rsiColors[key] || '#00f2ff', width: 2 },
                         smooth: true,
                         symbol: 'none'
@@ -1344,7 +1344,7 @@ function renderPriceChart(container, sym, bars) {
             // Handle EMA
             if (key.startsWith('ema_')) {
                 const period = parseInt(key.replace('ema_', ''));
-                const emaArray = calculateEMA(closes, period);
+                const emaArray = calculateEMA(closes, period);  // FIX: Use original closes
                 
                 if (emaArray.length > 0) {
                     const emaData = dates.map((date, idx) => 
@@ -1355,7 +1355,7 @@ function renderPriceChart(container, sym, bars) {
                         name: `EMA(${period})`,
                         type: 'line',
                         xAxisIndex: 0,
-                        yAxisIndex: 0,  // Same as price
+                        yAxisIndex: 0,  // FIX: Left axis - with price (realistic)
                         data: emaData,
                         lineStyle: { color: emaColors[key] || '#ffffff', width: 1.5, type: 'dashed' },
                         smooth: true,
@@ -1405,7 +1405,7 @@ function renderPriceChart(container, sym, bars) {
                                 name: metricKey.toUpperCase(),
                                 type: 'line',
                                 xAxisIndex: 0,
-                                yAxisIndex: 0,  // Same as price - all overlays
+                                yAxisIndex: 1,  // FIX: Right axis (normalized scale)
                                 data: normalized,
                                 lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
                                 smooth: true,
@@ -1422,11 +1422,11 @@ function renderPriceChart(container, sym, bars) {
         // Build series
         const series = [
             {
-                name: 'Candlestick',
+                name: 'Price',
                 type: 'candlestick',
                 xAxisIndex: 0,
-                yAxisIndex: 0,
-                data: ohlcData,
+                yAxisIndex: 0,  // Left axis - realistic prices
+                data: ohlcData,  // FIX: Real prices, NOT normalized
                 itemStyle: {
                     color: '#00d084',
                     color0: '#ff3b5c',
@@ -1448,8 +1448,32 @@ function renderPriceChart(container, sym, bars) {
                 trigger: 'axis',
                 axisPointer: { type: 'cross' }
             },
+            dataZoom: [
+                {
+                    // Slider at bottom for X-axis zoom
+                    type: 'slider',
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100,
+                    height: 20,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,242,255,.05)',
+                    fillerColor: 'rgba(0,242,255,.15)',
+                    borderColor: 'rgba(0,242,255,.2)',
+                    textStyle: { color: '#7a8fa0' }
+                },
+                {
+                    // Inside zoom (drag to zoom)
+                    type: 'inside',
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100,
+                    zoomOnMouseWheel: true,
+                    moveOnMouseMove: true
+                }
+            ],
             grid: [
-                { left: '8%', right: '8%', top: '5%', bottom: '5%' }  // Single grid
+                { left: '8%', right: '8%', top: '5%', bottom: '8%' }
             ],
             xAxis: [
                 { gridIndex: 0, type: 'category', data: dates, boundaryGap: true }
@@ -1458,15 +1482,27 @@ function renderPriceChart(container, sym, bars) {
                 { 
                     gridIndex: 0, 
                     type: 'value', 
-                    scale: true, 
-                    splitNumber: 5,
-                    name: 'Price / Metrics (Indexed)',
-                    nameTextStyle: { color: '#7a8fa0', fontSize: 10 },
+                    position: 'left',
+                    scale: true,
+                    name: 'Price (Realistic)',
+                    nameTextStyle: { color: '#00d084', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => {
-                            if (p > 100) return Math.round(p).toString();
-                            return p.toFixed(2).toString();
-                        },
+                        formatter: (p) => p.toFixed(0),
+                        color: '#7a8fa0'
+                    }
+                },
+                { 
+                    gridIndex: 0, 
+                    type: 'value',
+                    position: 'right',
+                    scale: false,
+                    min: 0,
+                    max: 200,
+                    splitNumber: 5,
+                    name: 'Metrics & RSI (Indexed)',
+                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
+                    axisLabel: {
+                        formatter: (p) => p.toFixed(0),
                         color: '#7a8fa0'
                     }
                 }
