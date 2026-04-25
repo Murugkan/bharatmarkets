@@ -1022,6 +1022,49 @@ function toggleMetric(metricKey) {
     loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
 }
 
+function filterBarsByDuration(bars, duration) {
+    if (!bars || bars.length === 0) return [];
+    
+    if (duration === 'daily') {
+        // Return all daily bars
+        return bars;
+    } else if (duration === 'weekly') {
+        // Keep only one bar per week (Monday or first day of week)
+        const filtered = [];
+        let lastWeekStart = null;
+        
+        bars.forEach(bar => {
+            const date = new Date(bar.d);
+            const weekStart = new Date(date);
+            weekStart.setDate(date.getDate() - date.getDay()); // Sunday as week start
+            const weekKey = weekStart.toISOString().split('T')[0];
+            
+            if (lastWeekStart !== weekKey) {
+                filtered.push(bar);
+                lastWeekStart = weekKey;
+            }
+        });
+        return filtered;
+    } else if (duration === 'monthly') {
+        // Keep only one bar per month (first day of month or close)
+        const filtered = [];
+        let lastMonth = null;
+        
+        bars.forEach(bar => {
+            const date = new Date(bar.d);
+            const monthKey = date.getFullYear() + '-' + (date.getMonth() + 1);
+            
+            if (lastMonth !== monthKey) {
+                filtered.push(bar);
+                lastMonth = monthKey;
+            }
+        });
+        return filtered;
+    }
+    
+    return bars;
+}
+
 function changeDuration(duration) {
     // Store the selected duration
     window.chartDuration = duration;
@@ -1072,10 +1115,19 @@ async function loadAndRenderTechnicalChart(sym) {
         }
         
         const data = await res.json();
-        const bars = data.bars || [];
+        let bars = data.bars || [];
         
         if (bars.length === 0) {
             container.innerHTML = '<div style="padding:20px;color:red;font-size:10px">No price data</div>';
+            return;
+        }
+
+        // Filter bars by duration
+        const duration = window.chartDuration || 'monthly';
+        bars = filterBarsByDuration(bars, duration);
+        
+        if (bars.length === 0) {
+            container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">No data available for ${duration} view</div>`;
             return;
         }
 
@@ -1083,7 +1135,6 @@ async function loadAndRenderTechnicalChart(sym) {
         renderPriceAndMetricsChart(container, sym, bars);
         
         // Update metric info based on duration
-        const duration = window.chartDuration || 'monthly';
         const selected = Object.keys(metricsState).filter(k => metricsState[k]);
         
         if (duration !== 'monthly') {
@@ -1113,11 +1164,11 @@ function renderPriceAndMetricsChart(container, sym, bars) {
         leftPriceScale: {
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: true,
+            autoScale: true,  // Price scales automatically to fit candlesticks
             formatPrice: (p) => {
                 // Format price with proper decimals
                 if (typeof p === 'number') {
-                    return p.toFixed(p > 100 ? 0 : 2);
+                    return '₹' + (p > 100 ? Math.round(p).toString() : p.toFixed(2));
                 }
                 return p;
             }
@@ -1125,11 +1176,13 @@ function renderPriceAndMetricsChart(container, sym, bars) {
         rightPriceScale: {
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: true,
+            autoScale: false,  // FIXED scale, not auto
+            minPrice: 80,      // 80% baseline
+            maxPrice: 200,     // 200% max
             formatPrice: (p) => {
-                // Format as index (Q1=100)
+                // Format as index percentage
                 if (typeof p === 'number') {
-                    return p.toFixed(1) + '%';
+                    return p.toFixed(0) + '%';
                 }
                 return p;
             }
@@ -1189,7 +1242,7 @@ function addMetricSeries(metricKey, cd, chart) {
         .map(q => ({
             date: q.d,
             value: parseFloat(q[metricKey]),
-            time: Math.floor(new Date(q.d).getTime() / 1000)
+            time: Math.floor(new Date(q.d).getTime() / 1000)  // Use exact quarterly date
         }));
 
     if (metricData.length === 0) {
@@ -1212,7 +1265,7 @@ function addMetricSeries(metricKey, cd, chart) {
     // NORMALIZE: Convert to index (first value = 100)
     const baseValue = metricData[0].value;
     const normalizedData = metricData.map(m => ({
-        time: m.time,
+        time: m.time,  // Keep exact quarterly timestamp
         value: baseValue !== 0 ? (m.value / baseValue) * 100 : 100,
         actualValue: m.value  // Store original for tooltip
     }));
@@ -1221,18 +1274,21 @@ function addMetricSeries(metricKey, cd, chart) {
     const maxValue = Math.max(...normalizedData.map(d => d.value));
 
     // Add as line series on RIGHT price scale
+    // Use marker to show data points clearly
     const ls = chart.addLineSeries({
         color: cfg.color,
         lineWidth: 2,
-        lineStyle: 1,  // Solid line
-        title: `${cfg.label} (Indexed Q1=100)`,
-        priceScaleId: 'right'  // Use right scale for all metrics
+        lineStyle: 0,  // Solid
+        pointMarkersVisible: true,  // Show points at data locations
+        pointMarkersRadius: 3,
+        title: `${cfg.label} (Q1=100)`,
+        priceScaleId: 'right'
     });
 
     ls.setData(normalizedData.map(d => ({time: d.time, value: d.value})));
     metricSeries[cfg.label] = ls;
 
-    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Normalized range [${minValue.toFixed(1)}, ${maxValue.toFixed(1)}] | Base: ${baseValue.toFixed(2)}`);
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Normalized [${minValue.toFixed(1)}, ${maxValue.toFixed(1)}] | Base Q1: ${baseValue.toFixed(2)}`);
 }
 
 </script>
