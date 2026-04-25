@@ -597,17 +597,25 @@ function renderTab(tab) {
                 </div>
             </div>
 
-            <!-- PRICE + METRICS CHART -->
+            <!-- PRICE + VOLUME CHART (60% height) -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
-                <div id="technicalChart" style="width:100%;height:450px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+                <div id="priceChart" style="width:100%;height:350px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
                 <div style="font-size:8px;color:var(--tx3);margin-top:6px;padding:6px;text-align:center">
-                    💡 <strong>Scroll to zoom</strong> | Drag to pan | Right-click to reset zoom
+                    💡 Candlesticks + Volume | Scroll to zoom | Drag to pan | Right-click to reset
                 </div>
             </div>
 
-            <!-- METRIC HISTORY INFO -->
+            <!-- METRICS CHART (40% height) -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
+                <div id="metricsChart" style="width:100%;height:200px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+                <div style="font-size:8px;color:var(--tx3);margin-top:6px;padding:6px;text-align:center">
+                    📊 Normalized Metrics (Q1=100) | Synchronized X-axis with price chart above
+                </div>
+            </div>
+
+            <!-- CHART INFO -->
             <div id="metricInfo" style="font-size:9px;color:var(--tx3);padding:10px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1);margin-bottom:12px">
-                Select metrics to display quarterly historical trends with real data from fundamentals
+                Price chart with volume above | Metrics synchronized below
             </div>
         </div>`;
 
@@ -1012,8 +1020,10 @@ function renderInsightsTab(ticker, insights) {
 
 // TECHNICAL TAB - METRICS
 let metricsState = {};  // Track which metrics are selected
-let technicalChart = null;
-let metricSeries = {};
+let priceChart = null;  // Price + Volume chart
+let metricsChart = null;  // Metrics chart
+let priceSeries = {};  // Price series (candlestick, volume)
+let metricSeries = {};  // Metric lines
 
 function toggleMetric(metricKey) {
     metricsState[metricKey] = !metricsState[metricKey];
@@ -1114,11 +1124,12 @@ function changeDuration(duration) {
 }
 
 async function loadAndRenderTechnicalChart(sym) {
-    const container = document.getElementById('technicalChart');
+    const priceContainer = document.getElementById('priceChart');
+    const metricsContainer = document.getElementById('metricsChart');
     const infoDiv = document.getElementById('metricInfo');
     
-    if (!container || !currentStock) {
-        console.error('Chart container or stock not found');
+    if (!priceContainer || !metricsContainer || !currentStock) {
+        console.error('Chart containers or stock not found');
         return;
     }
 
@@ -1128,7 +1139,7 @@ async function loadAndRenderTechnicalChart(sym) {
         const res = await fetch(url);
         
         if (!res.ok) {
-            container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Failed to load chart (${res.status})</div>`;
+            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Failed to load chart (${res.status})</div>`;
             return;
         }
         
@@ -1136,7 +1147,7 @@ async function loadAndRenderTechnicalChart(sym) {
         let bars = data.bars || [];
         
         if (bars.length === 0) {
-            container.innerHTML = '<div style="padding:20px;color:red;font-size:10px">No price data</div>';
+            priceContainer.innerHTML = '<div style="padding:20px;color:red;font-size:10px">No price data</div>';
             return;
         }
 
@@ -1145,34 +1156,40 @@ async function loadAndRenderTechnicalChart(sym) {
         bars = filterBarsByDuration(bars, duration);
         
         if (bars.length === 0) {
-            container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">No data available for ${duration} view</div>`;
+            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">No data available for ${duration} view</div>`;
             return;
         }
 
-        // Render price chart with metrics
-        renderPriceAndMetricsChart(container, sym, bars);
+        // Render price chart with volume
+        renderPriceChart(priceContainer, sym, bars);
         
-        // Update metric info based on duration
-        const selected = Object.keys(metricsState).filter(k => metricsState[k]);
-        
-        if (duration !== 'monthly') {
-            infoDiv.innerHTML = `<strong>📊 ${duration.toUpperCase()} View:</strong> Price bars only | Switch to Monthly for fundamental metrics`;
-        } else if (selected.length === 0) {
-            infoDiv.innerHTML = `<strong>📊 MONTHLY VIEW:</strong> Select metrics above to display normalized quarterly trends (Base Q1=100) | All metrics scaled equally for comparison`;
+        // Render metrics chart (only if monthly duration)
+        if (duration === 'monthly') {
+            renderMetricsChart(metricsContainer, sym, bars);
         } else {
-            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()} | <strong>Normalized Scale (Q1=100):</strong> Compare growth trends equally | Data: ${currentStock.quarterly ? currentStock.quarterly.length : 0} quarters`;
+            metricsContainer.innerHTML = `<div style="padding:20px;color:#7a8fa0;font-size:10px;text-align:center">📊 Metrics available only in Monthly view</div>`;
+        }
+        
+        // Update info
+        const selected = Object.keys(metricsState).filter(k => metricsState[k]);
+        if (duration !== 'monthly') {
+            infoDiv.innerHTML = `<strong>📊 ${duration.toUpperCase()} View:</strong> Price + Volume only`;
+        } else if (selected.length === 0) {
+            infoDiv.innerHTML = `<strong>📊 MONTHLY VIEW:</strong> Select metrics above to display in lower chart`;
+        } else {
+            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()} (Normalized Q1=100)`;
         }
         
     } catch (e) {
         console.error('Chart error:', e);
-        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
+        priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
     }
 }
 
-function renderPriceAndMetricsChart(container, sym, bars) {
-    if (technicalChart) technicalChart.remove();
+function renderPriceChart(container, sym, bars) {
+    if (priceChart) priceChart.remove();
     if (!container.clientWidth || container.clientWidth < 100) {
-        setTimeout(() => renderPriceAndMetricsChart(container, sym, bars), 300);
+        setTimeout(() => renderPriceChart(container, sym, bars), 300);
         return;
     }
 
@@ -1182,9 +1199,8 @@ function renderPriceAndMetricsChart(container, sym, bars) {
         leftPriceScale: {
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: true,  // Price scales automatically to fit candlesticks
+            autoScale: true,  // Price auto-scales
             formatPrice: (p) => {
-                // Format price with proper decimals
                 if (typeof p === 'number') {
                     return '₹' + (p > 100 ? Math.round(p).toString() : p.toFixed(2));
                 }
@@ -1194,13 +1210,12 @@ function renderPriceAndMetricsChart(container, sym, bars) {
         rightPriceScale: {
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: false,  // FIXED scale, not auto
-            minPrice: 80,      // 80% baseline
-            maxPrice: 200,     // 200% max
+            autoScale: true,  // Volume auto-scales
             formatPrice: (p) => {
-                // Format as index percentage
                 if (typeof p === 'number') {
-                    return p.toFixed(0) + '%';
+                    if (p >= 1000000) return (p / 1000000).toFixed(1) + 'M';
+                    if (p >= 1000) return (p / 1000).toFixed(1) + 'K';
+                    return p.toFixed(0);
                 }
                 return p;
             }
@@ -1209,15 +1224,15 @@ function renderPriceAndMetricsChart(container, sym, bars) {
     };
 
     try {
-        technicalChart = LightweightCharts.createChart(container, opts);
-        metricSeries = {};
+        priceChart = LightweightCharts.createChart(container, opts);
+        priceSeries = {};
 
-    // Add candlesticks on default left scale (price)
-        const cs = technicalChart.addCandlestickSeries({
+        // Add candlesticks
+        const cs = priceChart.addCandlestickSeries({
             upColor: '#00d084', downColor: '#ff3b5c',
             borderUpColor: '#00e896', borderDownColor: '#ff6b85',
             wickUpColor: '#00e896', wickDownColor: '#ff6b85',
-            priceScaleId: 'left'  // Explicitly use left scale for price
+            priceScaleId: 'left'
         });
 
         const cd = bars.map(b => ({
@@ -1229,21 +1244,96 @@ function renderPriceAndMetricsChart(container, sym, bars) {
         }));
 
         cs.setData(cd);
-        metricSeries.candle = cs;
+        priceSeries.candle = cs;
         console.log(`✅ Price chart: ${cd.length} bars`);
 
+        // Add volume bars if available
+        if (bars[0] && bars[0].v) {
+            const vs = priceChart.addHistogramSeries({
+                color: 'rgba(0, 242, 255, 0.3)',
+                priceScaleId: 'right'
+            });
+            
+            const volumeData = cd.map(c => ({
+                time: c.time,
+                value: parseFloat(bars[cd.indexOf(c)].v) || 0
+            }));
+            
+            vs.setData(volumeData);
+            priceSeries.volume = vs;
+            console.log(`✅ Volume added`);
+        }
+
+        priceChart.timeScale().fitContent();
+        console.log(`✅ Price chart rendered`);
+        
+    } catch (e) {
+        console.error('Price chart error:', e);
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
+    }
+}
+
+function renderMetricsChart(container, sym, bars) {
+    if (metricsChart) metricsChart.remove();
+    if (!container.clientWidth || container.clientWidth < 100) {
+        setTimeout(() => renderMetricsChart(container, sym, bars), 300);
+        return;
+    }
+
+    const opts = {
+        layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
+        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
+        rightPriceScale: {
+            textColor: '#7a8fa0',
+            borderColor: '#1a2332',
+            autoScale: false,  // FIXED scale for metrics
+            minPrice: 80,
+            maxPrice: 200,
+            formatPrice: (p) => {
+                if (typeof p === 'number') {
+                    return p.toFixed(0) + '%';
+                }
+                return p;
+            }
+        },
+        grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
+    };
+
+    try {
+        metricsChart = LightweightCharts.createChart(container, opts);
+        metricSeries = {};
+
+        // Sync time scales between price and metrics charts
+        const priceTimeScale = priceChart.timeScale();
+        const metricsTimeScale = metricsChart.timeScale();
+        
+        priceTimeScale.subscribeVisibleLogicalRangeChange(() => {
+            const range = priceTimeScale.getVisibleLogicalRange();
+            if (range) {
+                metricsTimeScale.setVisibleLogicalRange(range);
+            }
+        });
+
         // Add selected metrics as lines
+        const cd = bars.map(b => ({
+            time: Math.floor(new Date(b.d).getTime() / 1000),
+            open: parseFloat(b.o),
+            high: parseFloat(b.h),
+            low: parseFloat(b.l),
+            close: parseFloat(b.c)
+        }));
+
         const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
         
         selectedMetrics.forEach(metricKey => {
-            addMetricSeries(metricKey, cd, technicalChart);
+            addMetricSeries(metricKey, cd, metricsChart);
         });
 
-        technicalChart.timeScale().fitContent();
-        console.log(`✅ Technical chart rendered`);
+        metricsTimeScale.fitContent();
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics`);
         
     } catch (e) {
-        console.error('Render error:', e);
+        console.error('Metrics chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
 }
