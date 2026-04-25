@@ -1194,11 +1194,12 @@ function renderPriceAndMetricsChart(container, sym, bars) {
         technicalChart = LightweightCharts.createChart(container, opts);
         metricSeries = {};
 
-        // Add candlesticks
+    // Add candlesticks on default left scale (price)
         const cs = technicalChart.addCandlestickSeries({
             upColor: '#00d084', downColor: '#ff3b5c',
             borderUpColor: '#00e896', borderDownColor: '#ff6b85',
-            wickUpColor: '#00e896', wickDownColor: '#ff6b85'
+            wickUpColor: '#00e896', wickDownColor: '#ff6b85',
+            priceScaleId: 'left'  // Explicitly use left scale for price
         });
 
         const cd = bars.map(b => ({
@@ -1273,7 +1274,7 @@ function addMetricSeries(metricKey, cd, chart) {
     const minValue = Math.min(...normalizedData.map(d => d.value));
     const maxValue = Math.max(...normalizedData.map(d => d.value));
 
-    // Add as line series on RIGHT price scale
+    // Add as line series on LEFT price scale (below candlesticks, separate fixed range)
     // Use marker to show data points clearly
     const ls = chart.addLineSeries({
         color: cfg.color,
@@ -1282,7 +1283,24 @@ function addMetricSeries(metricKey, cd, chart) {
         pointMarkersVisible: true,  // Show points at data locations
         pointMarkersRadius: 3,
         title: `${cfg.label} (Q1=100)`,
-        priceScaleId: 'right'
+        priceScaleId: 'left'  // Use left scale but with fixed range for metrics
+    });
+    
+    // Apply fixed scale formatting for metrics on left
+    chart.priceScale('left').applyOptions({
+        textColor: '#7a8fa0',
+        borderColor: '#1a2332',
+        autoScale: false,  // Fixed scale to not interfere with price
+        minPrice: 80,      // Baseline for metrics
+        maxPrice: 200,     // Max for metrics
+        formatPrice: (p) => {
+            // Check if it's a metric value (normalized) or price
+            if (p >= 80 && p <= 200) {
+                return p.toFixed(0) + '%';
+            }
+            // Otherwise format as price
+            return '₹' + (p > 100 ? Math.round(p).toString() : p.toFixed(2));
+        }
     });
 
     ls.setData(normalizedData.map(d => ({time: d.time, value: d.value})));
