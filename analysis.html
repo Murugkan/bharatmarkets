@@ -1282,19 +1282,9 @@ function renderMetricsChart(container, sym, bars) {
 
     const opts = {
         layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
-        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
+        timeScale: priceChart.timeScale(),  // SHARE the exact same timeScale from price chart
         rightPriceScale: {
-            textColor: '#7a8fa0',
-            borderColor: '#1a2332',
-            autoScale: false,  // FIXED scale for metrics
-            minPrice: 80,
-            maxPrice: 200,
-            formatPrice: (p) => {
-                if (typeof p === 'number') {
-                    return p.toFixed(0) + '%';
-                }
-                return p;
-            }
+            visible: false  // HIDE Y-axis completely - no labels, no borders
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1302,17 +1292,6 @@ function renderMetricsChart(container, sym, bars) {
     try {
         metricsChart = LightweightCharts.createChart(container, opts);
         metricSeries = {};
-
-        // Sync time scales between price and metrics charts
-        const priceTimeScale = priceChart.timeScale();
-        const metricsTimeScale = metricsChart.timeScale();
-        
-        priceTimeScale.subscribeVisibleLogicalRangeChange(() => {
-            const range = priceTimeScale.getVisibleLogicalRange();
-            if (range) {
-                metricsTimeScale.setVisibleLogicalRange(range);
-            }
-        });
 
         // Add selected metrics as lines
         const cd = bars.map(b => ({
@@ -1329,8 +1308,7 @@ function renderMetricsChart(container, sym, bars) {
             addMetricSeries(metricKey, cd, metricsChart);
         });
 
-        metricsTimeScale.fitContent();
-        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics`);
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced with price chart`);
         
     } catch (e) {
         console.error('Metrics chart error:', e);
@@ -1404,15 +1382,15 @@ function addMetricSeries(metricKey, cd, chart) {
         priceScaleId: 'right'  // Use RIGHT scale for metrics
     });
     
-    // Apply fixed scale formatting for metrics on RIGHT scale
+    // Apply fixed scale for metrics (normalized 80-200%) but HIDDEN from view
     chart.priceScale('right').applyOptions({
         textColor: '#7a8fa0',
         borderColor: '#1a2332',
+        visible: false,  // HIDE the Y-axis completely
         autoScale: false,  // Fixed scale for metrics
         minPrice: 80,      // 80% baseline
         maxPrice: 200,     // 200% max
         formatPrice: (p) => {
-            // Format as normalized percentage
             if (typeof p === 'number') {
                 return p.toFixed(0) + '%';
             }
