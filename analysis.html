@@ -559,9 +559,16 @@ function renderTab(tab) {
         `;
     } else if (tab === 'technical') {
         html = `<div style="padding:0;padding-bottom:100px">
-            <!-- METRICS MULTI-SELECT CONTROLS -->
+            <!-- METRICS MULTI-SELECT CONTROLS + DURATION -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:12px">
-                <div style="font-size:9px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:8px">📊 Select Metrics (Multi-Select) - Real Quarterly Data</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <div style="font-size:9px;color:var(--ac);font-weight:700;text-transform:uppercase">📊 Select Metrics - Real Quarterly Data</div>
+                    <select id="durationSelect" onchange="changeDuration(this.value)" style="background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;padding:4px 6px;font-size:8px;font-weight:700;cursor:pointer;transition:all .2s">
+                        <option value="daily">📊 Daily</option>
+                        <option value="weekly">📈 Weekly</option>
+                        <option value="monthly" selected>📅 Monthly</option>
+                    </select>
+                </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
                     <label style="display:flex;align-items:center;gap:6px;padding:6px;cursor:pointer;font-size:9px;border-radius:3px;background:rgba(0,242,255,.05);transition:all .2s">
                         <input type="checkbox" id="metric_eps" onchange="toggleMetric('eps')" style="width:14px;height:14px;accent-color:var(--ac);cursor:pointer">
@@ -1015,6 +1022,14 @@ function toggleMetric(metricKey) {
     loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
 }
 
+function changeDuration(duration) {
+    // Store the selected duration
+    window.chartDuration = duration;
+    console.log(`📅 Duration changed to: ${duration}`);
+    // Refresh the chart with new duration
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
 async function loadAndRenderTechnicalChart(sym) {
     const container = document.getElementById('technicalChart');
     const infoDiv = document.getElementById('metricInfo');
@@ -1074,9 +1089,9 @@ function renderPriceAndMetricsChart(container, sym, bars) {
             borderColor: '#1a2332',
             autoScale: true,
             formatPrice: (p) => {
-                // Format with NO decimals
+                // Format price with proper decimals
                 if (typeof p === 'number') {
-                    return Math.round(p).toString();
+                    return p.toFixed(p > 100 ? 0 : 2);
                 }
                 return p;
             }
@@ -1086,9 +1101,14 @@ function renderPriceAndMetricsChart(container, sym, bars) {
             borderColor: '#1a2332',
             autoScale: true,
             formatPrice: (p) => {
-                // Format with NO decimals
+                // Format metrics with K/M suffixes for readability
                 if (typeof p === 'number') {
-                    return Math.round(p).toString();
+                    if (p >= 1000000) {
+                        return (p / 1000000).toFixed(1) + 'M';
+                    } else if (p >= 1000) {
+                        return (p / 1000).toFixed(1) + 'K';
+                    }
+                    return p.toFixed(2);
                 }
                 return p;
             }
