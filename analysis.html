@@ -2197,7 +2197,7 @@ async function renderTechnicalPro(stock) {
     console.log(`🔄 Loading bars for ${sym} from ./SYMBOL.json`);
     
     try {
-        // Load OHLCV bars from ./charts/SYMBOL.json (NOT in IndexedDB)
+        // Load OHLCV bars from ./charts/SYMBOL.json
         const barsUrl = `./charts/${sym}.json`;
         console.log(`📥 Fetching: ${barsUrl}`);
         
@@ -2219,23 +2219,24 @@ async function renderTechnicalPro(stock) {
         
         console.log(`✅ Loaded ${bars.length} bars`);
         
-        // Quarterly data comes from IndexedDB (already in currentStock)
-        const quarterly = stock.quarterly || [];
-        console.log(`✅ Quarterly data: ${quarterly.length} quarters available`);
-        
         const tf = proCharts.currentTimeframe;
-        
-        // Limit bars based on timeframe for clean display
         let recentBars;
+        
+        const screenWidth = window.innerWidth;
+        const barPixelWidth = 6; // Smaller bars: 6px each
+        const visibleBars = Math.floor((screenWidth - 40) / barPixelWidth);
+        
+        console.log(`📱 Screen: ${screenWidth}px → ${visibleBars} bars max`);
+        
         if (tf === 'daily') {
-            recentBars = bars.slice(-60);  // Last 3 months (60 trading days)
+            recentBars = bars.slice(-Math.max(20, visibleBars));
         } else if (tf === 'weekly') {
-            recentBars = bars.slice(-260); // Last ~1 year for weekly aggregation
+            recentBars = bars.slice(-Math.max(visibleBars * 5, 200));
         } else {
-            recentBars = bars.slice(-500); // Last ~2 years for monthly aggregation
+            recentBars = bars.slice(-Math.max(visibleBars * 10, 400));
         }
         
-        // Calculate ALL indicators from DAILY bars (never aggregated)
+        // Calculate indicators
         const rsi7 = calculateRSI(recentBars, 7);
         const rsi14 = calculateRSI(recentBars, 14);
         const rsi21 = calculateRSI(recentBars, 21);
@@ -2243,42 +2244,120 @@ async function renderTechnicalPro(stock) {
         const ema50 = calculateEMA(recentBars, 50);
         const ema200 = calculateEMA(recentBars, 200);
         
-        console.log(`✅ Daily indicators calculated from ${recentBars.length} bars`);
-        console.log(`   RSI(7): ${rsi7.filter(r => r !== null).length}, RSI(14): ${rsi14.filter(r => r !== null).length}, RSI(21): ${rsi21.filter(r => r !== null).length}`);
-        console.log(`   EMA(20): ${ema20.filter(e => e !== null).length}, EMA(50): ${ema50.filter(e => e !== null).length}, EMA(200): ${ema200.filter(e => e !== null).length}`);
-        
-        // Aggregate price bars by timeframe
-        let chartBars, displayRSI7, displayRSI14, displayRSI21, displayEMA20, displayEMA50, displayEMA200;
+        // Aggregate by timeframe
+        let chartBars, displayEMA20, displayEMA50, displayEMA200;
         
         if (tf === 'daily') {
             chartBars = recentBars;
-            displayRSI7 = rsi7;
-            displayRSI14 = rsi14;
-            displayRSI21 = rsi21;
             displayEMA20 = ema20;
             displayEMA50 = ema50;
             displayEMA200 = ema200;
-            console.log(`📊 Daily: ${chartBars.length} bars`);
         } else if (tf === 'weekly') {
             chartBars = aggregateToWeekly(recentBars);
-            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
-            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
-            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
             displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
             displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
             displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
-            console.log(`📊 Weekly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
         } else {
             chartBars = aggregateToMonthly(recentBars);
-            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
-            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
-            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
             displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
             displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
             displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
-            console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
         }
-    
+        
+        console.log(`📊 Timeframe: ${tf}, Bars: ${chartBars.length}`);
+        
+        // Use Lightweight-Charts for Chart 1
+        const container = document.getElementById('chartPro1');
+        container.innerHTML = '';
+        
+        const chart = LightweightCharts.createChart(container, {
+            layout: { background: { color: '#060c18' }, textColor: '#7a8fa0' },
+            width: container.offsetWidth,
+            height: 400,
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+                rightOffset: 10,
+                fixLeftEdge: false,
+                fixRightEdge: false
+            },
+            rightPriceScale: {
+                autoScale: true,
+                mode: 0
+            }
+        });
+        
+        // Candlestick series
+        const candleData = chartBars.map(bar => ({
+            time: Math.floor(new Date(bar.d).getTime() / 1000),
+            open: parseFloat(bar.o),
+            high: parseFloat(bar.h),
+            low: parseFloat(bar.l),
+            close: parseFloat(bar.c)
+        }));
+        
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#26de81',
+            downColor: '#ff6b85',
+            wickUpColor: '#26de81',
+            wickDownColor: '#ff6b85',
+            borderUpColor: '#26de81',
+            borderDownColor: '#ff6b85'
+        });
+        candleSeries.setData(candleData);
+        
+        // EMA lines
+        const ema20Data = chartBars.map((bar, i) => ({
+            time: Math.floor(new Date(bar.d).getTime() / 1000),
+            value: displayEMA20[i]
+        })).filter(d => d.value !== null && d.value !== undefined);
+        
+        const ema50Data = chartBars.map((bar, i) => ({
+            time: Math.floor(new Date(bar.d).getTime() / 1000),
+            value: displayEMA50[i]
+        })).filter(d => d.value !== null && d.value !== undefined);
+        
+        const ema200Data = chartBars.map((bar, i) => ({
+            time: Math.floor(new Date(bar.d).getTime() / 1000),
+            value: displayEMA200[i]
+        })).filter(d => d.value !== null && d.value !== undefined);
+        
+        const lineSeries20 = chart.addLineSeries({ color: '#26de81', lineWidth: 1 });
+        lineSeries20.setData(ema20Data);
+        
+        const lineSeries50 = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1 });
+        lineSeries50.setData(ema50Data);
+        
+        const lineSeries200 = chart.addLineSeries({ color: '#ff6b85', lineWidth: 1 });
+        lineSeries200.setData(ema200Data);
+        
+        // Auto fit content
+        chart.timeScale().fitContent();
+        
+        proCharts.chart1 = chart;
+        proCharts.candleSeries = candleSeries;
+        proCharts.lineSeries = { ema20: lineSeries20, ema50: lineSeries50, ema200: lineSeries200 };
+        
+        console.log('✅ Lightweight-Charts rendered - Pan/Zoom on x-axis enabled');
+        
+        // Chart 2: RSI (keep ApexCharts for now)
+        
+        // Get RSI data for Chart 2
+        let displayRSI7, displayRSI14, displayRSI21;
+        
+        if (tf === 'daily') {
+            displayRSI7 = rsi7;
+            displayRSI14 = rsi14;
+            displayRSI21 = rsi21;
+        } else if (tf === 'weekly') {
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+        } else {
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+        }
         
         const chart2Data = [{
             name: 'RSI(7)',
@@ -2355,7 +2434,7 @@ async function renderTechnicalPro(stock) {
             candlestick: {
                 colors: { upward: '#26de81', downward: '#ff6b85' },
                 wick: { useFillColor: true },
-                widthPercent: 65
+                widthPercent: 40
             }
         },
         series: [{
@@ -2464,33 +2543,38 @@ async function renderTechnicalPro(stock) {
         
         console.log('✅ Chart 1 rendered successfully');
         
-        // iPhone Touch Zoom & Pan
+        // iPhone Touch Zoom & Pan for X-Axis
         setTimeout(() => {
             const chartDiv = document.getElementById('chartPro1');
             let initialDistance = 0;
-            let initialPinchScale = 1;
-            let lastX = 0;
+            let panStartX = 0;
+            let minDate = new Date(chartBars[0].d).getTime();
+            let maxDate = new Date(chartBars[chartBars.length - 1].d).getTime();
+            let currentMin = minDate;
+            let currentMax = maxDate;
             
             chartDiv.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 2) {
-                    // Pinch start
+                    // Pinch zoom - measure distance
                     const touch1 = e.touches[0];
                     const touch2 = e.touches[1];
                     initialDistance = Math.hypot(
                         touch2.clientX - touch1.clientX,
                         touch2.clientY - touch1.clientY
                     );
-                    console.log('📱 iPhone Pinch zoom activated');
+                    console.log('📱 Pinch zoom start');
                 } else if (e.touches.length === 1) {
-                    // Pan start
-                    lastX = e.touches[0].clientX;
-                    console.log('📱 iPhone Pan activated');
+                    // Pan - store starting position
+                    panStartX = e.touches[0].clientX;
+                    console.log('📱 Pan start');
                 }
             }, false);
             
             chartDiv.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                
                 if (e.touches.length === 2) {
-                    // Pinch zoom
+                    // Pinch zoom - zoom in/out on x-axis
                     const touch1 = e.touches[0];
                     const touch2 = e.touches[1];
                     const currentDistance = Math.hypot(
@@ -2500,41 +2584,60 @@ async function renderTechnicalPro(stock) {
                     
                     if (initialDistance > 0) {
                         const scale = currentDistance / initialDistance;
-                        initialPinchScale = scale;
+                        const rangeDiff = currentMax - currentMin;
+                        const centerTime = (currentMin + currentMax) / 2;
                         
-                        if (scale > 1.1) {
-                            proCharts.chart1.zoomIn();
+                        if (scale > 1.15) {
+                            // Zoom in - shrink range
+                            const newRange = rangeDiff / 1.1;
+                            currentMin = centerTime - newRange / 2;
+                            currentMax = centerTime + newRange / 2;
+                            proCharts.chart1.updateOptions({
+                                xaxis: { min: currentMin, max: currentMax }
+                            });
                             initialDistance = currentDistance;
-                            console.log('📱 Pinch zoom in');
-                        } else if (scale < 0.9) {
-                            proCharts.chart1.zoomOut();
+                            console.log('📱 Zoom in x-axis');
+                        } else if (scale < 0.85) {
+                            // Zoom out - expand range
+                            const newRange = rangeDiff * 1.1;
+                            currentMin = Math.max(minDate, centerTime - newRange / 2);
+                            currentMax = Math.min(maxDate, centerTime + newRange / 2);
+                            proCharts.chart1.updateOptions({
+                                xaxis: { min: currentMin, max: currentMax }
+                            });
                             initialDistance = currentDistance;
-                            console.log('📱 Pinch zoom out');
+                            console.log('📱 Zoom out x-axis');
                         }
                     }
                 } else if (e.touches.length === 1) {
-                    // Pan
+                    // Pan - move x-axis left/right
                     const currentX = e.touches[0].clientX;
-                    const diff = currentX - lastX;
+                    const diff = panStartX - currentX; // Negative = right, Positive = left
+                    const pixelRange = chartDiv.offsetWidth;
+                    const timeRange = currentMax - currentMin;
+                    const timeShift = (diff / pixelRange) * timeRange;
                     
-                    if (Math.abs(diff) > 20) {
-                        if (diff > 0) {
-                            console.log('📱 Pan right');
-                        } else {
-                            console.log('📱 Pan left');
-                        }
-                        lastX = currentX;
+                    const newMin = Math.max(minDate, currentMin + timeShift);
+                    const newMax = Math.min(maxDate, currentMax + timeShift);
+                    
+                    if (newMax - newMin === timeRange) {
+                        currentMin = newMin;
+                        currentMax = newMax;
+                        proCharts.chart1.updateOptions({
+                            xaxis: { min: currentMin, max: currentMax }
+                        });
+                        console.log('📱 Pan x-axis');
                     }
                 }
-            }, false);
+            }, { passive: false });
             
             chartDiv.addEventListener('touchend', () => {
                 initialDistance = 0;
-                initialPinchScale = 1;
-                console.log('✅ Touch gesture complete');
+                panStartX = 0;
+                console.log('✅ Touch complete');
             }, false);
             
-            console.log('✅ iPhone touch zoom/pan enabled - Pinch to zoom, swipe to pan');
+            console.log('✅ iPhone: Pinch to zoom x-axis, swipe to pan time series');
         }, 100);
         
     } catch (err) {
