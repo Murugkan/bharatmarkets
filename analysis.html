@@ -2608,6 +2608,7 @@ async function renderTechnicalPro(stock) {
                             const newRange = rangeDiff / 1.1;
                             currentMin = centerTime - newRange / 2;
                             currentMax = centerTime + newRange / 2;
+                            console.log(`🔧 Zoom IN: range was ${(rangeDiff/86400000).toFixed(0)} days, now ${((currentMax-currentMin)/86400000).toFixed(0)} days`);
                             proCharts.chart1.updateOptions({
                                 xaxis: { min: currentMin, max: currentMax }
                             });
@@ -2618,6 +2619,7 @@ async function renderTechnicalPro(stock) {
                             const newRange = rangeDiff * 1.1;
                             currentMin = Math.max(minDate, centerTime - newRange / 2);
                             currentMax = Math.min(maxDate, centerTime + newRange / 2);
+                            console.log(`🔧 Zoom OUT: range was ${(rangeDiff/86400000).toFixed(0)} days, now ${((currentMax-currentMin)/86400000).toFixed(0)} days`);
                             proCharts.chart1.updateOptions({
                                 xaxis: { min: currentMin, max: currentMax }
                             });
@@ -2639,6 +2641,7 @@ async function renderTechnicalPro(stock) {
                     if (newMax - newMin === timeRange) {
                         currentMin = newMin;
                         currentMax = newMax;
+                        console.log(`🔧 updateOptions: min=${new Date(currentMin).toLocaleDateString()}, max=${new Date(currentMax).toLocaleDateString()}`);
                         proCharts.chart1.updateOptions({
                             xaxis: { min: currentMin, max: currentMax }
                         });
