@@ -603,14 +603,14 @@ function renderTab(tab) {
                 </div>
             </div>
 
-            <!-- PRICE + RSI + METRICS CHART (UNIFIED) -->
+            <!-- UNIFIED CHART: Price + EMA + Metrics + RSI (ALL OVERLAYS) -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
-                <div id="priceChart" style="width:100%;height:500px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+                <div id="priceChart" style="width:100%;height:600px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
             </div>
 
             <!-- INFO -->
             <div id="metricInfo" style="font-size:8px;color:var(--tx3);padding:8px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1)">
-                Charts synced
+                All indicators as overlays
             </div>
         </div>`;
 
@@ -1312,7 +1312,10 @@ function renderPriceChart(container, sym, bars) {
         const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
         const metricColors = { eps: '#f59e0b', net: '#26de81', rev: '#00d2d3', ebitda: '#9f7aea', opm: '#3b82f6', debt: '#ff6b6b' };
         
-        Object.keys(rsiState).forEach(key => {
+        // FIX: Combine RSI and metrics states for iteration
+        const allStates = { ...rsiState, ...metricsState };
+        
+        Object.keys(allStates).forEach(key => {
             // Handle RSI
             if (key.startsWith('rsi_')) {
                 const period = parseInt(key.replace('rsi_', ''));
@@ -1322,12 +1325,15 @@ function renderPriceChart(container, sym, bars) {
                     const rsiDates = dates.slice(period);
                     const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
                     
+                    // FIX: Normalize RSI to 0-100 scale for better overlay visibility
+                    const normalizedRSI = rsiData.map(d => [d[0], d[1]]);
+                    
                     indicatorDataSets[key] = {
                         name: `RSI(${period})`,
                         type: 'line',
-                        xAxisIndex: 1,
-                        yAxisIndex: 1,
-                        data: rsiData,
+                        xAxisIndex: 0,
+                        yAxisIndex: 0,  // Same as price
+                        data: normalizedRSI,
                         lineStyle: { color: rsiColors[key] || '#00f2ff', width: 2 },
                         smooth: true,
                         symbol: 'none'
@@ -1349,7 +1355,7 @@ function renderPriceChart(container, sym, bars) {
                         name: `EMA(${period})`,
                         type: 'line',
                         xAxisIndex: 0,
-                        yAxisIndex: 0,
+                        yAxisIndex: 0,  // Same as price
                         data: emaData,
                         lineStyle: { color: emaColors[key] || '#ffffff', width: 1.5, type: 'dashed' },
                         smooth: true,
@@ -1358,7 +1364,7 @@ function renderPriceChart(container, sym, bars) {
                 }
             }
             
-            // FIX: Handle Metrics (NEW)
+            // FIX: Handle Metrics (NEW) - All on same chart
             if (key.startsWith('metric_')) {
                 try {
                     const metricKey = key.replace('metric_', '');
@@ -1399,7 +1405,7 @@ function renderPriceChart(container, sym, bars) {
                                 name: metricKey.toUpperCase(),
                                 type: 'line',
                                 xAxisIndex: 0,
-                                yAxisIndex: 2,
+                                yAxisIndex: 0,  // Same as price - all overlays
                                 data: normalized,
                                 lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
                                 smooth: true,
@@ -1436,52 +1442,31 @@ function renderPriceChart(container, sym, bars) {
             series.push(series_item);
         });
 
-        // ECharts option with 3 grids - properly sized
+        // ECharts option - SINGLE CHART with all overlays
         const option = {
-            tooltip: { trigger: 'axis' },
+            tooltip: { 
+                trigger: 'axis',
+                axisPointer: { type: 'cross' }
+            },
             grid: [
-                { left: '8%', right: '8%', top: '5%', height: '52%' },     // Price grid
-                { left: '8%', right: '8%', top: '60%', height: '15%' },    // RSI grid
-                { left: '8%', right: '8%', top: '78%', height: '18%' }     // Metrics grid
+                { left: '8%', right: '8%', top: '5%', bottom: '5%' }  // Single grid
             ],
             xAxis: [
-                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true },
-                { gridIndex: 1, type: 'category', data: dates, boundaryGap: true },
-                { gridIndex: 2, type: 'category', data: dates, boundaryGap: true }
+                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true }
             ],
             yAxis: [
                 { 
                     gridIndex: 0, 
                     type: 'value', 
                     scale: true, 
-                    splitNumber: 4,
-                    name: 'Price',
+                    splitNumber: 5,
+                    name: 'Price / Metrics (Indexed)',
                     nameTextStyle: { color: '#7a8fa0', fontSize: 10 },
                     axisLabel: {
-                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString(),
-                        color: '#7a8fa0'
-                    }
-                },
-                { 
-                    gridIndex: 1, 
-                    type: 'value', 
-                    min: 0, 
-                    max: 100,
-                    splitNumber: 5,
-                    name: 'RSI (0-100)',
-                    nameTextStyle: { color: '#00d4ff', fontSize: 10 },
-                    axisLabel: {
-                        formatter: (p) => Math.round(p).toString(),
-                        color: '#7a8fa0'
-                    }
-                },
-                { 
-                    gridIndex: 2, 
-                    type: 'value',
-                    name: 'Metrics (Indexed)',
-                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
-                    axisLabel: {
-                        formatter: (p) => Math.round(p).toString(),
+                        formatter: (p) => {
+                            if (p > 100) return Math.round(p).toString();
+                            return p.toFixed(2).toString();
+                        },
                         color: '#7a8fa0'
                     }
                 }
