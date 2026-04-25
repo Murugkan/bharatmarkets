@@ -1029,14 +1029,16 @@ function filterBarsByDuration(bars, duration) {
         // Return all daily bars
         return bars;
     } else if (duration === 'weekly') {
-        // Keep only one bar per week (Monday or first day of week)
+        // Keep only one bar per week (first bar of each week)
         const filtered = [];
         let lastWeekStart = null;
         
         bars.forEach(bar => {
             const date = new Date(bar.d);
+            const dayOfWeek = date.getDay();
             const weekStart = new Date(date);
-            weekStart.setDate(date.getDate() - date.getDay()); // Sunday as week start
+            weekStart.setDate(date.getDate() - dayOfWeek); // Sunday as week start
+            weekStart.setHours(0, 0, 0, 0);
             const weekKey = weekStart.toISOString().split('T')[0];
             
             if (lastWeekStart !== weekKey) {
@@ -1046,19 +1048,35 @@ function filterBarsByDuration(bars, duration) {
         });
         return filtered;
     } else if (duration === 'monthly') {
-        // Keep only one bar per month (first day of month or close)
+        // Keep only one bar per month (last bar of the month or month-end close)
         const filtered = [];
         let lastMonth = null;
+        let monthBuffer = null;
         
         bars.forEach(bar => {
             const date = new Date(bar.d);
-            const monthKey = date.getFullYear() + '-' + (date.getMonth() + 1);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const monthKey = year + '-' + month;
             
             if (lastMonth !== monthKey) {
-                filtered.push(bar);
+                // New month found, push the previous month's bar (month-end close)
+                if (monthBuffer) {
+                    filtered.push(monthBuffer);
+                }
+                monthBuffer = bar;  // Buffer this bar as potential month-end
                 lastMonth = monthKey;
+            } else {
+                // Same month, update buffer to keep the latest bar (closest to month-end)
+                monthBuffer = bar;
             }
         });
+        
+        // Don't forget the last month's bar
+        if (monthBuffer) {
+            filtered.push(monthBuffer);
+        }
+        
         return filtered;
     }
     
@@ -1284,7 +1302,7 @@ function addMetricSeries(metricKey, cd, chart) {
     const minValue = Math.min(...normalizedData.map(d => d.value));
     const maxValue = Math.max(...normalizedData.map(d => d.value));
 
-    // Add as line series on LEFT price scale (below candlesticks, separate fixed range)
+    // Add as line series on RIGHT price scale with fixed normalized range
     // Use marker to show data points clearly
     const ls = chart.addLineSeries({
         color: cfg.color,
@@ -1293,23 +1311,22 @@ function addMetricSeries(metricKey, cd, chart) {
         pointMarkersVisible: true,  // Show points at data locations
         pointMarkersRadius: 3,
         title: `${cfg.label} (Q1=100)`,
-        priceScaleId: 'left'  // Use left scale but with fixed range for metrics
+        priceScaleId: 'right'  // Use RIGHT scale for metrics
     });
     
-    // Apply fixed scale formatting for metrics on left
-    chart.priceScale('left').applyOptions({
+    // Apply fixed scale formatting for metrics on RIGHT scale
+    chart.priceScale('right').applyOptions({
         textColor: '#7a8fa0',
         borderColor: '#1a2332',
-        autoScale: false,  // Fixed scale to not interfere with price
-        minPrice: 80,      // Baseline for metrics
-        maxPrice: 200,     // Max for metrics
+        autoScale: false,  // Fixed scale for metrics
+        minPrice: 80,      // 80% baseline
+        maxPrice: 200,     // 200% max
         formatPrice: (p) => {
-            // Check if it's a metric value (normalized) or price
-            if (p >= 80 && p <= 200) {
+            // Format as normalized percentage
+            if (typeof p === 'number') {
                 return p.toFixed(0) + '%';
             }
-            // Otherwise format as price
-            return '₹' + (p > 100 ? Math.round(p).toString() : p.toFixed(2));
+            return p;
         }
     });
 
