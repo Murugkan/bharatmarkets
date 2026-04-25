@@ -109,6 +109,7 @@
 </div>
 
 <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
 
 <script>
 const DB = "OnyxPortfolioDB";
@@ -1243,91 +1244,119 @@ function calculateRSI(closes, period = 14) {
 }
 
 function renderPriceChart(container, sym, bars) {
-    if (priceChart) priceChart.remove();
     if (!container.clientWidth || container.clientWidth < 100) {
         setTimeout(() => renderPriceChart(container, sym, bars), 300);
         return;
     }
 
-    const opts = {
-        layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
-        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
-        leftPriceScale: {
-            visible: false
-        },
-        rightPriceScale: {
-            visible: true,
-            textColor: '#7a8fa0',
-            borderColor: '#1a2332',
-            autoScale: true,
-            formatPrice: (p) => {
-                if (typeof p === 'number') {
-                    return (p > 100 ? Math.round(p) : p.toFixed(2)).toString();
-                }
-                return p;
-            }
-        },
-        grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
-    };
-
     try {
-        priceChart = LightweightCharts.createChart(container, opts);
+        // Dispose old chart if exists
+        if (priceChart) {
+            priceChart.dispose();
+        }
+
+        // Initialize ECharts
+        priceChart = echarts.init(container, 'dark');
         priceSeries = {};
 
-        // Add candlesticks on RIGHT scale (auto-scales with RSI)
-        const cs = priceChart.addCandlestickSeries({
-            upColor: '#00d084', downColor: '#ff3b5c',
-            borderUpColor: '#00e896', borderDownColor: '#ff6b85',
-            wickUpColor: '#00e896', wickDownColor: '#ff6b85',
-            priceScaleId: 'right'
-        });
+        // Prepare candlestick data: [open, close, low, high]
+        const ohlcData = bars.map(b => [
+            parseFloat(b.o),
+            parseFloat(b.c),
+            parseFloat(b.l),
+            parseFloat(b.h)
+        ]);
 
-        const cd = bars.map(b => ({
-            time: Math.floor(new Date(b.d).getTime() / 1000),
-            open: parseFloat(b.o),
-            high: parseFloat(b.h),
-            low: parseFloat(b.l),
-            close: parseFloat(b.c)
-        }));
+        const dates = bars.map(b => b.d);
+        const closes = bars.map(b => parseFloat(b.c));
 
-        cs.setData(cd);
-        priceSeries.candle = cs;
-        console.log(`✅ Candlesticks: ${cd.length} bars`);
-
-        // Add RSI overlays on RIGHT scale
+        // Calculate RSI for selected periods
+        const rsiDataSets = {};
         const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
-        const closes = cd.map(c => c.close);
         
         Object.keys(rsiState).forEach(rsiKey => {
             const period = parseInt(rsiKey.replace('rsi_', ''));
             const rsiArray = calculateRSI(closes, period);
             
             if (rsiArray.length > 0) {
-                const rsiData = [];
-                for (let i = 0; i < rsiArray.length; i++) {
-                    rsiData.push({
-                        time: cd[period + i].time,
-                        value: rsiArray[i]
-                    });
-                }
-                
-                const rsiSeries = priceChart.addLineSeries({
-                    color: rsiColors[rsiKey] || '#00f2ff',
-                    lineWidth: 2,
-                    priceScaleId: 'right',
-                    title: `RSI(${period})`
-                });
-                rsiSeries.setData(rsiData);
-                priceSeries[rsiKey] = rsiSeries;
-                console.log(`✅ RSI(${period}): ${rsiData.length} points`);
+                // RSI starts from index 'period', so offset dates accordingly
+                const rsiDates = dates.slice(period);
+                rsiDataSets[rsiKey] = {
+                    name: `RSI(${period})`,
+                    type: 'line',
+                    xAxisIndex: 1,
+                    yAxisIndex: 1,
+                    data: rsiArray,
+                    lineStyle: { color: rsiColors[rsiKey] || '#00f2ff', width: 2 },
+                    smooth: true,
+                    symbol: 'none'
+                };
             }
         });
 
-        priceChart.timeScale().fitContent();
-        console.log(`✅ Price chart: Candlesticks + RSI overlays`);
+        // Build series
+        const series = [
+            {
+                name: 'Candlestick',
+                type: 'candlestick',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: ohlcData,
+                itemStyle: {
+                    color: '#00d084',
+                    color0: '#ff3b5c',
+                    borderColor: '#00e896',
+                    borderColor0: '#ff6b85',
+                    borderWidth: 1
+                }
+            }
+        ];
+
+        // Add RSI series
+        Object.values(rsiDataSets).forEach(rsiSeries => {
+            series.push(rsiSeries);
+        });
+
+        // ECharts option
+        const option = {
+            tooltip: { trigger: 'axis' },
+            grid: [
+                { left: '8%', right: '8%', top: '5%', height: '70%' },
+                { left: '8%', right: '8%', top: '78%', height: '18%' }
+            ],
+            xAxis: [
+                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true },
+                { gridIndex: 1, type: 'category', data: dates, boundaryGap: true }
+            ],
+            yAxis: [
+                { 
+                    gridIndex: 0, 
+                    type: 'value', 
+                    scale: true, 
+                    splitNumber: 4,
+                    axisLabel: {
+                        formatter: (p) => (p > 100 ? Math.round(p) : p.toFixed(2)).toString()
+                    }
+                },
+                { 
+                    gridIndex: 1, 
+                    type: 'value', 
+                    min: 0, 
+                    max: 100,
+                    splitNumber: 5,
+                    axisLabel: {
+                        formatter: (p) => Math.round(p).toString()  // NO decimals
+                    }
+                }
+            ],
+            series: series
+        };
+
+        priceChart.setOption(option);
+        console.log(`✅ ECharts Price Chart: Candlesticks + ${Object.keys(rsiState).length} RSI overlays`);
         
     } catch (e) {
-        console.error('Price chart error:', e);
+        console.error('ECharts Price chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
 }
