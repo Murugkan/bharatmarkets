@@ -2415,9 +2415,25 @@ async function renderTechnicalPro(stock) {
             });
         }
     
-    // Destroy old charts
-    if (proCharts.chart1) proCharts.chart1.destroy();
-    if (proCharts.chart2) proCharts.chart2.destroy();
+    // Destroy old charts properly
+    if (proCharts.chart1) {
+        try {
+            proCharts.chart1.destroy();
+        } catch (e) {
+            console.log('Chart1 destroy:', e.message);
+        }
+    }
+    if (proCharts.chart2) {
+        try {
+            proCharts.chart2.destroy();
+        } catch (e) {
+            console.log('Chart2 destroy:', e.message);
+        }
+    }
+    
+    // Clear chart containers
+    document.getElementById('chartPro1').innerHTML = '';
+    document.getElementById('chartPro2').innerHTML = '';
     
     // Chart 1: Price + EMA + Volume (using line instead of candlestick for mixed charts)
     const options1 = {
