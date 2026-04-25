@@ -1279,14 +1279,18 @@ function renderPriceChart(container, sym, bars) {
             const rsiArray = calculateRSI(closes, period);
             
             if (rsiArray.length > 0) {
-                // RSI starts from index 'period', so offset dates accordingly
+                // RSI values start from index 'period', so use corresponding dates
                 const rsiDates = dates.slice(period);
+                
+                // Pair dates with RSI values: [[date1, rsi1], [date2, rsi2], ...]
+                const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
+                
                 rsiDataSets[rsiKey] = {
                     name: `RSI(${period})`,
                     type: 'line',
                     xAxisIndex: 1,
                     yAxisIndex: 1,
-                    data: rsiArray,
+                    data: rsiData,  // ✅ Now paired with correct dates
                     lineStyle: { color: rsiColors[rsiKey] || '#00f2ff', width: 2 },
                     smooth: true,
                     symbol: 'none'
@@ -1483,12 +1487,6 @@ function renderMetricsChart(container, sym, bars) {
             } else {
                 document.getElementById('metricInfo').textContent = '📊 Hover over metrics to see real values';
             }
-        });
-
-        // Set up price chart crosshair too
-        priceChart.subscribeCrosshairMove((param) => {
-            if (!param.time) return;
-            // Price chart already shows values, but we can enhance if needed
         });
 
         // NOW sync the timeScales AFTER both charts are created
