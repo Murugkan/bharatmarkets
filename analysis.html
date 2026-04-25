@@ -672,7 +672,22 @@ function renderTab(tab) {
                     </div>
                 </div>
                 
-                
+                <div style="flex:1;min-width:120px;position:relative">
+                    <button onclick="toggleDropdown('ema-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+                        📈 EMA <span>▼</span>
+                    </button>
+                    <div id="ema-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--b1);border-radius:4px;padding:8px;margin-top:4px;min-width:140px;z-index:1000;top:100%;left:0">
+                        <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                            <input type="checkbox" id="ema20-chk" onchange="toggleEMA('ema20')" checked> EMA(20)
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                            <input type="checkbox" id="ema50-chk" onchange="toggleEMA('ema50')" checked> EMA(50)
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                            <input type="checkbox" id="ema200-chk" onchange="toggleEMA('ema200')" checked> EMA(200)
+                        </label>
+                    </div>
+                </div>
 
                 <div style="flex:1;min-width:120px;position:relative">
                     <button onclick="toggleDropdown('metric-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
@@ -1943,6 +1958,29 @@ function toggleIndicator(indicator) {
     }
 }
 
+function toggleEMA(emaType) {
+    if (!proCharts.lineSeries) return;
+    
+    const seriesMap = {
+        'ema20': proCharts.lineSeries.ema20,
+        'ema50': proCharts.lineSeries.ema50,
+        'ema200': proCharts.lineSeries.ema200
+    };
+    
+    const series = seriesMap[emaType];
+    if (!series) return;
+    
+    try {
+        // Toggle visibility using applyOptions
+        const options = series.options();
+        series.applyOptions({
+            visible: !options.visible
+        });
+    } catch (e) {
+        console.log(`Toggle EMA: ${emaType}`, e.message);
+    }
+}
+
 function toggleMetric(metric) {
     if (!proCharts.chart2) return;
     
@@ -2295,7 +2333,15 @@ async function renderTechnicalPro(stock) {
         }
     
     // Destroy old charts
-    if (proCharts.chart1) proCharts.chart1.destroy();
+    // Clear old chart
+    if (proCharts.chart1) {
+        try {
+            if (proCharts.chart1.remove) proCharts.chart1.remove();
+        } catch (e) {
+            console.log('Chart cleanup:', e.message);
+        }
+    }
+    document.getElementById('chartPro1').innerHTML = '';
     if (proCharts.chart2) proCharts.chart2.destroy();
     
     // Chart 1: Price + EMA + Volume (using line instead of candlestick for mixed charts)
@@ -2455,6 +2501,13 @@ async function renderTechnicalPro(stock) {
             },
             rightPriceScale: {
                 textColor: '#7a8fa0',
+                format: (price) => {
+                    // Format: remove decimals, add 'k' for thousands
+                    if (price >= 1000) {
+                        return (price / 1000).toFixed(0) + 'k';
+                    }
+                    return Math.round(price).toString();
+                }
             },
             grid: {
                 horzLines: { visible: false },
@@ -2527,6 +2580,34 @@ async function renderTechnicalPro(stock) {
                 }))
                 .filter(p => p.value !== null && p.value !== undefined)
         );
+        
+        // Volume histogram
+        const volumeSeries = chart.addHistogramSeries({
+            color: 'rgba(100, 150, 200, 0.3)',
+            priceScaleId: 'volume',
+            title: 'Volume'
+        });
+        
+        volumeSeries.setData(
+            chartBars.map(bar => ({
+                time: Math.floor(new Date(bar.d).getTime() / 1000),
+                value: bar.v / 1000000  // Scale down to millions
+            }))
+        );
+        
+        // Right price scale for volume
+        chart.priceScale('volume').applyOptions({
+            scaleMargins: {
+                top: 0.7,
+                bottom: 0
+            },
+            format: (price) => {
+                if (price >= 1000) {
+                    return (price / 1000).toFixed(0) + 'k';
+                }
+                return Math.round(price).toString();
+            }
+        });
         
         // Auto-fit
         chart.timeScale().fitContent();
