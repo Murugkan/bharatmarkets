@@ -1961,25 +1961,35 @@ function toggleIndicator(indicator) {
 }
 
 function toggleEMA(emaType) {
-    if (!proCharts.lineSeries) return;
+    if (!proCharts.lineSeries || !proCharts.chart1) return;
     
-    const seriesMap = {
-        'ema20': proCharts.lineSeries.ema20,
-        'ema50': proCharts.lineSeries.ema50,
-        'ema200': proCharts.lineSeries.ema200
-    };
-    
-    const series = seriesMap[emaType];
+    const series = proCharts.lineSeries[emaType];
     if (!series) return;
     
     try {
-        // Toggle visibility using applyOptions
-        const options = series.options();
-        series.applyOptions({
-            visible: !options.visible
-        });
+        // Get checkbox state
+        const checkbox = document.getElementById(`${emaType}-chk`);
+        if (!checkbox) return;
+        
+        const isChecked = checkbox.checked;
+        
+        // Toggle by removing and re-adding with data or empty data
+        if (isChecked) {
+            // Show - restore data
+            const dataMap = {
+                'ema20': proCharts.ema20Data || [],
+                'ema50': proCharts.ema50Data || [],
+                'ema200': proCharts.ema200Data || []
+            };
+            series.setData(dataMap[emaType]);
+            console.log(`✅ EMA(${emaType.slice(-2)}) shown`);
+        } else {
+            // Hide - clear data
+            series.setData([]);
+            console.log(`✅ EMA(${emaType.slice(-2)}) hidden`);
+        }
     } catch (e) {
-        console.log(`Toggle EMA: ${emaType}`, e.message);
+        console.error(`Toggle EMA error: ${emaType}`, e.message);
     }
 }
 
@@ -2273,19 +2283,21 @@ async function renderTechnicalPro(stock) {
             displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
             displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
             displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
-            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
-            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
-            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
-            console.log(`📊 Weekly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
+            // Recalculate EMAs on aggregated bars
+            displayEMA20 = calculateEMA(chartBars, 20);
+            displayEMA50 = calculateEMA(chartBars, 50);
+            displayEMA200 = calculateEMA(chartBars, 200);
+            console.log(`📊 Weekly: ${chartBars.length} bars (from ${recentBars.length} daily), EMAs recalculated`);
         } else {
             chartBars = aggregateToMonthly(recentBars);
             displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
             displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
             displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
-            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
-            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
-            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
-            console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
+            // Recalculate EMAs on aggregated bars
+            displayEMA20 = calculateEMA(chartBars, 20);
+            displayEMA50 = calculateEMA(chartBars, 50);
+            displayEMA200 = calculateEMA(chartBars, 200);
+            console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily), EMAs recalculated`);
         }
     
         // Update bar count display
@@ -2519,12 +2531,17 @@ async function renderTechnicalPro(stock) {
             },
             rightPriceScale: {
                 textColor: '#7a8fa0',
+                autoScale: true,
+                mode: LightweightCharts.PriceScaleMode.Normal,
                 format: (price) => {
-                    // Format: remove decimals, add 'k' for thousands
                     if (price >= 1000) {
-                        return (price / 1000).toFixed(0) + 'k';
+                        return (price / 1000).toFixed(1) + 'k';
+                    } else if (price >= 100) {
+                        return Math.round(price).toString();
+                    } else if (price >= 1) {
+                        return price.toFixed(0);
                     }
-                    return Math.round(price).toString();
+                    return price.toFixed(2);
                 }
             },
             grid: {
@@ -2568,6 +2585,9 @@ async function renderTechnicalPro(stock) {
                 }))
                 .filter(p => p.value !== null && p.value !== undefined)
         );
+        // Store data for toggling
+        proCharts.ema20Data = ema20Series.data();
+        console.log(`✅ EMA(20) set: ${chartBars.filter((_, i) => displayEMA20[i] !== null && displayEMA20[i] !== undefined).length} points`);
         
         // EMA(50) line - use right price scale
         const ema50Series = chart.addLineSeries({
@@ -2583,6 +2603,9 @@ async function renderTechnicalPro(stock) {
                 }))
                 .filter(p => p.value !== null && p.value !== undefined)
         );
+        // Store data for toggling
+        proCharts.ema50Data = ema50Series.data();
+        console.log(`✅ EMA(50) set: ${chartBars.filter((_, i) => displayEMA50[i] !== null && displayEMA50[i] !== undefined).length} points`);
         
         // EMA(200) line - use right price scale
         const ema200Series = chart.addLineSeries({
@@ -2598,6 +2621,9 @@ async function renderTechnicalPro(stock) {
                 }))
                 .filter(p => p.value !== null && p.value !== undefined)
         );
+        // Store data for toggling
+        proCharts.ema200Data = ema200Series.data();
+        console.log(`✅ EMA(200) set: ${chartBars.filter((_, i) => displayEMA200[i] !== null && displayEMA200[i] !== undefined).length} points`);
         
         // Volume histogram - separate axis with color bars
         const volumeSeries = chart.addHistogramSeries({
@@ -2622,6 +2648,8 @@ async function renderTechnicalPro(stock) {
                 top: 0.7,
                 bottom: 0
             },
+            autoScale: true,
+            mode: LightweightCharts.PriceScaleMode.Normal,
             format: (price) => {
                 if (price >= 1000) {
                     return (price / 1000).toFixed(0) + 'M';
