@@ -2462,12 +2462,19 @@ async function renderTechnicalPro(stock) {
             let currentMin = minDate;
             let currentMax = maxDate;
             
-            // Function to filter and update chart data
+            // Function to filter and update chart data - OPTIMIZED
             function updateChartView() {
-                const filtered = chartBars.filter(bar => {
-                    const t = new Date(bar.d).getTime();
-                    return t >= currentMin && t <= currentMax;
-                });
+                const filtered = [];
+                const indices = [];
+                
+                // Fast filtering with index tracking
+                for (let i = 0; i < chartBars.length; i++) {
+                    const t = new Date(chartBars[i].d).getTime();
+                    if (t >= currentMin && t <= currentMax) {
+                        filtered.push(chartBars[i]);
+                        indices.push(i);
+                    }
+                }
                 
                 if (filtered.length === 0) return;
                 
@@ -2482,24 +2489,24 @@ async function renderTechnicalPro(stock) {
                     },
                     {
                         name: 'EMA(20)',
-                        data: filtered.map(bar => {
-                            const idx = chartBars.indexOf(bar);
-                            return { x: new Date(bar.d), y: displayEMA20[idx] };
-                        }).filter(p => p.y !== null)
+                        data: filtered.map((bar, idx) => ({
+                            x: new Date(bar.d),
+                            y: displayEMA20[indices[idx]]
+                        })).filter(p => p.y !== null)
                     },
                     {
                         name: 'EMA(50)',
-                        data: filtered.map(bar => {
-                            const idx = chartBars.indexOf(bar);
-                            return { x: new Date(bar.d), y: displayEMA50[idx] };
-                        }).filter(p => p.y !== null)
+                        data: filtered.map((bar, idx) => ({
+                            x: new Date(bar.d),
+                            y: displayEMA50[indices[idx]]
+                        })).filter(p => p.y !== null)
                     },
                     {
                         name: 'EMA(200)',
-                        data: filtered.map(bar => {
-                            const idx = chartBars.indexOf(bar);
-                            return { x: new Date(bar.d), y: displayEMA200[idx] };
-                        }).filter(p => p.y !== null)
+                        data: filtered.map((bar, idx) => ({
+                            x: new Date(bar.d),
+                            y: displayEMA200[indices[idx]]
+                        })).filter(p => p.y !== null)
                     }
                 ]);
             }
@@ -2547,7 +2554,7 @@ async function renderTechnicalPro(stock) {
                     const currentX = e.touches[0].clientX;
                     const diff = currentX - panStartX;
                     
-                    if (Math.abs(diff) > 5) {
+                    if (Math.abs(diff) > 20) {  // Increase threshold to 20px
                         const range = currentMax - currentMin;
                         const shift = -(diff / chartDiv.offsetWidth) * range * 0.3;
                         
@@ -2559,7 +2566,7 @@ async function renderTechnicalPro(stock) {
                             currentMin = newMin;
                             currentMax = newMax;
                             panStartX = currentX;
-                            updateChartView();
+                            updateChartView();  // Update chart
                             console.log('👉 Pan');
                         }
                     }
