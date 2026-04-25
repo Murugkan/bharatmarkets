@@ -639,13 +639,19 @@ function renderTab(tab) {
         }, 500);
     } else if (tab === 'technicalPro') {
         html = `<div style="padding:12px;padding-bottom:100px">
-            <div style="margin-bottom:16px;display:flex;gap:8px;overflow-x:auto">
-                <button onclick="switchTimeframe('daily')" class="timeframe-btn" data-tf="daily" style="padding:8px 16px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">Daily</button>
-                <button onclick="switchTimeframe('weekly')" class="timeframe-btn" data-tf="weekly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">Weekly</button>
-                <button onclick="switchTimeframe('monthly')" class="timeframe-btn" data-tf="monthly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">Monthly</button>
+            <div style="margin-bottom:16px">
+                <div style="display:flex;gap:8px;margin-bottom:12px;overflow-x:auto">
+                    <button onclick="switchTimeframe('daily')" class="timeframe-btn" data-tf="daily" style="padding:8px 16px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Daily</button>
+                    <button onclick="switchTimeframe('weekly')" class="timeframe-btn" data-tf="weekly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Weekly</button>
+                    <button onclick="switchTimeframe('monthly')" class="timeframe-btn" data-tf="monthly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Monthly</button>
+                </div>
             </div>
-            <div id="chartPro1" style="width:100%;height:320px;background:rgba(13,18,34,.5);border-radius:6px;border:1px solid var(--b1)"></div>
-            <div id="chartPro2" style="width:100%;height:380px;background:rgba(13,18,34,.5);border-radius:6px;border:1px solid var(--b1);margin-top:16px"></div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden">
+                <div id="chartPro1" style="width:100%;height:400px"></div>
+            </div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;margin-top:16px">
+                <div id="chartPro2" style="width:100%;height:400px"></div>
+            </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
         
@@ -1806,18 +1812,28 @@ function switchTimeframe(tf) {
 }
 
 function aggregateToWeekly(dailyBars) {
+    if (!dailyBars || dailyBars.length === 0) return [];
+    
     const weekly = [];
     let week = [];
-    let weekStart = null;
+    let currentWeekStart = null;
     
-    dailyBars.forEach(bar => {
-        const d = new Date(bar.d);
-        if (!weekStart) weekStart = new Date(d);
+    for (let i = 0; i < dailyBars.length; i++) {
+        const bar = dailyBars[i];
+        const date = new Date(bar.d);
+        const dayOfWeek = date.getDay(); // 0=Sun, 5=Fri, 6=Sat
         
-        const dayOfWeek = d.getDay();
+        if (week.length === 0) {
+            currentWeekStart = new Date(date);
+        }
+        
         week.push(bar);
         
-        if (dayOfWeek === 5 || bar === dailyBars[dailyBars.length - 1]) {
+        // Friday close or last bar
+        const isLastBar = (i === dailyBars.length - 1);
+        const isFriday = (dayOfWeek === 5);
+        
+        if (isFriday || isLastBar) {
             if (week.length > 0) {
                 const o = week[0].o;
                 const h = Math.max(...week.map(b => b.h));
@@ -1826,39 +1842,49 @@ function aggregateToWeekly(dailyBars) {
                 const v = week.reduce((sum, b) => sum + b.v, 0);
                 const d_str = week[week.length - 1].d;
                 weekly.push({ d: d_str, o, h, l, c, v });
+                week = [];
             }
-            week = [];
-            weekStart = null;
         }
-    });
+    }
     
     return weekly;
 }
 
 function aggregateToMonthly(dailyBars) {
+    if (!dailyBars || dailyBars.length === 0) return [];
+    
     const monthly = [];
     let month = [];
-    let prevMonth = null;
+    let currentMonth = null;
     
-    dailyBars.forEach(bar => {
-        const d = new Date(bar.d);
-        const currentMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    for (let i = 0; i < dailyBars.length; i++) {
+        const bar = dailyBars[i];
+        const date = new Date(bar.d);
+        const monthKey = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
         
-        if (prevMonth && prevMonth !== currentMonth && month.length > 0) {
-            const o = month[0].o;
-            const h = Math.max(...month.map(b => b.h));
-            const l = Math.min(...month.map(b => b.l));
-            const c = month[month.length - 1].c;
-            const v = month.reduce((sum, b) => sum + b.v, 0);
-            const d_str = month[month.length - 1].d;
-            monthly.push({ d: d_str, o, h, l, c, v });
-            month = [];
+        if (currentMonth === null) {
+            currentMonth = monthKey;
+        }
+        
+        if (monthKey !== currentMonth) {
+            // Month changed - finalize previous month
+            if (month.length > 0) {
+                const o = month[0].o;
+                const h = Math.max(...month.map(b => b.h));
+                const l = Math.min(...month.map(b => b.l));
+                const c = month[month.length - 1].c;
+                const v = month.reduce((sum, b) => sum + b.v, 0);
+                const d_str = month[month.length - 1].d;
+                monthly.push({ d: d_str, o, h, l, c, v });
+                month = [];
+            }
+            currentMonth = monthKey;
         }
         
         month.push(bar);
-        prevMonth = currentMonth;
-    });
+    }
     
+    // Add last month
     if (month.length > 0) {
         const o = month[0].o;
         const h = Math.max(...month.map(b => b.h));
@@ -1870,6 +1896,33 @@ function aggregateToMonthly(dailyBars) {
     }
     
     return monthly;
+}
+
+function downsampleRSI(dailyRSI, dailyBars, aggregatedBars) {
+    // Map daily RSI values to aggregated bars by matching end date
+    const downsampled = [];
+    
+    aggregatedBars.forEach(aggBar => {
+        const aggDate = new Date(aggBar.d);
+        let closestRSI = null;
+        let minDiff = Infinity;
+        
+        for (let i = 0; i < dailyBars.length; i++) {
+            if (dailyRSI[i] === null) continue;
+            
+            const dailyDate = new Date(dailyBars[i].d);
+            const diff = Math.abs(aggDate - dailyDate);
+            
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestRSI = dailyRSI[i];
+            }
+        }
+        
+        downsampled.push(closestRSI);
+    });
+    
+    return downsampled;
 }
 
 function calculateEMA(bars, period = 20) {
@@ -1895,38 +1948,48 @@ function calculateEMA(bars, period = 20) {
 }
 
 function calculateRSI(bars, period = 14) {
-    const rsi = [];
-    let gains = 0, losses = 0;
+    if (!bars || bars.length <= period) return bars.map(() => null);
     
-    bars.forEach((bar, i) => {
-        if (i === 0) {
-            rsi.push(50);
-            return;
-        }
-        
-        const change = bar.c - bars[i - 1].c;
-        const gain = change > 0 ? change : 0;
-        const loss = change < 0 ? -change : 0;
-        
-        if (i < period) {
-            gains += gain;
-            losses += loss;
-            rsi.push(50);
-        } else if (i === period) {
-            gains += gain;
-            losses += loss;
-            const avgGain = gains / period;
-            const avgLoss = losses / period;
-            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-            rsi.push(100 - (100 / (1 + rs)));
+    const rsi = [];
+    const changes = [];
+    
+    // Calculate all price changes
+    for (let i = 1; i < bars.length; i++) {
+        changes.push(bars[i].c - bars[i - 1].c);
+    }
+    
+    // Calculate initial average gain and loss
+    let sumGains = 0, sumLosses = 0;
+    for (let i = 0; i < period; i++) {
+        if (changes[i] > 0) {
+            sumGains += changes[i];
         } else {
-            const prevAvgGain = (rsi[i - 1] ? (100 / rsi[i - 1]) : 1) / 100;
-            const avgGain = (prevAvgGain * (period - 1) + gain) / period;
-            const avgLoss = ((1 - prevAvgGain) * (period - 1) + loss) / period;
-            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-            rsi.push(100 - (100 / (1 + rs)));
+            sumLosses += Math.abs(changes[i]);
         }
-    });
+    }
+    
+    let avgGain = sumGains / period;
+    let avgLoss = sumLosses / period;
+    
+    // Fill nulls before period
+    for (let i = 0; i < period; i++) {
+        rsi.push(null);
+    }
+    
+    // Calculate RSI from period onwards
+    for (let i = period; i < changes.length; i++) {
+        const change = changes[i];
+        const currentGain = change > 0 ? change : 0;
+        const currentLoss = change > 0 ? 0 : Math.abs(change);
+        
+        // Smooth average (Wilder's method)
+        avgGain = (avgGain * (period - 1) + currentGain) / period;
+        avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
+        
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        const rsiValue = 100 - (100 / (1 + rs));
+        rsi.push(rsiValue);
+    }
     
     return rsi;
 }
@@ -1977,47 +2040,69 @@ async function renderTechnicalPro(stock) {
         
         const tf = proCharts.currentTimeframe;
         const recentBars = bars.slice(-252); // Last ~1 year
+        
+        // Calculate ALL indicators from DAILY bars (never aggregated)
+        const rsi7 = calculateRSI(recentBars, 7);
+        const rsi14 = calculateRSI(recentBars, 14);
+        const rsi21 = calculateRSI(recentBars, 21);
+        const ema20 = calculateEMA(recentBars, 20);
+        const ema50 = calculateEMA(recentBars, 50);
+        const ema200 = calculateEMA(recentBars, 200);
+        
+        console.log(`✅ Daily indicators calculated from ${recentBars.length} bars`);
+        console.log(`   RSI(7): ${rsi7.filter(r => r !== null).length}, RSI(14): ${rsi14.filter(r => r !== null).length}, RSI(21): ${rsi21.filter(r => r !== null).length}`);
+        console.log(`   EMA(20): ${ema20.filter(e => e !== null).length}, EMA(50): ${ema50.filter(e => e !== null).length}, EMA(200): ${ema200.filter(e => e !== null).length}`);
+        
+        // Aggregate price bars by timeframe
+        let chartBars, displayRSI7, displayRSI14, displayRSI21, displayEMA20, displayEMA50, displayEMA200;
+        
+        if (tf === 'daily') {
+            chartBars = recentBars;
+            displayRSI7 = rsi7;
+            displayRSI14 = rsi14;
+            displayRSI21 = rsi21;
+            displayEMA20 = ema20;
+            displayEMA50 = ema50;
+            displayEMA200 = ema200;
+            console.log(`📊 Daily: ${chartBars.length} bars`);
+        } else if (tf === 'weekly') {
+            chartBars = aggregateToWeekly(recentBars);
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
+            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
+            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
+            console.log(`📊 Weekly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
+        } else {
+            chartBars = aggregateToMonthly(recentBars);
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            displayEMA20 = downsampleRSI(ema20, recentBars, chartBars);
+            displayEMA50 = downsampleRSI(ema50, recentBars, chartBars);
+            displayEMA200 = downsampleRSI(ema200, recentBars, chartBars);
+            console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
+        }
     
-    // Prepare data based on timeframe
-    let chartBars, ema, rsi;
-    
-    if (tf === 'daily') {
-        chartBars = bars;
-    } else if (tf === 'weekly') {
-        chartBars = aggregateToWeekly(bars);
-    } else {
-        chartBars = aggregateToMonthly(bars);
-    }
-    
-    ema = calculateEMA(chartBars, 20);
-    rsi = calculateRSI(chartBars, 14);
-    
-        // Prepare chart data
-        const chart1Data = [{
-            name: 'Price',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: [bar.o, bar.h, bar.l, bar.c]
-            }))
-        }, {
-            name: 'EMA',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: ema[i]
-            }))
-        }, {
-            name: 'Volume',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: bar.v
-            }))
-        }];
         
         const chart2Data = [{
-            name: 'RSI',
+            name: 'RSI(7)',
             data: chartBars.map((bar, i) => ({
                 x: new Date(bar.d),
-                y: rsi[i]
+                y: displayRSI7[i]
+            }))
+        }, {
+            name: 'RSI(14)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI14[i]
+            }))
+        }, {
+            name: 'RSI(21)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI21[i]
             }))
         }];
         
@@ -2067,7 +2152,10 @@ async function renderTechnicalPro(stock) {
             type: 'candlestick',
             background: 'transparent',
             foreColor: '#7a8fa0',
-            toolbar: { show: true, tools: { download: true, selection: true, zoom: true, zoomin: true, zoomout: true, pan: true, reset: true } },
+            toolbar: { 
+                show: true,
+                autoSelected: 'zoom'
+            },
             animations: { enabled: false },
             sparkline: { enabled: false }
         },
@@ -2077,21 +2165,56 @@ async function renderTechnicalPro(stock) {
                 wick: { useFillColor: true }
             }
         },
-        series: chart1Data,
+        series: [{
+            name: 'Price',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: [bar.o, bar.h, bar.l, bar.c]
+            }))
+        }, {
+            name: 'EMA(20)',
+            type: 'line',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA20[i]
+            }))
+        }, {
+            name: 'EMA(50)',
+            type: 'line',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA50[i]
+            }))
+        }, {
+            name: 'EMA(200)',
+            type: 'line',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA200[i]
+            }))
+        }, {
+            name: 'Volume',
+            type: 'column',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: bar.v
+            }))
+        }],
         xaxis: {
             type: 'datetime',
             axisBorder: { show: true, color: '#1a2332' },
-            axisTicks: { show: false },
+            axisTicks: { show: true },
             labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
         },
         yaxis: [{
-            title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '10px' } },
+            title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '11px', fontWeight: 700 } },
             labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
             opposite: true
         }, {
-            title: { text: 'Volume', style: { color: '#00f2ff', fontSize: '10px' } },
+            title: { text: 'Volume', style: { color: '#ffbf47', fontSize: '11px', fontWeight: 700 } },
             labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => formatVolume(v) },
-            opposite: true
+            opposite: true,
+            seriesName: 'Volume'
         }],
         tooltip: {
             theme: 'dark',
@@ -2099,8 +2222,9 @@ async function renderTechnicalPro(stock) {
             x: { formatter: (v) => new Date(v).toLocaleDateString() },
             y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
         },
-        grid: { borderColor: '#1a2332', show: true },
-        stroke: { width: 2 }
+        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
+        stroke: { width: 2, curve: 'smooth' },
+        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
     };
     
     proCharts.chart1 = new ApexCharts(document.getElementById('chartPro1'), options1);
@@ -2112,18 +2236,21 @@ async function renderTechnicalPro(stock) {
             type: 'line',
             background: 'transparent',
             foreColor: '#7a8fa0',
-            toolbar: { show: true, tools: { download: true, selection: true, zoom: true, zoomin: true, zoomout: true, pan: true, reset: true } },
+            toolbar: {
+                show: true,
+                autoSelected: 'zoom'
+            },
             animations: { enabled: false }
         },
         series: chart2Data,
         xaxis: {
             type: 'datetime',
             axisBorder: { show: true, color: '#1a2332' },
-            axisTicks: { show: false },
+            axisTicks: { show: true },
             labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
         },
         yaxis: [{
-            title: { text: 'RSI', style: { color: '#00f2ff', fontSize: '10px' } },
+            title: { text: 'RSI', style: { color: '#5b95ff', fontSize: '11px', fontWeight: 700 } },
             min: 0,
             max: 100,
             labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
@@ -2135,8 +2262,8 @@ async function renderTechnicalPro(stock) {
             x: { formatter: (v) => new Date(v).toLocaleDateString() },
             y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
         },
-        grid: { borderColor: '#1a2332', show: true },
-        stroke: { width: 2 },
+        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
+        stroke: { width: 2, curve: 'smooth' },
         legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
     };
     
