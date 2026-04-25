@@ -1370,12 +1370,22 @@ function renderPriceChart(container, sym, bars) {
                     const metricKey = key.replace('metric_', '');
                     const s = currentStock;
                     
-                    // Only render if quarterly data exists
-                    if (!s || !s.quarterly || !Array.isArray(s.quarterly) || s.quarterly.length === 0) {
-                        return; // Skip this metric
+                    // Debug: Check if quarterly data exists
+                    if (!s) {
+                        console.warn('currentStock is null/undefined');
+                        return;
+                    }
+                    if (!s.quarterly) {
+                        console.warn(`No quarterly data for ${s.ticker}`, s);
+                        return;
+                    }
+                    if (!Array.isArray(s.quarterly) || s.quarterly.length === 0) {
+                        console.warn(`Quarterly data is empty or not array for ${s.ticker}`);
+                        return;
                     }
                     
                     const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    console.log(`Rendering metric ${metricKey} with ${sorted.length} quarters`);
                     
                     // Map metric keys to data keys
                     const keyMap = {
@@ -1395,26 +1405,43 @@ function renderPriceChart(container, sym, bars) {
                         return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
                     }).filter(d => d !== null);
                     
+                    console.log(`Metric ${metricKey}: ${metricData.length} data points`);
+                    
                     if (metricData.length > 0) {
                         // Normalize to first value = 100
                         const firstVal = metricData[0][1];
                         if (firstVal !== 0) {
                             const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
                             
+                            // Color with correct metric key (without 'metric_' prefix)
+                            const metricColor = {
+                                'eps': '#f59e0b',
+                                'net': '#26de81', 
+                                'rev': '#00d2d3',
+                                'ebitda': '#9f7aea',
+                                'opm': '#3b82f6',
+                                'debt': '#ff6b6b'
+                            }[metricKey] || '#ffffff';
+                            
                             indicatorDataSets[key] = {
                                 name: metricKey.toUpperCase(),
                                 type: 'line',
                                 xAxisIndex: 0,
-                                yAxisIndex: 1,  // FIX: Right axis (normalized scale)
+                                yAxisIndex: 1,  // Right axis (normalized scale)
                                 data: normalized,
-                                lineStyle: { color: metricColors[metricKey] || '#ffffff', width: 2 },
+                                lineStyle: { color: metricColor, width: 2 },
                                 smooth: true,
                                 symbol: 'none'
                             };
+                            console.log(`✓ Added metric series: ${metricKey}`);
+                        } else {
+                            console.warn(`First metric value is 0 for ${metricKey}`);
                         }
+                    } else {
+                        console.warn(`No valid data points for metric ${metricKey}`);
                     }
                 } catch (e) {
-                    console.warn(`Metric ${key} render failed:`, e.message);
+                    console.error(`Metric ${key} render failed:`, e);
                 }
             }
         });
