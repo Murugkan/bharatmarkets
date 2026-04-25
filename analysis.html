@@ -1237,14 +1237,24 @@ function addMetricSeries(metricKey, cd, chart) {
     // Get all quarterly data points
     const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
     
+    // Get all price bar timestamps for snapping
+    const priceTimestamps = cd.map(c => c.time);
+    
     // Filter metric data that exists
     const metricData = sorted
         .filter(q => q[metricKey] !== undefined && q[metricKey] !== null)
-        .map(q => ({
-            date: q.d,
-            value: parseFloat(q[metricKey]),
-            time: Math.floor(new Date(q.d).getTime() / 1000)  // Use exact quarterly date
-        }));
+        .map(q => {
+            const metricTime = Math.floor(new Date(q.d).getTime() / 1000);
+            // Snap to nearest price bar timestamp for X-axis alignment
+            const snappedTime = priceTimestamps.reduce((prev, curr) => 
+                Math.abs(curr - metricTime) < Math.abs(prev - metricTime) ? curr : prev
+            );
+            return {
+                date: q.d,
+                value: parseFloat(q[metricKey]),
+                time: snappedTime  // Use snapped timestamp
+            };
+        });
 
     if (metricData.length === 0) {
         console.warn(`No data for metric: ${metricKey}`);
@@ -1266,7 +1276,7 @@ function addMetricSeries(metricKey, cd, chart) {
     // NORMALIZE: Convert to index (first value = 100)
     const baseValue = metricData[0].value;
     const normalizedData = metricData.map(m => ({
-        time: m.time,  // Keep exact quarterly timestamp
+        time: m.time,  // Use snapped timestamp
         value: baseValue !== 0 ? (m.value / baseValue) * 100 : 100,
         actualValue: m.value  // Store original for tooltip
     }));
