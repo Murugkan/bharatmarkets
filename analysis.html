@@ -640,10 +640,17 @@ function renderTab(tab) {
     } else if (tab === 'technicalPro') {
         html = `<div style="padding:12px;padding-bottom:100px">
             <div style="margin-bottom:16px">
-                <div style="display:flex;gap:8px;margin-bottom:12px;overflow-x:auto;flex-wrap:wrap">
-                    <button onclick="switchTimeframe('daily')" class="timeframe-btn" data-tf="daily" style="padding:8px 16px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Daily</button>
-                    <button onclick="switchTimeframe('weekly')" class="timeframe-btn" data-tf="weekly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Weekly</button>
-                    <button onclick="switchTimeframe('monthly')" class="timeframe-btn" data-tf="monthly" style="padding:8px 16px;background:transparent;border:1px solid var(--b1);color:var(--tx3);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap">📅 Monthly</button>
+                <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="daily" onchange="switchTimeframe('daily')" checked style="cursor:pointer"> 📅 Daily
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="weekly" onchange="switchTimeframe('weekly')" style="cursor:pointer"> 📅 Weekly
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="monthly" onchange="switchTimeframe('monthly')" style="cursor:pointer"> 📅 Monthly
+                    </label>
+                    <span id="barCountDisplay" style="margin-left:auto;font-size:9px;color:rgba(122,143,160,.7)">Bars: 62</span>
                 </div>
             </div>
             <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;max-width:100vw">
@@ -1922,11 +1929,6 @@ let proCharts = {
 
 function switchTimeframe(tf) {
     proCharts.currentTimeframe = tf;
-    document.querySelectorAll('.timeframe-btn').forEach(btn => {
-        btn.style.background = btn.getAttribute('data-tf') === tf ? 'rgba(0,242,255,.1)' : 'transparent';
-        btn.style.borderColor = btn.getAttribute('data-tf') === tf ? 'rgba(0,242,255,.3)' : 'var(--b1)';
-        btn.style.color = btn.getAttribute('data-tf') === tf ? 'var(--ac)' : 'var(--tx3)';
-    });
     renderTechnicalPro(currentStock);
 }
 
@@ -2126,13 +2128,24 @@ function calculateEMA(bars, period = 20) {
             ema.push(null);
         } else if (i === period - 1) {
             sum += bar.c;
-            ema.push(sum / period);
+            const sma = sum / period;
+            ema.push(sma);
         } else {
             const prevEMA = ema[i - 1];
             const newEMA = bar.c * multiplier + prevEMA * (1 - multiplier);
             ema.push(newEMA);
         }
     });
+    
+    // Debug logging
+    const validEMAs = ema.filter(e => e !== null);
+    if (validEMAs.length > 0) {
+        console.log(`📊 EMA(${period}) Calculation:`);
+        console.log(`   Multiplier: ${multiplier.toFixed(4)}`);
+        console.log(`   First EMA (at bar ${period-1}): ${ema[period-1]?.toFixed(2)}`);
+        console.log(`   Last 3 EMAs: ${ema.slice(-3).map(e => e?.toFixed(2)).join(', ')}`);
+        console.log(`   Valid points: ${validEMAs.length}/${ema.length}`);
+    }
     
     return ema;
 }
@@ -2275,6 +2288,11 @@ async function renderTechnicalPro(stock) {
             console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily)`);
         }
     
+        // Update bar count display
+        const barCountDisplay = document.getElementById('barCountDisplay');
+        if (barCountDisplay) {
+            barCountDisplay.textContent = `Bars: ${chartBars.length}`;
+        }
         
         const chart2Data = [{
             name: 'RSI(7)',
@@ -2536,11 +2554,11 @@ async function renderTechnicalPro(stock) {
             close: parseFloat(bar.c)
         })));
         
-        // EMA(20) line
+        // EMA(20) line - use right price scale
         const ema20Series = chart.addLineSeries({
             color: '#26de81',
-            lineWidth: 1.5,
-            title: 'EMA(20)'
+            lineWidth: 2,
+            priceScaleId: 'right'
         });
         ema20Series.setData(
             chartBars
@@ -2551,11 +2569,11 @@ async function renderTechnicalPro(stock) {
                 .filter(p => p.value !== null && p.value !== undefined)
         );
         
-        // EMA(50) line
+        // EMA(50) line - use right price scale
         const ema50Series = chart.addLineSeries({
             color: '#f59e0b',
-            lineWidth: 1.5,
-            title: 'EMA(50)'
+            lineWidth: 2,
+            priceScaleId: 'right'
         });
         ema50Series.setData(
             chartBars
@@ -2566,11 +2584,11 @@ async function renderTechnicalPro(stock) {
                 .filter(p => p.value !== null && p.value !== undefined)
         );
         
-        // EMA(200) line
+        // EMA(200) line - use right price scale
         const ema200Series = chart.addLineSeries({
             color: '#ff6b85',
-            lineWidth: 1.5,
-            title: 'EMA(200)'
+            lineWidth: 2,
+            priceScaleId: 'right'
         });
         ema200Series.setData(
             chartBars
@@ -2581,21 +2599,24 @@ async function renderTechnicalPro(stock) {
                 .filter(p => p.value !== null && p.value !== undefined)
         );
         
-        // Volume histogram
+        // Volume histogram - separate axis with color bars
         const volumeSeries = chart.addHistogramSeries({
-            color: 'rgba(100, 150, 200, 0.3)',
             priceScaleId: 'volume',
             title: 'Volume'
         });
         
         volumeSeries.setData(
-            chartBars.map(bar => ({
-                time: Math.floor(new Date(bar.d).getTime() / 1000),
-                value: bar.v / 1000000  // Scale down to millions
-            }))
+            chartBars.map(bar => {
+                const isUp = parseFloat(bar.c) >= parseFloat(bar.o);
+                return {
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: bar.v / 1000000,  // Scale down to millions
+                    color: isUp ? 'rgba(38, 222, 129, 0.6)' : 'rgba(255, 107, 133, 0.6)'  // Green for up, red for down
+                };
+            })
         );
         
-        // Right price scale for volume
+        // Configure volume price scale
         chart.priceScale('volume').applyOptions({
             scaleMargins: {
                 top: 0.7,
@@ -2603,7 +2624,7 @@ async function renderTechnicalPro(stock) {
             },
             format: (price) => {
                 if (price >= 1000) {
-                    return (price / 1000).toFixed(0) + 'k';
+                    return (price / 1000).toFixed(0) + 'M';
                 }
                 return Math.round(price).toString();
             }
