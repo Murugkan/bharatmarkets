@@ -1239,10 +1239,12 @@ function renderPriceChart(container, sym, bars) {
         leftPriceScale: {
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: true,  // Price auto-scales
+            autoScale: true,
             formatPrice: (p) => {
                 if (typeof p === 'number') {
-                    return '₹' + (p > 100 ? Math.round(p).toString() : p.toFixed(2));
+                    if (p > 1000) return '₹' + Math.round(p);
+                    if (p > 100) return '₹' + p.toFixed(0);
+                    return '₹' + p.toFixed(2);
                 }
                 return p;
             }
@@ -1250,15 +1252,10 @@ function renderPriceChart(container, sym, bars) {
         rightPriceScale: {
             textColor: '#7a8fa0',
             borderColor: '#1a2332',
-            autoScale: true,  // Volume auto-scales
-            formatPrice: (p) => {
-                if (typeof p === 'number') {
-                    if (p >= 1000000) return (p / 1000000).toFixed(1) + 'M';
-                    if (p >= 1000) return (p / 1000).toFixed(1) + 'K';
-                    return p.toFixed(0);
-                }
-                return p;
-            }
+            autoScale: false,
+            minPrice: 0,
+            maxPrice: 100,
+            formatPrice: (p) => Math.round(p).toString()
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
@@ -1298,10 +1295,14 @@ function renderPriceChart(container, sym, bars) {
             rsiValues[rsiKey] = rsiArray;
             
             if (rsiArray.length > 0) {
-                const rsiData = cd.slice(period).map((c, idx) => ({
-                    time: c.time,
-                    value: rsiArray[idx]
-                }));
+                // Map RSI values starting from period index to align with candlesticks
+                const rsiData = [];
+                for (let i = 0; i < rsiArray.length; i++) {
+                    rsiData.push({
+                        time: cd[period + i].time,  // Align time with candlestick at period+i
+                        value: rsiArray[i]
+                    });
+                }
                 
                 const rsiSeries = priceChart.addLineSeries({
                     color: rsiColors[rsiKey] || '#00f2ff',
@@ -1350,16 +1351,20 @@ function renderMetricsChart(container, sym, bars) {
             autoScale: true,
             formatPrice: (p) => {
                 if (typeof p === 'number') {
-                    if (p >= 10000000) return (p / 10000000).toFixed(1) + 'Cr';
-                    if (p >= 100000) return (p / 100000).toFixed(1) + 'L';
-                    if (p >= 1000) return (p / 1000).toFixed(1) + 'K';
-                    return p.toFixed(0);
+                    if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                    if (p >= 100000) return Math.round(p / 100000) + 'L';
+                    if (p >= 1000) return Math.round(p / 1000) + 'K';
+                    return Math.round(p).toString();
                 }
                 return p;
             }
         },
         rightPriceScale: {
-            visible: false  // HIDE metrics scale
+            visible: true,
+            textColor: '#7a8fa0',
+            borderColor: '#1a2332',
+            autoScale: true,
+            formatPrice: (p) => Math.round(p).toString()
         },
         grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
