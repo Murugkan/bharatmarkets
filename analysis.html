@@ -650,9 +650,7 @@ function renderTab(tab) {
         document.getElementById('content').innerHTML = html;
         
         // Load and render new technical pro charts
-        setTimeout(() => {
-            renderTechnicalPro(currentStock);
-        }, 100);
+        renderTechnicalPro(currentStock);
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -1939,14 +1937,46 @@ function formatVolume(v) {
     return (v / 1000).toFixed(0) + 'K';
 }
 
-function renderTechnicalPro(stock) {
-    if (!stock || !stock.bars || stock.bars.length === 0) {
-        document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">No data available</div>';
+async function renderTechnicalPro(stock) {
+    console.log('📊 Technical Pro: Received stock from IndexedDB', stock ? stock.ticker : 'null');
+    
+    if (!stock || !stock.ticker) {
+        document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Stock object not available</div>';
         return;
     }
     
-    const tf = proCharts.currentTimeframe;
-    const bars = stock.bars.slice(-252); // Last ~1 year of daily data
+    const sym = stock.ticker;
+    console.log(`🔄 Loading bars for ${sym} from ./SYMBOL.json`);
+    
+    try {
+        // Load OHLCV bars from SYMBOL.json (NOT in IndexedDB)
+        const barsUrl = `./${sym}.json`;
+        console.log(`📥 Fetching: ${barsUrl}`);
+        
+        const res = await fetch(barsUrl);
+        if (!res.ok) {
+            console.error(`Failed to fetch ${barsUrl}: ${res.status}`);
+            document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Cannot load bars<br/><small style="font-size:9px;color:#ff6b85">Check: ./${sym}.json exists</small></div>`;
+            return;
+        }
+        
+        const barsData = await res.json();
+        const bars = barsData.bars || [];
+        
+        if (!bars || bars.length === 0) {
+            console.error('No bars in JSON');
+            document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ No OHLCV data in file</div>';
+            return;
+        }
+        
+        console.log(`✅ Loaded ${bars.length} bars`);
+        
+        // Quarterly data comes from IndexedDB (already in currentStock)
+        const quarterly = stock.quarterly || [];
+        console.log(`✅ Quarterly data: ${quarterly.length} quarters available`);
+        
+        const tf = proCharts.currentTimeframe;
+        const recentBars = bars.slice(-252); // Last ~1 year
     
     // Prepare data based on timeframe
     let chartBars, ema, rsi;
@@ -1962,70 +1992,70 @@ function renderTechnicalPro(stock) {
     ema = calculateEMA(chartBars, 20);
     rsi = calculateRSI(chartBars, 14);
     
-    // Prepare chart data
-    const chart1Data = [{
-        name: 'Price',
-        data: chartBars.map((bar, i) => ({
-            x: new Date(bar.d),
-            y: [bar.o, bar.h, bar.l, bar.c]
-        }))
-    }, {
-        name: 'EMA',
-        data: chartBars.map((bar, i) => ({
-            x: new Date(bar.d),
-            y: ema[i]
-        }))
-    }, {
-        name: 'Volume',
-        data: chartBars.map((bar, i) => ({
-            x: new Date(bar.d),
-            y: bar.v
-        }))
-    }];
-    
-    const chart2Data = [{
-        name: 'RSI',
-        data: chartBars.map((bar, i) => ({
-            x: new Date(bar.d),
-            y: rsi[i]
-        }))
-    }];
-    
-    // Get quarterly metrics for monthly view
-    if (tf === 'monthly' && stock.quarterly && stock.quarterly.length > 0) {
-        const metricNames = ['eps', 'net', 'rev', 'opm', 'debt'];
-        const metricLabels = {
-            eps: 'EPS',
-            net: 'Net Inc',
-            rev: 'Revenue',
-            opm: 'OPM%',
-            debt: 'Debt'
-        };
-        const metricColors = {
-            eps: '#f59e0b',
-            net: '#26de81',
-            rev: '#00d2d3',
-            opm: '#3b82f6',
-            debt: '#ff6b6b'
-        };
+        // Prepare chart data
+        const chart1Data = [{
+            name: 'Price',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: [bar.o, bar.h, bar.l, bar.c]
+            }))
+        }, {
+            name: 'EMA',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: ema[i]
+            }))
+        }, {
+            name: 'Volume',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: bar.v
+            }))
+        }];
         
-        metricNames.forEach(metric => {
-            const metricData = stock.quarterly
-                .filter(q => q[metric] !== undefined && q[metric] !== null)
-                .map(q => ({
-                    x: new Date(q.d),
-                    y: num(q[metric])
-                }));
+        const chart2Data = [{
+            name: 'RSI',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: rsi[i]
+            }))
+        }];
+        
+        // Get quarterly metrics from IndexedDB (already in currentStock)
+        if (tf === 'monthly' && quarterly && quarterly.length > 0) {
+            const metricNames = ['eps', 'net', 'rev', 'opm', 'debt'];
+            const metricLabels = {
+                eps: 'EPS',
+                net: 'Net Inc',
+                rev: 'Revenue',
+                opm: 'OPM%',
+                debt: 'Debt'
+            };
+            const metricColors = {
+                eps: '#f59e0b',
+                net: '#26de81',
+                rev: '#00d2d3',
+                opm: '#3b82f6',
+                debt: '#ff6b6b'
+            };
             
-            if (metricData.length > 0) {
-                chart2Data.push({
-                    name: metricLabels[metric],
-                    data: metricData,
-                    color: metricColors[metric]
-                });
-            }
-        });
-    }
+            metricNames.forEach(metric => {
+                const metricData = quarterly
+                    .filter(q => q[metric] !== undefined && q[metric] !== null)
+                    .map(q => ({
+                        x: new Date(q.d),
+                        y: num(q[metric])
+                    }));
+                
+                if (metricData.length > 0) {
+                    chart2Data.push({
+                        name: metricLabels[metric],
+                        data: metricData,
+                        color: metricColors[metric]
+                    });
+                }
+            });
+        }
     
     // Destroy old charts
     if (proCharts.chart1) proCharts.chart1.destroy();
@@ -2112,6 +2142,11 @@ function renderTechnicalPro(stock) {
     
     proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
     proCharts.chart2.render();
+    
+    } catch (error) {
+        console.error('Technical Pro rendering error:', error);
+        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Error: ${error.message}</div>`;
+    }
 }
 
 </script>
