@@ -625,6 +625,13 @@ function renderTab(tab) {
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio from quarterly data"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue from quarterly data"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit from quarterly data"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:240px"><canvas id="cv-candle"></canvas></div>
@@ -3133,6 +3140,57 @@ function drawCandlestick(s){
     drawMAFull(sma50vals,  '#3b82f6', [],    'SMA50');
     drawMAFull(ema200vals, '#a855f7', [4,3], 'EMA200');
   }
+
+  // ── KPI overlays on price chart ──────────────────────────────────
+  const quarterly = s.quarterly || [];
+  const KPI_DEFS = [
+    {k:'pe',   label:'P/E',     col:'#f59e0b'},
+    {k:'rev',  label:'Rev',     col:'#22d3ee'},
+    {k:'net',  label:'Net',     col:'#4ade80'},
+    {k:'cfo',  label:'CFO',     col:'#34d399'},
+    {k:'opm',  label:'OPM%',    col:'#fb923c'},
+    {k:'debt', label:'Debt',    col:'#f87171'},
+  ];
+  function xForDate(dateStr){ const t = new Date(dateStr).getTime(); return PAD.l + ((t - visFirst) / visRange) * cW; }
+  function priceAt(dateStr){ for(let i=allCandles.length-1; i>=0; i--){ if(allCandles[i].d <= dateStr) return allCandles[i].c; } return allCandles.length ? allCandles[0].c : (s.ltp || 0); }
+  
+  KPI_DEFS.forEach(({k, label, col})=>{
+    if(!S.kpiVis[k]) return;
+    let pts = [];
+    if(k === 'pe'){
+      quarterly.forEach(q=>{ if(!q.eps || q.eps <= 0) return; const annEPS = q.eps * 4; const price = priceAt(q.d); if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d}); });
+      if(s.pe > 0 && candles.length > 0){ const rightX = PAD.l + cW; if(!pts.length || pts[pts.length-1].x < rightX - 10) pts.push({x: rightX, v: s.pe, d: 'now'}); }
+    } else {
+      quarterly.forEach(q=>{ const v = q[k]; if(v != null) pts.push({x: xForDate(q.d), v, d: q.d}); });
+      const curVal = k==='cfo'?s.cfo : k==='rev'?s.sales : k==='net'?s.npm_pct : k==='opm'?s.opm_pct : k==='debt'?s.debt_eq : null;
+      if(curVal != null && pts.length) pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
+    }
+    pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+    if(!pts.length && (quarterly.length || s.pe)){
+      const allPts2 = [];
+      if(k==='pe'){ quarterly.forEach(q=>{ if(!q.eps||q.eps<=0) return; const pr = priceAt(q.d); if(pr>0) allPts2.push({x:0, v:pr/(q.eps*4), d:q.d}); }); if(s.pe>0) allPts2.push({x:0, v:s.pe, d:'now'}); } else { quarterly.forEach(q=>{ const v=q[k]; if(v!=null) allPts2.push({x:0,v,d:q.d}); }); }
+      if(allPts2.length>=2){ const t0=new Date(allPts2[0].d==='now'?Date.now():allPts2[0].d).getTime(); const t1=new Date(allPts2[allPts2.length-1].d==='now'?Date.now():allPts2[allPts2.length-1].d).getTime(); const tr=t1-t0||1; allPts2.forEach(p=>{ const t=new Date(p.d==='now'?Date.now():p.d).getTime(); p.x = PAD.l + ((t-t0)/tr)*cW; }); pts = allPts2; }
+    }
+    if(!pts.length) return;
+    const drawLine = pts.length >= 2;
+    const vals = pts.map(p=>p.v);
+    const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
+    const vRng = vMax - vMin || 1;
+    const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
+    const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
+    ctx.save();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
+    if(drawLine){
+      ctx.beginPath(); pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); }); ctx.lineTo(pts[pts.length-1].x, yBot); ctx.lineTo(pts[0].x, yBot); ctx.closePath(); ctx.fillStyle = col; ctx.globalAlpha = 0.08; ctx.fill(); ctx.globalAlpha = 0.9; ctx.beginPath(); pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); }); ctx.stroke();
+    }
+    ctx.fillStyle = col; ctx.globalAlpha = 1; pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2); ctx.fill(); });
+    const labelEvery = pts.length > 6 ? 2 : 1;
+    pts.forEach((p,j)=>{ if(j % labelEvery !== 0 && j !== pts.length-1) return; const dispV = k==='pe'  ? p.v.toFixed(0)+'x' : k==='opm' ? p.v.toFixed(1)+'%' : Math.abs(p.v)>=1000 ? (p.v/1000).toFixed(1)+'K' : p.v.toFixed(0); ctx.fillStyle = col; ctx.globalAlpha = 0.85; ctx.font = '6px JetBrains Mono,monospace'; ctx.textAlign = 'center'; ctx.fillText(dispV, p.x, kpiY(p.v) - 4); });
+    const last = pts[pts.length-1];
+    const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' : k==='opm' ? last.v.toFixed(1)+'%' : Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'KCr' : last.v.toFixed(0)+'Cr';
+    ctx.fillStyle = col; ctx.globalAlpha = 1; ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right'; ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8)); ctx.restore();
+  });
+
   const maxLabels = Math.min(6, Math.floor(cW / 40));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
   ctx.fillStyle='rgba(140,176,208,.55)'; ctx.font='7px JetBrains Mono,monospace';
@@ -3222,6 +3280,7 @@ function updateChartStats(s){
 function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(); }
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
 
 async function canvasLoadAndDrawChart(sym) {
   // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
