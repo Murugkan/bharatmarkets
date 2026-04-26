@@ -2905,65 +2905,31 @@ async function renderTechnicalPro(stock) {
 }
 
 // ════════════════════════════════════════════════════════
-// CANVAS TAB - CHART FUNCTIONS (from app.js)
+// CANVAS TAB - COMPLETE CHART MODULE (from bharatmarkets v7)
 // ════════════════════════════════════════════════════════
 
-const canvasState = { chartRange: '1Y', chartInterval: 'D', maVis: { sma20: true, sma50: true, ema200: true, vol: true } };
-let canvasChartCache = {};
-
-function canvasSetChartRange(r) { canvasState.chartRange = r; canvasScheduleChartRedraw(); }
-function canvasSetChartInterval(iv) { canvasState.chartInterval = iv; canvasScheduleChartRedraw(); }
-function canvasToggleMA(key) { canvasState.maVis[key] = !canvasState.maVis[key]; if (key === 'vol') location.reload(); canvasScheduleChartRedraw(); }
-
-function canvasScheduleChartRedraw() {
-  if (currentStock) {
-    requestAnimationFrame(() => requestAnimationFrame(() => canvasScheduleTACharts(currentStock)));
+function scheduleChartRedraw(){
+  if(S.selStock && chartCache[S.selStock.symbol]){
+    S.selStock.candles = chartCache[S.selStock.symbol];
   }
+  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(S.selStock)));
 }
 
-function canvasScheduleTACharts(s) {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      canvasDrawCandlestick(s);
-      if (canvasState.maVis.vol) canvasDrawVolume(s);
-      canvasUpdateChartStats(s);
-    });
-  });
-}
-
-async function canvasLoadAndDrawChart(sym) {
-  try {
-    const res = await fetch(`./charts/${sym}.json`);
-    if (res.ok) {
-      const data = await res.json();
-      currentStock.candles = data.bars || [];
-      canvasChartCache[sym] = currentStock.candles;
-      canvasScheduleTACharts(currentStock);
-    } else {
-      console.log(`No chart for ${sym}`);
-      canvasScheduleTACharts(currentStock);
-    }
-  } catch (e) {
-    console.log('Chart load error:', e);
-    canvasScheduleTACharts(currentStock);
-  }
-}
-
-function canvasAggregateCandles(daily, interval) {
-  if (interval === 'D' || !daily.length) return daily;
+function aggregateCandles(daily, interval){
+  if(interval === 'D' || !daily.length) return daily;
   const buckets = {};
   daily.forEach(c => {
     const d = new Date(c.d);
     let key;
-    if (interval === 'W') {
+    if(interval === 'W'){
       const day = d.getDay();
       const monday = new Date(d);
       monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-      key = monday.toISOString().slice(0, 10);
+      key = monday.toISOString().slice(0,10);
     } else {
-      key = c.d.slice(0, 7);
+      key = c.d.slice(0,7);
     }
-    if (!buckets[key]) {
+    if(!buckets[key]){
       buckets[key] = { d: key, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
     } else {
       const b = buckets[key];
@@ -2973,238 +2939,276 @@ function canvasAggregateCandles(daily, interval) {
       b.v += c.v;
     }
   });
-  return Object.values(buckets).sort((a, b) => a.d.localeCompare(b.d));
+  return Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
 }
 
-function canvasGetSlicedCandles(s, canvasWidth) {
+function scheduleTACharts(s){
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      drawCandlestick(s);
+      if(S.maVis.vol) drawVolume(s);
+      updateChartStats(s);
+    });
+  });
+}
+
+let _chartResizeObs = null;
+function attachChartResizeObserver(s){
+  if(_chartResizeObs) _chartResizeObs.disconnect();
+  const wrap = document.getElementById('chart-wrap');
+  if(!wrap || !window.ResizeObserver) return;
+  _chartResizeObs = new ResizeObserver(()=>{ scheduleTACharts(s); });
+  _chartResizeObs.observe(wrap);
+}
+
+function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
-  if (!daily.length) return daily;
-  const allAgg = canvasAggregateCandles(daily, canvasState.chartInterval);
-  if (!allAgg.length) return [];
+  if(!daily.length) return daily;
+  const allAgg = aggregateCandles(daily, S.chartInterval);
+  if(!allAgg.length) return [];
   const now = new Date();
-  const rangeMs = { '1M': 30, '3M': 91, '6M': 182, '1Y': 365, '5Y': 1825 }[canvasState.chartRange] || 91;
-  const cutoff = new Date(now - rangeMs * 864e5).toISOString().slice(0, 10);
+  const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
+  const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   let rangeCandles = allAgg.filter(c => c.d >= cutoff);
-  if (!rangeCandles.length) rangeCandles = allAgg.slice(-60);
-  if (canvasWidth && canvasWidth > 0) {
-    const chartW = canvasWidth - 6 - 52;
-    const maxFit = Math.floor(chartW / 4);
-    if (rangeCandles.length > maxFit) return rangeCandles.slice(-maxFit);
+  if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
+  if(canvasWidth && canvasWidth > 0){
+    const PAD_L = 6, PAD_R = 52;
+    const chartW = canvasWidth - PAD_L - PAD_R;
+    const IDEAL_BAR_W = 7;
+    const MIN_BAR_W  = 4;
+    const maxFit = Math.floor(chartW / MIN_BAR_W);
+    if(rangeCandles.length > maxFit){
+      return rangeCandles.slice(-maxFit);
+    }
   }
   return rangeCandles;
 }
 
-function canvasDrawCandlestick(s) {
-  const cv = document.getElementById('cv-candle');
-  if (!cv) return;
-  const wrap = document.getElementById('chart-wrap');
-  const W2 = Math.max(wrap ? wrap.offsetWidth : 0, 280);
-  const H2 = 200;
-  const dpr = window.devicePixelRatio || 1;
-  cv.width = W2 * dpr;
-  cv.height = H2 * dpr;
-  cv.style.width = W2 + 'px';
-  cv.style.height = H2 + 'px';
-  const ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
-  
-  const candles = canvasGetSlicedCandles(s, W2);
-  if (!candles.length) {
-    ctx.fillStyle = '#070c18';
-    ctx.fillRect(0, 0, W2, H2);
-    ctx.fillStyle = 'rgba(120,150,180,.4)';
-    ctx.font = '12px DM Sans';
-    ctx.textAlign = 'center';
-    ctx.fillText('Loading chart data…', W2 / 2, H2 / 2);
+function drawCandlestick(s){
+  const cv=document.getElementById('cv-candle');
+  if(!cv)return;
+  const wrap=document.getElementById('chart-wrap');
+  const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
+  const H2=200;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr; cv.height=H2*dpr;
+  cv.style.width=W2+'px'; cv.style.height=H2+'px';
+  const ctx=cv.getContext('2d');
+  ctx.scale(dpr,dpr);
+  const candles=getSlicedCandles(s, W2);
+  if(!candles.length){
+    ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(120,150,180,.4)'; ctx.font='12px DM Sans';
+    ctx.fillText('Loading chart data…', W2/2, H2/2);
     return;
   }
-  
-  const W = W2, H = H2;
-  const PAD = { l: 6, r: 52, t: 8, b: 22 };
-  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
-  const n = candles.length;
-  const gap = cW / n;
-  const bw = Math.max(2, Math.min(14, gap * 0.7));
-  
+  const W=W2,H=H2;
+  const PAD={l:6,r:52,t:8,b:22};
+  const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
+  const n=candles.length;
+  const gap=cW/n;
+  const bw=Math.max(2,Math.min(14,gap*0.7));
   const allCandles = s.candles || candles;
   const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
-  const visLast = candles.length ? new Date(candles[candles.length - 1].d).getTime() : 1;
+  const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
-  
-  const allPrices = candles.flatMap(c => [c.h, c.l]);
-  const mn = Math.min(...allPrices), mx = Math.max(...allPrices), rng = mx - mn || 1;
-  const toY = p => PAD.t + ((mx - p) / rng) * cH;
-  const barX = i => PAD.l + i * gap + gap / 2;
-  
-  ctx.fillStyle = '#070c18';
-  ctx.fillRect(0, 0, W, H);
-  
-  for (let i = 0; i <= 4; i++) {
-    const y = PAD.t + (cH / 4) * i;
-    ctx.strokeStyle = 'rgba(255,255,255,.04)';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(PAD.l, y);
-    ctx.lineTo(PAD.l + cW, y);
-    ctx.stroke();
-    const price = mx - (mx - mn) * (i / 4);
-    ctx.fillStyle = 'rgba(140,176,208,.65)';
-    ctx.font = '8px JetBrains Mono,monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText('₹' + Math.round(price), W - 2, y + (i === 0 ? 9 : -2));
+  const allPrices=candles.flatMap(c=>[c.h,c.l]);
+  if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
+  if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
+  if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
+  const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
+  const toY=p=>PAD.t+((mx-p)/rng)*cH;
+  const barX=i=>PAD.l+i*gap+gap/2;
+  ctx.fillStyle='#070c18';
+  ctx.fillRect(0,0,W,H);
+  for(let i=0;i<=4;i++){
+    const y=PAD.t+(cH/4)*i;
+    ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
+    const price=mx-(mx-mn)*(i/4);
+    ctx.fillStyle='rgba(140,176,208,.65)';
+    ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?9:-2));
   }
-  
-  ctx.fillStyle = 'rgba(7,12,24,.8)';
-  ctx.fillRect(W - PAD.r, 0, PAD.r, H);
-  ctx.strokeStyle = 'rgba(30,51,80,.8)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(W - PAD.r, 0);
-  ctx.lineTo(W - PAD.r, H);
-  ctx.stroke();
-  
-  candles.forEach((c, i) => {
-    const bull = c.c >= c.o;
-    const cx = barX(i);
-    const bodyTop = toY(Math.max(c.o, c.c));
-    const bodyH = Math.max(1, Math.abs(toY(c.o) - toY(c.c)));
-    ctx.strokeStyle = bull ? 'rgba(0,232,150,.8)' : 'rgba(255,107,133,.8)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(cx, toY(c.h));
-    ctx.lineTo(cx, toY(c.l));
-    ctx.stroke();
-    ctx.fillStyle = bull ? '#00d084' : '#ff3b5c';
-    ctx.fillRect(cx - bw / 2, bodyTop, bw, bodyH);
+  ctx.fillStyle='rgba(7,12,24,.8)';
+  ctx.fillRect(W-PAD.r,0,PAD.r,H);
+  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  candles.forEach((c,i)=>{
+    const bull=c.c>=c.o;
+    const cx=barX(i);
+    const bodyTop=toY(Math.max(c.o,c.c));
+    const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
+    ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
+    ctx.fillStyle=bull?'#00d084':'#ff3b5c';
+    if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bodyH,1);
+    else ctx.rect(cx-bw/2,bodyTop,bw,bodyH);
+    ctx.fill();
+    if(!bull){ctx.strokeStyle='rgba(255,59,92,.3)';ctx.lineWidth=.5;ctx.stroke();}
   });
-  
-  function calcSMA(arr, period) {
-    return arr.map((c, i) => {
-      if (i < period - 1) return null;
-      const sum = arr.slice(i - period + 1, i + 1).reduce((a, b) => a + b.c, 0);
+  function calcSMA(arr, period){
+    return arr.map((c,i)=>{
+      if(i < period-1) return null;
+      const sum = arr.slice(i-period+1, i+1).reduce((a,b)=>a+b.c, 0);
       return sum / period;
     });
   }
-  
-  function calcEMA(arr, period) {
-    const k = 2 / (period + 1);
+  function calcEMA(arr, period){
+    const k = 2/(period+1);
     const result = new Array(arr.length).fill(null);
-    let first = period - 1;
-    if (first >= arr.length) return result;
-    result[first] = arr.slice(0, period).reduce((a, b) => a + b.c, 0) / period;
-    for (let i = first + 1; i < arr.length; i++) {
-      result[i] = arr[i].c * k + result[i - 1] * (1 - k);
+    let first = period-1;
+    if(first >= arr.length) return result;
+    result[first] = arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
+    for(let i=first+1; i<arr.length; i++){
+      result[i] = arr[i].c * k + result[i-1] * (1-k);
     }
     return result;
   }
-  
-  function drawMAFull(vals, col) {
-    if (!vals) return;
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 1.2;
+  function drawMAFull(vals, col, dash, label){
+    if(!vals) return;
+    ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash(dash||[]);
     ctx.beginPath();
-    let started = false;
-    vals.forEach((v, i) => {
-      if (v === null) return;
-      const t = new Date(allCandles[i].d).getTime();
-      const x = PAD.l + ((t - visFirst) / visRange) * cW;
-      if (x < PAD.l - 2 || x > PAD.l + cW + 2) {
-        started = false;
-        return;
-      }
-      const y = toY(v);
-      if (!started) {
-        ctx.moveTo(x, y);
-        started = true;
-      } else {
-        ctx.lineTo(x, y);
-      }
+    let started=false;
+    vals.forEach((v,i)=>{
+      if(v===null) return;
+      const t=new Date(allCandles[i].d).getTime();
+      const x=PAD.l+((t-visFirst)/visRange)*cW;
+      if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; }
+      const y=toY(v);
+      if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
     });
-    ctx.stroke();
+    ctx.stroke(); ctx.setLineDash([]);
+    let lastV = null, lastX = 0;
+    vals.forEach((v,i)=>{
+      if(v===null) return;
+      const t=new Date(allCandles[i].d).getTime();
+      const x=PAD.l+((t-visFirst)/visRange)*cW;
+      if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
+    });
+    if(lastV !== null){
+      ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
+      ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
+    }
   }
-  
-  if (canvasState.maVis.sma20 || canvasState.maVis.sma50 || canvasState.maVis.ema200) {
+  if(S.maVis.sma20 || S.maVis.sma50 || S.maVis.ema200){
     const allC = s.candles || candles;
-    if (canvasState.maVis.sma20) drawMAFull(calcSMA(allC, 20), '#f59e0b');
-    if (canvasState.maVis.sma50) drawMAFull(calcSMA(allC, 50), '#3b82f6');
-    if (canvasState.maVis.ema200) drawMAFull(calcEMA(allC, 200), '#a855f7');
+    const sma20vals  = S.maVis.sma20  ? calcSMA(allC, 20)  : null;
+    const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
+    const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
+    drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
+    drawMAFull(sma50vals,  '#3b82f6', [],    'SMA50');
+    drawMAFull(ema200vals, '#a855f7', [4,3], 'EMA200');
   }
-  
   const maxLabels = Math.min(6, Math.floor(cW / 40));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle = 'rgba(140,176,208,.55)';
-  ctx.font = '7px JetBrains Mono,monospace';
-  candles.forEach((c, i) => {
-    if (i % lblStep !== 0 && i !== n - 1) return;
+  ctx.fillStyle='rgba(140,176,208,.55)'; ctx.font='7px JetBrains Mono,monospace';
+  candles.forEach((c,i)=>{
+    if(i % lblStep !== 0 && i !== n-1) return;
     const d = new Date(c.d);
-    let lbl = (d.getMonth() + 1) + '/' + String(d.getFullYear()).slice(2);
+    let lbl;
+    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
     const x = barX(i);
-    if (x > PAD.l + cW - 8) return;
-    ctx.textAlign = i === 0 ? 'left' : (i === n - 1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H - 4);
+    if(x > PAD.l+cW-8) return;
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, H-4);
   });
 }
 
-function canvasDrawVolume(s) {
-  const cv = document.getElementById('cv-vol');
-  if (!cv) return;
-  const wrap = document.getElementById('vol-wrap');
-  const W2 = Math.max(wrap ? wrap.offsetWidth : 0, 280);
-  const H2 = 50;
-  const dpr = window.devicePixelRatio || 1;
-  cv.width = W2 * dpr;
-  cv.height = H2 * dpr;
-  cv.style.width = W2 + 'px';
-  cv.style.height = H2 + 'px';
-  const ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
-  
-  const candles = canvasGetSlicedCandles(s, W2);
-  if (!candles.length) return;
-  
-  ctx.fillStyle = '#070c18';
-  ctx.fillRect(0, 0, W2, H2);
-  
-  const W = W2, H = H2;
-  const PAD = { l: 6, r: 52, t: 4, b: 4 };
-  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
-  const gap = cW / candles.length, bw = Math.max(2, Math.min(14, gap * 0.7));
-  const mv = Math.max(...candles.map(c => c.v)) || 1;
-  
-  ctx.fillStyle = 'rgba(7,12,24,.8)';
-  ctx.fillRect(W - PAD.r, 0, PAD.r, H);
-  ctx.fillStyle = 'rgba(140,176,208,.5)';
-  ctx.font = '7px JetBrains Mono,monospace';
-  ctx.textAlign = 'right';
-  ctx.fillText('Vol', W - 2, 10);
-  
-  candles.forEach((c, i) => {
-    const bh = Math.max(2, (c.v / mv) * cH);
-    const x = PAD.l + i * gap + (gap - bw) / 2;
-    ctx.fillStyle = c.c >= c.o ? 'rgba(0,208,132,.5)' : 'rgba(255,59,92,.45)';
-    ctx.fillRect(x, PAD.t + cH - bh, bw, bh);
+function drawVolume(s){
+  const cv=document.getElementById('cv-vol');
+  if(!cv)return;
+  const wrap=document.getElementById('vol-wrap');
+  const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
+  const H2=50;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr;cv.height=H2*dpr;
+  cv.style.width=W2+'px';cv.style.height=H2+'px';
+  const ctx=cv.getContext('2d');
+  ctx.scale(dpr,dpr);
+  const candles=getSlicedCandles(s, W2);
+  if(!candles.length)return;
+  ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
+  const W=W2,H=H2;
+  const PAD={l:6,r:52,t:4,b:4};
+  const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
+  const n=candles.length,gap=cW/n,bw=Math.max(2,Math.min(14,gap*0.7));
+  const mv=Math.max(...candles.map(c=>c.v))||1;
+  ctx.fillStyle='rgba(7,12,24,.8)';
+  ctx.fillRect(W-PAD.r,0,PAD.r,H);
+  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  ctx.fillStyle='rgba(140,176,208,.5)';ctx.font='7px JetBrains Mono,monospace';ctx.textAlign='right';
+  ctx.fillText('Vol',W-2,10);
+  candles.forEach((c,i)=>{
+    const bh=Math.max(2,(c.v/mv)*cH);
+    const x=PAD.l+i*gap+(gap-bw)/2;
+    ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
+    if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
+    else ctx.rect(x,PAD.t+cH-bh,bw,bh);
+    ctx.fill();
   });
+  const volMA = candles.map((c,i)=>{
+    if(i<4) return null;
+    return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
+  });
+  ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=1; ctx.beginPath();
+  let started=false;
+  volMA.forEach((v,i)=>{
+    if(v===null) return;
+    const x=PAD.l+i*gap+gap/2;
+    const y=PAD.t+cH-(v/mv)*cH;
+    if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
 }
 
-function canvasUpdateChartStats(s) {
-  const candles = canvasGetSlicedCandles(s, 0);
-  if (!candles.length) return;
-  const closes = candles.map(c => c.c);
-  const first = closes[0], last = closes[closes.length - 1];
-  const ret = ((last - first) / first * 100).toFixed(2);
-  const hi = Math.max(...candles.map(c => c.h));
-  const lo = Math.min(...candles.map(c => c.l));
-  const vol = ((hi - lo) / lo * 100).toFixed(1);
-  const up = last >= first;
-  
-  const retEl = document.getElementById('cstat-ret');
-  if (retEl) {
-    retEl.textContent = (up ? '+' : '') + ret + '%';
-    retEl.style.color = up ? '#00e896' : '#ff6b85';
+function updateChartStats(s){
+  const candles=getSlicedCandles(s, 0);
+  if(!candles.length)return;
+  const closes=candles.map(c=>c.c);
+  const first=closes[0],last=closes[closes.length-1];
+  const ret=((last-first)/first*100).toFixed(2);
+  const hi=Math.max(...candles.map(c=>c.h));
+  const lo=Math.min(...candles.map(c=>c.l));
+  const vol=((hi-lo)/lo*100).toFixed(1);
+  const up=last>=first;
+  const retEl=document.getElementById('cstat-ret');
+  const hiEl=document.getElementById('cstat-hi');
+  const loEl=document.getElementById('cstat-lo');
+  const volEl=document.getElementById('cstat-vol');
+  if(retEl){retEl.textContent=(up?'+':'')+ret+'%';retEl.style.color=up?'var(--gr2)':'var(--rd2)';}
+  if(hiEl)hiEl.textContent='₹'+fmt(hi);
+  if(loEl)loEl.textContent='₹'+fmt(lo);
+  if(volEl)volEl.textContent=vol+'%';
+}
+
+// Chart control functions
+function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
+function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(); }
+function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+
+async function canvasLoadAndDrawChart(sym) {
+  try {
+    const res = await fetch(`./charts/${sym}.json`);
+    if (res.ok) {
+      const data = await res.json();
+      currentStock.candles = data.bars || [];
+      chartCache[sym] = currentStock.candles;
+      attachChartResizeObserver(currentStock);
+      scheduleTACharts(currentStock);
+    } else {
+      console.log(`No chart for ${sym}`);
+      scheduleTACharts(currentStock);
+    }
+  } catch (e) {
+    console.log('Chart load error:', e);
+    scheduleTACharts(currentStock);
   }
-  if (document.getElementById('cstat-hi')) document.getElementById('cstat-hi').textContent = '₹' + Math.round(hi);
-  if (document.getElementById('cstat-lo')) document.getElementById('cstat-lo').textContent = '₹' + Math.round(lo);
-  if (document.getElementById('cstat-vol')) document.getElementById('cstat-vol').textContent = vol + '%';
 }
 
 </script>
