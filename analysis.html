@@ -2988,7 +2988,7 @@ function aggregateCandles(daily, interval){
       monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
       key = monday.toISOString().slice(0,10);
     } else {
-      key = c.d.slice(0,7);
+      key = c.d.slice(0,7);  // Monthly: YYYY-MM
     }
     if(!buckets[key]){
       buckets[key] = { d: key, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
@@ -3000,18 +3000,21 @@ function aggregateCandles(daily, interval){
       b.v += c.v;
     }
   });
-  return Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
+  const result = Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
+  if(interval === 'M' && result.length > 0){
+    console.log('[AGG] Monthly candles: first=' + result[0].d + ' (o:' + result[0].o.toFixed(2) + ' h:' + result[0].h.toFixed(2) + ' l:' + result[0].l.toFixed(2) + ' c:' + result[0].c.toFixed(2) + '), last=' + result[result.length-1].d);
+  }
+  return result;
 }
 
 function scheduleTACharts(s){
   console.log('[SCHED] scheduleTACharts called, will redraw with S.chartPan=' + S.chartPan);
+  // Single RAF instead of nested double RAF
   requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      console.log('[SCHED] RAF: calling drawCandlestick');
-      drawCandlestick(s);
-      if(S.maVis.vol) drawVolume(s);
-      updateChartStats(s);
-    });
+    console.log('[SCHED] RAF: calling drawCandlestick');
+    drawCandlestick(s);
+    if(S.maVis.vol) drawVolume(s);
+    updateChartStats(s);
   });
 }
 
@@ -3119,11 +3122,11 @@ function drawCandlestick(s){
     const y=PAD.t+(cH/4)*i;
     ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
-    // Price label
+    // Price label - larger font for mobile
     const price=mx-(mx-mn)*(i/4);
-    ctx.fillStyle='rgba(140,176,208,.65)';
-    ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?9:-2));
+    ctx.fillStyle='rgba(140,176,208,.75)';
+    ctx.font='bold 10px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?10:-1));
   }
 
   // Right axis separator
@@ -3445,18 +3448,28 @@ function drawVolume(s){
   const n=candles.length,gap=cW/n,bw=Math.max(2,Math.min(14,gap*0.7));
   const mv=Math.max(...candles.map(c=>c.v))||1;
 
-  // Right axis strip
+  // Right axis strip with volume scale
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-  ctx.fillStyle='rgba(140,176,208,.5)';ctx.font='7px JetBrains Mono,monospace';ctx.textAlign='right';
-  ctx.fillText('Vol',W-2,10);
+  
+  // Volume scale labels (top, middle, bottom)
+  ctx.fillStyle='rgba(140,176,208,.6)';
+  ctx.font='6px JetBrains Mono,monospace';
+  ctx.textAlign='right';
+  ctx.fillText('Vol', W-2, 9);
+  const maxLabel = (mv/1e6).toFixed(1) + 'M';
+  const minLabel = '0';
+  ctx.font='5px JetBrains Mono,monospace';
+  ctx.fillText(maxLabel, W-2, PAD.t+3);
+  ctx.fillText(minLabel, W-2, H-1);
 
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2+S.chartPan;
-    ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
+    const x=PAD.l+i*gap+(gap-bw)/2;
+    // Standard green for up, red for down - match candlestick colors but more opaque for volume
+    ctx.fillStyle=c.c>=c.o?'rgba(0,232,150,.7)':'rgba(255,107,133,.7)';
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
