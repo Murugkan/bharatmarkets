@@ -3071,11 +3071,10 @@ function drawCandlestick(s){
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
   }
   
-  // Draw candlesticks inside clipping - use time-based x (same as MAs)
+  // Draw candlesticks inside clipping
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
-    const t=new Date(c.d).getTime();
-    const cx=PAD.l+((t-visFirst)/visRange)*cW;  // Time-based like MAs
+    const cx=barX(i);
     const bodyTop=toY(Math.max(c.o,c.c));
     const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
@@ -3215,8 +3214,7 @@ function drawCandlestick(s){
     if(S.chartInterval==='M') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else lbl = d.getDate()+'/'+(d.getMonth()+1);
-    const t = new Date(c.d).getTime();
-    const x = PAD.l+((t-visFirst)/visRange)*cW;
+    const x = barX(i);
     if(x > PAD.l+cW+5 || x < PAD.l-5) return;
     if(Math.abs(x - lastLabelX) < 45) return;
     lastLabelX = x;
@@ -3244,18 +3242,13 @@ function drawVolume(s){
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const n=candles.length,gap=cW/n,bw=Math.max(1.5,Math.min(6,gap*0.4));
   
-  // Calculate time-based coordinates (same as candlestick chart)
-  const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
-  const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
-  const visRange = visLast - visFirst || 1;
-  
-  // Time-based x positioning (matching candlestick chart)
-  const xForCandle = (c) => PAD.l + ((new Date(c.d).getTime() - visFirst) / visRange) * cW;
+  // Define barX for volume
+  const barX=i=>PAD.l+i*gap+gap/2;
   
   // Find visible candles and calculate volume range
   let visibleIndices = [];
   for(let i=0; i<candles.length; i++){
-    const x = xForCandle(candles[i]);
+    const x = barX(i);
     if(x >= PAD.l-5 && x <= PAD.l+cW+5){
       visibleIndices.push(i);
     }
@@ -3277,10 +3270,9 @@ function drawVolume(s){
   
   
   // Volume bars with correct color coding (match candlestick colors)
-  // UP (close >= open) = Green (#00d084), DOWN (close < open) = Red (#ff3b5c)
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=xForCandle(c)-(bw/2);
+    const x=barX(i)-(bw/2);
     const isUp = c.c >= c.o;
     ctx.fillStyle = isUp ? '#00d084' : '#ff3b5c';
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
@@ -3288,7 +3280,7 @@ function drawVolume(s){
     ctx.fill();
   });
   
-  // Volume MA trend line - bright and visible
+  // Volume MA trend line
   const volMA = candles.map((c,i)=>{
     if(i<4) return null;
     return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
@@ -3297,7 +3289,7 @@ function drawVolume(s){
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
-    const x=xForCandle(candles[i]);
+    const x=barX(i);
     const y=PAD.t+cH-(v/mv)*cH;
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
@@ -3330,7 +3322,7 @@ function drawVolume(s){
     if(S.chartInterval==='M') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else lbl = d.getDate()+'/'+(d.getMonth()+1);
-    const x = xForCandle(c);
+    const x = barX(i);
     if(x > PAD.l+cW+5 || x < PAD.l-5) return;
     if(Math.abs(x - lastLabelXVol) < 45) return;
     lastLabelXVol = x;
