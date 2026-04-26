@@ -155,6 +155,9 @@ const tbdLink = (label) => {
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
 
+console.log('URL Search:', window.location.search);
+console.log('Ticker from URL:', ticker);
+
 // Load data
 async function loadStock() {
     if (!ticker) {
@@ -620,6 +623,14 @@ function renderTab(tab) {
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
+              <!-- PAN/ZOOM CONTROLS -->
+              <div style="position:absolute;top:8px;right:10px;display:flex;gap:4px;z-index:10">
+                <button onclick="S.chartPan = Math.min(200, S.chartPan + 30); scheduleTACharts(currentStock);" style="background:var(--b1);border:1px solid var(--ac);color:var(--ac);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600">◀ Pan</button>
+                <button onclick="S.chartPan = Math.max(-200, S.chartPan - 30); scheduleTACharts(currentStock);" style="background:var(--b1);border:1px solid var(--ac);color:var(--ac);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600">Pan ▶</button>
+                <button onclick="S.chartZoom = Math.min(3, S.chartZoom * 1.2); scheduleTACharts(currentStock);" style="background:var(--b1);border:1px solid var(--ac);color:var(--ac);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600">🔍+</button>
+                <button onclick="S.chartZoom = Math.max(0.5, S.chartZoom / 1.2); scheduleTACharts(currentStock);" style="background:var(--b1);border:1px solid var(--ac);color:var(--ac);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600">🔍-</button>
+                <button onclick="S.chartPan = 0; S.chartZoom = 1; scheduleTACharts(currentStock);" style="background:var(--b1);border:1px solid var(--ac);color:var(--ac);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600">↺ Reset</button>
+              </div>
               <div id="chart-wrap" style="position:relative;width:100%;height:240px"><canvas id="cv-candle"></canvas></div>
               <div id="vol-wrap" style="position:relative;width:100%;height:50px;border-top:1px solid var(--b1)"><canvas id="cv-vol"></canvas></div>
             </div>
@@ -2977,14 +2988,24 @@ function getSlicedCandles(s, canvasWidth){
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   let rangeCandles = allAgg.filter(c => c.d >= cutoff);
   if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
-  
-  // OPTIMIZE: Show max 40 candles to prevent clutter & freezing
-  const MAX_CANDLES = 40;
-  if(rangeCandles.length > MAX_CANDLES){
-    const step = Math.ceil(rangeCandles.length / MAX_CANDLES);
-    rangeCandles = rangeCandles.filter((c, i) => i % step === 0 || i === rangeCandles.length - 1);
+  if(canvasWidth && canvasWidth > 0){
+    const PAD_L = 6, PAD_R = 52;
+    const chartW = canvasWidth - PAD_L - PAD_R;
+    const IDEAL_BAR_W = 7;
+    const MIN_BAR_W  = 4;
+    const maxFit = Math.floor(chartW / MIN_BAR_W);
+    if(rangeCandles.length > maxFit){
+      // ✅ PAN-BASED HISTORY SCROLL: S.chartPan controls which candles to display
+      // S.chartPan: -400 (oldest) → 0 (most recent) → +400 (newest, clamped to most recent)
+      const maxBackOffset = Math.max(0, rangeCandles.length - maxFit);
+      const backPan = Math.max(0, -S.chartPan); // Negative pan = go back in history (0-400)
+      const backNorm = Math.min(1, backPan / 400); // Normalize to 0-1
+      const backOffset = Math.floor(backNorm * maxBackOffset); // How many candles back to start
+      const startIdx = Math.max(0, maxBackOffset - backOffset);
+      console.log('[SCHED] getSlicedCandles: pan=' + S.chartPan + ', showing candles ' + startIdx + ' to ' + (startIdx + maxFit));
+      return rangeCandles.slice(startIdx, startIdx + maxFit);
+    }
   }
-  
   return rangeCandles;
 }
 
@@ -3023,11 +3044,11 @@ function drawCandlestick(s){
   }
 
   const W=W2,H=H2;
-  const PAD={l:10,r:52,t:14,b:30};
+  const PAD={l:6,r:52,t:8,b:22};
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
-  const bw=Math.max(4,Math.min(16,gap*0.6));
+  const bw=Math.max(1,Math.min(8,gap*0.4));
 
   // Full history + visible date range — used by both MAs and KPI overlays
   const allCandles = s.candles || candles;
@@ -3050,13 +3071,13 @@ function drawCandlestick(s){
   // Grid lines
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
-    ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
     // Price label
     const price=mx-(mx-mn)*(i/4);
     ctx.fillStyle='rgba(255,255,255,.95)';
     ctx.font='bold 10px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?11:-1));
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?9:-2));
   }
 
   // Right axis separator
@@ -3122,8 +3143,8 @@ function drawCandlestick(s){
     const lastIdx = vals.reduce((best,v,i)=>v!==null?i:best, -1);
     if(lastIdx>=0 && label){
       const lv = vals[lastIdx];
-      ctx.fillStyle=col; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
-      ctx.fillText(label+' ₹'+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-5);
+      ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
+      ctx.fillText(label+' ₹'+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
     }
   }
   // MAs computed on allCandles (full history), then only visible portion drawn
@@ -3160,8 +3181,8 @@ function drawCandlestick(s){
         if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
       });
       if(lastV !== null){
-        ctx.fillStyle=col; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
-        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-5);
+        ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
+        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
       }
     }
     drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
@@ -3184,7 +3205,7 @@ function drawCandlestick(s){
   }
 
   // X-axis date labels — use actual candle.d dates, show ~5 evenly spaced
-  const maxLabels = Math.min(6, Math.floor(cW / 50));
+  const maxLabels = Math.min(6, Math.floor(cW / 40));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
   ctx.fillStyle='rgba(255,255,255,.95)'; ctx.font='bold 9px JetBrains Mono,monospace';
   candles.forEach((c,i)=>{
@@ -3197,7 +3218,7 @@ function drawCandlestick(s){
     const x = barX(i);
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H-6);
+    ctx.fillText(lbl, x, H-4);
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
@@ -3360,7 +3381,7 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=60;
+  const H2=50;
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;cv.height=H2*dpr;
   cv.style.width=W2+'px';cv.style.height=H2+'px';
@@ -3373,12 +3394,12 @@ function drawVolume(s){
   ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
 
   const W=W2,H=H2;
-  const PAD={l:8,r:52,t:6,b:8};
+  const PAD={l:6,r:52,t:4,b:4};
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
-  const n=candles.length,gap=cW/n,bw=Math.max(3,Math.min(20,gap*0.65));
+  const n=candles.length,gap=cW/n,bw=Math.max(2,Math.min(14,gap*0.7));
   const mv=Math.max(...candles.map(c=>c.v))||1;
   
-  // Determine market trend: if LTP > first candle open, market is UP (green), else DOWN (red)
+  // Market trend: LTP vs opening price determines volume color
   const marketTrend = s.ltp >= (candles[0]?.o || s.ltp) ? 'up' : 'down';
   const volumeColor = marketTrend === 'up' ? '#00d084' : '#ff3b5c';
 
@@ -3388,7 +3409,7 @@ function drawVolume(s){
   ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
   ctx.fillStyle='rgba(255,255,255,.95)';ctx.font='bold 10px JetBrains Mono,monospace';ctx.textAlign='right';
-  ctx.fillText('Vol',W-2,15);
+  ctx.fillText('Vol',W-2,14);
 
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
