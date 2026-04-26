@@ -745,15 +745,6 @@ function renderTab(tab) {
         `;
         document.body.appendChild(debugWindow);
         
-        // CSS OVERRIDE - Hide decimals in price scales
-        const style = document.createElement('style');
-        style.textContent = `
-            .tv-lightweight-charts-label {
-                font-variant-numeric: tabular-nums !important;
-            }
-        `;
-        document.head.appendChild(style);
-        
         // Add debug toggle button
         const debugBtn = document.createElement('button');
         debugBtn.style.cssText = `
@@ -2668,19 +2659,6 @@ async function renderTechnicalPro(stock) {
         
         // Auto-fit
         chart.timeScale().fitContent();
-        
-        // Simple number formatting with debug
-        setTimeout(() => {
-            console.log('🔧 Applying price scale formatting...');
-            chart.priceScale('right').applyOptions({
-                format: (price) => {
-                    const formatted = Math.round(price).toString();
-                    console.log(`💰 Format called: ${price} → ${formatted}`);
-                    return formatted;
-                }
-            });
-            console.log('✅ Format function applied to right scale');
-        }, 100);
         
         // Store chart reference
         proCharts.chart1 = chart;
