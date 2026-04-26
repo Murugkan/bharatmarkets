@@ -3022,15 +3022,29 @@ function drawCandlestick(s){
   const visRange = visLast - visFirst || 1;
   
   // Define barX first (needed for visibility check)
-  const barX=i=>PAD.l+i*gap+gap/2;
+  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
   
-  // Draw grid and candlesticks
-  const allPrices=candles.flatMap(c=>[c.h,c.l]);
-  if(s.sma20&&S.maVis.sma20)allPrices.push(...(s.sma20||[]));
-  if(s.sma50&&S.maVis.sma50)allPrices.push(...(s.sma50||[]));
-  if(s.ema200&&S.maVis.ema200)allPrices.push(...(s.ema200||[]));
+  // Find which candles are actually visible on screen (not clipped by pan)
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
   
+  // Calculate price range only from visible candles
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const allPrices=visibleCandles.flatMap(c=>[c.h,c.l]);
+  if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
+  if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
+  if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
+  
+  // Add padding to price range for better visualization
   let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
+  const priceRange = mx - mn || 1;
+  mn = mn - priceRange * 0.05;  // 5% padding below
+  mx = mx + priceRange * 0.05;  // 5% padding above
   const rng = mx - mn || 1;
   
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
@@ -3044,8 +3058,13 @@ function drawCandlestick(s){
   ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
   
+  // Add clipping region to prevent drawing outside chart bounds
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PAD.l, PAD.t, cW, cH);  // Clip to chart area
+  ctx.clip();
   
-  // Draw grid lines and candlesticks (no clipping)
+  // Draw grid lines inside clipping
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
     ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
@@ -3171,19 +3190,22 @@ function drawCandlestick(s){
     ctx.fillStyle = col; ctx.globalAlpha = 1; ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right'; ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8)); ctx.restore();
   });
   
-  // Draw Y-axis price labels
+  // Restore clipping
+  ctx.restore();
+  
+  // Draw Y-axis price labels (outside clipping)
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
     const price=mx-(mx-mn)*(i/4);
     ctx.fillStyle='#00ffff';
-    ctx.font='bold 11px JetBrains Mono,monospace'; ctx.textAlign='right';
+    ctx.font='11px JetBrains Mono,monospace'; ctx.fontWeight='900'; ctx.textAlign='right';
     ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-8,y+(i===0?10:-3));
   }
 
   // Draw X-axis labels
   const maxLabels = Math.min(5, Math.floor(cW / 55));  // Increased spacing to 55px
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='#ffffff'; ctx.font='bold 8px JetBrains Mono,monospace';
+  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
   let lastLabelX = -100;  // Track last label position to prevent overlap
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
@@ -3224,16 +3246,30 @@ function drawVolume(s){
   const n=candles.length,gap=cW/n,bw=Math.max(1.5,Math.min(6,gap*0.4));  // Narrower bars (40% of gap)
   
   // Define barX for volume (same alignment as candlestick chart)
-  const barX=i=>PAD.l+i*gap+gap/2;
+  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
   
-  // Calculate volume max from ALL candles
-  const mv=Math.max(...candles.map(c=>c.v))||1;
+  // Find visible candles and calculate volume range
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const mv=Math.max(...visibleCandles.map(c=>c.v))||1;
   
-  // Right axis panel
+  // Right axis panel (draw before clipping)
   ctx.fillStyle='rgba(7,12,24,.95)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  
+  // Add clipping to prevent volume bars from crossing axis
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PAD.l, PAD.t, cW, cH);
+  ctx.clip();
   
   
   // Volume bars with correct color coding (match candlestick colors)
@@ -3263,13 +3299,17 @@ function drawVolume(s){
   });
   ctx.stroke();
   
+  // Restore clipping
+  ctx.restore();
+  
   // Volume label (Vol)
-  ctx.fillStyle='#00ff00'; ctx.font='bold 10px JetBrains Mono,monospace'; ctx.textAlign='right';
+  ctx.fillStyle='#00ff00'; ctx.font='10px JetBrains Mono,monospace; font-weight:bold'; ctx.textAlign='right';
   ctx.fillText('Vol',W-2,12);
   
-  // Volume Y-axis scale labels
-  ctx.fillStyle='#ffff00'; ctx.font='bold 8px JetBrains Mono,monospace';
-  const maxVol = Math.max(...candles.map(c=>c.v));
+  // Volume Y-axis scale labels (outside clipping)
+  ctx.fillStyle='#ffff00'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  // Use visible candles for max volume (not all candles)
+  const maxVol = Math.max(...visibleCandles.map(c=>c.v));
   ctx.textAlign='right';
   ctx.fillText((maxVol/1000000).toFixed(1)+'M', W-2, 8);
   ctx.fillText('0', W-2, H-4);
@@ -3277,7 +3317,7 @@ function drawVolume(s){
   // X-AXIS LABELS for volume - use barX for alignment
   const maxLabelsVol = Math.min(5, Math.floor(cW / 55));  // Increased spacing
   const lblStepVol = Math.max(1, Math.floor(n / maxLabelsVol));
-  ctx.fillStyle='#ffffff'; ctx.font='bold 8px JetBrains Mono,monospace';
+  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
   let lastLabelXVol = -100;
   candles.forEach((c,i)=>{
     if(i % lblStepVol !== 0 && i !== n-1) return;
@@ -3324,39 +3364,34 @@ function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
 function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
 
-function canvasLoadAndDrawChart(sym){
-  if(!sym) return;
-  // After 2 rAF the DOM is painted and offsetWidth is correct
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    const s = currentStock;
-    if(!s) return;
-    
-    if(chartCache[sym]){
-      s.candles = chartCache[sym];
-      scheduleTACharts(s);
-      attachChartResizeObserver(s);
+async function canvasLoadAndDrawChart(sym) {
+  // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    attachChartResizeObserver(currentStock);
+    scheduleTACharts(currentStock);
+    return;
+  }
+  
+  // ✅ Step 2: Try optional JSON file (if you have one)
+  try {
+    const res = await fetch(`./charts/${sym}.json`);
+    if (res.ok) {
+      const data = await res.json();
+      currentStock.candles = data.bars || [];
+      chartCache[sym] = currentStock.candles;
+      attachChartResizeObserver(currentStock);
+      scheduleTACharts(currentStock);
       return;
     }
-    
-    fetch('./charts/'+sym+'.json', {cache:'force-cache'})
-      .then(r=>r.ok?r.json():null)
-      .then(d=>{
-        if(d && d.bars && d.bars.length){
-          chartCache[sym] = d.bars;
-          s.candles = d.bars;
-        } else {
-          s.candles = [];
-          s._noChartData = true;
-        }
-        scheduleTACharts(s);
-        attachChartResizeObserver(s);
-      })
-      .catch(()=>{
-        s.candles = [];
-        s._noChartData = true;
-        scheduleTACharts(s);
-      });
-  }));
+  } catch (e) {
+    // JSON not available - that's ok
+  }
+  
+  // ✅ Step 3: Use whatever data we have, or show helpful message
+  if(currentStock) {
+    attachChartResizeObserver(currentStock);
+    scheduleTACharts(currentStock);
+  }
 }
 
 // ════════════════════════════════════════════════
