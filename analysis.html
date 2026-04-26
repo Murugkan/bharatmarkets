@@ -2684,17 +2684,19 @@ async function renderTechnicalPro(stock) {
             format: (price) => Math.floor(price).toString()
         });
         
-        // Auto-fit
-        chart.timeScale().fitContent();
-        
-        // Enable proper panning and zooming on time axis
+        // Enable proper panning FIRST - before fitContent
         chart.timeScale().applyOptions({
             timeVisible: true,
             secondsVisible: false,
-            lockRange: false,  // Allow panning left/right
-            rightOffset: 10,
-            minBarSpacing: 0.5
+            lockRange: false,  // ALLOW panning
+            rightOffset: 0,  // NO offset - show all data
+            minBarSpacing: 0.5,
+            fixLeftEdge: false,
+            fixRightEdge: false
         });
+        
+        // THEN fit to content
+        chart.timeScale().fitContent();
         
         // Format price axis labels - NO DECIMALS
         setTimeout(() => {
@@ -2826,62 +2828,9 @@ async function renderTechnicalPro(stock) {
         proCharts.chart2.render();
         console.log('✅ Chart 2 rendered successfully');
         
-        // SYNC TIME AXES - simplified approach
-        if (proCharts.chart1 && proCharts.chart2) {
-            console.log('🔗 Enabling axis sync...');
-            
-            // Subscribe to visible range changes on Chart 1
-            const timeScale = proCharts.chart1.timeScale();
-            
-            timeScale.subscribeVisibleRangeChange(() => {
-                try {
-                    const visibleRange = timeScale.getVisibleRange();
-                    if (!visibleRange) return;
-                    
-                    // Get actual bar times from visible range
-                    const bars = chartBars;
-                    if (!bars || bars.length === 0) return;
-                    
-                    // Find bars within visible logical range
-                    const fromIndex = Math.max(0, Math.floor(visibleRange.from));
-                    const toIndex = Math.min(bars.length - 1, Math.ceil(visibleRange.to));
-                    
-                    if (fromIndex < bars.length && toIndex >= 0) {
-                        const fromTime = new Date(bars[fromIndex].d).getTime();
-                        const toTime = new Date(bars[toIndex].d).getTime();
-                        
-                        // Update Chart 2 to show same time range
-                        proCharts.chart2.updateOptions({
-                            xaxis: {
-                                min: fromTime,
-                                max: toTime
-                            }
-                        }, false);
-                        
-                        console.log(`📊 Sync: bars ${fromIndex}-${toIndex}`);
-                    }
-                } catch (e) {
-                    console.log('Sync error:', e.message);
-                }
-            });
-            
-            console.log('✅ Axis sync ready');
-        }
-        
-        // Add touch event debugging
-        const chartDiv = document.getElementById('chartPro1');
-        if (chartDiv) {
-            chartDiv.addEventListener('touchstart', (e) => {
-                console.log(`📱 touchstart: ${e.touches.length} finger(s)`);
-            });
-            chartDiv.addEventListener('touchmove', (e) => {
-                console.log(`📱 touchmove: ${e.touches.length} finger(s), diff=${e.touches[0]?.clientX || 0}`);
-            });
-            chartDiv.addEventListener('touchend', (e) => {
-                console.log(`📱 touchend`);
-            });
-            console.log('✅ Touch event listeners added');
-        }
+        // Charts are independent - users can pan each separately
+        console.log('✅ Chart 1 & Chart 2 ready (independent pan/zoom)');
+        // Charts ready - pan/zoom works independently
     } catch (err) {
         console.error('❌ Chart 2 error:', err.message);
         document.getElementById('chartPro2').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
