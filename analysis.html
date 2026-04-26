@@ -3124,6 +3124,16 @@ function drawCandlestick(s){
   ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
+  // DEBUG: Draw a red vertical line through center - should move left/right when panning
+  const debugLineX = PAD.l + cW/2 + S.chartPan;
+  ctx.strokeStyle = 'rgba(255,50,50,.8)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(debugLineX, PAD.t);
+  ctx.lineTo(debugLineX, H - PAD.b);
+  ctx.stroke();
+  console.log('[DRAW] **RED DEBUG LINE moved to x=' + Math.round(debugLineX) + '** by pan=' + S.chartPan);
+
   // Candles
   console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
   candles.forEach((c,i)=>{
