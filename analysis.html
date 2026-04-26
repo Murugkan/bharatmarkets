@@ -3020,13 +3020,34 @@ function drawCandlestick(s){
   const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
   const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
-  const allPrices=candles.flatMap(c=>[c.h,c.l]);
+  
+  // Define barX first (needed for visibility check)
+  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
+  
+  // Find which candles are actually visible on screen (not clipped by pan)
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
+  
+  // Calculate price range only from visible candles
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const allPrices=visibleCandles.flatMap(c=>[c.h,c.l]);
   if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
   if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
-  const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
+  
+  // Add padding to price range for better visualization
+  let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
+  const priceRange = mx - mn || 1;
+  mn = mn - priceRange * 0.05;  // 5% padding below
+  mx = mx + priceRange * 0.05;  // 5% padding above
+  const rng = mx - mn || 1;
+  
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;  // ← PAN OFFSET ADDED
   
   ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
@@ -3222,11 +3243,21 @@ function drawVolume(s){
   const W=W2,H=H2;
   const PAD={l:6,r:52,t:4,b:18};  // Increase bottom for X-axis labels
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
-  const n=candles.length,gap=cW/n,bw=Math.max(2,Math.min(14,gap*0.7));
-  const mv=Math.max(...candles.map(c=>c.v))||1;
+  const n=candles.length,gap=cW/n,bw=Math.max(1.5,Math.min(6,gap*0.4));  // Narrower bars (40% of gap)
   
   // Define barX for volume (same alignment as candlestick chart)
   const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
+  
+  // Find visible candles and calculate volume range
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const mv=Math.max(...visibleCandles.map(c=>c.v))||1;
   
   // Right axis panel (draw before clipping)
   ctx.fillStyle='rgba(7,12,24,.95)';
@@ -3247,18 +3278,18 @@ function drawVolume(s){
     const bh=Math.max(2,(c.v/mv)*cH);
     const x=barX(i)-(bw/2);  // Center bar on barX
     const isUp = c.c >= c.o;
-    ctx.fillStyle = isUp ? 'rgba(0,208,132,.6)' : 'rgba(255,59,92,.6)';
+    ctx.fillStyle = isUp ? '#00d084' : '#ff3b5c';  // Bright, opaque colors
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
   });
   
-  // Volume MA trend line
+  // Volume MA trend line - bright and visible
   const volMA = candles.map((c,i)=>{
     if(i<4) return null;
     return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
   });
-  ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=1.2; ctx.beginPath();
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=1.8; ctx.beginPath();
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
@@ -3277,7 +3308,8 @@ function drawVolume(s){
   
   // Volume Y-axis scale labels (outside clipping)
   ctx.fillStyle='#ffff00'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
-  const maxVol = Math.max(...candles.map(c=>c.v));
+  // Use visible candles for max volume (not all candles)
+  const maxVol = Math.max(...visibleCandles.map(c=>c.v));
   ctx.textAlign='right';
   ctx.fillText((maxVol/1000000).toFixed(1)+'M', W-2, 8);
   ctx.fillText('0', W-2, H-4);
@@ -3373,52 +3405,52 @@ let chartInteraction = {
 };
 
 function setupChartInteraction() {
-  const wrap = document.getElementById('chart-wrap');
-  if (!wrap) return;
+  const canvas = document.getElementById('cv-candle');
+  if (!canvas) return;
   
-  // Mouse/Touch Pan
-  wrap.onmousedown = (e) => {
+  // Mouse/Touch Pan on canvas
+  canvas.onmousedown = (e) => {
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
   };
   
-  wrap.onmousemove = (e) => {
+  canvas.onmousemove = (e) => {
     if (!chartInteraction.isPanning || !currentStock) return;
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
-    // Constrain pan: don't let chart shift too far
-    newPan = Math.max(-120, Math.min(80, newPan));  // Reasonable pan limits
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
     S.chartPan = newPan;
     scheduleTACharts(currentStock);
   };
   
-  wrap.onmouseup = () => { chartInteraction.isPanning = false; };
-  wrap.onmouseleave = () => { chartInteraction.isPanning = false; };
+  canvas.onmouseup = () => { chartInteraction.isPanning = false; };
+  canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
   
   // Touch Support
-  wrap.ontouchstart = (e) => {
+  canvas.ontouchstart = (e) => {
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.touches[0].clientX;
     chartInteraction.startPan = S.chartPan;
   };
   
-  wrap.ontouchmove = (e) => {
+  canvas.ontouchmove = (e) => {
     if (!chartInteraction.isPanning || !currentStock) return;
     const delta = e.touches[0].clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
-    // Constrain pan
-    newPan = Math.max(-120, Math.min(80, newPan));
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
     S.chartPan = newPan;
     scheduleTACharts(currentStock);
   };
   
-  wrap.ontouchend = () => { chartInteraction.isPanning = false; };
+  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
   
-  // Wheel Zoom
-  wrap.onwheel = (e) => {
+  // Wheel Zoom on canvas
+  canvas.onwheel = (e) => {
     if (!currentStock) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
