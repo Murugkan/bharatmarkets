@@ -3071,10 +3071,11 @@ function drawCandlestick(s){
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
   }
   
-  // Draw candlesticks inside clipping
+  // Draw candlesticks inside clipping - use time-based x (same as MAs)
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
-    const cx=barX(i);
+    const t=new Date(c.d).getTime();
+    const cx=PAD.l+((t-visFirst)/visRange)*cW;  // Time-based like MAs
     const bodyTop=toY(Math.max(c.o,c.c));
     const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
@@ -3214,7 +3215,8 @@ function drawCandlestick(s){
     if(S.chartInterval==='M') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else lbl = d.getDate()+'/'+(d.getMonth()+1);
-    const x = barX(i);
+    const t = new Date(c.d).getTime();
+    const x = PAD.l+((t-visFirst)/visRange)*cW;
     if(x > PAD.l+cW+5 || x < PAD.l-5) return;
     if(Math.abs(x - lastLabelX) < 45) return;
     lastLabelX = x;
@@ -3240,15 +3242,20 @@ function drawVolume(s){
   const W=W2,H=H2;
   const PAD={l:6,r:52,t:4,b:18};  // Increase bottom for X-axis labels
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
-  const n=candles.length,gap=cW/n,bw=Math.max(1.5,Math.min(6,gap*0.4));  // Narrower bars (40% of gap)
+  const n=candles.length,gap=cW/n,bw=Math.max(1.5,Math.min(6,gap*0.4));
   
-  // Define barX for volume (same alignment as candlestick chart)
-  const barX=i=>PAD.l+i*gap+gap/2;
+  // Calculate time-based coordinates (same as candlestick chart)
+  const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
+  const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
+  const visRange = visLast - visFirst || 1;
+  
+  // Time-based x positioning (matching candlestick chart)
+  const xForCandle = (c) => PAD.l + ((new Date(c.d).getTime() - visFirst) / visRange) * cW;
   
   // Find visible candles and calculate volume range
   let visibleIndices = [];
   for(let i=0; i<candles.length; i++){
-    const x = barX(i);
+    const x = xForCandle(candles[i]);
     if(x >= PAD.l-5 && x <= PAD.l+cW+5){
       visibleIndices.push(i);
     }
@@ -3273,9 +3280,9 @@ function drawVolume(s){
   // UP (close >= open) = Green (#00d084), DOWN (close < open) = Red (#ff3b5c)
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=barX(i)-(bw/2);  // Center bar on barX
+    const x=xForCandle(c)-(bw/2);
     const isUp = c.c >= c.o;
-    ctx.fillStyle = isUp ? '#00d084' : '#ff3b5c';  // Bright, opaque colors
+    ctx.fillStyle = isUp ? '#00d084' : '#ff3b5c';
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
@@ -3290,7 +3297,7 @@ function drawVolume(s){
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
-    const x=barX(i);
+    const x=xForCandle(candles[i]);
     const y=PAD.t+cH-(v/mv)*cH;
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
@@ -3311,7 +3318,7 @@ function drawVolume(s){
   ctx.fillText((maxVol/1000000).toFixed(1)+'M', W-2, 8);
   ctx.fillText('0', W-2, H-4);
   
-  // X-AXIS LABELS for volume - use barX for alignment
+  // X-AXIS LABELS for volume
   const maxLabelsVol = Math.min(5, Math.floor(cW / 55));
   const lblStepVol = Math.max(1, Math.floor(n / maxLabelsVol));
   ctx.fillStyle='rgba(140,176,208,.65)'; ctx.font='8px JetBrains Mono,monospace';
@@ -3320,16 +3327,13 @@ function drawVolume(s){
     if(i % lblStepVol !== 0 && i !== n-1) return;
     const d = new Date(c.d);
     let lbl;
-    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    if(S.chartInterval==='M') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
-    const x = barX(i);
-    if(x > PAD.l+cW+5 || x < PAD.l-5) return;  // Clip off-screen labels
-    
-    // Prevent label overlap
+    else lbl = d.getDate()+'/'+(d.getMonth()+1);
+    const x = xForCandle(c);
+    if(x > PAD.l+cW+5 || x < PAD.l-5) return;
     if(Math.abs(x - lastLabelXVol) < 45) return;
     lastLabelXVol = x;
-    
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
     ctx.fillText(lbl, x, H-2);
   });
