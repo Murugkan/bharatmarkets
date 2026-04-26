@@ -745,6 +745,15 @@ function renderTab(tab) {
         `;
         document.body.appendChild(debugWindow);
         
+        // CSS OVERRIDE - Hide decimals in price scales
+        const style = document.createElement('style');
+        style.textContent = `
+            .tv-lightweight-charts-label {
+                font-variant-numeric: tabular-nums !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
         // Add debug toggle button
         const debugBtn = document.createElement('button');
         debugBtn.style.cssText = `
@@ -2533,7 +2542,12 @@ async function renderTechnicalPro(stock) {
             rightPriceScale: {
                 textColor: '#7a8fa0',
                 autoScale: true,
-                mode: LightweightCharts.PriceScaleMode.Normal
+                mode: LightweightCharts.PriceScaleMode.Normal,
+                borderColor: 'rgba(122, 143, 160, 0.5)',
+                scaleMargins: {
+                    top: 0.1,
+                    bottom: 0.3
+                }
             },
             grid: {
                 horzLines: { visible: false },
@@ -2655,15 +2669,18 @@ async function renderTechnicalPro(stock) {
         // Auto-fit
         chart.timeScale().fitContent();
         
-        // Format price scale labels - NO DECIMALS, k for thousands
-        chart.priceScale('right').applyOptions({
-            format: (price) => {
-                if (price >= 1000) {
-                    return (price / 1000).toFixed(0) + 'k';
+        // Simple number formatting with debug
+        setTimeout(() => {
+            console.log('🔧 Applying price scale formatting...');
+            chart.priceScale('right').applyOptions({
+                format: (price) => {
+                    const formatted = Math.round(price).toString();
+                    console.log(`💰 Format called: ${price} → ${formatted}`);
+                    return formatted;
                 }
-                return Math.floor(price).toString();
-            }
-        });
+            });
+            console.log('✅ Format function applied to right scale');
+        }, 100);
         
         // Store chart reference
         proCharts.chart1 = chart;
