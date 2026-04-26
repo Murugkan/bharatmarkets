@@ -607,18 +607,24 @@ function renderTab(tab) {
               <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap">${s.ticker || s.sym} · Price Chart</div>
               <div style="display:flex;gap:6px;align-items:center">
                 <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
-                  <option value="D">Daily</option><option value="W">Weekly</option><option value="M">Monthly</option>
+                  <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
+                  <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
+                  <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
                 </select>
                 <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
-                  <option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="1Y" selected>1Y</option><option value="5Y">5Y</option>
+                  <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
+                  <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
+                  <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
+                  <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
+                  <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
                 </select>
               </div>
             </div>
             <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" checked onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" checked onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" checked onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" checked onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:240px"><canvas id="cv-candle"></canvas></div>
@@ -2933,10 +2939,11 @@ async function renderTechnicalPro(stock) {
 // ════════════════════════════════════════════════════════
 
 function scheduleChartRedraw(){
-  if(S.selStock && chartCache[S.selStock.symbol]){
-    S.selStock.candles = chartCache[S.selStock.symbol];
+  // ✅ Use currentStock (not S.selStock which doesn't exist)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    // Data already loaded, just redraw
   }
-  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(S.selStock)));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(currentStock)));
 }
 
 function aggregateCandles(daily, interval){
