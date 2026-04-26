@@ -786,17 +786,57 @@ function renderTab(tab) {
         // Load and render new technical pro charts
         renderTechnicalPro(currentStock);
     } else if (tab === 'canvas') {
-        html = `<div style="padding:12px;padding-bottom:100px">
-            <h2 style="color:var(--ac);margin-bottom:16px">⚡ Canvas Candlestick Chart</h2>
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:16px">
-                <canvas id="cv-candle" style="width:100%;border-radius:4px;background:var(--s1)"></canvas>
+        html = `<div style="padding:12px;padding-bottom:120px">
+            <!-- Controls -->
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                    <input type="radio" name="canvasTimeframe" value="daily" onchange="canvasSetTimeframe('daily')" checked style="cursor:pointer"> Daily
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                    <input type="radio" name="canvasTimeframe" value="weekly" onchange="canvasSetTimeframe('weekly')" style="cursor:pointer"> Weekly
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                    <input type="radio" name="canvasTimeframe" value="monthly" onchange="canvasSetTimeframe('monthly')" style="cursor:pointer"> Monthly
+                </label>
+                <span id="canvas-barcount" style="margin-left:auto;font-size:9px;color:rgba(122,143,160,.7)">Bars: 252</span>
             </div>
+            
+            <!-- Dropdowns -->
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                <button onclick="canvasToggleEMA()" style="padding:6px 12px;background:rgba(0,232,150,.15);border:1px solid rgba(0,232,150,.3);color:var(--gr);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700">📈 EMA</button>
+                <button onclick="canvasToggleVolume()" style="padding:6px 12px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:var(--gr);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700">📊 Volume</button>
+                <button onclick="canvasToggleRSI()" style="padding:6px 12px;background:rgba(0,200,150,.15);border:1px solid rgba(0,200,150,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700">RSI(14)</button>
+            </div>
+            
+            <!-- Price Chart -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;overflow:hidden;margin-bottom:12px">
+                <canvas id="cv-price" style="display:block;width:100%;background:var(--s1)"></canvas>
+            </div>
+            
+            <!-- Volume Chart (if enabled) -->
+            <div id="vol-container" style="background:var(--card);border:1px solid var(--b1);border-radius:6px;overflow:hidden;margin-bottom:12px;display:none">
+                <canvas id="cv-vol" style="display:block;width:100%;background:var(--s1)"></canvas>
+            </div>
+            
+            <!-- RSI Chart (if enabled) -->
+            <div id="rsi-container" style="background:var(--card);border:1px solid var(--b1);border-radius:6px;overflow:hidden;margin-bottom:12px;display:none">
+                <canvas id="cv-rsi" style="display:block;width:100%;background:var(--s1)"></canvas>
+            </div>
+            
+            <!-- Status -->
             <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px">
                 <div style="font-size:11px;color:var(--tx3);margin-bottom:8px">📊 Status</div>
                 <div id="canvas-status" style="color:var(--ac);font-size:12px">Loading chart...</div>
             </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
+        window.canvasState = {
+            timeframe: 'daily',
+            showEMA: true,
+            showVolume: true,
+            showRSI: true,
+            bars: []
+        };
         setTimeout(() => renderCanvasChart(currentStock), 100);
     } else if (tab === 'fundamentals') {
         let guidance = {};
@@ -2857,8 +2897,37 @@ async function renderTechnicalPro(stock) {
 }
 
 // ═════════════════════════════════════════════════════════════
-// CANVAS CHART — Pure Canvas Rendering (from old app)
+// CANVAS CHART — Complete with EMA, RSI, Volume, Responsive
 // ═════════════════════════════════════════════════════════════
+
+function canvasSetTimeframe(tf) {
+    if (!window.canvasState) return;
+    window.canvasState.timeframe = tf;
+    renderCanvasChart(currentStock);
+}
+
+function canvasToggleEMA() {
+    if (!window.canvasState) return;
+    window.canvasState.showEMA = !window.canvasState.showEMA;
+    renderCanvasChart(currentStock);
+}
+
+function canvasToggleVolume() {
+    if (!window.canvasState) return;
+    window.canvasState.showVolume = !window.canvasState.showVolume;
+    const volCtn = document.getElementById('vol-container');
+    if (volCtn) volCtn.style.display = window.canvasState.showVolume ? 'block' : 'none';
+    renderCanvasChart(currentStock);
+}
+
+function canvasToggleRSI() {
+    if (!window.canvasState) return;
+    window.canvasState.showRSI = !window.canvasState.showRSI;
+    const rsiCtn = document.getElementById('rsi-container');
+    if (rsiCtn) rsiCtn.style.display = window.canvasState.showRSI ? 'block' : 'none';
+    renderCanvasChart(currentStock);
+}
+
 async function renderCanvasChart(stock) {
     if (!stock || !stock.ticker) {
         document.getElementById('canvas-status').innerHTML = '❌ No stock data';
@@ -2867,8 +2936,6 @@ async function renderCanvasChart(stock) {
     
     try {
         const statusDiv = document.getElementById('canvas-status');
-        const canvas = document.getElementById('cv-candle');
-        
         statusDiv.innerHTML = '📥 Loading chart data...';
         
         // Fetch bars
@@ -2879,17 +2946,34 @@ async function renderCanvasChart(stock) {
         }
         
         const data = await res.json();
-        const bars = (data.bars || []).slice(-252); // Last 252 bars
+        let bars = (data.bars || []).slice(-252);
         
         if (bars.length === 0) {
             statusDiv.innerHTML = '❌ No chart data available';
             return;
         }
         
-        statusDiv.innerHTML = `✅ ${bars.length} bars | Swipe to pan | Pinch to zoom`;
+        // Apply timeframe aggregation
+        if (window.canvasState.timeframe === 'weekly') {
+            bars = aggregateBars(bars, 'weekly');
+        } else if (window.canvasState.timeframe === 'monthly') {
+            bars = aggregateBars(bars, 'monthly');
+        }
         
-        // Draw canvas
-        drawCandlestickCanvas(canvas, bars);
+        window.canvasState.bars = bars;
+        document.getElementById('canvas-barcount').textContent = `Bars: ${bars.length}`;
+        statusDiv.innerHTML = `✅ ${bars.length} bars loaded | Responsive canvas`;
+        
+        // Draw all charts
+        drawPriceCanvas(bars);
+        if (window.canvasState.showVolume) {
+            document.getElementById('vol-container').style.display = 'block';
+            drawVolumeCanvas(bars);
+        }
+        if (window.canvasState.showRSI) {
+            document.getElementById('rsi-container').style.display = 'block';
+            drawRSICanvas(bars);
+        }
         
     } catch (err) {
         console.error('Canvas error:', err);
@@ -2897,11 +2981,42 @@ async function renderCanvasChart(stock) {
     }
 }
 
-function drawCandlestickCanvas(canvas, bars) {
+function aggregateBars(daily, period) {
+    if (period === 'daily' || !daily.length) return daily;
+    
+    const result = [];
+    let current = null;
+    
+    daily.forEach(bar => {
+        const barDate = new Date(bar.d);
+        const barWeek = Math.floor(barDate.getTime() / (7 * 24 * 60 * 60 * 1000));
+        const barMonth = barDate.getFullYear() * 12 + barDate.getMonth();
+        const key = period === 'weekly' ? barWeek : barMonth;
+        
+        if (!current || current.key !== key) {
+            if (current) result.push(current.bar);
+            current = {
+                key,
+                bar: { d: bar.d, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v }
+            };
+        } else {
+            current.bar.h = Math.max(current.bar.h, bar.h);
+            current.bar.l = Math.min(current.bar.l, bar.l);
+            current.bar.c = bar.c;
+            current.bar.v += bar.v;
+        }
+    });
+    
+    if (current) result.push(current.bar);
+    return result;
+}
+
+function drawPriceCanvas(bars) {
+    const canvas = document.getElementById('cv-price');
     if (!canvas) return;
     
     const W = canvas.parentElement.offsetWidth;
-    const H = 300;
+    const H = 280;
     const dpr = window.devicePixelRatio || 1;
     
     canvas.width = W * dpr;
@@ -2912,25 +3027,14 @@ function drawCandlestickCanvas(canvas, bars) {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
     
-    if (bars.length === 0) {
-        ctx.fillStyle = '#0a0e1a';
-        ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = '#7a8fa0';
-        ctx.textAlign = 'center';
-        ctx.font = '12px JetBrains Mono';
-        ctx.fillText('No data', W / 2, H / 2);
-        return;
-    }
+    if (bars.length === 0) return;
     
-    // Layout
     const PAD = { l: 6, r: 52, t: 8, b: 22 };
     const cW = W - PAD.l - PAD.r;
     const cH = H - PAD.t - PAD.b;
-    const n = bars.length;
-    const gap = cW / n;
+    const gap = cW / bars.length;
     const bw = Math.max(2, Math.min(14, gap * 0.7));
     
-    // Price range
     const allPrices = bars.flatMap(c => [c.h, c.l]);
     const mn = Math.min(...allPrices);
     const mx = Math.max(...allPrices);
@@ -2943,7 +3047,7 @@ function drawCandlestickCanvas(canvas, bars) {
     ctx.fillStyle = '#070c18';
     ctx.fillRect(0, 0, W, H);
     
-    // Grid lines + prices
+    // Grid
     for (let i = 0; i <= 4; i++) {
         const y = PAD.t + (cH / 4) * i;
         ctx.strokeStyle = 'rgba(255,255,255,.04)';
@@ -2957,10 +3061,10 @@ function drawCandlestickCanvas(canvas, bars) {
         ctx.fillStyle = 'rgba(140,176,208,.65)';
         ctx.font = '8px JetBrains Mono';
         ctx.textAlign = 'right';
-        ctx.fillText('₹' + Math.round(price).toLocaleString('en-IN'), W - 2, y + (i === 0 ? 9 : -2));
+        ctx.fillText('₹' + Math.round(price), W - 2, y + (i === 0 ? 9 : -2));
     }
     
-    // Right axis separator
+    // Right axis
     ctx.fillStyle = 'rgba(7,12,24,.8)';
     ctx.fillRect(W - PAD.r, 0, PAD.r, H);
     ctx.strokeStyle = 'rgba(30,51,80,.8)';
@@ -2977,7 +3081,6 @@ function drawCandlestickCanvas(canvas, bars) {
         const bodyTop = toY(Math.max(c.o, c.c));
         const bodyH = Math.max(1, Math.abs(toY(c.o) - toY(c.c)));
         
-        // Wick
         ctx.strokeStyle = bull ? 'rgba(0,232,150,.8)' : 'rgba(255,107,133,.8)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -2985,14 +3088,8 @@ function drawCandlestickCanvas(canvas, bars) {
         ctx.lineTo(cx, toY(c.l));
         ctx.stroke();
         
-        // Body
         ctx.fillStyle = bull ? '#00d084' : '#ff3b5c';
-        if (ctx.roundRect) {
-            ctx.roundRect(cx - bw / 2, bodyTop, bw, bodyH, 1);
-        } else {
-            ctx.rect(cx - bw / 2, bodyTop, bw, bodyH);
-        }
-        ctx.fill();
+        ctx.fillRect(cx - bw / 2, bodyTop, bw, bodyH);
         
         if (!bull) {
             ctx.strokeStyle = 'rgba(255,59,92,.3)';
@@ -3001,19 +3098,186 @@ function drawCandlestickCanvas(canvas, bars) {
         }
     });
     
-    // Date labels at bottom
-    const dateEvery = Math.ceil(n / 6);
-    for (let i = 0; i < n; i += dateEvery) {
-        const bar = bars[i];
-        const date = new Date(bar.d);
-        const label = (date.getMonth() + 1) + '/' + date.getDate();
-        const x = barX(i);
+    // EMA overlays
+    if (window.canvasState.showEMA) {
+        const ema20 = calculateEMA(bars, 20);
+        const ema50 = calculateEMA(bars, 50);
+        const ema200 = calculateEMA(bars, 200);
         
+        drawLine(ctx, ema20, barX, toY, '#26de81', 1.5);
+        drawLine(ctx, ema50, barX, toY, '#f59e0b', 1.5);
+        drawLine(ctx, ema200, barX, toY, '#ff6b85', 1.5);
+    }
+    
+    // Date labels
+    const dateEvery = Math.ceil(bars.length / 6);
+    for (let i = 0; i < bars.length; i += dateEvery) {
+        const date = new Date(bars[i].d);
+        const label = (date.getMonth() + 1) + '/' + date.getDate();
         ctx.fillStyle = '#7a8fa0';
         ctx.textAlign = 'center';
         ctx.font = '8px JetBrains Mono';
-        ctx.fillText(label, x, H - 4);
+        ctx.fillText(label, barX(i), H - 4);
     }
+}
+
+function drawVolumeCanvas(bars) {
+    const canvas = document.getElementById('cv-vol');
+    if (!canvas) return;
+    
+    const W = canvas.parentElement.offsetWidth;
+    const H = 100;
+    const dpr = window.devicePixelRatio || 1;
+    
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    
+    const PAD = { l: 6, r: 52, t: 4, b: 18 };
+    const cW = W - PAD.l - PAD.r;
+    const cH = H - PAD.t - PAD.b;
+    const gap = cW / bars.length;
+    const bw = Math.max(2, Math.min(10, gap * 0.7));
+    
+    const maxVol = Math.max(...bars.map(c => c.v));
+    const barX = i => PAD.l + i * gap + gap / 2;
+    const volY = v => PAD.t + cH - (v / maxVol) * cH;
+    
+    ctx.fillStyle = '#070c18';
+    ctx.fillRect(0, 0, W, H);
+    
+    bars.forEach((c, i) => {
+        const bull = c.c >= c.o;
+        const cx = barX(i);
+        const y = volY(c.v);
+        const h = cH - (c.v / maxVol) * cH;
+        
+        ctx.fillStyle = bull ? 'rgba(0,232,150,.6)' : 'rgba(255,107,133,.6)';
+        ctx.fillRect(cx - bw / 2, y, bw, h);
+    });
+}
+
+function drawRSICanvas(bars) {
+    const canvas = document.getElementById('cv-rsi');
+    if (!canvas) return;
+    
+    const W = canvas.parentElement.offsetWidth;
+    const H = 100;
+    const dpr = window.devicePixelRatio || 1;
+    
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    
+    const rsi = calculateRSI(bars, 14);
+    
+    const PAD = { l: 6, r: 52, t: 4, b: 18 };
+    const cW = W - PAD.l - PAD.r;
+    const cH = H - PAD.t - PAD.b;
+    const gap = cW / bars.length;
+    const barX = i => PAD.l + i * gap + gap / 2;
+    const rsiY = v => PAD.t + cH - (v / 100) * cH;
+    
+    ctx.fillStyle = '#070c18';
+    ctx.fillRect(0, 0, W, H);
+    
+    // RSI line
+    ctx.strokeStyle = '#00f2ff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    
+    for (let i = 0; i < rsi.length; i++) {
+        if (rsi[i] === null) continue;
+        const x = barX(i);
+        const y = rsiY(rsi[i]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    
+    // Overbought/Oversold
+    ctx.strokeStyle = 'rgba(255,255,255,.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD.l, rsiY(70));
+    ctx.lineTo(W - PAD.r, rsiY(70));
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(PAD.l, rsiY(30));
+    ctx.lineTo(W - PAD.r, rsiY(30));
+    ctx.stroke();
+}
+
+function drawLine(ctx, values, barX, toY, color, width) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    
+    for (let i = 0; i < values.length; i++) {
+        if (values[i] === null) continue;
+        const x = barX(i);
+        const y = toY(values[i]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+}
+
+function calculateEMA(bars, period) {
+    const k = 2 / (period + 1);
+    const result = new Array(bars.length).fill(null);
+    
+    if (period > bars.length) return result;
+    
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+        sum += bars[i].c;
+    }
+    result[period - 1] = sum / period;
+    
+    for (let i = period; i < bars.length; i++) {
+        result[i] = bars[i].c * k + result[i - 1] * (1 - k);
+    }
+    
+    return result;
+}
+
+function calculateRSI(bars, period) {
+    const result = new Array(bars.length).fill(null);
+    if (period > bars.length) return result;
+    
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+        const diff = bars[i].c - bars[i - 1].c;
+        if (diff > 0) gains += diff;
+        else losses += -diff;
+    }
+    
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+    result[period] = 100 - (100 / (1 + (avgGain / (avgLoss || 1))));
+    
+    for (let i = period + 1; i < bars.length; i++) {
+        const diff = bars[i].c - bars[i - 1].c;
+        if (diff > 0) {
+            avgGain = (avgGain * (period - 1) + diff) / period;
+            avgLoss = (avgLoss * (period - 1)) / period;
+        } else {
+            avgGain = (avgGain * (period - 1)) / period;
+            avgLoss = (avgLoss * (period - 1) + -diff) / period;
+        }
+        result[i] = 100 - (100 / (1 + (avgGain / (avgLoss || 1))));
+    }
+    
+    return result;
 }
 
 </script>
