@@ -231,6 +231,21 @@ async function loadStock() {
         console.log('Data Source:', dataSource);
         console.log('Full stock object:', currentStock);
         
+        // 🚀 Auto-load candles for Canvas chart
+        if (!currentStock.candles || currentStock.candles.length === 0) {
+            try {
+                const sym = currentStock.ticker || currentStock.sym || ticker;
+                const res = await fetch(`./charts/${sym}.json`);
+                if (res.ok) {
+                    const data = await res.json();
+                    currentStock.candles = data.bars || [];
+                    console.log('Candles loaded:', currentStock.candles.length, 'bars');
+                }
+            } catch (e) {
+                console.log('No candle data available (optional):', e.message);
+            }
+        }
+        
         console.log('Rendering header and overview...');
         renderHeader();
         
