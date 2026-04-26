@@ -2995,72 +2995,83 @@ function drawCandlestick(s){
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
   const wrap=document.getElementById('chart-wrap');
-  const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
+  const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
   const H2=200;
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr; cv.height=H2*dpr;
   cv.style.width=W2+'px'; cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
-
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
     ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
+    ctx.textAlign='center';
     ctx.fillStyle='rgba(120,150,180,.4)'; ctx.font='12px DM Sans';
-    ctx.textAlign='center'; ctx.fillText('Loading chart data…', W2/2, H2/2);
+    ctx.fillText('Loading chart data…', W2/2, H2/2);
     return;
   }
-
-  const W=W2, H=H2;
-  const PAD={l:8, r:48, t:8, b:18};
+  const W=W2,H=H2;
+  const PAD={l:6,r:52,t:8,b:22};
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
   const bw=Math.max(2,Math.min(14,gap*0.7));
-
-  // Calculate price range from visible candles
-  const allPrices=candles.flatMap(c=>[c.h,c.l]);
-  if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
-  if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
-  if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
-
-  let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
-  const priceRange = mx - mn || 1;
-  mn -= priceRange * 0.05;  // 5% padding
-  mx += priceRange * 0.05;
-  const rng = mx - mn || 1;
-
-  const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  const barX=i=>PAD.l+i*gap+gap/2;
   const allCandles = s.candles || candles;
   const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
   const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
-
-  // ✅ BACKGROUND
-  ctx.fillStyle='#060c18';
+  
+  // Define barX first (needed for visibility check)
+  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
+  
+  // Find which candles are actually visible on screen (not clipped by pan)
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
+  
+  // Calculate price range only from visible candles
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const allPrices=visibleCandles.flatMap(c=>[c.h,c.l]);
+  if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
+  if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
+  if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
+  
+  // Add padding to price range for better visualization
+  let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
+  const priceRange = mx - mn || 1;
+  mn = mn - priceRange * 0.05;  // 5% padding below
+  mx = mx + priceRange * 0.05;  // 5% padding above
+  const rng = mx - mn || 1;
+  
+  const toY=p=>PAD.t+((mx-p)/rng)*cH;
+  
+  ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
-
-  // ✅ Y-AXIS PANEL (right side, drawn FIRST - outside any clipping)
+  
+  // Draw Y-axis panel first (before clipping)
   ctx.fillStyle='rgba(7,12,24,.95)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(80,180,255,.5)';ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-
-  // ✅ GRID + CANDLESTICKS (WITH CLIPPING)
+  
+  // Add clipping region to prevent drawing outside chart bounds
   ctx.save();
   ctx.beginPath();
-  ctx.rect(PAD.l, PAD.t, cW, cH);
+  ctx.rect(PAD.l, PAD.t, cW, cH);  // Clip to chart area
   ctx.clip();
-
-  // Grid lines
+  
+  // Draw grid lines inside clipping
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
-    ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=.5;
+    ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
   }
-
-  // Candlesticks
+  
+  // Draw candlesticks inside clipping
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
@@ -3070,75 +3081,148 @@ function drawCandlestick(s){
     ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
-    ctx.fillRect(cx-bw/2,bodyTop,bw,bodyH);
+    if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bodyH,1);
+    else ctx.rect(cx-bw/2,bodyTop,bw,bodyH);
+    ctx.fill();
+    if(!bull){ctx.strokeStyle='rgba(255,59,92,.3)';ctx.lineWidth=.5;ctx.stroke();}
   });
-
-  // MAs (only inside clipping)
   function calcSMA(arr, period){
-    return arr.map((c,i)=>i<period-1?null:arr.slice(i-period+1,i+1).reduce((a,b)=>a+b.c,0)/period);
+    return arr.map((c,i)=>{
+      if(i < period-1) return null;
+      const sum = arr.slice(i-period+1, i+1).reduce((a,b)=>a+b.c, 0);
+      return sum / period;
+    });
   }
   function calcEMA(arr, period){
-    const k=2/(period+1);
-    const result=new Array(arr.length).fill(null);
-    let first=period-1;
-    if(first>=arr.length)return result;
-    result[first]=arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
-    for(let i=first+1;i<arr.length;i++)result[i]=arr[i].c*k+result[i-1]*(1-k);
+    const k = 2/(period+1);
+    const result = new Array(arr.length).fill(null);
+    let first = period-1;
+    if(first >= arr.length) return result;
+    result[first] = arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
+    for(let i=first+1; i<arr.length; i++){
+      result[i] = arr[i].c * k + result[i-1] * (1-k);
+    }
     return result;
   }
-
-  function drawMALine(vals, col, dash, label){
-    if(!vals)return;
+  function drawMAFull(vals, col, dash, label){
+    if(!vals) return;
     ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash(dash||[]);
     ctx.beginPath();
     let started=false;
-    const allC=s.candles||candles;
     vals.forEach((v,i)=>{
-      if(v===null)return;
-      const t=new Date(allC[i].d).getTime();
-      const x=PAD.l+((t-visFirst)/visRange)*cW;
+      if(v===null) return;
+      const t=new Date(allCandles[i].d).getTime();
+      const x=PAD.l+((t-visFirst)/visRange)*cW+S.chartPan;  // ← PAN OFFSET
+      if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; }
       const y=toY(v);
-      if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+      if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
     });
-    ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.stroke(); ctx.setLineDash([]);
+    let lastV = null, lastX = 0;
+    vals.forEach((v,i)=>{
+      if(v===null) return;
+      const t=new Date(allCandles[i].d).getTime();
+      const x=PAD.l+((t-visFirst)/visRange)*cW;
+      if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
+    });
+    if(lastV !== null){
+      ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
+      ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
+    }
+  }
+  if(S.maVis.sma20 || S.maVis.sma50 || S.maVis.ema200){
+    const allC = s.candles || candles;
+    const sma20vals  = S.maVis.sma20  ? calcSMA(allC, 20)  : null;
+    const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
+    const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
+    drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
+    drawMAFull(sma50vals,  '#3b82f6', [],    'SMA50');
+    drawMAFull(ema200vals, '#a855f7', [4,3], 'EMA200');
   }
 
-  if(S.maVis.sma20||S.maVis.sma50||S.maVis.ema200){
-    const allC=s.candles||candles;
-    if(S.maVis.sma20)drawMALine(calcSMA(allC,20),'#f59e0b',[],  'SMA20');
-    if(S.maVis.sma50)drawMALine(calcSMA(allC,50),'#3b82f6',[],  'SMA50');
-    if(S.maVis.ema200)drawMALine(calcEMA(allC,200),'#a855f7',[4,3],'EMA200');
-  }
-
+  // ── KPI overlays on price chart ──────────────────────────────────
+  const quarterly = s.quarterly || [];
+  const KPI_DEFS = [
+    {k:'pe',   label:'P/E',     col:'#f59e0b'},
+    {k:'rev',  label:'Rev',     col:'#22d3ee'},
+    {k:'net',  label:'Net',     col:'#4ade80'},
+    {k:'cfo',  label:'CFO',     col:'#34d399'},
+    {k:'opm',  label:'OPM%',    col:'#fb923c'},
+    {k:'debt', label:'Debt',    col:'#f87171'},
+  ];
+  function xForDate(dateStr){ const t = new Date(dateStr).getTime(); return PAD.l + ((t - visFirst) / visRange) * cW + S.chartPan; }
+  function priceAt(dateStr){ for(let i=allCandles.length-1; i>=0; i--){ if(allCandles[i].d <= dateStr) return allCandles[i].c; } return allCandles.length ? allCandles[0].c : (s.ltp || 0); }
+  
+  KPI_DEFS.forEach(({k, label, col})=>{
+    if(!S.kpiVis[k]) return;
+    let pts = [];
+    if(k === 'pe'){
+      quarterly.forEach(q=>{ if(!q.eps || q.eps <= 0) return; const annEPS = q.eps * 4; const price = priceAt(q.d); if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d}); });
+      if(s.pe > 0 && candles.length > 0){ const rightX = PAD.l + cW; if(!pts.length || pts[pts.length-1].x < rightX - 10) pts.push({x: rightX, v: s.pe, d: 'now'}); }
+    } else {
+      quarterly.forEach(q=>{ const v = q[k]; if(v != null) pts.push({x: xForDate(q.d), v, d: q.d}); });
+      const curVal = k==='cfo'?s.cfo : k==='rev'?s.sales : k==='net'?s.npm_pct : k==='opm'?s.opm_pct : k==='debt'?s.debt_eq : null;
+      if(curVal != null && pts.length) pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
+    }
+    pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+    if(!pts.length && (quarterly.length || s.pe)){
+      const allPts2 = [];
+      if(k==='pe'){ quarterly.forEach(q=>{ if(!q.eps||q.eps<=0) return; const pr = priceAt(q.d); if(pr>0) allPts2.push({x:0, v:pr/(q.eps*4), d:q.d}); }); if(s.pe>0) allPts2.push({x:0, v:s.pe, d:'now'}); } else { quarterly.forEach(q=>{ const v=q[k]; if(v!=null) allPts2.push({x:0,v,d:q.d}); }); }
+      if(allPts2.length>=2){ const t0=new Date(allPts2[0].d==='now'?Date.now():allPts2[0].d).getTime(); const t1=new Date(allPts2[allPts2.length-1].d==='now'?Date.now():allPts2[allPts2.length-1].d).getTime(); const tr=t1-t0||1; allPts2.forEach(p=>{ const t=new Date(p.d==='now'?Date.now():p.d).getTime(); p.x = PAD.l + ((t-t0)/tr)*cW + S.chartPan; }); pts = allPts2; }
+    }
+    if(!pts.length) return;
+    const drawLine = pts.length >= 2;
+    const vals = pts.map(p=>p.v);
+    const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
+    const vRng = vMax - vMin || 1;
+    const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
+    const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
+    ctx.save();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
+    if(drawLine){
+      ctx.beginPath(); pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); }); ctx.lineTo(pts[pts.length-1].x, yBot); ctx.lineTo(pts[0].x, yBot); ctx.closePath(); ctx.fillStyle = col; ctx.globalAlpha = 0.08; ctx.fill(); ctx.globalAlpha = 0.9; ctx.beginPath(); pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); }); ctx.stroke();
+    }
+    ctx.fillStyle = col; ctx.globalAlpha = 1; pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2); ctx.fill(); });
+    const labelEvery = pts.length > 6 ? 2 : 1;
+    pts.forEach((p,j)=>{ if(j % labelEvery !== 0 && j !== pts.length-1) return; const dispV = k==='pe'  ? p.v.toFixed(0)+'x' : k==='opm' ? p.v.toFixed(1)+'%' : Math.abs(p.v)>=1000 ? (p.v/1000).toFixed(1)+'K' : p.v.toFixed(0); ctx.fillStyle = col; ctx.globalAlpha = 0.85; ctx.font = '6px JetBrains Mono,monospace'; ctx.textAlign = 'center'; ctx.fillText(dispV, p.x, kpiY(p.v) - 4); });
+    const last = pts[pts.length-1];
+    const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' : k==='opm' ? last.v.toFixed(1)+'%' : Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'KCr' : last.v.toFixed(0)+'Cr';
+    ctx.fillStyle = col; ctx.globalAlpha = 1; ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right'; ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8)); ctx.restore();
+  });
+  
+  // Restore clipping
   ctx.restore();
-
-  // ✅ Y-AXIS LABELS (RIGHT SIDE - OUTSIDE CLIPPING)
+  
+  // Draw Y-axis price labels (outside clipping)
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
     const price=mx-(mx-mn)*(i/4);
     ctx.fillStyle='#00ffff';
-    ctx.font='bold 10px JetBrains Mono,monospace';
-    ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'), W-3, y+4);
+    ctx.font='11px JetBrains Mono,monospace'; ctx.fontWeight='900'; ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-8,y+(i===0?10:-3));
   }
 
-  // ✅ X-AXIS LABELS (BOTTOM - OUTSIDE CLIPPING)
-  const maxLabels=Math.min(5, Math.floor(cW/55));
-  const lblStep=Math.max(1, Math.floor(n/maxLabels));
-  ctx.fillStyle='#ffffff';
-  ctx.font='8px JetBrains Mono,monospace';
-  ctx.textAlign='center';
+  // Draw X-axis labels
+  const maxLabels = Math.min(5, Math.floor(cW / 55));  // Increased spacing to 55px
+  const lblStep = Math.max(1, Math.floor(n / maxLabels));
+  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  let lastLabelX = -100;  // Track last label position to prevent overlap
   candles.forEach((c,i)=>{
-    if(i%lblStep!==0 && i!==n-1)return;
-    const d=new Date(c.d);
+    if(i % lblStep !== 0 && i !== n-1) return;
+    const d = new Date(c.d);
     let lbl;
-    if(S.chartInterval==='M') lbl=(d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl=(d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else lbl=d.getDate()+'/'+(d.getMonth()+1);
-    const x=barX(i);
-    if(x<PAD.l||x>PAD.l+cW)return;
-    ctx.fillText(lbl, x, H-3);
+    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
+    const x = barX(i);
+    if(x > PAD.l+cW+5 || x < PAD.l-5) return;  // Clip off-screen labels
+    
+    // Prevent label overlap
+    if(Math.abs(x - lastLabelX) < 45) return;  // Skip if too close to last label
+    lastLabelX = x;
+    
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, H-4);
   });
 }
 
@@ -3153,63 +3237,105 @@ function drawVolume(s){
   cv.style.width=W2+'px';cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
-
   const candles=getSlicedCandles(s, W2);
   if(!candles.length)return;
-
-  const W=W2, H=H2;
-  const PAD={l:8, r:48, t:4, b:4};
-  const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
-  const n=candles.length;
-  const gap=cW/n;
-  const bw=Math.max(2,Math.min(6,gap*0.4));
-  const mv=Math.max(...candles.map(c=>c.v))||1;
-
-  const barX=i=>PAD.l+i*gap+(gap-bw)/2;
-
-  ctx.fillStyle='#070c18';
-  ctx.fillRect(0,0,W,H);
-
-  // Y-axis panel
+  ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
+  const W=W2,H=H2;
+  const PAD={l:6,r:52,t:4,b:18};  // Increase bottom for X-axis labels
+  const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
+  const n=candles.length,gap=cW/n,bw=Math.max(1.5,Math.min(6,gap*0.4));  // Narrower bars (40% of gap)
+  
+  // Define barX for volume (same alignment as candlestick chart)
+  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
+  
+  // Find visible candles and calculate volume range
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const mv=Math.max(...visibleCandles.map(c=>c.v))||1;
+  
+  // Right axis panel (draw before clipping)
   ctx.fillStyle='rgba(7,12,24,.95)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(80,180,255,.5)';ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-
+  
+  // Add clipping to prevent volume bars from crossing axis
   ctx.save();
   ctx.beginPath();
   ctx.rect(PAD.l, PAD.t, cW, cH);
   ctx.clip();
-
-  // Volume bars
+  
+  
+  // Volume bars with correct color coding (match candlestick colors)
+  // UP (close >= open) = Green (#00d084), DOWN (close < open) = Red (#ff3b5c)
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=barX(i);
-    const y=PAD.t+cH-bh;
-    ctx.fillStyle=c.c>=c.o?'#00d084':'#ff3b5c';
-    ctx.fillRect(x, y, bw, bh);
+    const x=barX(i)-(bw/2);  // Center bar on barX
+    const isUp = c.c >= c.o;
+    ctx.fillStyle = isUp ? '#00d084' : '#ff3b5c';  // Bright, opaque colors
+    if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
+    else ctx.rect(x,PAD.t+cH-bh,bw,bh);
+    ctx.fill();
   });
-
-  // Volume MA5
-  const volMA=candles.map((c,i)=>i<4?null:candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5);
-  ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1;
-  ctx.beginPath();
+  
+  // Volume MA trend line - bright and visible
+  const volMA = candles.map((c,i)=>{
+    if(i<4) return null;
+    return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
+  });
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=1.8; ctx.beginPath();
   let started=false;
   volMA.forEach((v,i)=>{
-    if(v===null)return;
-    const x=PAD.l+i*gap+gap/2;
+    if(v===null) return;
+    const x=barX(i);
     const y=PAD.t+cH-(v/mv)*cH;
-    if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+    if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
   ctx.stroke();
-
+  
+  // Restore clipping
   ctx.restore();
-
-  // Y-axis label
-  ctx.fillStyle='#00ff00';
-  ctx.font='bold 9px JetBrains Mono,monospace';
+  
+  // Volume label (Vol)
+  ctx.fillStyle='#00ff00'; ctx.font='10px JetBrains Mono,monospace; font-weight:bold'; ctx.textAlign='right';
+  ctx.fillText('Vol',W-2,12);
+  
+  // Volume Y-axis scale labels (outside clipping)
+  ctx.fillStyle='#ffff00'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  // Use visible candles for max volume (not all candles)
+  const maxVol = Math.max(...visibleCandles.map(c=>c.v));
   ctx.textAlign='right';
-  ctx.fillText('Vol', W-3, 10);
+  ctx.fillText((maxVol/1000000).toFixed(1)+'M', W-2, 8);
+  ctx.fillText('0', W-2, H-4);
+  
+  // X-AXIS LABELS for volume - use barX for alignment
+  const maxLabelsVol = Math.min(5, Math.floor(cW / 55));  // Increased spacing
+  const lblStepVol = Math.max(1, Math.floor(n / maxLabelsVol));
+  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  let lastLabelXVol = -100;
+  candles.forEach((c,i)=>{
+    if(i % lblStepVol !== 0 && i !== n-1) return;
+    const d = new Date(c.d);
+    let lbl;
+    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
+    const x = barX(i);
+    if(x > PAD.l+cW+5 || x < PAD.l-5) return;  // Clip off-screen labels
+    
+    // Prevent label overlap
+    if(Math.abs(x - lastLabelXVol) < 45) return;
+    lastLabelXVol = x;
+    
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, H-2);
+  });
 }
 
 function updateChartStats(s){
