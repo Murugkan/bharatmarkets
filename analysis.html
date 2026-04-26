@@ -3455,8 +3455,8 @@ function drawVolume(s){
 
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2;  // ✅ FIX: Removed +S.chartPan - panning handled by data slice in getSlicedCandles
-    ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
+    const x=PAD.l+i*gap+(gap-bw)/2;
+    ctx.fillStyle=c.c>=c.o?'#00d084':'#ff3b5c';
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
@@ -3510,12 +3510,9 @@ function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
 async function canvasLoadAndDrawChart(sym) {
   // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
   if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
-    // ✅ FIX: Reset initialization flag when rendering new chart
-    chartInteraction.initialized = false;
     attachChartResizeObserver(currentStock);
     scheduleTACharts(currentStock);
-    // Give canvas time to render, then setup interaction
-    setTimeout(() => { setupChartInteraction(); }, 50);
+    setupChartInteraction();  // Enable pan/zoom once
     return;
   }
   
@@ -3526,12 +3523,9 @@ async function canvasLoadAndDrawChart(sym) {
       const data = await res.json();
       currentStock.candles = data.bars || [];
       chartCache[sym] = currentStock.candles;
-      // ✅ FIX: Reset initialization flag when rendering new chart
-      chartInteraction.initialized = false;
       attachChartResizeObserver(currentStock);
       scheduleTACharts(currentStock);
-      // Give canvas time to render, then setup interaction
-      setTimeout(() => { setupChartInteraction(); }, 50);
+      setupChartInteraction();  // Enable pan/zoom once
       return;
     }
   } catch (e) {
@@ -3540,12 +3534,9 @@ async function canvasLoadAndDrawChart(sym) {
   
   // ✅ Step 3: Use whatever data we have, or show helpful message
   if(currentStock) {
-    // ✅ FIX: Reset initialization flag when rendering new chart
-    chartInteraction.initialized = false;
     attachChartResizeObserver(currentStock);
     scheduleTACharts(currentStock);
-    // Give canvas time to render, then setup interaction
-    setTimeout(() => { setupChartInteraction(); }, 50);
+    setupChartInteraction();  // Enable pan/zoom once
   }
 }
 
@@ -3556,28 +3547,14 @@ async function canvasLoadAndDrawChart(sym) {
 let chartInteraction = {
   isPanning: false,
   startX: 0,
-  startPan: 0,
-  initialized: false  // ✅ FIX: Prevent double-initialization
+  startPan: 0
 };
 
 function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
+  if (!canvas) return;
   
-  // ✅ FIX: Guard 1 - Canvas must exist
-  if (!canvas) {
-    console.warn('[CHART] Canvas element not found. Retrying in 200ms...');
-    setTimeout(setupChartInteraction, 200);
-    return;
-  }
-  
-  // ✅ FIX: Guard 2 - Prevent double-initialization
-  if (chartInteraction.initialized) {
-    console.log('[CHART] Chart interaction already initialized, skipping');
-    return;
-  }
-  
-  chartInteraction.initialized = true;
-  console.log('[CHART] ✅ setupChartInteraction initialized successfully');
+  console.log('[CHART] setupChartInteraction: canvas found', canvas);
   
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
@@ -3597,9 +3574,8 @@ function setupChartInteraction() {
     
     console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
     
-    // ✅ FIX #3: Dynamic pan limits based on canvas width
-    const maxPan = canvas.offsetWidth * 0.3;
-    newPan = Math.max(-maxPan, Math.min(maxPan, newPan));
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
     console.log('[CHART] after limit: newPan=' + newPan);
     S.chartPan = newPan;
     console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
@@ -3609,13 +3585,11 @@ function setupChartInteraction() {
   canvas.onmouseup = () => { chartInteraction.isPanning = false; };
   canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
   
-  // ✅ FIX #4: Touch Support with proper event prevention
+  // Touch Support
   canvas.ontouchstart = (e) => {
-    console.log('[CHART] touchstart - isPanning=true');
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.touches[0].clientX;
     chartInteraction.startPan = S.chartPan;
-    e.preventDefault();  // ✅ Prevent default scrolling
   };
   
   canvas.ontouchmove = (e) => {
@@ -3623,18 +3597,13 @@ function setupChartInteraction() {
     const delta = e.touches[0].clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
-    // ✅ FIX: Dynamic pan limits
-    const maxPan = canvas.offsetWidth * 0.3;
-    newPan = Math.max(-maxPan, Math.min(maxPan, newPan));
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
     S.chartPan = newPan;
     scheduleTACharts(currentStock);
-    e.preventDefault();  // ✅ Prevent default scrolling
   };
   
-  canvas.ontouchend = (e) => { 
-    chartInteraction.isPanning = false;
-    e.preventDefault();  // ✅ Prevent default scrolling
-  };
+  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
@@ -3646,9 +3615,8 @@ function setupChartInteraction() {
   };
 }
 
-// ✅ FIX #1: Don't setup on DOMContentLoaded - canvas doesn't exist yet
-// Canvas is created dynamically when Canvas tab is rendered
-// setupChartInteraction() is called from canvasLoadAndDrawChart() instead
+// Auto-setup when canvas is ready
+document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
 
 
