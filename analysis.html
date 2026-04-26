@@ -1995,7 +1995,10 @@ function toggleEMA(emaType) {
 }
 
 function toggleMetric(metric) {
-    if (!proCharts.chart2) return;
+    if (!proCharts.chart2) {
+        console.log(`⚠️ Chart 2 not available for metrics`);
+        return;
+    }
     
     const metricMap = {
         'eps': 'EPS',
@@ -2007,10 +2010,19 @@ function toggleMetric(metric) {
     
     const seriesName = metricMap[metric];
     
+    // Check if series exists before toggling
     try {
-        proCharts.chart2.toggleSeries(seriesName);
+        const allSeries = proCharts.chart2.getSeries ? proCharts.chart2.getSeries() : [];
+        const seriesExists = allSeries && allSeries.some(s => s.name === seriesName);
+        
+        if (seriesExists) {
+            proCharts.chart2.toggleSeries(seriesName);
+            console.log(`✅ Toggled: ${seriesName}`);
+        } else {
+            console.log(`ℹ️ Metric '${seriesName}' not available in Chart 2`);
+        }
     } catch (e) {
-        console.log(`Toggle metric: ${seriesName}`, e.message);
+        console.log(`ℹ️ Metric toggle (${seriesName}):`, e.message);
     }
 }
 
@@ -2549,14 +2561,15 @@ async function renderTechnicalPro(stock) {
             }
         });
         
-        // Candlestick series
+        // Candlestick series - use RIGHT price scale for prices
         const candlestickSeries = chart.addCandlestickSeries({
             upColor: '#26de81',
             downColor: '#ff6b85',
             borderUpColor: '#26de81',
             borderDownColor: '#ff6b85',
             wickUpColor: '#26de81',
-            wickDownColor: '#ff6b85'
+            wickDownColor: '#ff6b85',
+            priceScaleId: 'right'  // EXPLICITLY use right scale
         });
         
         candlestickSeries.setData(chartBars.map(bar => ({
@@ -2623,7 +2636,7 @@ async function renderTechnicalPro(stock) {
         
         // Volume histogram - separate axis with color bars
         const volumeSeries = chart.addHistogramSeries({
-            priceScaleId: 'volume',
+            priceScaleId: 'left',  // Use LEFT scale for volume - separate from price
             title: 'Volume'
         });
         
@@ -2638,11 +2651,11 @@ async function renderTechnicalPro(stock) {
             })
         );
         
-        // Configure volume price scale - RIGHT SIDE
-        const volumeScale = chart.priceScale('volume');
+        // Configure VOLUME scale on LEFT side - completely separate from price
+        const volumeScale = chart.priceScale('left');
         volumeScale.applyOptions({
             scaleMargins: {
-                top: 0.75,  // Keep volume at bottom
+                top: 0.75,  // Volume at bottom only
                 bottom: 0
             },
             autoScale: true,
@@ -2657,8 +2670,40 @@ async function renderTechnicalPro(stock) {
             }
         });
         
+        // Configure RIGHT scale for PRICES only (candlestick + EMAs)
+        const priceScale = chart.priceScale('right');
+        priceScale.applyOptions({
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.3  // Leave bottom for volume
+            },
+            autoScale: true,
+            mode: LightweightCharts.PriceScaleMode.Normal
+        });
+        
         // Auto-fit
         chart.timeScale().fitContent();
+        
+        // Enable proper panning and zooming on time axis
+        chart.timeScale().applyOptions({
+            timeVisible: true,
+            secondsVisible: false,
+            lockRange: false,  // Allow panning left/right
+            rightOffset: 10,
+            minBarSpacing: 0.5
+        });
+        
+        // Format price axis labels - NO DECIMALS
+        setTimeout(() => {
+            try {
+                chart.priceScale('right').applyOptions({
+                    priceFormatter: (price) => Math.floor(price).toString()
+                });
+                console.log('✅ Price formatter applied');
+            } catch (e) {
+                console.log('Price formatter note:', e.message);
+            }
+        }, 100);
         
         // Store chart reference
         proCharts.chart1 = chart;
@@ -2771,6 +2816,37 @@ async function renderTechnicalPro(stock) {
         console.log('📊 Rendering Chart 2...');
         proCharts.chart2.render();
         console.log('✅ Chart 2 rendered successfully');
+        
+        // SYNC TIME AXES between Chart 1 (Lightweight-Charts) and Chart 2 (ApexCharts)
+        if (proCharts.chart1 && proCharts.chart2) {
+            console.log('🔗 Syncing time axes...');
+            
+            // Listen to Chart 1 time scale changes
+            proCharts.chart1.timeScale().subscribeVisibleLogicalRangeChange(() => {
+                try {
+                    const timeRange = proCharts.chart1.timeScale().getVisibleRange();
+                    
+                    if (timeRange) {
+                        // Convert time range to dates for ApexCharts
+                        const from = timeRange.from * 1000; // Convert to milliseconds
+                        const to = timeRange.to * 1000;
+                        
+                        // Update Chart 2 X-axis to match
+                        proCharts.chart2.updateOptions({
+                            xaxis: {
+                                min: from,
+                                max: to
+                            }
+                        });
+                    }
+                } catch (e) {
+                    // Sync errors are non-critical
+                    console.log('Time sync note:', e.message);
+                }
+            });
+            
+            console.log('✅ Time axis sync enabled');
+        }
     } catch (err) {
         console.error('❌ Chart 2 error:', err.message);
         document.getElementById('chartPro2').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
