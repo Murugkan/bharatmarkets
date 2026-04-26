@@ -94,6 +94,7 @@
     
     <div class="tabs">
         <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+        <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
         <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
         <button class="tab" onclick="switchTab('technicalPro')">📈 Technical Pro</button>
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
@@ -119,6 +120,18 @@ const STORE = "Stocks";
 let currentStock = null;
 let currentTab = "overview";
 let dataSource = null; // Track where data comes from: 'db' or 'json'
+
+// ✅ Canvas Chart State (REQUIRED for chart functions)
+const S = {
+  chartRange: '1Y',
+  chartInterval: 'D',
+  maVis: { sma20: true, sma50: true, ema200: true, vol: true },
+  kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false },
+  chartPan: 0,      // Pan offset in pixels
+  chartZoom: 1,     // Zoom level (1 = 100%)
+  panStart: null    // Pan start position
+};
+let chartCache = {};
 
 // Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
@@ -229,6 +242,21 @@ async function loadStock() {
         dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
         console.log('Data Source:', dataSource);
         console.log('Full stock object:', currentStock);
+        
+        // 🚀 Auto-load candles for Canvas chart
+        if (!currentStock.candles || currentStock.candles.length === 0) {
+            try {
+                const sym = currentStock.ticker || currentStock.sym || ticker;
+                const res = await fetch(`./charts/${sym}.json`);
+                if (res.ok) {
+                    const data = await res.json();
+                    currentStock.candles = data.bars || [];
+                    console.log('Candles loaded:', currentStock.candles.length, 'bars');
+                }
+            } catch (e) {
+                console.log('No candle data available (optional):', e.message);
+            }
+        }
         
         console.log('Rendering header and overview...');
         renderHeader();
@@ -560,6 +588,45 @@ function renderTab(tab) {
             
             </div>
         `;
+    } else if (tab === 'canvas') {
+        // CANVAS TAB — Chart only, no indicators
+        html = `<div style="padding:0;padding-bottom:100px">
+            <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap">${s.ticker || s.sym} · Price Chart</div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
+                  <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
+                  <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
+                  <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
+                </select>
+                <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
+                  <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
+                  <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
+                  <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
+                  <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
+                  <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
+                </select>
+              </div>
+            </div>
+            <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio from quarterly data"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue from quarterly data"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit from quarterly data"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
+            </div>
+            <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
+              <div id="chart-wrap" style="position:relative;width:100%;height:240px"><canvas id="cv-candle"></canvas></div>
+              <div id="vol-wrap" style="position:relative;width:100%;height:50px;border-top:1px solid var(--b1)"><canvas id="cv-vol"></canvas></div>
+            </div>
+          </div>`;
+        setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
     } else if (tab === 'technical') {
         html = `<div style="padding:0;padding-bottom:100px">
             <!-- CONTROLS: Duration, RSI, Metrics - All in ONE ROW -->
@@ -2842,39 +2909,30 @@ async function renderTechnicalPro(stock) {
     }
 }
 
-</script>
+// ════════════════════════════════════════════════════════
+// CANVAS TAB - COMPLETE CHART MODULE (from bharatmarkets v7)
+// ════════════════════════════════════════════════════════
 
-</body>
-</html>
-  if(S.drillTab==='technical') scheduleChartRedraw();
-}
-// Redraw canvases without destroying HTML structure
 function scheduleChartRedraw(){
-  // Data already in chartCache after first load — just redraw
-  if(S.selStock && chartCache[S.selStock.symbol]){
-    S.selStock.candles = chartCache[S.selStock.symbol];
+  // ✅ Use currentStock (not S.selStock which doesn't exist)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    // Data already loaded, just redraw
   }
-  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(S.selStock)));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(currentStock)));
 }
 
-// ── Chart Drawing Engine ──────────────────────────────
-
-// Aggregate daily bars → weekly or monthly OHLCV
 function aggregateCandles(daily, interval){
   if(interval === 'D' || !daily.length) return daily;
-
   const buckets = {};
   daily.forEach(c => {
     const d = new Date(c.d);
     let key;
     if(interval === 'W'){
-      // Week key = Monday of that week (ISO)
-      const day = d.getDay(); // 0=Sun
+      const day = d.getDay();
       const monday = new Date(d);
       monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
       key = monday.toISOString().slice(0,10);
     } else {
-      // Month key = YYYY-MM
       key = c.d.slice(0,7);
     }
     if(!buckets[key]){
@@ -2883,25 +2941,24 @@ function aggregateCandles(daily, interval){
       const b = buckets[key];
       b.h = Math.max(b.h, c.h);
       b.l = Math.min(b.l, c.l);
-      b.c = c.c;       // last close in period
+      b.c = c.c;
       b.v += c.v;
     }
   });
   return Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
 }
 
-// Schedule chart redraws after DOM paint (2x rAF for reliable width)
 function scheduleTACharts(s){
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
       drawCandlestick(s);
       if(S.maVis.vol) drawVolume(s);
       updateChartStats(s);
+      setupChartInteraction();  // Setup pan/zoom after drawing
     });
   });
 }
 
-// Redraw on resize — canvas width changes when panel opens/rotates
 let _chartResizeObs = null;
 function attachChartResizeObserver(s){
   if(_chartResizeObs) _chartResizeObs.disconnect();
@@ -2914,44 +2971,30 @@ function attachChartResizeObserver(s){
 function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
   if(!daily.length) return daily;
-
-  // Step 1: Aggregate all daily bars to chosen interval
   const allAgg = aggregateCandles(daily, S.chartInterval);
   if(!allAgg.length) return [];
-
-  // Step 2: Filter by date range (calendar-based)
   const now = new Date();
   const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   let rangeCandles = allAgg.filter(c => c.d >= cutoff);
   if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
-
-  // Step 3: Fit to canvas — ideal bar width is 6-8px, minimum 4px
-  // This drives HOW MANY bars show, not just caps them
   if(canvasWidth && canvasWidth > 0){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
-    const IDEAL_BAR_W = 7;   // px — comfortable readable width
-    const MIN_BAR_W  = 4;    // px — absolute minimum before bars become unreadable
+    const IDEAL_BAR_W = 7;
+    const MIN_BAR_W  = 4;
     const maxFit = Math.floor(chartW / MIN_BAR_W);
-    const idealFit = Math.floor(chartW / IDEAL_BAR_W);
-
     if(rangeCandles.length > maxFit){
-      // Too many bars — take most recent maxFit
       return rangeCandles.slice(-maxFit);
     }
-    // If fewer bars than ideal, that's fine — bars just get wider (up to 10px cap in draw)
   }
   return rangeCandles;
 }
 
-// Main candlestick chart with MA overlays and KPI overlays
-// KPI overlays use a dedicated Y-axis scale separate from price
 function drawCandlestick(s){
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
   const wrap=document.getElementById('chart-wrap');
-  // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
   const H2=200;
   const dpr=window.devicePixelRatio||1;
@@ -2959,89 +3002,90 @@ function drawCandlestick(s){
   cv.style.width=W2+'px'; cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
-
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
     ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
     ctx.textAlign='center';
-    if(s._noChartData){
-      ctx.fillStyle='rgba(245,166,35,.7)'; ctx.font='bold 11px DM Sans';
-      ctx.fillText('No chart data for '+s.symbol, W2/2, H2/2-16);
-      ctx.fillStyle='rgba(140,176,208,.5)'; ctx.font='10px DM Sans';
-      ctx.fillText('Add to watchlist.txt → run GitHub Actions', W2/2, H2/2+4);
-      ctx.fillText('(fetch_type: new_symbol)', W2/2, H2/2+20);
-    } else {
-      ctx.fillStyle='rgba(120,150,180,.4)'; ctx.font='12px DM Sans';
-      ctx.fillText('Loading chart data…', W2/2, H2/2);
-    }
+    ctx.fillStyle='rgba(120,150,180,.4)'; ctx.font='12px DM Sans';
+    ctx.fillText('Loading chart data…', W2/2, H2/2);
     return;
   }
-
   const W=W2,H=H2;
   const PAD={l:6,r:52,t:8,b:22};
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
   const bw=Math.max(2,Math.min(14,gap*0.7));
-
-  // Full history + visible date range — used by both MAs and KPI overlays
   const allCandles = s.candles || candles;
   const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
   const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
-
-  const allPrices=candles.flatMap(c=>[c.h,c.l]);
+  
+  // Define barX first (needed for visibility check)
+  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
+  
+  // Find which candles are actually visible on screen (not clipped by pan)
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
+  
+  // Calculate price range only from visible candles
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const allPrices=visibleCandles.flatMap(c=>[c.h,c.l]);
   if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
   if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
-  const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
+  
+  // Add padding to price range for better visualization
+  let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
+  const priceRange = mx - mn || 1;
+  mn = mn - priceRange * 0.05;  // 5% padding below
+  mx = mx + priceRange * 0.05;  // 5% padding above
+  const rng = mx - mn || 1;
+  
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  const barX=i=>PAD.l+i*gap+gap/2;
-
-  // Background
+  
   ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
-
-  // Grid lines
+  
+  // Draw Y-axis panel first (before clipping)
+  ctx.fillStyle='rgba(7,12,24,.95)';
+  ctx.fillRect(W-PAD.r,0,PAD.r,H);
+  ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  
+  // Add clipping region to prevent drawing outside chart bounds
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PAD.l, PAD.t, cW, cH);  // Clip to chart area
+  ctx.clip();
+  
+  // Draw grid lines inside clipping
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
     ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
-    // Price label
-    const price=mx-(mx-mn)*(i/4);
-    ctx.fillStyle='rgba(140,176,208,.65)';
-    ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?9:-2));
   }
-
-  // Right axis separator
-  ctx.fillStyle='rgba(7,12,24,.8)';
-  ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
-  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-
-  // Candles
+  
+  // Draw candlesticks inside clipping
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
     const bodyTop=toY(Math.max(c.o,c.c));
     const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
-
-    // Wick
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
     ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
-
-    // Body
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bodyH,1);
     else ctx.rect(cx-bw/2,bodyTop,bw,bodyH);
     ctx.fill();
-
     if(!bull){ctx.strokeStyle='rgba(255,59,92,.3)';ctx.lineWidth=.5;ctx.stroke();}
   });
-
-  // ── Moving Average curves computed from candle close prices ──
   function calcSMA(arr, period){
     return arr.map((c,i)=>{
       if(i < period-1) return null;
@@ -3052,7 +3096,6 @@ function drawCandlestick(s){
   function calcEMA(arr, period){
     const k = 2/(period+1);
     const result = new Array(arr.length).fill(null);
-    // Find first valid index
     let first = period-1;
     if(first >= arr.length) return result;
     result[first] = arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
@@ -3061,101 +3104,44 @@ function drawCandlestick(s){
     }
     return result;
   }
-  function drawMALine(vals, col, dash, label){
+  function drawMAFull(vals, col, dash, label){
+    if(!vals) return;
     ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash(dash||[]);
     ctx.beginPath();
     let started=false;
     vals.forEach((v,i)=>{
       if(v===null) return;
-      const x=barX(i), y=toY(v);
+      const t=new Date(allCandles[i].d).getTime();
+      const x=PAD.l+((t-visFirst)/visRange)*cW+S.chartPan;  // ← PAN OFFSET
+      if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; }
+      const y=toY(v);
       if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
     });
     ctx.stroke(); ctx.setLineDash([]);
-    // Label at last valid point
-    const lastIdx = vals.reduce((best,v,i)=>v!==null?i:best, -1);
-    if(lastIdx>=0 && label){
-      const lv = vals[lastIdx];
+    let lastV = null, lastX = 0;
+    vals.forEach((v,i)=>{
+      if(v===null) return;
+      const t=new Date(allCandles[i].d).getTime();
+      const x=PAD.l+((t-visFirst)/visRange)*cW;
+      if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
+    });
+    if(lastV !== null){
       ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-      ctx.fillText(label+' ₹'+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
+      ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
     }
   }
-  // MAs computed on allCandles (full history), then only visible portion drawn
-  // This ensures EMA200 is correct even on short-range views
   if(S.maVis.sma20 || S.maVis.sma50 || S.maVis.ema200){
     const allC = s.candles || candles;
     const sma20vals  = S.maVis.sma20  ? calcSMA(allC, 20)  : null;
     const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
     const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
-
-    // Map allCandles index → visible x position using date
-    function maX(allIdx){
-      const t = new Date(allC[allIdx].d).getTime();
-      return PAD.l + ((t - visFirst) / visRange) * cW;
-    }
-    function drawMAFull(vals, col, dash, label){
-      if(!vals) return;
-      ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.setLineDash(dash||[]);
-      ctx.beginPath();
-      let started = false;
-      vals.forEach((v,i)=>{
-        if(v === null) return;
-        const x = maX(i);
-        if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; } // off-screen
-        const y = toY(v);
-        if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
-      });
-      ctx.stroke(); ctx.setLineDash([]);
-      // Label at rightmost visible point
-      let lastV = null, lastX = 0;
-      vals.forEach((v,i)=>{
-        if(v===null) return;
-        const x = maX(i);
-        if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
-      });
-      if(lastV !== null){
-        ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
-      }
-    }
     drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
     drawMAFull(sma50vals,  '#3b82f6', [],    'SMA50');
     drawMAFull(ema200vals, '#a855f7', [4,3], 'EMA200');
   }
 
-  // Current price dashed line
-  if(s.ltp){
-    const lastY=toY(s.ltp);
-    const bull=s.candles?.length&&s.ltp>=(s.candles[0]?.c||s.ltp);
-    ctx.strokeStyle=bull?'rgba(0,208,132,.5)':'rgba(255,59,92,.5)';
-    ctx.lineWidth=.6;ctx.setLineDash([3,3]);
-    ctx.beginPath();ctx.moveTo(PAD.l,lastY);ctx.lineTo(PAD.l+cW,lastY);ctx.stroke();
-    ctx.setLineDash([]);
-    // Price badge on right axis
-    ctx.fillStyle=bull?'#00d084':'#ff3b5c';
-    ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
-  }
-
-  // X-axis date labels — use actual candle.d dates, show ~5 evenly spaced
-  const maxLabels = Math.min(6, Math.floor(cW / 40));
-  const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(140,176,208,.55)'; ctx.font='7px JetBrains Mono,monospace';
-  candles.forEach((c,i)=>{
-    if(i % lblStep !== 0 && i !== n-1) return;
-    const d = new Date(c.d);
-    let lbl;
-    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
-    const x = barX(i);
-    if(x > PAD.l+cW-8) return;
-    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H-4);
-  });
-
   // ── KPI overlays on price chart ──────────────────────────────────
   const quarterly = s.quarterly || [];
-
   const KPI_DEFS = [
     {k:'pe',   label:'P/E',     col:'#f59e0b'},
     {k:'rev',  label:'Rev',     col:'#22d3ee'},
@@ -3164,149 +3150,82 @@ function drawCandlestick(s){
     {k:'opm',  label:'OPM%',    col:'#fb923c'},
     {k:'debt', label:'Debt',    col:'#f87171'},
   ];
-
-  // Use FULL candle history for price lookups — not just visible slice
-  // (allCandles, visFirst, visRange already defined above)
-
-  function xForDate(dateStr){
-    const t = new Date(dateStr).getTime();
-    return PAD.l + ((t - visFirst) / visRange) * cW;
-  }
-
-  // Search FULL history for price on/before a date
-  function priceAt(dateStr){
-    for(let i=allCandles.length-1; i>=0; i--){
-      if(allCandles[i].d <= dateStr) return allCandles[i].c;
-    }
-    return allCandles.length ? allCandles[0].c : (s.ltp || 0);
-  }
-
-  // Log raw quarterly data once
-  if(quarterly.length){
-        }
-
+  function xForDate(dateStr){ const t = new Date(dateStr).getTime(); return PAD.l + ((t - visFirst) / visRange) * cW + S.chartPan; }
+  function priceAt(dateStr){ for(let i=allCandles.length-1; i>=0; i--){ if(allCandles[i].d <= dateStr) return allCandles[i].c; } return allCandles.length ? allCandles[0].c : (s.ltp || 0); }
+  
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
-
     let pts = [];
     if(k === 'pe'){
-      quarterly.forEach(q=>{
-        if(!q.eps || q.eps <= 0) return;
-        const annEPS = q.eps * 4;
-        const price = priceAt(q.d);
-        if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d});
-      });
-      // Always add current PE at far right
-      if(s.pe > 0 && candles.length > 0){
-        const rightX = PAD.l + cW;
-        if(!pts.length || pts[pts.length-1].x < rightX - 10)
-          pts.push({x: rightX, v: s.pe, d: 'now'});
-      }
+      quarterly.forEach(q=>{ if(!q.eps || q.eps <= 0) return; const annEPS = q.eps * 4; const price = priceAt(q.d); if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d}); });
+      if(s.pe > 0 && candles.length > 0){ const rightX = PAD.l + cW; if(!pts.length || pts[pts.length-1].x < rightX - 10) pts.push({x: rightX, v: s.pe, d: 'now'}); }
     } else {
-      quarterly.forEach(q=>{
-        const v = q[k];
-        if(v != null) pts.push({x: xForDate(q.d), v, d: q.d});
-      });
-      // Add current value as rightmost anchor if available
+      quarterly.forEach(q=>{ const v = q[k]; if(v != null) pts.push({x: xForDate(q.d), v, d: q.d}); });
       const curVal = k==='cfo'?s.cfo : k==='rev'?s.sales : k==='net'?s.npm_pct : k==='opm'?s.opm_pct : k==='debt'?s.debt_eq : null;
-      if(curVal != null && pts.length){
-        pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
-      }
+      if(curVal != null && pts.length) pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
     }
-
-      // Keep points that fall within or near visible chart area
-    // Extend margin so points just outside edges still connect to line
     pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
-    // If nothing visible, show all points spread across full width
     if(!pts.length && (quarterly.length || s.pe)){
       const allPts2 = [];
-      if(k==='pe'){
-        quarterly.forEach(q=>{
-          if(!q.eps||q.eps<=0) return;
-          const pr = priceAt(q.d);
-          if(pr>0) allPts2.push({x:0, v:pr/(q.eps*4), d:q.d});
-        });
-        if(s.pe>0) allPts2.push({x:0, v:s.pe, d:'now'});
-      } else {
-        quarterly.forEach(q=>{ const v=q[k]; if(v!=null) allPts2.push({x:0,v,d:q.d}); });
-      }
-      if(allPts2.length>=2){
-        const t0=new Date(allPts2[0].d==='now'?Date.now():allPts2[0].d).getTime();
-        const t1=new Date(allPts2[allPts2.length-1].d==='now'?Date.now():allPts2[allPts2.length-1].d).getTime();
-        const tr=t1-t0||1;
-        allPts2.forEach(p=>{
-          const t=new Date(p.d==='now'?Date.now():p.d).getTime();
-          p.x = PAD.l + ((t-t0)/tr)*cW;
-        });
-        pts = allPts2;
-      }
+      if(k==='pe'){ quarterly.forEach(q=>{ if(!q.eps||q.eps<=0) return; const pr = priceAt(q.d); if(pr>0) allPts2.push({x:0, v:pr/(q.eps*4), d:q.d}); }); if(s.pe>0) allPts2.push({x:0, v:s.pe, d:'now'}); } else { quarterly.forEach(q=>{ const v=q[k]; if(v!=null) allPts2.push({x:0,v,d:q.d}); }); }
+      if(allPts2.length>=2){ const t0=new Date(allPts2[0].d==='now'?Date.now():allPts2[0].d).getTime(); const t1=new Date(allPts2[allPts2.length-1].d==='now'?Date.now():allPts2[allPts2.length-1].d).getTime(); const tr=t1-t0||1; allPts2.forEach(p=>{ const t=new Date(p.d==='now'?Date.now():p.d).getTime(); p.x = PAD.l + ((t-t0)/tr)*cW + S.chartPan; }); pts = allPts2; }
     }
-      if(!pts.length) return;
-
+    if(!pts.length) return;
     const drawLine = pts.length >= 2;
-
-    // Map values to Y using a DEDICATED right-side scale for this KPI
-    // This avoids the problem of small PE values (eg 18x) mapping to price range (eg 500-800)
     const vals = pts.map(p=>p.v);
     const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
     const vRng = vMax - vMin || 1;
-    // Use top 80% of chart height, leaving room for x-axis labels at bottom
     const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
-
     ctx.save();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
-
     if(drawLine){
-      // Subtle fill under line
-      ctx.beginPath();
-      pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); });
-      ctx.lineTo(pts[pts.length-1].x, yBot);
-      ctx.lineTo(pts[0].x, yBot);
-      ctx.closePath();
-      ctx.fillStyle = col;
-      ctx.globalAlpha = 0.08;
-      ctx.fill();
-      // Line
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath();
-      pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); });
-      ctx.stroke();
+      ctx.beginPath(); pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); }); ctx.lineTo(pts[pts.length-1].x, yBot); ctx.lineTo(pts[0].x, yBot); ctx.closePath(); ctx.fillStyle = col; ctx.globalAlpha = 0.08; ctx.fill(); ctx.globalAlpha = 0.9; ctx.beginPath(); pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); }); ctx.stroke();
     }
-
-    // Dots
-    ctx.fillStyle = col; ctx.globalAlpha = 1;
-    pts.forEach(p=>{
-      ctx.beginPath();
-      ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2);
-      ctx.fill();
-    });
-
-    // Value labels above each dot (skip if too crowded)
+    ctx.fillStyle = col; ctx.globalAlpha = 1; pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2); ctx.fill(); });
     const labelEvery = pts.length > 6 ? 2 : 1;
-    pts.forEach((p,j)=>{
-      if(j % labelEvery !== 0 && j !== pts.length-1) return;
-      const dispV = k==='pe'  ? p.v.toFixed(0)+'x' :
-                    k==='opm' ? p.v.toFixed(1)+'%' :
-                    Math.abs(p.v)>=1000 ? (p.v/1000).toFixed(1)+'K' : p.v.toFixed(0);
-      ctx.fillStyle = col; ctx.globalAlpha = 0.85;
-      ctx.font = '6px JetBrains Mono,monospace'; ctx.textAlign = 'center';
-      ctx.fillText(dispV, p.x, kpiY(p.v) - 4);
-    });
-
-    // Label on right axis strip
+    pts.forEach((p,j)=>{ if(j % labelEvery !== 0 && j !== pts.length-1) return; const dispV = k==='pe'  ? p.v.toFixed(0)+'x' : k==='opm' ? p.v.toFixed(1)+'%' : Math.abs(p.v)>=1000 ? (p.v/1000).toFixed(1)+'K' : p.v.toFixed(0); ctx.fillStyle = col; ctx.globalAlpha = 0.85; ctx.font = '6px JetBrains Mono,monospace'; ctx.textAlign = 'center'; ctx.fillText(dispV, p.x, kpiY(p.v) - 4); });
     const last = pts[pts.length-1];
-    const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' :
-                    k==='opm' ? last.v.toFixed(1)+'%' :
-                    Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'KCr' : last.v.toFixed(0)+'Cr';
-    ctx.fillStyle = col; ctx.globalAlpha = 1;
-    ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right';
-    ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8));
-    ctx.restore();
+    const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' : k==='opm' ? last.v.toFixed(1)+'%' : Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'KCr' : last.v.toFixed(0)+'Cr';
+    ctx.fillStyle = col; ctx.globalAlpha = 1; ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right'; ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8)); ctx.restore();
+  });
+  
+  // Restore clipping
+  ctx.restore();
+  
+  // Draw Y-axis price labels (outside clipping)
+  for(let i=0;i<=4;i++){
+    const y=PAD.t+(cH/4)*i;
+    const price=mx-(mx-mn)*(i/4);
+    ctx.fillStyle='#00ffff';
+    ctx.font='11px JetBrains Mono,monospace'; ctx.fontWeight='900'; ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-8,y+(i===0?10:-3));
+  }
+
+  // Draw X-axis labels
+  const maxLabels = Math.min(5, Math.floor(cW / 55));  // Increased spacing to 55px
+  const lblStep = Math.max(1, Math.floor(n / maxLabels));
+  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  let lastLabelX = -100;  // Track last label position to prevent overlap
+  candles.forEach((c,i)=>{
+    if(i % lblStep !== 0 && i !== n-1) return;
+    const d = new Date(c.d);
+    let lbl;
+    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
+    const x = barX(i);
+    if(x > PAD.l+cW+5 || x < PAD.l-5) return;  // Clip off-screen labels
+    
+    // Prevent label overlap
+    if(Math.abs(x - lastLabelX) < 45) return;  // Skip if too close to last label
+    lastLabelX = x;
+    
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, H-4);
   });
 }
 
-// Volume bars with 5-period MA trend line
 function drawVolume(s){
   const cv=document.getElementById('cv-vol');
   if(!cv)return;
@@ -3318,53 +3237,107 @@ function drawVolume(s){
   cv.style.width=W2+'px';cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
-
   const candles=getSlicedCandles(s, W2);
   if(!candles.length)return;
-
   ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
-
   const W=W2,H=H2;
-  const PAD={l:6,r:52,t:4,b:4};
+  const PAD={l:6,r:52,t:4,b:18};  // Increase bottom for X-axis labels
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
-  const n=candles.length,gap=cW/n,bw=Math.max(2,Math.min(14,gap*0.7));
-  const mv=Math.max(...candles.map(c=>c.v))||1;
-
-  // Right axis strip
-  ctx.fillStyle='rgba(7,12,24,.8)';
+  const n=candles.length,gap=cW/n,bw=Math.max(1.5,Math.min(6,gap*0.4));  // Narrower bars (40% of gap)
+  
+  // Define barX for volume (same alignment as candlestick chart)
+  const barX=i=>PAD.l+i*gap+gap/2+S.chartPan;
+  
+  // Find visible candles and calculate volume range
+  let visibleIndices = [];
+  for(let i=0; i<candles.length; i++){
+    const x = barX(i);
+    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
+      visibleIndices.push(i);
+    }
+  }
+  let visibleCandles = visibleIndices.length > 0 ? visibleIndices.map(i=>candles[i]) : candles;
+  const mv=Math.max(...visibleCandles.map(c=>c.v))||1;
+  
+  // Right axis panel (draw before clipping)
+  ctx.fillStyle='rgba(7,12,24,.95)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-  ctx.fillStyle='rgba(140,176,208,.5)';ctx.font='7px JetBrains Mono,monospace';ctx.textAlign='right';
-  ctx.fillText('Vol',W-2,10);
-
+  
+  // Add clipping to prevent volume bars from crossing axis
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PAD.l, PAD.t, cW, cH);
+  ctx.clip();
+  
+  
+  // Volume bars with correct color coding (match candlestick colors)
+  // UP (close >= open) = Green (#00d084), DOWN (close < open) = Red (#ff3b5c)
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2;
-    ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
+    const x=barX(i)-(bw/2);  // Center bar on barX
+    const isUp = c.c >= c.o;
+    ctx.fillStyle = isUp ? '#00d084' : '#ff3b5c';  // Bright, opaque colors
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
   });
-
-  // Volume trend line (smoothed MA5)
+  
+  // Volume MA trend line - bright and visible
   const volMA = candles.map((c,i)=>{
     if(i<4) return null;
     return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
   });
-  ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=1; ctx.beginPath();
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=1.8; ctx.beginPath();
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
-    const x=PAD.l+i*gap+gap/2;
+    const x=barX(i);
     const y=PAD.t+cH-(v/mv)*cH;
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
   ctx.stroke();
+  
+  // Restore clipping
+  ctx.restore();
+  
+  // Volume label (Vol)
+  ctx.fillStyle='#00ff00'; ctx.font='10px JetBrains Mono,monospace; font-weight:bold'; ctx.textAlign='right';
+  ctx.fillText('Vol',W-2,12);
+  
+  // Volume Y-axis scale labels (outside clipping)
+  ctx.fillStyle='#ffff00'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  // Use visible candles for max volume (not all candles)
+  const maxVol = Math.max(...visibleCandles.map(c=>c.v));
+  ctx.textAlign='right';
+  ctx.fillText((maxVol/1000000).toFixed(1)+'M', W-2, 8);
+  ctx.fillText('0', W-2, H-4);
+  
+  // X-AXIS LABELS for volume - use barX for alignment
+  const maxLabelsVol = Math.min(5, Math.floor(cW / 55));  // Increased spacing
+  const lblStepVol = Math.max(1, Math.floor(n / maxLabelsVol));
+  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  let lastLabelXVol = -100;
+  candles.forEach((c,i)=>{
+    if(i % lblStepVol !== 0 && i !== n-1) return;
+    const d = new Date(c.d);
+    let lbl;
+    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
+    const x = barX(i);
+    if(x > PAD.l+cW+5 || x < PAD.l-5) return;  // Clip off-screen labels
+    
+    // Prevent label overlap
+    if(Math.abs(x - lastLabelXVol) < 45) return;
+    lastLabelXVol = x;
+    
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, H-2);
+  });
 }
 
-// ── Quarterly CFO bar panel ───────────────────────────
-// ── Quarterly P/E line panel ──────────────────────────
 function updateChartStats(s){
   const candles=getSlicedCandles(s, 0);
   if(!candles.length)return;
@@ -3375,7 +3348,6 @@ function updateChartStats(s){
   const lo=Math.min(...candles.map(c=>c.l));
   const vol=((hi-lo)/lo*100).toFixed(1);
   const up=last>=first;
-
   const retEl=document.getElementById('cstat-ret');
   const hiEl=document.getElementById('cstat-hi');
   const loEl=document.getElementById('cstat-lo');
@@ -3386,4 +3358,113 @@ function updateChartStats(s){
   if(volEl)volEl.textContent=vol+'%';
 }
 
-// Fundamentals tab
+// Chart control functions
+function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
+function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(); }
+function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
+
+async function canvasLoadAndDrawChart(sym) {
+  // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    attachChartResizeObserver(currentStock);
+    scheduleTACharts(currentStock);
+    return;
+  }
+  
+  // ✅ Step 2: Try optional JSON file (if you have one)
+  try {
+    const res = await fetch(`./charts/${sym}.json`);
+    if (res.ok) {
+      const data = await res.json();
+      currentStock.candles = data.bars || [];
+      chartCache[sym] = currentStock.candles;
+      attachChartResizeObserver(currentStock);
+      scheduleTACharts(currentStock);
+      return;
+    }
+  } catch (e) {
+    // JSON not available - that's ok
+  }
+  
+  // ✅ Step 3: Use whatever data we have, or show helpful message
+  if(currentStock) {
+    attachChartResizeObserver(currentStock);
+    scheduleTACharts(currentStock);
+  }
+}
+
+// ════════════════════════════════════════════════
+// PAN & ZOOM - Simpler Implementation
+// ════════════════════════════════════════════════
+
+let chartInteraction = {
+  isPanning: false,
+  startX: 0,
+  startPan: 0
+};
+
+function setupChartInteraction() {
+  const canvas = document.getElementById('cv-candle');
+  if (!canvas) return;
+  
+  // Mouse/Touch Pan on canvas
+  canvas.onmousedown = (e) => {
+    chartInteraction.isPanning = true;
+    chartInteraction.startX = e.clientX;
+    chartInteraction.startPan = S.chartPan;
+  };
+  
+  canvas.onmousemove = (e) => {
+    if (!chartInteraction.isPanning || !currentStock) return;
+    const delta = e.clientX - chartInteraction.startX;
+    let newPan = chartInteraction.startPan + delta;
+    
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
+    S.chartPan = newPan;
+    scheduleTACharts(currentStock);
+  };
+  
+  canvas.onmouseup = () => { chartInteraction.isPanning = false; };
+  canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
+  
+  // Touch Support
+  canvas.ontouchstart = (e) => {
+    chartInteraction.isPanning = true;
+    chartInteraction.startX = e.touches[0].clientX;
+    chartInteraction.startPan = S.chartPan;
+  };
+  
+  canvas.ontouchmove = (e) => {
+    if (!chartInteraction.isPanning || !currentStock) return;
+    const delta = e.touches[0].clientX - chartInteraction.startX;
+    let newPan = chartInteraction.startPan + delta;
+    
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
+    S.chartPan = newPan;
+    scheduleTACharts(currentStock);
+  };
+  
+  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
+  
+  // Wheel Zoom on canvas
+  canvas.onwheel = (e) => {
+    if (!currentStock) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
+    scheduleTACharts(currentStock);
+  };
+}
+
+// Auto-setup when canvas is ready
+document.addEventListener('DOMContentLoaded', setupChartInteraction);
+
+
+
+</script>
+
+</body>
+</html>
