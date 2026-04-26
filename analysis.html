@@ -3041,7 +3041,15 @@ function getSlicedCandles(s, canvasWidth){
     const MIN_BAR_W  = 4;
     const maxFit = Math.floor(chartW / MIN_BAR_W);
     if(rangeCandles.length > maxFit){
-      return rangeCandles.slice(-maxFit);
+      // ✅ PAN-BASED HISTORY SCROLL: S.chartPan controls which candles to display
+      // S.chartPan: -400 (oldest) → 0 (most recent) → +400 (newest, clamped to most recent)
+      const maxBackOffset = Math.max(0, rangeCandles.length - maxFit);
+      const backPan = Math.max(0, -S.chartPan); // Negative pan = go back in history (0-400)
+      const backNorm = Math.min(1, backPan / 400); // Normalize to 0-1
+      const backOffset = Math.floor(backNorm * maxBackOffset); // How many candles back to start
+      const startIdx = Math.max(0, maxBackOffset - backOffset);
+      console.log('[SCHED] getSlicedCandles: pan=' + S.chartPan + ', showing candles ' + startIdx + ' to ' + (startIdx + maxFit));
+      return rangeCandles.slice(startIdx, startIdx + maxFit);
     }
   }
   return rangeCandles;
@@ -3100,7 +3108,7 @@ function drawCandlestick(s){
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  const barX=i=>{ const x = PAD.l+i*gap+gap/2+S.chartPan; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x + ' (gap=' + gap + ', S.chartPan=' + S.chartPan + ')'); return x; };
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -3123,16 +3131,6 @@ function drawCandlestick(s){
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-
-  // DEBUG: Draw a red vertical line through center - should move left/right when panning
-  const debugLineX = PAD.l + cW/2 + S.chartPan;
-  ctx.strokeStyle = 'rgba(255,50,50,.8)';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(debugLineX, PAD.t);
-  ctx.lineTo(debugLineX, H - PAD.b);
-  ctx.stroke();
-  console.log('[DRAW] **RED DEBUG LINE moved to x=' + Math.round(debugLineX) + '** by pan=' + S.chartPan);
 
   // Candles
   console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
