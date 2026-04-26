@@ -97,6 +97,7 @@
         <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
         <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
         <button class="tab" onclick="switchTab('technicalPro')">📈 Technical Pro</button>
+        <button class="tab" onclick="switchTab('movers')">📈 Movers</button>
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
@@ -787,67 +788,28 @@ function renderTab(tab) {
         </div>`;
         document.getElementById('content').innerHTML = html;
         
-        // Initialize debug window for MOBILE
-        const debugWindow = document.createElement('div');
-        debugWindow.id = 'debug-window';
-        debugWindow.style.cssText = `
-            position: fixed;
-            bottom: 60px;
-            left: 12px;
-            right: 12px;
-            max-height: 150px;
-            background: rgba(0,0,0,.98);
-            border: 2px solid #00f2ff;
-            border-radius: 6px;
-            padding: 8px;
-            font-family: monospace;
-            font-size: 9px;
-            color: #00f2ff;
-            overflow-y: auto;
-            z-index: 9999;
-            display: block;
-        `;
-        document.body.appendChild(debugWindow);
-        
-        // Add debug toggle button
-        const debugBtn = document.createElement('button');
-        debugBtn.style.cssText = `
-            position: fixed;
-            bottom: 12px;
-            left: 12px;
-            width: 40px;
-            height: 40px;
-            background: #00f2ff;
-            border: none;
-            border-radius: 50%;
-            color: #000;
-            font-weight: bold;
-            z-index: 10000;
-            cursor: pointer;
-            font-size: 18px;
-        `;
-        debugBtn.textContent = '🐛';
-        debugBtn.onclick = () => {
-            debugWindow.style.display = debugWindow.style.display === 'none' ? 'block' : 'none';
-        };
-        document.body.appendChild(debugBtn);
-        
-        // Capture console.log
-        const originalLog = console.log;
-        console.log = function(...args) {
-            originalLog.apply(console, args);
-            const debugWin = document.getElementById('debug-window');
-            if (debugWin) {
-                const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-                debugWin.innerHTML += `<div style="white-space:pre-wrap;word-break:break-word">${line}</div>`;
-                debugWin.scrollTop = debugWin.scrollHeight;
-            }
-        };
-        
-        console.log('🐛 Debug panel ready - Tap bug icon to toggle');
-        
         // Load and render new technical pro charts
         renderTechnicalPro(currentStock);
+    } else if (tab === 'movers') {
+        html = `<div style="padding:12px;padding-bottom:100px">
+            <div style="margin-bottom:12px">
+                <div style="font-size:14px;font-weight:700;color:var(--ac)">📈 Movers</div>
+                <div style="font-size:11px;color:rgba(122,143,160,.7);margin-top:4px">${currentStock.name||currentStock.ticker}</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+                <div style="font-size:12px;font-weight:700;color:var(--tx1)">Current: ₹${(currentStock.ltp||0).toFixed(2)}</div>
+                <div style="font-size:12px;font-weight:700;color:${(currentStock.chg1d||0)>=0?'#00e896':'#ff6b85'};margin-top:4px">
+                    ${(currentStock.chg1d||0)>=0?'▲':'▼'} ${Math.abs(currentStock.chg1d||0).toFixed(2)}%
+                </div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px">
+                <div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px">🗺 Sector Heatmap</div>
+                <canvas id="cv-heatmap" style="width:100%;border-radius:4px;cursor:pointer;max-height:300px"></canvas>
+                <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1a2332;border-radius:6px;padding:8px 10px;font-family:monospace;font-size:9px;color:var(--tx1);pointer-events:none;z-index:999"></div>
+            </div>
+        </div>`;
+        document.getElementById('content').innerHTML = html;
+        requestAnimationFrame(()=>requestAnimationFrame(()=>drawSectorHeatmap([currentStock])));
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -2954,11 +2916,15 @@ function scheduleTACharts(s){
 }
 
 let _chartResizeObs = null;
+let _resizeTimeout = null;
 function attachChartResizeObserver(s){
   if(_chartResizeObs) _chartResizeObs.disconnect();
   const wrap = document.getElementById('chart-wrap');
   if(!wrap || !window.ResizeObserver) return;
-  _chartResizeObs = new ResizeObserver(()=>{ scheduleTACharts(s); });
+  _chartResizeObs = new ResizeObserver(()=>{ 
+    clearTimeout(_resizeTimeout);
+    _resizeTimeout = setTimeout(()=>{ scheduleTACharts(s); }, 100);
+  });
   _chartResizeObs.observe(wrap);
 }
 
@@ -2995,8 +2961,11 @@ function getSlicedCandles(s, canvasWidth){
 
 
 function drawCandlestick(s){
+  console.log('[DRAW] drawCandlestick called, S.chartPan=' + S.chartPan);
+  
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
+  console.log('[DRAW] Canvas: width=' + cv.width + ', height=' + cv.height);
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
@@ -3043,7 +3012,7 @@ function drawCandlestick(s){
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  const barX=i=>{ return PAD.l+i*gap+gap/2; };
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -3068,9 +3037,11 @@ function drawCandlestick(s){
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
   // Candles
+  console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
+    if(i<3) console.log('[DRAW] Candle ' + i + ': cx=' + Math.round(cx) + ', h=' + c.h.toFixed(2) + ', l=' + c.l.toFixed(2));
     const bodyTop=toY(Math.max(c.o,c.c));
     const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
 
@@ -3389,7 +3360,7 @@ function drawVolume(s){
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
     const x=PAD.l+i*gap+(gap-bw)/2+S.chartPan;
-    ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
+    ctx.fillStyle=c.c>=c.o?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
@@ -3438,6 +3409,42 @@ function updateChartStats(s){
 function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(); }
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+
+// Sector Heatmap Treemap
+function drawSectorHeatmap(universe){
+  const cv = document.getElementById('cv-heatmap');
+  if(!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.max(cv.offsetWidth || 200, 180);
+  const H = W;
+  cv.width = W*dpr; cv.height = H*dpr;
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = '#060c18';
+  ctx.fillRect(0, 0, W, H);
+  
+  if(!universe.length){ ctx.fillStyle='rgba(140,176,208,.4)'; ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.fillText('No data', W/2, H/2); return; }
+  
+  const sMap = {};
+  universe.forEach(s=>{ const sec = (s.sector && s.sector!=='—') ? s.sector : 'Other'; if(!sMap[sec]) sMap[sec]={name:sec, value:0, chgSum:0, n:0}; sMap[sec].value += (s.ltp||0); sMap[sec].chgSum += (s.chg1d||0); sMap[sec].n++; });
+  const nodes = Object.values(sMap).map(d=>({name:d.name, size:Math.max(1000,d.value*10), chg:d.chgSum/d.n, n:d.n})).sort((a,b)=>b.size-a.size);
+  const totalSize = nodes.reduce((a,b)=>a+b.size,0);
+  nodes.forEach(n=>{ n.size = (n.size/totalSize)*W*H; });
+  
+  const rects = [];
+  function worstRatio(row, w){ if(!w||!row.length) return Infinity; const s=row.reduce((a,b)=>a+b.size,0); const maxS=Math.max(...row.map(r=>r.size)); const minS=Math.min(...row.map(r=>r.size)); return Math.max((w*w*maxS)/(s*s),(s*s)/(w*w*minS)); }
+  function layoutRow(row, x, y, w, h){ const s=row.reduce((a,b)=>a+b.size,0); let cx=x, cy=y; if(w>=h){ const stripW=s/h; row.forEach(item=>{ const ih=item.size/stripW; rects.push({...item,x:Math.max(0,cx),y:Math.max(0,cy),w:Math.min(stripW,W-cx),h:Math.min(ih,H-cy)}); cy+=ih; }); return {x:x+stripW,y:y,w:w-stripW,h:h}; } else { const stripH=s/w; row.forEach(item=>{ const iw=item.size/stripH; rects.push({...item,x:Math.max(0,cx),y:Math.max(0,cy),w:Math.min(iw,W-cx),h:Math.min(stripH,H-cy)}); cx+=iw; }); return {x:x,y:y+stripH,w:w,h:h-stripH}; } }
+  function squarify(children, x, y, w, h){ if(!children.length||w<1||h<1) return; let row=[], rem=[...children]; const shortest=Math.min(w,h); while(rem.length){ const test=[...row,rem[0]]; if(row.length>0&&worstRatio(test,shortest)>worstRatio(row,shortest)) break; row.push(rem.shift()); } const next=layoutRow(row,x,y,w,h); squarify(rem,next.x,next.y,next.w,next.h); }
+  squarify(nodes, 0, 0, W, H);
+  
+  function tileColor(chg){ const c=Math.max(-4,Math.min(4,chg)); if(c===0) return 'rgba(35,50,75,0.85)'; if(c>0){ const t=c/4; const g=Math.round(80+150*t); const r=Math.round(5+15*t); const b=Math.round(10+20*t); return 'rgba('+r+','+g+','+b+',0.90)'; } else { const t=(-c)/4; const r=Math.round(80+150*t); const g=Math.round(10+15*t); const b=Math.round(15+20*t); return 'rgba('+r+','+g+','+b+',0.90)'; } }
+  
+  const PAD=2;
+  rects.forEach(r=>{ const rx=r.x+PAD, ry=r.y+PAD, rw=r.w-PAD*2, rh=r.h-PAD*2; if(rw<3||rh<3) return; ctx.fillStyle=tileColor(r.chg); ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(rx,ry,rw,rh,3); else ctx.rect(rx,ry,rw,rh); ctx.fill(); ctx.strokeStyle='rgba(6,12,24,0.8)'; ctx.lineWidth=1; ctx.stroke(); if(rw<16||rh<12) return; ctx.save(); ctx.beginPath(); ctx.rect(rx,ry,rw,rh); ctx.clip(); ctx.textAlign='center'; const sign=r.chg>=0?'+':''; const pct=sign+r.chg.toFixed(2)+'%'; const cx=rx+rw/2; if(rw>=54&&rh>=36){ const fs=Math.min(12,Math.max(8,Math.floor(Math.min(rw/7,rh/3.5)))); ctx.font='700 '+fs+'px JetBrains Mono'; ctx.fillStyle='rgba(255,255,255,0.96)'; ctx.fillText(r.name.slice(0,12), cx, ry+rh*0.42); ctx.font=Math.max(7,fs-1)+'px JetBrains Mono'; ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.95)':'rgba(255,195,195,0.95)'; ctx.fillText(pct, cx, ry+rh*0.42+fs+4); } else if(rw>=34&&rh>=22){ const fs=Math.min(9,Math.max(6,Math.floor(Math.min(rw/6,rh/3)))); ctx.font='700 '+fs+'px monospace'; ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.fillText(r.name.slice(0,9), cx, ry+rh*0.40); ctx.font=Math.max(6,fs-1)+'px monospace'; ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.9)':'rgba(255,195,195,0.9)'; ctx.fillText(pct, cx, ry+rh*0.40+fs+3); } else { ctx.font='6px monospace'; ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillText(pct, cx, ry+rh/2+3); } ctx.restore(); });
+  
+  cv.onclick=(e)=>{ const br=cv.getBoundingClientRect(); const scX=W/br.width, scY=H/br.height; const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY; const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h); const tip=document.getElementById('hm-tooltip'); if(hit&&tip){ const sign=hit.chg>=0?'+':''; tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b> <b>'+sign+hit.chg.toFixed(2)+'%</b>'; tip.style.display='block'; tip.style.left=Math.min(e.clientX+10,window.innerWidth-170)+'px'; tip.style.top=Math.max(e.clientY-70,8)+'px'; setTimeout(()=>{tip.style.display='none';},3500); } };
+}
 function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
 
 async function canvasLoadAndDrawChart(sym) {
@@ -3487,21 +3494,31 @@ function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
   if (!canvas) return;
   
+  console.log('[CHART] setupChartInteraction: canvas found', canvas);
+  
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
+    console.log('[CHART] mousedown - isPanning=true, startX=' + e.clientX);
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
   };
   
   canvas.onmousemove = (e) => {
-    if (!chartInteraction.isPanning || !currentStock) return;
+    if (!chartInteraction.isPanning || !currentStock) {
+      console.log('[CHART] mousemove ignored: isPanning=' + chartInteraction.isPanning + ', currentStock=' + !!currentStock);
+      return;
+    }
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
+    console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
+    
     // Allow free panning with generous limits
     newPan = Math.max(-400, Math.min(400, newPan));
+    console.log('[CHART] after limit: newPan=' + newPan);
     S.chartPan = newPan;
+    console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
     scheduleTACharts(currentStock);
   };
   
@@ -3510,7 +3527,6 @@ function setupChartInteraction() {
   
   // Touch Support
   canvas.ontouchstart = (e) => {
-    e.preventDefault();
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.touches[0].clientX;
     chartInteraction.startPan = S.chartPan;
@@ -3518,7 +3534,6 @@ function setupChartInteraction() {
   
   canvas.ontouchmove = (e) => {
     if (!chartInteraction.isPanning || !currentStock) return;
-    e.preventDefault();
     const delta = e.touches[0].clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
@@ -3528,10 +3543,7 @@ function setupChartInteraction() {
     scheduleTACharts(currentStock);
   };
   
-  canvas.ontouchend = (e) => { 
-    e.preventDefault();
-    chartInteraction.isPanning = false; 
-  };
+  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
