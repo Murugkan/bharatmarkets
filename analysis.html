@@ -126,7 +126,10 @@ const S = {
   chartRange: '1Y',
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
-  kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false }
+  kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false },
+  chartPan: 0,      // Pan offset in pixels
+  chartZoom: 1,     // Zoom level (1 = 100%)
+  panStart: null    // Pan start position
 };
 let chartCache = {};
 
@@ -586,22 +589,7 @@ function renderTab(tab) {
             </div>
         `;
     } else if (tab === 'canvas') {
-        // CANVAS TAB — Complete renderTechnical from app.js
-        const signals = [
-            {n:'RSI (14)',v:s.rsi,sub:'Value: '+s.rsi,sig:s.rsi>70?'Overbought':s.rsi<30?'Oversold':'Neutral',sc:s.rsi>70?'sig-sell':s.rsi<30?'sig-buy':'sig-neutral'},
-            {n:'MACD',v:s.macd?.toFixed(1)||'—',sub:'Signal: '+(s.macdSignal?.toFixed(1)||'—'),sig:s.macd>s.macdSignal?'Bullish':'Bearish',sc:s.macd>s.macdSignal?'sig-buy':'sig-sell'},
-            {n:'Stoch %K',v:s.stochK||'—',sub:'%D: '+(s.stochD||'—'),sig:s.stochK>80?'Overbought':s.stochK<20?'Oversold':'Neutral',sc:s.stochK>80?'sig-sell':s.stochK<20?'sig-buy':'sig-neutral'},
-            {n:'ADX',v:s.adx||'—',sub:s.adx>25?'Strong trend':'Ranging',sig:s.adx>25?'Trending':'No Trend',sc:s.adx>25?'sig-buy':'sig-neutral'},
-            {n:'SMA 20',v:'₹'+fmt(s.sma20||0),sub:s.ltp>(s.sma20||0)?'Above':'Below',sig:s.ltp>(s.sma20||0)?'Bullish':'Bearish',sc:s.ltp>(s.sma20||0)?'sig-buy':'sig-sell'},
-            {n:'SMA 50',v:'₹'+fmt(s.sma50||0),sub:s.ltp>(s.sma50||0)?'Above':'Below',sig:s.ltp>(s.sma50||0)?'Bullish':'Bearish',sc:s.ltp>(s.sma50||0)?'sig-buy':'sig-sell'},
-            {n:'EMA 200',v:'₹'+fmt(s.ema200||0),sub:s.ltp>(s.ema200||0)?'Above':'Below',sig:s.ltp>(s.ema200||0)?'Bull LT':'Bear LT',sc:s.ltp>(s.ema200||0)?'sig-buy':'sig-sell'},
-        ];
-        const buys=signals.filter(x=>x.sc==='sig-buy').length;
-        const sells=signals.filter(x=>x.sc==='sig-sell').length;
-        const verdict=buys>=5?'Strong Buy':buys>=4?'Buy':buys>=3?'Weak Buy':sells>=4?'Strong Sell':sells>=3?'Sell':'Neutral';
-        const vc=verdict.includes('Buy')?'#00e896':verdict.includes('Sell')?'#ff6b85':'#ffbf47';
-        const vbg=verdict.includes('Buy')?'rgba(0,208,132,.1)':verdict.includes('Sell')?'rgba(255,59,92,.1)':'rgba(245,166,35,.1)';
-
+        // CANVAS TAB — Chart only, no indicators
         html = `<div style="padding:0;padding-bottom:100px">
             <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:8px">
               <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap">${s.ticker || s.sym} · Price Chart</div>
@@ -636,26 +624,6 @@ function renderTab(tab) {
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:240px"><canvas id="cv-candle"></canvas></div>
               <div id="vol-wrap" style="position:relative;width:100%;height:50px;border-top:1px solid var(--b1)"><canvas id="cv-vol"></canvas></div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;padding:8px;background:var(--s2);border-bottom:1px solid var(--b1)">
-              <div style="text-align:center;padding:6px;background:var(--s1);border-radius:6px"><div style="font-size:8px;color:var(--tx3)">Return</div><div style="font-size:13px;font-weight:700;margin-top:3px" id="cstat-ret">—</div></div>
-              <div style="text-align:center;padding:6px;background:var(--s1);border-radius:6px"><div style="font-size:8px;color:var(--tx3)">Period High</div><div style="font-size:13px;font-weight:700;margin-top:3px" id="cstat-hi">—</div></div>
-              <div style="text-align:center;padding:6px;background:var(--s1);border-radius:6px"><div style="font-size:8px;color:var(--tx3)">Period Low</div><div style="font-size:13px;font-weight:700;margin-top:3px" id="cstat-lo">—</div></div>
-              <div style="text-align:center;padding:6px;background:var(--s1);border-radius:6px"><div style="font-size:8px;color:var(--tx3)">Volatility</div><div style="font-size:13px;font-weight:700;margin-top:3px" id="cstat-vol">—</div></div>
-            </div>
-            <div style="margin:10px 12px;padding:14px;border-radius:10px;text-align:center;border:1px solid ${vc}30;background:${vbg}">
-              <div style="font-size:9px;font-weight:700;color:var(--label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Composite Signal</div>
-              <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:${vc}">${verdict}</div>
-              <div style="height:5px;background:var(--b1);border-radius:3px;overflow:hidden;margin:8px 0 4px"><div style="height:100%;width:${(buys/signals.length*100).toFixed(0)}%;background:${vc};border-radius:3px"></div></div>
-              <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--tx3)"><span>${buys} Bullish</span><span>${sells} Bearish</span></div>
-            </div>
-            <div style="padding:0 12px 14px">
-              <div style="font-size:9px;font-weight:700;color:var(--label);text-transform:uppercase;letter-spacing:1.2px;margin:10px 0 6px">Technical Indicators</div>
-              ${signals.map(sg=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1)"><div><div style="font-size:10px;font-weight:700">${sg.n}</div><div style="font-size:8px;color:var(--tx3);margin-top:2px">${sg.sub}</div></div><div style="display:flex;align-items:center;gap:8px"><span style="padding:2px 7px;border-radius:4px;font-size:8px;font-weight:700;background:${sg.sc==='sig-buy'?'rgba(0,208,132,.2)':sg.sc==='sig-sell'?'rgba(255,59,92,.2)':'rgba(245,166,35,.2)'};color:${sg.sc==='sig-buy'?'#00e896':sg.sc==='sig-sell'?'#ff6b85':'#ffbf47'}">${sg.sig}</span><span style="font-family:var(--mono);font-size:10px;font-weight:700">${sg.v}</span></div></div>`).join('')}
-              <div style="margin-top:10px"><div style="font-size:9px;font-weight:700;color:var(--label);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">Support & Resistance</div></div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-                ${[{l:'R2',v:s.ltp*(1.06),c:'#ff6b85'},{l:'R1',v:s.ltp*(1.03),c:'#ff3b5c'},{l:'S1',v:s.ltp*(0.97),c:'#00d084'},{l:'S2',v:s.ltp*(0.94),c:'#00e896'}].map(x=>`<div style="background:var(--s2);border:1px solid var(--b1);border-left:3px solid ${x.c};border-radius:8px;padding:9px 11px"><div style="font-size:8px;font-weight:700;color:var(--label)">${x.l}</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${x.c};margin-top:3px">₹${fmt(x.v)}</div></div>`).join('')}
-              </div>
             </div>
           </div>`;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
@@ -3311,6 +3279,71 @@ async function canvasLoadAndDrawChart(sym) {
     scheduleTACharts(currentStock);
   }
 }
+
+// ════════════════════════════════════════════════
+// PAN & ZOOM HANDLERS - Pan left/right, pinch zoom
+// ════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+  const cv = document.getElementById('cv-candle');
+  if (!cv) return;
+  
+  let lastX = 0, isPanning = false;
+  let startDist = 0;
+  
+  // Mouse Pan (drag left/right)
+  cv.addEventListener('mousedown', (e) => { isPanning = true; lastX = e.clientX; });
+  cv.addEventListener('mousemove', (e) => {
+    if (!isPanning || !currentStock) return;
+    const dx = e.clientX - lastX;
+    S.chartPan += dx * 0.5;
+    lastX = e.clientX;
+    scheduleTACharts(currentStock);
+  });
+  cv.addEventListener('mouseup', () => { isPanning = false; });
+  cv.addEventListener('mouseleave', () => { isPanning = false; });
+  
+  // Touch Pan & Pinch Zoom
+  cv.addEventListener('touchstart', (e) => {
+    isPanning = true;
+    lastX = e.touches[0].clientX;
+    if (e.touches.length === 2) {
+      startDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, 0);
+    }
+  });
+  
+  cv.addEventListener('touchmove', (e) => {
+    if (!isPanning || !currentStock) return;
+    e.preventDefault();
+    
+    if (e.touches.length === 1) {
+      // Pan with single finger
+      const dx = e.touches[0].clientX - lastX;
+      S.chartPan += dx * 0.5;
+      lastX = e.touches[0].clientX;
+      scheduleTACharts(currentStock);
+    } else if (e.touches.length === 2) {
+      // Pinch zoom with two fingers
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, 0);
+      const zoomFactor = dist / startDist;
+      S.chartZoom *= zoomFactor;
+      S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom));
+      startDist = dist;
+      scheduleTACharts(currentStock);
+    }
+  });
+  
+  cv.addEventListener('touchend', () => { isPanning = false; });
+  
+  // Wheel Zoom (mouse scroll)
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    S.chartZoom *= zoomFactor;
+    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom));
+    scheduleTACharts(currentStock);
+  });
+});
 
 </script>
 
