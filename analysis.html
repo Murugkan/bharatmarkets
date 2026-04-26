@@ -713,12 +713,12 @@ function renderTab(tab) {
                     </div>
                 </div>
             </div>
-            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;max-width:100vw">
-                <div id="chartPro1" style="width:100%;height:400px;display:block"></div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;max-width:100vw;touch-action:none;user-select:none">
+                <div id="chartPro1" style="width:100%;height:400px;display:block;touch-action:none;user-select:none"></div>
             </div>
             
-            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:visible;margin-top:16px;position:relative;z-index:1">
-                <div id="chartPro2" style="width:100%;height:400px"></div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:visible;margin-top:16px;position:relative;z-index:1;touch-action:none;user-select:none">
+                <div id="chartPro2" style="width:100%;height:400px;touch-action:none;user-select:none"></div>
             </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
@@ -2662,9 +2662,10 @@ async function renderTechnicalPro(stock) {
             mode: LightweightCharts.PriceScaleMode.Normal,
             invertScale: false,
             alignLabels: true,
+            visible: true,  // Make sure it's visible
             format: (price) => {
                 if (price >= 1000) {
-                    return (price / 1000).toFixed(0) + 'M';
+                    return Math.floor(price / 1000) + 'M';
                 }
                 return Math.floor(price).toString();
             }
@@ -2678,7 +2679,9 @@ async function renderTechnicalPro(stock) {
                 bottom: 0.3  // Leave bottom for volume
             },
             autoScale: true,
-            mode: LightweightCharts.PriceScaleMode.Normal
+            mode: LightweightCharts.PriceScaleMode.Normal,
+            visible: true,
+            format: (price) => Math.floor(price).toString()
         });
         
         // Auto-fit
@@ -2696,14 +2699,20 @@ async function renderTechnicalPro(stock) {
         // Format price axis labels - NO DECIMALS
         setTimeout(() => {
             try {
+                // Force integer labels on both scales
                 chart.priceScale('right').applyOptions({
+                    format: (price) => Math.floor(price).toString(),
                     priceFormatter: (price) => Math.floor(price).toString()
                 });
-                console.log('✅ Price formatter applied');
+                chart.priceScale('left').applyOptions({
+                    format: (price) => Math.floor(price).toString(),
+                    priceFormatter: (price) => Math.floor(price).toString()
+                });
+                console.log('✅ Decimal formatter applied to both scales');
             } catch (e) {
-                console.log('Price formatter note:', e.message);
+                console.log('Formatter note:', e.message);
             }
-        }, 100);
+        }, 200);
         
         // Store chart reference
         proCharts.chart1 = chart;
@@ -2817,35 +2826,61 @@ async function renderTechnicalPro(stock) {
         proCharts.chart2.render();
         console.log('✅ Chart 2 rendered successfully');
         
-        // SYNC TIME AXES between Chart 1 (Lightweight-Charts) and Chart 2 (ApexCharts)
+        // SYNC TIME AXES - simplified approach
         if (proCharts.chart1 && proCharts.chart2) {
-            console.log('🔗 Syncing time axes...');
+            console.log('🔗 Enabling axis sync...');
             
-            // Listen to Chart 1 time scale changes
-            proCharts.chart1.timeScale().subscribeVisibleLogicalRangeChange(() => {
+            // Subscribe to visible range changes on Chart 1
+            const timeScale = proCharts.chart1.timeScale();
+            
+            timeScale.subscribeVisibleRangeChange(() => {
                 try {
-                    const timeRange = proCharts.chart1.timeScale().getVisibleRange();
+                    const visibleRange = timeScale.getVisibleRange();
+                    if (!visibleRange) return;
                     
-                    if (timeRange) {
-                        // Convert time range to dates for ApexCharts
-                        const from = timeRange.from * 1000; // Convert to milliseconds
-                        const to = timeRange.to * 1000;
+                    // Get actual bar times from visible range
+                    const bars = chartBars;
+                    if (!bars || bars.length === 0) return;
+                    
+                    // Find bars within visible logical range
+                    const fromIndex = Math.max(0, Math.floor(visibleRange.from));
+                    const toIndex = Math.min(bars.length - 1, Math.ceil(visibleRange.to));
+                    
+                    if (fromIndex < bars.length && toIndex >= 0) {
+                        const fromTime = new Date(bars[fromIndex].d).getTime();
+                        const toTime = new Date(bars[toIndex].d).getTime();
                         
-                        // Update Chart 2 X-axis to match
+                        // Update Chart 2 to show same time range
                         proCharts.chart2.updateOptions({
                             xaxis: {
-                                min: from,
-                                max: to
+                                min: fromTime,
+                                max: toTime
                             }
-                        });
+                        }, false);
+                        
+                        console.log(`📊 Sync: bars ${fromIndex}-${toIndex}`);
                     }
                 } catch (e) {
-                    // Sync errors are non-critical
-                    console.log('Time sync note:', e.message);
+                    console.log('Sync error:', e.message);
                 }
             });
             
-            console.log('✅ Time axis sync enabled');
+            console.log('✅ Axis sync ready');
+        }
+        
+        // Add touch event debugging
+        const chartDiv = document.getElementById('chartPro1');
+        if (chartDiv) {
+            chartDiv.addEventListener('touchstart', (e) => {
+                console.log(`📱 touchstart: ${e.touches.length} finger(s)`);
+            });
+            chartDiv.addEventListener('touchmove', (e) => {
+                console.log(`📱 touchmove: ${e.touches.length} finger(s), diff=${e.touches[0]?.clientX || 0}`);
+            });
+            chartDiv.addEventListener('touchend', (e) => {
+                console.log(`📱 touchend`);
+            });
+            console.log('✅ Touch event listeners added');
         }
     } catch (err) {
         console.error('❌ Chart 2 error:', err.message);
