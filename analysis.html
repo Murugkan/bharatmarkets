@@ -73,11 +73,35 @@
         .neg-box .weightage-value{color:var(--rd)}
         .signal-box .weightage-value{color:var(--ac);font-size:14px}
         .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
+        
+        /* DEBUG PANEL */
+        #debug-panel{position:fixed;top:50px;right:8px;width:280px;max-height:300px;background:rgba(10,14,26,.95);border:1px solid rgba(0,242,255,.6);border-radius:4px;z-index:9999;font-size:9px;color:var(--tx1);font-family:'JetBrains Mono',monospace;box-shadow:0 0 20px rgba(0,242,255,.2)}
+        #debug-panel-header{background:rgba(0,242,255,.15);padding:6px 8px;border-bottom:1px solid rgba(0,242,255,.3);display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
+        #debug-panel-header:hover{background:rgba(0,242,255,.25)}
+        #debug-panel-title{font-weight:700;color:var(--ac)}
+        #debug-panel-close{color:var(--ac);cursor:pointer;font-size:12px;line-height:1}
+        #debug-logs{max-height:260px;overflow-y:auto;padding:6px;background:rgba(0,0,0,.3)}
+        #debug-logs .log-line{padding:3px 4px;margin:2px 0;background:rgba(255,255,255,.05);border-left:2px solid rgba(0,232,150,.5);white-space:pre-wrap;word-break:break-all;line-height:1.3}
+        #debug-logs .log-line.error{border-left-color:rgba(255,59,92,.8);color:rgba(255,107,133,.9)}
+        #debug-logs .log-line.warn{border-left-color:rgba(255,191,71,.8);color:rgba(255,191,71,.9)}
+        #debug-logs .log-line.info{border-left-color:rgba(0,242,255,.6)}
+        #debug-logs::-webkit-scrollbar{width:6px}
+        #debug-logs::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+        #debug-logs::-webkit-scrollbar-thumb{background:rgba(0,242,255,.4);border-radius:3px}
     </style>
 </head>
 <body>
 
 <div class="container">
+    <!-- DEBUG PANEL -->
+    <div id="debug-panel">
+        <div id="debug-panel-header">
+            <div id="debug-panel-title">🐛 Debug Logs</div>
+            <div id="debug-panel-close">✕</div>
+        </div>
+        <div id="debug-logs"></div>
+    </div>
+    
     <div class="header">
         <div class="header-left">
             <button class="back-btn" onclick="history.back()">←</button>
@@ -115,6 +139,59 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/apexcharts/3.45.0/apexcharts.min.js"></script>
 
 <script>
+// ═══════════════════════════════════════════════════════════════════════
+// 🐛 DEBUG PANEL - Capture console logs on iPhone
+// ═══════════════════════════════════════════════════════════════════════
+const DEBUG_ENABLED = true;
+let debugLogs = [];
+const MAX_LOGS = 50;
+
+function addDebugLog(msg, type = 'info') {
+  if (!DEBUG_ENABLED) return;
+  debugLogs.push({ msg, type, time: new Date().toLocaleTimeString() });
+  if (debugLogs.length > MAX_LOGS) debugLogs.shift();
+  
+  const logsContainer = document.getElementById('debug-logs');
+  if (logsContainer) {
+    const logEl = document.createElement('div');
+    logEl.className = `log-line ${type}`;
+    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    logsContainer.appendChild(logEl);
+    logsContainer.scrollTop = logsContainer.scrollHeight;
+  }
+}
+
+// Intercept console methods
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+console.log = function(...args) {
+  originalLog(...args);
+  addDebugLog(args.join(' '), 'info');
+};
+
+console.warn = function(...args) {
+  originalWarn(...args);
+  addDebugLog(args.join(' '), 'warn');
+};
+
+console.error = function(...args) {
+  originalError(...args);
+  addDebugLog(args.join(' '), 'error');
+};
+
+// Debug panel close button
+window.addEventListener('DOMContentLoaded', () => {
+  const closeBtn = document.getElementById('debug-panel-close');
+  const panel = document.getElementById('debug-panel');
+  if (closeBtn && panel) {
+    closeBtn.addEventListener('click', () => {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+  }
+});
+
 const DB = "OnyxPortfolioDB";
 const STORE = "Stocks";
 let currentStock = null;
@@ -3040,7 +3117,8 @@ function drawCandlestick(s){
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
-  const bw=Math.max(1,Math.min(8,gap*0.35));
+  // Thinner bars for dense data: reduce multiplier and max width
+  const bw=Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
 
   // Full history + visible date range — used by both MAs and KPI overlays
   const allCandles = s.candles || candles;
@@ -3392,15 +3470,20 @@ function drawVolume(s){
   const W=W2,H=H2;
   const PAD={l:8,r:52,t:6,b:18};
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
-  const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(8,gap*0.35));
+  const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
   const mv=Math.max(...candles.map(c=>c.v))||1;
   
-  // Determine color based on actual price movement (compare visible range start to end)
-  const startPrice = candles[0].o || candles[0].c;
-  const endPrice = candles[candles.length-1].c || candles[candles.length-1].o;
-  const priceUp = endPrice >= startPrice;
+  // Determine color based on actual price movement
+  // Use stock's current price vs opening of visible range
+  const openPrice = candles[0].o || candles[0].c || 0;
+  const closePrice = candles[candles.length-1].c || candles[candles.length-1].o || 0;
+  const currentPrice = s.ltp || closePrice;
+  
+  // Compare: is current price higher than opening of period?
+  const priceUp = currentPrice >= openPrice;
   const volumeColor = priceUp ? '#00d084' : '#ff3b5c';
-  console.log('[VOLUME] startPrice:', startPrice, 'endPrice:', endPrice, 'priceUp:', priceUp, 'color:', volumeColor, 'candles:', candles.length);
+  
+  console.log('[VOLUME] open:', openPrice, 'close:', closePrice, 'current:', currentPrice, 'priceUp:', priceUp, 'volumeColor:', volumeColor);
 
   // Left Y-axis labels (Volume scale)
   ctx.fillStyle='rgba(255,255,255,.85)';
@@ -3446,21 +3529,31 @@ function drawVolume(s){
   ctx.fillStyle='rgba(255,255,255,.85)';
   ctx.font='bold 8px JetBrains Mono,monospace';
   ctx.textAlign='center';
+  let dateDebug = [];
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
-    const dateStr = String(c.d);
-    let lbl;
-    if(dateStr && dateStr.length >= 10){
-      const [yr, mo, da] = dateStr.slice(0,10).split('-');
-      if(n > 50) lbl = mo + '/' + yr.slice(2);  // MM/YY for long ranges
-      else lbl = da + '/' + mo;  // DD/MM for short ranges
-    } else {
-      lbl = '?';
+    const dateStr = c.d ? String(c.d).trim() : '';
+    let lbl = '?';
+    
+    if(dateStr.length >= 10){
+      try {
+        const parts = dateStr.slice(0,10).split('-');
+        if(parts.length === 3){
+          const [yr, mo, da] = parts;
+          if(n > 50) lbl = mo + '/' + yr.slice(2);  // MM/YY for long ranges
+          else lbl = da + '/' + mo;  // DD/MM for short ranges
+        }
+      } catch(e){
+        lbl = '!';
+      }
     }
+    
     const x = PAD.l+i*gap+gap/2;
     if(x > W-PAD.r-4) return;
     ctx.fillText(lbl, x, H-1);
+    if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl});
   });
+  if(dateDebug.length > 0) console.log('[DATES]', dateDebug);
   
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
