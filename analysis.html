@@ -3193,6 +3193,14 @@ function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
 
 async function canvasLoadAndDrawChart(sym) {
+  // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    attachChartResizeObserver(currentStock);
+    scheduleTACharts(currentStock);
+    return;
+  }
+  
+  // ✅ Step 2: Try optional JSON file (if you have one)
   try {
     const res = await fetch(`./charts/${sym}.json`);
     if (res.ok) {
@@ -3201,12 +3209,15 @@ async function canvasLoadAndDrawChart(sym) {
       chartCache[sym] = currentStock.candles;
       attachChartResizeObserver(currentStock);
       scheduleTACharts(currentStock);
-    } else {
-      console.log(`No chart for ${sym}`);
-      scheduleTACharts(currentStock);
+      return;
     }
   } catch (e) {
-    console.log('Chart load error:', e);
+    // JSON not available - that's ok
+  }
+  
+  // ✅ Step 3: Use whatever data we have, or show helpful message
+  if(currentStock) {
+    attachChartResizeObserver(currentStock);
     scheduleTACharts(currentStock);
   }
 }
