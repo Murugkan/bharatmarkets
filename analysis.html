@@ -97,7 +97,6 @@
         <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
         <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
         <button class="tab" onclick="switchTab('technicalPro')">📈 Technical Pro</button>
-        <button class="tab" onclick="switchTab('movers')">📈 Movers</button>
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
@@ -134,6 +133,61 @@ const S = {
 };
 let chartCache = {};
 
+// ✅ DEBUG PANEL FOR MOBILE
+const debugPanel = (() => {
+  const panel = document.createElement('div');
+  panel.id = 'debug-panel';
+  panel.style.cssText = `
+    position: fixed; bottom: 10px; right: 10px; width: 280px; max-height: 300px;
+    background: #1a1a2e; border: 2px solid #00d084; border-radius: 8px;
+    color: #00d084; font-family: monospace; font-size: 10px;
+    z-index: 9999; box-shadow: 0 0 20px rgba(0,208,132,.3);
+    display: flex; flex-direction: column; overflow: hidden;
+  `;
+  
+  const header = document.createElement('div');
+  header.style.cssText = `
+    background: #00d084; color: #1a1a2e; padding: 4px 8px; font-weight: bold;
+    display: flex; justify-content: space-between; align-items: center;
+  `;
+  header.textContent = '🐛 DEBUG';
+  
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = '✕';
+  clearBtn.style.cssText = `
+    background: none; border: none; color: #1a1a2e; cursor: pointer; 
+    font-weight: bold; padding: 0; width: 20px;
+  `;
+  clearBtn.onclick = () => { logDiv.innerHTML = ''; };
+  header.appendChild(clearBtn);
+  
+  const logDiv = document.createElement('div');
+  logDiv.style.cssText = `
+    overflow-y: auto; padding: 6px; flex: 1; line-height: 1.4;
+    background: #1a1a2e; max-height: 270px;
+  `;
+  
+  panel.appendChild(header);
+  panel.appendChild(logDiv);
+  
+  const origLog = console.log;
+  console.log = function(...args) {
+    origLog.apply(console, args);
+    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+    const line = document.createElement('div');
+    line.textContent = msg;
+    line.style.color = msg.includes('[CHART]') ? '#f59e0b' : 
+                       msg.includes('[DRAW]') ? '#3b82f6' :
+                       msg.includes('[SCHED]') ? '#a855f7' : '#00d084';
+    logDiv.appendChild(line);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  };
+  
+  document.body.appendChild(panel);
+  console.log('[DEBUG] Panel initialized - try dragging the chart');
+  return { panel, logDiv };
+})();
+
 // Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
 const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
@@ -154,6 +208,9 @@ const tbdLink = (label) => {
 // Get URL param
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
+
+console.log('URL Search:', window.location.search);
+console.log('Ticker from URL:', ticker);
 
 // Load data
 async function loadStock() {
@@ -788,28 +845,67 @@ function renderTab(tab) {
         </div>`;
         document.getElementById('content').innerHTML = html;
         
+        // Initialize debug window for MOBILE
+        const debugWindow = document.createElement('div');
+        debugWindow.id = 'debug-window';
+        debugWindow.style.cssText = `
+            position: fixed;
+            bottom: 60px;
+            left: 12px;
+            right: 12px;
+            max-height: 150px;
+            background: rgba(0,0,0,.98);
+            border: 2px solid #00f2ff;
+            border-radius: 6px;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 9px;
+            color: #00f2ff;
+            overflow-y: auto;
+            z-index: 9999;
+            display: block;
+        `;
+        document.body.appendChild(debugWindow);
+        
+        // Add debug toggle button
+        const debugBtn = document.createElement('button');
+        debugBtn.style.cssText = `
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            width: 40px;
+            height: 40px;
+            background: #00f2ff;
+            border: none;
+            border-radius: 50%;
+            color: #000;
+            font-weight: bold;
+            z-index: 10000;
+            cursor: pointer;
+            font-size: 18px;
+        `;
+        debugBtn.textContent = '🐛';
+        debugBtn.onclick = () => {
+            debugWindow.style.display = debugWindow.style.display === 'none' ? 'block' : 'none';
+        };
+        document.body.appendChild(debugBtn);
+        
+        // Capture console.log
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const debugWin = document.getElementById('debug-window');
+            if (debugWin) {
+                const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+                debugWin.innerHTML += `<div style="white-space:pre-wrap;word-break:break-word">${line}</div>`;
+                debugWin.scrollTop = debugWin.scrollHeight;
+            }
+        };
+        
+        console.log('🐛 Debug panel ready - Tap bug icon to toggle');
+        
         // Load and render new technical pro charts
         renderTechnicalPro(currentStock);
-    } else if (tab === 'movers') {
-        html = `<div style="padding:12px;padding-bottom:100px">
-            <div style="margin-bottom:12px">
-                <div style="font-size:14px;font-weight:700;color:var(--ac)">📈 Movers</div>
-                <div style="font-size:11px;color:rgba(122,143,160,.7);margin-top:4px">${currentStock.name||currentStock.ticker}</div>
-            </div>
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
-                <div style="font-size:12px;font-weight:700;color:var(--tx1)">Current: ₹${(currentStock.ltp||0).toFixed(2)}</div>
-                <div style="font-size:12px;font-weight:700;color:${(currentStock.chg1d||0)>=0?'#00e896':'#ff6b85'};margin-top:4px">
-                    ${(currentStock.chg1d||0)>=0?'▲':'▼'} ${Math.abs(currentStock.chg1d||0).toFixed(2)}%
-                </div>
-            </div>
-            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:12px">
-                <div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px">🗺 Sector Heatmap</div>
-                <canvas id="cv-heatmap" style="width:100%;border-radius:4px;cursor:pointer;max-height:300px"></canvas>
-                <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1a2332;border-radius:6px;padding:8px 10px;font-family:monospace;font-size:9px;color:var(--tx1);pointer-events:none;z-index:999"></div>
-            </div>
-        </div>`;
-        document.getElementById('content').innerHTML = html;
-        requestAnimationFrame(()=>requestAnimationFrame(()=>drawSectorHeatmap([currentStock])));
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -2908,23 +3004,23 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
+  console.log('[SCHED] scheduleTACharts called, will redraw with S.chartPan=' + S.chartPan);
   requestAnimationFrame(()=>{
-    drawCandlestick(s);
-    if(S.maVis.vol) drawVolume(s);
-    updateChartStats(s);
+    requestAnimationFrame(()=>{
+      console.log('[SCHED] RAF: calling drawCandlestick');
+      drawCandlestick(s);
+      if(S.maVis.vol) drawVolume(s);
+      updateChartStats(s);
+    });
   });
 }
 
 let _chartResizeObs = null;
-let _resizeTimeout = null;
 function attachChartResizeObserver(s){
   if(_chartResizeObs) _chartResizeObs.disconnect();
   const wrap = document.getElementById('chart-wrap');
   if(!wrap || !window.ResizeObserver) return;
-  _chartResizeObs = new ResizeObserver(()=>{ 
-    clearTimeout(_resizeTimeout);
-    _resizeTimeout = setTimeout(()=>{ scheduleTACharts(s); }, 100);
-  });
+  _chartResizeObs = new ResizeObserver(()=>{ scheduleTACharts(s); });
   _chartResizeObs.observe(wrap);
 }
 
@@ -3359,8 +3455,8 @@ function drawVolume(s){
 
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2+S.chartPan;
-    ctx.fillStyle=c.c>=c.o?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
+    const x=PAD.l+i*gap+(gap-bw)/2;  // ✅ FIX: Removed +S.chartPan - panning handled by data slice in getSlicedCandles
+    ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
@@ -3409,50 +3505,17 @@ function updateChartStats(s){
 function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(); }
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
-
-// Sector Heatmap Treemap
-function drawSectorHeatmap(universe){
-  const cv = document.getElementById('cv-heatmap');
-  if(!cv) return;
-  const dpr = window.devicePixelRatio || 1;
-  const W = Math.max(cv.offsetWidth || 200, 180);
-  const H = W;
-  cv.width = W*dpr; cv.height = H*dpr;
-  cv.style.width = W+'px'; cv.style.height = H+'px';
-  const ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.fillStyle = '#060c18';
-  ctx.fillRect(0, 0, W, H);
-  
-  if(!universe.length){ ctx.fillStyle='rgba(140,176,208,.4)'; ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.fillText('No data', W/2, H/2); return; }
-  
-  const sMap = {};
-  universe.forEach(s=>{ const sec = (s.sector && s.sector!=='—') ? s.sector : 'Other'; if(!sMap[sec]) sMap[sec]={name:sec, value:0, chgSum:0, n:0}; sMap[sec].value += (s.ltp||0); sMap[sec].chgSum += (s.chg1d||0); sMap[sec].n++; });
-  const nodes = Object.values(sMap).map(d=>({name:d.name, size:Math.max(1000,d.value*10), chg:d.chgSum/d.n, n:d.n})).sort((a,b)=>b.size-a.size);
-  const totalSize = nodes.reduce((a,b)=>a+b.size,0);
-  nodes.forEach(n=>{ n.size = (n.size/totalSize)*W*H; });
-  
-  const rects = [];
-  function worstRatio(row, w){ if(!w||!row.length) return Infinity; const s=row.reduce((a,b)=>a+b.size,0); const maxS=Math.max(...row.map(r=>r.size)); const minS=Math.min(...row.map(r=>r.size)); return Math.max((w*w*maxS)/(s*s),(s*s)/(w*w*minS)); }
-  function layoutRow(row, x, y, w, h){ const s=row.reduce((a,b)=>a+b.size,0); let cx=x, cy=y; if(w>=h){ const stripW=s/h; row.forEach(item=>{ const ih=item.size/stripW; rects.push({...item,x:Math.max(0,cx),y:Math.max(0,cy),w:Math.min(stripW,W-cx),h:Math.min(ih,H-cy)}); cy+=ih; }); return {x:x+stripW,y:y,w:w-stripW,h:h}; } else { const stripH=s/w; row.forEach(item=>{ const iw=item.size/stripH; rects.push({...item,x:Math.max(0,cx),y:Math.max(0,cy),w:Math.min(iw,W-cx),h:Math.min(stripH,H-cy)}); cx+=iw; }); return {x:x,y:y+stripH,w:w,h:h-stripH}; } }
-  function squarify(children, x, y, w, h){ if(!children.length||w<1||h<1) return; let row=[], rem=[...children]; const shortest=Math.min(w,h); while(rem.length){ const test=[...row,rem[0]]; if(row.length>0&&worstRatio(test,shortest)>worstRatio(row,shortest)) break; row.push(rem.shift()); } const next=layoutRow(row,x,y,w,h); squarify(rem,next.x,next.y,next.w,next.h); }
-  squarify(nodes, 0, 0, W, H);
-  
-  function tileColor(chg){ const c=Math.max(-4,Math.min(4,chg)); if(c===0) return 'rgba(35,50,75,0.85)'; if(c>0){ const t=c/4; const g=Math.round(80+150*t); const r=Math.round(5+15*t); const b=Math.round(10+20*t); return 'rgba('+r+','+g+','+b+',0.90)'; } else { const t=(-c)/4; const r=Math.round(80+150*t); const g=Math.round(10+15*t); const b=Math.round(15+20*t); return 'rgba('+r+','+g+','+b+',0.90)'; } }
-  
-  const PAD=2;
-  rects.forEach(r=>{ const rx=r.x+PAD, ry=r.y+PAD, rw=r.w-PAD*2, rh=r.h-PAD*2; if(rw<3||rh<3) return; ctx.fillStyle=tileColor(r.chg); ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(rx,ry,rw,rh,3); else ctx.rect(rx,ry,rw,rh); ctx.fill(); ctx.strokeStyle='rgba(6,12,24,0.8)'; ctx.lineWidth=1; ctx.stroke(); if(rw<16||rh<12) return; ctx.save(); ctx.beginPath(); ctx.rect(rx,ry,rw,rh); ctx.clip(); ctx.textAlign='center'; const sign=r.chg>=0?'+':''; const pct=sign+r.chg.toFixed(2)+'%'; const cx=rx+rw/2; if(rw>=54&&rh>=36){ const fs=Math.min(12,Math.max(8,Math.floor(Math.min(rw/7,rh/3.5)))); ctx.font='700 '+fs+'px JetBrains Mono'; ctx.fillStyle='rgba(255,255,255,0.96)'; ctx.fillText(r.name.slice(0,12), cx, ry+rh*0.42); ctx.font=Math.max(7,fs-1)+'px JetBrains Mono'; ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.95)':'rgba(255,195,195,0.95)'; ctx.fillText(pct, cx, ry+rh*0.42+fs+4); } else if(rw>=34&&rh>=22){ const fs=Math.min(9,Math.max(6,Math.floor(Math.min(rw/6,rh/3)))); ctx.font='700 '+fs+'px monospace'; ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.fillText(r.name.slice(0,9), cx, ry+rh*0.40); ctx.font=Math.max(6,fs-1)+'px monospace'; ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.9)':'rgba(255,195,195,0.9)'; ctx.fillText(pct, cx, ry+rh*0.40+fs+3); } else { ctx.font='6px monospace'; ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillText(pct, cx, ry+rh/2+3); } ctx.restore(); });
-  
-  cv.onclick=(e)=>{ const br=cv.getBoundingClientRect(); const scX=W/br.width, scY=H/br.height; const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY; const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h); const tip=document.getElementById('hm-tooltip'); if(hit&&tip){ const sign=hit.chg>=0?'+':''; tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b> <b>'+sign+hit.chg.toFixed(2)+'%</b>'; tip.style.display='block'; tip.style.left=Math.min(e.clientX+10,window.innerWidth-170)+'px'; tip.style.top=Math.max(e.clientY-70,8)+'px'; setTimeout(()=>{tip.style.display='none';},3500); } };
-}
 function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
 
 async function canvasLoadAndDrawChart(sym) {
   // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
   if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    // ✅ FIX: Reset initialization flag when rendering new chart
+    chartInteraction.initialized = false;
     attachChartResizeObserver(currentStock);
     scheduleTACharts(currentStock);
-    setupChartInteraction();  // Enable pan/zoom once
+    // Give canvas time to render, then setup interaction
+    setTimeout(() => { setupChartInteraction(); }, 50);
     return;
   }
   
@@ -3463,9 +3526,12 @@ async function canvasLoadAndDrawChart(sym) {
       const data = await res.json();
       currentStock.candles = data.bars || [];
       chartCache[sym] = currentStock.candles;
+      // ✅ FIX: Reset initialization flag when rendering new chart
+      chartInteraction.initialized = false;
       attachChartResizeObserver(currentStock);
       scheduleTACharts(currentStock);
-      setupChartInteraction();  // Enable pan/zoom once
+      // Give canvas time to render, then setup interaction
+      setTimeout(() => { setupChartInteraction(); }, 50);
       return;
     }
   } catch (e) {
@@ -3474,9 +3540,12 @@ async function canvasLoadAndDrawChart(sym) {
   
   // ✅ Step 3: Use whatever data we have, or show helpful message
   if(currentStock) {
+    // ✅ FIX: Reset initialization flag when rendering new chart
+    chartInteraction.initialized = false;
     attachChartResizeObserver(currentStock);
     scheduleTACharts(currentStock);
-    setupChartInteraction();  // Enable pan/zoom once
+    // Give canvas time to render, then setup interaction
+    setTimeout(() => { setupChartInteraction(); }, 50);
   }
 }
 
@@ -3487,14 +3556,28 @@ async function canvasLoadAndDrawChart(sym) {
 let chartInteraction = {
   isPanning: false,
   startX: 0,
-  startPan: 0
+  startPan: 0,
+  initialized: false  // ✅ FIX: Prevent double-initialization
 };
 
 function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
-  if (!canvas) return;
   
-  console.log('[CHART] setupChartInteraction: canvas found', canvas);
+  // ✅ FIX: Guard 1 - Canvas must exist
+  if (!canvas) {
+    console.warn('[CHART] Canvas element not found. Retrying in 200ms...');
+    setTimeout(setupChartInteraction, 200);
+    return;
+  }
+  
+  // ✅ FIX: Guard 2 - Prevent double-initialization
+  if (chartInteraction.initialized) {
+    console.log('[CHART] Chart interaction already initialized, skipping');
+    return;
+  }
+  
+  chartInteraction.initialized = true;
+  console.log('[CHART] ✅ setupChartInteraction initialized successfully');
   
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
@@ -3514,8 +3597,9 @@ function setupChartInteraction() {
     
     console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
     
-    // Allow free panning with generous limits
-    newPan = Math.max(-400, Math.min(400, newPan));
+    // ✅ FIX #3: Dynamic pan limits based on canvas width
+    const maxPan = canvas.offsetWidth * 0.3;
+    newPan = Math.max(-maxPan, Math.min(maxPan, newPan));
     console.log('[CHART] after limit: newPan=' + newPan);
     S.chartPan = newPan;
     console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
@@ -3525,11 +3609,13 @@ function setupChartInteraction() {
   canvas.onmouseup = () => { chartInteraction.isPanning = false; };
   canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
   
-  // Touch Support
+  // ✅ FIX #4: Touch Support with proper event prevention
   canvas.ontouchstart = (e) => {
+    console.log('[CHART] touchstart - isPanning=true');
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.touches[0].clientX;
     chartInteraction.startPan = S.chartPan;
+    e.preventDefault();  // ✅ Prevent default scrolling
   };
   
   canvas.ontouchmove = (e) => {
@@ -3537,13 +3623,18 @@ function setupChartInteraction() {
     const delta = e.touches[0].clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
-    // Allow free panning with generous limits
-    newPan = Math.max(-400, Math.min(400, newPan));
+    // ✅ FIX: Dynamic pan limits
+    const maxPan = canvas.offsetWidth * 0.3;
+    newPan = Math.max(-maxPan, Math.min(maxPan, newPan));
     S.chartPan = newPan;
     scheduleTACharts(currentStock);
+    e.preventDefault();  // ✅ Prevent default scrolling
   };
   
-  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
+  canvas.ontouchend = (e) => { 
+    chartInteraction.isPanning = false;
+    e.preventDefault();  // ✅ Prevent default scrolling
+  };
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
@@ -3555,8 +3646,9 @@ function setupChartInteraction() {
   };
 }
 
-// Auto-setup when canvas is ready
-document.addEventListener('DOMContentLoaded', setupChartInteraction);
+// ✅ FIX #1: Don't setup on DOMContentLoaded - canvas doesn't exist yet
+// Canvas is created dynamically when Canvas tab is rendered
+// setupChartInteraction() is called from canvasLoadAndDrawChart() instead
 
 
 
