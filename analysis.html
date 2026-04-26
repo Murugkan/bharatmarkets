@@ -133,6 +133,61 @@ const S = {
 };
 let chartCache = {};
 
+// ✅ DEBUG PANEL FOR MOBILE
+const debugPanel = (() => {
+  const panel = document.createElement('div');
+  panel.id = 'debug-panel';
+  panel.style.cssText = `
+    position: fixed; bottom: 10px; right: 10px; width: 280px; max-height: 300px;
+    background: #1a1a2e; border: 2px solid #00d084; border-radius: 8px;
+    color: #00d084; font-family: monospace; font-size: 10px;
+    z-index: 9999; box-shadow: 0 0 20px rgba(0,208,132,.3);
+    display: flex; flex-direction: column; overflow: hidden;
+  `;
+  
+  const header = document.createElement('div');
+  header.style.cssText = `
+    background: #00d084; color: #1a1a2e; padding: 4px 8px; font-weight: bold;
+    display: flex; justify-content: space-between; align-items: center;
+  `;
+  header.textContent = '🐛 DEBUG';
+  
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = '✕';
+  clearBtn.style.cssText = `
+    background: none; border: none; color: #1a1a2e; cursor: pointer; 
+    font-weight: bold; padding: 0; width: 20px;
+  `;
+  clearBtn.onclick = () => { logDiv.innerHTML = ''; };
+  header.appendChild(clearBtn);
+  
+  const logDiv = document.createElement('div');
+  logDiv.style.cssText = `
+    overflow-y: auto; padding: 6px; flex: 1; line-height: 1.4;
+    background: #1a1a2e; max-height: 270px;
+  `;
+  
+  panel.appendChild(header);
+  panel.appendChild(logDiv);
+  
+  const origLog = console.log;
+  console.log = function(...args) {
+    origLog.apply(console, args);
+    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+    const line = document.createElement('div');
+    line.textContent = msg;
+    line.style.color = msg.includes('[CHART]') ? '#f59e0b' : 
+                       msg.includes('[DRAW]') ? '#3b82f6' :
+                       msg.includes('[SCHED]') ? '#a855f7' : '#00d084';
+    logDiv.appendChild(line);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  };
+  
+  document.body.appendChild(panel);
+  console.log('[DEBUG] Panel initialized - try dragging the chart');
+  return { panel, logDiv };
+})();
+
 // Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
 const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
