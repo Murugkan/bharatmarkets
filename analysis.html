@@ -3024,16 +3024,7 @@ function drawCandlestick(s){
   // Define barX first (needed for visibility check)
   const barX=i=>PAD.l+i*gap+gap/2;
   
-  // Find which candles are actually visible on screen (not clipped by pan)
-  let visibleIndices = [];
-  for(let i=0; i<candles.length; i++){
-    const x = barX(i);
-    if(x >= PAD.l-5 && x <= PAD.l+cW+5){
-      visibleIndices.push(i);
-    }
-  }
-  
-  // Calculate price range from ALL candles (not just visible)
+  // Draw grid and candlesticks
   const allPrices=candles.flatMap(c=>[c.h,c.l]);
   if(s.sma20&&S.maVis.sma20)allPrices.push(...(s.sma20||[]));
   if(s.sma50&&S.maVis.sma50)allPrices.push(...(s.sma50||[]));
@@ -3052,6 +3043,7 @@ function drawCandlestick(s){
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  
   
   // Draw grid lines and candlesticks (no clipping)
   for(let i=0;i<=4;i++){
@@ -3237,7 +3229,7 @@ function drawVolume(s){
   // Calculate volume max from ALL candles
   const mv=Math.max(...candles.map(c=>c.v))||1;
   
-  // Right axis panel (draw before clipping)
+  // Right axis panel
   ctx.fillStyle='rgba(7,12,24,.95)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(100,200,255,.6)';ctx.lineWidth=1.5;
@@ -3332,34 +3324,39 @@ function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
 function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
 
-async function canvasLoadAndDrawChart(sym) {
-  // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
-  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
-    attachChartResizeObserver(currentStock);
-    scheduleTACharts(currentStock);
-    return;
-  }
-  
-  // ✅ Step 2: Try optional JSON file (if you have one)
-  try {
-    const res = await fetch(`./charts/${sym}.json`);
-    if (res.ok) {
-      const data = await res.json();
-      currentStock.candles = data.bars || [];
-      chartCache[sym] = currentStock.candles;
-      attachChartResizeObserver(currentStock);
-      scheduleTACharts(currentStock);
+function canvasLoadAndDrawChart(sym){
+  if(!sym) return;
+  // After 2 rAF the DOM is painted and offsetWidth is correct
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const s = currentStock;
+    if(!s) return;
+    
+    if(chartCache[sym]){
+      s.candles = chartCache[sym];
+      scheduleTACharts(s);
+      attachChartResizeObserver(s);
       return;
     }
-  } catch (e) {
-    // JSON not available - that's ok
-  }
-  
-  // ✅ Step 3: Use whatever data we have, or show helpful message
-  if(currentStock) {
-    attachChartResizeObserver(currentStock);
-    scheduleTACharts(currentStock);
-  }
+    
+    fetch('./charts/'+sym+'.json', {cache:'force-cache'})
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{
+        if(d && d.bars && d.bars.length){
+          chartCache[sym] = d.bars;
+          s.candles = d.bars;
+        } else {
+          s.candles = [];
+          s._noChartData = true;
+        }
+        scheduleTACharts(s);
+        attachChartResizeObserver(s);
+      })
+      .catch(()=>{
+        s.candles = [];
+        s._noChartData = true;
+        scheduleTACharts(s);
+      });
+  }));
 }
 
 // ════════════════════════════════════════════════
