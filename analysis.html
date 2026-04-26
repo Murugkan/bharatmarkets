@@ -133,61 +133,6 @@ const S = {
 };
 let chartCache = {};
 
-// ✅ DEBUG PANEL FOR MOBILE
-const debugPanel = (() => {
-  const panel = document.createElement('div');
-  panel.id = 'debug-panel';
-  panel.style.cssText = `
-    position: fixed; bottom: 10px; right: 10px; width: 280px; max-height: 300px;
-    background: #1a1a2e; border: 2px solid #00d084; border-radius: 8px;
-    color: #00d084; font-family: monospace; font-size: 10px;
-    z-index: 9999; box-shadow: 0 0 20px rgba(0,208,132,.3);
-    display: flex; flex-direction: column; overflow: hidden;
-  `;
-  
-  const header = document.createElement('div');
-  header.style.cssText = `
-    background: #00d084; color: #1a1a2e; padding: 4px 8px; font-weight: bold;
-    display: flex; justify-content: space-between; align-items: center;
-  `;
-  header.textContent = '🐛 DEBUG';
-  
-  const clearBtn = document.createElement('button');
-  clearBtn.textContent = '✕';
-  clearBtn.style.cssText = `
-    background: none; border: none; color: #1a1a2e; cursor: pointer; 
-    font-weight: bold; padding: 0; width: 20px;
-  `;
-  clearBtn.onclick = () => { logDiv.innerHTML = ''; };
-  header.appendChild(clearBtn);
-  
-  const logDiv = document.createElement('div');
-  logDiv.style.cssText = `
-    overflow-y: auto; padding: 6px; flex: 1; line-height: 1.4;
-    background: #1a1a2e; max-height: 270px;
-  `;
-  
-  panel.appendChild(header);
-  panel.appendChild(logDiv);
-  
-  const origLog = console.log;
-  console.log = function(...args) {
-    origLog.apply(console, args);
-    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-    const line = document.createElement('div');
-    line.textContent = msg;
-    line.style.color = msg.includes('[CHART]') ? '#f59e0b' : 
-                       msg.includes('[DRAW]') ? '#3b82f6' :
-                       msg.includes('[SCHED]') ? '#a855f7' : '#00d084';
-    logDiv.appendChild(line);
-    logDiv.scrollTop = logDiv.scrollHeight;
-  };
-  
-  document.body.appendChild(panel);
-  console.log('[DEBUG] Panel initialized - try dragging the chart');
-  return { panel, logDiv };
-})();
-
 // Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
 const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
@@ -208,9 +153,6 @@ const tbdLink = (label) => {
 // Get URL param
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
-
-console.log('URL Search:', window.location.search);
-console.log('Ticker from URL:', ticker);
 
 // Load data
 async function loadStock() {
@@ -3004,14 +2946,10 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
-  console.log('[SCHED] scheduleTACharts called, will redraw with S.chartPan=' + S.chartPan);
   requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      console.log('[SCHED] RAF: calling drawCandlestick');
-      drawCandlestick(s);
-      if(S.maVis.vol) drawVolume(s);
-      updateChartStats(s);
-    });
+    drawCandlestick(s);
+    if(S.maVis.vol) drawVolume(s);
+    updateChartStats(s);
   });
 }
 
@@ -3057,11 +2995,8 @@ function getSlicedCandles(s, canvasWidth){
 
 
 function drawCandlestick(s){
-  console.log('[DRAW] drawCandlestick called, S.chartPan=' + S.chartPan);
-  
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
-  console.log('[DRAW] Canvas: width=' + cv.width + ', height=' + cv.height);
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
@@ -3108,7 +3043,7 @@ function drawCandlestick(s){
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
+  const barX=i=>{ return PAD.l+i*gap+gap/2; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -3133,11 +3068,9 @@ function drawCandlestick(s){
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
   // Candles
-  console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
-    if(i<3) console.log('[DRAW] Candle ' + i + ': cx=' + Math.round(cx) + ', h=' + c.h.toFixed(2) + ', l=' + c.l.toFixed(2));
     const bodyTop=toY(Math.max(c.o,c.c));
     const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
 
@@ -3554,31 +3487,21 @@ function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
   if (!canvas) return;
   
-  console.log('[CHART] setupChartInteraction: canvas found', canvas);
-  
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
-    console.log('[CHART] mousedown - isPanning=true, startX=' + e.clientX);
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
   };
   
   canvas.onmousemove = (e) => {
-    if (!chartInteraction.isPanning || !currentStock) {
-      console.log('[CHART] mousemove ignored: isPanning=' + chartInteraction.isPanning + ', currentStock=' + !!currentStock);
-      return;
-    }
+    if (!chartInteraction.isPanning || !currentStock) return;
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
-    console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
-    
     // Allow free panning with generous limits
     newPan = Math.max(-400, Math.min(400, newPan));
-    console.log('[CHART] after limit: newPan=' + newPan);
     S.chartPan = newPan;
-    console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
     scheduleTACharts(currentStock);
   };
   
@@ -3587,6 +3510,7 @@ function setupChartInteraction() {
   
   // Touch Support
   canvas.ontouchstart = (e) => {
+    e.preventDefault();
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.touches[0].clientX;
     chartInteraction.startPan = S.chartPan;
@@ -3594,6 +3518,7 @@ function setupChartInteraction() {
   
   canvas.ontouchmove = (e) => {
     if (!chartInteraction.isPanning || !currentStock) return;
+    e.preventDefault();
     const delta = e.touches[0].clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
@@ -3603,7 +3528,10 @@ function setupChartInteraction() {
     scheduleTACharts(currentStock);
   };
   
-  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
+  canvas.ontouchend = (e) => { 
+    e.preventDefault();
+    chartInteraction.isPanning = false; 
+  };
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
