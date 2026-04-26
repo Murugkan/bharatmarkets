@@ -3197,30 +3197,27 @@ function drawCandlestick(s){
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
     const price=mx-(mx-mn)*(i/4);
-    ctx.fillStyle='#00ffff';
-    ctx.font='11px JetBrains Mono,monospace'; ctx.fontWeight='900'; ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-8,y+(i===0?10:-3));
+    ctx.fillStyle='rgba(140,176,208,.65)';
+    ctx.font='8px JetBrains Mono,monospace'; ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?9:-2));
   }
 
   // Draw X-axis labels
-  const maxLabels = Math.min(5, Math.floor(cW / 55));  // Increased spacing to 55px
+  const maxLabels = Math.min(5, Math.floor(cW / 55));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
-  let lastLabelX = -100;  // Track last label position to prevent overlap
+  ctx.fillStyle='rgba(140,176,208,.65)'; ctx.font='8px JetBrains Mono,monospace';
+  let lastLabelX = -100;
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     const d = new Date(c.d);
     let lbl;
-    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    if(S.chartInterval==='M') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
     else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
+    else lbl = d.getDate()+'/'+(d.getMonth()+1);
     const x = barX(i);
-    if(x > PAD.l+cW+5 || x < PAD.l-5) return;  // Clip off-screen labels
-    
-    // Prevent label overlap
-    if(Math.abs(x - lastLabelX) < 45) return;  // Skip if too close to last label
+    if(x > PAD.l+cW+5 || x < PAD.l-5) return;
+    if(Math.abs(x - lastLabelX) < 45) return;
     lastLabelX = x;
-    
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
     ctx.fillText(lbl, x, H-4);
   });
@@ -3303,11 +3300,11 @@ function drawVolume(s){
   ctx.restore();
   
   // Volume label (Vol)
-  ctx.fillStyle='#00ff00'; ctx.font='10px JetBrains Mono,monospace; font-weight:bold'; ctx.textAlign='right';
+  ctx.fillStyle='#00ff00'; ctx.font='8px JetBrains Mono,monospace'; ctx.textAlign='right';
   ctx.fillText('Vol',W-2,12);
   
   // Volume Y-axis scale labels (outside clipping)
-  ctx.fillStyle='#ffff00'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  ctx.fillStyle='#ffff00'; ctx.font='8px JetBrains Mono,monospace';
   // Use visible candles for max volume (not all candles)
   const maxVol = Math.max(...visibleCandles.map(c=>c.v));
   ctx.textAlign='right';
@@ -3315,9 +3312,9 @@ function drawVolume(s){
   ctx.fillText('0', W-2, H-4);
   
   // X-AXIS LABELS for volume - use barX for alignment
-  const maxLabelsVol = Math.min(5, Math.floor(cW / 55));  // Increased spacing
+  const maxLabelsVol = Math.min(5, Math.floor(cW / 55));
   const lblStepVol = Math.max(1, Math.floor(n / maxLabelsVol));
-  ctx.fillStyle='#ffffff'; ctx.font='8px JetBrains Mono,monospace; font-weight:bold';
+  ctx.fillStyle='rgba(140,176,208,.65)'; ctx.font='8px JetBrains Mono,monospace';
   let lastLabelXVol = -100;
   candles.forEach((c,i)=>{
     if(i % lblStepVol !== 0 && i !== n-1) return;
