@@ -2949,12 +2949,13 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
+  console.log('[SCHED] scheduleTACharts called, will redraw with S.chartPan=' + S.chartPan);
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
+      console.log('[SCHED] RAF: calling drawCandlestick');
       drawCandlestick(s);
       if(S.maVis.vol) drawVolume(s);
       updateChartStats(s);
-      setupChartInteraction();  // Setup pan/zoom after drawing
     });
   });
 }
@@ -2993,6 +2994,8 @@ function getSlicedCandles(s, canvasWidth){
 
 
 function drawCandlestick(s){
+  console.log('[DRAW] drawCandlestick called, S.chartPan=' + S.chartPan);
+  
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
   const wrap=document.getElementById('chart-wrap');
@@ -3041,7 +3044,7 @@ function drawCandlestick(s){
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  const barX=i=>PAD.l+i*gap+gap/2;
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2+S.chartPan; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x + ' (gap=' + gap + ', S.chartPan=' + S.chartPan + ')'); return x; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -3386,7 +3389,7 @@ function drawVolume(s){
 
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2;
+    const x=PAD.l+i*gap+(gap-bw)/2+S.chartPan;
     ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
@@ -3443,6 +3446,7 @@ async function canvasLoadAndDrawChart(sym) {
   if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
     attachChartResizeObserver(currentStock);
     scheduleTACharts(currentStock);
+    setupChartInteraction();  // Enable pan/zoom once
     return;
   }
   
@@ -3455,6 +3459,7 @@ async function canvasLoadAndDrawChart(sym) {
       chartCache[sym] = currentStock.candles;
       attachChartResizeObserver(currentStock);
       scheduleTACharts(currentStock);
+      setupChartInteraction();  // Enable pan/zoom once
       return;
     }
   } catch (e) {
@@ -3465,6 +3470,7 @@ async function canvasLoadAndDrawChart(sym) {
   if(currentStock) {
     attachChartResizeObserver(currentStock);
     scheduleTACharts(currentStock);
+    setupChartInteraction();  // Enable pan/zoom once
   }
 }
 
@@ -3482,21 +3488,31 @@ function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
   if (!canvas) return;
   
+  console.log('[CHART] setupChartInteraction: canvas found', canvas);
+  
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
+    console.log('[CHART] mousedown - isPanning=true, startX=' + e.clientX);
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
   };
   
   canvas.onmousemove = (e) => {
-    if (!chartInteraction.isPanning || !currentStock) return;
+    if (!chartInteraction.isPanning || !currentStock) {
+      console.log('[CHART] mousemove ignored: isPanning=' + chartInteraction.isPanning + ', currentStock=' + !!currentStock);
+      return;
+    }
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
+    console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
+    
     // Allow free panning with generous limits
     newPan = Math.max(-400, Math.min(400, newPan));
+    console.log('[CHART] after limit: newPan=' + newPan);
     S.chartPan = newPan;
+    console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
     scheduleTACharts(currentStock);
   };
   
