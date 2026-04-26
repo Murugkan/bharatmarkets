@@ -133,59 +133,6 @@ const S = {
 };
 let chartCache = {};
 
-// ✅ DEBUG PANEL FOR MOBILE
-const debugPanel = (() => {
-  const panel = document.createElement('div');
-  panel.id = 'debug-panel';
-  panel.style.cssText = `
-    position: fixed; bottom: 10px; right: 10px; width: 280px; max-height: 300px;
-    background: #1a1a2e; border: 2px solid #00d084; border-radius: 8px;
-    color: #00d084; font-family: monospace; font-size: 10px;
-    z-index: 9999; box-shadow: 0 0 20px rgba(0,208,132,.3);
-    display: flex; flex-direction: column; overflow: hidden;
-  `;
-  
-  const header = document.createElement('div');
-  header.style.cssText = `
-    background: #00d084; color: #1a1a2e; padding: 4px 8px; font-weight: bold;
-    display: flex; justify-content: space-between; align-items: center;
-  `;
-  header.textContent = '🐛 DEBUG';
-  
-  const clearBtn = document.createElement('button');
-  clearBtn.textContent = '✕';
-  clearBtn.style.cssText = `
-    background: none; border: none; color: #1a1a2e; cursor: pointer; 
-    font-weight: bold; padding: 0; width: 20px;
-  `;
-  clearBtn.onclick = () => { logDiv.innerHTML = ''; };
-  header.appendChild(clearBtn);
-  
-  const logDiv = document.createElement('div');
-  logDiv.style.cssText = `
-    overflow-y: auto; padding: 6px; flex: 1; line-height: 1.4;
-    background: #1a1a2e; max-height: 270px;
-  `;
-  
-  panel.appendChild(header);
-  panel.appendChild(logDiv);
-  
-  const origLog = console.log;
-  console.log = function(...args) {
-    origLog.apply(console, args);
-    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-    const line = document.createElement('div');
-    line.textContent = msg;
-    line.style.color = msg.includes('[CHART]') ? '#f59e0b' : 
-                       msg.includes('[DRAW]') ? '#3b82f6' :
-                       msg.includes('[SCHED]') ? '#a855f7' : '#00d084';
-    logDiv.appendChild(line);
-    logDiv.scrollTop = logDiv.scrollHeight;
-  };
-  
-  document.body.appendChild(panel);
-  return { panel, logDiv };
-})();
 
 // Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
@@ -207,7 +154,6 @@ const tbdLink = (label) => {
 // Get URL param
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
-console.log('Ticker from URL:', ticker);
 
 // Load data
 async function loadStock() {
@@ -249,9 +195,12 @@ async function loadStock() {
         return;
     }
     
+    console.log('Loading ticker:', ticker);
+    
     const db = await new Promise(r => {
         const req = indexedDB.open(DB);
         req.onsuccess = () => {
+            console.log('DB opened');
             r(req.result);
         };
         req.onerror = () => {
@@ -272,6 +221,7 @@ async function loadStock() {
         currentStock = await new Promise(r => {
             const req = store.get(ticker);
             req.onsuccess = () => {
+                console.log('Stock loaded:', req.result);
                 r(req.result);
             };
             req.onerror = () => {
@@ -288,6 +238,7 @@ async function loadStock() {
         
         // Determine data source
         dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
+        console.log('Data Source:', dataSource);
         console.log('Full stock object:', currentStock);
         
         // 🚀 Auto-load candles for Canvas chart
@@ -298,11 +249,14 @@ async function loadStock() {
                 if (res.ok) {
                     const data = await res.json();
                     currentStock.candles = data.bars || [];
+                    console.log('Candles loaded:', currentStock.candles.length, 'bars');
                 }
             } catch (e) {
                 console.log('No candle data available (optional):', e.message);
             }
         }
+        
+        console.log('Rendering header and overview...');
         renderHeader();
         
         // Load guidance data from localStorage or external source
@@ -337,9 +291,11 @@ async function loadGuidanceData(ticker) {
             const data = await response.json();
             if (data[ticker]) {
                 localStorage.setItem(`guidance_${ticker}`, JSON.stringify(data[ticker]));
+                console.log('Guidance data cached for', ticker);
             }
         }
     } catch (e) {
+        console.log('Guidance data not available or offline:', e.message);
     }
 }
 
@@ -889,6 +845,8 @@ function renderTab(tab) {
             }
         };
         
+        console.log('🐛 Debug panel ready - Tap bug icon to toggle');
+        
         // Load and render new technical pro charts
         renderTechnicalPro(currentStock);
     } else if (tab === 'fundamentals') {
@@ -909,6 +867,7 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
+            console.log('No guidance data');
         }
         
         if (!guidance || !guidance.guidance) {
@@ -1032,6 +991,7 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
+            console.log('No guidance data in localStorage');
         }
         
         if (!data || !data.insights) {
@@ -1386,6 +1346,7 @@ function filterBarsByDuration(bars, duration) {
 function changeDuration(duration) {
     // Store the selected duration
     window.chartDuration = duration;
+    console.log(`📅 Duration changed to: ${duration}`);
     
     // If not monthly, disable and uncheck metric selections
     if (duration !== 'monthly') {
@@ -1405,6 +1366,7 @@ function changeDuration(duration) {
             cb.parentElement.style.opacity = '1';
             cb.parentElement.style.pointerEvents = 'auto';
         });
+        console.log('✅ Metrics enabled for monthly view');
     }
     
     // Refresh the chart with new duration
@@ -1637,6 +1599,7 @@ function renderPriceChart(container, sym, bars) {
                     }
                     
                     const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    console.log(`Rendering metric ${metricKey} with ${sorted.length} quarters`);
                     
                     // Map metric keys to data keys
                     const keyMap = {
@@ -1655,6 +1618,8 @@ function renderPriceChart(container, sym, bars) {
                         const val = q[dataKey];
                         return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
                     }).filter(d => d !== null);
+                    
+                    console.log(`Metric ${metricKey}: ${metricData.length} data points`);
                     
                     if (metricData.length > 0) {
                         // Normalize to first value = 100
@@ -1682,6 +1647,7 @@ function renderPriceChart(container, sym, bars) {
                                 smooth: true,
                                 symbol: 'none'
                             };
+                            console.log(`✓ Added metric series: ${metricKey}`);
                         } else {
                             console.warn(`First metric value is 0 for ${metricKey}`);
                         }
@@ -1920,6 +1886,8 @@ function renderMetricsChart(container, sym, bars) {
 
         // NOW sync the timeScales AFTER both charts are created
         syncTimeScales();
+
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced`);
         
     } catch (e) {
         console.error('Metrics chart error:', e);
@@ -2008,6 +1976,8 @@ function addMetricSeries(metricKey, cd, chart) {
     })));
     
     metricSeries[cfg.label] = ls;
+
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Real values stored for hover`);
 }
 
 // ==================== TECHNICAL PRO CHARTS ====================
@@ -2052,6 +2022,7 @@ function toggleIndicator(indicator) {
     try {
         chart.toggleSeries(seriesName);
     } catch (e) {
+        console.log(`Toggle series: ${seriesName}`, e.message);
     }
 }
 
@@ -2090,6 +2061,7 @@ function toggleEMA(emaType) {
 
 function toggleMetric(metric) {
     if (!proCharts.chart2) {
+        console.log(`⚠️ Chart 2 not available for metrics`);
         return;
     }
     
@@ -2110,7 +2082,9 @@ function toggleMetric(metric) {
         
         if (seriesExists) {
             proCharts.chart2.toggleSeries(seriesName);
+            console.log(`✅ Toggled: ${seriesName}`);
         } else {
+            console.log(`ℹ️ Metric '${seriesName}' not available in Chart 2`);
         }
     } catch (e) {
         console.log(`ℹ️ Metric toggle (${seriesName}):`, e.message);
@@ -2258,6 +2232,7 @@ function calculateEMA(bars, period = 20) {
         console.log(`   Multiplier: ${multiplier.toFixed(4)}`);
         console.log(`   First EMA (at bar ${period-1}): ${ema[period-1]?.toFixed(2)}`);
         console.log(`   Last 3 EMAs: ${ema.slice(-3).map(e => e?.toFixed(2)).join(', ')}`);
+        console.log(`   Valid points: ${validEMAs.length}/${ema.length}`);
     }
     
     return ema;
@@ -2317,6 +2292,7 @@ function formatVolume(v) {
 }
 
 async function renderTechnicalPro(stock) {
+    console.log('📊 Technical Pro: Received stock from IndexedDB', stock ? stock.ticker : 'null');
     
     if (!stock || !stock.ticker) {
         document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Stock object not available</div>';
@@ -2324,10 +2300,12 @@ async function renderTechnicalPro(stock) {
     }
     
     const sym = stock.ticker;
+    console.log(`🔄 Loading bars for ${sym} from ./SYMBOL.json`);
     
     try {
         // Load OHLCV bars from ./charts/SYMBOL.json (NOT in IndexedDB)
         const barsUrl = `./charts/${sym}.json`;
+        console.log(`📥 Fetching: ${barsUrl}`);
         
         const res = await fetch(barsUrl);
         if (!res.ok) {
@@ -2345,8 +2323,11 @@ async function renderTechnicalPro(stock) {
             return;
         }
         
+        console.log(`✅ Loaded ${bars.length} bars`);
+        
         // Quarterly data comes from IndexedDB (already in currentStock)
         const quarterly = stock.quarterly || [];
+        console.log(`✅ Quarterly data: ${quarterly.length} quarters available`);
         
         const tf = proCharts.currentTimeframe;
         const recentBars = bars.slice(-252); // Last ~1 year
@@ -2358,6 +2339,8 @@ async function renderTechnicalPro(stock) {
         const ema20 = calculateEMA(recentBars, 20);
         const ema50 = calculateEMA(recentBars, 50);
         const ema200 = calculateEMA(recentBars, 200);
+        
+        console.log(`✅ Daily indicators calculated from ${recentBars.length} bars`);
         console.log(`   RSI(7): ${rsi7.filter(r => r !== null).length}, RSI(14): ${rsi14.filter(r => r !== null).length}, RSI(21): ${rsi21.filter(r => r !== null).length}`);
         console.log(`   EMA(20): ${ema20.filter(e => e !== null).length}, EMA(50): ${ema50.filter(e => e !== null).length}, EMA(200): ${ema200.filter(e => e !== null).length}`);
         
@@ -2372,6 +2355,7 @@ async function renderTechnicalPro(stock) {
             displayEMA20 = ema20;
             displayEMA50 = ema50;
             displayEMA200 = ema200;
+            console.log(`📊 Daily: ${chartBars.length} bars`);
         } else if (tf === 'weekly') {
             chartBars = aggregateToWeekly(recentBars);
             displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
@@ -2462,6 +2446,7 @@ async function renderTechnicalPro(stock) {
         try {
             if (proCharts.chart1.remove) proCharts.chart1.remove();
         } catch (e) {
+            console.log('Chart cleanup:', e.message);
         }
     }
     document.getElementById('chartPro1').innerHTML = '';
@@ -2571,7 +2556,9 @@ async function renderTechnicalPro(stock) {
     };
     
     // Debug: Check data before rendering
+    console.log(`🔍 Chart1 Data Check:`);
     console.log(`   chartBars: ${chartBars.length} bars`);
+    console.log(`   Sample bar: o=${chartBars[0]?.o}, h=${chartBars[0]?.h}, l=${chartBars[0]?.l}, c=${chartBars[0]?.c}`);
     console.log(`   Price values (first 3): ${chartBars.slice(0,3).map(b => b.c).join(', ')}`);
     console.log(`   displayEMA20 (first 3): ${displayEMA20.slice(0,3).map(e => e?.toFixed(2)).join(', ')}`);
     console.log(`   Volume (first 3): ${chartBars.slice(0,3).map(b => b.v).join(', ')}`);
@@ -2579,6 +2566,7 @@ async function renderTechnicalPro(stock) {
     // Validate series data
     const priceData = options1.series[0].data;
     const validPrices = priceData.filter(p => p && p.y !== null && p.y !== undefined);
+    console.log(`   Valid price points: ${validPrices.length}/${priceData.length}`);
     console.log(`   Price Y-values (first 3 candlesticks): ${validPrices.slice(0,3).map(p => Array.isArray(p.y) ? `[${p.y.map(v => v?.toFixed(0)).join(',')}]` : p.y?.toFixed(2)).join(', ')}`);
     
     if (validPrices.length === 0) {
@@ -2586,6 +2574,7 @@ async function renderTechnicalPro(stock) {
     }
     
     // VALIDATE EMA SERIES
+    console.log('🔍 EMA Series Validation:');
     options1.series.forEach((series, idx) => {
         if (idx === 0) return; // Skip price
         const seriesName = series.name;
@@ -2596,11 +2585,15 @@ async function renderTechnicalPro(stock) {
         if (!validPoints || validPoints.length === 0) {
             console.error(`❌ ${seriesName}: NO valid data points! Type: ${seriesType}`);
         } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points, type: ${seriesType}`);
         }
     });
+    
+    console.log(`📌 Chart Type: ${options1.chart.type}`);
     console.log(`📌 Total Series: ${options1.series.length}`);
     
     try {
+        console.log('🎨 Creating Chart 1 with Lightweight-Charts...');
         
         const container = document.getElementById('chartPro1');
         const chart = LightweightCharts.createChart(container, {
@@ -2782,7 +2775,9 @@ async function renderTechnicalPro(stock) {
                     format: (price) => Math.floor(price).toString(),
                     priceFormatter: (price) => Math.floor(price).toString()
                 });
+                console.log('✅ Decimal formatter applied to both scales');
             } catch (e) {
+                console.log('Formatter note:', e.message);
             }
         }, 200);
         
@@ -2794,7 +2789,10 @@ async function renderTechnicalPro(stock) {
             ema50: ema50Series,
             ema200: ema200Series
         };
+        
+        console.log('📊 Rendering Chart 1...');
         console.log('✅ Chart 1 rendered successfully');
+        console.log('✅ Native pan/zoom enabled - swipe & pinch to navigate');
         
     } catch (err) {
         console.error('❌ Chart 1 error:', err.message);
@@ -2840,8 +2838,10 @@ async function renderTechnicalPro(stock) {
         
         // Debug: Check chart2 data
         ...(()=> { 
+            console.log(`🔍 Chart2 Data Check:`);
             console.log(`   chart2Data series count: ${chart2Data.length}`);
             chart2Data.forEach((s, i) => {
+                console.log(`   ${s.name}: ${s.data.length} points, first value: ${s.data[0]?.y}`);
             });
             return {}; 
         })(),
@@ -2870,6 +2870,7 @@ async function renderTechnicalPro(stock) {
     };
     
     // VALIDATE CHART 2 SERIES
+    console.log('🔍 Chart 2 Series Validation:');
     chart2Data.forEach((series, idx) => {
         const seriesName = series.name;
         const seriesData = series.data;
@@ -2878,13 +2879,19 @@ async function renderTechnicalPro(stock) {
         if (!validPoints || validPoints.length === 0) {
             console.error(`❌ ${seriesName}: NO valid data points!`);
         } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points`);
         }
     });
+    
+    console.log(`📌 Chart 2 Type: ${options2.chart.type}`);
     console.log(`📌 Chart 2 Series Count: ${chart2Data.length}`);
     
     try {
+        console.log('🎨 Creating Chart 2...');
         proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
+        console.log('📊 Rendering Chart 2...');
         proCharts.chart2.render();
+        console.log('✅ Chart 2 rendered successfully');
         
         // Charts are independent - users can pan each separately
         console.log('✅ Chart 1 & Chart 2 ready (independent pan/zoom)');
@@ -2940,8 +2947,10 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
+  console.log('[SCHED] scheduleTACharts called, will redraw with S.chartPan=' + S.chartPan);
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
+      console.log('[SCHED] RAF: calling drawCandlestick');
       drawCandlestick(s);
       if(S.maVis.vol) drawVolume(s);
       updateChartStats(s);
@@ -2968,32 +2977,24 @@ function getSlicedCandles(s, canvasWidth){
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   let rangeCandles = allAgg.filter(c => c.d >= cutoff);
   if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
-  if(canvasWidth && canvasWidth > 0){
-    const PAD_L = 6, PAD_R = 52;
-    const chartW = canvasWidth - PAD_L - PAD_R;
-    const IDEAL_BAR_W = 7;
-    const MIN_BAR_W  = 4;
-    const maxFit = Math.floor(chartW / MIN_BAR_W);
-    if(rangeCandles.length > maxFit){
-      // ✅ PAN-BASED HISTORY SCROLL: S.chartPan controls which candles to display
-      // S.chartPan: -400 (oldest) → 0 (most recent) → +400 (newest, clamped to most recent)
-      const maxBackOffset = Math.max(0, rangeCandles.length - maxFit);
-      const backPan = Math.max(0, -S.chartPan); // Negative pan = go back in history (0-400)
-      const backNorm = Math.min(1, backPan / 400); // Normalize to 0-1
-      const backOffset = Math.floor(backNorm * maxBackOffset); // How many candles back to start
-      const startIdx = Math.max(0, maxBackOffset - backOffset);
-      console.log('[SCHED] getSlicedCandles: pan=' + S.chartPan + ', showing candles ' + startIdx + ' to ' + (startIdx + maxFit));
-      return rangeCandles.slice(startIdx, startIdx + maxFit);
-    }
+  
+  // OPTIMIZE: Show max 40 candles to prevent clutter & freezing
+  const MAX_CANDLES = 40;
+  if(rangeCandles.length > MAX_CANDLES){
+    const step = Math.ceil(rangeCandles.length / MAX_CANDLES);
+    rangeCandles = rangeCandles.filter((c, i) => i % step === 0 || i === rangeCandles.length - 1);
   }
+  
   return rangeCandles;
 }
 
 
 function drawCandlestick(s){
+  console.log('[DRAW] drawCandlestick called, S.chartPan=' + S.chartPan);
   
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
+  console.log('[DRAW] Canvas: width=' + cv.width + ', height=' + cv.height);
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
@@ -3022,11 +3023,11 @@ function drawCandlestick(s){
   }
 
   const W=W2,H=H2;
-  const PAD={l:8,r:52,t:12,b:28};
+  const PAD={l:10,r:52,t:14,b:30};
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
-  const bw=Math.max(3,Math.min(20,gap*0.65));
+  const bw=Math.max(4,Math.min(16,gap*0.6));
 
   // Full history + visible date range — used by both MAs and KPI overlays
   const allCandles = s.candles || candles;
@@ -3053,8 +3054,8 @@ function drawCandlestick(s){
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
     // Price label
     const price=mx-(mx-mn)*(i/4);
-    ctx.fillStyle='rgba(140,176,208,.75)';
-    ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillStyle='rgba(255,255,255,.95)';
+    ctx.font='bold 10px JetBrains Mono,monospace';ctx.textAlign='right';
     ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?11:-1));
   }
 
@@ -3065,6 +3066,7 @@ function drawCandlestick(s){
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
   // Candles
+  console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
@@ -3073,8 +3075,8 @@ function drawCandlestick(s){
     const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
 
     // Wick
-    ctx.strokeStyle=bull?'rgba(0,208,132,.9)':'rgba(255,107,133,.9)';
-    ctx.lineWidth=1.5;
+    ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
+    ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
 
     // Body
@@ -3107,7 +3109,7 @@ function drawCandlestick(s){
     return result;
   }
   function drawMALine(vals, col, dash, label){
-    ctx.strokeStyle=col; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+    ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash(dash||[]);
     ctx.beginPath();
     let started=false;
     vals.forEach((v,i)=>{
@@ -3120,7 +3122,7 @@ function drawCandlestick(s){
     const lastIdx = vals.reduce((best,v,i)=>v!==null?i:best, -1);
     if(lastIdx>=0 && label){
       const lv = vals[lastIdx];
-      ctx.fillStyle=col; ctx.font='bold 8px JetBrains Mono,monospace'; ctx.textAlign='right';
+      ctx.fillStyle=col; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
       ctx.fillText(label+' ₹'+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-5);
     }
   }
@@ -3158,8 +3160,8 @@ function drawCandlestick(s){
         if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
       });
       if(lastV !== null){
-        ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
+        ctx.fillStyle=col; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
+        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-5);
       }
     }
     drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
@@ -3184,7 +3186,7 @@ function drawCandlestick(s){
   // X-axis date labels — use actual candle.d dates, show ~5 evenly spaced
   const maxLabels = Math.min(6, Math.floor(cW / 50));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(140,176,208,.8)'; ctx.font='bold 8px JetBrains Mono,monospace';
+  ctx.fillStyle='rgba(255,255,255,.95)'; ctx.font='bold 9px JetBrains Mono,monospace';
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     const d = new Date(c.d);
@@ -3375,19 +3377,23 @@ function drawVolume(s){
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const n=candles.length,gap=cW/n,bw=Math.max(3,Math.min(20,gap*0.65));
   const mv=Math.max(...candles.map(c=>c.v))||1;
+  
+  // Determine market trend: if LTP > first candle open, market is UP (green), else DOWN (red)
+  const marketTrend = s.ltp >= (candles[0]?.o || s.ltp) ? 'up' : 'down';
+  const volumeColor = marketTrend === 'up' ? '#00d084' : '#ff3b5c';
 
   // Right axis strip
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-  ctx.fillStyle='rgba(140,176,208,.8)';ctx.font='bold 8px JetBrains Mono,monospace';ctx.textAlign='right';
-  ctx.fillText('Vol',W-2,14);
+  ctx.fillStyle='rgba(255,255,255,.95)';ctx.font='bold 10px JetBrains Mono,monospace';ctx.textAlign='right';
+  ctx.fillText('Vol',W-2,15);
 
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
     const x=PAD.l+i*gap+(gap-bw)/2;
-    ctx.fillStyle=c.c>=c.o?'#00d084':'#ff3b5c';
+    ctx.fillStyle=volumeColor;
     if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
     else ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
@@ -3485,8 +3491,11 @@ function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
   if (!canvas) return;
   
+  console.log('[CHART] setupChartInteraction: canvas found', canvas);
+  
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
+    console.log('[CHART] mousedown - isPanning=true, startX=' + e.clientX);
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
@@ -3494,14 +3503,19 @@ function setupChartInteraction() {
   
   canvas.onmousemove = (e) => {
     if (!chartInteraction.isPanning || !currentStock) {
+      console.log('[CHART] mousemove ignored: isPanning=' + chartInteraction.isPanning + ', currentStock=' + !!currentStock);
       return;
     }
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
+    console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
+    
     // Allow free panning with generous limits
     newPan = Math.max(-400, Math.min(400, newPan));
+    console.log('[CHART] after limit: newPan=' + newPan);
     S.chartPan = newPan;
+    console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
     scheduleTACharts(currentStock);
   };
   
