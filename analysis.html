@@ -3141,9 +3141,8 @@ function drawCandlestick(s){
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   
-  // ✅ VERTICAL BAR ZOOM: Apply zoom multiplier only to bar HEIGHT
-  // When zoomed in (fewer candles), bars render MUCH TALLER
-  const barHeightZoom = n < 50 ? 2.0 : n < 100 ? 1.6 : 1.1;  // Much more aggressive zoom!
+  // ✅ VERTICAL BAR ZOOM: VERY AGGRESSIVE so you can SEE it
+  const barHeightZoom = n < 50 ? 5.0 : n < 100 ? 3.0 : 1.2;  // OBVIOUS zoom!
   console.log('[ZOOM] n=' + n + ', barHeightZoom=' + barHeightZoom.toFixed(2));
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
@@ -3300,10 +3299,11 @@ function drawCandlestick(s){
     ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
-  // X-axis date labels — use actual candle.d dates, show ~5 evenly spaced
+  // X-axis date labels — MAKE VISIBLE!
   const maxLabels = Math.min(6, Math.floor(cW / 40));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(140,176,208,.55)'; ctx.font='7px JetBrains Mono,monospace';
+  ctx.fillStyle='white';  // ✅ WHITE - VISIBLE!
+  ctx.font='bold 13px sans-serif';  // ✅ BOLD 13px - BIG AND CLEAR!
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     const d = new Date(c.d);
@@ -3314,7 +3314,7 @@ function drawCandlestick(s){
     const x = barX(i);
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H-4);
+    ctx.fillText(lbl, x, H-6);  // Position at bottom
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
@@ -3550,21 +3550,18 @@ function drawVolume(s){
   ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
   ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
   
-  // X-axis date labels
+  // X-axis date labels - SIMPLE AND CLEAR
   const maxLabels = Math.min(6, Math.floor(cW / 90));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='#00f2ff';  // ✅ Bright cyan for visibility
-  ctx.font='bold 11px sans-serif';  // ✅ Reduced from 14*dpr (too big)
+  ctx.fillStyle='white';  // ✅ SIMPLE WHITE
+  ctx.font='bold 14px sans-serif';  // ✅ BIGGER
   ctx.textAlign='center';
   let dateDebug = [];
-  
-  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n);
   
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     const dateStr = c.d ? String(c.d).trim() : '';
     let lbl = '?';
-    
     if(dateStr.length >= 10){
       try {
         const parts = dateStr.slice(0,10).split('-');
@@ -3574,17 +3571,12 @@ function drawVolume(s){
           else if(n > 50) lbl = mo + '/' + da;
           else lbl = da + '/' + mo + '/' + yr.slice(2);
         }
-      } catch(e){
-        lbl = '!';
-      }
+      } catch(e){ lbl = '!'; }
     }
-    
     const x = Math.round(PAD.l+i*gap+gap/2);
     if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-6);  // ✅ Position at bottom
-    if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl});
+    ctx.fillText(lbl, x, H-8);  // ✅ Position at bottom
   });
-  if(dateDebug.length > 0) console.log('[XAXIS]', dateDebug);
   
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
