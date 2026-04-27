@@ -3137,13 +3137,14 @@ function drawCandlestick(s){
   let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
   let rng=mx-mn||1;
   
-  // ✅ VERTICAL ZOOM: When zoomed in (fewer candles), add padding % to Y-axis for detail
-  // When zoomed out (many candles), use tighter fit
-  const paddingPercent = n < 50 ? 0.08 : n < 100 ? 0.05 : 0.02;  // More padding when zoomed in
-  const padding = rng * paddingPercent;
-  mn = mn - padding;
-  mx = mx + padding;
-  rng = mx - mn || 1;
+  // ✅ VERTICAL ZOOM: When zoomed in (fewer candles), SHRINK the price range for taller bars
+  // When zoomed out (many candles), use the full range
+  // Zoom factor: more candles visible = smaller zoom = larger range; fewer candles = larger zoom = smaller range
+  const zoomFactor = n < 50 ? 0.7 : n < 100 ? 0.85 : 1.0;  // Shrink range when zoomed in
+  const mid = (mn + mx) / 2;
+  rng = rng * zoomFactor || 1;  // Shrink the range
+  mn = mid - (rng / 2);
+  mx = mid + (rng / 2);
   
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
@@ -3544,8 +3545,8 @@ function drawVolume(s){
   // X-axis date labels - adaptive to zoom level
   const maxLabels = Math.min(6, Math.floor(cW / 90));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(255,255,255,.9)';  // ✅ Slightly higher opacity
-  ctx.font='11px JetBrains Mono,monospace';  // ✅ Increased from 10px to 11px
+  ctx.fillStyle='rgba(255,255,255,.95)';  // ✅ Higher opacity
+  ctx.font='12px Arial, sans-serif';  // ✅ Larger font + system font for better rendering
   ctx.textAlign='center';
   let dateDebug = [];
   
@@ -3572,9 +3573,9 @@ function drawVolume(s){
       }
     }
     
-    const x = Math.round(PAD.l+i*gap+gap/2);  // ✅ Round to pixel boundary for sharp text
+    const x = Math.round(PAD.l+i*gap+gap/2);  // Pixel-aligned
     if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-2);  // ✅ Also adjust y slightly
+    ctx.fillText(lbl, x, H-3);  // ✅ Adjusted y position
     if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl, zoom: S.chartZoom.toFixed(2)});
   });
   if(dateDebug.length > 0) console.log('[XAXIS] dates:', dateDebug);
@@ -3770,7 +3771,7 @@ function setupChartInteraction() {
         let newPan = chartInteraction.startPan + delta;
         newPan = Math.max(-400, Math.min(400, newPan));
         S.chartPan = newPan;
-        throttledRedraw(currentStock);  // ✅ Throttled for smooth 60fps
+        scheduleTACharts(currentStock);  // ✅ No throttle for pan - needs instant response
       }
     }
   };
