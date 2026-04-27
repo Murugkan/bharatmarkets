@@ -3476,13 +3476,13 @@ function drawVolume(s){
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
   // Left Y-axis labels (Volume scale)
-  ctx.fillStyle='rgba(255,255,255,.85)';
-  ctx.font='bold 9px JetBrains Mono,monospace';
+  ctx.fillStyle='rgba(255,255,255,.95)';
+  ctx.font='bold 10px JetBrains Mono,monospace';
   ctx.textAlign='right';
   for(let i=0; i<=2; i++){
     const y = PAD.t + cH - (cH/2)*i;
     const label = i === 0 ? '0' : i === 1 ? '50%' : '100%';
-    ctx.fillText(label, PAD.l-6, y+3);
+    ctx.fillText(label, PAD.l-8, y+4);
   }
   
   // Left axis line
@@ -3670,26 +3670,6 @@ function setupChartInteraction() {
   canvas.onmouseup = () => { chartInteraction.isPanning = false; };
   canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
   
-  // Touch Support
-  canvas.ontouchstart = (e) => {
-    chartInteraction.isPanning = true;
-    chartInteraction.startX = e.touches[0].clientX;
-    chartInteraction.startPan = S.chartPan;
-  };
-  
-  canvas.ontouchmove = (e) => {
-    if (!chartInteraction.isPanning || !currentStock) return;
-    const delta = e.touches[0].clientX - chartInteraction.startX;
-    let newPan = chartInteraction.startPan + delta;
-    
-    // Allow free panning with generous limits
-    newPan = Math.max(-400, Math.min(400, newPan));
-    S.chartPan = newPan;
-    scheduleTACharts(currentStock);
-  };
-  
-  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
-  
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
     if (!currentStock) return;
@@ -3698,6 +3678,54 @@ function setupChartInteraction() {
     S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
     scheduleTACharts(currentStock);
   };
+  
+  // Pinch-to-Zoom support (iOS & Android)
+  let lastDistance = 0;
+  canvas.ontouchstart = (e) => {
+    if (e.touches.length === 2) {
+      // Pinch start
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastDistance = Math.sqrt(dx*dx + dy*dy);
+    } else {
+      // Single touch pan
+      chartInteraction.isPanning = true;
+      chartInteraction.startX = e.touches[0].clientX;
+      chartInteraction.startPan = S.chartPan;
+    }
+  };
+  
+  canvas.ontouchmove = (e) => {
+    if (e.touches.length === 2) {
+      // Pinch zoom
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+      if (lastDistance > 0) {
+        const factor = distance / lastDistance > 1 ? 1.05 : 0.95;
+        S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
+        scheduleTACharts(currentStock);
+      }
+      lastDistance = distance;
+      e.preventDefault();
+    } else if (chartInteraction.isPanning && !currentStock) return;
+    else if (chartInteraction.isPanning) {
+      // Pan
+      const delta = e.touches[0].clientX - chartInteraction.startX;
+      let newPan = chartInteraction.startPan + delta;
+      newPan = Math.max(-400, Math.min(400, newPan));
+      S.chartPan = newPan;
+      scheduleTACharts(currentStock);
+    }
+  };
+  
+  // Volume canvas - forward gestures to main canvas
+  const volCanvas = document.getElementById('cv-vol');
+  if (volCanvas) {
+    volCanvas.ontouchstart = canvas.ontouchstart;
+    volCanvas.ontouchmove = canvas.ontouchmove;
+    volCanvas.ontouchend = () => { chartInteraction.isPanning = false; lastDistance = 0; };
+  }
 }
 
 // Auto-setup when canvas is ready
