@@ -75,7 +75,7 @@
         .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
         
         /* DEBUG PANEL */
-        #debug-panel{position:fixed;top:50px;right:8px;width:280px;max-height:300px;background:rgba(10,14,26,.95);border:1px solid rgba(0,242,255,.6);border-radius:4px;z-index:9999;font-size:9px;color:var(--tx1);font-family:'JetBrains Mono',monospace;box-shadow:0 0 20px rgba(0,242,255,.2)}
+        #debug-panel{position:fixed;bottom:50px;right:8px;width:280px;max-height:300px;background:rgba(10,14,26,.95);border:1px solid rgba(0,242,255,.6);border-radius:4px;z-index:9999;font-size:9px;color:var(--tx1);font-family:'JetBrains Mono',monospace;box-shadow:0 0 20px rgba(0,242,255,.2)}
         #debug-panel-header{background:rgba(0,242,255,.15);padding:6px 8px;border-bottom:1px solid rgba(0,242,255,.3);display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
         #debug-panel-header:hover{background:rgba(0,242,255,.25)}
         #debug-panel-title{font-weight:700;color:var(--ac)}
@@ -3676,13 +3676,14 @@ function setupChartInteraction() {
   const handleTouchStart = (e) => {
     console.log('[TOUCH] touchstart: ' + e.touches.length + ' fingers');
     if (e.touches.length === 2) {
-      // Pinch start - calculate initial distance
+      // PINCH DETECTED: Calculate initial distance
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       touchState.lastDistance = Math.sqrt(dx*dx + dy*dy);
-      console.log('[TOUCH] Pinch start, distance=' + touchState.lastDistance);
+      chartInteraction.isPanning = false;
+      console.log('[TOUCH] 2-finger pinch start, initial distance=' + touchState.lastDistance.toFixed(0));
     } else if (e.touches.length === 1) {
-      // Single touch pan
+      // SINGLE TOUCH PAN
       chartInteraction.isPanning = true;
       chartInteraction.startX = e.touches[0].clientX;
       chartInteraction.startPan = S.chartPan;
@@ -3694,27 +3695,34 @@ function setupChartInteraction() {
   const handleTouchMove = (e) => {
     console.log('[TOUCH] touchmove: ' + e.touches.length + ' fingers');
     if (e.touches.length === 2) {
-      // Pinch zoom
+      // TWO-FINGER PINCH: Calculate distance between two touch points
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const distance = Math.sqrt(dx*dx + dy*dy);
       
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
-        const factor = ratio > 1.02 ? 1.08 : ratio < 0.98 ? 0.92 : 1.0;
-        S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
-        console.log('[TOUCH] Pinch zoom: ratio=' + ratio.toFixed(2) + ', factor=' + factor.toFixed(2) + ', zoom=' + S.chartZoom.toFixed(2));
-        scheduleTACharts(currentStock);
+        console.log('[TOUCH] Pinch detected: ratio=' + ratio.toFixed(2) + ', lastDist=' + touchState.lastDistance.toFixed(0) + ', newDist=' + distance.toFixed(0));
+        
+        // Apply zoom: pinching out (ratio > 1) = zoom in, pinching in (ratio < 1) = zoom out
+        const factor = ratio > 1.05 ? 1.1 : ratio < 0.95 ? 0.9 : 1.0;
+        if (factor !== 1.0) {
+          S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
+          console.log('[TOUCH] Pinch zoom applied: factor=' + factor.toFixed(2) + ', newZoom=' + S.chartZoom.toFixed(2));
+          scheduleTACharts(currentStock);
+        }
       }
       touchState.lastDistance = distance;
       e.preventDefault();
-    } else if (chartInteraction.isPanning && currentStock) {
-      // Pan
-      const delta = e.touches[0].clientX - chartInteraction.startX;
-      let newPan = chartInteraction.startPan + delta;
-      newPan = Math.max(-400, Math.min(400, newPan));
-      S.chartPan = newPan;
-      scheduleTACharts(currentStock);
+    } else if (e.touches.length === 1) {
+      // SINGLE TOUCH PAN
+      if (chartInteraction.isPanning && currentStock) {
+        const delta = e.touches[0].clientX - chartInteraction.startX;
+        let newPan = chartInteraction.startPan + delta;
+        newPan = Math.max(-400, Math.min(400, newPan));
+        S.chartPan = newPan;
+        scheduleTACharts(currentStock);
+      }
     }
   };
   
