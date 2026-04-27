@@ -700,7 +700,7 @@ function renderTab(tab) {
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-              <div id="chart-wrap" style="position:relative;width:100%;height:240px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+              <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
               <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
             </div>
           </div>`;
@@ -3062,7 +3062,8 @@ function getSlicedCandles(s, canvasWidth){
     const chartW = canvasWidth - PAD_L - PAD_R;
     const IDEAL_BAR_W = 7;
     // MIN_BAR_W scales with zoom: zoom=0.5 → 8px bars (fewer), zoom=3 → 1.3px bars (more)
-    const MIN_BAR_W  = 4 / S.chartZoom;
+    // ✅ FLIPPED: zoom=3.0 means "3x magnification" → SMALLER min bar width → FEWER bars visible
+    const MIN_BAR_W  = 4 * S.chartZoom;
     console.log('[SCHED] zoom=' + S.chartZoom.toFixed(2) + ' → MIN_BAR_W=' + MIN_BAR_W.toFixed(2));
     const maxFit = Math.floor(chartW / MIN_BAR_W);
     if(rangeCandles.length > maxFit){
@@ -3090,7 +3091,7 @@ function drawCandlestick(s){
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-  const H2=240;  // ✅ Match HTML css height
+  const H2=312;  // ✅ Increased 30% (from 240)
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr; cv.height=H2*dpr;
   cv.style.width=W2+'px'; cv.style.height=H2+'px';
@@ -3114,7 +3115,7 @@ function drawCandlestick(s){
     return;
   }
 
-  const W=W2,H=240;  // ✅ Match HTML height of 240px
+  const W=W2,H=312;  // ✅ Increased 30% from 240
   const PAD={l:6,r:52,t:8,b:22};
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
@@ -3150,7 +3151,8 @@ function drawCandlestick(s){
   // Right axis separator (draw BEFORE labels so labels appear on top)
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(100,130,180,.6)';  // ✅ Brighter blue for visibility
+  ctx.lineWidth=1.5;  // ✅ Slightly thicker
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
   // Price labels (draw AFTER background so they're visible on top)
@@ -3477,29 +3479,8 @@ function drawVolume(s){
   
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
-  // Left Y-axis labels (Volume scale) - show REAL volume values
-  ctx.fillStyle='rgba(255,255,255,1)';
-  ctx.font='bold 10px JetBrains Mono,monospace';
-  ctx.textAlign='left';
-  ctx.textBaseline='middle';
-  const maxVol = Math.max(...candles.map(c=>c.v))||1;
-  for(let i=0; i<=2; i++){
-    const y = PAD.t + cH - (cH/2)*i;
-    // ✅ Show real volume values, not percentages
-    const volValue = (i/2) * maxVol;
-    let label;
-    if (volValue >= 1e6) {
-      label = (volValue / 1e6).toFixed(1) + 'M';
-    } else if (volValue >= 1e3) {
-      label = (volValue / 1e3).toFixed(0) + 'K';
-    } else {
-      label = volValue.toFixed(0);
-    }
-    ctx.fillText(label, 1, y);
-  }
-  
-  // Left axis line
-  ctx.strokeStyle='rgba(30,51,80,.8)';
+  // Left axis line (thicker for visibility)
+  ctx.strokeStyle='rgba(100,130,180,.5)';
   ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
 
@@ -3515,11 +3496,32 @@ function drawVolume(s){
     ctx.fill();
   });
 
-  // Right axis - Price axis strip
+  // ✅ RIGHT axis - Volume labels on RIGHT side (not left to avoid overlap)
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(100,130,180,.6)';
+  ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  
+  // ✅ Volume labels on RIGHT side (RIGHT aligned, with padding from edge)
+  ctx.fillStyle='rgba(255,255,255,1)';
+  ctx.font='bold 10px JetBrains Mono,monospace';
+  ctx.textAlign='right';  // ✅ Changed from left to right
+  ctx.textBaseline='middle';
+  const maxVol = Math.max(...candles.map(c=>c.v))||1;
+  for(let i=0; i<=2; i++){
+    const y = PAD.t + cH - (cH/2)*i;
+    const volValue = (i/2) * maxVol;
+    let label;
+    if (volValue >= 1e6) {
+      label = (volValue / 1e6).toFixed(1) + 'M';
+    } else if (volValue >= 1e3) {
+      label = (volValue / 1e3).toFixed(0) + 'K';
+    } else {
+      label = volValue.toFixed(0);
+    }
+    ctx.fillText(label, W-6, y);  // ✅ Draw on right side (W-6)
+  }
   
   // Price labels on right axis
   ctx.fillStyle='rgba(255,255,255,.95)';
