@@ -3473,17 +3473,7 @@ function drawVolume(s){
   const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
   const mv=Math.max(...candles.map(c=>c.v))||1;
   
-  // Determine color based on actual price movement
-  // Use stock's current price vs opening of visible range
-  const openPrice = candles[0].o || candles[0].c || 0;
-  const closePrice = candles[candles.length-1].c || candles[candles.length-1].o || 0;
-  const currentPrice = s.ltp || closePrice;
-  
-  // Compare: is current price higher than opening of period?
-  const priceUp = currentPrice >= openPrice;
-  const volumeColor = priceUp ? '#00d084' : '#ff3b5c';
-  
-  console.log('[VOLUME] open:', openPrice, 'close:', closePrice, 'current:', currentPrice, 'priceUp:', priceUp, 'volumeColor:', volumeColor);
+  // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
   // Left Y-axis labels (Volume scale)
   ctx.fillStyle='rgba(255,255,255,.85)';
@@ -3500,11 +3490,13 @@ function drawVolume(s){
   ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
 
-  // Volume bars - colored by price movement
-  ctx.fillStyle=volumeColor;
+  // Volume bars - each bar colored based on corresponding candlestick
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
     const x=PAD.l+i*gap+(gap-bw)/2;
+    // Color: green if close > open, red if close <= open (matches candlestick color)
+    const barColor = (c.c > c.o) ? '#00d084' : '#ff3b5c';
+    ctx.fillStyle=barColor;
     ctx.beginPath();
     ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
