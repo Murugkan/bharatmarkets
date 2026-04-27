@@ -3155,9 +3155,9 @@ function drawCandlestick(s){
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
     const price=mx-(mx-mn)*(i/4);
-    ctx.fillStyle='rgba(255,255,255,.95)';
-    ctx.font='bold 10px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-4,y+(i===0?11:-1));
+    ctx.fillStyle='rgba(255,255,255,1)';
+    ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
 
   // Candles
@@ -3640,10 +3640,8 @@ function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
   if (!canvas) return;
   
-  console.log('[CHART] setupChartInteraction: canvas found', canvas);
-  
   // Shared touch state
-  const touchState = { lastDistance: 0 };
+  const touchState = { lastDistance: 0, gestureStart: 1 };
   
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
@@ -3730,26 +3728,33 @@ function setupChartInteraction() {
   canvas.ontouchmove = handleTouchMove;
   canvas.ontouchend = handleTouchEnd;
   
-  // iOS Pinch Support - gesturechange detects pinch on iOS
-  let gestureStart = 1;
-  canvas.ongesturestart = (e) => {
-    gestureStart = e.scale;
-    console.log('[GESTURE] gesturestart: scale=' + gestureStart);
+  // iOS Pinch Support - gesturechange detects pinch on iOS (shared state)
+  const handleGestureStart = (e) => {
+    touchState.gestureStart = e.scale;
+    console.log('[GESTURE] TOP CHART gesturestart: scale=' + touchState.gestureStart);
   };
   
-  canvas.ongesturechange = (e) => {
-    if (!currentStock) return;
-    const scaleFactor = e.scale / gestureStart;
+  const handleGestureChange = (e) => {
+    if (!currentStock) {
+      console.log('[GESTURE] No currentStock');
+      return;
+    }
+    const scaleFactor = e.scale / touchState.gestureStart;
     const factor = scaleFactor > 1.02 ? 1.08 : scaleFactor < 0.98 ? 0.92 : 1.0;
     S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
-    console.log('[GESTURE] Pinch zoom: scale=' + e.scale.toFixed(2) + ', factor=' + factor.toFixed(2) + ', zoom=' + S.chartZoom.toFixed(2));
+    console.log('[GESTURE] TOP CHART Pinch: scale=' + e.scale.toFixed(2) + ', baseScale=' + touchState.gestureStart.toFixed(2) + ', ratio=' + scaleFactor.toFixed(2) + ', factor=' + factor.toFixed(2) + ', newZoom=' + S.chartZoom.toFixed(2));
     scheduleTACharts(currentStock);
     e.preventDefault();
   };
   
-  canvas.ongestureend = (e) => {
-    console.log('[GESTURE] gestureend');
+  const handleGestureEnd = (e) => {
+    console.log('[GESTURE] TOP CHART gestureend: final zoom=' + S.chartZoom.toFixed(2));
   };
+  
+  canvas.ongesturestart = handleGestureStart;
+  canvas.ongesturechange = handleGestureChange;
+  canvas.ongestureend = handleGestureEnd;
+  console.log('[CHART] Main canvas gesture handlers ATTACHED - top chart pinch ready');
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
@@ -3760,15 +3765,15 @@ function setupChartInteraction() {
     scheduleTACharts(currentStock);
   };
   
-  // Volume canvas - same gesture support
+  // Volume canvas - same gesture support (shared touchState)
   const volCanvas = document.getElementById('cv-vol');
   if (volCanvas) {
     volCanvas.ontouchstart = handleTouchStart;
     volCanvas.ontouchmove = handleTouchMove;
     volCanvas.ontouchend = handleTouchEnd;
-    volCanvas.ongesturestart = canvas.ongesturestart;
-    volCanvas.ongesturechange = canvas.ongesturechange;
-    volCanvas.ongestureend = canvas.ongestureend;
+    volCanvas.ongesturestart = handleGestureStart;
+    volCanvas.ongesturechange = handleGestureChange;
+    volCanvas.ongestureend = handleGestureEnd;
     console.log('[CHART] Volume canvas gesture handlers attached');
   }
 }
