@@ -3299,11 +3299,11 @@ function drawCandlestick(s){
     ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
-  // X-axis date labels — MAKE VISIBLE!
+  // X-axis date labels
   const maxLabels = Math.min(6, Math.floor(cW / 40));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='white';  // ✅ WHITE - VISIBLE!
-  ctx.font='bold 13px sans-serif';  // ✅ BOLD 13px - BIG AND CLEAR!
+  ctx.fillStyle='white';
+  ctx.font='11px sans-serif';  // ✅ 11px normal (not bold)
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     const d = new Date(c.d);
@@ -3314,7 +3314,7 @@ function drawCandlestick(s){
     const x = barX(i);
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H-6);  // Position at bottom
+    ctx.fillText(lbl, x, H-6);
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
@@ -3755,8 +3755,13 @@ function setupChartInteraction() {
           S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
           
           if (Math.abs(S.chartZoom - oldZoom) > 0.01) {  // Only log if zoom actually changed
-            console.log('[TOUCH] ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2) + ' (ratio=' + ratio.toFixed(3) + ')');
-            throttledRedraw(currentStock);  // ✅ Throttled for smooth 60fps
+            console.log('[TOUCH] ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2));
+            if (currentStock) {
+              throttledRedraw(currentStock);
+            } else {
+              console.log('[TOUCH] Warning: currentStock is null');
+              scheduleTACharts(null);  // Try anyway
+            }
           }
         }
       }
