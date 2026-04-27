@@ -204,9 +204,10 @@ const S = {
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
   kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false },
-  chartPan: 0,      // Pan offset in pixels
-  chartZoom: 1,     // Zoom level (1 = 100%)
-  panStart: null    // Pan start position
+  chartPan: 0,        // Pan offset in pixels
+  chartZoom: 1,       // Horizontal zoom (# of candles)
+  yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
+  panStart: null      // Pan start position
 };
 let chartCache = {};
 
@@ -3141,9 +3142,9 @@ function drawCandlestick(s){
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   
-  // ✅ VERTICAL BAR ZOOM: Uses YOUR PINCH GESTURE (S.chartZoom)
-  const barHeightZoom = S.chartZoom;  // 1.0 = normal, 2.0 = 2x taller, 0.5 = half height
-  console.log('[ZOOM] S.chartZoom=' + S.chartZoom.toFixed(2) + ', applying to bar height');
+  // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
+  const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
+  console.log('[ZOOM] S.yAxisZoom=' + (S.yAxisZoom || 1.0).toFixed(2) + ', applying to bar height');
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
@@ -3735,30 +3736,37 @@ function setupChartInteraction() {
   
   const handleTouchMove = (e) => {
     if (e.touches.length === 2) {
-      // TWO-FINGER PINCH: Calculate distance between two touch points
+      // TWO-FINGER PINCH: Detect direction (vertical vs horizontal)
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const distance = Math.sqrt(dx*dx + dy*dy);
       
-      // CRITICAL: Don't check minimum distance - apply zoom on ANY 2-finger movement
+      // Determine pinch direction: which is dominant?
+      const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
+      
+      console.log('[TOUCH] pinch: dx=' + dx.toFixed(0) + ', dy=' + dy.toFixed(0) + ', direction=' + (isVerticalPinch ? 'VERTICAL' : 'HORIZONTAL'));
+      
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
-        const delta = ratio - 1.0;  // How much changed: 1.01 = 1% increase, 0.99 = 1% decrease
+        const delta = ratio - 1.0;
         
-        console.log('[TOUCH] 2-finger pinch: ratio=' + ratio.toFixed(4) + ', delta=' + delta.toFixed(4));
-        
-        // VERY SENSITIVE: Apply zoom on any movement > 0.5%
         if (Math.abs(delta) > 0.005) {
-          // Smooth continuous zoom (not discrete steps)
-          const smoothFactor = 1.0 + (delta * 0.5);  // delta * 0.5 = smooth response
-          const oldZoom = S.chartZoom;
-          S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
+          const smoothFactor = 1.0 + (delta * 0.5);
           
-          if (Math.abs(S.chartZoom - oldZoom) > 0.01) {  // Only log if zoom actually changed
-            console.log('[TOUCH] ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2));
-            if (currentStock) {
-              scheduleTACharts(currentStock);  // ✅ DIRECT - no throttle for smooth zoom
-            }
+          if (isVerticalPinch) {
+            // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
+            const oldYZoom = S.yAxisZoom || 1.0;
+            S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
+            console.log('[TOUCH] Y-ZOOM: ' + oldYZoom.toFixed(2) + ' → ' + S.yAxisZoom.toFixed(2) + ' (bars height)');
+          } else {
+            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
+            const oldZoom = S.chartZoom;
+            S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
+            console.log('[TOUCH] X-ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2) + ' (# of candles)');
+          }
+          
+          if (currentStock) {
+            scheduleTACharts(currentStock);
           }
         }
       }
