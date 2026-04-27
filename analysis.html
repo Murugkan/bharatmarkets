@@ -3768,10 +3768,12 @@ function setupChartInteraction() {
     console.log('[GESTURE] TOP CHART gestureend: final zoom=' + S.chartZoom.toFixed(2));
   };
   
-  canvas.ongesturestart = handleGestureStart;
-  canvas.ongesturechange = handleGestureChange;
-  canvas.ongestureend = handleGestureEnd;
-  console.log('[CHART] Main canvas gesture handlers ATTACHED - top chart pinch ready');
+  // DISABLED: Gesture events cause conflict with touch-based pinch detection
+  // Use smooth touch-based pinch instead (no gesture events)
+  // canvas.ongesturestart = handleGestureStart;
+  // canvas.ongesturechange = handleGestureChange;
+  // canvas.ongestureend = handleGestureEnd;
+  console.log('[CHART] Main canvas: TOUCH-BASED PINCH ONLY (gesture disabled)');
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
@@ -3782,16 +3784,17 @@ function setupChartInteraction() {
     scheduleTACharts(currentStock);
   };
   
-  // Volume canvas - same gesture support (shared touchState)
+  // Volume canvas - touch-based pinch only (no gesture events)
   const volCanvas = document.getElementById('cv-vol');
   if (volCanvas) {
     volCanvas.ontouchstart = handleTouchStart;
     volCanvas.ontouchmove = handleTouchMove;
     volCanvas.ontouchend = handleTouchEnd;
-    volCanvas.ongesturestart = handleGestureStart;
-    volCanvas.ongesturechange = handleGestureChange;
-    volCanvas.ongestureend = handleGestureEnd;
-    console.log('[CHART] Volume canvas gesture handlers attached');
+    // DISABLED: Gesture events conflict with touch-based detection
+    // volCanvas.ongesturestart = handleGestureStart;
+    // volCanvas.ongesturechange = handleGestureChange;
+    // volCanvas.ongestureend = handleGestureEnd;
+    console.log('[CHART] Volume canvas: TOUCH-BASED PINCH ONLY');
   }
 }
 
