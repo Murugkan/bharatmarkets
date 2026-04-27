@@ -1,0 +1,3719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Onyx | Drill Analysis</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root{--bg:#060c18;--s1:#0a0e1a;--card:#0d1222;--b1:#1a2332;--tx1:#f0f6ff;--tx3:#7a8fa0;--ac:#00f2ff;--gr:#00e896;--rd:#ff6b85;--yw:#ffbf47}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:var(--bg);color:var(--tx1);font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden;padding-top:max(0px, env(safe-area-inset-top))}
+        
+        .container{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+        
+        .header{background:var(--s1);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0}
+        .header-left{flex:1;display:flex;align-items:center;gap:8px}
+        .header-title{font-size:14px;font-weight:800;color:var(--ac)}
+        .header-subtitle{font-size:9px;color:var(--tx3);margin-top:2px}
+        .header-price{text-align:right;display:flex;flex-direction:column}
+        .price-val{font-size:14px;font-weight:800}
+        .price-chg{font-size:10px;margin-top:2px}
+        
+        .tabs{background:var(--card);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;gap:8px;overflow-x:auto;flex-shrink:0}
+        .tabs::-webkit-scrollbar{height:4px}
+        .tabs::-webkit-scrollbar-track{background:var(--s1)}
+        .tabs::-webkit-scrollbar-thumb{background:var(--b1);border-radius:2px}
+        .tab{padding:8px 14px;background:transparent;border:1px solid var(--b1);border-radius:4px;color:var(--tx3);cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap;transition:all .2s}
+        .tab.active{background:rgba(0,242,255,.1);border-color:var(--ac);color:var(--ac)}
+        .tab:hover:not(.active){color:var(--tx1)}
+        
+        .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch}
+        .content::-webkit-scrollbar{width:14px;background:transparent}
+        .content::-webkit-scrollbar-track{background:transparent}
+        .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
+        .content::-webkit-scrollbar-thumb:hover{background:var(--ac);border-color:var(--ac);background-clip:padding-box}
+        
+        .footer{position:fixed;bottom:0;width:100%;background:rgba(0,0,0,.95);border-top:1px solid var(--b1);display:flex;justify-content:space-around;padding:12px 0;z-index:100;flex-shrink:0}
+        .footer-btn{text-decoration:none;color:#666;display:flex;flex-direction:column;align-items:center;width:33%;font-size:8px;text-transform:uppercase;font-weight:800;transition:color .2s}
+        .footer-btn.active{color:var(--ac)}
+        
+        .back-btn{background:none;border:none;color:var(--tx1);font-size:18px;cursor:pointer;padding:2px 4px;line-height:1}
+        
+        .placeholder{text-align:center;padding:40px 20px;color:var(--tx3)}
+        .placeholder-emoji{font-size:32px;margin-bottom:12px}
+        .tbd{color:#ff9800;opacity:.7;font-weight:700}
+        
+        /* TBD Link - Clickable */
+        .tbd-link{color:#ff9800;opacity:0.9;font-weight:700;cursor:pointer;border-bottom:1px dashed #ff9800;text-decoration:none;transition:all .2s}
+        .tbd-link:hover{opacity:1;color:#ffb347;border-bottom:1px solid #ffb347}
+        
+        /* Metric Value Colors */
+        .val-positive{color:var(--gr);font-weight:700}
+        .val-negative{color:var(--rd);font-weight:700}
+        .val-neutral{color:var(--ac);font-weight:700}
+        .val-warning{color:var(--yw);font-weight:700}
+        
+        /* Metric Row */
+        .metric-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(26,35,50,.2);color:var(--tx3);font-size:11px;line-height:1.3}
+        .metric-row:last-child{border-bottom:none}
+        .metric-label{flex:1;font-size:10px}
+        .metric-value{text-align:right;font-weight:700;min-width:70px;font-size:11px}
+        
+        /* Section Container for Two Columns */
+        .section-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+        .section-row > div{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
+        
+        /* Weightage Summary */
+        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:0 6px 6px 6px;margin-bottom:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+        .weightage-box{text-align:center;padding:4px;background:rgba(0,0,0,.3);border-radius:4px}
+        .weightage-label{font-size:7px;color:var(--tx3);text-transform:uppercase;margin-bottom:2px}
+        .weightage-value{font-size:18px;font-weight:800}
+        .pos-box .weightage-value{color:var(--gr)}
+        .neg-box .weightage-value{color:var(--rd)}
+        .signal-box .weightage-value{color:var(--ac);font-size:14px}
+        .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
+        
+        /* DEBUG PANEL */
+        #debug-panel{position:fixed;top:50px;right:8px;width:280px;max-height:300px;background:rgba(10,14,26,.95);border:1px solid rgba(0,242,255,.6);border-radius:4px;z-index:9999;font-size:9px;color:var(--tx1);font-family:'JetBrains Mono',monospace;box-shadow:0 0 20px rgba(0,242,255,.2)}
+        #debug-panel-header{background:rgba(0,242,255,.15);padding:6px 8px;border-bottom:1px solid rgba(0,242,255,.3);display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
+        #debug-panel-header:hover{background:rgba(0,242,255,.25)}
+        #debug-panel-title{font-weight:700;color:var(--ac)}
+        #debug-panel-close{color:var(--ac);cursor:pointer;font-size:12px;line-height:1}
+        #debug-logs{max-height:260px;overflow-y:auto;padding:6px;background:rgba(0,0,0,.3)}
+        #debug-logs .log-line{padding:3px 4px;margin:2px 0;background:rgba(255,255,255,.05);border-left:2px solid rgba(0,232,150,.5);white-space:pre-wrap;word-break:break-all;line-height:1.3}
+        #debug-logs .log-line.error{border-left-color:rgba(255,59,92,.8);color:rgba(255,107,133,.9)}
+        #debug-logs .log-line.warn{border-left-color:rgba(255,191,71,.8);color:rgba(255,191,71,.9)}
+        #debug-logs .log-line.info{border-left-color:rgba(0,242,255,.6)}
+        #debug-logs::-webkit-scrollbar{width:6px}
+        #debug-logs::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+        #debug-logs::-webkit-scrollbar-thumb{background:rgba(0,242,255,.4);border-radius:3px}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- DEBUG PANEL -->
+    <div id="debug-panel">
+        <div id="debug-panel-header">
+            <div id="debug-panel-title">🐛 Debug Logs</div>
+            <div id="debug-panel-close">✕</div>
+        </div>
+        <div id="debug-logs"></div>
+    </div>
+    
+    <div class="header">
+        <div class="header-left">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <div>
+                <div class="header-title" id="ticker">—</div>
+                <div class="header-subtitle" id="company">—</div>
+            </div>
+        </div>
+        <div class="header-price">
+            <div class="price-val" id="ltp">₹—</div>
+            <div class="price-chg" id="chg" style="color:var(--gr)">—</div>
+        </div>
+    </div>
+    
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+        <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
+        <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
+        <button class="tab" onclick="switchTab('technicalPro')">📈 Technical Pro</button>
+        <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
+        <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
+    </div>
+    
+    <div class="content" id="content"></div>
+</div>
+
+<div class="footer">
+    <a href="index.html" class="footer-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><span>Portfolio</span></a>
+    <a href="data.html" class="footer-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg><span>Data</span></a>
+    <a href="analysis.html" class="footer-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Analysis</span></a>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/apexcharts/3.45.0/apexcharts.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// 🐛 DEBUG PANEL - Capture console logs on iPhone
+// ═══════════════════════════════════════════════════════════════════════
+const DEBUG_ENABLED = true;
+let debugLogs = [];
+const MAX_LOGS = 50;
+
+function addDebugLog(msg, type = 'info') {
+  if (!DEBUG_ENABLED) return;
+  debugLogs.push({ msg, type, time: new Date().toLocaleTimeString() });
+  if (debugLogs.length > MAX_LOGS) debugLogs.shift();
+  
+  const logsContainer = document.getElementById('debug-logs');
+  if (logsContainer) {
+    const logEl = document.createElement('div');
+    logEl.className = `log-line ${type}`;
+    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    logsContainer.appendChild(logEl);
+    logsContainer.scrollTop = logsContainer.scrollHeight;
+  }
+}
+
+// Intercept console methods
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+console.log = function(...args) {
+  originalLog(...args);
+  addDebugLog(args.join(' '), 'info');
+};
+
+console.warn = function(...args) {
+  originalWarn(...args);
+  addDebugLog(args.join(' '), 'warn');
+};
+
+console.error = function(...args) {
+  originalError(...args);
+  addDebugLog(args.join(' '), 'error');
+};
+
+// Debug panel close button
+window.addEventListener('DOMContentLoaded', () => {
+  const closeBtn = document.getElementById('debug-panel-close');
+  const panel = document.getElementById('debug-panel');
+  if (closeBtn && panel) {
+    closeBtn.addEventListener('click', () => {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+  }
+});
+
+const DB = "OnyxPortfolioDB";
+const STORE = "Stocks";
+let currentStock = null;
+let currentTab = "overview";
+let dataSource = null; // Track where data comes from: 'db' or 'json'
+
+// ✅ Canvas Chart State (REQUIRED for chart functions)
+const S = {
+  chartRange: '1Y',
+  chartInterval: 'D',
+  maVis: { sma20: true, sma50: true, ema200: true, vol: true },
+  kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false },
+  chartPan: 0,      // Pan offset in pixels
+  chartZoom: 1,     // Zoom level (1 = 100%)
+  panStart: null    // Pan start position
+};
+let chartCache = {};
+
+
+// Helpers
+const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
+const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
+const get = (obj, ...keys) => {
+    for (let k of keys) {
+        if (obj[k] !== undefined) return obj[k];
+    }
+    return '—';
+};
+
+// Generate TBD link with search capability
+const tbdLink = (label) => {
+    const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
+    const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
+};
+
+// Get URL param
+const urlParams = new URLSearchParams(window.location.search);
+const ticker = urlParams.get('drill') || urlParams.get('t');
+
+console.log('URL Search:', window.location.search);
+console.log('Ticker from URL:', ticker);
+
+// Load data
+async function loadStock() {
+    if (!ticker) {
+        // Try to get list of stocks for user guidance
+        let stockList = 'ABCAPITAL, ABFRL, ADANIPORTS, ... (load data.html first)';
+        try {
+            const db = await new Promise(r => {
+                const req = indexedDB.open(DB);
+                req.onsuccess = () => r(req.result);
+                req.onerror = () => r(null);
+            });
+            if (db && db.objectStoreNames.contains(STORE)) {
+                const tx = db.transaction(STORE, 'readonly');
+                const store = tx.objectStore(STORE);
+                const keys = await new Promise(r => {
+                    const req = store.getAllKeys();
+                    req.onsuccess = () => r(req.result);
+                    req.onerror = () => r([]);
+                });
+                if (keys.length > 0) {
+                    stockList = keys.slice(0, 10).join(', ') + (keys.length > 10 ? '...' : '');
+                }
+            }
+        } catch (e) {}
+        
+        document.getElementById('content').innerHTML = `
+            <div class="placeholder">
+                <div class="placeholder-emoji">❌</div>
+                <div>No stock selected</div>
+                <div style="font-size:9px;color:#ff9800;margin-top:8px">
+                    Use: analysis.html?drill=TICKER<br/>
+                    Example: analysis.html?drill=ABCAPITAL<br/>
+                    Available: ${stockList}
+                </div>
+            </div>
+        `;
+        console.error('No ticker in URL. Usage: analysis.html?drill=TICKER');
+        return;
+    }
+    
+    console.log('Loading ticker:', ticker);
+    
+    const db = await new Promise(r => {
+        const req = indexedDB.open(DB);
+        req.onsuccess = () => {
+            console.log('DB opened');
+            r(req.result);
+        };
+        req.onerror = () => {
+            console.error('DB error:', req.error);
+            r(null);
+        };
+    });
+    
+    if (!db) {
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">⚠️</div>Database error</div>';
+        return;
+    }
+    
+    try {
+        const tx = db.transaction(STORE, 'readonly');
+        const store = tx.objectStore(STORE);
+        
+        currentStock = await new Promise(r => {
+            const req = store.get(ticker);
+            req.onsuccess = () => {
+                console.log('Stock loaded:', req.result);
+                r(req.result);
+            };
+            req.onerror = () => {
+                console.error('Store error:', req.error);
+                r(null);
+            };
+        });
+        
+        if (!currentStock) {
+            console.error('Stock not found:', ticker);
+            document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
+            return;
+        }
+        
+        // Determine data source
+        dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
+        console.log('Data Source:', dataSource);
+        console.log('Full stock object:', currentStock);
+        
+        // 🚀 Auto-load candles for Canvas chart
+        if (!currentStock.candles || currentStock.candles.length === 0) {
+            try {
+                const sym = currentStock.ticker || currentStock.sym || ticker;
+                const res = await fetch(`./charts/${sym}.json`);
+                if (res.ok) {
+                    const data = await res.json();
+                    currentStock.candles = data.bars || [];
+                    console.log('Candles loaded:', currentStock.candles.length, 'bars');
+                }
+            } catch (e) {
+                console.log('No candle data available (optional):', e.message);
+            }
+        }
+        
+        console.log('Rendering header and overview...');
+        renderHeader();
+        
+        // Load guidance data from localStorage or external source
+        loadGuidanceData(ticker);
+        
+        renderTab('overview');
+    } catch(e) {
+        console.error('Error:', e);
+        document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
+    }
+}
+
+// Render header
+function renderHeader() {
+    const s = currentStock;
+    document.getElementById('ticker').textContent = get(s, 'ticker', 'sym', 'symbol');
+    document.getElementById('company').textContent = get(s, 'name', 'company');
+    document.getElementById('ltp').textContent = '₹' + fmt(get(s, 'ltp', 'price'));
+    
+    const chg = num(get(s, 'changePct', 'change', 'chg1d'));
+    const chgEl = document.getElementById('chg');
+    chgEl.innerHTML = `${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%`;
+    chgEl.style.color = chg >= 0 ? 'var(--gr)' : 'var(--rd)';
+}
+
+// Load guidance data
+async function loadGuidanceData(ticker) {
+    try {
+        // Try to fetch from guidance.json (same domain)
+        const response = await fetch('guidance.json');
+        if (response.ok) {
+            const data = await response.json();
+            if (data[ticker]) {
+                localStorage.setItem(`guidance_${ticker}`, JSON.stringify(data[ticker]));
+                console.log('Guidance data cached for', ticker);
+            }
+        }
+    } catch (e) {
+        console.log('Guidance data not available or offline:', e.message);
+    }
+}
+
+// Switch tabs
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    renderTab(tab);
+}
+
+// Render tabs
+function renderTab(tab) {
+    const s = currentStock;
+    let html = '';
+    
+    if (tab === 'overview') {
+        const pe = num(get(s, 'pe'));
+        const pb = num(get(s, 'pb'));
+        const roe = num(get(s, 'roe'));
+        const roce = num(get(s, 'roce'));
+        const opm = num(get(s, 'opm_pct'));
+        const npm = num(get(s, 'npm_pct'));
+        const ltp = num(get(s, 'ltp', 'price'));
+        const mcap = num(get(s, 'mcap'));
+        const sales = num(get(s, 'sales'));
+        const ebitda = num(get(s, 'ebitda'));
+        const cfo = num(get(s, 'cfo'));
+        const fcf = num(get(s, 'fcf'));
+        const eps = num(get(s, 'eps'));
+        const prom = num(get(s, 'prom', 'prom_pct'));
+        const fii = num(get(s, 'fii', 'fii_pct'));
+        const dii = num(get(s, 'dii', 'dii_pct'));
+        const quarterly = get(s, 'quarterly') || [];
+        
+        // EXTRACT: Positive & Negative signals, Signal
+        const posSignals = num(get(s, 'pos', 'positive', 0));
+        const negSignals = num(get(s, 'neg', 'negative', 0));
+        const signal = get(s, 'signal', 'Signal', 'BUY');
+        const totalSignals = posSignals + negSignals;
+        const posWeightage = totalSignals > 0 ? Math.round((posSignals / totalSignals) * 100) : 0;
+        const negWeightage = totalSignals > 0 ? Math.round((negSignals / totalSignals) * 100) : 0;
+        
+        // EXTRACT: Total Debt from quarterly ONLY (never use pre-calculated field)
+        let totalDebt = 0;
+        if (quarterly && quarterly.length > 0) {
+            for (let i = quarterly.length - 1; i >= 0; i--) {
+                if (quarterly[i].debt && num(quarterly[i].debt) > 0) {
+                    totalDebt = num(quarterly[i].debt);
+                    break;
+                }
+            }
+        }
+        
+        // CALCULATE: Operating Margin Trend from quarterly
+        let marginTrend = '—';
+        if (quarterly && quarterly.length >= 2) {
+            const recent = quarterly.slice(-3).map(q => num(q.opm || 0));
+            if (recent.length > 0) {
+                marginTrend = recent.map(m => fmt(m)).join('% → ') + '%';
+            }
+        }
+        
+        // CALCULATE: Revenue CAGR (3Y)
+        let revenueCagr = 0;
+        if (quarterly && quarterly.length >= 4) {
+            const oldest = num(quarterly[0].rev || 0);
+            const newest = num(quarterly[quarterly.length - 1].rev || 0);
+            if (oldest > 0 && newest > 0) {
+                const years = (quarterly.length - 1) / 4;
+                revenueCagr = (Math.pow(newest / oldest, 1 / years) - 1) * 100;
+            }
+        }
+        
+        // CALCULATE: Earnings CAGR (3Y)
+        let earningsCagr = 0;
+        if (quarterly && quarterly.length >= 4) {
+            const oldestEps = num(quarterly[0].eps || 0);
+            const newestEps = num(quarterly[quarterly.length - 1].eps || 0);
+            if (oldestEps > 0 && newestEps > 0) {
+                const years = (quarterly.length - 1) / 4;
+                earningsCagr = (Math.pow(newestEps / oldestEps, 1 / years) - 1) * 100;
+            }
+        }
+        
+        // CALCULATE: Cash Conversion
+        let cashConversion = 0;
+        if (quarterly && quarterly.length > 0) {
+            const latestNet = num(quarterly[quarterly.length - 1].net || 0);
+            if (latestNet > 0 && cfo > 0) {
+                cashConversion = (cfo / latestNet) * 100;
+            }
+        }
+        
+        // CALCULATE: Interest Coverage = EBIT / Interest Expense
+        let interestCoverage = 0;
+        if (quarterly && quarterly.length > 0) {
+            const latestEbit = num(quarterly[quarterly.length - 1].ebit || 0);
+            const interestExp = num(get(s, 'interest_exp'));
+            if (latestEbit > 0 && interestExp > 0) {
+                interestCoverage = latestEbit / interestExp;
+            }
+        }
+        
+        // CALCULATE: Debt/EBITDA = totalDebt / ebitda
+        let debtToEbitda = 0;
+        if (totalDebt > 0 && ebitda > 0) {
+            debtToEbitda = totalDebt / ebitda;
+        }
+        
+        // CALCULATE: FCF Yield = (fcf / mcap) * 100
+        const fcfYield = mcap > 0 && fcf > 0 ? ((fcf / mcap) * 100) : 0;
+        
+        // CALCULATE: EV/EBITDA = (mcap + totalDebt - cash) / ebitda
+        let evEbitda = 0;
+        if (mcap > 0 && ebitda > 0 && totalDebt > 0) {
+            const cash = num(get(s, 'cash', 0)); // Default to 0 if not available
+            const ev = mcap + totalDebt - (cash > 0 ? cash : 0);
+            evEbitda = ev / ebitda;
+        }
+        
+        html = `
+            <div style="padding:8px 0;padding-bottom:80px">
+            
+            <!-- WEIGHTAGE & SIGNAL SUMMARY -->
+            <div class="weightage-container">
+                <div class="weightage-box pos-box">
+                    <div class="weightage-label">Positive</div>
+                    <div class="weightage-value">${posWeightage}%</div>
+                    <div style="font-size:7px;color:var(--tx3)">+${posSignals}</div>
+                </div>
+                <div class="weightage-box neg-box">
+                    <div class="weightage-label">Negative</div>
+                    <div class="weightage-value">${negWeightage}%</div>
+                    <div style="font-size:7px;color:var(--tx3)">-${negSignals}</div>
+                </div>
+                <div class="weightage-box signal-box">
+                    <div class="weightage-label">Signal</div>
+                    <div class="weightage-value ${signal === 'BUY' ? 'val-positive' : signal === 'SELL' ? 'val-negative' : 'val-neutral'}">${signal}</div>
+                    <div class="signal-label">${signal === 'BUY' ? '📈 Bullish' : signal === 'SELL' ? '📉 Bearish' : '⚪ Neutral'}</div>
+                </div>
+            </div>
+            
+            <!-- ROW 1: Valuation + Quality -->
+            <div class="section-row">
+                <!-- VALUATION ANALYSIS -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📊 Valuation</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Price</div>
+                        <div class="metric-value val-neutral">₹${fmt(ltp)}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Fair Value</div>
+                        <div class="metric-value">${tbdLink('DCF Fair Value')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/E</div>
+                        <div class="metric-value ${pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning'}">${fmt(pe)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">P/B</div>
+                        <div class="metric-value ${pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning'}">${fmt(pb)}x</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EV/EBITDA</div>
+                        <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">PEG</div>
+                        <div class="metric-value">${tbdLink('PEG Ratio')}</div>
+                    </div>
+                </div>
+                
+                <!-- QUALITY OF EARNINGS -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">⭐ Quality</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Op Margin</div>
+                        <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">ROIC</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">WACC</div>
+                        <div class="metric-value">${tbdLink('WACC')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Cash Conv</div>
+                        <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">FCF Yield</div>
+                        <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Q Score</div>
+                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">A</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ROW 2: Growth + Health -->
+            <div class="section-row">
+                <!-- GROWTH TRAJECTORY -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📈 Growth</div>
+                    <div class="metric-row">
+                        <div class="metric-label">Rev CAGR</div>
+                        <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EBITDA CAGR</div>
+                        <div class="metric-value">${tbdLink('EBITDA CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">EPS CAGR</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">G Score</div>
+                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'val-warning'}">B+</div>
+                    </div>
+                </div>
+                
+                <!-- FINANCIAL HEALTH -->
+                <div>
+                    <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">🏦 Health</div>
+                    <div class="metric-row">
+                        <div class="metric-label">D/EBITDA</div>
+                        <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Int Cover</div>
+                        <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Curr Ratio</div>
+                        <div class="metric-value">${tbdLink('Current Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Quick Ratio</div>
+                        <div class="metric-value">${tbdLink('Quick Ratio')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Credit</div>
+                        <div class="metric-value val-positive">AA-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ROW 3: Scale & Holdings (Full Width) -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px">
+                <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📋 Scale & Holdings</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Revenue</div>
+                            <div class="metric-value val-neutral">₹${fmt(sales)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">EBITDA</div>
+                            <div class="metric-value val-neutral">₹${fmt(ebitda)}Cr</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">Market Cap</div>
+                            <div class="metric-value val-neutral">₹${fmt(mcap)}Cr</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="metric-row">
+                            <div class="metric-label">Promoter</div>
+                            <div class="metric-value ${prom > 50 ? 'val-positive' : prom > 30 ? 'val-neutral' : 'val-warning'}">${fmt(prom)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">FII</div>
+                            <div class="metric-value ${fii > 20 ? 'val-positive' : fii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(fii)}%</div>
+                        </div>
+                        <div class="metric-row">
+                            <div class="metric-label">DII</div>
+                            <div class="metric-value ${dii > 15 ? 'val-positive' : dii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(dii)}%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            </div>
+        `;
+    } else if (tab === 'canvas') {
+        // CANVAS TAB — Chart only, no indicators
+        html = `<div style="padding:0;padding-bottom:100px">
+            <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap">${s.ticker || s.sym} · Price Chart</div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
+                  <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
+                  <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
+                  <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
+                </select>
+                <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
+                  <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
+                  <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
+                  <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
+                  <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
+                  <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
+                </select>
+              </div>
+            </div>
+            <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio from quarterly data"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue from quarterly data"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit from quarterly data"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
+            </div>
+            <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
+              <div id="chart-wrap" style="position:relative;width:100%;height:240px"><canvas id="cv-candle"></canvas></div>
+              <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1)"><canvas id="cv-vol"></canvas></div>
+            </div>
+          </div>`;
+        setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
+    } else if (tab === 'technical') {
+        html = `<div style="padding:0;padding-bottom:100px">
+            <!-- CONTROLS: Duration, RSI, Metrics - All in ONE ROW -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-bottom:8px">
+                <!-- Duration -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📅 Duration</div>
+                    <select id="durationSelect" onchange="changeDuration(this.value)" style="width:100%;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;padding:6px;font-size:8px;font-weight:700">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly" selected>Monthly</option>
+                    </select>
+                </div>
+                
+                <!-- RSI & EMA Multi-Select -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 RSI & EMA</div>
+                    <select id="rsiSelect" multiple onchange="updateRSI()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:120px">
+                        <optgroup label="RSI (0-100)">
+                            <option value="rsi_7">RSI(7) - Fast</option>
+                            <option value="rsi_14" selected>RSI(14) - Standard</option>
+                            <option value="rsi_21">RSI(21) - Slow</option>
+                        </optgroup>
+                        <optgroup label="EMA (Price)">
+                            <option value="ema_20">EMA(20) - Short</option>
+                            <option value="ema_50">EMA(50) - Medium</option>
+                            <option value="ema_200">EMA(200) - Long</option>
+                        </optgroup>
+                    </select>
+                </div>
+                
+                <!-- Metrics Multi-Select -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 Metrics</div>
+                    <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
+                        <option value="metric_eps">EPS</option>
+                        <option value="metric_net">Net Inc</option>
+                        <option value="metric_rev">Revenue</option>
+                        <option value="metric_ebitda">EBITDA</option>
+                        <option value="metric_opm">OPM%</option>
+                        <option value="metric_debt">Debt</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- UNIFIED CHART: Price + EMA + Metrics + RSI (ALL OVERLAYS) -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
+                <div id="priceChart" style="width:100%;height:600px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+            </div>
+
+            <!-- INFO -->
+            <div id="metricInfo" style="font-size:8px;color:var(--tx3);padding:8px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1)">
+                All indicators as overlays
+            </div>
+        </div>`;
+
+        setTimeout(() => {
+            // Initialize RSI state with default RSI(14)
+            rsiState = { rsi_14: true };
+            const rsiSelect = document.getElementById('rsiSelect');
+            if (rsiSelect) {
+                for (let option of rsiSelect.options) {
+                    option.selected = option.value === 'rsi_14';
+                }
+            }
+            
+            // FIX: Initialize metrics state with default metric (EPS)
+            metricsState = { metric_eps: true };
+            const metricsSelect = document.getElementById('metricsSelect');
+            if (metricsSelect) {
+                for (let option of metricsSelect.options) {
+                    option.selected = option.value === 'metric_eps';
+                }
+            }
+            
+            loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+        }, 500);
+    } else if (tab === 'technicalPro') {
+        html = `<div style="padding:12px;padding-bottom:100px">
+            <div style="margin-bottom:16px">
+                <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="daily" onchange="switchTimeframe('daily')" checked style="cursor:pointer"> Daily
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="weekly" onchange="switchTimeframe('weekly')" style="cursor:pointer"> Weekly
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="monthly" onchange="switchTimeframe('monthly')" style="cursor:pointer"> Monthly
+                    </label>
+                    <span id="barCountDisplay" style="margin-left:auto;font-size:9px;color:rgba(122,143,160,.7)">Bars: 62</span>
+                </div>
+                
+                <!-- Dropdowns Row -->
+                <div style="display:flex;gap:8px;flex-wrap:wrap;position:relative;z-index:100">
+                    <div style="flex:1;min-width:120px;position:relative">
+                        <button onclick="toggleDropdown('rsi-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+                            📊 RSI <span>▼</span>
+                        </button>
+                        <div id="rsi-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--b1);border-radius:4px;padding:8px;margin-top:4px;min-width:140px;z-index:1000;top:100%;left:0">
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rsi7-chk" onchange="toggleIndicator('rsi7')" checked> RSI(7)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rsi14-chk" onchange="toggleIndicator('rsi14')" checked> RSI(14)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rsi21-chk" onchange="toggleIndicator('rsi21')" checked> RSI(21)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="flex:1;min-width:120px;position:relative">
+                        <button onclick="toggleDropdown('ema-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+                            📈 EMA <span>▼</span>
+                        </button>
+                        <div id="ema-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--b1);border-radius:4px;padding:8px;margin-top:4px;min-width:140px;z-index:1000;top:100%;left:0">
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="ema20-chk" onchange="toggleEMA('ema20')" checked> EMA(20)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="ema50-chk" onchange="toggleEMA('ema50')" checked> EMA(50)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="ema200-chk" onchange="toggleEMA('ema200')" checked> EMA(200)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="flex:1;min-width:120px;position:relative">
+                        <button onclick="toggleDropdown('metric-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+                            📊 Metrics <span>▼</span>
+                        </button>
+                        <div id="metric-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--b1);border-radius:4px;padding:8px;margin-top:4px;min-width:140px;z-index:1000;top:100%;left:0">
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="eps-chk" onchange="toggleMetric('eps')" checked> EPS
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="net-chk" onchange="toggleMetric('net')" checked> Net Inc
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rev-chk" onchange="toggleMetric('rev')" checked> Revenue
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="opm-chk" onchange="toggleMetric('opm')" checked> OPM%
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="debt-chk" onchange="toggleMetric('debt')" checked> Debt
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;max-width:100vw;touch-action:none;user-select:none">
+                <div id="chartPro1" style="width:100%;height:400px;display:block;touch-action:none;user-select:none"></div>
+            </div>
+            
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:visible;margin-top:16px;position:relative;z-index:1;touch-action:none;user-select:none">
+                <div id="chartPro2" style="width:100%;height:400px;touch-action:none;user-select:none"></div>
+            </div>
+        </div>`;
+        document.getElementById('content').innerHTML = html;
+        
+        // Initialize debug window for MOBILE
+        const debugWindow = document.createElement('div');
+        debugWindow.id = 'debug-window';
+        debugWindow.style.cssText = `
+            position: fixed;
+            bottom: 60px;
+            left: 12px;
+            right: 12px;
+            max-height: 150px;
+            background: rgba(0,0,0,.98);
+            border: 2px solid #00f2ff;
+            border-radius: 6px;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 9px;
+            color: #00f2ff;
+            overflow-y: auto;
+            z-index: 9999;
+            display: block;
+        `;
+        document.body.appendChild(debugWindow);
+        
+        // Add debug toggle button
+        const debugBtn = document.createElement('button');
+        debugBtn.style.cssText = `
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            width: 40px;
+            height: 40px;
+            background: #00f2ff;
+            border: none;
+            border-radius: 50%;
+            color: #000;
+            font-weight: bold;
+            z-index: 10000;
+            cursor: pointer;
+            font-size: 18px;
+        `;
+        debugBtn.textContent = '🐛';
+        debugBtn.onclick = () => {
+            debugWindow.style.display = debugWindow.style.display === 'none' ? 'block' : 'none';
+        };
+        document.body.appendChild(debugBtn);
+        
+        // Capture console.log
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const debugWin = document.getElementById('debug-window');
+            if (debugWin) {
+                const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+                debugWin.innerHTML += `<div style="white-space:pre-wrap;word-break:break-word">${line}</div>`;
+                debugWin.scrollTop = debugWin.scrollHeight;
+            }
+        };
+        
+        console.log('🐛 Debug panel ready - Tap bug icon to toggle');
+        
+        // Load and render new technical pro charts
+        renderTechnicalPro(currentStock);
+    } else if (tab === 'fundamentals') {
+        let guidance = {};
+        try {
+            // Try to get guidance from the current stock record (already loaded from IndexedDB)
+            if (s && s.guidance) {
+                guidance = { guidance: s.guidance };
+            }
+            // Fallback to localStorage if not in stock record
+            if (!guidance.guidance) {
+                const guidanceDataStr = localStorage.getItem('guidanceData');
+                if (guidanceDataStr) {
+                    const allGuidance = JSON.parse(guidanceDataStr);
+                    if (allGuidance[s.ticker]) {
+                        guidance = allGuidance[s.ticker];
+                    }
+                }
+            }
+        } catch (e) {
+            console.log('No guidance data');
+        }
+        
+        if (!guidance || !guidance.guidance) {
+            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save guidance from Data tab</div></div>';
+        } else {
+            const g = guidance.guidance;
+            const ad = g.analyst_dimensions || {};
+            
+            const dimCard = (title, emoji, content, color) => `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid ${color}">
+                    <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;margin-bottom:6px">${emoji} ${title}</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${content || 'Not disclosed'}</div>
+                </div>
+            `;
+            
+            html = `
+                <div style="padding:12px 0;padding-bottom:80px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif;color:var(--tx1)">
+                
+                <!-- SUMMARY -->
+                <div style="background:linear-gradient(135deg, rgba(0,242,255,.1), rgba(0,200,150,.1));border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--ac)">
+                    <div style="font-size:9px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 ${g.quarter}</div>
+                    <div style="font-size:14px;color:var(--tx1);line-height:1.6;font-weight:500;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.summary}</div>
+                    <div style="font-size:8px;color:var(--tx3);margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Updated: ${g.date || 'N/A'}</div>
+                </div>
+                
+                <!-- FINANCIALS - 2x2 GRID -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px">
+                    <div style="font-size:9px;font-weight:800;color:var(--yw);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">💰 Financial</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                        <div style="background:rgba(0,0,0,.2);padding:10px;border-radius:6px;border-left:3px solid var(--yw)">
+                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Revenue</div>
+                            <div style="font-size:12px;color:var(--tx1);font-weight:400">${g.financial.revenue}</div>
+                        </div>
+                        <div style="background:rgba(0,232,150,.15);padding:10px;border-radius:6px;border-left:3px solid var(--gr)">
+                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Growth</div>
+                            <div style="font-size:14px;color:var(--gr);font-weight:400">↑ ${g.financial.growth}</div>
+                        </div>
+                        <div style="background:rgba(0,255,136,.15);padding:10px;border-radius:6px;border-left:3px solid var(--gr)">
+                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Margins</div>
+                            <div style="font-size:14px;color:var(--gr);font-weight:400">📈 ${g.financial.margins}</div>
+                        </div>
+                        <div style="background:rgba(0,212,255,.15);padding:10px;border-radius:6px;border-left:3px solid var(--ac)">
+                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Capex</div>
+                            <div style="font-size:12px;color:var(--ac);font-weight:400">${g.financial.capex}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- BUSINESS -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--gr)">
+                    <div style="font-size:9px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:10px;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🏢 Business</div>
+                    <div style="font-size:12px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">
+                        <div style="margin-bottom:10px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Expansion:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.expansion}</span></div>
+                        <div style="margin-bottom:10px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Products:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.products}</span></div>
+                        <div><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Geography:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.geography}</span></div>
+                    </div>
+                </div>
+                
+                <!-- MANAGEMENT SENTIMENT -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--ac)">
+                    <div style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px">👔 Management</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+                        <div style="background:${g.management.tone === 'Positive' ? 'rgba(0,232,150,.15)' : g.management.tone === 'Cautious' ? 'rgba(255,191,71,.15)' : 'rgba(255,107,133,.15)'};padding:12px;border-radius:8px;border:2px solid ${g.management.tone === 'Positive' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+                                <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Tone</div>
+                                <div style="font-size:18px;font-weight:800">${g.management.tone === 'Positive' ? '📈' : g.management.tone === 'Cautious' ? '⚠️' : '📉'}</div>
+                            </div>
+                            <div style="font-size:13px;font-weight:700;color:${g.management.tone === 'Positive' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">${g.management.tone}</div>
+                        </div>
+                        <div style="background:rgba(0,242,255,.12);padding:12px;border-radius:8px;border:2px solid var(--ac)">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+                                <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Confidence</div>
+                                <div style="font-size:18px;font-weight:800">${g.management.confidence === 'High' ? '🎯' : g.management.confidence === 'Medium' ? '📊' : '❓'}</div>
+                            </div>
+                            <div style="font-size:13px;font-weight:700;color:var(--ac)">${g.management.confidence}</div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:8px">
+                        <div style="font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">✓ Commitments</div>
+                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.commitments.map(c => `<li style="color:var(--gr);margin-bottom:3px;font-weight:600">✓ ${c}</li>`).join('')}</ul>
+                    </div>
+                    <div>
+                        <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠ Risks</div>
+                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.risks.map(r => `<li style="color:var(--rd);margin-bottom:3px;font-weight:600">⚠ ${r}</li>`).join('')}</ul>
+                    </div>
+                </div>
+                
+                <!-- ========== ANALYST DEEP DIVE ========== -->
+                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px">📈 Analyst Deep Dive</div>
+                
+                ${dimCard('Valuation Context', '💹', ad.valuation_context, 'var(--ac)')}
+                ${dimCard('Consensus Gap', '📊', ad.consensus_gap, 'var(--yw)')}
+                ${dimCard('Achievability', '✅', ad.achievability, 'var(--gr)')}
+                ${dimCard('Margin Quality', '🎯', ad.margin_quality, 'var(--ac)')}
+                ${dimCard('Capex & ROI', '🏗️', ad.capex_roi, 'var(--yw)')}
+                ${dimCard('Order Book Health', '📦', ad.order_book_health, 'var(--gr)')}
+                ${dimCard('Risk/Opportunity', '⚡', ad.risk_opportunity_scorecard, 'var(--rd)')}
+                ${dimCard('Management Credibility', '🏆', ad.management_credibility, 'var(--ac)')}
+                ${dimCard('Forward Estimates', '📈', ad.forward_estimate_impact, 'var(--yw)')}
+                ${dimCard('Quarterly Path', '📅', ad.quarterly_trajectory, 'var(--gr)')}
+                
+                </div>
+            `;
+        }
+    } else if (tab === 'guidance') {
+        // Fetch guidance data from current stock record (already loaded from IndexedDB), fallback to localStorage
+        let data = {};
+        try {
+            // Try to get insights from the current stock record (already loaded from IndexedDB)
+            if (s && s.insights) {
+                data = { insights: s.insights };
+            }
+            // Fallback to localStorage if not in stock record
+            if (!data.insights) {
+                const guidanceDataStr = localStorage.getItem('guidanceData');
+                if (guidanceDataStr) {
+                    const allData = JSON.parse(guidanceDataStr);
+                    if (allData[s.ticker]) {
+                        data = allData[s.ticker];
+                    }
+                }
+            }
+        } catch (e) {
+            console.log('No guidance data in localStorage');
+        }
+        
+        if (!data || !data.insights) {
+            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save insights from Data tab</div></div>';
+        } else {
+            const i = data.insights;
+            const sb = i.sector_briefing || {};
+            
+            // Helper function for signal color
+            const getSignalColor = (signal) => {
+                if (!signal) return 'var(--tx3)';
+                if (signal.includes('Positive')) return 'var(--gr)';
+                if (signal.includes('Caution')) return 'var(--rd)';
+                return 'var(--yw)';
+            };
+            
+            // Investment dimension card helper
+            const analysisCard = (title, emoji, metric, assessment, signal, color) => `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid ${color}">
+                    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px">
+                        <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${emoji} ${title}</div>
+                        <div style="font-size:9px;font-weight:700;color:${getSignalColor(signal)};padding:2px 6px;background:${getSignalColor(signal) === 'var(--gr)' ? 'rgba(0,232,150,.15)' : getSignalColor(signal) === 'var(--rd)' ? 'rgba(255,107,133,.15)' : 'rgba(255,191,71,.15)'};border-radius:3px">${signal || 'Neutral'}</div>
+                    </div>
+                    <div style="font-size:9px;color:var(--tx3);margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"><strong>Metric:</strong> ${metric}</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${assessment}</div>
+                </div>
+            `;
+            
+            // Recommendation color logic
+            let recColor = 'var(--ac)', recBg = 'rgba(0,242,255,.15)';
+            if (i.recommendation && i.recommendation.toUpperCase() === 'BUY') {
+                recColor = 'var(--gr)'; recBg = 'rgba(0,232,150,.15)';
+            } else if (i.recommendation && i.recommendation.toUpperCase() === 'REDUCE') {
+                recColor = 'var(--yw)'; recBg = 'rgba(255,191,71,.15)';
+            } else if (i.recommendation && i.recommendation.toUpperCase() === 'EXIT') {
+                recColor = 'var(--rd)'; recBg = 'rgba(255,107,133,.15)';
+            }
+            
+            html = `
+                <div style="padding:4px 0;padding-bottom:80px">
+                
+                <!-- RECOMMENDATION HEADLINE -->
+                <div style="background:${recBg};border:1px solid ${recColor};border-radius:8px;padding:12px;margin-bottom:12px">
+                    <div style="font-size:12px;font-weight:900;color:${recColor};margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${i.recommendation || 'HOLD'}</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-weight:600;margin-bottom:4px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${i.thesis || 'No thesis provided'}</div>
+                    ${i.trigger ? `<div style="font-size:9px;color:var(--tx3);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"><strong>Trigger:</strong> ${i.trigger}</div>` : ''}
+                </div>
+                
+                <!-- INVESTMENT ANALYSIS DIMENSIONS -->
+                <div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:10px;padding:0 4px">📊 Investment Analysis</div>
+                
+                ${analysisCard('Valuation', '💹', i.analysis.valuation.metric, i.analysis.valuation.assessment, i.analysis.valuation.signal, 'var(--ac)')}
+                ${analysisCard('Growth', '📈', i.analysis.growth.metric, i.analysis.growth.assessment, i.analysis.growth.signal, 'var(--yw)')}
+                ${analysisCard('Profitability', '🎯', i.analysis.profitability.metric, i.analysis.profitability.assessment, i.analysis.profitability.signal, 'var(--gr)')}
+                ${analysisCard('Cash Strength', '💰', i.analysis.cash_strength.metric, i.analysis.cash_strength.assessment, i.analysis.cash_strength.signal, 'var(--ac)')}
+                ${analysisCard('Catalyst', '🚀', i.analysis.catalyst.metric, i.analysis.catalyst.assessment, i.analysis.catalyst.signal, 'var(--yw)')}
+                ${analysisCard('Moat', '🛡️', i.analysis.moat.metric, i.analysis.moat.assessment, i.analysis.moat.signal, 'var(--gr)')}
+                ${analysisCard('Opportunity', '⭐', i.analysis.opportunity.metric, i.analysis.opportunity.assessment, i.analysis.opportunity.signal, 'var(--ac)')}
+                
+                <!-- SECTOR BRIEFING -->
+                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🌍 Sector Briefing</div>
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--ac)">
+                    <div style="font-size:10px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🔮 Sector Outlook</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_outlook || 'Not provided'}</div>
+                </div>
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--yw)">
+                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 Sector Growth & Dynamics</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_growth || 'Not provided'}</div>
+                </div>
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--gr)">
+                    <div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🎯 Company Positioning</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.company_positioning || 'Not provided'}</div>
+                </div>
+                
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--rd)">
+                    <div style="font-size:10px;font-weight:700;color:var(--rd);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠️ Sector Risks</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_risks || 'Not provided'}</div>
+                </div>
+                
+                </div>
+            `;
+        }
+    }
+    
+    document.getElementById('content').innerHTML = html;
+}
+
+// Init
+loadStock();
+
+// ============================================================================
+// ANALYSIS TAB DISPLAY FUNCTIONS
+// ============================================================================
+
+function loadGuidanceData(ticker) {
+    try {
+        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        fetch(rawUrl)
+            .then(r => r.json())
+            .then(data => {
+                const guidance = data[ticker.toUpperCase()]?.guidance;
+                if (guidance) {
+                    renderFundamentalsTab(ticker, guidance);
+                } else {
+                    document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">No guidance data for ${ticker}</div>`;
+                }
+            })
+            .catch(err => {
+                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--rd)">Error loading data: ${err.message}</div>`;
+            });
+    } catch (error) {
+        console.error('Error loading guidance:', error);
+    }
+}
+
+function loadInsightsData(ticker) {
+    try {
+        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
+        
+        fetch(rawUrl)
+            .then(r => r.json())
+            .then(data => {
+                const insights = data[ticker.toUpperCase()]?.insights;
+                if (insights) {
+                    renderInsightsTab(ticker, insights);
+                } else {
+                    document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">No insights data for ${ticker}</div>`;
+                }
+            })
+            .catch(err => {
+                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--rd)">Error loading data: ${err.message}</div>`;
+            });
+    } catch (error) {
+        console.error('Error loading insights:', error);
+    }
+}
+
+function renderFundamentalsTab(ticker, guidance) {
+    let html = `
+        <div style="font-family: monospace; padding: 20px; background: var(--bg); color: var(--tx1);">
+            <h3 style="color: var(--ac); margin-bottom: 20px;">📋 FUNDAMENTALS - ${ticker}</h3>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">QUARTER & SUMMARY</h4>
+                <p><strong>Quarter:</strong> ${guidance.quarter}</p>
+                <p><strong>Date:</strong> ${guidance.date || 'N/A'}</p>
+                <p><strong>Summary:</strong> ${guidance.summary}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">FINANCIAL</h4>
+                <p><strong>Revenue:</strong> ${guidance.financial.revenue}</p>
+                <p><strong>Growth:</strong> ${guidance.financial.growth}</p>
+                <p><strong>Margins:</strong> ${guidance.financial.margins}</p>
+                <p><strong>Capex:</strong> ${guidance.financial.capex}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">BUSINESS</h4>
+                <p><strong>Expansion:</strong> ${guidance.business.expansion}</p>
+                <p><strong>Products:</strong> ${guidance.business.products}</p>
+                <p><strong>Geography:</strong> ${guidance.business.geography}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">MANAGEMENT</h4>
+                <p><strong>Tone:</strong> ${guidance.management.tone}</p>
+                <p><strong>Confidence:</strong> ${guidance.management.confidence}</p>
+                
+                <p style="margin-top: 10px;"><strong>Commitments:</strong></p>
+                <ul style="margin-left: 20px; color: var(--gr);">
+    `;
+    
+    guidance.management.commitments.forEach(commitment => {
+        html += `<li>${commitment}</li>`;
+    });
+    
+    html += `
+                </ul>
+                
+                <p style="margin-top: 10px;"><strong>Risks:</strong></p>
+                <ul style="margin-left: 20px; color: var(--rd);">
+    `;
+    
+    guidance.management.risks.forEach(risk => {
+        html += `<li>${risk}</li>`;
+    });
+    
+    html += `
+                </ul>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px;">RAW JSON DATA</h4>
+                <pre style="background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 9px;">${JSON.stringify(guidance, null, 2)}</pre>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content').innerHTML = html;
+}
+
+function renderInsightsTab(ticker, insights) {
+    let html = `
+        <div style="font-family: monospace; padding: 20px; background: var(--bg); color: var(--tx1);">
+            <h3 style="color: var(--ac); margin-bottom: 20px; font-size: 16px;">💡 INSIGHTS - ${ticker}</h3>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px; font-size: 13px;">RECOMMENDATION</h4>
+                <p><strong style="font-size: 14px; color: var(--gr);">Action: ${insights.recommendation}</strong></p>
+                <p style="font-size: 12px;"><strong>Date:</strong> ${insights.date || 'N/A'}</p>
+                <p style="font-size: 12px;"><strong>Thesis:</strong> ${insights.thesis}</p>
+                <p style="font-size: 12px;"><strong>Trigger:</strong> ${insights.trigger}</p>
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px; font-size: 13px;">ANALYSIS BREAKDOWN</h4>
+    `;
+    
+    const dimensions = ['valuation', 'growth', 'profitability', 'cash_strength', 'catalyst', 'moat', 'opportunity'];
+    
+    dimensions.forEach(dim => {
+        if (insights.analysis[dim]) {
+            const analysis = insights.analysis[dim];
+            const signalColor = analysis.signal === 'Positive' ? 'var(--gr)' : analysis.signal === 'Caution' ? 'var(--rd)' : 'var(--ac)';
+            
+            html += `
+                <div style="margin: 15px 0; padding: 10px; border-left: 3px solid var(--ac); background: rgba(0,242,255,.05);">
+                    <p style="font-size: 12px;"><strong style="text-transform: uppercase;">${dim.replace(/_/g, ' ')} [${analysis.signal}]</strong></p>
+                    <p style="font-size: 11px; color: var(--tx3);"><strong>Metric:</strong> ${analysis.metric}</p>
+                    <p style="font-size: 11px; color: var(--tx3);"><strong>Assessment:</strong> ${analysis.assessment}</p>
+                </div>
+            `;
+        }
+    });
+    
+    html += `
+            </div>
+            
+            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px;">
+                <h4 style="color: var(--ac); margin-bottom: 10px; font-size: 13px;">RAW JSON DATA</h4>
+                <pre style="background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 10px;">${JSON.stringify(insights, null, 2)}</pre>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content').innerHTML = html;
+}
+
+// TECHNICAL TAB - METRICS & RSI
+let metricsState = {};  // Track which metrics are selected
+let rsiState = {};  // Track which RSI periods are selected
+let priceChart = null;  // Price + RSI chart
+let metricsChart = null;  // Metrics + Volume chart
+let priceSeries = {};  // Price series (candlestick, RSI)
+let metricSeries = {};  // Metric lines
+
+function toggleMetric(metricKey) {
+    metricsState[metricKey] = !metricsState[metricKey];
+    const checkbox = document.getElementById(`metric_${metricKey}`);
+    if (checkbox) checkbox.checked = metricsState[metricKey];
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+function updateRSI() {
+    rsiState = {};
+    const rsiSelect = document.getElementById('rsiSelect');
+    if (rsiSelect) {
+        for (let option of rsiSelect.selectedOptions) {
+            rsiState[option.value] = true;
+        }
+    }
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+function updateMetrics() {
+    metricsState = {};
+    const metricsSelect = document.getElementById('metricsSelect');
+    if (metricsSelect) {
+        for (let option of metricsSelect.selectedOptions) {
+            metricsState[option.value] = true;
+        }
+    }
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+function filterBarsByDuration(bars, duration) {
+    if (!bars || bars.length === 0) return [];
+    
+    if (duration === 'daily') {
+        // Return all daily bars
+        return bars;
+    } else if (duration === 'weekly') {
+        // Keep only one bar per week (first bar of each week)
+        const filtered = [];
+        let lastWeekStart = null;
+        
+        bars.forEach(bar => {
+            const date = new Date(bar.d);
+            const dayOfWeek = date.getDay();
+            const weekStart = new Date(date);
+            weekStart.setDate(date.getDate() - dayOfWeek); // Sunday as week start
+            weekStart.setHours(0, 0, 0, 0);
+            const weekKey = weekStart.toISOString().split('T')[0];
+            
+            if (lastWeekStart !== weekKey) {
+                filtered.push(bar);
+                lastWeekStart = weekKey;
+            }
+        });
+        return filtered;
+    } else if (duration === 'monthly') {
+        // Keep only one bar per month (last bar of the month or month-end close)
+        const filtered = [];
+        let lastMonth = null;
+        let monthBuffer = null;
+        
+        bars.forEach(bar => {
+            const date = new Date(bar.d);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const monthKey = year + '-' + month;
+            
+            if (lastMonth !== monthKey) {
+                // New month found, push the previous month's bar (month-end close)
+                if (monthBuffer) {
+                    filtered.push(monthBuffer);
+                }
+                monthBuffer = bar;  // Buffer this bar as potential month-end
+                lastMonth = monthKey;
+            } else {
+                // Same month, update buffer to keep the latest bar (closest to month-end)
+                monthBuffer = bar;
+            }
+        });
+        
+        // Don't forget the last month's bar
+        if (monthBuffer) {
+            filtered.push(monthBuffer);
+        }
+        
+        return filtered;
+    }
+    
+    return bars;
+}
+
+function changeDuration(duration) {
+    // Store the selected duration
+    window.chartDuration = duration;
+    console.log(`📅 Duration changed to: ${duration}`);
+    
+    // If not monthly, disable and uncheck metric selections
+    if (duration !== 'monthly') {
+        // Disable all metric checkboxes for daily/weekly
+        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
+            cb.checked = false;
+            cb.disabled = true;
+            cb.parentElement.style.opacity = '0.5';
+            cb.parentElement.style.pointerEvents = 'none';
+            metricsState[cb.id.replace('metric_', '')] = false;
+        });
+        console.log('📊 Metrics disabled for daily/weekly view (price only)');
+    } else {
+        // Enable metrics for monthly view
+        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
+            cb.disabled = false;
+            cb.parentElement.style.opacity = '1';
+            cb.parentElement.style.pointerEvents = 'auto';
+        });
+        console.log('✅ Metrics enabled for monthly view');
+    }
+    
+    // Refresh the chart with new duration
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+async function loadAndRenderTechnicalChart(sym) {
+    const priceContainer = document.getElementById('priceChart');
+    const infoDiv = document.getElementById('metricInfo');
+    
+    if (!priceContainer || !currentStock) {
+        console.error('Chart containers or stock not found');
+        return;
+    }
+
+    try {
+        // Get price bars from ./charts/{SYM}.json
+        const url = `./charts/${sym}.json`;
+        const res = await fetch(url);
+        
+        if (!res.ok) {
+            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Failed to load chart (${res.status})</div>`;
+            return;
+        }
+        
+        const data = await res.json();
+        let bars = data.bars || [];
+        
+        if (bars.length === 0) {
+            priceContainer.innerHTML = '<div style="padding:20px;color:red;font-size:10px">No price data</div>';
+            return;
+        }
+
+        // Filter bars by duration
+        const duration = window.chartDuration || 'monthly';
+        bars = filterBarsByDuration(bars, duration);
+        
+        if (bars.length === 0) {
+            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">No data available for ${duration} view</div>`;
+            return;
+        }
+
+        // FIX: Render unified chart with price + RSI + EMA + Metrics all in one
+        renderPriceChart(priceContainer, sym, bars);
+        
+        // Update info
+        const selected = Object.keys(metricsState).filter(k => metricsState[k]);
+        if (selected.length === 0) {
+            infoDiv.innerHTML = `<strong>📊 CHART:</strong> Candlesticks + RSI/EMA - Select metrics to display`;
+        } else {
+            const hasMetrics = Object.keys(metricsState).some(k => k.startsWith('metric_'));
+            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()}${hasMetrics ? ' (Normalized Q1=100)' : ''}`;
+        }
+        
+    } catch (e) {
+        console.error('Chart error:', e);
+        priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
+    }
+}
+
+function calculateRSI(closes, period = 14) {
+    // Industry Standard: Wilder's RSI (TradingView compatible)
+    // Source: https://en.wikipedia.org/wiki/Relative_strength_index
+    
+    if (closes.length < period + 1) return [];
+    
+    // Step 1: Calculate price changes
+    const changes = [];
+    for (let i = 1; i < closes.length; i++) {
+        changes.push(closes[i] - closes[i - 1]);
+    }
+    
+    // Step 2: Separate gains and losses
+    const gains = changes.map(c => c > 0 ? c : 0);
+    const losses = changes.map(c => c < 0 ? -c : 0);
+    
+    // Step 3: Calculate first average (simple average of first 'period' values)
+    let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    
+    // Step 4: Calculate RSI values using Wilder's smoothing
+    const rsi = [];
+    
+    // First RSI at position 'period'
+    const rs1 = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsi.push(100 - (100 / (1 + rs1)));
+    
+    // Subsequent RSI values with exponential smoothing
+    for (let i = period; i < changes.length; i++) {
+        avgGain = (avgGain * (period - 1) + gains[i]) / period;
+        avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+        
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        rsi.push(100 - (100 / (1 + rs)));
+    }
+    
+    return rsi;
+}
+
+function calculateEMA(closes, period) {
+    // Exponential Moving Average
+    if (closes.length < period) return [];
+    
+    const multiplier = 2 / (period + 1);
+    const ema = [];
+    
+    // First EMA is simple average
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+        sum += closes[i];
+    }
+    ema.push(sum / period);
+    
+    // Subsequent EMAs use exponential smoothing
+    for (let i = period; i < closes.length; i++) {
+        const prevEMA = ema[ema.length - 1];
+        const newEMA = closes[i] * multiplier + prevEMA * (1 - multiplier);
+        ema.push(newEMA);
+    }
+    
+    // Shift array back to align with original closes
+    // EMA[0] is at closes[period-1], so prepend nulls
+    const aligned = Array(period - 1).fill(null).concat(ema);
+    return aligned;
+}
+
+function renderPriceChart(container, sym, bars) {
+    if (!container.clientWidth || container.clientWidth < 100) {
+        setTimeout(() => renderPriceChart(container, sym, bars), 300);
+        return;
+    }
+
+    try {
+        // Dispose old chart if exists
+        if (priceChart) {
+            priceChart.dispose();
+        }
+
+        // Initialize ECharts
+        priceChart = echarts.init(container, 'dark');
+        priceSeries = {};
+
+        // Prepare candlestick data: [open, close, low, high] - REALISTIC PRICES
+        const ohlcData = bars.map(b => [
+            parseFloat(b.o),
+            parseFloat(b.c),
+            parseFloat(b.l),
+            parseFloat(b.h)
+        ]);
+
+        const dates = bars.map(b => b.d);
+        const closes = bars.map(b => parseFloat(b.c));
+        
+        // FIX: Keep prices realistic (NOT normalized)
+        // Only normalize for indicators (metrics & RSI calculations)
+
+        // Calculate RSI and EMA for selected indicators
+        const indicatorDataSets = {};
+        const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
+        const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
+        const metricColors = { eps: '#f59e0b', net: '#26de81', rev: '#00d2d3', ebitda: '#9f7aea', opm: '#3b82f6', debt: '#ff6b6b' };
+        
+        // FIX: Combine RSI and metrics states for iteration
+        const allStates = { ...rsiState, ...metricsState };
+        
+        Object.keys(allStates).forEach(key => {
+            // Handle RSI
+            if (key.startsWith('rsi_')) {
+                const period = parseInt(key.replace('rsi_', ''));
+                const rsiArray = calculateRSI(closes, period);  // FIX: Use original closes
+                
+                if (rsiArray.length > 0) {
+                    const rsiDates = dates.slice(period);
+                    const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
+                    
+                    indicatorDataSets[key] = {
+                        name: `RSI(${period})`,
+                        type: 'line',
+                        xAxisIndex: 0,
+                        yAxisIndex: 1,  // FIX: Right axis for normalized indicators
+                        data: rsiData,
+                        lineStyle: { color: rsiColors[key] || '#00f2ff', width: 2 },
+                        smooth: true,
+                        symbol: 'none'
+                    };
+                }
+            }
+            
+            // Handle EMA
+            if (key.startsWith('ema_')) {
+                const period = parseInt(key.replace('ema_', ''));
+                const emaArray = calculateEMA(closes, period);  // FIX: Use original closes
+                
+                if (emaArray.length > 0) {
+                    const emaData = dates.map((date, idx) => 
+                        emaArray[idx] !== null ? [date, emaArray[idx]] : null
+                    ).filter(d => d !== null);
+                    
+                    indicatorDataSets[key] = {
+                        name: `EMA(${period})`,
+                        type: 'line',
+                        xAxisIndex: 0,
+                        yAxisIndex: 0,  // FIX: Left axis - with price (realistic)
+                        data: emaData,
+                        lineStyle: { color: emaColors[key] || '#ffffff', width: 1.5, type: 'dashed' },
+                        smooth: true,
+                        symbol: 'none'
+                    };
+                }
+            }
+            
+            // FIX: Handle Metrics (NEW) - All on same chart
+            if (key.startsWith('metric_')) {
+                try {
+                    const metricKey = key.replace('metric_', '');
+                    const s = currentStock;
+                    
+                    // Debug: Check if quarterly data exists
+                    if (!s) {
+                        console.warn('currentStock is null/undefined');
+                        return;
+                    }
+                    if (!s.quarterly) {
+                        console.warn(`No quarterly data for ${s.ticker}`, s);
+                        return;
+                    }
+                    if (!Array.isArray(s.quarterly) || s.quarterly.length === 0) {
+                        console.warn(`Quarterly data is empty or not array for ${s.ticker}`);
+                        return;
+                    }
+                    
+                    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    console.log(`Rendering metric ${metricKey} with ${sorted.length} quarters`);
+                    
+                    // Map metric keys to data keys
+                    const keyMap = {
+                        'eps': 'e',
+                        'net': 'n',
+                        'rev': 'r',
+                        'ebitda': 'eb',
+                        'opm': 'op',
+                        'debt': 'd'
+                    };
+                    
+                    const dataKey = keyMap[metricKey] || metricKey;
+                    
+                    // Get metric values
+                    const metricData = sorted.map(q => {
+                        const val = q[dataKey];
+                        return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
+                    }).filter(d => d !== null);
+                    
+                    console.log(`Metric ${metricKey}: ${metricData.length} data points`);
+                    
+                    if (metricData.length > 0) {
+                        // Normalize to first value = 100
+                        const firstVal = metricData[0][1];
+                        if (firstVal !== 0) {
+                            const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
+                            
+                            // Color with correct metric key (without 'metric_' prefix)
+                            const metricColor = {
+                                'eps': '#f59e0b',
+                                'net': '#26de81', 
+                                'rev': '#00d2d3',
+                                'ebitda': '#9f7aea',
+                                'opm': '#3b82f6',
+                                'debt': '#ff6b6b'
+                            }[metricKey] || '#ffffff';
+                            
+                            indicatorDataSets[key] = {
+                                name: metricKey.toUpperCase(),
+                                type: 'line',
+                                xAxisIndex: 0,
+                                yAxisIndex: 1,  // Right axis (normalized scale)
+                                data: normalized,
+                                lineStyle: { color: metricColor, width: 2 },
+                                smooth: true,
+                                symbol: 'none'
+                            };
+                            console.log(`✓ Added metric series: ${metricKey}`);
+                        } else {
+                            console.warn(`First metric value is 0 for ${metricKey}`);
+                        }
+                    } else {
+                        console.warn(`No valid data points for metric ${metricKey}`);
+                    }
+                } catch (e) {
+                    console.error(`Metric ${key} render failed:`, e);
+                }
+            }
+        });
+
+        // Build series
+        const series = [
+            {
+                name: 'Price',
+                type: 'candlestick',
+                xAxisIndex: 0,
+                yAxisIndex: 0,  // Left axis - realistic prices
+                data: ohlcData,  // FIX: Real prices, NOT normalized
+                itemStyle: {
+                    color: '#00d084',
+                    color0: '#ff3b5c',
+                    borderColor: '#00e896',
+                    borderColor0: '#ff6b85',
+                    borderWidth: 1
+                }
+            }
+        ];
+
+        // Add all indicators (RSI & EMA)
+        Object.values(indicatorDataSets).forEach(series_item => {
+            series.push(series_item);
+        });
+
+        // ECharts option - SINGLE CHART with all overlays
+        const option = {
+            tooltip: { 
+                trigger: 'axis',
+                axisPointer: { type: 'cross' }
+            },
+            dataZoom: [
+                {
+                    // Slider at bottom for X-axis zoom
+                    type: 'slider',
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100,
+                    height: 20,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,242,255,.05)',
+                    fillerColor: 'rgba(0,242,255,.15)',
+                    borderColor: 'rgba(0,242,255,.2)',
+                    textStyle: { color: '#7a8fa0' }
+                },
+                {
+                    // Inside zoom (drag to zoom)
+                    type: 'inside',
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100,
+                    zoomOnMouseWheel: true,
+                    moveOnMouseMove: true
+                }
+            ],
+            grid: [
+                { left: '8%', right: '8%', top: '5%', bottom: '8%' }
+            ],
+            xAxis: [
+                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true }
+            ],
+            yAxis: [
+                { 
+                    gridIndex: 0, 
+                    type: 'value', 
+                    position: 'left',
+                    scale: true,
+                    name: 'Price (Realistic)',
+                    nameTextStyle: { color: '#00d084', fontSize: 10 },
+                    axisLabel: {
+                        formatter: (p) => p.toFixed(0),
+                        color: '#7a8fa0'
+                    }
+                },
+                { 
+                    gridIndex: 0, 
+                    type: 'value',
+                    position: 'right',
+                    scale: false,
+                    min: 0,
+                    max: 200,
+                    splitNumber: 5,
+                    name: 'Metrics & RSI (Indexed)',
+                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
+                    axisLabel: {
+                        formatter: (p) => p.toFixed(0),
+                        color: '#7a8fa0'
+                    }
+                }
+            ],
+            series: series
+        };
+
+        priceChart.setOption(option);
+        console.log(`✅ ECharts Price Chart: Candlesticks + ${Object.keys(rsiState).length} RSI overlays`);
+        
+    } catch (e) {
+        console.error('ECharts Price chart error:', e);
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
+    }
+}
+
+function renderMetricsChart(container, sym, bars) {
+    if (metricsChart) metricsChart.remove();
+    if (!container.clientWidth || container.clientWidth < 100) {
+        setTimeout(() => renderMetricsChart(container, sym, bars), 300);
+        return;
+    }
+
+    const opts = {
+        layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
+        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
+        leftPriceScale: {
+            visible: false  // Hide metrics scale
+        },
+        rightPriceScale: {
+            visible: true,  // Show volume scale
+            textColor: '#7a8fa0',
+            borderColor: '#1a2332',
+            autoScale: true,
+            formatPrice: (p) => {
+                if (typeof p === 'number') {
+                    if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                    if (p >= 100000) return Math.round(p / 100000) + 'L';
+                    if (p >= 1000) return Math.round(p / 1000) + 'K';
+                    return Math.round(p).toString();
+                }
+                return p;
+            }
+        },
+        grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
+    };
+
+    try {
+        metricsChart = LightweightCharts.createChart(container, opts);
+        metricSeries = {};
+
+        // Add selected metrics as lines
+        const cd = bars.map(b => ({
+            time: Math.floor(new Date(b.d).getTime() / 1000),
+            open: parseFloat(b.o),
+            high: parseFloat(b.h),
+            low: parseFloat(b.l),
+            close: parseFloat(b.c)
+        }));
+
+        // Add volume bars on RIGHT scale
+        if (bars.some(b => b.v && parseFloat(b.v) > 0)) {
+            const volumeSeries = metricsChart.addHistogramSeries({
+                color: 'rgba(0, 242, 255, 0.3)',
+                priceScaleId: 'right',
+                title: 'Volume'
+            });
+            const volumeData = cd.map((c, idx) => ({
+                time: c.time,
+                value: parseFloat(bars[idx].v) || 0
+            }));
+            volumeSeries.setData(volumeData);
+            metricSeries['Volume'] = volumeSeries;
+            
+            // Explicitly apply right scale formatting for volume
+            metricsChart.priceScale('right').applyOptions({
+                autoScale: true,
+                formatPrice: (p) => {
+                    if (typeof p === 'number') {
+                        if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                        if (p >= 100000) return Math.round(p / 100000) + 'L';
+                        if (p >= 1000) return Math.round(p / 1000) + 'K';
+                        return Math.round(p).toString();
+                    }
+                    return p;
+                }
+            });
+        }
+
+        const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
+        
+        selectedMetrics.forEach(metricKey => {
+            addMetricSeries(metricKey, cd, metricsChart);
+        });
+
+        // Set up crosshair to show real metric values on hover
+        metricsChart.subscribeCrosshairMove((param) => {
+            const infoDiv = document.getElementById('metricInfo');
+            if (!infoDiv) return;
+            
+            if (param.time) {
+                let valueText = `📍 `;
+                const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
+                let foundValues = false;
+                
+                selectedMetrics.forEach(metricKey => {
+                    const config = {
+                        eps: {label: 'EPS'},
+                        net: {label: 'Net Inc'},
+                        rev: {label: 'Revenue'},
+                        ebitda: {label: 'EBITDA'},
+                        opm: {label: 'OPM%'},
+                        debt: {label: 'Debt'}
+                    };
+                    const cfg = config[metricKey] || {label: metricKey};
+                    const seriesName = cfg.label;
+                    
+                    if (metricSeries[seriesName]) {
+                        const data = metricSeries[seriesName].data();
+                        const point = data.find(d => d.time === param.time);
+                        if (point && point.actualValue !== undefined) {
+                            const formatted = typeof point.actualValue === 'number' 
+                                ? point.actualValue.toLocaleString('en-IN', {maximumFractionDigits: 2})
+                                : point.actualValue;
+                            valueText += `${seriesName}: ${formatted} | `;
+                            foundValues = true;
+                        }
+                    }
+                });
+                
+                if (foundValues) {
+                    infoDiv.textContent = valueText.slice(0, -3);  // Remove last " | "
+                } else {
+                    infoDiv.textContent = '📊 Hover over metrics to see real values';
+                }
+            } else {
+                document.getElementById('metricInfo').textContent = '📊 Hover over metrics to see real values';
+            }
+        });
+
+        // NOW sync the timeScales AFTER both charts are created
+        syncTimeScales();
+
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced`);
+        
+    } catch (e) {
+        console.error('Metrics chart error:', e);
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
+    }
+}
+
+function syncTimeScales() {
+    // Note: Top chart is ECharts, bottom is LightweightCharts
+    // Full sync between different libraries is complex
+    // For now, each chart manages its own zoom/pan independently
+    console.log('📊 Charts ready (ECharts top, LightweightCharts bottom)');
+}
+
+function addMetricSeries(metricKey, cd, chart) {
+    const s = currentStock;
+    if (!s || !s.quarterly || s.quarterly.length === 0) return;
+
+    // Get all quarterly data points
+    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+    
+    // Get all price bar timestamps for snapping
+    const priceTimestamps = cd.map(c => c.time);
+    
+    // Filter metric data that exists
+    const metricData = sorted
+        .filter(q => q[metricKey] !== undefined && q[metricKey] !== null)
+        .map(q => {
+            const metricTime = Math.floor(new Date(q.d).getTime() / 1000);
+            // Snap to nearest price bar timestamp for X-axis alignment
+            const snappedTime = priceTimestamps.reduce((prev, curr) => 
+                Math.abs(curr - metricTime) < Math.abs(prev - metricTime) ? curr : prev
+            );
+            return {
+                date: q.d,
+                value: parseFloat(q[metricKey]),
+                time: snappedTime  // Use snapped timestamp
+            };
+        });
+
+    if (metricData.length === 0) {
+        console.warn(`No data for metric: ${metricKey}`);
+        return;
+    }
+
+    // Color mapping
+    const config = {
+        eps: {color: '#f59e0b', label: 'EPS'},
+        net: {color: '#26de81', label: 'Net Inc'},
+        rev: {color: '#00d2d3', label: 'Revenue'},
+        ebitda: {color: '#9f7aea', label: 'EBITDA'},
+        opm: {color: '#3b82f6', label: 'OPM%'},
+        debt: {color: '#ff6b6b', label: 'Debt'}
+    };
+
+    const cfg = config[metricKey] || {color: '#00f2ff', label: metricKey};
+
+    // NORMALIZE: Convert to index (first value = 100)
+    const baseValue = metricData[0].value;
+    const normalizedData = metricData.map(m => ({
+        time: m.time,  // Use snapped timestamp
+        value: baseValue !== 0 ? (m.value / baseValue) * 100 : 100,
+        actualValue: m.value  // Store original for tooltip
+    }));
+
+    const minValue = Math.min(...normalizedData.map(d => d.value));
+    const maxValue = Math.max(...normalizedData.map(d => d.value));
+
+    // Add as line series on LEFT price scale (labels hidden)
+    // Use marker to show data points clearly
+    const ls = chart.addLineSeries({
+        color: cfg.color,
+        lineWidth: 2,
+        lineStyle: 0,  // Solid
+        pointMarkersVisible: true,  // Show points at data locations
+        pointMarkersRadius: 3,
+        title: cfg.label,  // REMOVE "(Q1=100)" - just show metric name
+        priceScaleId: 'left'  // Use LEFT scale for metrics (hidden)
+    });
+    
+    // Store ACTUAL VALUES in data for tooltip display
+    ls.setData(normalizedData.map(d => ({
+        time: d.time, 
+        value: d.value,
+        actualValue: d.actualValue  // Real value for tooltip
+    })));
+    
+    metricSeries[cfg.label] = ls;
+
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Real values stored for hover`);
+}
+
+// ==================== TECHNICAL PRO CHARTS ====================
+
+let proCharts = {
+    chart1: null,
+    chart2: null,
+    currentTimeframe: 'daily',
+    data: {
+        daily: null,
+        weekly: null,
+        monthly: null
+    }
+};
+
+function switchTimeframe(tf) {
+    proCharts.currentTimeframe = tf;
+    renderTechnicalPro(currentStock);
+}
+
+function toggleDropdown(id) {
+    const dropdown = document.getElementById(id);
+    if (!dropdown) return;
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleIndicator(indicator) {
+    if (!proCharts.chart1 || !proCharts.chart2) return;
+    
+    const seriesMap = {
+        'rsi7': 'RSI(7)',
+        'rsi14': 'RSI(14)',
+        'rsi21': 'RSI(21)',
+        'ema20': 'EMA(20)',
+        'ema50': 'EMA(50)',
+        'ema200': 'EMA(200)'
+    };
+    
+    const seriesName = seriesMap[indicator];
+    const chart = indicator.startsWith('rsi') ? proCharts.chart2 : proCharts.chart1;
+    
+    try {
+        chart.toggleSeries(seriesName);
+    } catch (e) {
+        console.log(`Toggle series: ${seriesName}`, e.message);
+    }
+}
+
+function toggleEMA(emaType) {
+    if (!proCharts.lineSeries || !proCharts.chart1) return;
+    
+    const series = proCharts.lineSeries[emaType];
+    if (!series) return;
+    
+    try {
+        // Get checkbox state
+        const checkbox = document.getElementById(`${emaType}-chk`);
+        if (!checkbox) return;
+        
+        const isChecked = checkbox.checked;
+        
+        // Toggle by removing and re-adding with data or empty data
+        if (isChecked) {
+            // Show - restore data
+            const dataMap = {
+                'ema20': proCharts.ema20Data || [],
+                'ema50': proCharts.ema50Data || [],
+                'ema200': proCharts.ema200Data || []
+            };
+            series.setData(dataMap[emaType]);
+            console.log(`✅ EMA(${emaType.slice(-2)}) shown`);
+        } else {
+            // Hide - clear data
+            series.setData([]);
+            console.log(`✅ EMA(${emaType.slice(-2)}) hidden`);
+        }
+    } catch (e) {
+        console.error(`Toggle EMA error: ${emaType}`, e.message);
+    }
+}
+
+function toggleMetric(metric) {
+    if (!proCharts.chart2) {
+        console.log(`⚠️ Chart 2 not available for metrics`);
+        return;
+    }
+    
+    const metricMap = {
+        'eps': 'EPS',
+        'net': 'Net Inc',
+        'rev': 'Revenue',
+        'opm': 'OPM%',
+        'debt': 'Debt'
+    };
+    
+    const seriesName = metricMap[metric];
+    
+    // Check if series exists before toggling
+    try {
+        const allSeries = proCharts.chart2.getSeries ? proCharts.chart2.getSeries() : [];
+        const seriesExists = allSeries && allSeries.some(s => s.name === seriesName);
+        
+        if (seriesExists) {
+            proCharts.chart2.toggleSeries(seriesName);
+            console.log(`✅ Toggled: ${seriesName}`);
+        } else {
+            console.log(`ℹ️ Metric '${seriesName}' not available in Chart 2`);
+        }
+    } catch (e) {
+        console.log(`ℹ️ Metric toggle (${seriesName}):`, e.message);
+    }
+}
+
+function aggregateToWeekly(dailyBars) {
+    if (!dailyBars || dailyBars.length === 0) return [];
+    
+    const weekly = [];
+    let week = [];
+    let currentWeekStart = null;
+    
+    for (let i = 0; i < dailyBars.length; i++) {
+        const bar = dailyBars[i];
+        const date = new Date(bar.d);
+        const dayOfWeek = date.getDay(); // 0=Sun, 5=Fri, 6=Sat
+        
+        if (week.length === 0) {
+            currentWeekStart = new Date(date);
+        }
+        
+        week.push(bar);
+        
+        // Friday close or last bar
+        const isLastBar = (i === dailyBars.length - 1);
+        const isFriday = (dayOfWeek === 5);
+        
+        if (isFriday || isLastBar) {
+            if (week.length > 0) {
+                const o = week[0].o;
+                const h = Math.max(...week.map(b => b.h));
+                const l = Math.min(...week.map(b => b.l));
+                const c = week[week.length - 1].c;
+                const v = week.reduce((sum, b) => sum + b.v, 0);
+                const d_str = week[week.length - 1].d;
+                weekly.push({ d: d_str, o, h, l, c, v });
+                week = [];
+            }
+        }
+    }
+    
+    return weekly;
+}
+
+function aggregateToMonthly(dailyBars) {
+    if (!dailyBars || dailyBars.length === 0) return [];
+    
+    const monthly = [];
+    let month = [];
+    let currentMonth = null;
+    
+    for (let i = 0; i < dailyBars.length; i++) {
+        const bar = dailyBars[i];
+        const date = new Date(bar.d);
+        const monthKey = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+        
+        if (currentMonth === null) {
+            currentMonth = monthKey;
+        }
+        
+        if (monthKey !== currentMonth) {
+            // Month changed - finalize previous month
+            if (month.length > 0) {
+                const o = month[0].o;
+                const h = Math.max(...month.map(b => b.h));
+                const l = Math.min(...month.map(b => b.l));
+                const c = month[month.length - 1].c;
+                const v = month.reduce((sum, b) => sum + b.v, 0);
+                const d_str = month[month.length - 1].d;
+                monthly.push({ d: d_str, o, h, l, c, v });
+                month = [];
+            }
+            currentMonth = monthKey;
+        }
+        
+        month.push(bar);
+    }
+    
+    // Add last month
+    if (month.length > 0) {
+        const o = month[0].o;
+        const h = Math.max(...month.map(b => b.h));
+        const l = Math.min(...month.map(b => b.l));
+        const c = month[month.length - 1].c;
+        const v = month.reduce((sum, b) => sum + b.v, 0);
+        const d_str = month[month.length - 1].d;
+        monthly.push({ d: d_str, o, h, l, c, v });
+    }
+    
+    return monthly;
+}
+
+function downsampleRSI(dailyRSI, dailyBars, aggregatedBars) {
+    // Map daily RSI values to aggregated bars by matching end date
+    const downsampled = [];
+    
+    aggregatedBars.forEach(aggBar => {
+        const aggDate = new Date(aggBar.d);
+        let closestRSI = null;
+        let minDiff = Infinity;
+        
+        for (let i = 0; i < dailyBars.length; i++) {
+            if (dailyRSI[i] === null) continue;
+            
+            const dailyDate = new Date(dailyBars[i].d);
+            const diff = Math.abs(aggDate - dailyDate);
+            
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestRSI = dailyRSI[i];
+            }
+        }
+        
+        downsampled.push(closestRSI);
+    });
+    
+    return downsampled;
+}
+
+function calculateEMA(bars, period = 20) {
+    const ema = [];
+    let sum = 0;
+    const multiplier = 2 / (period + 1);
+    
+    bars.forEach((bar, i) => {
+        if (i < period - 1) {
+            sum += bar.c;
+            ema.push(null);
+        } else if (i === period - 1) {
+            sum += bar.c;
+            const sma = sum / period;
+            ema.push(sma);
+        } else {
+            const prevEMA = ema[i - 1];
+            const newEMA = bar.c * multiplier + prevEMA * (1 - multiplier);
+            ema.push(newEMA);
+        }
+    });
+    
+    // Debug logging
+    const validEMAs = ema.filter(e => e !== null);
+    if (validEMAs.length > 0) {
+        console.log(`📊 EMA(${period}) Calculation:`);
+        console.log(`   Multiplier: ${multiplier.toFixed(4)}`);
+        console.log(`   First EMA (at bar ${period-1}): ${ema[period-1]?.toFixed(2)}`);
+        console.log(`   Last 3 EMAs: ${ema.slice(-3).map(e => e?.toFixed(2)).join(', ')}`);
+        console.log(`   Valid points: ${validEMAs.length}/${ema.length}`);
+    }
+    
+    return ema;
+}
+
+function calculateRSI(bars, period = 14) {
+    if (!bars || bars.length <= period) return bars.map(() => null);
+    
+    const rsi = [];
+    const changes = [];
+    
+    // Calculate all price changes
+    for (let i = 1; i < bars.length; i++) {
+        changes.push(bars[i].c - bars[i - 1].c);
+    }
+    
+    // Calculate initial average gain and loss
+    let sumGains = 0, sumLosses = 0;
+    for (let i = 0; i < period; i++) {
+        if (changes[i] > 0) {
+            sumGains += changes[i];
+        } else {
+            sumLosses += Math.abs(changes[i]);
+        }
+    }
+    
+    let avgGain = sumGains / period;
+    let avgLoss = sumLosses / period;
+    
+    // Fill nulls before period
+    for (let i = 0; i < period; i++) {
+        rsi.push(null);
+    }
+    
+    // Calculate RSI from period onwards
+    for (let i = period; i < changes.length; i++) {
+        const change = changes[i];
+        const currentGain = change > 0 ? change : 0;
+        const currentLoss = change > 0 ? 0 : Math.abs(change);
+        
+        // Smooth average (Wilder's method)
+        avgGain = (avgGain * (period - 1) + currentGain) / period;
+        avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
+        
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        const rsiValue = 100 - (100 / (1 + rs));
+        rsi.push(rsiValue);
+    }
+    
+    return rsi;
+}
+
+function formatVolume(v) {
+    if (v >= 10000000) return (v / 10000000).toFixed(1) + 'Cr';
+    if (v >= 100000) return (v / 100000).toFixed(1) + 'L';
+    return (v / 1000).toFixed(0) + 'K';
+}
+
+async function renderTechnicalPro(stock) {
+    console.log('📊 Technical Pro: Received stock from IndexedDB', stock ? stock.ticker : 'null');
+    
+    if (!stock || !stock.ticker) {
+        document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Stock object not available</div>';
+        return;
+    }
+    
+    const sym = stock.ticker;
+    console.log(`🔄 Loading bars for ${sym} from ./SYMBOL.json`);
+    
+    try {
+        // Load OHLCV bars from ./charts/SYMBOL.json (NOT in IndexedDB)
+        const barsUrl = `./charts/${sym}.json`;
+        console.log(`📥 Fetching: ${barsUrl}`);
+        
+        const res = await fetch(barsUrl);
+        if (!res.ok) {
+            console.error(`Failed to fetch ${barsUrl}: ${res.status}`);
+            document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Cannot load bars<br/><small style="font-size:9px;color:#ff6b85">Check: ./charts/${sym}.json exists</small></div>`;
+            return;
+        }
+        
+        const barsData = await res.json();
+        const bars = barsData.bars || [];
+        
+        if (!bars || bars.length === 0) {
+            console.error('No bars in JSON');
+            document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ No OHLCV data in file</div>';
+            return;
+        }
+        
+        console.log(`✅ Loaded ${bars.length} bars`);
+        
+        // Quarterly data comes from IndexedDB (already in currentStock)
+        const quarterly = stock.quarterly || [];
+        console.log(`✅ Quarterly data: ${quarterly.length} quarters available`);
+        
+        const tf = proCharts.currentTimeframe;
+        const recentBars = bars.slice(-252); // Last ~1 year
+        
+        // Calculate ALL indicators from DAILY bars (never aggregated)
+        const rsi7 = calculateRSI(recentBars, 7);
+        const rsi14 = calculateRSI(recentBars, 14);
+        const rsi21 = calculateRSI(recentBars, 21);
+        const ema20 = calculateEMA(recentBars, 20);
+        const ema50 = calculateEMA(recentBars, 50);
+        const ema200 = calculateEMA(recentBars, 200);
+        
+        console.log(`✅ Daily indicators calculated from ${recentBars.length} bars`);
+        console.log(`   RSI(7): ${rsi7.filter(r => r !== null).length}, RSI(14): ${rsi14.filter(r => r !== null).length}, RSI(21): ${rsi21.filter(r => r !== null).length}`);
+        console.log(`   EMA(20): ${ema20.filter(e => e !== null).length}, EMA(50): ${ema50.filter(e => e !== null).length}, EMA(200): ${ema200.filter(e => e !== null).length}`);
+        
+        // Aggregate price bars by timeframe
+        let chartBars, displayRSI7, displayRSI14, displayRSI21, displayEMA20, displayEMA50, displayEMA200;
+        
+        if (tf === 'daily') {
+            chartBars = recentBars;
+            displayRSI7 = rsi7;
+            displayRSI14 = rsi14;
+            displayRSI21 = rsi21;
+            displayEMA20 = ema20;
+            displayEMA50 = ema50;
+            displayEMA200 = ema200;
+            console.log(`📊 Daily: ${chartBars.length} bars`);
+        } else if (tf === 'weekly') {
+            chartBars = aggregateToWeekly(recentBars);
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            // Recalculate EMAs on aggregated bars
+            displayEMA20 = calculateEMA(chartBars, 20);
+            displayEMA50 = calculateEMA(chartBars, 50);
+            displayEMA200 = calculateEMA(chartBars, 200);
+            console.log(`📊 Weekly: ${chartBars.length} bars (from ${recentBars.length} daily), EMAs recalculated`);
+        } else {
+            chartBars = aggregateToMonthly(recentBars);
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            // Recalculate EMAs on aggregated bars
+            displayEMA20 = calculateEMA(chartBars, 20);
+            displayEMA50 = calculateEMA(chartBars, 50);
+            displayEMA200 = calculateEMA(chartBars, 200);
+            console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily), EMAs recalculated`);
+        }
+    
+        // Update bar count display
+        const barCountDisplay = document.getElementById('barCountDisplay');
+        if (barCountDisplay) {
+            barCountDisplay.textContent = `Bars: ${chartBars.length}`;
+        }
+        
+        const chart2Data = [{
+            name: 'RSI(7)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI7[i]
+            }))
+        }, {
+            name: 'RSI(14)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI14[i]
+            }))
+        }, {
+            name: 'RSI(21)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI21[i]
+            }))
+        }];
+        
+        // Get quarterly metrics from IndexedDB (already in currentStock)
+        if (tf === 'monthly' && quarterly && quarterly.length > 0) {
+            const metricNames = ['eps', 'net', 'rev', 'opm', 'debt'];
+            const metricLabels = {
+                eps: 'EPS',
+                net: 'Net Inc',
+                rev: 'Revenue',
+                opm: 'OPM%',
+                debt: 'Debt'
+            };
+            const metricColors = {
+                eps: '#f59e0b',
+                net: '#26de81',
+                rev: '#00d2d3',
+                opm: '#3b82f6',
+                debt: '#ff6b6b'
+            };
+            
+            metricNames.forEach(metric => {
+                const metricData = quarterly
+                    .filter(q => q[metric] !== undefined && q[metric] !== null)
+                    .map(q => ({
+                        x: new Date(q.d),
+                        y: num(q[metric])
+                    }));
+                
+                if (metricData.length > 0) {
+                    chart2Data.push({
+                        name: metricLabels[metric],
+                        data: metricData,
+                        color: metricColors[metric]
+                    });
+                }
+            });
+        }
+    
+    // Destroy old charts
+    // Clear old chart
+    if (proCharts.chart1) {
+        try {
+            if (proCharts.chart1.remove) proCharts.chart1.remove();
+        } catch (e) {
+            console.log('Chart cleanup:', e.message);
+        }
+    }
+    document.getElementById('chartPro1').innerHTML = '';
+    if (proCharts.chart2) proCharts.chart2.destroy();
+    
+    // Chart 1: Price + EMA + Volume (using line instead of candlestick for mixed charts)
+    const options1 = {
+        chart: {
+            type: 'candlestick',
+            background: 'transparent',
+            foreColor: '#7a8fa0',
+            toolbar: { 
+                show: true,
+                autoSelected: 'pan',
+                tools: {
+                    download: false,
+                    selection: false,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                type: 'xy',
+                autoScaleYaxis: true,
+                zoomedArea: {
+                    fill: { color: '#90CAF9', opacity: 0.4 },
+                    border: { color: '#0D47A1', opacity: 0.4 }
+                }
+            },
+            selection: {
+                enabled: true,
+                xaxis: { min: undefined, max: undefined },
+                yaxis: { min: undefined, max: undefined }
+            },
+            animations: { enabled: false },
+            sparkline: { enabled: false }
+        },
+        plotOptions: {
+            candlestick: {
+                colors: { upward: '#26de81', downward: '#ff6b85' },
+                wick: { useFillColor: true }
+            }
+        },
+        series: [{
+            name: 'Price',
+            type: 'candlestick',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: [parseFloat(bar.o), parseFloat(bar.h), parseFloat(bar.l), parseFloat(bar.c)]
+            }))
+        }, {
+            name: 'EMA(20)',
+            type: 'line',
+            color: '#26de81',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA20[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }, {
+            name: 'EMA(50)',
+            type: 'line',
+            color: '#f59e0b',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA50[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }, {
+            name: 'EMA(200)',
+            type: 'line',
+            color: '#ff6b85',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA200[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }],
+        xaxis: {
+            type: 'datetime',
+            axisBorder: { show: true, color: '#1a2332' },
+            axisTicks: { show: true },
+            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
+        },
+        yaxis: [{
+            title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '11px', fontWeight: 700 } },
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => typeof v === 'number' ? v.toFixed(0) : '' },
+            opposite: true
+        }],
+        tooltip: {
+            theme: 'dark',
+            style: { fontSize: '10px' },
+            x: { formatter: (v) => new Date(v).toLocaleDateString() },
+            y: { 
+                formatter: (v) => {
+                    if (typeof v === 'number') {
+                        return v.toFixed(2);
+                    }
+                    return '';
+                }
+            }
+        },
+        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
+        stroke: { width: 2, curve: 'smooth' },
+        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
+    };
+    
+    // Debug: Check data before rendering
+    console.log(`🔍 Chart1 Data Check:`);
+    console.log(`   chartBars: ${chartBars.length} bars`);
+    console.log(`   Sample bar: o=${chartBars[0]?.o}, h=${chartBars[0]?.h}, l=${chartBars[0]?.l}, c=${chartBars[0]?.c}`);
+    console.log(`   Price values (first 3): ${chartBars.slice(0,3).map(b => b.c).join(', ')}`);
+    console.log(`   displayEMA20 (first 3): ${displayEMA20.slice(0,3).map(e => e?.toFixed(2)).join(', ')}`);
+    console.log(`   Volume (first 3): ${chartBars.slice(0,3).map(b => b.v).join(', ')}`);
+    
+    // Validate series data
+    const priceData = options1.series[0].data;
+    const validPrices = priceData.filter(p => p && p.y !== null && p.y !== undefined);
+    console.log(`   Valid price points: ${validPrices.length}/${priceData.length}`);
+    console.log(`   Price Y-values (first 3 candlesticks): ${validPrices.slice(0,3).map(p => Array.isArray(p.y) ? `[${p.y.map(v => v?.toFixed(0)).join(',')}]` : p.y?.toFixed(2)).join(', ')}`);
+    
+    if (validPrices.length === 0) {
+        console.error(`❌ No valid price data! Check if close prices are null.`);
+    }
+    
+    // VALIDATE EMA SERIES
+    console.log('🔍 EMA Series Validation:');
+    options1.series.forEach((series, idx) => {
+        if (idx === 0) return; // Skip price
+        const seriesName = series.name;
+        const seriesType = series.type;
+        const seriesData = series.data;
+        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
+        
+        if (!validPoints || validPoints.length === 0) {
+            console.error(`❌ ${seriesName}: NO valid data points! Type: ${seriesType}`);
+        } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points, type: ${seriesType}`);
+        }
+    });
+    
+    console.log(`📌 Chart Type: ${options1.chart.type}`);
+    console.log(`📌 Total Series: ${options1.series.length}`);
+    
+    try {
+        console.log('🎨 Creating Chart 1 with Lightweight-Charts...');
+        
+        const container = document.getElementById('chartPro1');
+        const chart = LightweightCharts.createChart(container, {
+            width: container.offsetWidth,
+            height: 400,
+            layout: {
+                background: { color: 'rgba(6, 12, 24, 0.9)' },
+                textColor: '#7a8fa0',
+            },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+            },
+            rightPriceScale: {
+                textColor: '#7a8fa0',
+                autoScale: true,
+                mode: LightweightCharts.PriceScaleMode.Normal,
+                borderColor: 'rgba(122, 143, 160, 0.5)',
+                scaleMargins: {
+                    top: 0.1,
+                    bottom: 0.3
+                }
+            },
+            grid: {
+                horzLines: { visible: false },
+                vertLines: { visible: false }
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+            }
+        });
+        
+        // Candlestick series - use RIGHT price scale for prices
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26de81',
+            downColor: '#ff6b85',
+            borderUpColor: '#26de81',
+            borderDownColor: '#ff6b85',
+            wickUpColor: '#26de81',
+            wickDownColor: '#ff6b85',
+            priceScaleId: 'right'  // EXPLICITLY use right scale
+        });
+        
+        candlestickSeries.setData(chartBars.map(bar => ({
+            time: Math.floor(new Date(bar.d).getTime() / 1000),
+            open: parseFloat(bar.o),
+            high: parseFloat(bar.h),
+            low: parseFloat(bar.l),
+            close: parseFloat(bar.c)
+        })));
+        
+        // EMA(20) line - use right price scale
+        const ema20Series = chart.addLineSeries({
+            color: '#26de81',
+            lineWidth: 2,
+            priceScaleId: 'right'
+        });
+        ema20Series.setData(
+            chartBars
+                .map((bar, i) => ({
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: displayEMA20[i]
+                }))
+                .filter(p => p.value !== null && p.value !== undefined)
+        );
+        // Store data for toggling
+        proCharts.ema20Data = ema20Series.data();
+        console.log(`✅ EMA(20) set: ${chartBars.filter((_, i) => displayEMA20[i] !== null && displayEMA20[i] !== undefined).length} points`);
+        
+        // EMA(50) line - use right price scale
+        const ema50Series = chart.addLineSeries({
+            color: '#f59e0b',
+            lineWidth: 2,
+            priceScaleId: 'right'
+        });
+        ema50Series.setData(
+            chartBars
+                .map((bar, i) => ({
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: displayEMA50[i]
+                }))
+                .filter(p => p.value !== null && p.value !== undefined)
+        );
+        // Store data for toggling
+        proCharts.ema50Data = ema50Series.data();
+        console.log(`✅ EMA(50) set: ${chartBars.filter((_, i) => displayEMA50[i] !== null && displayEMA50[i] !== undefined).length} points`);
+        
+        // EMA(200) line - use right price scale
+        const ema200Series = chart.addLineSeries({
+            color: '#ff6b85',
+            lineWidth: 2,
+            priceScaleId: 'right'
+        });
+        ema200Series.setData(
+            chartBars
+                .map((bar, i) => ({
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: displayEMA200[i]
+                }))
+                .filter(p => p.value !== null && p.value !== undefined)
+        );
+        // Store data for toggling
+        proCharts.ema200Data = ema200Series.data();
+        console.log(`✅ EMA(200) set: ${chartBars.filter((_, i) => displayEMA200[i] !== null && displayEMA200[i] !== undefined).length} points`);
+        
+        // Volume histogram - separate axis with color bars
+        const volumeSeries = chart.addHistogramSeries({
+            priceScaleId: 'left',  // Use LEFT scale for volume - separate from price
+            title: 'Volume'
+        });
+        
+        volumeSeries.setData(
+            chartBars.map(bar => {
+                const isUp = parseFloat(bar.c) >= parseFloat(bar.o);
+                return {
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: bar.v / 1000000,  // Scale down to millions
+                    color: isUp ? 'rgba(38, 222, 129, 0.6)' : 'rgba(255, 107, 133, 0.6)'  // Green for up, red for down
+                };
+            })
+        );
+        
+        // Configure VOLUME scale on LEFT side - completely separate from price
+        const volumeScale = chart.priceScale('left');
+        volumeScale.applyOptions({
+            scaleMargins: {
+                top: 0.75,  // Volume at bottom only
+                bottom: 0
+            },
+            autoScale: true,
+            mode: LightweightCharts.PriceScaleMode.Normal,
+            invertScale: false,
+            alignLabels: true,
+            visible: true,  // Make sure it's visible
+            format: (price) => {
+                if (price >= 1000) {
+                    return Math.floor(price / 1000) + 'M';
+                }
+                return Math.floor(price).toString();
+            }
+        });
+        
+        // Configure RIGHT scale for PRICES only (candlestick + EMAs)
+        const priceScale = chart.priceScale('right');
+        priceScale.applyOptions({
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.3  // Leave bottom for volume
+            },
+            autoScale: true,
+            mode: LightweightCharts.PriceScaleMode.Normal,
+            visible: true,
+            format: (price) => Math.floor(price).toString()
+        });
+        
+        // Enable proper panning FIRST - before fitContent
+        chart.timeScale().applyOptions({
+            timeVisible: true,
+            secondsVisible: false,
+            lockRange: false,  // ALLOW panning
+            rightOffset: 0,  // NO offset - show all data
+            minBarSpacing: 0.5,
+            fixLeftEdge: false,
+            fixRightEdge: false
+        });
+        
+        // THEN fit to content
+        chart.timeScale().fitContent();
+        
+        // Format price axis labels - NO DECIMALS
+        setTimeout(() => {
+            try {
+                // Force integer labels on both scales
+                chart.priceScale('right').applyOptions({
+                    format: (price) => Math.floor(price).toString(),
+                    priceFormatter: (price) => Math.floor(price).toString()
+                });
+                chart.priceScale('left').applyOptions({
+                    format: (price) => Math.floor(price).toString(),
+                    priceFormatter: (price) => Math.floor(price).toString()
+                });
+                console.log('✅ Decimal formatter applied to both scales');
+            } catch (e) {
+                console.log('Formatter note:', e.message);
+            }
+        }, 200);
+        
+        // Store chart reference
+        proCharts.chart1 = chart;
+        proCharts.candleSeries = candlestickSeries;
+        proCharts.lineSeries = {
+            ema20: ema20Series,
+            ema50: ema50Series,
+            ema200: ema200Series
+        };
+        
+        console.log('📊 Rendering Chart 1...');
+        console.log('✅ Chart 1 rendered successfully');
+        console.log('✅ Native pan/zoom enabled - swipe & pinch to navigate');
+        
+    } catch (err) {
+        console.error('❌ Chart 1 error:', err.message);
+        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
+    }
+    
+    // Chart 2: RSI + Metrics
+    const options2 = {
+        chart: {
+            type: 'line',
+            background: 'transparent',
+            foreColor: '#7a8fa0',
+            toolbar: {
+                show: true,
+                autoSelected: 'pan',
+                tools: {
+                    download: false,
+                    selection: false,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                type: 'xy',
+                autoScaleYaxis: true,
+                zoomedArea: {
+                    fill: { color: '#90CAF9', opacity: 0.4 },
+                    border: { color: '#0D47A1', opacity: 0.4 }
+                }
+            },
+            selection: {
+                enabled: true,
+                xaxis: { min: undefined, max: undefined },
+                yaxis: { min: undefined, max: undefined }
+            },
+            animations: { enabled: false }
+        },
+        series: chart2Data,
+        
+        // Debug: Check chart2 data
+        ...(()=> { 
+            console.log(`🔍 Chart2 Data Check:`);
+            console.log(`   chart2Data series count: ${chart2Data.length}`);
+            chart2Data.forEach((s, i) => {
+                console.log(`   ${s.name}: ${s.data.length} points, first value: ${s.data[0]?.y}`);
+            });
+            return {}; 
+        })(),
+        xaxis: {
+            type: 'datetime',
+            axisBorder: { show: true, color: '#1a2332' },
+            axisTicks: { show: true },
+            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
+        },
+        yaxis: [{
+            title: { text: 'RSI', style: { color: '#5b95ff', fontSize: '11px', fontWeight: 700 } },
+            min: 0,
+            max: 100,
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
+            opposite: true
+        }],
+        tooltip: {
+            theme: 'dark',
+            style: { fontSize: '10px' },
+            x: { formatter: (v) => new Date(v).toLocaleDateString() },
+            y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
+        },
+        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
+        stroke: { width: 2, curve: 'smooth' },
+        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
+    };
+    
+    // VALIDATE CHART 2 SERIES
+    console.log('🔍 Chart 2 Series Validation:');
+    chart2Data.forEach((series, idx) => {
+        const seriesName = series.name;
+        const seriesData = series.data;
+        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
+        
+        if (!validPoints || validPoints.length === 0) {
+            console.error(`❌ ${seriesName}: NO valid data points!`);
+        } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points`);
+        }
+    });
+    
+    console.log(`📌 Chart 2 Type: ${options2.chart.type}`);
+    console.log(`📌 Chart 2 Series Count: ${chart2Data.length}`);
+    
+    try {
+        console.log('🎨 Creating Chart 2...');
+        proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
+        console.log('📊 Rendering Chart 2...');
+        proCharts.chart2.render();
+        console.log('✅ Chart 2 rendered successfully');
+        
+        // Charts are independent - users can pan each separately
+        console.log('✅ Chart 1 & Chart 2 ready (independent pan/zoom)');
+        // Charts ready - pan/zoom works independently
+    } catch (err) {
+        console.error('❌ Chart 2 error:', err.message);
+        document.getElementById('chartPro2').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
+    }
+    
+    } catch (error) {
+        console.error('Technical Pro rendering error:', error);
+        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Error: ${error.message}</div>`;
+    }
+}
+
+// ════════════════════════════════════════════════════════
+// CANVAS TAB - COMPLETE CHART MODULE (from bharatmarkets v7)
+// ════════════════════════════════════════════════════════
+
+function scheduleChartRedraw(){
+  // ✅ Use currentStock (not S.selStock which doesn't exist)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    // Data already loaded, just redraw
+  }
+  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(currentStock)));
+}
+
+function aggregateCandles(daily, interval){
+  if(interval === 'D' || !daily.length) return daily;
+  const buckets = {};
+  daily.forEach(c => {
+    const d = new Date(c.d);
+    let key;
+    if(interval === 'W'){
+      const day = d.getDay();
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+      key = monday.toISOString().slice(0,10);
+    } else {
+      key = c.d.slice(0,7);
+    }
+    if(!buckets[key]){
+      buckets[key] = { d: key, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
+    } else {
+      const b = buckets[key];
+      b.h = Math.max(b.h, c.h);
+      b.l = Math.min(b.l, c.l);
+      b.c = c.c;
+      b.v += c.v;
+    }
+  });
+  return Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
+}
+
+function scheduleTACharts(s){
+  console.log('[SCHED] scheduleTACharts called, will redraw with S.chartPan=' + S.chartPan);
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      console.log('[SCHED] RAF: calling drawCandlestick');
+      drawCandlestick(s);
+      if(S.maVis.vol) drawVolume(s);
+      updateChartStats(s);
+    });
+  });
+}
+
+let _chartResizeObs = null;
+function attachChartResizeObserver(s){
+  if(_chartResizeObs) _chartResizeObs.disconnect();
+  const wrap = document.getElementById('chart-wrap');
+  if(!wrap || !window.ResizeObserver) return;
+  _chartResizeObs = new ResizeObserver(()=>{ scheduleTACharts(s); });
+  _chartResizeObs.observe(wrap);
+}
+
+function getSlicedCandles(s, canvasWidth){
+  const daily = s.candles || [];
+  if(!daily.length) return daily;
+  const allAgg = aggregateCandles(daily, S.chartInterval);
+  if(!allAgg.length) return [];
+  const now = new Date();
+  const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
+  const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
+  let rangeCandles = allAgg.filter(c => c.d >= cutoff);
+  if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
+  if(canvasWidth && canvasWidth > 0){
+    const PAD_L = 6, PAD_R = 52;
+    const chartW = canvasWidth - PAD_L - PAD_R;
+    const IDEAL_BAR_W = 7;
+    const MIN_BAR_W  = 4;
+    const maxFit = Math.floor(chartW / MIN_BAR_W);
+    if(rangeCandles.length > maxFit){
+      // ✅ PAN-BASED HISTORY SCROLL: S.chartPan controls which candles to display
+      // S.chartPan: -400 (oldest) → 0 (most recent) → +400 (newest, clamped to most recent)
+      const maxBackOffset = Math.max(0, rangeCandles.length - maxFit);
+      const backPan = Math.max(0, -S.chartPan); // Negative pan = go back in history (0-400)
+      const backNorm = Math.min(1, backPan / 400); // Normalize to 0-1
+      const backOffset = Math.floor(backNorm * maxBackOffset); // How many candles back to start
+      const startIdx = Math.max(0, maxBackOffset - backOffset);
+      console.log('[SCHED] getSlicedCandles: pan=' + S.chartPan + ', showing candles ' + startIdx + ' to ' + (startIdx + maxFit));
+      return rangeCandles.slice(startIdx, startIdx + maxFit);
+    }
+  }
+  return rangeCandles;
+}
+
+
+function drawCandlestick(s){
+  console.log('[DRAW] drawCandlestick called, S.chartPan=' + S.chartPan);
+  
+  const cv=document.getElementById('cv-candle');
+  if(!cv)return;
+  console.log('[DRAW] Canvas: width=' + cv.width + ', height=' + cv.height);
+  const wrap=document.getElementById('chart-wrap');
+  // offsetWidth gives the rendered pixel width — reliable after DOM paint
+  const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
+  const H2=200;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr; cv.height=H2*dpr;
+  cv.style.width=W2+'px'; cv.style.height=H2+'px';
+  const ctx=cv.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  const candles=getSlicedCandles(s, W2);
+  if(!candles.length){
+    ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
+    ctx.textAlign='center';
+    if(s._noChartData){
+      ctx.fillStyle='rgba(245,166,35,.7)'; ctx.font='bold 11px DM Sans';
+      ctx.fillText('No chart data for '+s.symbol, W2/2, H2/2-16);
+      ctx.fillStyle='rgba(140,176,208,.5)'; ctx.font='10px DM Sans';
+      ctx.fillText('Add to watchlist.txt → run GitHub Actions', W2/2, H2/2+4);
+      ctx.fillText('(fetch_type: new_symbol)', W2/2, H2/2+20);
+    } else {
+      ctx.fillStyle='rgba(120,150,180,.4)'; ctx.font='12px DM Sans';
+      ctx.fillText('Loading chart data…', W2/2, H2/2);
+    }
+    return;
+  }
+
+  const W=W2,H=H2;
+  const PAD={l:6,r:52,t:8,b:22};
+  const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
+  const n=candles.length;
+  const gap=cW/n;
+  // Thinner bars for dense data: reduce multiplier and max width
+  const bw=Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
+
+  // Full history + visible date range — used by both MAs and KPI overlays
+  const allCandles = s.candles || candles;
+  const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
+  const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
+  const visRange = visLast - visFirst || 1;
+
+  const allPrices=candles.flatMap(c=>[c.h,c.l]);
+  if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
+  if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
+  if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
+  const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
+  const toY=p=>PAD.t+((mx-p)/rng)*cH;
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
+
+  // Background
+  ctx.fillStyle='#070c18';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid lines
+  for(let i=0;i<=4;i++){
+    const y=PAD.t+(cH/4)*i;
+    ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
+  }
+
+  // Right axis separator (draw BEFORE labels so labels appear on top)
+  ctx.fillStyle='rgba(7,12,24,.8)';
+  ctx.fillRect(W-PAD.r,0,PAD.r,H);
+  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+
+  // Price labels (draw AFTER background so they're visible on top)
+  for(let i=0;i<=4;i++){
+    const y=PAD.t+(cH/4)*i;
+    const price=mx-(mx-mn)*(i/4);
+    ctx.fillStyle='rgba(255,255,255,.95)';
+    ctx.font='bold 10px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-4,y+(i===0?11:-1));
+  }
+
+  // Candles
+  console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
+  candles.forEach((c,i)=>{
+    const bull=c.c>=c.o;
+    const cx=barX(i);
+    if(i<3) console.log('[DRAW] Candle ' + i + ': cx=' + Math.round(cx) + ', h=' + c.h.toFixed(2) + ', l=' + c.l.toFixed(2));
+    const bodyTop=toY(Math.max(c.o,c.c));
+    const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
+
+    // Wick
+    ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
+
+    // Body
+    ctx.fillStyle=bull?'#00d084':'#ff3b5c';
+    if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bodyH,1);
+    else ctx.rect(cx-bw/2,bodyTop,bw,bodyH);
+    ctx.fill();
+
+    if(!bull){ctx.strokeStyle='rgba(255,59,92,.3)';ctx.lineWidth=.5;ctx.stroke();}
+  });
+
+  // ── Moving Average curves computed from candle close prices ──
+  function calcSMA(arr, period){
+    return arr.map((c,i)=>{
+      if(i < period-1) return null;
+      const sum = arr.slice(i-period+1, i+1).reduce((a,b)=>a+b.c, 0);
+      return sum / period;
+    });
+  }
+  function calcEMA(arr, period){
+    const k = 2/(period+1);
+    const result = new Array(arr.length).fill(null);
+    // Find first valid index
+    let first = period-1;
+    if(first >= arr.length) return result;
+    result[first] = arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
+    for(let i=first+1; i<arr.length; i++){
+      result[i] = arr[i].c * k + result[i-1] * (1-k);
+    }
+    return result;
+  }
+  function drawMALine(vals, col, dash, label){
+    ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash(dash||[]);
+    ctx.beginPath();
+    let started=false;
+    vals.forEach((v,i)=>{
+      if(v===null) return;
+      const x=barX(i), y=toY(v);
+      if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+    // Label at last valid point
+    const lastIdx = vals.reduce((best,v,i)=>v!==null?i:best, -1);
+    if(lastIdx>=0 && label){
+      const lv = vals[lastIdx];
+      ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
+      ctx.fillText(label+' ₹'+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
+    }
+  }
+  // MAs computed on allCandles (full history), then only visible portion drawn
+  // This ensures EMA200 is correct even on short-range views
+  if(S.maVis.sma20 || S.maVis.sma50 || S.maVis.ema200){
+    const allC = s.candles || candles;
+    const sma20vals  = S.maVis.sma20  ? calcSMA(allC, 20)  : null;
+    const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
+    const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
+
+    // Map allCandles index → visible x position using date
+    function maX(allIdx){
+      const t = new Date(allC[allIdx].d).getTime();
+      return PAD.l + ((t - visFirst) / visRange) * cW;
+    }
+    function drawMAFull(vals, col, dash, label){
+      if(!vals) return;
+      ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.setLineDash(dash||[]);
+      ctx.beginPath();
+      let started = false;
+      vals.forEach((v,i)=>{
+        if(v === null) return;
+        const x = maX(i);
+        if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; } // off-screen
+        const y = toY(v);
+        if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
+      });
+      ctx.stroke(); ctx.setLineDash([]);
+      // Label at rightmost visible point
+      let lastV = null, lastX = 0;
+      vals.forEach((v,i)=>{
+        if(v===null) return;
+        const x = maX(i);
+        if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
+      });
+      if(lastV !== null){
+        ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
+        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
+      }
+    }
+    drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
+    drawMAFull(sma50vals,  '#3b82f6', [],    'SMA50');
+    drawMAFull(ema200vals, '#a855f7', [4,3], 'EMA200');
+  }
+
+  // Current price dashed line
+  if(s.ltp){
+    const lastY=toY(s.ltp);
+    const bull=s.candles?.length&&s.ltp>=(s.candles[0]?.c||s.ltp);
+    ctx.strokeStyle=bull?'rgba(0,208,132,.5)':'rgba(255,59,92,.5)';
+    ctx.lineWidth=.6;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(PAD.l,lastY);ctx.lineTo(PAD.l+cW,lastY);ctx.stroke();
+    ctx.setLineDash([]);
+    // Price badge on right axis
+    ctx.fillStyle=bull?'#00d084':'#ff3b5c';
+    ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
+  }
+
+  // X-axis date labels — use actual candle.d dates, show ~5 evenly spaced
+  const maxLabels = Math.min(6, Math.floor(cW / 40));
+  const lblStep = Math.max(1, Math.floor(n / maxLabels));
+  ctx.fillStyle='rgba(140,176,208,.55)'; ctx.font='7px JetBrains Mono,monospace';
+  candles.forEach((c,i)=>{
+    if(i % lblStep !== 0 && i !== n-1) return;
+    const d = new Date(c.d);
+    let lbl;
+    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
+    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
+    const x = barX(i);
+    if(x > PAD.l+cW-8) return;
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, H-4);
+  });
+
+  // ── KPI overlays on price chart ──────────────────────────────────
+  const quarterly = s.quarterly || [];
+
+  const KPI_DEFS = [
+    {k:'pe',   label:'P/E',     col:'#f59e0b'},
+    {k:'rev',  label:'Rev',     col:'#22d3ee'},
+    {k:'net',  label:'Net',     col:'#4ade80'},
+    {k:'cfo',  label:'CFO',     col:'#34d399'},
+    {k:'opm',  label:'OPM%',    col:'#fb923c'},
+    {k:'debt', label:'Debt',    col:'#f87171'},
+  ];
+
+  // Use FULL candle history for price lookups — not just visible slice
+  // (allCandles, visFirst, visRange already defined above)
+
+  function xForDate(dateStr){
+    const t = new Date(dateStr).getTime();
+    return PAD.l + ((t - visFirst) / visRange) * cW;
+  }
+
+  // Search FULL history for price on/before a date
+  function priceAt(dateStr){
+    for(let i=allCandles.length-1; i>=0; i--){
+      if(allCandles[i].d <= dateStr) return allCandles[i].c;
+    }
+    return allCandles.length ? allCandles[0].c : (s.ltp || 0);
+  }
+
+  // Log raw quarterly data once
+  if(quarterly.length){
+        }
+
+  KPI_DEFS.forEach(({k, label, col})=>{
+    if(!S.kpiVis[k]) return;
+
+    let pts = [];
+    if(k === 'pe'){
+      quarterly.forEach(q=>{
+        if(!q.eps || q.eps <= 0) return;
+        const annEPS = q.eps * 4;
+        const price = priceAt(q.d);
+        if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d});
+      });
+      // Always add current PE at far right
+      if(s.pe > 0 && candles.length > 0){
+        const rightX = PAD.l + cW;
+        if(!pts.length || pts[pts.length-1].x < rightX - 10)
+          pts.push({x: rightX, v: s.pe, d: 'now'});
+      }
+    } else {
+      quarterly.forEach(q=>{
+        const v = q[k];
+        if(v != null) pts.push({x: xForDate(q.d), v, d: q.d});
+      });
+      // Add current value as rightmost anchor if available
+      const curVal = k==='cfo'?s.cfo : k==='rev'?s.sales : k==='net'?s.npm_pct : k==='opm'?s.opm_pct : k==='debt'?s.debt_eq : null;
+      if(curVal != null && pts.length){
+        pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
+      }
+    }
+
+      // Keep points that fall within or near visible chart area
+    // Extend margin so points just outside edges still connect to line
+    pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+    // If nothing visible, show all points spread across full width
+    if(!pts.length && (quarterly.length || s.pe)){
+      const allPts2 = [];
+      if(k==='pe'){
+        quarterly.forEach(q=>{
+          if(!q.eps||q.eps<=0) return;
+          const pr = priceAt(q.d);
+          if(pr>0) allPts2.push({x:0, v:pr/(q.eps*4), d:q.d});
+        });
+        if(s.pe>0) allPts2.push({x:0, v:s.pe, d:'now'});
+      } else {
+        quarterly.forEach(q=>{ const v=q[k]; if(v!=null) allPts2.push({x:0,v,d:q.d}); });
+      }
+      if(allPts2.length>=2){
+        const t0=new Date(allPts2[0].d==='now'?Date.now():allPts2[0].d).getTime();
+        const t1=new Date(allPts2[allPts2.length-1].d==='now'?Date.now():allPts2[allPts2.length-1].d).getTime();
+        const tr=t1-t0||1;
+        allPts2.forEach(p=>{
+          const t=new Date(p.d==='now'?Date.now():p.d).getTime();
+          p.x = PAD.l + ((t-t0)/tr)*cW;
+        });
+        pts = allPts2;
+      }
+    }
+      if(!pts.length) return;
+
+    const drawLine = pts.length >= 2;
+
+    // Map values to Y using a DEDICATED right-side scale for this KPI
+    // This avoids the problem of small PE values (eg 18x) mapping to price range (eg 500-800)
+    const vals = pts.map(p=>p.v);
+    const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
+    const vRng = vMax - vMin || 1;
+    // Use top 80% of chart height, leaving room for x-axis labels at bottom
+    const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
+    const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
+
+    ctx.save();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
+
+    if(drawLine){
+      // Subtle fill under line
+      ctx.beginPath();
+      pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); });
+      ctx.lineTo(pts[pts.length-1].x, yBot);
+      ctx.lineTo(pts[0].x, yBot);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.globalAlpha = 0.08;
+      ctx.fill();
+      // Line
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); });
+      ctx.stroke();
+    }
+
+    // Dots
+    ctx.fillStyle = col; ctx.globalAlpha = 1;
+    pts.forEach(p=>{
+      ctx.beginPath();
+      ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2);
+      ctx.fill();
+    });
+
+    // Value labels above each dot (skip if too crowded)
+    const labelEvery = pts.length > 6 ? 2 : 1;
+    pts.forEach((p,j)=>{
+      if(j % labelEvery !== 0 && j !== pts.length-1) return;
+      const dispV = k==='pe'  ? p.v.toFixed(0)+'x' :
+                    k==='opm' ? p.v.toFixed(1)+'%' :
+                    Math.abs(p.v)>=1000 ? (p.v/1000).toFixed(1)+'K' : p.v.toFixed(0);
+      ctx.fillStyle = col; ctx.globalAlpha = 0.85;
+      ctx.font = '6px JetBrains Mono,monospace'; ctx.textAlign = 'center';
+      ctx.fillText(dispV, p.x, kpiY(p.v) - 4);
+    });
+
+    // Label on right axis strip
+    const last = pts[pts.length-1];
+    const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' :
+                    k==='opm' ? last.v.toFixed(1)+'%' :
+                    Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'KCr' : last.v.toFixed(0)+'Cr';
+    ctx.fillStyle = col; ctx.globalAlpha = 1;
+    ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right';
+    ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8));
+    ctx.restore();
+  });
+}
+
+// Volume bars with 5-period MA trend line
+
+function drawVolume(s){
+  const cv=document.getElementById('cv-vol');
+  if(!cv)return;
+  const wrap=document.getElementById('vol-wrap');
+  const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
+  const H2=75;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr;cv.height=H2*dpr;
+  cv.style.width=W2+'px';cv.style.height=H2+'px';
+  const ctx=cv.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  const candles=getSlicedCandles(s, W2);
+  if(!candles.length)return;
+
+  ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
+
+  const W=W2,H=H2;
+  const PAD={l:8,r:52,t:6,b:18};
+  const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
+  const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
+  const mv=Math.max(...candles.map(c=>c.v))||1;
+  
+  // Determine color based on actual price movement
+  // Use stock's current price vs opening of visible range
+  const openPrice = candles[0].o || candles[0].c || 0;
+  const closePrice = candles[candles.length-1].c || candles[candles.length-1].o || 0;
+  const currentPrice = s.ltp || closePrice;
+  
+  // Compare: is current price higher than opening of period?
+  const priceUp = currentPrice >= openPrice;
+  const volumeColor = priceUp ? '#00d084' : '#ff3b5c';
+  
+  console.log('[VOLUME] open:', openPrice, 'close:', closePrice, 'current:', currentPrice, 'priceUp:', priceUp, 'volumeColor:', volumeColor);
+
+  // Left Y-axis labels (Volume scale)
+  ctx.fillStyle='rgba(255,255,255,.85)';
+  ctx.font='bold 9px JetBrains Mono,monospace';
+  ctx.textAlign='right';
+  for(let i=0; i<=2; i++){
+    const y = PAD.t + cH - (cH/2)*i;
+    const label = i === 0 ? '0' : i === 1 ? '50%' : '100%';
+    ctx.fillText(label, PAD.l-6, y+3);
+  }
+  
+  // Left axis line
+  ctx.strokeStyle='rgba(30,51,80,.8)';
+  ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
+
+  // Volume bars - colored by price movement
+  ctx.fillStyle=volumeColor;
+  candles.forEach((c,i)=>{
+    const bh=Math.max(2,(c.v/mv)*cH);
+    const x=PAD.l+i*gap+(gap-bw)/2;
+    ctx.beginPath();
+    ctx.rect(x,PAD.t+cH-bh,bw,bh);
+    ctx.fill();
+  });
+
+  // Right axis - Price axis strip
+  ctx.fillStyle='rgba(7,12,24,.8)';
+  ctx.fillRect(W-PAD.r,0,PAD.r,H);
+  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  
+  // Price labels on right axis
+  ctx.fillStyle='rgba(255,255,255,.95)';
+  ctx.font='bold 9px JetBrains Mono,monospace';
+  ctx.textAlign='right';
+  ctx.fillText('₹'+Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
+  ctx.fillText('₹'+Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
+  
+  // X-axis date labels
+  const maxLabels = Math.min(5, Math.floor(cW / 80));
+  const lblStep = Math.max(1, Math.floor(n / maxLabels));
+  ctx.fillStyle='rgba(255,255,255,.85)';
+  ctx.font='bold 8px JetBrains Mono,monospace';
+  ctx.textAlign='center';
+  let dateDebug = [];
+  candles.forEach((c,i)=>{
+    if(i % lblStep !== 0 && i !== n-1) return;
+    const dateStr = c.d ? String(c.d).trim() : '';
+    let lbl = '?';
+    
+    if(dateStr.length >= 10){
+      try {
+        const parts = dateStr.slice(0,10).split('-');
+        if(parts.length === 3){
+          const [yr, mo, da] = parts;
+          if(n > 50) lbl = mo + '/' + yr.slice(2);  // MM/YY for long ranges
+          else lbl = da + '/' + mo;  // DD/MM for short ranges
+        }
+      } catch(e){
+        lbl = '!';
+      }
+    }
+    
+    const x = PAD.l+i*gap+gap/2;
+    if(x > W-PAD.r-4) return;
+    ctx.fillText(lbl, x, H-1);
+    if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl});
+  });
+  if(dateDebug.length > 0) console.log('[DATES]', dateDebug);
+  
+  // Volume trend line (smoothed MA5)
+  const volMA = candles.map((c,i)=>{
+    if(i<4) return null;
+    return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
+  });
+  ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.lineWidth=1.5; ctx.beginPath();
+  let started=false;
+  volMA.forEach((v,i)=>{
+    if(v===null) return;
+    const x=PAD.l+i*gap+gap/2;
+    const y=PAD.t+cH-(v/mv)*cH;
+    if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+// ── Quarterly CFO bar panel ───────────────────────────
+// ── Quarterly P/E line panel ──────────────────────────
+
+function updateChartStats(s){
+  const candles=getSlicedCandles(s, 0);
+  if(!candles.length)return;
+  const closes=candles.map(c=>c.c);
+  const first=closes[0],last=closes[closes.length-1];
+  const ret=((last-first)/first*100).toFixed(2);
+  const hi=Math.max(...candles.map(c=>c.h));
+  const lo=Math.min(...candles.map(c=>c.l));
+  const vol=((hi-lo)/lo*100).toFixed(1);
+  const up=last>=first;
+  const retEl=document.getElementById('cstat-ret');
+  const hiEl=document.getElementById('cstat-hi');
+  const loEl=document.getElementById('cstat-lo');
+  const volEl=document.getElementById('cstat-vol');
+  if(retEl){retEl.textContent=(up?'+':'')+ret+'%';retEl.style.color=up?'var(--gr2)':'var(--rd2)';}
+  if(hiEl)hiEl.textContent='₹'+fmt(hi);
+  if(loEl)loEl.textContent='₹'+fmt(lo);
+  if(volEl)volEl.textContent=vol+'%';
+}
+
+// Chart control functions
+function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
+function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(); }
+function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
+
+async function canvasLoadAndDrawChart(sym) {
+  // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    attachChartResizeObserver(currentStock);
+    scheduleTACharts(currentStock);
+    setupChartInteraction();  // Enable pan/zoom once
+    return;
+  }
+  
+  // ✅ Step 2: Try optional JSON file (if you have one)
+  try {
+    const res = await fetch(`./charts/${sym}.json`);
+    if (res.ok) {
+      const data = await res.json();
+      currentStock.candles = data.bars || [];
+      chartCache[sym] = currentStock.candles;
+      attachChartResizeObserver(currentStock);
+      scheduleTACharts(currentStock);
+      setupChartInteraction();  // Enable pan/zoom once
+      return;
+    }
+  } catch (e) {
+    // JSON not available - that's ok
+  }
+  
+  // ✅ Step 3: Use whatever data we have, or show helpful message
+  if(currentStock) {
+    attachChartResizeObserver(currentStock);
+    scheduleTACharts(currentStock);
+    setupChartInteraction();  // Enable pan/zoom once
+  }
+}
+
+// ════════════════════════════════════════════════
+// PAN & ZOOM - Simpler Implementation
+// ════════════════════════════════════════════════
+
+let chartInteraction = {
+  isPanning: false,
+  startX: 0,
+  startPan: 0
+};
+
+function setupChartInteraction() {
+  const canvas = document.getElementById('cv-candle');
+  if (!canvas) return;
+  
+  console.log('[CHART] setupChartInteraction: canvas found', canvas);
+  
+  // Mouse/Touch Pan on canvas
+  canvas.onmousedown = (e) => {
+    console.log('[CHART] mousedown - isPanning=true, startX=' + e.clientX);
+    chartInteraction.isPanning = true;
+    chartInteraction.startX = e.clientX;
+    chartInteraction.startPan = S.chartPan;
+  };
+  
+  canvas.onmousemove = (e) => {
+    if (!chartInteraction.isPanning || !currentStock) {
+      console.log('[CHART] mousemove ignored: isPanning=' + chartInteraction.isPanning + ', currentStock=' + !!currentStock);
+      return;
+    }
+    const delta = e.clientX - chartInteraction.startX;
+    let newPan = chartInteraction.startPan + delta;
+    
+    console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
+    
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
+    console.log('[CHART] after limit: newPan=' + newPan);
+    S.chartPan = newPan;
+    console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
+    scheduleTACharts(currentStock);
+  };
+  
+  canvas.onmouseup = () => { chartInteraction.isPanning = false; };
+  canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
+  
+  // Touch Support
+  canvas.ontouchstart = (e) => {
+    chartInteraction.isPanning = true;
+    chartInteraction.startX = e.touches[0].clientX;
+    chartInteraction.startPan = S.chartPan;
+  };
+  
+  canvas.ontouchmove = (e) => {
+    if (!chartInteraction.isPanning || !currentStock) return;
+    const delta = e.touches[0].clientX - chartInteraction.startX;
+    let newPan = chartInteraction.startPan + delta;
+    
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
+    S.chartPan = newPan;
+    scheduleTACharts(currentStock);
+  };
+  
+  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
+  
+  // Wheel Zoom on canvas
+  canvas.onwheel = (e) => {
+    if (!currentStock) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
+    scheduleTACharts(currentStock);
+  };
+}
+
+// Auto-setup when canvas is ready
+document.addEventListener('DOMContentLoaded', setupChartInteraction);
+
+
+
+</script>
+
+</body>
+</html>
