@@ -3476,13 +3476,14 @@ function drawVolume(s){
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
   // Left Y-axis labels (Volume scale)
-  ctx.fillStyle='rgba(255,255,255,.95)';
-  ctx.font='bold 10px JetBrains Mono,monospace';
-  ctx.textAlign='right';
+  ctx.fillStyle='rgba(255,255,255,1)';
+  ctx.font='bold 11px JetBrains Mono,monospace';
+  ctx.textAlign='left';
+  ctx.textBaseline='middle';
   for(let i=0; i<=2; i++){
     const y = PAD.t + cH - (cH/2)*i;
     const label = i === 0 ? '0' : i === 1 ? '50%' : '100%';
-    ctx.fillText(label, PAD.l-8, y+4);
+    ctx.fillText(label, 1, y);
   }
   
   // Left axis line
@@ -3729,6 +3730,27 @@ function setupChartInteraction() {
   canvas.ontouchmove = handleTouchMove;
   canvas.ontouchend = handleTouchEnd;
   
+  // iOS Pinch Support - gesturechange detects pinch on iOS
+  let gestureStart = 1;
+  canvas.ongesturestart = (e) => {
+    gestureStart = e.scale;
+    console.log('[GESTURE] gesturestart: scale=' + gestureStart);
+  };
+  
+  canvas.ongesturechange = (e) => {
+    if (!currentStock) return;
+    const scaleFactor = e.scale / gestureStart;
+    const factor = scaleFactor > 1.02 ? 1.08 : scaleFactor < 0.98 ? 0.92 : 1.0;
+    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
+    console.log('[GESTURE] Pinch zoom: scale=' + e.scale.toFixed(2) + ', factor=' + factor.toFixed(2) + ', zoom=' + S.chartZoom.toFixed(2));
+    scheduleTACharts(currentStock);
+    e.preventDefault();
+  };
+  
+  canvas.ongestureend = (e) => {
+    console.log('[GESTURE] gestureend');
+  };
+  
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
     if (!currentStock) return;
@@ -3744,6 +3766,9 @@ function setupChartInteraction() {
     volCanvas.ontouchstart = handleTouchStart;
     volCanvas.ontouchmove = handleTouchMove;
     volCanvas.ontouchend = handleTouchEnd;
+    volCanvas.ongesturestart = canvas.ongesturestart;
+    volCanvas.ongesturechange = canvas.ongesturechange;
+    volCanvas.ongestureend = canvas.ongestureend;
     console.log('[CHART] Volume canvas gesture handlers attached');
   }
 }
