@@ -3092,13 +3092,14 @@ function drawCandlestick(s){
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
   const H2=312;  // ✅ Increased 30% (from 240)
-  // ✅ NO DPI SCALING - render at 1x native resolution to eliminate blur
-  cv.width=W2;
-  cv.height=H2;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr;
+  cv.height=H2*dpr;
   cv.style.width=W2+'px';
   cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
-  // NO ctx.scale(dpr,dpr) - render directly at canvas resolution
+  ctx.scale(dpr,dpr);
+  console.log('[CANVAS] DPI=' + dpr + ', canvas=' + W2 + 'x' + H2);
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
@@ -3143,6 +3144,7 @@ function drawCandlestick(s){
   // ✅ VERTICAL BAR ZOOM: Apply zoom multiplier only to bar HEIGHT
   // When zoomed in (fewer candles), bars render TALLER
   const barHeightZoom = n < 50 ? 1.5 : n < 100 ? 1.25 : 1.0;  // Bars 1.5x or 1.25x taller
+  console.log('[ZOOM] n=' + n + ', barHeightZoom=' + barHeightZoom.toFixed(2));
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
@@ -3473,13 +3475,13 @@ function drawVolume(s){
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
   const H2=75;
-  // ✅ NO DPI SCALING - render at 1x native resolution
-  cv.width=W2;
-  cv.height=H2;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr;
+  cv.height=H2*dpr;
   cv.style.width=W2+'px';
   cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
-  // NO ctx.scale(dpr,dpr) - render directly
+  ctx.scale(dpr,dpr);
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length)return;
@@ -3548,12 +3550,12 @@ function drawVolume(s){
   // X-axis date labels
   const maxLabels = Math.min(6, Math.floor(cW / 90));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(255,255,255,1)';  // Full opacity for clarity
-  ctx.font='bold 13px sans-serif';  // ✅ Larger, cleaner sans-serif (no scaling)
+  ctx.fillStyle='rgba(255,255,255,1)';
+  ctx.font='bold ' + (14*dpr) + 'px sans-serif';  // ✅ Scale font by DPI
   ctx.textAlign='center';
   let dateDebug = [];
   
-  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n + ', lblStep=' + lblStep);
+  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n + ', font=' + (14*dpr) + 'px');
   
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
@@ -3576,7 +3578,7 @@ function drawVolume(s){
     
     const x = Math.round(PAD.l+i*gap+gap/2);
     if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-4);
+    ctx.fillText(lbl, x, H-5);
     if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl});
   });
   if(dateDebug.length > 0) console.log('[XAXIS]', dateDebug);
