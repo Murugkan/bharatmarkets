@@ -3092,11 +3092,13 @@ function drawCandlestick(s){
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
   const H2=312;  // ✅ Increased 30% (from 240)
-  const dpr=window.devicePixelRatio||1;
-  cv.width=W2*dpr; cv.height=H2*dpr;
-  cv.style.width=W2+'px'; cv.style.height=H2+'px';
+  // ✅ NO DPI SCALING - render at 1x native resolution to eliminate blur
+  cv.width=W2;
+  cv.height=H2;
+  cv.style.width=W2+'px';
+  cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
-  ctx.scale(dpr,dpr);
+  // NO ctx.scale(dpr,dpr) - render directly at canvas resolution
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
@@ -3133,20 +3135,14 @@ function drawCandlestick(s){
   if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
   if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
+  const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
   
-  let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
-  let rng=mx-mn||1;
-  
-  // ✅ VERTICAL ZOOM: When zoomed in (fewer candles), SHRINK the price range for taller bars
-  // When zoomed out (many candles), use the full range
-  // Zoom factor: more candles visible = smaller zoom = larger range; fewer candles = larger zoom = smaller range
-  const zoomFactor = n < 50 ? 0.7 : n < 100 ? 0.85 : 1.0;  // Shrink range when zoomed in
-  const mid = (mn + mx) / 2;
-  rng = rng * zoomFactor || 1;  // Shrink the range
-  mn = mid - (rng / 2);
-  mx = mid + (rng / 2);
-  
+  // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
+  
+  // ✅ VERTICAL BAR ZOOM: Apply zoom multiplier only to bar HEIGHT
+  // When zoomed in (fewer candles), bars render TALLER
+  const barHeightZoom = n < 50 ? 1.5 : n < 100 ? 1.25 : 1.0;  // Bars 1.5x or 1.25x taller
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
@@ -3182,15 +3178,20 @@ function drawCandlestick(s){
     const bull=c.c>=c.o;
     const cx=barX(i);
     if(i<3) console.log('[DRAW] Candle ' + i + ': cx=' + Math.round(cx) + ', h=' + c.h.toFixed(2) + ', l=' + c.l.toFixed(2));
-    const bodyTop=toY(Math.max(c.o,c.c));
-    const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
+    let bodyTop=toY(Math.max(c.o,c.c));
+    let bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
+    
+    // ✅ Apply bar height zoom (bars get taller when zoomed in, labels stay same)
+    const bodyCenter = bodyTop + bodyH/2;
+    bodyH = bodyH * barHeightZoom;  // Make bars taller
+    bodyTop = bodyCenter - bodyH/2;  // Recenter the body
 
     // Wick
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
     ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
 
-    // Body
+    // Body (taller due to zoom)
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bodyH,1);
     else ctx.rect(cx-bw/2,bodyTop,bw,bodyH);
@@ -3472,11 +3473,13 @@ function drawVolume(s){
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
   const H2=75;
-  const dpr=window.devicePixelRatio||1;
-  cv.width=W2*dpr;cv.height=H2*dpr;
-  cv.style.width=W2+'px';cv.style.height=H2+'px';
+  // ✅ NO DPI SCALING - render at 1x native resolution
+  cv.width=W2;
+  cv.height=H2;
+  cv.style.width=W2+'px';
+  cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
-  ctx.scale(dpr,dpr);
+  // NO ctx.scale(dpr,dpr) - render directly
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length)return;
@@ -3542,18 +3545,17 @@ function drawVolume(s){
   ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
   ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
   
-  // X-axis date labels - adaptive to zoom level
+  // X-axis date labels
   const maxLabels = Math.min(6, Math.floor(cW / 90));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(255,255,255,.95)';  // ✅ Higher opacity
-  ctx.font='12px Arial, sans-serif';  // ✅ Larger font + system font for better rendering
+  ctx.fillStyle='rgba(255,255,255,1)';  // Full opacity for clarity
+  ctx.font='bold 13px sans-serif';  // ✅ Larger, cleaner sans-serif (no scaling)
   ctx.textAlign='center';
   let dateDebug = [];
   
-  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n + ', lblStep=' + lblStep + ', maxLabels=' + maxLabels);
+  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n + ', lblStep=' + lblStep);
   
   candles.forEach((c,i)=>{
-    // Show label at step intervals AND always show last candle date
     if(i % lblStep !== 0 && i !== n-1) return;
     const dateStr = c.d ? String(c.d).trim() : '';
     let lbl = '?';
@@ -3563,22 +3565,21 @@ function drawVolume(s){
         const parts = dateStr.slice(0,10).split('-');
         if(parts.length === 3){
           const [yr, mo, da] = parts;
-          // Show full date for zoomed views (fewer candles), compact for zoomed out
-          if(n > 100) lbl = mo + '/' + yr.slice(2);      // Zoomed out: MM/YY
-          else if(n > 50) lbl = mo + '/' + da;            // Medium: MM/DD  
-          else lbl = da + '/' + mo + '/' + yr.slice(2);   // Zoomed in: DD/MM/YY
+          if(n > 100) lbl = mo + '/' + yr.slice(2);
+          else if(n > 50) lbl = mo + '/' + da;
+          else lbl = da + '/' + mo + '/' + yr.slice(2);
         }
       } catch(e){
         lbl = '!';
       }
     }
     
-    const x = Math.round(PAD.l+i*gap+gap/2);  // Pixel-aligned
+    const x = Math.round(PAD.l+i*gap+gap/2);
     if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-3);  // ✅ Adjusted y position
-    if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl, zoom: S.chartZoom.toFixed(2)});
+    ctx.fillText(lbl, x, H-4);
+    if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl});
   });
-  if(dateDebug.length > 0) console.log('[XAXIS] dates:', dateDebug);
+  if(dateDebug.length > 0) console.log('[XAXIS]', dateDebug);
   
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
