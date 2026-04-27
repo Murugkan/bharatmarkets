@@ -3142,8 +3142,8 @@ function drawCandlestick(s){
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   
   // ✅ VERTICAL BAR ZOOM: Apply zoom multiplier only to bar HEIGHT
-  // When zoomed in (fewer candles), bars render TALLER
-  const barHeightZoom = n < 50 ? 1.5 : n < 100 ? 1.25 : 1.0;  // Bars 1.5x or 1.25x taller
+  // When zoomed in (fewer candles), bars render MUCH TALLER
+  const barHeightZoom = n < 50 ? 2.0 : n < 100 ? 1.6 : 1.1;  // Much more aggressive zoom!
   console.log('[ZOOM] n=' + n + ', barHeightZoom=' + barHeightZoom.toFixed(2));
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
@@ -3185,8 +3185,11 @@ function drawCandlestick(s){
     
     // ✅ Apply bar height zoom (bars get taller when zoomed in, labels stay same)
     const bodyCenter = bodyTop + bodyH/2;
-    bodyH = bodyH * barHeightZoom;  // Make bars taller
+    const originalBodyH = bodyH;
+    bodyH = bodyH * barHeightZoom;  // Make bars MUCH taller
     bodyTop = bodyCenter - bodyH/2;  // Recenter the body
+    
+    if(i===0) console.log('[BAR] candle 0: original=' + originalBodyH.toFixed(1) + ', zoomed=' + bodyH.toFixed(1) + ', zoom=' + barHeightZoom.toFixed(2));
 
     // Wick
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
@@ -3550,12 +3553,12 @@ function drawVolume(s){
   // X-axis date labels
   const maxLabels = Math.min(6, Math.floor(cW / 90));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(255,255,255,1)';
-  ctx.font='bold ' + (14*dpr) + 'px sans-serif';  // ✅ Scale font by DPI
+  ctx.fillStyle='#00f2ff';  // ✅ Bright cyan for visibility
+  ctx.font='bold 11px sans-serif';  // ✅ Reduced from 14*dpr (too big)
   ctx.textAlign='center';
   let dateDebug = [];
   
-  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n + ', font=' + (14*dpr) + 'px');
+  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n);
   
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
@@ -3578,7 +3581,7 @@ function drawVolume(s){
     
     const x = Math.round(PAD.l+i*gap+gap/2);
     if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-5);
+    ctx.fillText(lbl, x, H-6);  // ✅ Position at bottom
     if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl});
   });
   if(dateDebug.length > 0) console.log('[XAXIS]', dateDebug);
