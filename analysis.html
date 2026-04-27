@@ -3133,7 +3133,18 @@ function drawCandlestick(s){
   if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
   if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
-  const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
+  
+  let mn=Math.min(...allPrices), mx=Math.max(...allPrices);
+  let rng=mx-mn||1;
+  
+  // ✅ VERTICAL ZOOM: When zoomed in (fewer candles), add padding % to Y-axis for detail
+  // When zoomed out (many candles), use tighter fit
+  const paddingPercent = n < 50 ? 0.08 : n < 100 ? 0.05 : 0.02;  // More padding when zoomed in
+  const padding = rng * paddingPercent;
+  mn = mn - padding;
+  mx = mx + padding;
+  rng = mx - mn || 1;
+  
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
@@ -3161,7 +3172,7 @@ function drawCandlestick(s){
     const price=mx-(mx-mn)*(i/4);
     ctx.fillStyle='rgba(255,255,255,1)';
     ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
-    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-6,y);
+    ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
 
   // Candles
@@ -3222,7 +3233,7 @@ function drawCandlestick(s){
     if(lastIdx>=0 && label){
       const lv = vals[lastIdx];
       ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-      ctx.fillText(label+' ₹'+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
+      ctx.fillText(label+' '+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
     }
   }
   // MAs computed on allCandles (full history), then only visible portion drawn
@@ -3260,7 +3271,7 @@ function drawCandlestick(s){
       });
       if(lastV !== null){
         ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
+        ctx.fillText(label+' '+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
       }
     }
     drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
@@ -3279,7 +3290,7 @@ function drawCandlestick(s){
     // Price badge on right axis
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText('₹'+Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
+    ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
   // X-axis date labels — use actual candle.d dates, show ~5 evenly spaced
@@ -3527,14 +3538,14 @@ function drawVolume(s){
   ctx.fillStyle='rgba(255,255,255,.95)';
   ctx.font='bold 9px JetBrains Mono,monospace';
   ctx.textAlign='right';
-  ctx.fillText('₹'+Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
-  ctx.fillText('₹'+Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
+  ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
+  ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
   
   // X-axis date labels - adaptive to zoom level
-  const maxLabels = Math.min(6, Math.floor(cW / 90));  // ✅ Increased min labels from 5 to 6
+  const maxLabels = Math.min(6, Math.floor(cW / 90));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(255,255,255,.85)';
-  ctx.font='bold 10px JetBrains Mono,monospace';
+  ctx.fillStyle='rgba(255,255,255,.9)';  // ✅ Slightly higher opacity
+  ctx.font='11px JetBrains Mono,monospace';  // ✅ Increased from 10px to 11px
   ctx.textAlign='center';
   let dateDebug = [];
   
@@ -3561,9 +3572,9 @@ function drawVolume(s){
       }
     }
     
-    const x = PAD.l+i*gap+gap/2;
+    const x = Math.round(PAD.l+i*gap+gap/2);  // ✅ Round to pixel boundary for sharp text
     if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-1);
+    ctx.fillText(lbl, x, H-2);  // ✅ Also adjust y slightly
     if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl, zoom: S.chartZoom.toFixed(2)});
   });
   if(dateDebug.length > 0) console.log('[XAXIS] dates:', dateDebug);
