@@ -3501,12 +3501,12 @@ function drawVolume(s){
   ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
 
   // Volume bars - colored by price movement
+  ctx.fillStyle=volumeColor;
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
     const x=PAD.l+i*gap+(gap-bw)/2;
-    ctx.fillStyle=volumeColor;
-    if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
-    else ctx.rect(x,PAD.t+cH-bh,bw,bh);
+    ctx.beginPath();
+    ctx.rect(x,PAD.t+cH-bh,bw,bh);
     ctx.fill();
   });
 
