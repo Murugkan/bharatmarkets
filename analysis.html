@@ -3141,9 +3141,9 @@ function drawCandlestick(s){
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   
-  // ✅ VERTICAL BAR ZOOM: Reduced to prevent overflow at canvas boundaries
-  const barHeightZoom = n < 50 ? 1.8 : n < 100 ? 1.4 : 1.1;  // Bars taller but not overflowing
-  console.log('[ZOOM] n=' + n + ', barHeightZoom=' + barHeightZoom.toFixed(2));
+  // ✅ VERTICAL BAR ZOOM: Uses YOUR PINCH GESTURE (S.chartZoom)
+  const barHeightZoom = S.chartZoom;  // 1.0 = normal, 2.0 = 2x taller, 0.5 = half height
+  console.log('[ZOOM] S.chartZoom=' + S.chartZoom.toFixed(2) + ', applying to bar height');
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
@@ -3757,10 +3757,7 @@ function setupChartInteraction() {
           if (Math.abs(S.chartZoom - oldZoom) > 0.01) {  // Only log if zoom actually changed
             console.log('[TOUCH] ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2));
             if (currentStock) {
-              throttledRedraw(currentStock);
-            } else {
-              console.log('[TOUCH] Warning: currentStock is null');
-              scheduleTACharts(null);  // Try anyway
+              scheduleTACharts(currentStock);  // ✅ DIRECT - no throttle for smooth zoom
             }
           }
         }
