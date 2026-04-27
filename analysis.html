@@ -3090,7 +3090,7 @@ function drawCandlestick(s){
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-  const H2=200;
+  const H2=240;  // ✅ Match HTML css height
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr; cv.height=H2*dpr;
   cv.style.width=W2+'px'; cv.style.height=H2+'px';
@@ -3114,7 +3114,7 @@ function drawCandlestick(s){
     return;
   }
 
-  const W=W2,H=H2;
+  const W=W2,H=240;  // ✅ Match HTML height of 240px
   const PAD={l:6,r:52,t:8,b:22};
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
@@ -3477,14 +3477,24 @@ function drawVolume(s){
   
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
-  // Left Y-axis labels (Volume scale)
+  // Left Y-axis labels (Volume scale) - show REAL volume values
   ctx.fillStyle='rgba(255,255,255,1)';
-  ctx.font='bold 11px JetBrains Mono,monospace';
+  ctx.font='bold 10px JetBrains Mono,monospace';
   ctx.textAlign='left';
   ctx.textBaseline='middle';
+  const maxVol = Math.max(...candles.map(c=>c.v))||1;
   for(let i=0; i<=2; i++){
     const y = PAD.t + cH - (cH/2)*i;
-    const label = i === 0 ? '0' : i === 1 ? '50%' : '100%';
+    // ✅ Show real volume values, not percentages
+    const volValue = (i/2) * maxVol;
+    let label;
+    if (volValue >= 1e6) {
+      label = (volValue / 1e6).toFixed(1) + 'M';
+    } else if (volValue >= 1e3) {
+      label = (volValue / 1e3).toFixed(0) + 'K';
+    } else {
+      label = volValue.toFixed(0);
+    }
     ctx.fillText(label, 1, y);
   }
   
@@ -3518,14 +3528,18 @@ function drawVolume(s){
   ctx.fillText('₹'+Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
   ctx.fillText('₹'+Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
   
-  // X-axis date labels
-  const maxLabels = Math.min(5, Math.floor(cW / 80));
+  // X-axis date labels - adaptive to zoom level
+  const maxLabels = Math.min(6, Math.floor(cW / 90));  // ✅ Increased min labels from 5 to 6
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
   ctx.fillStyle='rgba(255,255,255,.85)';
-  ctx.font='bold 8px JetBrains Mono,monospace';
+  ctx.font='bold 10px JetBrains Mono,monospace';
   ctx.textAlign='center';
   let dateDebug = [];
+  
+  console.log('[XAXIS] zoom=' + S.chartZoom.toFixed(2) + ', n=' + n + ', lblStep=' + lblStep + ', maxLabels=' + maxLabels);
+  
   candles.forEach((c,i)=>{
+    // Show label at step intervals AND always show last candle date
     if(i % lblStep !== 0 && i !== n-1) return;
     const dateStr = c.d ? String(c.d).trim() : '';
     let lbl = '?';
@@ -3535,8 +3549,10 @@ function drawVolume(s){
         const parts = dateStr.slice(0,10).split('-');
         if(parts.length === 3){
           const [yr, mo, da] = parts;
-          if(n > 50) lbl = mo + '/' + yr.slice(2);  // MM/YY for long ranges
-          else lbl = da + '/' + mo;  // DD/MM for short ranges
+          // Show full date for zoomed views (fewer candles), compact for zoomed out
+          if(n > 100) lbl = mo + '/' + yr.slice(2);      // Zoomed out: MM/YY
+          else if(n > 50) lbl = mo + '/' + da;            // Medium: MM/DD  
+          else lbl = da + '/' + mo + '/' + yr.slice(2);   // Zoomed in: DD/MM/YY
         }
       } catch(e){
         lbl = '!';
@@ -3546,9 +3562,9 @@ function drawVolume(s){
     const x = PAD.l+i*gap+gap/2;
     if(x > W-PAD.r-4) return;
     ctx.fillText(lbl, x, H-1);
-    if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl});
+    if(i === 0 || i === n-1) dateDebug.push({i, dateStr, lbl, zoom: S.chartZoom.toFixed(2)});
   });
-  if(dateDebug.length > 0) console.log('[DATES]', dateDebug);
+  if(dateDebug.length > 0) console.log('[XAXIS] dates:', dateDebug);
   
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
@@ -3644,6 +3660,17 @@ function setupChartInteraction() {
   
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
+  let lastRedrawTime = 0;
+  const REDRAW_THROTTLE_MS = 16;  // ✅ Throttle to ~60fps for smooth motion
+  
+  // Debounced redraw: only redraw if 16ms has passed (prevents excessive redraws)
+  const throttledRedraw = (stock) => {
+    const now = performance.now();
+    if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
+      scheduleTACharts(stock);
+      lastRedrawTime = now;
+    }
+  };
   
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
@@ -3717,7 +3744,7 @@ function setupChartInteraction() {
           
           if (Math.abs(S.chartZoom - oldZoom) > 0.01) {  // Only log if zoom actually changed
             console.log('[TOUCH] ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2) + ' (ratio=' + ratio.toFixed(3) + ')');
-            scheduleTACharts(currentStock);
+            throttledRedraw(currentStock);  // ✅ Throttled for smooth 60fps
           }
         }
       }
@@ -3730,7 +3757,7 @@ function setupChartInteraction() {
         let newPan = chartInteraction.startPan + delta;
         newPan = Math.max(-400, Math.min(400, newPan));
         S.chartPan = newPan;
-        scheduleTACharts(currentStock);
+        throttledRedraw(currentStock);  // ✅ Throttled for smooth 60fps
       }
     }
   };
