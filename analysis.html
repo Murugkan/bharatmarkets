@@ -206,6 +206,7 @@ const S = {
   kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false },
   chartPan: 0,        // Pan offset in pixels
   chartZoom: 1,       // Horizontal zoom (# of candles)
+  yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
   panStart: null      // Pan start position
 };
 let chartCache = {};
@@ -701,7 +702,7 @@ function renderTab(tab) {
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-              <div id="vol-wrap" style="position:relative;width:100%;height:90px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+              <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
             </div>
           </div>`;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
@@ -3057,12 +3058,6 @@ function getSlicedCandles(s, canvasWidth){
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   let rangeCandles = allAgg.filter(c => c.d >= cutoff);
   if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
-  
-  console.log('[DATA] Daily candles in s.candles: ' + daily.length);
-  console.log('[DATA] After aggregateCandles: ' + allAgg.length);
-  console.log('[DATA] Range cutoff date: ' + cutoff + ' (looking for >= this)');
-  console.log('[DATA] Candles passing date filter: ' + rangeCandles.length);
-  console.log('[DATA] Date range shown: ' + (rangeCandles.length > 0 ? rangeCandles[0].d + ' to ' + rangeCandles[rangeCandles.length-1].d : 'none'));
   if(canvasWidth && canvasWidth > 0){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
@@ -3147,6 +3142,9 @@ function drawCandlestick(s){
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   
+  // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
+  const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
+  console.log('[ZOOM] S.yAxisZoom=' + (S.yAxisZoom || 1.0).toFixed(2) + ', applying to bar height');
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
@@ -3185,6 +3183,14 @@ function drawCandlestick(s){
     let bodyTop=toY(Math.max(c.o,c.c));
     let bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
     
+    // ✅ Apply bar height zoom (bars get taller when zoomed in, labels stay same)
+    const bodyCenter = bodyTop + bodyH/2;
+    const originalBodyH = bodyH;
+    bodyH = bodyH * barHeightZoom;  // Make bars MUCH taller
+    bodyTop = bodyCenter - bodyH/2;  // Recenter the body
+    
+    if(i===0) console.log('[BAR] candle 0: original=' + originalBodyH.toFixed(1) + ', zoomed=' + bodyH.toFixed(1) + ', zoom=' + barHeightZoom.toFixed(2));
+
     // Wick
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
     ctx.lineWidth=1;
@@ -3472,7 +3478,7 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=90;  // ✅ Increased from 75px (+ 15px)
+  const H2=75;
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;
   cv.height=H2*dpr;
@@ -3730,10 +3736,15 @@ function setupChartInteraction() {
   
   const handleTouchMove = (e) => {
     if (e.touches.length === 2) {
-      // TWO-FINGER PINCH: X-axis zoom only
+      // TWO-FINGER PINCH: Detect direction (vertical vs horizontal)
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const distance = Math.sqrt(dx*dx + dy*dy);
+      
+      // Determine pinch direction: which is dominant?
+      const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
+      
+      console.log('[TOUCH] pinch: dx=' + dx.toFixed(0) + ', dy=' + dy.toFixed(0) + ', direction=' + (isVerticalPinch ? 'VERTICAL' : 'HORIZONTAL'));
       
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
@@ -3741,14 +3752,21 @@ function setupChartInteraction() {
         
         if (Math.abs(delta) > 0.005) {
           const smoothFactor = 1.0 + (delta * 0.5);
-          const oldZoom = S.chartZoom;
-          S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
           
-          if (Math.abs(S.chartZoom - oldZoom) > 0.01) {
-            console.log('[TOUCH] ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2));
-            if (currentStock) {
-              scheduleTACharts(currentStock);
-            }
+          if (isVerticalPinch) {
+            // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
+            const oldYZoom = S.yAxisZoom || 1.0;
+            S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
+            console.log('[TOUCH] Y-ZOOM: ' + oldYZoom.toFixed(2) + ' → ' + S.yAxisZoom.toFixed(2) + ' (bars height)');
+          } else {
+            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
+            const oldZoom = S.chartZoom;
+            S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
+            console.log('[TOUCH] X-ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2) + ' (# of candles)');
+          }
+          
+          if (currentStock) {
+            scheduleTACharts(currentStock);
           }
         }
       }
