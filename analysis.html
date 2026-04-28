@@ -701,7 +701,7 @@ function renderTab(tab) {
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-              <div id="vol-wrap" style="position:relative;width:100%;height:117px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+              <div id="vol-wrap" style="position:relative;width:100%;height:90px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
             </div>
           </div>`;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
@@ -3056,11 +3056,6 @@ function getSlicedCandles(s, canvasWidth){
   let rangeCandles = allAgg.filter(c => c.d >= cutoff);
   if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
   
-  console.log('[DATA] Daily candles in s.candles: ' + daily.length);
-  console.log('[DATA] After aggregateCandles: ' + allAgg.length);
-  console.log('[DATA] Range cutoff date: ' + cutoff + ' (looking for >= this)');
-  console.log('[DATA] Candles passing date filter: ' + rangeCandles.length);
-  console.log('[DATA] Date range shown: ' + (rangeCandles.length > 0 ? rangeCandles[0].d + ' to ' + rangeCandles[rangeCandles.length-1].d : 'none'));
   if(canvasWidth && canvasWidth > 0){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
@@ -3140,6 +3135,7 @@ function drawCandlestick(s){
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
   
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2; return x; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -3462,7 +3458,7 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=117;  // ✅ Increased by 30% (90 → 117px)  // ✅ Increased from 75px (+ 15px)
+  const H2=90;  // ✅ Increased from 75px (+ 15px)
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;
   cv.height=H2*dpr;
@@ -3682,6 +3678,7 @@ function setupChartInteraction() {
     }
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
+    
     
     
     // Allow free panning with generous limits
