@@ -119,6 +119,8 @@
     <div class="tabs">
         <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
         <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
+        <button class="tab" onclick="switchTab('technical')">📉 Technical</button>
+        <button class="tab" onclick="switchTab('technicalPro')">📈 Technical Pro</button>
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
@@ -703,6 +705,230 @@ function renderTab(tab) {
             </div>
           </div>`;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
+    } else if (tab === 'technical') {
+        html = `<div style="padding:0;padding-bottom:100px">
+            <!-- CONTROLS: Duration, RSI, Metrics - All in ONE ROW -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-bottom:8px">
+                <!-- Duration -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📅 Duration</div>
+                    <select id="durationSelect" onchange="changeDuration(this.value)" style="width:100%;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;padding:6px;font-size:8px;font-weight:700">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly" selected>Monthly</option>
+                    </select>
+                </div>
+                
+                <!-- RSI & EMA Multi-Select -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 RSI & EMA</div>
+                    <select id="rsiSelect" multiple onchange="updateRSI()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:120px">
+                        <optgroup label="RSI (0-100)">
+                            <option value="rsi_7">RSI(7) - Fast</option>
+                            <option value="rsi_14" selected>RSI(14) - Standard</option>
+                            <option value="rsi_21">RSI(21) - Slow</option>
+                        </optgroup>
+                        <optgroup label="EMA (Price)">
+                            <option value="ema_20">EMA(20) - Short</option>
+                            <option value="ema_50">EMA(50) - Medium</option>
+                            <option value="ema_200">EMA(200) - Long</option>
+                        </optgroup>
+                    </select>
+                </div>
+                
+                <!-- Metrics Multi-Select -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px">
+                    <div style="font-size:8px;color:var(--ac);font-weight:700;text-transform:uppercase;margin-bottom:6px">📊 Metrics</div>
+                    <select id="metricsSelect" multiple onchange="updateMetrics()" style="width:100%;padding:6px;background:var(--b1);color:var(--ac);border:1px solid rgba(0,242,255,.2);border-radius:3px;font-size:8px;min-height:80px">
+                        <option value="metric_eps">EPS</option>
+                        <option value="metric_net">Net Inc</option>
+                        <option value="metric_rev">Revenue</option>
+                        <option value="metric_ebitda">EBITDA</option>
+                        <option value="metric_opm">OPM%</option>
+                        <option value="metric_debt">Debt</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- UNIFIED CHART: Price + EMA + Metrics + RSI (ALL OVERLAYS) -->
+            <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;overflow:hidden;margin-bottom:12px">
+                <div id="priceChart" style="width:100%;height:600px;border:1px solid var(--b1);border-radius:4px;background:rgba(0,0,0,.2)"></div>
+            </div>
+
+            <!-- INFO -->
+            <div id="metricInfo" style="font-size:8px;color:var(--tx3);padding:8px;background:rgba(0,242,255,.05);border-radius:4px;border:1px solid var(--b1)">
+                All indicators as overlays
+            </div>
+        </div>`;
+
+        setTimeout(() => {
+            // Initialize RSI state with default RSI(14)
+            rsiState = { rsi_14: true };
+            const rsiSelect = document.getElementById('rsiSelect');
+            if (rsiSelect) {
+                for (let option of rsiSelect.options) {
+                    option.selected = option.value === 'rsi_14';
+                }
+            }
+            
+            // FIX: Initialize metrics state with default metric (EPS)
+            metricsState = { metric_eps: true };
+            const metricsSelect = document.getElementById('metricsSelect');
+            if (metricsSelect) {
+                for (let option of metricsSelect.options) {
+                    option.selected = option.value === 'metric_eps';
+                }
+            }
+            
+            loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+        }, 500);
+    } else if (tab === 'technicalPro') {
+        html = `<div style="padding:12px;padding-bottom:100px">
+            <div style="margin-bottom:16px">
+                <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="daily" onchange="switchTimeframe('daily')" checked style="cursor:pointer"> Daily
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="weekly" onchange="switchTimeframe('weekly')" style="cursor:pointer"> Weekly
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--tx3)">
+                        <input type="radio" name="timeframe" value="monthly" onchange="switchTimeframe('monthly')" style="cursor:pointer"> Monthly
+                    </label>
+                    <span id="barCountDisplay" style="margin-left:auto;font-size:9px;color:rgba(122,143,160,.7)">Bars: 62</span>
+                </div>
+                
+                <!-- Dropdowns Row -->
+                <div style="display:flex;gap:8px;flex-wrap:wrap;position:relative;z-index:100">
+                    <div style="flex:1;min-width:120px;position:relative">
+                        <button onclick="toggleDropdown('rsi-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+                            📊 RSI <span>▼</span>
+                        </button>
+                        <div id="rsi-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--b1);border-radius:4px;padding:8px;margin-top:4px;min-width:140px;z-index:1000;top:100%;left:0">
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rsi7-chk" onchange="toggleIndicator('rsi7')" checked> RSI(7)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rsi14-chk" onchange="toggleIndicator('rsi14')" checked> RSI(14)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rsi21-chk" onchange="toggleIndicator('rsi21')" checked> RSI(21)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="flex:1;min-width:120px;position:relative">
+                        <button onclick="toggleDropdown('ema-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+                            📈 EMA <span>▼</span>
+                        </button>
+                        <div id="ema-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--b1);border-radius:4px;padding:8px;margin-top:4px;min-width:140px;z-index:1000;top:100%;left:0">
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="ema20-chk" onchange="toggleEMA('ema20')" checked> EMA(20)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="ema50-chk" onchange="toggleEMA('ema50')" checked> EMA(50)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="ema200-chk" onchange="toggleEMA('ema200')" checked> EMA(200)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="flex:1;min-width:120px;position:relative">
+                        <button onclick="toggleDropdown('metric-dropdown')" style="width:100%;padding:8px;background:rgba(0,242,255,.1);border:1px solid rgba(0,242,255,.3);color:var(--ac);border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between">
+                            📊 Metrics <span>▼</span>
+                        </button>
+                        <div id="metric-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--b1);border-radius:4px;padding:8px;margin-top:4px;min-width:140px;z-index:1000;top:100%;left:0">
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="eps-chk" onchange="toggleMetric('eps')" checked> EPS
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="net-chk" onchange="toggleMetric('net')" checked> Net Inc
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="rev-chk" onchange="toggleMetric('rev')" checked> Revenue
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="opm-chk" onchange="toggleMetric('opm')" checked> OPM%
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:9px;color:var(--tx3)">
+                                <input type="checkbox" id="debt-chk" onchange="toggleMetric('debt')" checked> Debt
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:hidden;width:100%;max-width:100vw;touch-action:none;user-select:none">
+                <div id="chartPro1" style="width:100%;height:400px;display:block;touch-action:none;user-select:none"></div>
+            </div>
+            
+            <div style="background:rgba(13,18,34,.8);border:1px solid var(--b1);border-radius:6px;padding:0;overflow:visible;margin-top:16px;position:relative;z-index:1;touch-action:none;user-select:none">
+                <div id="chartPro2" style="width:100%;height:400px;touch-action:none;user-select:none"></div>
+            </div>
+        </div>`;
+        document.getElementById('content').innerHTML = html;
+        
+        // Initialize debug window for MOBILE
+        const debugWindow = document.createElement('div');
+        debugWindow.id = 'debug-window';
+        debugWindow.style.cssText = `
+            position: fixed;
+            bottom: 60px;
+            left: 12px;
+            right: 12px;
+            max-height: 150px;
+            background: rgba(0,0,0,.98);
+            border: 2px solid #00f2ff;
+            border-radius: 6px;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 9px;
+            color: #00f2ff;
+            overflow-y: auto;
+            z-index: 9999;
+            display: block;
+        `;
+        document.body.appendChild(debugWindow);
+        
+        // Add debug toggle button
+        const debugBtn = document.createElement('button');
+        debugBtn.style.cssText = `
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            width: 40px;
+            height: 40px;
+            background: #00f2ff;
+            border: none;
+            border-radius: 50%;
+            color: #000;
+            font-weight: bold;
+            z-index: 10000;
+            cursor: pointer;
+            font-size: 18px;
+        `;
+        debugBtn.textContent = '🐛';
+        debugBtn.onclick = () => {
+            debugWindow.style.display = debugWindow.style.display === 'none' ? 'block' : 'none';
+        };
+        document.body.appendChild(debugBtn);
+        
+        // Capture console.log
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const debugWin = document.getElementById('debug-window');
+            if (debugWin) {
+                const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+                debugWin.innerHTML += `<div style="white-space:pre-wrap;word-break:break-word">${line}</div>`;
+                debugWin.scrollTop = debugWin.scrollHeight;
+            }
+        };
+        
+        console.log('🐛 Debug panel ready - Tap bug icon to toggle');
+        
+        // Load and render new technical pro charts
+        renderTechnicalPro(currentStock);
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
