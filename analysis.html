@@ -74,33 +74,11 @@
         .signal-box .weightage-value{color:var(--ac);font-size:14px}
         .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
         
-        /* DEBUG PANEL */
-        #debug-panel{position:fixed;bottom:50px;right:8px;width:280px;max-height:300px;background:rgba(10,14,26,.95);border:1px solid rgba(0,242,255,.6);border-radius:4px;z-index:9999;font-size:9px;color:var(--tx1);font-family:'JetBrains Mono',monospace;box-shadow:0 0 20px rgba(0,242,255,.2)}
-        #debug-panel-header{background:rgba(0,242,255,.15);padding:6px 8px;border-bottom:1px solid rgba(0,242,255,.3);display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
-        #debug-panel-header:hover{background:rgba(0,242,255,.25)}
-        #debug-panel-title{font-weight:700;color:var(--ac)}
-        #debug-panel-close{color:var(--ac);cursor:pointer;font-size:12px;line-height:1}
-        #debug-logs{max-height:260px;overflow-y:auto;padding:6px;background:rgba(0,0,0,.3)}
-        #debug-logs .log-line{padding:3px 4px;margin:2px 0;background:rgba(255,255,255,.05);border-left:2px solid rgba(0,232,150,.5);white-space:pre-wrap;word-break:break-all;line-height:1.3}
-        #debug-logs .log-line.error{border-left-color:rgba(255,59,92,.8);color:rgba(255,107,133,.9)}
-        #debug-logs .log-line.warn{border-left-color:rgba(255,191,71,.8);color:rgba(255,191,71,.9)}
-        #debug-logs .log-line.info{border-left-color:rgba(0,242,255,.6)}
-        #debug-logs::-webkit-scrollbar{width:6px}
-        #debug-logs::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
-        #debug-logs::-webkit-scrollbar-thumb{background:rgba(0,242,255,.4);border-radius:3px}
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- DEBUG PANEL -->
-    <div id="debug-panel">
-        <div id="debug-panel-header">
-            <div id="debug-panel-title">🐛 Debug Logs</div>
-            <div id="debug-panel-close">✕</div>
-        </div>
-        <div id="debug-logs"></div>
-    </div>
     
     <div class="header">
         <div class="header-left">
@@ -138,57 +116,8 @@
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-// 🐛 DEBUG PANEL - Capture console logs on iPhone
+// DATABASE SETUP
 // ═══════════════════════════════════════════════════════════════════════
-const DEBUG_ENABLED = true;
-let debugLogs = [];
-const MAX_LOGS = 50;
-
-function addDebugLog(msg, type = 'info') {
-  if (!DEBUG_ENABLED) return;
-  debugLogs.push({ msg, type, time: new Date().toLocaleTimeString() });
-  if (debugLogs.length > MAX_LOGS) debugLogs.shift();
-  
-  const logsContainer = document.getElementById('debug-logs');
-  if (logsContainer) {
-    const logEl = document.createElement('div');
-    logEl.className = `log-line ${type}`;
-    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    logsContainer.appendChild(logEl);
-    logsContainer.scrollTop = logsContainer.scrollHeight;
-  }
-}
-
-// Intercept console methods
-const originalLog = console.log;
-const originalWarn = console.warn;
-const originalError = console.error;
-
-console.log = function(...args) {
-  originalLog(...args);
-  addDebugLog(args.join(' '), 'info');
-};
-
-console.warn = function(...args) {
-  originalWarn(...args);
-  addDebugLog(args.join(' '), 'warn');
-};
-
-console.error = function(...args) {
-  originalError(...args);
-  addDebugLog(args.join(' '), 'error');
-};
-
-// Debug panel close button
-window.addEventListener('DOMContentLoaded', () => {
-  const closeBtn = document.getElementById('debug-panel-close');
-  const panel = document.getElementById('debug-panel');
-  if (closeBtn && panel) {
-    closeBtn.addEventListener('click', () => {
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    });
-  }
-});
 
 const DB = "OnyxPortfolioDB";
 const STORE = "Stocks";
@@ -230,6 +159,9 @@ const tbdLink = (label) => {
 // Get URL param
 const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
+
+console.log('URL Search:', window.location.search);
+console.log('Ticker from URL:', ticker);
 
 // Load data
 async function loadStock() {
@@ -1098,7 +1030,1667 @@ function renderInsightsTab(ticker, insights) {
     document.getElementById('content').innerHTML = html;
 }
 
+// TECHNICAL TAB - METRICS & RSI
+let metricsState = {};  // Track which metrics are selected
+let rsiState = {};  // Track which RSI periods are selected
+let priceChart = null;  // Price + RSI chart
+let metricsChart = null;  // Metrics + Volume chart
+let priceSeries = {};  // Price series (candlestick, RSI)
+let metricSeries = {};  // Metric lines
 
+function toggleMetric(metricKey) {
+    metricsState[metricKey] = !metricsState[metricKey];
+    const checkbox = document.getElementById(`metric_${metricKey}`);
+    if (checkbox) checkbox.checked = metricsState[metricKey];
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+function updateRSI() {
+    rsiState = {};
+    const rsiSelect = document.getElementById('rsiSelect');
+    if (rsiSelect) {
+        for (let option of rsiSelect.selectedOptions) {
+            rsiState[option.value] = true;
+        }
+    }
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+function updateMetrics() {
+    metricsState = {};
+    const metricsSelect = document.getElementById('metricsSelect');
+    if (metricsSelect) {
+        for (let option of metricsSelect.selectedOptions) {
+            metricsState[option.value] = true;
+        }
+    }
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+function filterBarsByDuration(bars, duration) {
+    if (!bars || bars.length === 0) return [];
+    
+    if (duration === 'daily') {
+        // Return all daily bars
+        return bars;
+    } else if (duration === 'weekly') {
+        // Keep only one bar per week (first bar of each week)
+        const filtered = [];
+        let lastWeekStart = null;
+        
+        bars.forEach(bar => {
+            const date = new Date(bar.d);
+            const dayOfWeek = date.getDay();
+            const weekStart = new Date(date);
+            weekStart.setDate(date.getDate() - dayOfWeek); // Sunday as week start
+            weekStart.setHours(0, 0, 0, 0);
+            const weekKey = weekStart.toISOString().split('T')[0];
+            
+            if (lastWeekStart !== weekKey) {
+                filtered.push(bar);
+                lastWeekStart = weekKey;
+            }
+        });
+        return filtered;
+    } else if (duration === 'monthly') {
+        // Keep only one bar per month (last bar of the month or month-end close)
+        const filtered = [];
+        let lastMonth = null;
+        let monthBuffer = null;
+        
+        bars.forEach(bar => {
+            const date = new Date(bar.d);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const monthKey = year + '-' + month;
+            
+            if (lastMonth !== monthKey) {
+                // New month found, push the previous month's bar (month-end close)
+                if (monthBuffer) {
+                    filtered.push(monthBuffer);
+                }
+                monthBuffer = bar;  // Buffer this bar as potential month-end
+                lastMonth = monthKey;
+            } else {
+                // Same month, update buffer to keep the latest bar (closest to month-end)
+                monthBuffer = bar;
+            }
+        });
+        
+        // Don't forget the last month's bar
+        if (monthBuffer) {
+            filtered.push(monthBuffer);
+        }
+        
+        return filtered;
+    }
+    
+    return bars;
+}
+
+function changeDuration(duration) {
+    // Store the selected duration
+    window.chartDuration = duration;
+    console.log(`📅 Duration changed to: ${duration}`);
+    
+    // If not monthly, disable and uncheck metric selections
+    if (duration !== 'monthly') {
+        // Disable all metric checkboxes for daily/weekly
+        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
+            cb.checked = false;
+            cb.disabled = true;
+            cb.parentElement.style.opacity = '0.5';
+            cb.parentElement.style.pointerEvents = 'none';
+            metricsState[cb.id.replace('metric_', '')] = false;
+        });
+        console.log('📊 Metrics disabled for daily/weekly view (price only)');
+    } else {
+        // Enable metrics for monthly view
+        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
+            cb.disabled = false;
+            cb.parentElement.style.opacity = '1';
+            cb.parentElement.style.pointerEvents = 'auto';
+        });
+        console.log('✅ Metrics enabled for monthly view');
+    }
+    
+    // Refresh the chart with new duration
+    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
+}
+
+async function loadAndRenderTechnicalChart(sym) {
+    const priceContainer = document.getElementById('priceChart');
+    const infoDiv = document.getElementById('metricInfo');
+    
+    if (!priceContainer || !currentStock) {
+        console.error('Chart containers or stock not found');
+        return;
+    }
+
+    try {
+        // Get price bars from ./charts/{SYM}.json
+        const url = `./charts/${sym}.json`;
+        const res = await fetch(url);
+        
+        if (!res.ok) {
+            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Failed to load chart (${res.status})</div>`;
+            return;
+        }
+        
+        const data = await res.json();
+        let bars = data.bars || [];
+        
+        if (bars.length === 0) {
+            priceContainer.innerHTML = '<div style="padding:20px;color:red;font-size:10px">No price data</div>';
+            return;
+        }
+
+        // Filter bars by duration
+        const duration = window.chartDuration || 'monthly';
+        bars = filterBarsByDuration(bars, duration);
+        
+        if (bars.length === 0) {
+            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">No data available for ${duration} view</div>`;
+            return;
+        }
+
+        // FIX: Render unified chart with price + RSI + EMA + Metrics all in one
+        renderPriceChart(priceContainer, sym, bars);
+        
+        // Update info
+        const selected = Object.keys(metricsState).filter(k => metricsState[k]);
+        if (selected.length === 0) {
+            infoDiv.innerHTML = `<strong>📊 CHART:</strong> Candlesticks + RSI/EMA - Select metrics to display`;
+        } else {
+            const hasMetrics = Object.keys(metricsState).some(k => k.startsWith('metric_'));
+            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()}${hasMetrics ? ' (Normalized Q1=100)' : ''}`;
+        }
+        
+    } catch (e) {
+        console.error('Chart error:', e);
+        priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
+    }
+}
+
+function calculateRSI(closes, period = 14) {
+    // Industry Standard: Wilder's RSI (TradingView compatible)
+    // Source: https://en.wikipedia.org/wiki/Relative_strength_index
+    
+    if (closes.length < period + 1) return [];
+    
+    // Step 1: Calculate price changes
+    const changes = [];
+    for (let i = 1; i < closes.length; i++) {
+        changes.push(closes[i] - closes[i - 1]);
+    }
+    
+    // Step 2: Separate gains and losses
+    const gains = changes.map(c => c > 0 ? c : 0);
+    const losses = changes.map(c => c < 0 ? -c : 0);
+    
+    // Step 3: Calculate first average (simple average of first 'period' values)
+    let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    
+    // Step 4: Calculate RSI values using Wilder's smoothing
+    const rsi = [];
+    
+    // First RSI at position 'period'
+    const rs1 = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsi.push(100 - (100 / (1 + rs1)));
+    
+    // Subsequent RSI values with exponential smoothing
+    for (let i = period; i < changes.length; i++) {
+        avgGain = (avgGain * (period - 1) + gains[i]) / period;
+        avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+        
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        rsi.push(100 - (100 / (1 + rs)));
+    }
+    
+    return rsi;
+}
+
+function calculateEMA(closes, period) {
+    // Exponential Moving Average
+    if (closes.length < period) return [];
+    
+    const multiplier = 2 / (period + 1);
+    const ema = [];
+    
+    // First EMA is simple average
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+        sum += closes[i];
+    }
+    ema.push(sum / period);
+    
+    // Subsequent EMAs use exponential smoothing
+    for (let i = period; i < closes.length; i++) {
+        const prevEMA = ema[ema.length - 1];
+        const newEMA = closes[i] * multiplier + prevEMA * (1 - multiplier);
+        ema.push(newEMA);
+    }
+    
+    // Shift array back to align with original closes
+    // EMA[0] is at closes[period-1], so prepend nulls
+    const aligned = Array(period - 1).fill(null).concat(ema);
+    return aligned;
+}
+
+function renderPriceChart(container, sym, bars) {
+    if (!container.clientWidth || container.clientWidth < 100) {
+        setTimeout(() => renderPriceChart(container, sym, bars), 300);
+        return;
+    }
+
+    try {
+        // Dispose old chart if exists
+        if (priceChart) {
+            priceChart.dispose();
+        }
+
+        // Initialize ECharts
+        priceChart = echarts.init(container, 'dark');
+        priceSeries = {};
+
+        // Prepare candlestick data: [open, close, low, high] - REALISTIC PRICES
+        const ohlcData = bars.map(b => [
+            parseFloat(b.o),
+            parseFloat(b.c),
+            parseFloat(b.l),
+            parseFloat(b.h)
+        ]);
+
+        const dates = bars.map(b => b.d);
+        const closes = bars.map(b => parseFloat(b.c));
+        
+        // FIX: Keep prices realistic (NOT normalized)
+        // Only normalize for indicators (metrics & RSI calculations)
+
+        // Calculate RSI and EMA for selected indicators
+        const indicatorDataSets = {};
+        const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
+        const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
+        const metricColors = { eps: '#f59e0b', net: '#26de81', rev: '#00d2d3', ebitda: '#9f7aea', opm: '#3b82f6', debt: '#ff6b6b' };
+        
+        // FIX: Combine RSI and metrics states for iteration
+        const allStates = { ...rsiState, ...metricsState };
+        
+        Object.keys(allStates).forEach(key => {
+            // Handle RSI
+            if (key.startsWith('rsi_')) {
+                const period = parseInt(key.replace('rsi_', ''));
+                const rsiArray = calculateRSI(closes, period);  // FIX: Use original closes
+                
+                if (rsiArray.length > 0) {
+                    const rsiDates = dates.slice(period);
+                    const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
+                    
+                    indicatorDataSets[key] = {
+                        name: `RSI(${period})`,
+                        type: 'line',
+                        xAxisIndex: 0,
+                        yAxisIndex: 1,  // FIX: Right axis for normalized indicators
+                        data: rsiData,
+                        lineStyle: { color: rsiColors[key] || '#00f2ff', width: 2 },
+                        smooth: true,
+                        symbol: 'none'
+                    };
+                }
+            }
+            
+            // Handle EMA
+            if (key.startsWith('ema_')) {
+                const period = parseInt(key.replace('ema_', ''));
+                const emaArray = calculateEMA(closes, period);  // FIX: Use original closes
+                
+                if (emaArray.length > 0) {
+                    const emaData = dates.map((date, idx) => 
+                        emaArray[idx] !== null ? [date, emaArray[idx]] : null
+                    ).filter(d => d !== null);
+                    
+                    indicatorDataSets[key] = {
+                        name: `EMA(${period})`,
+                        type: 'line',
+                        xAxisIndex: 0,
+                        yAxisIndex: 0,  // FIX: Left axis - with price (realistic)
+                        data: emaData,
+                        lineStyle: { color: emaColors[key] || '#ffffff', width: 1.5, type: 'dashed' },
+                        smooth: true,
+                        symbol: 'none'
+                    };
+                }
+            }
+            
+            // FIX: Handle Metrics (NEW) - All on same chart
+            if (key.startsWith('metric_')) {
+                try {
+                    const metricKey = key.replace('metric_', '');
+                    const s = currentStock;
+                    
+                    // Debug: Check if quarterly data exists
+                    if (!s) {
+                        console.warn('currentStock is null/undefined');
+                        return;
+                    }
+                    if (!s.quarterly) {
+                        console.warn(`No quarterly data for ${s.ticker}`, s);
+                        return;
+                    }
+                    if (!Array.isArray(s.quarterly) || s.quarterly.length === 0) {
+                        console.warn(`Quarterly data is empty or not array for ${s.ticker}`);
+                        return;
+                    }
+                    
+                    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    console.log(`Rendering metric ${metricKey} with ${sorted.length} quarters`);
+                    
+                    // Map metric keys to data keys
+                    const keyMap = {
+                        'eps': 'e',
+                        'net': 'n',
+                        'rev': 'r',
+                        'ebitda': 'eb',
+                        'opm': 'op',
+                        'debt': 'd'
+                    };
+                    
+                    const dataKey = keyMap[metricKey] || metricKey;
+                    
+                    // Get metric values
+                    const metricData = sorted.map(q => {
+                        const val = q[dataKey];
+                        return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
+                    }).filter(d => d !== null);
+                    
+                    console.log(`Metric ${metricKey}: ${metricData.length} data points`);
+                    
+                    if (metricData.length > 0) {
+                        // Normalize to first value = 100
+                        const firstVal = metricData[0][1];
+                        if (firstVal !== 0) {
+                            const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
+                            
+                            // Color with correct metric key (without 'metric_' prefix)
+                            const metricColor = {
+                                'eps': '#f59e0b',
+                                'net': '#26de81', 
+                                'rev': '#00d2d3',
+                                'ebitda': '#9f7aea',
+                                'opm': '#3b82f6',
+                                'debt': '#ff6b6b'
+                            }[metricKey] || '#ffffff';
+                            
+                            indicatorDataSets[key] = {
+                                name: metricKey.toUpperCase(),
+                                type: 'line',
+                                xAxisIndex: 0,
+                                yAxisIndex: 1,  // Right axis (normalized scale)
+                                data: normalized,
+                                lineStyle: { color: metricColor, width: 2 },
+                                smooth: true,
+                                symbol: 'none'
+                            };
+                            console.log(`✓ Added metric series: ${metricKey}`);
+                        } else {
+                            console.warn(`First metric value is 0 for ${metricKey}`);
+                        }
+                    } else {
+                        console.warn(`No valid data points for metric ${metricKey}`);
+                    }
+                } catch (e) {
+                    console.error(`Metric ${key} render failed:`, e);
+                }
+            }
+        });
+
+        // Build series
+        const series = [
+            {
+                name: 'Price',
+                type: 'candlestick',
+                xAxisIndex: 0,
+                yAxisIndex: 0,  // Left axis - realistic prices
+                data: ohlcData,  // FIX: Real prices, NOT normalized
+                itemStyle: {
+                    color: '#00d084',
+                    color0: '#ff3b5c',
+                    borderColor: '#00e896',
+                    borderColor0: '#ff6b85',
+                    borderWidth: 1
+                }
+            }
+        ];
+
+        // Add all indicators (RSI & EMA)
+        Object.values(indicatorDataSets).forEach(series_item => {
+            series.push(series_item);
+        });
+
+        // ECharts option - SINGLE CHART with all overlays
+        const option = {
+            tooltip: { 
+                trigger: 'axis',
+                axisPointer: { type: 'cross' }
+            },
+            dataZoom: [
+                {
+                    // Slider at bottom for X-axis zoom
+                    type: 'slider',
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100,
+                    height: 20,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,242,255,.05)',
+                    fillerColor: 'rgba(0,242,255,.15)',
+                    borderColor: 'rgba(0,242,255,.2)',
+                    textStyle: { color: '#7a8fa0' }
+                },
+                {
+                    // Inside zoom (drag to zoom)
+                    type: 'inside',
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100,
+                    zoomOnMouseWheel: true,
+                    moveOnMouseMove: true
+                }
+            ],
+            grid: [
+                { left: '8%', right: '8%', top: '5%', bottom: '8%' }
+            ],
+            xAxis: [
+                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true }
+            ],
+            yAxis: [
+                { 
+                    gridIndex: 0, 
+                    type: 'value', 
+                    position: 'left',
+                    scale: true,
+                    name: 'Price (Realistic)',
+                    nameTextStyle: { color: '#00d084', fontSize: 10 },
+                    axisLabel: {
+                        formatter: (p) => p.toFixed(0),
+                        color: '#7a8fa0'
+                    }
+                },
+                { 
+                    gridIndex: 0, 
+                    type: 'value',
+                    position: 'right',
+                    scale: false,
+                    min: 0,
+                    max: 200,
+                    splitNumber: 5,
+                    name: 'Metrics & RSI (Indexed)',
+                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
+                    axisLabel: {
+                        formatter: (p) => p.toFixed(0),
+                        color: '#7a8fa0'
+                    }
+                }
+            ],
+            series: series
+        };
+
+        priceChart.setOption(option);
+        console.log(`✅ ECharts Price Chart: Candlesticks + ${Object.keys(rsiState).length} RSI overlays`);
+        
+    } catch (e) {
+        console.error('ECharts Price chart error:', e);
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
+    }
+}
+
+function renderMetricsChart(container, sym, bars) {
+    if (metricsChart) metricsChart.remove();
+    if (!container.clientWidth || container.clientWidth < 100) {
+        setTimeout(() => renderMetricsChart(container, sym, bars), 300);
+        return;
+    }
+
+    const opts = {
+        layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
+        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
+        leftPriceScale: {
+            visible: false  // Hide metrics scale
+        },
+        rightPriceScale: {
+            visible: true,  // Show volume scale
+            textColor: '#7a8fa0',
+            borderColor: '#1a2332',
+            autoScale: true,
+            formatPrice: (p) => {
+                if (typeof p === 'number') {
+                    if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                    if (p >= 100000) return Math.round(p / 100000) + 'L';
+                    if (p >= 1000) return Math.round(p / 1000) + 'K';
+                    return Math.round(p).toString();
+                }
+                return p;
+            }
+        },
+        grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
+    };
+
+    try {
+        metricsChart = LightweightCharts.createChart(container, opts);
+        metricSeries = {};
+
+        // Add selected metrics as lines
+        const cd = bars.map(b => ({
+            time: Math.floor(new Date(b.d).getTime() / 1000),
+            open: parseFloat(b.o),
+            high: parseFloat(b.h),
+            low: parseFloat(b.l),
+            close: parseFloat(b.c)
+        }));
+
+        // Add volume bars on RIGHT scale
+        if (bars.some(b => b.v && parseFloat(b.v) > 0)) {
+            const volumeSeries = metricsChart.addHistogramSeries({
+                color: 'rgba(0, 242, 255, 0.3)',
+                priceScaleId: 'right',
+                title: 'Volume'
+            });
+            const volumeData = cd.map((c, idx) => ({
+                time: c.time,
+                value: parseFloat(bars[idx].v) || 0
+            }));
+            volumeSeries.setData(volumeData);
+            metricSeries['Volume'] = volumeSeries;
+            
+            // Explicitly apply right scale formatting for volume
+            metricsChart.priceScale('right').applyOptions({
+                autoScale: true,
+                formatPrice: (p) => {
+                    if (typeof p === 'number') {
+                        if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
+                        if (p >= 100000) return Math.round(p / 100000) + 'L';
+                        if (p >= 1000) return Math.round(p / 1000) + 'K';
+                        return Math.round(p).toString();
+                    }
+                    return p;
+                }
+            });
+        }
+
+        const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
+        
+        selectedMetrics.forEach(metricKey => {
+            addMetricSeries(metricKey, cd, metricsChart);
+        });
+
+        // Set up crosshair to show real metric values on hover
+        metricsChart.subscribeCrosshairMove((param) => {
+            const infoDiv = document.getElementById('metricInfo');
+            if (!infoDiv) return;
+            
+            if (param.time) {
+                let valueText = `📍 `;
+                const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
+                let foundValues = false;
+                
+                selectedMetrics.forEach(metricKey => {
+                    const config = {
+                        eps: {label: 'EPS'},
+                        net: {label: 'Net Inc'},
+                        rev: {label: 'Revenue'},
+                        ebitda: {label: 'EBITDA'},
+                        opm: {label: 'OPM%'},
+                        debt: {label: 'Debt'}
+                    };
+                    const cfg = config[metricKey] || {label: metricKey};
+                    const seriesName = cfg.label;
+                    
+                    if (metricSeries[seriesName]) {
+                        const data = metricSeries[seriesName].data();
+                        const point = data.find(d => d.time === param.time);
+                        if (point && point.actualValue !== undefined) {
+                            const formatted = typeof point.actualValue === 'number' 
+                                ? point.actualValue.toLocaleString('en-IN', {maximumFractionDigits: 2})
+                                : point.actualValue;
+                            valueText += `${seriesName}: ${formatted} | `;
+                            foundValues = true;
+                        }
+                    }
+                });
+                
+                if (foundValues) {
+                    infoDiv.textContent = valueText.slice(0, -3);  // Remove last " | "
+                } else {
+                    infoDiv.textContent = '📊 Hover over metrics to see real values';
+                }
+            } else {
+                document.getElementById('metricInfo').textContent = '📊 Hover over metrics to see real values';
+            }
+        });
+
+        // NOW sync the timeScales AFTER both charts are created
+        syncTimeScales();
+
+        console.log(`✅ Metrics chart rendered with ${selectedMetrics.length} metrics | X-axis synced`);
+        
+    } catch (e) {
+        console.error('Metrics chart error:', e);
+        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
+    }
+}
+
+function syncTimeScales() {
+    // Note: Top chart is ECharts, bottom is LightweightCharts
+    // Full sync between different libraries is complex
+    // For now, each chart manages its own zoom/pan independently
+    console.log('📊 Charts ready (ECharts top, LightweightCharts bottom)');
+}
+
+function addMetricSeries(metricKey, cd, chart) {
+    const s = currentStock;
+    if (!s || !s.quarterly || s.quarterly.length === 0) return;
+
+    // Get all quarterly data points
+    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+    
+    // Get all price bar timestamps for snapping
+    const priceTimestamps = cd.map(c => c.time);
+    
+    // Filter metric data that exists
+    const metricData = sorted
+        .filter(q => q[metricKey] !== undefined && q[metricKey] !== null)
+        .map(q => {
+            const metricTime = Math.floor(new Date(q.d).getTime() / 1000);
+            // Snap to nearest price bar timestamp for X-axis alignment
+            const snappedTime = priceTimestamps.reduce((prev, curr) => 
+                Math.abs(curr - metricTime) < Math.abs(prev - metricTime) ? curr : prev
+            );
+            return {
+                date: q.d,
+                value: parseFloat(q[metricKey]),
+                time: snappedTime  // Use snapped timestamp
+            };
+        });
+
+    if (metricData.length === 0) {
+        console.warn(`No data for metric: ${metricKey}`);
+        return;
+    }
+
+    // Color mapping
+    const config = {
+        eps: {color: '#f59e0b', label: 'EPS'},
+        net: {color: '#26de81', label: 'Net Inc'},
+        rev: {color: '#00d2d3', label: 'Revenue'},
+        ebitda: {color: '#9f7aea', label: 'EBITDA'},
+        opm: {color: '#3b82f6', label: 'OPM%'},
+        debt: {color: '#ff6b6b', label: 'Debt'}
+    };
+
+    const cfg = config[metricKey] || {color: '#00f2ff', label: metricKey};
+
+    // NORMALIZE: Convert to index (first value = 100)
+    const baseValue = metricData[0].value;
+    const normalizedData = metricData.map(m => ({
+        time: m.time,  // Use snapped timestamp
+        value: baseValue !== 0 ? (m.value / baseValue) * 100 : 100,
+        actualValue: m.value  // Store original for tooltip
+    }));
+
+    const minValue = Math.min(...normalizedData.map(d => d.value));
+    const maxValue = Math.max(...normalizedData.map(d => d.value));
+
+    // Add as line series on LEFT price scale (labels hidden)
+    // Use marker to show data points clearly
+    const ls = chart.addLineSeries({
+        color: cfg.color,
+        lineWidth: 2,
+        lineStyle: 0,  // Solid
+        pointMarkersVisible: true,  // Show points at data locations
+        pointMarkersRadius: 3,
+        title: cfg.label,  // REMOVE "(Q1=100)" - just show metric name
+        priceScaleId: 'left'  // Use LEFT scale for metrics (hidden)
+    });
+    
+    // Store ACTUAL VALUES in data for tooltip display
+    ls.setData(normalizedData.map(d => ({
+        time: d.time, 
+        value: d.value,
+        actualValue: d.actualValue  // Real value for tooltip
+    })));
+    
+    metricSeries[cfg.label] = ls;
+
+    console.log(`✅ ${cfg.label}: ${metricData.length} quarters | Real values stored for hover`);
+}
+
+// ==================== TECHNICAL PRO CHARTS ====================
+
+let proCharts = {
+    chart1: null,
+    chart2: null,
+    currentTimeframe: 'daily',
+    data: {
+        daily: null,
+        weekly: null,
+        monthly: null
+    }
+};
+
+function switchTimeframe(tf) {
+    proCharts.currentTimeframe = tf;
+    renderTechnicalPro(currentStock);
+}
+
+function toggleDropdown(id) {
+    const dropdown = document.getElementById(id);
+    if (!dropdown) return;
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleIndicator(indicator) {
+    if (!proCharts.chart1 || !proCharts.chart2) return;
+    
+    const seriesMap = {
+        'rsi7': 'RSI(7)',
+        'rsi14': 'RSI(14)',
+        'rsi21': 'RSI(21)',
+        'ema20': 'EMA(20)',
+        'ema50': 'EMA(50)',
+        'ema200': 'EMA(200)'
+    };
+    
+    const seriesName = seriesMap[indicator];
+    const chart = indicator.startsWith('rsi') ? proCharts.chart2 : proCharts.chart1;
+    
+    try {
+        chart.toggleSeries(seriesName);
+    } catch (e) {
+        console.log(`Toggle series: ${seriesName}`, e.message);
+    }
+}
+
+function toggleEMA(emaType) {
+    if (!proCharts.lineSeries || !proCharts.chart1) return;
+    
+    const series = proCharts.lineSeries[emaType];
+    if (!series) return;
+    
+    try {
+        // Get checkbox state
+        const checkbox = document.getElementById(`${emaType}-chk`);
+        if (!checkbox) return;
+        
+        const isChecked = checkbox.checked;
+        
+        // Toggle by removing and re-adding with data or empty data
+        if (isChecked) {
+            // Show - restore data
+            const dataMap = {
+                'ema20': proCharts.ema20Data || [],
+                'ema50': proCharts.ema50Data || [],
+                'ema200': proCharts.ema200Data || []
+            };
+            series.setData(dataMap[emaType]);
+            console.log(`✅ EMA(${emaType.slice(-2)}) shown`);
+        } else {
+            // Hide - clear data
+            series.setData([]);
+            console.log(`✅ EMA(${emaType.slice(-2)}) hidden`);
+        }
+    } catch (e) {
+        console.error(`Toggle EMA error: ${emaType}`, e.message);
+    }
+}
+
+function toggleMetric(metric) {
+    if (!proCharts.chart2) {
+        console.log(`⚠️ Chart 2 not available for metrics`);
+        return;
+    }
+    
+    const metricMap = {
+        'eps': 'EPS',
+        'net': 'Net Inc',
+        'rev': 'Revenue',
+        'opm': 'OPM%',
+        'debt': 'Debt'
+    };
+    
+    const seriesName = metricMap[metric];
+    
+    // Check if series exists before toggling
+    try {
+        const allSeries = proCharts.chart2.getSeries ? proCharts.chart2.getSeries() : [];
+        const seriesExists = allSeries && allSeries.some(s => s.name === seriesName);
+        
+        if (seriesExists) {
+            proCharts.chart2.toggleSeries(seriesName);
+            console.log(`✅ Toggled: ${seriesName}`);
+        } else {
+            console.log(`ℹ️ Metric '${seriesName}' not available in Chart 2`);
+        }
+    } catch (e) {
+        console.log(`ℹ️ Metric toggle (${seriesName}):`, e.message);
+    }
+}
+
+function aggregateToWeekly(dailyBars) {
+    if (!dailyBars || dailyBars.length === 0) return [];
+    
+    const weekly = [];
+    let week = [];
+    let currentWeekStart = null;
+    
+    for (let i = 0; i < dailyBars.length; i++) {
+        const bar = dailyBars[i];
+        const date = new Date(bar.d);
+        const dayOfWeek = date.getDay(); // 0=Sun, 5=Fri, 6=Sat
+        
+        if (week.length === 0) {
+            currentWeekStart = new Date(date);
+        }
+        
+        week.push(bar);
+        
+        // Friday close or last bar
+        const isLastBar = (i === dailyBars.length - 1);
+        const isFriday = (dayOfWeek === 5);
+        
+        if (isFriday || isLastBar) {
+            if (week.length > 0) {
+                const o = week[0].o;
+                const h = Math.max(...week.map(b => b.h));
+                const l = Math.min(...week.map(b => b.l));
+                const c = week[week.length - 1].c;
+                const v = week.reduce((sum, b) => sum + b.v, 0);
+                const d_str = week[week.length - 1].d;
+                weekly.push({ d: d_str, o, h, l, c, v });
+                week = [];
+            }
+        }
+    }
+    
+    return weekly;
+}
+
+function aggregateToMonthly(dailyBars) {
+    if (!dailyBars || dailyBars.length === 0) return [];
+    
+    const monthly = [];
+    let month = [];
+    let currentMonth = null;
+    
+    for (let i = 0; i < dailyBars.length; i++) {
+        const bar = dailyBars[i];
+        const date = new Date(bar.d);
+        const monthKey = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+        
+        if (currentMonth === null) {
+            currentMonth = monthKey;
+        }
+        
+        if (monthKey !== currentMonth) {
+            // Month changed - finalize previous month
+            if (month.length > 0) {
+                const o = month[0].o;
+                const h = Math.max(...month.map(b => b.h));
+                const l = Math.min(...month.map(b => b.l));
+                const c = month[month.length - 1].c;
+                const v = month.reduce((sum, b) => sum + b.v, 0);
+                const d_str = month[month.length - 1].d;
+                monthly.push({ d: d_str, o, h, l, c, v });
+                month = [];
+            }
+            currentMonth = monthKey;
+        }
+        
+        month.push(bar);
+    }
+    
+    // Add last month
+    if (month.length > 0) {
+        const o = month[0].o;
+        const h = Math.max(...month.map(b => b.h));
+        const l = Math.min(...month.map(b => b.l));
+        const c = month[month.length - 1].c;
+        const v = month.reduce((sum, b) => sum + b.v, 0);
+        const d_str = month[month.length - 1].d;
+        monthly.push({ d: d_str, o, h, l, c, v });
+    }
+    
+    return monthly;
+}
+
+function downsampleRSI(dailyRSI, dailyBars, aggregatedBars) {
+    // Map daily RSI values to aggregated bars by matching end date
+    const downsampled = [];
+    
+    aggregatedBars.forEach(aggBar => {
+        const aggDate = new Date(aggBar.d);
+        let closestRSI = null;
+        let minDiff = Infinity;
+        
+        for (let i = 0; i < dailyBars.length; i++) {
+            if (dailyRSI[i] === null) continue;
+            
+            const dailyDate = new Date(dailyBars[i].d);
+            const diff = Math.abs(aggDate - dailyDate);
+            
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestRSI = dailyRSI[i];
+            }
+        }
+        
+        downsampled.push(closestRSI);
+    });
+    
+    return downsampled;
+}
+
+function calculateEMA(bars, period = 20) {
+    const ema = [];
+    let sum = 0;
+    const multiplier = 2 / (period + 1);
+    
+    bars.forEach((bar, i) => {
+        if (i < period - 1) {
+            sum += bar.c;
+            ema.push(null);
+        } else if (i === period - 1) {
+            sum += bar.c;
+            const sma = sum / period;
+            ema.push(sma);
+        } else {
+            const prevEMA = ema[i - 1];
+            const newEMA = bar.c * multiplier + prevEMA * (1 - multiplier);
+            ema.push(newEMA);
+        }
+    });
+    
+    // Debug logging
+    const validEMAs = ema.filter(e => e !== null);
+    if (validEMAs.length > 0) {
+        console.log(`📊 EMA(${period}) Calculation:`);
+        console.log(`   Multiplier: ${multiplier.toFixed(4)}`);
+        console.log(`   First EMA (at bar ${period-1}): ${ema[period-1]?.toFixed(2)}`);
+        console.log(`   Last 3 EMAs: ${ema.slice(-3).map(e => e?.toFixed(2)).join(', ')}`);
+        console.log(`   Valid points: ${validEMAs.length}/${ema.length}`);
+    }
+    
+    return ema;
+}
+
+function calculateRSI(bars, period = 14) {
+    if (!bars || bars.length <= period) return bars.map(() => null);
+    
+    const rsi = [];
+    const changes = [];
+    
+    // Calculate all price changes
+    for (let i = 1; i < bars.length; i++) {
+        changes.push(bars[i].c - bars[i - 1].c);
+    }
+    
+    // Calculate initial average gain and loss
+    let sumGains = 0, sumLosses = 0;
+    for (let i = 0; i < period; i++) {
+        if (changes[i] > 0) {
+            sumGains += changes[i];
+        } else {
+            sumLosses += Math.abs(changes[i]);
+        }
+    }
+    
+    let avgGain = sumGains / period;
+    let avgLoss = sumLosses / period;
+    
+    // Fill nulls before period
+    for (let i = 0; i < period; i++) {
+        rsi.push(null);
+    }
+    
+    // Calculate RSI from period onwards
+    for (let i = period; i < changes.length; i++) {
+        const change = changes[i];
+        const currentGain = change > 0 ? change : 0;
+        const currentLoss = change > 0 ? 0 : Math.abs(change);
+        
+        // Smooth average (Wilder's method)
+        avgGain = (avgGain * (period - 1) + currentGain) / period;
+        avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
+        
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        const rsiValue = 100 - (100 / (1 + rs));
+        rsi.push(rsiValue);
+    }
+    
+    return rsi;
+}
+
+function formatVolume(v) {
+    if (v >= 10000000) return (v / 10000000).toFixed(1) + 'Cr';
+    if (v >= 100000) return (v / 100000).toFixed(1) + 'L';
+    return (v / 1000).toFixed(0) + 'K';
+}
+
+async function renderTechnicalPro(stock) {
+    console.log('📊 Technical Pro: Received stock from IndexedDB', stock ? stock.ticker : 'null');
+    
+    if (!stock || !stock.ticker) {
+        document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Stock object not available</div>';
+        return;
+    }
+    
+    const sym = stock.ticker;
+    console.log(`🔄 Loading bars for ${sym} from ./SYMBOL.json`);
+    
+    try {
+        // Load OHLCV bars from ./charts/SYMBOL.json (NOT in IndexedDB)
+        const barsUrl = `./charts/${sym}.json`;
+        console.log(`📥 Fetching: ${barsUrl}`);
+        
+        const res = await fetch(barsUrl);
+        if (!res.ok) {
+            console.error(`Failed to fetch ${barsUrl}: ${res.status}`);
+            document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Cannot load bars<br/><small style="font-size:9px;color:#ff6b85">Check: ./charts/${sym}.json exists</small></div>`;
+            return;
+        }
+        
+        const barsData = await res.json();
+        const bars = barsData.bars || [];
+        
+        if (!bars || bars.length === 0) {
+            console.error('No bars in JSON');
+            document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ No OHLCV data in file</div>';
+            return;
+        }
+        
+        console.log(`✅ Loaded ${bars.length} bars`);
+        
+        // Quarterly data comes from IndexedDB (already in currentStock)
+        const quarterly = stock.quarterly || [];
+        console.log(`✅ Quarterly data: ${quarterly.length} quarters available`);
+        
+        const tf = proCharts.currentTimeframe;
+        const recentBars = bars.slice(-252); // Last ~1 year
+        
+        // Calculate ALL indicators from DAILY bars (never aggregated)
+        const rsi7 = calculateRSI(recentBars, 7);
+        const rsi14 = calculateRSI(recentBars, 14);
+        const rsi21 = calculateRSI(recentBars, 21);
+        const ema20 = calculateEMA(recentBars, 20);
+        const ema50 = calculateEMA(recentBars, 50);
+        const ema200 = calculateEMA(recentBars, 200);
+        
+        console.log(`✅ Daily indicators calculated from ${recentBars.length} bars`);
+        console.log(`   RSI(7): ${rsi7.filter(r => r !== null).length}, RSI(14): ${rsi14.filter(r => r !== null).length}, RSI(21): ${rsi21.filter(r => r !== null).length}`);
+        console.log(`   EMA(20): ${ema20.filter(e => e !== null).length}, EMA(50): ${ema50.filter(e => e !== null).length}, EMA(200): ${ema200.filter(e => e !== null).length}`);
+        
+        // Aggregate price bars by timeframe
+        let chartBars, displayRSI7, displayRSI14, displayRSI21, displayEMA20, displayEMA50, displayEMA200;
+        
+        if (tf === 'daily') {
+            chartBars = recentBars;
+            displayRSI7 = rsi7;
+            displayRSI14 = rsi14;
+            displayRSI21 = rsi21;
+            displayEMA20 = ema20;
+            displayEMA50 = ema50;
+            displayEMA200 = ema200;
+            console.log(`📊 Daily: ${chartBars.length} bars`);
+        } else if (tf === 'weekly') {
+            chartBars = aggregateToWeekly(recentBars);
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            // Recalculate EMAs on aggregated bars
+            displayEMA20 = calculateEMA(chartBars, 20);
+            displayEMA50 = calculateEMA(chartBars, 50);
+            displayEMA200 = calculateEMA(chartBars, 200);
+            console.log(`📊 Weekly: ${chartBars.length} bars (from ${recentBars.length} daily), EMAs recalculated`);
+        } else {
+            chartBars = aggregateToMonthly(recentBars);
+            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
+            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
+            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
+            // Recalculate EMAs on aggregated bars
+            displayEMA20 = calculateEMA(chartBars, 20);
+            displayEMA50 = calculateEMA(chartBars, 50);
+            displayEMA200 = calculateEMA(chartBars, 200);
+            console.log(`📊 Monthly: ${chartBars.length} bars (from ${recentBars.length} daily), EMAs recalculated`);
+        }
+    
+        // Update bar count display
+        const barCountDisplay = document.getElementById('barCountDisplay');
+        if (barCountDisplay) {
+            barCountDisplay.textContent = `Bars: ${chartBars.length}`;
+        }
+        
+        const chart2Data = [{
+            name: 'RSI(7)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI7[i]
+            }))
+        }, {
+            name: 'RSI(14)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI14[i]
+            }))
+        }, {
+            name: 'RSI(21)',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayRSI21[i]
+            }))
+        }];
+        
+        // Get quarterly metrics from IndexedDB (already in currentStock)
+        if (tf === 'monthly' && quarterly && quarterly.length > 0) {
+            const metricNames = ['eps', 'net', 'rev', 'opm', 'debt'];
+            const metricLabels = {
+                eps: 'EPS',
+                net: 'Net Inc',
+                rev: 'Revenue',
+                opm: 'OPM%',
+                debt: 'Debt'
+            };
+            const metricColors = {
+                eps: '#f59e0b',
+                net: '#26de81',
+                rev: '#00d2d3',
+                opm: '#3b82f6',
+                debt: '#ff6b6b'
+            };
+            
+            metricNames.forEach(metric => {
+                const metricData = quarterly
+                    .filter(q => q[metric] !== undefined && q[metric] !== null)
+                    .map(q => ({
+                        x: new Date(q.d),
+                        y: num(q[metric])
+                    }));
+                
+                if (metricData.length > 0) {
+                    chart2Data.push({
+                        name: metricLabels[metric],
+                        data: metricData,
+                        color: metricColors[metric]
+                    });
+                }
+            });
+        }
+    
+    // Destroy old charts
+    // Clear old chart
+    if (proCharts.chart1) {
+        try {
+            if (proCharts.chart1.remove) proCharts.chart1.remove();
+        } catch (e) {
+            console.log('Chart cleanup:', e.message);
+        }
+    }
+    document.getElementById('chartPro1').innerHTML = '';
+    if (proCharts.chart2) proCharts.chart2.destroy();
+    
+    // Chart 1: Price + EMA + Volume (using line instead of candlestick for mixed charts)
+    const options1 = {
+        chart: {
+            type: 'candlestick',
+            background: 'transparent',
+            foreColor: '#7a8fa0',
+            toolbar: { 
+                show: true,
+                autoSelected: 'pan',
+                tools: {
+                    download: false,
+                    selection: false,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                type: 'xy',
+                autoScaleYaxis: true,
+                zoomedArea: {
+                    fill: { color: '#90CAF9', opacity: 0.4 },
+                    border: { color: '#0D47A1', opacity: 0.4 }
+                }
+            },
+            selection: {
+                enabled: true,
+                xaxis: { min: undefined, max: undefined },
+                yaxis: { min: undefined, max: undefined }
+            },
+            animations: { enabled: false },
+            sparkline: { enabled: false }
+        },
+        plotOptions: {
+            candlestick: {
+                colors: { upward: '#26de81', downward: '#ff6b85' },
+                wick: { useFillColor: true }
+            }
+        },
+        series: [{
+            name: 'Price',
+            type: 'candlestick',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: [parseFloat(bar.o), parseFloat(bar.h), parseFloat(bar.l), parseFloat(bar.c)]
+            }))
+        }, {
+            name: 'EMA(20)',
+            type: 'line',
+            color: '#26de81',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA20[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }, {
+            name: 'EMA(50)',
+            type: 'line',
+            color: '#f59e0b',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA50[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }, {
+            name: 'EMA(200)',
+            type: 'line',
+            color: '#ff6b85',
+            data: chartBars.map((bar, i) => ({
+                x: new Date(bar.d),
+                y: displayEMA200[i]
+            })).filter(p => p.y !== null && p.y !== undefined)
+        }],
+        xaxis: {
+            type: 'datetime',
+            axisBorder: { show: true, color: '#1a2332' },
+            axisTicks: { show: true },
+            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
+        },
+        yaxis: [{
+            title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '11px', fontWeight: 700 } },
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => typeof v === 'number' ? v.toFixed(0) : '' },
+            opposite: true
+        }],
+        tooltip: {
+            theme: 'dark',
+            style: { fontSize: '10px' },
+            x: { formatter: (v) => new Date(v).toLocaleDateString() },
+            y: { 
+                formatter: (v) => {
+                    if (typeof v === 'number') {
+                        return v.toFixed(2);
+                    }
+                    return '';
+                }
+            }
+        },
+        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
+        stroke: { width: 2, curve: 'smooth' },
+        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
+    };
+    
+    // Debug: Check data before rendering
+    console.log(`🔍 Chart1 Data Check:`);
+    console.log(`   chartBars: ${chartBars.length} bars`);
+    console.log(`   Sample bar: o=${chartBars[0]?.o}, h=${chartBars[0]?.h}, l=${chartBars[0]?.l}, c=${chartBars[0]?.c}`);
+    console.log(`   Price values (first 3): ${chartBars.slice(0,3).map(b => b.c).join(', ')}`);
+    console.log(`   displayEMA20 (first 3): ${displayEMA20.slice(0,3).map(e => e?.toFixed(2)).join(', ')}`);
+    console.log(`   Volume (first 3): ${chartBars.slice(0,3).map(b => b.v).join(', ')}`);
+    
+    // Validate series data
+    const priceData = options1.series[0].data;
+    const validPrices = priceData.filter(p => p && p.y !== null && p.y !== undefined);
+    console.log(`   Valid price points: ${validPrices.length}/${priceData.length}`);
+    console.log(`   Price Y-values (first 3 candlesticks): ${validPrices.slice(0,3).map(p => Array.isArray(p.y) ? `[${p.y.map(v => v?.toFixed(0)).join(',')}]` : p.y?.toFixed(2)).join(', ')}`);
+    
+    if (validPrices.length === 0) {
+        console.error(`❌ No valid price data! Check if close prices are null.`);
+    }
+    
+    // VALIDATE EMA SERIES
+    console.log('🔍 EMA Series Validation:');
+    options1.series.forEach((series, idx) => {
+        if (idx === 0) return; // Skip price
+        const seriesName = series.name;
+        const seriesType = series.type;
+        const seriesData = series.data;
+        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
+        
+        if (!validPoints || validPoints.length === 0) {
+            console.error(`❌ ${seriesName}: NO valid data points! Type: ${seriesType}`);
+        } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points, type: ${seriesType}`);
+        }
+    });
+    
+    console.log(`📌 Chart Type: ${options1.chart.type}`);
+    console.log(`📌 Total Series: ${options1.series.length}`);
+    
+    try {
+        console.log('🎨 Creating Chart 1 with Lightweight-Charts...');
+        
+        const container = document.getElementById('chartPro1');
+        const chart = LightweightCharts.createChart(container, {
+            width: container.offsetWidth,
+            height: 400,
+            layout: {
+                background: { color: 'rgba(6, 12, 24, 0.9)' },
+                textColor: '#7a8fa0',
+            },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+            },
+            rightPriceScale: {
+                textColor: '#7a8fa0',
+                autoScale: true,
+                mode: LightweightCharts.PriceScaleMode.Normal,
+                borderColor: 'rgba(122, 143, 160, 0.5)',
+                scaleMargins: {
+                    top: 0.1,
+                    bottom: 0.3
+                }
+            },
+            grid: {
+                horzLines: { visible: false },
+                vertLines: { visible: false }
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+            }
+        });
+        
+        // Candlestick series - use RIGHT price scale for prices
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26de81',
+            downColor: '#ff6b85',
+            borderUpColor: '#26de81',
+            borderDownColor: '#ff6b85',
+            wickUpColor: '#26de81',
+            wickDownColor: '#ff6b85',
+            priceScaleId: 'right'  // EXPLICITLY use right scale
+        });
+        
+        candlestickSeries.setData(chartBars.map(bar => ({
+            time: Math.floor(new Date(bar.d).getTime() / 1000),
+            open: parseFloat(bar.o),
+            high: parseFloat(bar.h),
+            low: parseFloat(bar.l),
+            close: parseFloat(bar.c)
+        })));
+        
+        // EMA(20) line - use right price scale
+        const ema20Series = chart.addLineSeries({
+            color: '#26de81',
+            lineWidth: 2,
+            priceScaleId: 'right'
+        });
+        ema20Series.setData(
+            chartBars
+                .map((bar, i) => ({
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: displayEMA20[i]
+                }))
+                .filter(p => p.value !== null && p.value !== undefined)
+        );
+        // Store data for toggling
+        proCharts.ema20Data = ema20Series.data();
+        console.log(`✅ EMA(20) set: ${chartBars.filter((_, i) => displayEMA20[i] !== null && displayEMA20[i] !== undefined).length} points`);
+        
+        // EMA(50) line - use right price scale
+        const ema50Series = chart.addLineSeries({
+            color: '#f59e0b',
+            lineWidth: 2,
+            priceScaleId: 'right'
+        });
+        ema50Series.setData(
+            chartBars
+                .map((bar, i) => ({
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: displayEMA50[i]
+                }))
+                .filter(p => p.value !== null && p.value !== undefined)
+        );
+        // Store data for toggling
+        proCharts.ema50Data = ema50Series.data();
+        console.log(`✅ EMA(50) set: ${chartBars.filter((_, i) => displayEMA50[i] !== null && displayEMA50[i] !== undefined).length} points`);
+        
+        // EMA(200) line - use right price scale
+        const ema200Series = chart.addLineSeries({
+            color: '#ff6b85',
+            lineWidth: 2,
+            priceScaleId: 'right'
+        });
+        ema200Series.setData(
+            chartBars
+                .map((bar, i) => ({
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: displayEMA200[i]
+                }))
+                .filter(p => p.value !== null && p.value !== undefined)
+        );
+        // Store data for toggling
+        proCharts.ema200Data = ema200Series.data();
+        console.log(`✅ EMA(200) set: ${chartBars.filter((_, i) => displayEMA200[i] !== null && displayEMA200[i] !== undefined).length} points`);
+        
+        // Volume histogram - separate axis with color bars
+        const volumeSeries = chart.addHistogramSeries({
+            priceScaleId: 'left',  // Use LEFT scale for volume - separate from price
+            title: 'Volume'
+        });
+        
+        volumeSeries.setData(
+            chartBars.map(bar => {
+                const isUp = parseFloat(bar.c) >= parseFloat(bar.o);
+                return {
+                    time: Math.floor(new Date(bar.d).getTime() / 1000),
+                    value: bar.v / 1000000,  // Scale down to millions
+                    color: isUp ? 'rgba(38, 222, 129, 0.6)' : 'rgba(255, 107, 133, 0.6)'  // Green for up, red for down
+                };
+            })
+        );
+        
+        // Configure VOLUME scale on LEFT side - completely separate from price
+        const volumeScale = chart.priceScale('left');
+        volumeScale.applyOptions({
+            scaleMargins: {
+                top: 0.75,  // Volume at bottom only
+                bottom: 0
+            },
+            autoScale: true,
+            mode: LightweightCharts.PriceScaleMode.Normal,
+            invertScale: false,
+            alignLabels: true,
+            visible: true,  // Make sure it's visible
+            format: (price) => {
+                if (price >= 1000) {
+                    return Math.floor(price / 1000) + 'M';
+                }
+                return Math.floor(price).toString();
+            }
+        });
+        
+        // Configure RIGHT scale for PRICES only (candlestick + EMAs)
+        const priceScale = chart.priceScale('right');
+        priceScale.applyOptions({
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.3  // Leave bottom for volume
+            },
+            autoScale: true,
+            mode: LightweightCharts.PriceScaleMode.Normal,
+            visible: true,
+            format: (price) => Math.floor(price).toString()
+        });
+        
+        // Enable proper panning FIRST - before fitContent
+        chart.timeScale().applyOptions({
+            timeVisible: true,
+            secondsVisible: false,
+            lockRange: false,  // ALLOW panning
+            rightOffset: 0,  // NO offset - show all data
+            minBarSpacing: 0.5,
+            fixLeftEdge: false,
+            fixRightEdge: false
+        });
+        
+        // THEN fit to content
+        chart.timeScale().fitContent();
+        
+        // Format price axis labels - NO DECIMALS
+        setTimeout(() => {
+            try {
+                // Force integer labels on both scales
+                chart.priceScale('right').applyOptions({
+                    format: (price) => Math.floor(price).toString(),
+                    priceFormatter: (price) => Math.floor(price).toString()
+                });
+                chart.priceScale('left').applyOptions({
+                    format: (price) => Math.floor(price).toString(),
+                    priceFormatter: (price) => Math.floor(price).toString()
+                });
+                console.log('✅ Decimal formatter applied to both scales');
+            } catch (e) {
+                console.log('Formatter note:', e.message);
+            }
+        }, 200);
+        
+        // Store chart reference
+        proCharts.chart1 = chart;
+        proCharts.candleSeries = candlestickSeries;
+        proCharts.lineSeries = {
+            ema20: ema20Series,
+            ema50: ema50Series,
+            ema200: ema200Series
+        };
+        
+        console.log('📊 Rendering Chart 1...');
+        console.log('✅ Chart 1 rendered successfully');
+        console.log('✅ Native pan/zoom enabled - swipe & pinch to navigate');
+        
+    } catch (err) {
+        console.error('❌ Chart 1 error:', err.message);
+        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
+    }
+    
+    // Chart 2: RSI + Metrics
+    const options2 = {
+        chart: {
+            type: 'line',
+            background: 'transparent',
+            foreColor: '#7a8fa0',
+            toolbar: {
+                show: true,
+                autoSelected: 'pan',
+                tools: {
+                    download: false,
+                    selection: false,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            zoom: {
+                enabled: true,
+                type: 'xy',
+                autoScaleYaxis: true,
+                zoomedArea: {
+                    fill: { color: '#90CAF9', opacity: 0.4 },
+                    border: { color: '#0D47A1', opacity: 0.4 }
+                }
+            },
+            selection: {
+                enabled: true,
+                xaxis: { min: undefined, max: undefined },
+                yaxis: { min: undefined, max: undefined }
+            },
+            animations: { enabled: false }
+        },
+        series: chart2Data,
+        
+        // Debug: Check chart2 data
+        ...(()=> { 
+            console.log(`🔍 Chart2 Data Check:`);
+            console.log(`   chart2Data series count: ${chart2Data.length}`);
+            chart2Data.forEach((s, i) => {
+                console.log(`   ${s.name}: ${s.data.length} points, first value: ${s.data[0]?.y}`);
+            });
+            return {}; 
+        })(),
+        xaxis: {
+            type: 'datetime',
+            axisBorder: { show: true, color: '#1a2332' },
+            axisTicks: { show: true },
+            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
+        },
+        yaxis: [{
+            title: { text: 'RSI', style: { color: '#5b95ff', fontSize: '11px', fontWeight: 700 } },
+            min: 0,
+            max: 100,
+            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
+            opposite: true
+        }],
+        tooltip: {
+            theme: 'dark',
+            style: { fontSize: '10px' },
+            x: { formatter: (v) => new Date(v).toLocaleDateString() },
+            y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
+        },
+        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
+        stroke: { width: 2, curve: 'smooth' },
+        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
+    };
+    
+    // VALIDATE CHART 2 SERIES
+    console.log('🔍 Chart 2 Series Validation:');
+    chart2Data.forEach((series, idx) => {
+        const seriesName = series.name;
+        const seriesData = series.data;
+        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
+        
+        if (!validPoints || validPoints.length === 0) {
+            console.error(`❌ ${seriesName}: NO valid data points!`);
+        } else {
+            console.log(`✅ ${seriesName}: ${validPoints.length}/${seriesData.length} valid points`);
+        }
+    });
+    
+    console.log(`📌 Chart 2 Type: ${options2.chart.type}`);
+    console.log(`📌 Chart 2 Series Count: ${chart2Data.length}`);
+    
+    try {
+        console.log('🎨 Creating Chart 2...');
+        proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
+        console.log('📊 Rendering Chart 2...');
+        proCharts.chart2.render();
+        console.log('✅ Chart 2 rendered successfully');
+        
+        // Charts are independent - users can pan each separately
+        console.log('✅ Chart 1 & Chart 2 ready (independent pan/zoom)');
+        // Charts ready - pan/zoom works independently
+    } catch (err) {
+        console.error('❌ Chart 2 error:', err.message);
+        document.getElementById('chartPro2').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
+    }
+    
+    } catch (error) {
+        console.error('Technical Pro rendering error:', error);
+        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Error: ${error.message}</div>`;
+    }
+}
 
 // ════════════════════════════════════════════════════════
 // CANVAS TAB - COMPLETE CHART MODULE (from bharatmarkets v7)
@@ -1140,8 +2732,10 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
+  console.log('[SCHED] scheduleTACharts called, will redraw with S.chartPan=' + S.chartPan);
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
+      console.log('[SCHED] RAF: calling drawCandlestick');
       drawCandlestick(s);
       if(S.maVis.vol) drawVolume(s);
       updateChartStats(s);
@@ -1175,6 +2769,7 @@ function getSlicedCandles(s, canvasWidth){
     // MIN_BAR_W scales with zoom: zoom=0.5 → 8px bars (fewer), zoom=3 → 1.3px bars (more)
     // ✅ FLIPPED: zoom=3.0 means "3x magnification" → SMALLER min bar width → FEWER bars visible
     const MIN_BAR_W  = 4 * S.chartZoom;
+    console.log('[SCHED] zoom=' + S.chartZoom.toFixed(2) + ' → MIN_BAR_W=' + MIN_BAR_W.toFixed(2));
     const maxFit = Math.floor(chartW / MIN_BAR_W);
     if(rangeCandles.length > maxFit){
       // ✅ PAN-BASED HISTORY SCROLL: S.chartPan controls which candles to display
@@ -1184,6 +2779,7 @@ function getSlicedCandles(s, canvasWidth){
       const backNorm = Math.min(1, backPan / 400); // Normalize to 0-1
       const backOffset = Math.floor(backNorm * maxBackOffset); // How many candles back to start
       const startIdx = Math.max(0, maxBackOffset - backOffset);
+      console.log('[SCHED] getSlicedCandles: pan=' + S.chartPan + ', showing candles ' + startIdx + ' to ' + (startIdx + maxFit));
       return rangeCandles.slice(startIdx, startIdx + maxFit);
     }
   }
@@ -1192,9 +2788,11 @@ function getSlicedCandles(s, canvasWidth){
 
 
 function drawCandlestick(s){
+  console.log('[DRAW] drawCandlestick called, S.chartPan=' + S.chartPan);
   
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
+  console.log('[DRAW] Canvas: width=' + cv.width + ', height=' + cv.height);
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
@@ -1250,6 +2848,8 @@ function drawCandlestick(s){
   
   // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
   const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
+  console.log('[ZOOM] S.yAxisZoom=' + (S.yAxisZoom || 1.0).toFixed(2) + ', applying to bar height');
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -1279,9 +2879,11 @@ function drawCandlestick(s){
   }
 
   // Candles
+  console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
+    if(i<3) console.log('[DRAW] Candle ' + i + ': cx=' + Math.round(cx) + ', h=' + c.h.toFixed(2) + ', l=' + c.l.toFixed(2));
     let bodyTop=toY(Math.max(c.o,c.c));
     let bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
     
@@ -1291,6 +2893,7 @@ function drawCandlestick(s){
     bodyH = bodyH * barHeightZoom;  // Make bars MUCH taller
     bodyTop = bodyCenter - bodyH/2;  // Recenter the body
     
+    if(i===0) console.log('[BAR] candle 0: original=' + originalBodyH.toFixed(1) + ', zoomed=' + bodyH.toFixed(1) + ', zoom=' + barHeightZoom.toFixed(2));
 
     // Wick
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
@@ -1788,6 +3391,7 @@ function setupChartInteraction() {
   
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
+    console.log('[CHART] mousedown - isPanning=true, startX=' + e.clientX);
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
@@ -1795,15 +3399,19 @@ function setupChartInteraction() {
   
   canvas.onmousemove = (e) => {
     if (!chartInteraction.isPanning || !currentStock) {
+      console.log('[CHART] mousemove ignored: isPanning=' + chartInteraction.isPanning + ', currentStock=' + !!currentStock);
       return;
     }
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
+    console.log('[CHART] mousemove: delta=' + delta + ', newPan=' + newPan);
     
     // Allow free panning with generous limits
     newPan = Math.max(-400, Math.min(400, newPan));
+    console.log('[CHART] after limit: newPan=' + newPan);
     S.chartPan = newPan;
+    console.log('[CHART] calling scheduleTACharts, S.chartPan=' + S.chartPan);
     scheduleTACharts(currentStock);
   };
   
@@ -1812,18 +3420,21 @@ function setupChartInteraction() {
   
   // Touch handlers with pinch support
   const handleTouchStart = (e) => {
+    console.log('[TOUCH] touchstart: ' + e.touches.length + ' fingers');
     if (e.touches.length === 2) {
       // PINCH DETECTED: Calculate initial distance
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       touchState.lastDistance = Math.sqrt(dx*dx + dy*dy);
       chartInteraction.isPanning = false;
+      console.log('[TOUCH] 2-finger pinch start, initial distance=' + touchState.lastDistance.toFixed(0));
     } else if (e.touches.length === 1) {
       // SINGLE TOUCH PAN
       chartInteraction.isPanning = true;
       chartInteraction.startX = e.touches[0].clientX;
       chartInteraction.startPan = S.chartPan;
       touchState.lastDistance = 0;
+      console.log('[TOUCH] Pan start');
     }
   };
   
@@ -1837,6 +3448,7 @@ function setupChartInteraction() {
       // Determine pinch direction: which is dominant?
       const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
       
+      console.log('[TOUCH] pinch: dx=' + dx.toFixed(0) + ', dy=' + dy.toFixed(0) + ', direction=' + (isVerticalPinch ? 'VERTICAL' : 'HORIZONTAL'));
       
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
@@ -1849,10 +3461,12 @@ function setupChartInteraction() {
             // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
             const oldYZoom = S.yAxisZoom || 1.0;
             S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
+            console.log('[TOUCH] Y-ZOOM: ' + oldYZoom.toFixed(2) + ' → ' + S.yAxisZoom.toFixed(2) + ' (bars height)');
           } else {
             // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
             const oldZoom = S.chartZoom;
             S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
+            console.log('[TOUCH] X-ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2) + ' (# of candles)');
           }
           
           if (currentStock) {
@@ -1875,6 +3489,7 @@ function setupChartInteraction() {
   };
   
   const handleTouchEnd = () => {
+    console.log('[TOUCH] touchend');
     chartInteraction.isPanning = false;
     touchState.lastDistance = 0;
   };
@@ -1886,20 +3501,24 @@ function setupChartInteraction() {
   // iOS Pinch Support - gesturechange detects pinch on iOS (shared state)
   const handleGestureStart = (e) => {
     touchState.gestureStart = e.scale;
+    console.log('[GESTURE] TOP CHART gesturestart: scale=' + touchState.gestureStart);
   };
   
   const handleGestureChange = (e) => {
     if (!currentStock) {
+      console.log('[GESTURE] No currentStock');
       return;
     }
     const scaleFactor = e.scale / touchState.gestureStart;
     const factor = scaleFactor > 1.02 ? 1.08 : scaleFactor < 0.98 ? 0.92 : 1.0;
     S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
+    console.log('[GESTURE] TOP CHART Pinch: scale=' + e.scale.toFixed(2) + ', baseScale=' + touchState.gestureStart.toFixed(2) + ', ratio=' + scaleFactor.toFixed(2) + ', factor=' + factor.toFixed(2) + ', newZoom=' + S.chartZoom.toFixed(2));
     scheduleTACharts(currentStock);
     e.preventDefault();
   };
   
   const handleGestureEnd = (e) => {
+    console.log('[GESTURE] TOP CHART gestureend: final zoom=' + S.chartZoom.toFixed(2));
   };
   
   // DISABLED: Gesture events cause conflict with touch-based pinch detection
@@ -1907,6 +3526,7 @@ function setupChartInteraction() {
   // canvas.ongesturestart = handleGestureStart;
   // canvas.ongesturechange = handleGestureChange;
   // canvas.ongestureend = handleGestureEnd;
+  console.log('[CHART] Main canvas: TOUCH-BASED PINCH ONLY (gesture disabled)');
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
@@ -1927,6 +3547,7 @@ function setupChartInteraction() {
     // volCanvas.ongesturestart = handleGestureStart;
     // volCanvas.ongesturechange = handleGestureChange;
     // volCanvas.ongestureend = handleGestureEnd;
+    console.log('[CHART] Volume canvas: TOUCH-BASED PINCH ONLY');
   }
 }
 
