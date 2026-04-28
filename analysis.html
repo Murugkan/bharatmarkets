@@ -73,35 +73,11 @@
         .neg-box .weightage-value{color:var(--rd)}
         .signal-box .weightage-value{color:var(--ac);font-size:14px}
         .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
-        
-        /* DEBUG PANEL */
-        #debug-panel{position:fixed;bottom:50px;right:8px;width:280px;max-height:300px;background:rgba(10,14,26,.95);border:1px solid rgba(0,242,255,.6);border-radius:4px;z-index:9999;font-size:9px;color:var(--tx1);font-family:'JetBrains Mono',monospace;box-shadow:0 0 20px rgba(0,242,255,.2)}
-        #debug-panel-header{background:rgba(0,242,255,.15);padding:6px 8px;border-bottom:1px solid rgba(0,242,255,.3);display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
-        #debug-panel-header:hover{background:rgba(0,242,255,.25)}
-        #debug-panel-title{font-weight:700;color:var(--ac)}
-        #debug-panel-close{color:var(--ac);cursor:pointer;font-size:12px;line-height:1}
-        #debug-logs{max-height:260px;overflow-y:auto;padding:6px;background:rgba(0,0,0,.3)}
-        #debug-logs .log-line{padding:3px 4px;margin:2px 0;background:rgba(255,255,255,.05);border-left:2px solid rgba(0,232,150,.5);white-space:pre-wrap;word-break:break-all;line-height:1.3}
-        #debug-logs .log-line.error{border-left-color:rgba(255,59,92,.8);color:rgba(255,107,133,.9)}
-        #debug-logs .log-line.warn{border-left-color:rgba(255,191,71,.8);color:rgba(255,191,71,.9)}
-        #debug-logs .log-line.info{border-left-color:rgba(0,242,255,.6)}
-        #debug-logs::-webkit-scrollbar{width:6px}
-        #debug-logs::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
-        #debug-logs::-webkit-scrollbar-thumb{background:rgba(0,242,255,.4);border-radius:3px}
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- DEBUG PANEL -->
-    <div id="debug-panel">
-        <div id="debug-panel-header">
-            <div id="debug-panel-title">🐛 Debug Logs</div>
-            <div id="debug-panel-close">✕</div>
-        </div>
-        <div id="debug-logs"></div>
-    </div>
-    
     <div class="header">
         <div class="header-left">
             <button class="back-btn" onclick="history.back()">←</button>
@@ -139,59 +115,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/apexcharts/3.45.0/apexcharts.min.js"></script>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════
-// 🐛 DEBUG PANEL - Capture console logs on iPhone
-// ═══════════════════════════════════════════════════════════════════════
-const DEBUG_ENABLED = true;
-let debugLogs = [];
-const MAX_LOGS = 50;
-
-function addDebugLog(msg, type = 'info') {
-  if (!DEBUG_ENABLED) return;
-  debugLogs.push({ msg, type, time: new Date().toLocaleTimeString() });
-  if (debugLogs.length > MAX_LOGS) debugLogs.shift();
-  
-  const logsContainer = document.getElementById('debug-logs');
-  if (logsContainer) {
-    const logEl = document.createElement('div');
-    logEl.className = `log-line ${type}`;
-    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    logsContainer.appendChild(logEl);
-    logsContainer.scrollTop = logsContainer.scrollHeight;
-  }
-}
-
-// Intercept console methods
-const originalLog = console.log;
-const originalWarn = console.warn;
-const originalError = console.error;
-
-console.log = function(...args) {
-  originalLog(...args);
-  addDebugLog(args.join(' '), 'info');
-};
-
-console.warn = function(...args) {
-  originalWarn(...args);
-  addDebugLog(args.join(' '), 'warn');
-};
-
-console.error = function(...args) {
-  originalError(...args);
-  addDebugLog(args.join(' '), 'error');
-};
-
-// Debug panel close button
-window.addEventListener('DOMContentLoaded', () => {
-  const closeBtn = document.getElementById('debug-panel-close');
-  const panel = document.getElementById('debug-panel');
-  if (closeBtn && panel) {
-    closeBtn.addEventListener('click', () => {
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    });
-  }
-});
-
 const DB = "OnyxPortfolioDB";
 const STORE = "Stocks";
 let currentStock = null;
@@ -204,12 +127,66 @@ const S = {
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
   kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false },
-  chartPan: 0,        // Pan offset in pixels
-  chartZoom: 1,       // Horizontal zoom (# of candles)
-  panStart: null      // Pan start position
+  chartPan: 0,      // Pan offset in pixels
+  chartZoom: 1,     // Zoom level (1 = 100%)
+  panStart: null    // Pan start position
 };
 let chartCache = {};
 
+// ✅ DEBUG PANEL FOR MOBILE
+const debugPanel = (() => {
+  const panel = document.createElement('div');
+  panel.id = 'debug-panel';
+  panel.style.cssText = `
+    position: fixed; bottom: 10px; right: 10px; width: 280px; max-height: 300px;
+    background: #1a1a2e; border: 2px solid #00d084; border-radius: 8px;
+    color: #00d084; font-family: monospace; font-size: 10px;
+    z-index: 9999; box-shadow: 0 0 20px rgba(0,208,132,.3);
+    display: flex; flex-direction: column; overflow: hidden;
+  `;
+  
+  const header = document.createElement('div');
+  header.style.cssText = `
+    background: #00d084; color: #1a1a2e; padding: 4px 8px; font-weight: bold;
+    display: flex; justify-content: space-between; align-items: center;
+  `;
+  header.textContent = '🐛 DEBUG';
+  
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = '✕';
+  clearBtn.style.cssText = `
+    background: none; border: none; color: #1a1a2e; cursor: pointer; 
+    font-weight: bold; padding: 0; width: 20px;
+  `;
+  clearBtn.onclick = () => { logDiv.innerHTML = ''; };
+  header.appendChild(clearBtn);
+  
+  const logDiv = document.createElement('div');
+  logDiv.style.cssText = `
+    overflow-y: auto; padding: 6px; flex: 1; line-height: 1.4;
+    background: #1a1a2e; max-height: 270px;
+  `;
+  
+  panel.appendChild(header);
+  panel.appendChild(logDiv);
+  
+  const origLog = console.log;
+  console.log = function(...args) {
+    origLog.apply(console, args);
+    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+    const line = document.createElement('div');
+    line.textContent = msg;
+    line.style.color = msg.includes('[CHART]') ? '#f59e0b' : 
+                       msg.includes('[DRAW]') ? '#3b82f6' :
+                       msg.includes('[SCHED]') ? '#a855f7' : '#00d084';
+    logDiv.appendChild(line);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  };
+  
+  document.body.appendChild(panel);
+  console.log('[DEBUG] Panel initialized - try dragging the chart');
+  return { panel, logDiv };
+})();
 
 // Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
@@ -687,21 +664,21 @@ function renderTab(tab) {
               </div>
             </div>
             <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#f59e0b;border-radius:50%;display:inline-block;margin-right:2px"></span><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;display:inline-block;margin-right:2px"></span><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#a855f7;border-radius:50%;display:inline-block;margin-right:2px"></span><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#22c55e;border-radius:50%;display:inline-block;margin-right:2px"></span><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
               <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio from quarterly data"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#f59e0b;border-radius:50%;display:inline-block;margin-right:2px;opacity:${S.kpiVis.pe?1:0.4};transition:opacity 0.2s"></span><span style="font-size:9px;color:#f59e0b;font-weight:600;opacity:${S.kpiVis.pe?1:0.5}">P/E</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue from quarterly data"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#22d3ee;border-radius:50%;display:inline-block;margin-right:2px;opacity:${S.kpiVis.rev?1:0.4};transition:opacity 0.2s"></span><span style="font-size:9px;color:#22d3ee;font-weight:600;opacity:${S.kpiVis.rev?1:0.5}">Rev</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit from quarterly data"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#4ade80;border-radius:50%;display:inline-block;margin-right:2px;opacity:${S.kpiVis.net?1:0.4};transition:opacity 0.2s"></span><span style="font-size:9px;color:#4ade80;font-weight:600;opacity:${S.kpiVis.net?1:0.5}">Net</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#34d399;border-radius:50%;display:inline-block;margin-right:2px;opacity:${S.kpiVis.cfo?1:0.4};transition:opacity 0.2s"></span><span style="font-size:9px;color:#34d399;font-weight:600;opacity:${S.kpiVis.cfo?1:0.5}">CFO</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#fb923c;border-radius:50%;display:inline-block;margin-right:2px;opacity:${S.kpiVis.opm?1:0.4};transition:opacity 0.2s"></span><span style="font-size:9px;color:#fb923c;font-weight:600;opacity:${S.kpiVis.opm?1:0.5}">OPM%</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:0;height:0;appearance:none;-webkit-appearance:none"><span style="width:8px;height:8px;background:#f87171;border-radius:50%;display:inline-block;margin-right:2px;opacity:${S.kpiVis.debt?1:0.4};transition:opacity 0.2s"></span><span style="font-size:9px;color:#f87171;font-weight:600;opacity:${S.kpiVis.debt?1:0.5}">Debt</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio from quarterly data"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue from quarterly data"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit from quarterly data"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-              <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-              <div id="vol-wrap" style="position:relative;width:100%;height:105px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+              <div id="chart-wrap" style="position:relative;width:100%;height:240px"><canvas id="cv-candle"></canvas></div>
+              <div id="vol-wrap" style="position:relative;width:100%;height:50px;border-top:1px solid var(--b1)"><canvas id="cv-vol"></canvas></div>
             </div>
           </div>`;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
@@ -1868,7 +1845,7 @@ function renderMetricsChart(container, sym, bars) {
                 return p;
             }
         },
-        grid: {horzLines: {color: 'rgba(100,150,200,.15)'}, vertLines: {color: 'rgba(100,150,200,.12)'}}
+        grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
     };
 
     try {
@@ -3052,7 +3029,6 @@ function getSlicedCandles(s, canvasWidth){
   if(!daily.length) return daily;
   const allAgg = aggregateCandles(daily, S.chartInterval);
   if(!allAgg.length) return [];
-  
   const now = new Date();
   const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
@@ -3062,10 +3038,7 @@ function getSlicedCandles(s, canvasWidth){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
     const IDEAL_BAR_W = 7;
-    // MIN_BAR_W scales with zoom: zoom=0.5 → 8px bars (fewer), zoom=3 → 1.3px bars (more)
-    // ✅ FLIPPED: zoom=3.0 means "3x magnification" → SMALLER min bar width → FEWER bars visible
-    const MIN_BAR_W  = 4 * S.chartZoom;
-    console.log('[SCHED] zoom=' + S.chartZoom.toFixed(2) + ' → MIN_BAR_W=' + MIN_BAR_W.toFixed(2));
+    const MIN_BAR_W  = 4;
     const maxFit = Math.floor(chartW / MIN_BAR_W);
     if(rangeCandles.length > maxFit){
       // ✅ PAN-BASED HISTORY SCROLL: S.chartPan controls which candles to display
@@ -3092,15 +3065,12 @@ function drawCandlestick(s){
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-  const H2=312;  // ✅ Increased 30% (from 240)
+  const H2=200;
   const dpr=window.devicePixelRatio||1;
-  cv.width=W2*dpr;
-  cv.height=H2*dpr;
-  cv.style.width=W2+'px';
-  cv.style.height=H2+'px';
+  cv.width=W2*dpr; cv.height=H2*dpr;
+  cv.style.width=W2+'px'; cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
-  console.log('[CANVAS] DPI=' + dpr + ', canvas=' + W2 + 'x' + H2);
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
@@ -3119,19 +3089,17 @@ function drawCandlestick(s){
     return;
   }
 
-  const W=W2,H=312;  // ✅ Increased 30% from 240
+  const W=W2,H=H2;
   const PAD={l:6,r:52,t:8,b:22};
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
-  // Thinner bars for dense data: reduce multiplier and max width
-  const bw=Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
+  const bw=Math.max(2,Math.min(14,gap*0.7));
 
-  // Full history + FULL date range (not visible slice) — used by KPI overlays for correct alignment
+  // Full history + visible date range — used by both MAs and KPI overlays
   const allCandles = s.candles || candles;
-  // ✅ CRITICAL: Use FULL date range, not visible slice - so KPIs align correctly when panning
-  const visFirst = allCandles.length ? new Date(allCandles[0].d).getTime() : 0;
-  const visLast  = allCandles.length ? new Date(allCandles[allCandles.length-1].d).getTime() : 1;
+  const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
+  const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
 
   const allPrices=candles.flatMap(c=>[c.h,c.l]);
@@ -3139,49 +3107,30 @@ function drawCandlestick(s){
   if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
   if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
-  
-  // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  
   const barX=i=>{ const x = PAD.l+i*gap+gap/2; if(i===0||i===n-1) console.log('[DRAW] barX('+ i +') = ' + x.toFixed(1) + ' (gap=' + gap.toFixed(1) + ')'); return x; };
 
   // Background
   ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
 
-  // Grid lines - enhanced visibility but less prominent
-  // Horizontal lines
+  // Grid lines
   for(let i=0;i<=4;i++){
     const y=PAD.t+(cH/4)*i;
-    ctx.strokeStyle='rgba(100,150,200,.15)';  // ✅ Reduced from .25 to .15
-    ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
-  }
-  
-  // Vertical grid lines (dividing chart into ~5-6 sections)
-  const nVertLines = Math.max(4, Math.floor(n / 15));
-  for(let i=0;i<=nVertLines;i++){
-    const x = PAD.l + (cW / nVertLines) * i;
-    ctx.strokeStyle='rgba(100,150,200,.12)';  // ✅ Reduced from .2 to .12
-    ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
+    // Price label
+    const price=mx-(mx-mn)*(i/4);
+    ctx.fillStyle='rgba(140,176,208,.65)';
+    ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText('₹'+Math.round(price).toLocaleString('en-IN'),W-2,y+(i===0?9:-2));
   }
 
-  // Right axis separator (draw BEFORE labels so labels appear on top)
+  // Right axis separator
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(100,130,180,.6)';  // ✅ Brighter blue for visibility
-  ctx.lineWidth=1.5;  // ✅ Slightly thicker
+  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-
-  // Price labels (draw AFTER background so they're visible on top)
-  for(let i=0;i<=4;i++){
-    const y=PAD.t+(cH/4)*i;
-    const price=mx-(mx-mn)*(i/4);
-    ctx.fillStyle='rgba(255,255,255,1)';
-    ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
-    ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
-  }
 
   // Candles
   console.log('[DRAW] Drawing ' + candles.length + ' candles, first 3:');
@@ -3189,15 +3138,15 @@ function drawCandlestick(s){
     const bull=c.c>=c.o;
     const cx=barX(i);
     if(i<3) console.log('[DRAW] Candle ' + i + ': cx=' + Math.round(cx) + ', h=' + c.h.toFixed(2) + ', l=' + c.l.toFixed(2));
-    let bodyTop=toY(Math.max(c.o,c.c));
-    let bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
-    
+    const bodyTop=toY(Math.max(c.o,c.c));
+    const bodyH=Math.max(1,Math.abs(toY(c.o)-toY(c.c)));
+
     // Wick
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
     ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
 
-    // Body (taller due to zoom)
+    // Body
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bodyH,1);
     else ctx.rect(cx-bw/2,bodyTop,bw,bodyH);
@@ -3241,7 +3190,7 @@ function drawCandlestick(s){
     if(lastIdx>=0 && label){
       const lv = vals[lastIdx];
       ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-      ctx.fillText(label+' '+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
+      ctx.fillText(label+' ₹'+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
     }
   }
   // MAs computed on allCandles (full history), then only visible portion drawn
@@ -3279,7 +3228,7 @@ function drawCandlestick(s){
       });
       if(lastV !== null){
         ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-        ctx.fillText(label+' '+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
+        ctx.fillText(label+' ₹'+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
       }
     }
     drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
@@ -3298,14 +3247,13 @@ function drawCandlestick(s){
     // Price badge on right axis
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
+    ctx.fillText('₹'+Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
-  // X-axis date labels
+  // X-axis date labels — use actual candle.d dates, show ~5 evenly spaced
   const maxLabels = Math.min(6, Math.floor(cW / 40));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='white';
-  ctx.font='11px sans-serif';  // ✅ 11px normal (not bold)
+  ctx.fillStyle='rgba(140,176,208,.55)'; ctx.font='7px JetBrains Mono,monospace';
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     const d = new Date(c.d);
@@ -3316,7 +3264,7 @@ function drawCandlestick(s){
     const x = barX(i);
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H-6);
+    ctx.fillText(lbl, x, H-4);
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
@@ -3479,12 +3427,10 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=105;  // ✅ Increased to 105px (+ 10px more)
+  const H2=50;
   const dpr=window.devicePixelRatio||1;
-  cv.width=W2*dpr;
-  cv.height=H2*dpr;
-  cv.style.width=W2+'px';
-  cv.style.height=H2+'px';
+  cv.width=W2*dpr;cv.height=H2*dpr;
+  cv.style.width=W2+'px';cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
 
@@ -3494,106 +3440,34 @@ function drawVolume(s){
   ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
 
   const W=W2,H=H2;
-  const PAD={l:8,r:52,t:6,b:18};
+  const PAD={l:6,r:52,t:4,b:4};
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
-  const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
+  const n=candles.length,gap=cW/n,bw=Math.max(2,Math.min(14,gap*0.7));
   const mv=Math.max(...candles.map(c=>c.v))||1;
-  
-  // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
-  // Left axis line (thicker for visibility)
-  ctx.strokeStyle='rgba(100,130,180,.5)';
-  ctx.lineWidth=1;
-  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
-
-  // Volume bars - each bar colored based on corresponding candlestick
-  candles.forEach((c,i)=>{
-    const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2;
-    // Color: green if close > open, red if close <= open (matches candlestick color)
-    const barColor = (c.c > c.o) ? '#00d084' : '#ff3b5c';
-    ctx.fillStyle=barColor;
-    ctx.beginPath();
-    ctx.rect(x,PAD.t+cH-bh,bw,bh);
-    ctx.fill();
-  });
-  
-  // Grid lines for volume chart - subtle
-  for(let i=0;i<=2;i++){
-    const y=PAD.t+(cH/2)*i;
-    ctx.strokeStyle='rgba(100,150,200,.12)';  // ✅ Reduced from .2 to .12
-    ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
-  }
-
-  // ✅ RIGHT axis - Volume labels on RIGHT side (not left to avoid overlap)
+  // Right axis strip
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(100,130,180,.6)';
-  ctx.lineWidth=1.5;
+  ctx.strokeStyle='rgba(30,51,80,.8)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-  
-  // ✅ Volume labels on RIGHT side (RIGHT aligned, with padding from edge)
-  ctx.fillStyle='rgba(255,255,255,1)';
-  ctx.font='bold 10px JetBrains Mono,monospace';
-  ctx.textAlign='right';  // ✅ Changed from left to right
-  ctx.textBaseline='middle';
-  const maxVol = Math.max(...candles.map(c=>c.v))||1;
-  for(let i=0; i<=2; i++){
-    const y = PAD.t + cH - (cH/2)*i;
-    const volValue = (i/2) * maxVol;
-    let label;
-    if (volValue >= 1e6) {
-      label = (volValue / 1e6).toFixed(1) + 'M';
-    } else if (volValue >= 1e3) {
-      label = (volValue / 1e3).toFixed(0) + 'K';
-    } else {
-      label = volValue.toFixed(0);
-    }
-    ctx.fillText(label, W-6, y);  // ✅ Draw on right side (W-6)
-  }
-  
-  // Price labels on right axis
-  ctx.fillStyle='rgba(255,255,255,.95)';
-  ctx.font='bold 9px JetBrains Mono,monospace';
-  ctx.textAlign='right';
-  ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
-  ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
-  
-  // X-axis date labels - SIMPLE AND CLEAR
-  const maxLabels = Math.min(6, Math.floor(cW / 90));
-  const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='white';  // ✅ SIMPLE WHITE
-  ctx.font='bold 14px sans-serif';  // ✅ BIGGER
-  ctx.textAlign='center';
-  let dateDebug = [];
-  
+  ctx.fillStyle='rgba(140,176,208,.5)';ctx.font='7px JetBrains Mono,monospace';ctx.textAlign='right';
+  ctx.fillText('Vol',W-2,10);
+
   candles.forEach((c,i)=>{
-    if(i % lblStep !== 0 && i !== n-1) return;
-    const dateStr = c.d ? String(c.d).trim() : '';
-    let lbl = '?';
-    if(dateStr.length >= 10){
-      try {
-        const parts = dateStr.slice(0,10).split('-');
-        if(parts.length === 3){
-          const [yr, mo, da] = parts;
-          if(n > 100) lbl = mo + '/' + yr.slice(2);
-          else if(n > 50) lbl = mo + '/' + da;
-          else lbl = da + '/' + mo + '/' + yr.slice(2);
-        }
-      } catch(e){ lbl = '!'; }
-    }
-    const x = Math.round(PAD.l+i*gap+gap/2);
-    if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-8);  // ✅ Position at bottom
+    const bh=Math.max(2,(c.v/mv)*cH);
+    const x=PAD.l+i*gap+(gap-bw)/2+S.chartPan;
+    ctx.fillStyle=c.c>=c.o?'rgba(0,208,132,.5)':'rgba(255,59,92,.45)';
+    if(ctx.roundRect)ctx.roundRect(x,PAD.t+cH-bh,bw,bh,1);
+    else ctx.rect(x,PAD.t+cH-bh,bw,bh);
+    ctx.fill();
   });
-  
+
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
     if(i<4) return null;
     return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
   });
-  ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.lineWidth=1.5; ctx.beginPath();
+  ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=1; ctx.beginPath();
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
@@ -3680,19 +3554,7 @@ function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
   if (!canvas) return;
   
-  // Shared touch state
-  const touchState = { lastDistance: 0, gestureStart: 1 };
-  let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 16;  // ✅ Throttle to ~60fps for smooth motion
-  
-  // Debounced redraw: only redraw if 16ms has passed (prevents excessive redraws)
-  const throttledRedraw = (stock) => {
-    const now = performance.now();
-    if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
-      scheduleTACharts(stock);
-      lastRedrawTime = now;
-    }
-  };
+  console.log('[CHART] setupChartInteraction: canvas found', canvas);
   
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
@@ -3723,103 +3585,25 @@ function setupChartInteraction() {
   canvas.onmouseup = () => { chartInteraction.isPanning = false; };
   canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
   
-  // Touch handlers with pinch support
-  const handleTouchStart = (e) => {
-    console.log('[TOUCH] touchstart: ' + e.touches.length + ' fingers');
-    if (e.touches.length === 2) {
-      // PINCH DETECTED: Calculate initial distance
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      touchState.lastDistance = Math.sqrt(dx*dx + dy*dy);
-      chartInteraction.isPanning = false;
-      console.log('[TOUCH] 2-finger pinch start, initial distance=' + touchState.lastDistance.toFixed(0));
-    } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN
-      chartInteraction.isPanning = true;
-      chartInteraction.startX = e.touches[0].clientX;
-      chartInteraction.startPan = S.chartPan;
-      touchState.lastDistance = 0;
-      console.log('[TOUCH] Pan start');
-    }
+  // Touch Support
+  canvas.ontouchstart = (e) => {
+    chartInteraction.isPanning = true;
+    chartInteraction.startX = e.touches[0].clientX;
+    chartInteraction.startPan = S.chartPan;
   };
   
-  const handleTouchMove = (e) => {
-    if (e.touches.length === 2) {
-      // TWO-FINGER PINCH: X-axis zoom only
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-      
-      if (touchState.lastDistance > 0) {
-        const ratio = distance / touchState.lastDistance;
-        const delta = ratio - 1.0;
-        
-        if (Math.abs(delta) > 0.005) {
-          const smoothFactor = 1.0 + (delta * 0.5);
-          const oldZoom = S.chartZoom;
-          S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
-          
-          if (Math.abs(S.chartZoom - oldZoom) > 0.01) {
-            console.log('[TOUCH] ZOOM: ' + oldZoom.toFixed(2) + ' → ' + S.chartZoom.toFixed(2));
-            if (currentStock) {
-              scheduleTACharts(currentStock);
-            }
-          }
-        }
-      }
-      touchState.lastDistance = distance;
-      e.preventDefault();
-    } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN
-      if (chartInteraction.isPanning && currentStock) {
-        const delta = e.touches[0].clientX - chartInteraction.startX;
-        let newPan = chartInteraction.startPan + delta;
-        newPan = Math.max(-400, Math.min(400, newPan));
-        S.chartPan = newPan;
-        scheduleTACharts(currentStock);  // ✅ No throttle for pan - needs instant response
-      }
-    }
-  };
-  
-  const handleTouchEnd = () => {
-    console.log('[TOUCH] touchend');
-    chartInteraction.isPanning = false;
-    touchState.lastDistance = 0;
-  };
-  
-  canvas.ontouchstart = handleTouchStart;
-  canvas.ontouchmove = handleTouchMove;
-  canvas.ontouchend = handleTouchEnd;
-  
-  // iOS Pinch Support - gesturechange detects pinch on iOS (shared state)
-  const handleGestureStart = (e) => {
-    touchState.gestureStart = e.scale;
-    console.log('[GESTURE] TOP CHART gesturestart: scale=' + touchState.gestureStart);
-  };
-  
-  const handleGestureChange = (e) => {
-    if (!currentStock) {
-      console.log('[GESTURE] No currentStock');
-      return;
-    }
-    const scaleFactor = e.scale / touchState.gestureStart;
-    const factor = scaleFactor > 1.02 ? 1.08 : scaleFactor < 0.98 ? 0.92 : 1.0;
-    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
-    console.log('[GESTURE] TOP CHART Pinch: scale=' + e.scale.toFixed(2) + ', baseScale=' + touchState.gestureStart.toFixed(2) + ', ratio=' + scaleFactor.toFixed(2) + ', factor=' + factor.toFixed(2) + ', newZoom=' + S.chartZoom.toFixed(2));
+  canvas.ontouchmove = (e) => {
+    if (!chartInteraction.isPanning || !currentStock) return;
+    const delta = e.touches[0].clientX - chartInteraction.startX;
+    let newPan = chartInteraction.startPan + delta;
+    
+    // Allow free panning with generous limits
+    newPan = Math.max(-400, Math.min(400, newPan));
+    S.chartPan = newPan;
     scheduleTACharts(currentStock);
-    e.preventDefault();
   };
   
-  const handleGestureEnd = (e) => {
-    console.log('[GESTURE] TOP CHART gestureend: final zoom=' + S.chartZoom.toFixed(2));
-  };
-  
-  // DISABLED: Gesture events cause conflict with touch-based pinch detection
-  // Use smooth touch-based pinch instead (no gesture events)
-  // canvas.ongesturestart = handleGestureStart;
-  // canvas.ongesturechange = handleGestureChange;
-  // canvas.ongestureend = handleGestureEnd;
-  console.log('[CHART] Main canvas: TOUCH-BASED PINCH ONLY (gesture disabled)');
+  canvas.ontouchend = () => { chartInteraction.isPanning = false; };
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
@@ -3829,19 +3613,6 @@ function setupChartInteraction() {
     S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
     scheduleTACharts(currentStock);
   };
-  
-  // Volume canvas - touch-based pinch only (no gesture events)
-  const volCanvas = document.getElementById('cv-vol');
-  if (volCanvas) {
-    volCanvas.ontouchstart = handleTouchStart;
-    volCanvas.ontouchmove = handleTouchMove;
-    volCanvas.ontouchend = handleTouchEnd;
-    // DISABLED: Gesture events conflict with touch-based detection
-    // volCanvas.ongesturestart = handleGestureStart;
-    // volCanvas.ongesturechange = handleGestureChange;
-    // volCanvas.ongestureend = handleGestureEnd;
-    console.log('[CHART] Volume canvas: TOUCH-BASED PINCH ONLY');
-  }
 }
 
 // Auto-setup when canvas is ready
