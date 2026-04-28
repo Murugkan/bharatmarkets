@@ -115,9 +115,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/apexcharts/3.45.0/apexcharts.min.js"></script>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════
-// DATABASE SETUP
-// ═══════════════════════════════════════════════════════════════════════
 
 const DB = "OnyxPortfolioDB";
 const STORE = "Stocks";
@@ -161,6 +158,8 @@ const urlParams = new URLSearchParams(window.location.search);
 const ticker = urlParams.get('drill') || urlParams.get('t');
 
 
+
+
 // Load data
 async function loadStock() {
     if (!ticker) {
@@ -202,9 +201,11 @@ async function loadStock() {
     }
     
     
+    
     const db = await new Promise(r => {
         const req = indexedDB.open(DB);
         req.onsuccess = () => {
+            
             r(req.result);
         };
         req.onerror = () => {
@@ -225,6 +226,7 @@ async function loadStock() {
         currentStock = await new Promise(r => {
             const req = store.get(ticker);
             req.onsuccess = () => {
+                
                 r(req.result);
             };
             req.onerror = () => {
@@ -242,6 +244,8 @@ async function loadStock() {
         // Determine data source
         dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
         
+        
+        
         // 🚀 Auto-load candles for Canvas chart
         if (!currentStock.candles || currentStock.candles.length === 0) {
             try {
@@ -250,10 +254,12 @@ async function loadStock() {
                 if (res.ok) {
                     const data = await res.json();
                     currentStock.candles = data.bars || [];
+                    
                 }
             } catch (e) {
             }
         }
+        
         
         renderHeader();
         
@@ -289,9 +295,11 @@ async function loadGuidanceData(ticker) {
             const data = await response.json();
             if (data[ticker]) {
                 localStorage.setItem(`guidance_${ticker}`, JSON.stringify(data[ticker]));
+                
             }
         }
     } catch (e) {
+        
     }
 }
 
@@ -640,6 +648,7 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
+            
         }
         
         if (!guidance || !guidance.guidance) {
@@ -763,6 +772,7 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
+            
         }
         
         if (!data || !data.insights) {
@@ -1118,6 +1128,7 @@ function changeDuration(duration) {
     // Store the selected duration
     window.chartDuration = duration;
     
+    
     // If not monthly, disable and uncheck metric selections
     if (duration !== 'monthly') {
         // Disable all metric checkboxes for daily/weekly
@@ -1135,6 +1146,7 @@ function changeDuration(duration) {
             cb.parentElement.style.opacity = '1';
             cb.parentElement.style.pointerEvents = 'auto';
         });
+        
     }
     
     // Refresh the chart with new duration
@@ -1354,16 +1366,20 @@ function renderPriceChart(container, sym, bars) {
                     
                     // Debug: Check if quarterly data exists
                     if (!s) {
+                        
                         return;
                     }
                     if (!s.quarterly) {
+                        
                         return;
                     }
                     if (!Array.isArray(s.quarterly) || s.quarterly.length === 0) {
+                        
                         return;
                     }
                     
                     const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
+                    
                     
                     // Map metric keys to data keys
                     const keyMap = {
@@ -1382,6 +1398,7 @@ function renderPriceChart(container, sym, bars) {
                         const val = q[dataKey];
                         return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
                     }).filter(d => d !== null);
+                    
                     
                     
                     if (metricData.length > 0) {
@@ -1410,9 +1427,12 @@ function renderPriceChart(container, sym, bars) {
                                 smooth: true,
                                 symbol: 'none'
                             };
+                            
                         } else {
+                            
                         }
                     } else {
+                        
                     }
                 } catch (e) {
                     console.error(`Metric ${key} render failed:`, e);
@@ -1647,6 +1667,7 @@ function renderMetricsChart(container, sym, bars) {
         syncTimeScales();
 
         
+        
     } catch (e) {
         console.error('Metrics chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
@@ -1686,6 +1707,7 @@ function addMetricSeries(metricKey, cd, chart) {
         });
 
     if (metricData.length === 0) {
+        
         return;
     }
 
@@ -1733,6 +1755,7 @@ function addMetricSeries(metricKey, cd, chart) {
     
     metricSeries[cfg.label] = ls;
 
+    
 }
 
 // ==================== TECHNICAL PRO CHARTS ====================
@@ -1777,6 +1800,7 @@ function toggleIndicator(indicator) {
     try {
         chart.toggleSeries(seriesName);
     } catch (e) {
+        
     }
 }
 
@@ -1813,6 +1837,7 @@ function toggleEMA(emaType) {
 
 function toggleMetric(metric) {
     if (!proCharts.chart2) {
+        
         return;
     }
     
@@ -1833,7 +1858,9 @@ function toggleMetric(metric) {
         
         if (seriesExists) {
             proCharts.chart2.toggleSeries(seriesName);
+            
         } else {
+            
         }
     } catch (e) {
     }
@@ -1976,6 +2003,7 @@ function calculateEMA(bars, period = 20) {
     // Debug logging
     const validEMAs = ema.filter(e => e !== null);
     if (validEMAs.length > 0) {
+        
     }
     
     return ema;
@@ -2036,6 +2064,7 @@ function formatVolume(v) {
 
 async function renderTechnicalPro(stock) {
     
+    
     if (!stock || !stock.ticker) {
         document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Stock object not available</div>';
         return;
@@ -2043,9 +2072,11 @@ async function renderTechnicalPro(stock) {
     
     const sym = stock.ticker;
     
+    
     try {
         // Load OHLCV bars from ./charts/SYMBOL.json (NOT in IndexedDB)
         const barsUrl = `./charts/${sym}.json`;
+        
         
         const res = await fetch(barsUrl);
         if (!res.ok) {
@@ -2064,8 +2095,10 @@ async function renderTechnicalPro(stock) {
         }
         
         
+        
         // Quarterly data comes from IndexedDB (already in currentStock)
         const quarterly = stock.quarterly || [];
+        
         
         const tf = proCharts.currentTimeframe;
         const recentBars = bars.slice(-252); // Last ~1 year
@@ -2079,6 +2112,7 @@ async function renderTechnicalPro(stock) {
         const ema200 = calculateEMA(recentBars, 200);
         
         
+        
         // Aggregate price bars by timeframe
         let chartBars, displayRSI7, displayRSI14, displayRSI21, displayEMA20, displayEMA50, displayEMA200;
         
@@ -2090,6 +2124,7 @@ async function renderTechnicalPro(stock) {
             displayEMA20 = ema20;
             displayEMA50 = ema50;
             displayEMA200 = ema200;
+            
         } else if (tf === 'weekly') {
             chartBars = aggregateToWeekly(recentBars);
             displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
@@ -2178,6 +2213,7 @@ async function renderTechnicalPro(stock) {
         try {
             if (proCharts.chart1.remove) proCharts.chart1.remove();
         } catch (e) {
+            
         }
     }
     document.getElementById('chartPro1').innerHTML = '';
@@ -2288,15 +2324,20 @@ async function renderTechnicalPro(stock) {
     
     // Debug: Check data before rendering
     
+    
+    
+    
     // Validate series data
     const priceData = options1.series[0].data;
     const validPrices = priceData.filter(p => p && p.y !== null && p.y !== undefined);
+    
     
     if (validPrices.length === 0) {
         console.error(`❌ No valid price data! Check if close prices are null.`);
     }
     
     // VALIDATE EMA SERIES
+    
     options1.series.forEach((series, idx) => {
         if (idx === 0) return; // Skip price
         const seriesName = series.name;
@@ -2307,11 +2348,15 @@ async function renderTechnicalPro(stock) {
         if (!validPoints || validPoints.length === 0) {
             console.error(`❌ ${seriesName}: NO valid data points! Type: ${seriesType}`);
         } else {
+            
         }
     });
     
     
+    
+    
     try {
+        
         
         const container = document.getElementById('chartPro1');
         const chart = LightweightCharts.createChart(container, {
@@ -2490,7 +2535,9 @@ async function renderTechnicalPro(stock) {
                     format: (price) => Math.floor(price).toString(),
                     priceFormatter: (price) => Math.floor(price).toString()
                 });
+                
             } catch (e) {
+                
             }
         }, 200);
         
@@ -2502,6 +2549,9 @@ async function renderTechnicalPro(stock) {
             ema50: ema50Series,
             ema200: ema200Series
         };
+        
+        
+        
         
         
     } catch (err) {
@@ -2548,7 +2598,10 @@ async function renderTechnicalPro(stock) {
         
         // Debug: Check chart2 data
         ...(()=> { 
+            
+            
             chart2Data.forEach((s, i) => {
+                
             });
             return {}; 
         })(),
@@ -2577,6 +2630,7 @@ async function renderTechnicalPro(stock) {
     };
     
     // VALIDATE CHART 2 SERIES
+    
     chart2Data.forEach((series, idx) => {
         const seriesName = series.name;
         const seriesData = series.data;
@@ -2585,13 +2639,19 @@ async function renderTechnicalPro(stock) {
         if (!validPoints || validPoints.length === 0) {
             console.error(`❌ ${seriesName}: NO valid data points!`);
         } else {
+            
         }
     });
     
     
+    
+    
     try {
+        
         proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
+        
         proCharts.chart2.render();
+        
         
         // Charts are independent - users can pan each separately
         // Charts ready - pan/zoom works independently
@@ -2646,8 +2706,10 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
+  
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
+      
       drawCandlestick(s);
       if(S.maVis.vol) drawVolume(s);
       updateChartStats(s);
@@ -2699,8 +2761,10 @@ function getSlicedCandles(s, canvasWidth){
 
 function drawCandlestick(s){
   
+  
   const cv=document.getElementById('cv-candle');
   if(!cv)return;
+  
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
@@ -2712,6 +2776,7 @@ function drawCandlestick(s){
   cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
+  
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
@@ -2755,6 +2820,7 @@ function drawCandlestick(s){
   
   // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
   const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2; return x; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -2784,6 +2850,7 @@ function drawCandlestick(s){
   }
 
   // Candles
+  
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
@@ -2796,7 +2863,6 @@ function drawCandlestick(s){
     bodyH = bodyH * barHeightZoom;  // Make bars MUCH taller
     bodyTop = bodyCenter - bodyH/2;  // Recenter the body
     
-
     // Wick
     ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
     ctx.lineWidth=1;
@@ -3293,6 +3359,7 @@ function setupChartInteraction() {
   
   // Mouse/Touch Pan on canvas
   canvas.onmousedown = (e) => {
+    
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
@@ -3300,15 +3367,19 @@ function setupChartInteraction() {
   
   canvas.onmousemove = (e) => {
     if (!chartInteraction.isPanning || !currentStock) {
+      
       return;
     }
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
     
     
+    
     // Allow free panning with generous limits
     newPan = Math.max(-400, Math.min(400, newPan));
+    
     S.chartPan = newPan;
+    
     scheduleTACharts(currentStock);
   };
   
@@ -3317,6 +3388,7 @@ function setupChartInteraction() {
   
   // Touch handlers with pinch support
   const handleTouchStart = (e) => {
+    
     if (e.touches.length === 2) {
       // PINCH DETECTED: Calculate initial distance
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -3329,6 +3401,7 @@ function setupChartInteraction() {
       chartInteraction.startX = e.touches[0].clientX;
       chartInteraction.startPan = S.chartPan;
       touchState.lastDistance = 0;
+      
     }
   };
   
@@ -3380,6 +3453,7 @@ function setupChartInteraction() {
   };
   
   const handleTouchEnd = () => {
+    
     chartInteraction.isPanning = false;
     touchState.lastDistance = 0;
   };
@@ -3391,10 +3465,12 @@ function setupChartInteraction() {
   // iOS Pinch Support - gesturechange detects pinch on iOS (shared state)
   const handleGestureStart = (e) => {
     touchState.gestureStart = e.scale;
+    
   };
   
   const handleGestureChange = (e) => {
     if (!currentStock) {
+      
       return;
     }
     const scaleFactor = e.scale / touchState.gestureStart;
@@ -3409,6 +3485,9 @@ function setupChartInteraction() {
   
   // DISABLED: Gesture events cause conflict with touch-based pinch detection
   // Use smooth touch-based pinch instead (no gesture events)
+  // canvas.ongesturestart = handleGestureStart;
+  // canvas.ongesturechange = handleGestureChange;
+  // canvas.ongestureend = handleGestureEnd;
   
   // Wheel Zoom on canvas
   canvas.onwheel = (e) => {
@@ -3426,6 +3505,10 @@ function setupChartInteraction() {
     volCanvas.ontouchmove = handleTouchMove;
     volCanvas.ontouchend = handleTouchEnd;
     // DISABLED: Gesture events conflict with touch-based detection
+    // volCanvas.ongesturestart = handleGestureStart;
+    // volCanvas.ongesturechange = handleGestureChange;
+    // volCanvas.ongestureend = handleGestureEnd;
+    
   }
 }
 
