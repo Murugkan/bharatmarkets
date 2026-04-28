@@ -97,6 +97,8 @@
     <div class="tabs">
         <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
         <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
+        <button class="tab" onclick="switchTab('news')">📰 News</button>
+        <button class="tab" onclick="switchTab('movers')">🔄 Movers</button>
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
@@ -630,6 +632,115 @@ function renderTab(tab) {
           </div>`;
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
+    } else if (tab === 'news') {
+        html = `<div style="padding:0;padding-bottom:100px">
+            <div style="padding:10px 12px 4px">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--tx2);margin-bottom:12px">📰 News Sources</div>
+            </div>
+            <div id="stock-news-list">
+              <div style="padding:14px;color:var(--tx3);text-align:center;font-size:11px">Loading news…</div>
+            </div>
+            <div style="padding:10px 12px">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--tx2);margin-bottom:12px">🔗 Research Links</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                ${[
+                  {l:'NSE Official',u:`https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}`,c:'#2196f3',d:'Live quotes & filings'},
+                  {l:'Screener.in',u:`https://www.screener.in/company/${s.ticker || s.sym}/`,c:'#a855f7',d:'Annual reports & ratios'},
+                  {l:'Economic Times',u:`https://economictimes.indiatimes.com/topic/${s.ticker || s.sym}`,c:'#f97316',d:'Latest news coverage'},
+                  {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${s.ticker || s.sym}/${s.ticker || s.sym}`,c:'#00d084',d:'Price & analysis'},
+                  {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/`,c:'#64b5f6',d:'Advanced charts'},
+                  {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent((s.ticker || s.sym)+' NSE stock India')}`,c:'#4285f4',d:'News aggregator'},
+                ].map(lk=>`
+                  <a href="${lk.u}" target="_blank" rel="noopener"
+                    style="display:flex;align-items:center;gap:12px;padding:11px 13px;
+                    background:var(--s1);border:1px solid var(--b1);border-radius:6px;
+                    text-decoration:none;border-left:3px solid ${lk.c}">
+                    <div style="flex:1">
+                      <div style="font-size:11px;font-weight:700;color:var(--tx)">${lk.l}</div>
+                      <div style="font-size:9px;color:var(--tx3);margin-top:2px">${lk.d}</div>
+                    </div>
+                    <span style="font-size:11px;color:var(--tx2)">↗</span>
+                  </a>`).join('')}
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('content').innerHTML = html;
+        setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 200);
+    } else if (tab === 'movers') {
+        html = `<div style="padding:12px 13px 14px;padding-bottom:100px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--tx1)">Stock Analytics</div>
+              <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">
+                ${s.sector || 'N/A'}
+              </div>
+            </div>
+            
+            <!-- Stock Summary Card -->
+            <div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:var(--tx1)">${s.name || s.ticker || s.sym}</div>
+                  <div style="font-size:10px;color:var(--tx3);margin-top:2px">${s.ticker || s.sym}</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:14px;font-weight:700;color:var(--tx1)">₹${(s.ltp || s.price || 0).toFixed(2)}</div>
+                  <div style="font-size:11px;font-weight:700;color:${(s.chg1d || s.change || 0) >= 0 ? '#00e896' : '#ff6b85'};margin-top:2px">
+                    ${(s.chg1d || s.change || 0) >= 0 ? '▲' : '▼'} ${Math.abs(s.chg1d || s.change || 0).toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+              <div style="border-top:1px solid var(--b1);padding-top:8px;margin-top:8px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:9px">
+                  <div>
+                    <div style="color:var(--tx3);margin-bottom:2px">52W High</div>
+                    <div style="color:var(--tx1);font-weight:600">₹${(s.high52w || s.ltp || 0).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style="color:var(--tx3);margin-bottom:2px">52W Low</div>
+                    <div style="color:var(--tx1);font-weight:600">₹${(s.low52w || s.ltp || 0).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style="color:var(--tx3);margin-bottom:2px">Market Cap</div>
+                    <div style="color:var(--tx1);font-weight:600">${s.mcap ? (s.mcap/10000000000).toFixed(1)+'Cr' : 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div style="color:var(--tx3);margin-bottom:2px">P/E Ratio</div>
+                    <div style="color:var(--tx1);font-weight:600">${(s.pe || 'N/A').toFixed ? (s.pe || 0).toFixed(1) : 'N/A'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Sector Info -->
+            ${s.sector && s.sector !== 'N/A' ? `
+            <div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
+              <div style="font-weight:700;font-size:12px;color:var(--tx1);margin-bottom:8px">📊 Sector: ${s.sector}</div>
+              <div style="font-size:10px;color:var(--tx3);line-height:1.6">
+                <p>This stock belongs to the <strong>${s.sector}</strong> sector. To see sector performance and comparable stocks, open the app dashboard.</p>
+              </div>
+            </div>
+            ` : ''}
+            
+            <!-- Quick Links -->
+            <div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:12px">
+              <div style="font-weight:700;font-size:12px;color:var(--tx1);margin-bottom:8px">🔗 Market Data</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <a href="https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}" target="_blank" rel="noopener"
+                  style="padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #2196f3">
+                  NSE Real-time Data
+                </a>
+                <a href="https://www.screener.in/company/${s.ticker || s.sym}/" target="_blank" rel="noopener"
+                  style="padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #a855f7">
+                  Screener Financial Data
+                </a>
+                <a href="https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/" target="_blank" rel="noopener"
+                  style="padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #64b5f6">
+                  TradingView Charts
+                </a>
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('content').innerHTML = html;
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -3515,6 +3626,62 @@ function setupChartInteraction() {
 // Auto-setup when canvas is ready
 document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
+// ════════════════════════════════════════════════════════
+// NEWS TAB FUNCTIONS
+// ════════════════════════════════════════════════════════
+
+function timeAgo(d){if(!d||isNaN(d))return '';const s=Math.floor((Date.now()-d)/1000);if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
+
+function classifyNews(t){
+  const u=t.toUpperCase();
+  if(/RESULT|PROFIT|REVENUE|EARNING|Q[1-4]/.test(u))return{tag:'RESULTS',imp:'H'};
+  if(/RBI|REPO|INFLATION|CPI|GDP|RATE CUT|RATE HIKE|MONETARY/.test(u))return{tag:'RBI',imp:'H'};
+  if(/SEBI|REGULATION|PENALTY|PROBE|CBI|ED/.test(u))return{tag:'POLICY',imp:'H'};
+  if(/OIL|CRUDE|OPEC|BRENT|PETROLEUM/.test(u))return{tag:'OIL',imp:'H'};
+  if(/WAR|IRAN|ISRAEL|CONFLICT|SANCTION|GEO|MILITARY/.test(u))return{tag:'GEO',imp:'H'};
+  if(/FII|FPI|DII|FOREIGN INFLOW|OUTFLOW/.test(u))return{tag:'FII',imp:'M'};
+  if(/MERGER|ACQUI|DEAL|STAKE|BUYBACK|DIVIDEND/.test(u))return{tag:'CORP',imp:'M'};
+  if(/SENSEX|NIFTY|RALLY|CRASH|SURGE|PLUNGE/.test(u))return{tag:'INDEX',imp:'M'};
+  return{tag:'NEWS',imp:'L'};
+}
+
+function extractDomain(url){try{return new URL(url).hostname.replace(/^www\./,'').split('.')[0];}catch(_){return 'News';}}
+
+async function loadStockNews(sym,name){
+  const el=document.getElementById('stock-news-list');
+  if(!el)return;
+  try{
+    const query=encodeURIComponent(sym+' '+name+' NSE India stock');
+    const url='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://news.google.com/rss/search?q='+query+'&hl=en-IN&gl=IN&ceid=IN:en')+'&count=8';
+    const res=await fetch(url);
+    const d=await res.json();
+    const items=d.items||[];
+    if(!items.length){el.innerHTML=`<div style="padding:14px;color:var(--tx3);text-align:center;font-size:11px">No recent news for ${sym}</div>`;return;}
+    el.innerHTML=items.map(item=>{
+      const{tag,imp}=classifyNews(item.title);
+      const src=item.source?.name||extractDomain(item.link)||'News';
+      const badgeColor = imp==='H'?'#ff6b85' : imp==='M'?'#ffa500' : '#888';
+      const tagColor = imp==='H'?'#ff6b85' : imp==='M'?'#ffa500' : '#666';
+      return `<div style="margin:0;padding:10px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="flex:1">
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px;display:flex;gap:6px;align-items:center">
+            <span>${src}</span>
+            <span style="background:${badgeColor};color:white;font-size:7px;padding:2px 5px;border-radius:3px;font-weight:700">${imp==='H'?'HIGH':imp==='M'?'MED':'LOW'}</span>
+            <span style="background:${tagColor};color:white;font-size:7px;padding:2px 5px;border-radius:3px">${tag}</span>
+          </div>
+          <div style="font-size:11px;color:var(--tx1);line-height:1.4;font-weight:600">${item.title}</div>
+          <div style="font-size:9px;color:var(--tx3);margin-top:3px">${timeAgo(new Date(item.pubDate))}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    el.innerHTML=`<div style="padding:14px;color:var(--tx3);text-align:center;font-size:11px">Could not load news</div>`;
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// MOVERS TAB FUNCTIONS
+// ════════════════════════════════════════════════════════
 
 
 </script>
