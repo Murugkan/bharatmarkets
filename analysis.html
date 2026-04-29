@@ -3609,43 +3609,19 @@ function classifyNews(t){
 function extractDomain(url){try{return new URL(url).hostname.replace(/^www\./,'').split('.')[0];}catch(_){return 'News';}}
 
 async function loadStockNews(sym,name){
-  console.log('📰 loadStockNews called: sym=' + sym + ', name=' + name);
   const el=document.getElementById('stock-news-list');
-  if(!el){
-    console.error('❌ stock-news-list element not found');
-    return;
-  }
+  if(!el)return;
   try{
-    // Build query WITHOUT encoding first
-    const queryText = sym + ' ' + name + ' NSE India stock';
-    console.log('📰 News query: ' + queryText);
-    
-    // Build Google News URL with proper encoding
-    const googleNewsUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(queryText) + '&hl=en-IN&gl=IN&ceid=IN:en';
-    console.log('📰 Google News URL:', googleNewsUrl);
-    
-    // RSS API call
-    const rssApiUrl = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(googleNewsUrl) + '&count=8';
-    console.log('📰 Fetching from RSS API...');
-    
-    const res=await fetch(rssApiUrl);
+    const query=encodeURIComponent(sym+' '+name+' NSE India stock');
+    const url='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://news.google.com/rss/search?q='+query+'&hl=en-IN&gl=IN&ceid=IN:en')+'&count=8';
+    console.log('📰 loadStockNews: sym=' + sym + ', name=' + name);
+    console.log('📰 Query URL:', url);
+    const res=await fetch(url);
     console.log('📰 Response status:', res.status);
-    
-    if(!res.ok){
-      console.error('❌ HTTP error:', res.status, res.statusText);
-      el.innerHTML=`<div class="u-pad14c">News service error (${res.status})</div>`;
-      return;
-    }
-    
     const d=await res.json();
-    console.log('📰 Got', d.items?.length || 0, 'news items');
     const items=d.items||[];
-    if(!items.length){
-      console.log('⚠️ No news items found');
-      el.innerHTML=`<div class="u-pad14c">No recent news for ${sym}</div>`;
-      return;
-    }
-    console.log('✅ Rendering', items.length, 'news items');
+    console.log('📰 News items found:', items.length);
+    if(!items.length){el.innerHTML=`<div class="u-pad14c">No recent news for ${sym}</div>`;return;}
     el.innerHTML=items.map(item=>{
       const{tag,imp}=classifyNews(item.title);
       const src=item.source?.name||extractDomain(item.link)||'News';
@@ -3660,8 +3636,8 @@ async function loadStockNews(sym,name){
       </div>`;
     }).join('');
   }catch(e){
-    console.error('❌ News error:', e.message);
-    el.innerHTML=`<div class="u-pad14c">Could not load news: ${e.message}</div>`;
+    console.error('📰 Error:', e.message);
+    el.innerHTML=`<div class="u-pad14c">Could not load news</div>`;
   }
 }
 
