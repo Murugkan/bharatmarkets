@@ -3651,14 +3651,39 @@ async function loadAndRenderMovers(){
     return;
   }
   
+  // Debug: Show all localStorage keys
+  console.log('=== localStorage keys ===');
+  for(let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const val = localStorage.getItem(key);
+    const size = val.length;
+    console.log(`${key}: ${size} bytes`);
+    if(key.includes('port') || key.includes('Port') || key.includes('PORT')) {
+      console.log(`  → Content preview: ${val.substring(0, 100)}...`);
+    }
+  }
+  
   // Show loading state
   c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading portfolio...</div>';
   console.log('Movers: Loading portfolio');
   
   try {
-    // Load portfolio
-    const portfolio = JSON.parse(localStorage.getItem('OnyxPortfolio') || '[]') || [];
-    console.log('Movers: Portfolio has', portfolio.length, 'holdings');
+    // Try multiple possible keys
+    let portfolio = JSON.parse(localStorage.getItem('OnyxPortfolio') || '[]') || [];
+    console.log('OnyxPortfolio: ', portfolio.length, 'holdings');
+    
+    if(!portfolio.length) {
+      portfolio = JSON.parse(localStorage.getItem('bmp_port_v2') || '[]') || [];
+      console.log('bmp_port_v2: ', portfolio.length, 'holdings');
+    }
+    
+    if(!portfolio.length) {
+      portfolio = JSON.parse(localStorage.getItem('portfolio') || '[]') || [];
+      console.log('portfolio: ', portfolio.length, 'holdings');
+    }
+    
+    console.log('Final portfolio:', portfolio.length, 'holdings');
+    console.log('Portfolio data:', JSON.stringify(portfolio).substring(0, 200));
     
     if(!portfolio || !portfolio.length){
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
