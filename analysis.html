@@ -3658,13 +3658,10 @@ async function loadAndRenderMovers(){
     const val = localStorage.getItem(key);
     const size = val.length;
     console.log(`${key}: ${size} bytes`);
-    if(key.includes('port') || key.includes('Port') || key.includes('PORT')) {
-      console.log(`  → Content preview: ${val.substring(0, 100)}...`);
-    }
   }
   
   // Show loading state
-  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading portfolio...</div>';
+  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Checking for portfolio data...</div>';
   console.log('Movers: Loading portfolio');
   
   try {
@@ -3682,13 +3679,66 @@ async function loadAndRenderMovers(){
       console.log('portfolio: ', portfolio.length, 'holdings');
     }
     
-    console.log('Final portfolio:', portfolio.length, 'holdings');
-    console.log('Portfolio data:', JSON.stringify(portfolio).substring(0, 200));
+    console.log('Final localStorage portfolio:', portfolio.length, 'holdings');
+    
+    // If no portfolio in localStorage, check IndexedDB
+    if(!portfolio.length) {
+      console.log('=== Checking IndexedDB ===');
+      
+      // List all databases
+      const dbs = await indexedDB.databases().catch(() => []);
+      console.log('IndexedDB databases:', dbs.map(d => d.name).join(', '));
+      
+      // Try to open OnyxPortfolioDB
+      const db = await new Promise(r => {
+        const req = indexedDB.open('OnyxPortfolioDB');
+        req.onsuccess = () => r(req.result);
+        req.onerror = () => {
+          console.error('DB open failed:', req.error);
+          r(null);
+        };
+      });
+      
+      if(db) {
+        console.log('Stores in OnyxPortfolioDB:', Array.from(db.objectStoreNames).join(', '));
+        
+        // Check each store for portfolio data
+        for(const storeName of db.objectStoreNames) {
+          const count = await new Promise(r => {
+            const tx = db.transaction(storeName, 'readonly');
+            const req = tx.objectStore(storeName).count();
+            req.onsuccess = () => r(req.result);
+            req.onerror = () => r(0);
+          });
+          console.log(`Store "${storeName}": ${count} records`);
+          
+          // If Stocks store, show first few records
+          if(storeName === 'Stocks') {
+            const first3 = await new Promise(r => {
+              const tx = db.transaction('Stocks', 'readonly');
+              const req = tx.objectStore('Stocks').getAll();
+              req.onsuccess = () => r((req.result || []).slice(0, 3).map(s => s.sym || s.symbol || 'unknown'));
+              req.onerror = () => r([]);
+            });
+            console.log(`Sample stocks: ${first3.join(', ')}`);
+          }
+        }
+        
+        db.close();
+      }
+    }
     
     if(!portfolio || !portfolio.length){
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
-        <div style="font-size:12px;margin-bottom:10px">📊 No portfolio imported</div>
-        <div style="font-size:10px">Go to Portfolio tab to import holdings</div>
+        <div style="font-size:14px;margin-bottom:12px">❌ No portfolio data found</div>
+        <div style="font-size:11px;line-height:1.6;margin-bottom:16px">
+          Portfolio is empty in localStorage.<br>
+          <strong>Check:</strong><br>
+          1. Go to Portfolio tab<br>
+          2. Import holdings from CDSL CSV<br>
+          3. Come back to Movers
+        </div>
+        <div style="font-size:10px;color:var(--tx3)">Debug info in 🔧 panel</div>
       </div>`;
       return;
     }
