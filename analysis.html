@@ -633,6 +633,7 @@ function renderTab(tab) {
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
     } else if (tab === 'news') {
+        const newsSymbol = s.symbol || s.ticker || s.sym;
         html = `<div style="padding:0;padding-bottom:100px">
             <div style="padding:10px 12px 4px">
               <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--tx2);margin-bottom:12px">📰 News Sources</div>
@@ -644,12 +645,12 @@ function renderTab(tab) {
               <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--tx2);margin-bottom:12px">🔗 Research Links</div>
               <div style="display:flex;flex-direction:column;gap:6px">
                 ${[
-                  {l:'NSE Official',u:`https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}`,c:'#2196f3',d:'Live quotes & filings'},
-                  {l:'Screener.in',u:`https://www.screener.in/company/${s.ticker || s.sym}/`,c:'#a855f7',d:'Annual reports & ratios'},
-                  {l:'Economic Times',u:`https://economictimes.indiatimes.com/topic/${s.ticker || s.sym}`,c:'#f97316',d:'Latest news coverage'},
-                  {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${s.ticker || s.sym}/${s.ticker || s.sym}`,c:'#00d084',d:'Price & analysis'},
-                  {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/`,c:'#64b5f6',d:'Advanced charts'},
-                  {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent((s.ticker || s.sym)+' NSE stock India')}`,c:'#4285f4',d:'News aggregator'},
+                  {l:'NSE Official',u:`https://www.nseindia.com/get-quotes/equity?symbol=${newsSymbol}`,c:'#2196f3',d:'Live quotes & filings'},
+                  {l:'Screener.in',u:`https://www.screener.in/company/${newsSymbol}/`,c:'#a855f7',d:'Annual reports & ratios'},
+                  {l:'Economic Times',u:`https://economictimes.indiatimes.com/topic/${newsSymbol}`,c:'#f97316',d:'Latest news coverage'},
+                  {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${newsSymbol}/${newsSymbol}`,c:'#00d084',d:'Price & analysis'},
+                  {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${newsSymbol}/`,c:'#64b5f6',d:'Advanced charts'},
+                  {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent(newsSymbol+' NSE stock India')}`,c:'#4285f4',d:'News aggregator'},
                 ].map(lk=>`
                   <a href="${lk.u}" target="_blank" rel="noopener"
                     style="display:flex;align-items:center;gap:12px;padding:11px 13px;
@@ -665,8 +666,9 @@ function renderTab(tab) {
             </div>
           </div>`;
         document.getElementById('content').innerHTML = html;
-        setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 200);
+        setTimeout(() => { loadStockNews(newsSymbol, s.name); }, 200);
     } else if (tab === 'movers') {
+        const moversSymbol = s.symbol || s.ticker || s.sym;
         html = `<div style="padding:12px 13px 14px;padding-bottom:100px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
               <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--tx1)">Stock Analytics</div>
@@ -679,8 +681,8 @@ function renderTab(tab) {
             <div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:12px;margin-bottom:12px">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <div>
-                  <div style="font-size:12px;font-weight:700;color:var(--tx1)">${s.name || s.ticker || s.sym}</div>
-                  <div style="font-size:10px;color:var(--tx3);margin-top:2px">${s.ticker || s.sym}</div>
+                  <div style="font-size:12px;font-weight:700;color:var(--tx1)">${s.name || moversSymbol}</div>
+                  <div style="font-size:10px;color:var(--tx3);margin-top:2px">${moversSymbol}</div>
                 </div>
                 <div style="text-align:right">
                   <div style="font-size:14px;font-weight:700;color:var(--tx1)">₹${(s.ltp || s.price || 0).toFixed(2)}</div>
@@ -738,15 +740,15 @@ function renderTab(tab) {
             <div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:12px">
               <div style="font-weight:700;font-size:12px;color:var(--tx1);margin-bottom:8px">🔗 Market Data</div>
               <div style="display:flex;flex-direction:column;gap:6px">
-                <a href="https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}" target="_blank" rel="noopener"
+                <a href="https://www.nseindia.com/get-quotes/equity?symbol=${moversSymbol}" target="_blank" rel="noopener"
                   style="padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #2196f3">
                   NSE Real-time Data
                 </a>
-                <a href="https://www.screener.in/company/${s.ticker || s.sym}/" target="_blank" rel="noopener"
+                <a href="https://www.screener.in/company/${moversSymbol}/" target="_blank" rel="noopener"
                   style="padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #a855f7">
                   Screener Financial Data
                 </a>
-                <a href="https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/" target="_blank" rel="noopener"
+                <a href="https://in.tradingview.com/symbols/NSE-${moversSymbol}/" target="_blank" rel="noopener"
                   style="padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #64b5f6">
                   TradingView Charts
                 </a>
