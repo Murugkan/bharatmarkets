@@ -3651,160 +3651,94 @@ async function loadAndRenderMovers(){
     return;
   }
   
-  // Debug: Show all localStorage keys
-  console.log('=== localStorage keys ===');
-  for(let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    const val = localStorage.getItem(key);
-    const size = val.length;
-    console.log(`${key}: ${size} bytes`);
-  }
-  
-  // Show loading state
-  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Checking for portfolio data...</div>';
-  console.log('Movers: Loading portfolio');
+  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading from IndexedDB...</div>';
+  console.log('Movers: Opening IndexedDB');
   
   try {
-    // Try multiple possible keys
-    let portfolio = JSON.parse(localStorage.getItem('OnyxPortfolio') || '[]') || [];
-    console.log('OnyxPortfolio: ', portfolio.length, 'holdings');
+    // Open IndexedDB - this is where portfolio data actually lives
+    const db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('OnyxPortfolioDB');
+      req.onsuccess = () => {
+        console.log('✅ IndexedDB opened');
+        resolve(req.result);
+      };
+      req.onerror = () => {
+        console.error('❌ IndexedDB open failed:', req.error);
+        reject(new Error('Cannot open database'));
+      };
+    });
     
-    if(!portfolio.length) {
-      portfolio = JSON.parse(localStorage.getItem('bmp_port_v2') || '[]') || [];
-      console.log('bmp_port_v2: ', portfolio.length, 'holdings');
-    }
-    
-    if(!portfolio.length) {
-      portfolio = JSON.parse(localStorage.getItem('portfolio') || '[]') || [];
-      console.log('portfolio: ', portfolio.length, 'holdings');
-    }
-    
-    console.log('Final localStorage portfolio:', portfolio.length, 'holdings');
-    
-    // If no portfolio in localStorage, check IndexedDB
-    if(!portfolio.length) {
-      console.log('=== Checking IndexedDB ===');
+    // Get all stocks from Stocks store
+    const allStocks = await new Promise((resolve, reject) => {
+      const tx = db.transaction('Stocks', 'readonly');
+      const store = tx.objectStore('Stocks');
+      const req = store.getAll();
       
-      // List all databases
-      const dbs = await indexedDB.databases().catch(() => []);
-      console.log('IndexedDB databases:', dbs.map(d => d.name).join(', '));
-      
-      // Try to open OnyxPortfolioDB
-      const db = await new Promise(r => {
-        const req = indexedDB.open('OnyxPortfolioDB');
-        req.onsuccess = () => r(req.result);
-        req.onerror = () => {
-          console.error('DB open failed:', req.error);
-          r(null);
-        };
-      });
-      
-      if(db) {
-        console.log('Stores in OnyxPortfolioDB:', Array.from(db.objectStoreNames).join(', '));
-        
-        // Check each store for portfolio data
-        for(const storeName of db.objectStoreNames) {
-          const count = await new Promise(r => {
-            const tx = db.transaction(storeName, 'readonly');
-            const req = tx.objectStore(storeName).count();
-            req.onsuccess = () => r(req.result);
-            req.onerror = () => r(0);
-          });
-          console.log(`Store "${storeName}": ${count} records`);
-          
-          // If Stocks store, show first few records
-          if(storeName === 'Stocks') {
-            const first3 = await new Promise(r => {
-              const tx = db.transaction('Stocks', 'readonly');
-              const req = tx.objectStore('Stocks').getAll();
-              req.onsuccess = () => r((req.result || []).slice(0, 3).map(s => s.sym || s.symbol || 'unknown'));
-              req.onerror = () => r([]);
-            });
-            console.log(`Sample stocks: ${first3.join(', ')}`);
-          }
-        }
-        
-        db.close();
-      }
-    }
+      req.onsuccess = () => {
+        console.log('✅ Fetched', req.result.length, 'stocks from Stocks store');
+        resolve(req.result || []);
+      };
+      req.onerror = () => {
+        console.error('❌ Error reading Stocks store:', req.error);
+        reject(new Error('Cannot read stocks'));
+      };
+    });
+    
+    db.close();
+    
+    // Filter stocks that have qty > 0 (actual portfolio holdings)
+    const portfolio = allStocks.filter(s => (s.qty || 0) > 0);
+    console.log('Movers: Portfolio has', portfolio.length, 'holdings with qty > 0');
+    console.log('Total stocks in DB:', allStocks.length, 'Portfolio holdings:', portfolio.length);
     
     if(!portfolio || !portfolio.length){
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
-        <div style="font-size:14px;margin-bottom:12px">❌ No portfolio data found</div>
+        <div style="font-size:14px;margin-bottom:12px">📊 No holdings in portfolio</div>
         <div style="font-size:11px;line-height:1.6;margin-bottom:16px">
-          Portfolio is empty in localStorage.<br>
-          <strong>Check:</strong><br>
-          1. Go to Portfolio tab<br>
-          2. Import holdings from CDSL CSV<br>
-          3. Come back to Movers
+          Database has <strong>${allStocks.length} stocks</strong> but none with qty > 0<br>
+          <strong>Go to Portfolio tab and add holdings</strong>
         </div>
-        <div style="font-size:10px;color:var(--tx3)">Debug info in 🔧 panel</div>
+        <div style="font-size:10px;color:var(--tx3)">Debug: Check 🔧 panel</div>
       </div>`;
       return;
     }
     
-    // Try to load from IndexedDB
-    const db = await new Promise(r => {
-      const req = indexedDB.open('OnyxPortfolioDB');
-      req.onsuccess = () => r(req.result);
-      req.onerror = () => {
-        console.error('DB error:', req.error);
-        r(null);
-      };
-    });
-    
-    if(!db) {
-      c.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--tx3)">Could not access database</div>';
-      return;
-    }
-    
-    console.log('Movers: DB opened');
-    
-    // Build universe
-    const universe = [];
-    for(const h of portfolio) {
-      const f = await new Promise(r => {
-        try {
-          const tx = db.transaction('Stocks', 'readonly');
-          const req = tx.objectStore('Stocks').get(h.sym);
-          req.onsuccess = () => r(req.result || {});
-          req.onerror = () => r({});
-        } catch(e) {
-          r({});
-        }
-      });
-      
-      universe.push({
-        sym: h.sym,
-        name: f.name || h.name || h.sym,
-        sector: f.sector || '—',
-        ltp: f.ltp || h.ltp || 0,
-        chg: f.chg1d || 0,
-        qty: h.qty || 0,
-        avgBuy: h.avgBuy || 0,
-      });
-    }
-    
-    db.close();
-    console.log('Movers: Universe has', universe.length, 'stocks');
-    
-    // Calculate
-    const sorted = [...universe].filter(s => s.ltp > 0 && s.chg !== 0);
-    const gainers = [...sorted].sort((a,b) => b.chg - a.chg).slice(0,8);
-    const losers = [...sorted].sort((a,b) => a.chg - b.chg).slice(0,8);
-    
-    const totalVal = universe.reduce((a,h) => a + (h.qty * h.ltp), 0);
-    const totalCost = universe.reduce((a,h) => a + (h.qty * h.avgBuy), 0);
+    // Calculate totals
+    const totalVal = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.ltp || 0)), 0);
+    const totalCost = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.avg || 0)), 0);
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
-    console.log('Movers: Value', totalVal, 'Gain', totalGain, 'Pct', gainPct);
+    console.log('Movers: Portfolio value ₹' + totalVal.toFixed(0) + ' Gain ₹' + totalGain.toFixed(0) + ' (' + gainPct.toFixed(2) + '%)');
+    
+    // Find gainers and losers by change %
+    const withChange = portfolio.filter(s => s.chg1d !== undefined && s.chg1d !== 0);
+    const gainers = [...withChange].sort((a, b) => (b.chg1d || 0) - (a.chg1d || 0)).slice(0, 8);
+    const losers = [...withChange].sort((a, b) => (a.chg1d || 0) - (b.chg1d || 0)).slice(0, 8);
+    
+    console.log('Movers: Gainers:', gainers.length, 'Losers:', losers.length);
+    
+    // Sector aggregation
+    const sectorMap = {};
+    portfolio.forEach(s => {
+      const sec = s.sector || '—';
+      if(!sectorMap[sec]) sectorMap[sec] = {sum: 0, count: 0, stocks: []};
+      sectorMap[sec].sum += (s.chg1d || 0);
+      sectorMap[sec].count++;
+      sectorMap[sec].stocks.push({sym: s.ticker || s.sym, chg: s.chg1d});
+    });
+    
+    const sectors = Object.entries(sectorMap)
+      .map(([name, d]) => ({name, avg: d.sum / d.count, stocks: d.stocks}))
+      .filter(s => s.avg !== 0)
+      .sort((a, b) => Math.abs(b.avg) - Math.abs(a.avg))
+      .slice(0, 10);
     
     // Render
     c.innerHTML = `<div style="padding:12px 13px 14px;padding-bottom:100px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--title)">Market Movers</div>
-        <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">${universe.length} stocks</div>
+        <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">${portfolio.length} holdings</div>
       </div>
       
       <!-- Portfolio Summary -->
@@ -3818,32 +3752,50 @@ async function loadAndRenderMovers(){
         </div>
       </div>
       
-      <!-- Gainers -->
-      <div class="card" style="margin-bottom:12px">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
-        ${gainers.length ? gainers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-          <div><div style="font-weight:600;color:var(--tx2)">${s.sym}</div><div style="color:var(--tx3)">${s.sector}</div></div>
-          <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${s.chg.toFixed(2)}%</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
-        </div>`).join('') : '<div style="color:var(--tx3);font-size:10px">No gainers</div>'}
+      <!-- Gainers/Losers -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="card">
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
+          ${gainers.length ? gainers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${s.sector || '—'}</div></div>
+            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${(s.chg1d || 0).toFixed(2)}%</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
+          </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
+        </div>
+        <div class="card">
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
+          ${losers.length ? losers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${s.sector || '—'}</div></div>
+            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${(s.chg1d || 0).toFixed(2)}%</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
+          </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
+        </div>
       </div>
       
-      <!-- Losers -->
-      <div class="card">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
-        ${losers.length ? losers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-          <div><div style="font-weight:600;color:var(--tx2)">${s.sym}</div><div style="color:var(--tx3)">${s.sector}</div></div>
-          <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${s.chg.toFixed(2)}%</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
-        </div>`).join('') : '<div style="color:var(--tx3);font-size:10px">No losers</div>'}
-      </div>
+      <!-- Sectors -->
+      ${sectors.length ? `<div class="card">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title);margin-bottom:10px">📊 Sectors</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${sectors.map(s => {
+            const up = s.avg >= 0;
+            const barW = Math.min(100, Math.abs(s.avg) * 15).toFixed(0);
+            return `<div style="display:flex;align-items:center;gap:8px">
+              <div style="width:90px;font-size:9px;color:var(--tx2);text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</div>
+              <div style="flex:1;background:var(--s2);border-radius:3px;height:13px;position:relative;overflow:hidden">
+                <div style="position:absolute;${up?'left:0':'right:0'};top:0;height:100%;width:${barW}%;background:${up?'rgba(0,208,132,.4)':'rgba(255,59,92,.4)'};border-radius:3px"></div>
+              </div>
+              <div style="width:40px;font-size:9px;font-weight:700;color:${up?'#00e896':'#ff6b85'};font-family:var(--mono);text-align:right">${up?'+':''}${s.avg.toFixed(2)}%</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : ''}
     </div>`;
     
-    console.log('Movers: Rendered');
+    console.log('Movers: Rendered successfully');
     
   } catch(e) {
-    console.error('Movers error:', e, e.stack);
-    c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--rd)">
-      <div>Error: ${e.message}</div>
-      <div style="font-size:10px;color:var(--tx3);margin-top:10px">Check console for details</div>
+    console.error('Movers error:', e.message, e.stack);
+    c.innerHTML = `<div style="padding:40px 20px;text-align:center">
+      <div style="color:#ff6b85;margin-bottom:10px;font-weight:600">${e.message}</div>
+      <div style="font-size:10px;color:var(--tx3)">Check 🔧 debug panel for details</div>
     </div>`;
   }
 }
