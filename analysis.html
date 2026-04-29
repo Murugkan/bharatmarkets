@@ -3787,9 +3787,28 @@ async function loadAndRenderMovers(){
           }).join('')}
         </div>
       </div>` : ''}
+      
+      <!-- Sector Heatmap -->
+      <div class="card" style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title)">🗺 Sector Heatmap</div>
+          <div style="display:flex;gap:6px;font-size:9px;color:var(--tx3)">
+            <span style="color:#00e896">■ Up</span>
+            <span style="color:#ff6b85">■ Down</span>
+          </div>
+        </div>
+        <canvas id="cv-heatmap" style="width:100%;border-radius:6px;cursor:pointer;display:block;margin-bottom:8px"></canvas>
+        <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1e3350;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--tx1);pointer-events:none;z-index:999"></div>
+      </div>
     </div>`;
     
     console.log('Movers: Rendered successfully');
+    
+    // Draw heatmap after DOM renders
+    setTimeout(() => {
+      console.log('Movers: Drawing heatmap for', portfolio.length, 'stocks');
+      drawPortfolioHeatmap(portfolio);
+    }, 200);
     
   } catch(e) {
     console.error('Movers error:', e.message, e.stack);
@@ -3799,46 +3818,62 @@ async function loadAndRenderMovers(){
     </div>`;
   }
 }
-function drawPortfolioHeatmap(universe){
+function drawPortfolioHeatmap(portfolio){
+  console.log('drawPortfolioHeatmap called with', portfolio.length, 'stocks');
+  
   const cv = document.getElementById('cv-heatmap');
-  if(!cv) return;
+  console.log('Canvas found:', !!cv);
+  
+  if(!cv) {
+    console.error('❌ Canvas cv-heatmap not found');
+    return;
+  }
+  
+  console.log('Canvas dimensions:', cv.offsetWidth, 'x', cv.offsetHeight);
 
   const dpr = window.devicePixelRatio || 1;
   const W = Math.max(cv.offsetWidth || window.innerWidth - 30, 180);
-  const H = W; // perfect square
-  cv.width  = W * dpr; cv.height = H * dpr;
-  cv.style.width = W+'px'; cv.style.height = H+'px';
+  const H = W;
+  console.log('Drawing at', W, 'x', H, 'with DPR', dpr);
+  
+  cv.width  = W * dpr; 
+  cv.height = H * dpr;
+  cv.style.width = W+'px'; 
+  cv.style.height = H+'px';
+  
   const ctx = cv.getContext('2d');
+  if(!ctx) {
+    console.error('❌ Could not get canvas context');
+    return;
+  }
+  
   ctx.scale(dpr, dpr);
   ctx.fillStyle = '#060c18';
   ctx.fillRect(0, 0, W, H);
+  console.log('✅ Canvas cleared and scaled');
 
-  if(!universe.length){
+  if(!portfolio || !portfolio.length){
     ctx.fillStyle='rgba(140,176,208,.4)';
     ctx.font='11px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('Add stocks to see heatmap', W/2, H/2);
+    ctx.fillText('No portfolio data', W/2, H/2);
+    console.log('No portfolio - showing message');
     return;
   }
 
   // Group by sector
   const sMap = {};
-  universe.forEach(s=>{
+  portfolio.forEach(s=>{
     const sec = (s.sector && s.sector!=='—') ? s.sector : 'Other';
     if(!sMap[sec]) sMap[sec]={name:sec, holdVal:0, mcap:0, chgSum:0, n:0, stocks:[]};
-    // Use portfolio holding value as size (qty*ltp) — most meaningful for personal portfolio
-    // For watchlist stocks without qty, use mcap rank as proxy
-    const pf = S.portfolio.find(h=>h.sym===s.sym);
-    const holdingVal = pf && pf.ltp>0 ? pf.qty*pf.ltp : 0;
+    const holdingVal = (s.qty || 0) * (s.ltp || 0);
     sMap[sec].holdVal += holdingVal;
     sMap[sec].mcap    += (s.mcap||0);
-    sMap[sec].chgSum  += (s.chg||0);
+    sMap[sec].chgSum  += (s.chg1d||0);
     sMap[sec].n++;
     sMap[sec].stocks.push(s);
   });
-
-  const nodes = Object.values(sMap)
-    .map(d=>({
-      name:   d.name,
+  
+  console.log('Sectors found:', Object.keys(sMap).length, 'sectors');
       // Size priority: 1) portfolio holding value, 2) mcap if available, 3) stock count
       size:   d.holdVal > 0 ? d.holdVal :
               d.mcap    > 0 ? d.mcap    :
@@ -3987,7 +4022,7 @@ function drawPortfolioHeatmap(universe){
       tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
         +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
         +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
-        +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.sym+' '+(s.chg>=0?'+':'')+s.chg.toFixed(1)+'%').join('  ')+'</span>';
+        +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.ticker+' '+(s.chg1d>=0?'+':'')+s.chg1d.toFixed(1)+'%').join('  ')+'</span>';
       tip.style.display='block';
       tip.style.left=Math.min(e.clientX+10,window.innerWidth-170)+'px';
       tip.style.top=Math.max(e.clientY-70,8)+'px';
