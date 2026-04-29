@@ -650,11 +650,9 @@ function renderTab(tab) {
     } else if (tab === 'news') {
         html = renderNewsTab(s);
         document.getElementById('content').innerHTML = html;
-        setTimeout(() => { loadStockNews(s.symbol || s.ticker || s.sym, s.name); }, 200);
+        setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 200);
     } else if (tab === 'movers') {
-        html = renderMoversTab(s);
-        document.getElementById('content').innerHTML = html;
-        setTimeout(() => { drawSectorHeatmap([s]); }, 200);
+        renderMovers(document.getElementById('content'));
     } else if (tab === 'fundamentals') {
         let guidance = {};
         try {
@@ -2809,7 +2807,7 @@ function drawCandlestick(s){
     ctx.textAlign='center';
     if(s._noChartData){
       ctx.fillStyle='rgba(245,166,35,.7)'; ctx.font='bold 11px DM Sans';
-      ctx.fillText('No chart data for '+s.symbol, W2/2, H2/2-16);
+      ctx.fillText('No chart data for '+s.ticker || s.sym, W2/2, H2/2-16);
       ctx.fillStyle='rgba(140,176,208,.5)'; ctx.font='10px DM Sans';
       ctx.fillText('Add to watchlist.txt → run GitHub Actions', W2/2, H2/2+4);
       ctx.fillText('(fetch_type: new_symbol)', W2/2, H2/2+20);
@@ -3556,12 +3554,12 @@ function renderNewsTab(s){
       <div class="sec-lbl">🔗 Research Links</div>
       <div style="display:flex;flex-direction:column;gap:6px">
         ${[
-          {l:'NSE Official',u:`https://www.nseindia.com/get-quotes/equity?symbol=${s.symbol}`,c:'#2196f3',d:'Live quotes & filings'},
-          {l:'Screener.in',u:`https://www.screener.in/company/${s.symbol}/`,c:'#a855f7',d:'Annual reports & ratios'},
-          {l:'Economic Times',u:`https://economictimes.indiatimes.com/topic/${s.symbol}`,c:'#f97316',d:'Latest news coverage'},
-          {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${s.symbol}/${s.symbol}`,c:'#00d084',d:'Price & analysis'},
-          {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${s.symbol}/`,c:'#64b5f6',d:'Advanced charts'},
-          {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent(s.symbol+' NSE stock India')}`,c:'#4285f4',d:'News aggregator'},
+          {l:'NSE Official',u:`https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}`,c:'#2196f3',d:'Live quotes & filings'},
+          {l:'Screener.in',u:`https://www.screener.in/company/${s.ticker || s.sym}/`,c:'#a855f7',d:'Annual reports & ratios'},
+          {l:'Economic Times',u:`https://economictimes.indiatimes.com/topic/${s.ticker || s.sym}`,c:'#f97316',d:'Latest news coverage'},
+          {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${s.ticker || s.sym}/${s.ticker || s.sym}`,c:'#00d084',d:'Price & analysis'},
+          {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/`,c:'#64b5f6',d:'Advanced charts'},
+          {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent(s.ticker || s.sym+' NSE stock India')}`,c:'#4285f4',d:'News aggregator'},
         ].map(lk=>`
           <a href="${lk.u}" target="_blank" rel="noopener"
             style="display:flex;align-items:center;gap:12px;padding:11px 13px;
@@ -3632,87 +3630,168 @@ async function loadStockNews(sym,name){
 // MOVERS TAB FUNCTIONS (from app.js)
 // ════════════════════════════════════════════════════════
 
-function renderMoversTab(s){
-  const sym = s.symbol || s.ticker || s.sym;
-  const chg = s.chg1d || s.change || 0;
-  const isUp = chg >= 0;
-  
-  return `<div style="padding:12px 13px 14px;padding-bottom:100px">
+function renderMovers(c){
+  // Universe = portfolio + watchlist stocks only (not stale/irrelevant symbols)
+  const pfSyms = new Set(S.portfolio.map(h=>h.sym));
+  const wlSyms = new Set(S.watchlist.map(w=>w.symbol));
+  const tracked = new Set([...pfSyms, ...wlSyms]);
+
+  // Build live price lookup from portfolio + watchlist (updated by refreshPortfolioData)
+  const livePrices = {};
+  S.portfolio.forEach(h=>{ if(h.ltp>0) livePrices[h.sym] = {ltp:h.ltp, chg:h.change||h.chg1d||0}; });
+  S.watchlist.forEach(w=>{ if(w.ltp>0) livePrices[w.symbol] = {ltp:w.ltp, chg:w.change||0}; });
+
+  const universe = [...tracked]
+    .map(sym=>{
+      const f    = FUND[sym] || {};
+      const live = livePrices[sym] || {};
+      return {
+        sym,
+        ltp:    live.ltp  || f.ltp    || 0,
+        chg:    live.chg  || f.chg1d  || 0,
+        sector: f.sector  || '—',
+        name:   f.name    || sym,
+        mcap:   f.mcap    || 0,
+        pe:     f.pe      || null,
+        inPF:   pfSyms.has(sym),
+      };
+    })
+    .filter(s => s.ltp > 0 && s.chg !== 0);
+
+  // Sort for gainers/losers
+  const gainers = [...universe].sort((a,b)=>b.chg-a.chg).slice(0,8);
+  const losers  = [...universe].sort((a,b)=>a.chg-b.chg).slice(0,8);
+
+  // Index data from FUND (fetched as special symbols)
+  const indexMap = {
+    'NIFTY':            'NIFTY 50',
+    'BANKNIFTY':        'Bank Nifty',
+    'NIFTYMIDCAP100':   'Midcap 100',
+    'CNXIT':            'Nifty IT',
+    'NIFTYPSE':         'Nifty PSE',
+    'NIFTYSMALLCAP100': 'Smallcap 100',
+  };
+  const indices = Object.entries(indexMap).map(([sym, name])=>{
+    const f = FUND[sym] || {};
+    return { name, ltp: f.ltp||0, chg: f.chg1d||0, prev: f.prev||0 };
+  }).filter(i=>i.ltp>0);
+
+  // Sector performance — average chg1d by sector
+  const sectorData = {};
+  universe.forEach(s=>{
+    if(!s.sector||s.sector==='—') return;
+    if(!sectorData[s.sector]) sectorData[s.sector] = {sum:0, n:0};
+    sectorData[s.sector].sum += s.chg;
+    sectorData[s.sector].n++;
+  });
+  const sectors = Object.entries(sectorData)
+    .map(([s,d])=>({name:s, avg: d.sum/d.n}))
+    .filter(s=>s.avg!==0)
+    .sort((a,b)=>Math.abs(b.avg)-Math.abs(a.avg))
+    .slice(0,10);
+
+  const fundLoaded = Object.keys(FUND).length > 0;
+  const fundKeys = Object.keys(FUND);
+  const dataTime = fundKeys.length > 0 && FUND[fundKeys[0]]?.updated
+    ? new Date(FUND[fundKeys[0]].updated).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true})
+    : '—';
+
+  c.innerHTML=`<div class="fin" style="padding:12px 13px 14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--title)">Stock Analytics</div>
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--title)">Market Movers</div>
       <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">
-        ${s.sector || 'N/A'}
+        ${fundLoaded ? universe.length+' stocks · '+dataTime : '⚠ Run Actions to load data'}
       </div>
     </div>
 
-    <!-- Stock Summary Card -->
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--title)">${s.name || sym}</div>
-          <div style="font-size:10px;color:var(--tx3);margin-top:2px">${sym}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:14px;font-weight:700;color:var(--tx1)">₹${(s.ltp || 0).toFixed(2)}</div>
-          <div style="font-size:11px;font-weight:700;color:${isUp ? '#00e896' : '#ff6b85'};margin-top:2px">
-            ${isUp ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%
+    ${!fundLoaded ? `<div style="padding:30px;text-align:center;color:var(--tx3);font-size:11px">
+      No data yet — import portfolio or configure GitHub Sync in Watchlist settings
+    </div>` : `
+
+    <!-- Indices -->
+    ${indices.length ? `<div class="card" style="margin-bottom:10px">
+      <div style="font-weight:700;font-size:11px;color:var(--title);margin-bottom:8px;font-family:'Syne',sans-serif">📊 Index Snapshot</div>
+      ${indices.map(i=>{
+        const up=i.chg>=0;
+        const pts = i.prev>0 ? ((i.chg/100)*i.prev).toFixed(0) : '—';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--b1)">
+          <div style="font-size:11px;font-weight:600;color:var(--tx2)">${i.name}</div>
+          <div style="text-align:right">
+            <div style="font-size:12px;font-weight:700;font-family:var(--mono);color:var(--tx1)">₹${i.ltp.toLocaleString('en-IN')}</div>
+            <div style="font-size:10px;font-weight:700;color:${up?'#00e896':'#ff6b85'}">${up?'▲':'▼'} ${Math.abs(i.chg).toFixed(2)}% ${up?'+':''}${pts}pts</div>
           </div>
-        </div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+
+    <!-- Gainers / Losers -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="card">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:var(--gr2);padding-bottom:7px;margin-bottom:8px;border-bottom:1px solid var(--b1)">🟢 Top Gainers</div>
+        ${gainers.length ? gainers.map(s=>`
+          <div class="mover-row" style="border-left-color:var(--gr)">
+            <div style="min-width:0;flex:1">
+              <div class="mover-sym">${s.sym}</div>
+              <div class="mover-why">${s.sector}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="color:#00e896;font-weight:700;font-size:11px">+${s.chg.toFixed(2)}%</div>
+              <div style="color:var(--tx3);font-size:9px">₹${s.ltp.toFixed(1)}</div>
+            </div>
+          </div>`).join('') : '<div style="color:var(--tx3);font-size:10px">No gainers today</div>'}
       </div>
-      <div style="border-top:1px solid var(--b1);padding-top:8px;margin-top:8px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:9px">
-          <div>
-            <div style="color:var(--tx3);margin-bottom:2px">52W High</div>
-            <div style="color:var(--tx1);font-weight:600">₹${(s.high52w || s.ltp || 0).toFixed(2)}</div>
-          </div>
-          <div>
-            <div style="color:var(--tx3);margin-bottom:2px">52W Low</div>
-            <div style="color:var(--tx1);font-weight:600">₹${(s.low52w || s.ltp || 0).toFixed(2)}</div>
-          </div>
-          <div>
-            <div style="color:var(--tx3);margin-bottom:2px">Market Cap</div>
-            <div style="color:var(--tx1);font-weight:600">${s.mcap ? (s.mcap/10000000000).toFixed(1)+'Cr' : 'N/A'}</div>
-          </div>
-          <div>
-            <div style="color:var(--tx3);margin-bottom:2px">P/E Ratio</div>
-            <div style="color:var(--tx1);font-weight:600">${(s.pe || 'N/A').toFixed ? (s.pe || 0).toFixed(1) : 'N/A'}</div>
-          </div>
-        </div>
+      <div class="card">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:var(--rd2);padding-bottom:7px;margin-bottom:8px;border-bottom:1px solid var(--b1)">🔴 Top Losers</div>
+        ${losers.length ? losers.map(s=>`
+          <div class="mover-row" style="border-left-color:var(--rd)">
+            <div style="min-width:0;flex:1">
+              <div class="mover-sym">${s.sym}</div>
+              <div class="mover-why">${s.sector}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="color:#ff6b85;font-weight:700;font-size:11px">${s.chg.toFixed(2)}%</div>
+              <div style="color:var(--tx3);font-size:9px">₹${s.ltp.toFixed(1)}</div>
+            </div>
+          </div>`).join('') : '<div style="color:var(--tx3);font-size:10px">No losers today</div>'}
       </div>
     </div>
 
-    <!-- Sector Heatmap -->
-    <div class="card" style="margin-bottom:12px">
+    <!-- Sector Heatmap — canvas treemap -->
+    <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title)">🗺 Stock Performance</div>
-        <div style="display:flex;gap:6px;font-size:8px;color:var(--tx3)">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title)">🗺 Sector Heatmap</div>
+        <div style="display:flex;gap:6px;font-size:9px;color:var(--tx3)">
+          <span>Size = Portfolio Value</span>
           <span style="color:#00e896">■ Up</span>
           <span style="color:#ff6b85">■ Down</span>
         </div>
       </div>
-      <canvas id="cv-heatmap" style="width:100%;height:180px;border-radius:6px;cursor:pointer"></canvas>
-      <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1e3350;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--tx1);pointer-events:none;z-index:999"></div>
+      <canvas id="cv-heatmap" style="width:100%;border-radius:6px;cursor:pointer"></canvas>
+      <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1929;border:1px solid #1e3350;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--tx1);pointer-events:none;z-index:999"></div>
     </div>
 
-    <!-- Market Links -->
-    <div class="card">
-      <div style="font-weight:700;font-size:12px;color:var(--title);margin-bottom:8px">🔗 Market Data</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <a href="https://www.nseindia.com/get-quotes/equity?symbol=${sym}" target="_blank" rel="noopener"
-          style="padding:8px 10px;background:var(--card);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #2196f3">
-          NSE Real-time Data
-        </a>
-        <a href="https://www.screener.in/company/${sym}/" target="_blank" rel="noopener"
-          style="padding:8px 10px;background:var(--card);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #a855f7">
-          Screener Financial Data
-        </a>
-        <a href="https://in.tradingview.com/symbols/NSE-${sym}/" target="_blank" rel="noopener"
-          style="padding:8px 10px;background:var(--card);border:1px solid var(--b1);border-radius:4px;text-decoration:none;color:var(--tx);font-size:10px;border-left:3px solid #64b5f6">
-          TradingView Charts
-        </a>
+    <!-- My sector bar chart -->
+    ${sectors.length ? `<div class="card" style="margin-top:10px">
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title);margin-bottom:10px">📊 My Sectors</div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        ${sectors.map(s=>{
+          const up = s.avg>=0;
+          const barW = Math.min(100, Math.abs(s.avg)*15).toFixed(0);
+          return `<div style="display:flex;align-items:center;gap:8px">
+            <div style="width:90px;font-size:9px;color:var(--tx2);text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</div>
+            <div style="flex:1;background:var(--s2);border-radius:3px;height:13px;position:relative;overflow:hidden">
+              <div style="position:absolute;${up?'left:0':'right:0'};top:0;height:100%;width:${barW}%;background:${up?'rgba(0,208,132,.4)':'rgba(255,59,92,.4)'};border-radius:3px"></div>
+            </div>
+            <div style="width:40px;font-size:9px;font-weight:700;color:${up?'#00e896':'#ff6b85'};font-family:var(--mono);text-align:right">${up?'+':''}${s.avg.toFixed(2)}%</div>
+          </div>`;
+        }).join('')}
       </div>
-    </div>
+    </div>` : ''}
+    `}
   </div>`;
+
+  // Draw heatmap after DOM renders
+  requestAnimationFrame(()=>requestAnimationFrame(()=>drawSectorHeatmap(universe)));
 }
 
 function drawSectorHeatmap(universe){
@@ -3721,7 +3800,7 @@ function drawSectorHeatmap(universe){
 
   const dpr = window.devicePixelRatio || 1;
   const W = Math.max(cv.offsetWidth || window.innerWidth - 30, 180);
-  const H = W;
+  const H = W; // perfect square
   cv.width  = W * dpr; cv.height = H * dpr;
   cv.style.width = W+'px'; cv.style.height = H+'px';
   const ctx = cv.getContext('2d');
@@ -3732,67 +3811,182 @@ function drawSectorHeatmap(universe){
   if(!universe.length){
     ctx.fillStyle='rgba(140,176,208,.4)';
     ctx.font='11px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('No stock data', W/2, H/2);
+    ctx.fillText('Add stocks to see heatmap', W/2, H/2);
     return;
   }
 
-  // Simple single-stock visualization
-  const stock = universe[0];
-  const chg = stock.chg1d || stock.change || 0;
-  const isUp = chg >= 0;
-  
-  // Draw main tile
-  const tileW = W * 0.7;
-  const tileH = H * 0.7;
-  const tileX = (W - tileW) / 2;
-  const tileY = (H - tileH) / 2;
-  
-  ctx.fillStyle = isUp ? 'rgba(0,232,150,.9)' : 'rgba(255,107,133,.9)';
-  ctx.beginPath();
-  if(ctx.roundRect) ctx.roundRect(tileX, tileY, tileW, tileH, 8);
-  else { ctx.rect(tileX, tileY, tileW, tileH); }
-  ctx.fill();
-  
-  ctx.strokeStyle = 'rgba(6,12,24,0.8)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  
-  // Text
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  
-  // Symbol
-  ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.font = 'bold 20px sans-serif';
-  ctx.fillText(stock.symbol || stock.ticker || stock.sym, W/2, tileY + tileH*0.35);
-  
-  // Change percentage
-  const sign = isUp ? '+' : '';
-  ctx.fillStyle = isUp ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.95)';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.fillText(sign + chg.toFixed(2) + '%', W/2, tileY + tileH*0.65);
-  
-  ctx.restore();
-  
-  // Legend
-  ctx.fillStyle = 'rgba(140,176,208,.6)';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('Daily Performance', W/2, H - 10);
-  
-  // Click handler
-  cv.onclick = (e) => {
-    const tip = document.getElementById('hm-tooltip');
-    if(tip){
-      const sign = isUp ? '+' : '';
-      tip.innerHTML = '<b style="color:' + (isUp ? '#00e896' : '#ff6b85') + '">' + (stock.name || stock.symbol || stock.ticker || stock.sym) + '</b><br>' +
-        '<b>' + sign + chg.toFixed(2) + '%</b><br>' +
-        '<span style="color:var(--tx3)">LTP: ₹' + (stock.ltp || 0).toFixed(2) + '</span>';
-      tip.style.display = 'block';
-      tip.style.left = Math.min(e.clientX + 10, window.innerWidth - 170) + 'px';
-      tip.style.top = Math.max(e.clientY - 70, 8) + 'px';
-      setTimeout(() => { tip.style.display = 'none'; }, 3000);
+  // Group by sector
+  const sMap = {};
+  universe.forEach(s=>{
+    const sec = (s.sector && s.sector!=='—') ? s.sector : 'Other';
+    if(!sMap[sec]) sMap[sec]={name:sec, holdVal:0, mcap:0, chgSum:0, n:0, stocks:[]};
+    // Use portfolio holding value as size (qty*ltp) — most meaningful for personal portfolio
+    // For watchlist stocks without qty, use mcap rank as proxy
+    const pf = S.portfolio.find(h=>h.sym===s.sym);
+    const holdingVal = pf && pf.ltp>0 ? pf.qty*pf.ltp : 0;
+    sMap[sec].holdVal += holdingVal;
+    sMap[sec].mcap    += (s.mcap||0);
+    sMap[sec].chgSum  += (s.chg||0);
+    sMap[sec].n++;
+    sMap[sec].stocks.push(s);
+  });
+
+  const nodes = Object.values(sMap)
+    .map(d=>({
+      name:   d.name,
+      // Size priority: 1) portfolio holding value, 2) mcap if available, 3) stock count
+      size:   d.holdVal > 0 ? d.holdVal :
+              d.mcap    > 0 ? d.mcap    :
+              d.n * 1000,
+      chg:    d.chgSum / d.n,
+      n:      d.n,
+      stocks: [...d.stocks].sort((a,b)=>Math.abs(b.chg)-Math.abs(a.chg)),
+    }))
+    .sort((a,b)=>b.size-a.size);
+
+  // Normalise sizes to W*H
+  const totalSize = nodes.reduce((a,b)=>a+b.size, 0);
+  nodes.forEach(n=>{ n.size = (n.size/totalSize) * W * H; });
+
+  // Squarified treemap — standard Bruls algorithm
+  const rects = [];
+
+  function worstRatio(row, w){
+    if(!w||!row.length) return Infinity;
+    const s = row.reduce((a,b)=>a+b.size, 0);
+    const maxS = Math.max(...row.map(r=>r.size));
+    const minS = Math.min(...row.map(r=>r.size));
+    return Math.max((w*w*maxS)/(s*s), (s*s)/(w*w*minS));
+  }
+
+  function layoutRow(row, x, y, w, h){
+    const s = row.reduce((a,b)=>a+b.size, 0);
+    let cx=x, cy=y;
+    if(w >= h){
+      // horizontal strip
+      const stripW = s/h;
+      row.forEach(item=>{
+        const ih = item.size / stripW;
+        rects.push({...item,
+          x: Math.max(0,cx), y: Math.max(0,cy),
+          w: Math.min(stripW, W-cx), h: Math.min(ih, H-cy)
+        });
+        cy += ih;
+      });
+      return {x:x+stripW, y:y, w:w-stripW, h:h};
+    } else {
+      // vertical strip
+      const stripH = s/w;
+      row.forEach(item=>{
+        const iw = item.size / stripH;
+        rects.push({...item,
+          x: Math.max(0,cx), y: Math.max(0,cy),
+          w: Math.min(iw, W-cx), h: Math.min(stripH, H-cy)
+        });
+        cx += iw;
+      });
+      return {x:x, y:y+stripH, w:w, h:h-stripH};
+    }
+  }
+
+  function squarify(children, x, y, w, h){
+    if(!children.length||w<1||h<1) return;
+    let row=[], rem=[...children];
+    const shortest = Math.min(w,h);
+    while(rem.length){
+      const test=[...row, rem[0]];
+      if(row.length>0 && worstRatio(test,shortest) > worstRatio(row,shortest)) break;
+      row.push(rem.shift());
+    }
+    const next = layoutRow(row, x, y, w, h);
+    squarify(rem, next.x, next.y, next.w, next.h);
+  }
+
+  squarify(nodes, 0, 0, W, H);
+
+  // Color by % change — use distinct bands for easy reading
+  // -3% and below = deep red, 0 = dark neutral, +3% and above = deep green
+  function tileColor(chg){
+    // Clamp to [-4, +4] range
+    const c = Math.max(-4, Math.min(4, chg));
+    if(c === 0) return 'rgba(35,50,75,0.85)';
+    if(c > 0){
+      // Green intensity: 0.1% = dim, 4% = full bright
+      const t = c / 4;
+      const g = Math.round(80  + 150*t);   // 80 → 230
+      const r = Math.round(5   + 15*t);    // keeps it green not yellow
+      const b = Math.round(10  + 20*t);
+      return 'rgba('+r+','+g+','+b+',0.90)';
+    } else {
+      const t = (-c) / 4;
+      const r = Math.round(80  + 150*t);   // 80 → 230
+      const g = Math.round(10  + 15*t);
+      const b = Math.round(15  + 20*t);
+      return 'rgba('+r+','+g+','+b+',0.90)';
+    }
+  }
+
+  const PAD = 2;
+  rects.forEach(r=>{
+    const rx=r.x+PAD, ry=r.y+PAD, rw=r.w-PAD*2, rh=r.h-PAD*2;
+    if(rw<3||rh<3) return;
+
+    ctx.fillStyle = tileColor(r.chg);
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(rx,ry,rw,rh,3); else ctx.rect(rx,ry,rw,rh);
+    ctx.fill();
+    ctx.strokeStyle='rgba(6,12,24,0.8)'; ctx.lineWidth=1; ctx.stroke();
+
+    if(rw<16||rh<12) return;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(rx,ry,rw,rh); ctx.clip();
+    ctx.textAlign='center';
+    const sign = r.chg>=0?'+':'';
+    const pct  = sign+r.chg.toFixed(2)+'%';
+    const cx   = rx+rw/2;
+
+    if(rw>=54&&rh>=36){
+      const fs=Math.min(12,Math.max(8,Math.floor(Math.min(rw/7,rh/3.5))));
+      ctx.font='700 '+fs+'px \'JetBrains Mono\',monospace';
+      ctx.fillStyle='rgba(255,255,255,0.96)';
+      const lbl=r.name.length>13?r.name.slice(0,12)+'\u2026':r.name;
+      ctx.fillText(lbl, cx, ry+rh*0.42);
+      ctx.font=Math.max(7,fs-1)+'px \'JetBrains Mono\',monospace';
+      ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.95)':'rgba(255,195,195,0.95)';
+      ctx.fillText(pct, cx, ry+rh*0.42+fs+4);
+    } else if(rw>=34&&rh>=22){
+      const fs=Math.min(9,Math.max(6,Math.floor(Math.min(rw/6,rh/3))));
+      ctx.font='700 '+fs+'px monospace';
+      ctx.fillStyle='rgba(255,255,255,0.92)';
+      ctx.fillText(r.name.slice(0,9), cx, ry+rh*0.40);
+      ctx.font=Math.max(6,fs-1)+'px monospace';
+      ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.9)':'rgba(255,195,195,0.9)';
+      ctx.fillText(pct, cx, ry+rh*0.40+fs+3);
+    } else {
+      ctx.font='6px monospace';
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      ctx.fillText(pct, cx, ry+rh/2+3);
+    }
+    ctx.restore();
+  });
+
+  // Tap tooltip
+  cv.onclick=(e)=>{
+    const br=cv.getBoundingClientRect();
+    const scX=W/br.width, scY=H/br.height;
+    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
+    const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
+    const tip=document.getElementById('hm-tooltip');
+    if(hit&&tip){
+      const sign=hit.chg>=0?'+':'';
+      tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
+        +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
+        +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
+        +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.sym+' '+(s.chg>=0?'+':'')+s.chg.toFixed(1)+'%').join('  ')+'</span>';
+      tip.style.display='block';
+      tip.style.left=Math.min(e.clientX+10,window.innerWidth-170)+'px';
+      tip.style.top=Math.max(e.clientY-70,8)+'px';
+      setTimeout(()=>{tip.style.display='none';},3500);
     }
   };
 }
