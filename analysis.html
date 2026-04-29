@@ -922,10 +922,12 @@ function loadGuidanceData(ticker) {
                 }
             })
             .catch(err => {
-                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--rd)">Error loading data: ${err.message}</div>`;
+                console.error('Guidance fetch error:', err.message);
+                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">Guidance data unavailable</div>`;
             });
     } catch (error) {
-        console.error('Error loading guidance:', error);
+        console.error('Guidance error:', error.message);
+        document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">Could not load guidance</div>`;
     }
 }
 
@@ -3611,56 +3613,17 @@ function extractDomain(url){try{return new URL(url).hostname.replace(/^www\./,''
 async function loadStockNews(sym,name){
   const el=document.getElementById('stock-news-list');
   if(!el)return;
-  try{
-    // Try NewsData.io API (alternative to rss2json)
-    const query = sym + ' ' + name;
-    const newsDataUrl = 'https://newsdata.io/api/1/news?q=' + encodeURIComponent(query) + '&language=en&country=in&image=1&sorting=recent';
-    
-    console.log('📰 Trying NewsData API for:', query);
-    
-    const res = await fetch(newsDataUrl);
-    console.log('📰 Response status:', res.status);
-    
-    if(!res.ok) throw new Error('NewsData API failed');
-    
-    const d = await res.json();
-    const items = d.results || [];
-    console.log('📰 News items found:', items.length);
-    
-    if(!items.length){
-      // Fallback: Use Google News direct link
-      console.log('⚠️ No news from API, showing research links');
-      el.innerHTML = `<div class="u-pad14c">
-        <div style="color:var(--tx3);margin-bottom:10px">📊 No automated news available</div>
-        <div style="font-size:10px;color:var(--tx3)">Use research links below to find latest news</div>
-      </div>`;
-      return;
-    }
-    
-    // Render news items
-    el.innerHTML = items.slice(0,8).map(item=>{
-      const{tag,imp} = classifyNews(item.title || '');
-      const src = item.source_id || 'News';
-      const pubDate = item.pubDate || new Date().toISOString();
-      return `<div class="news-item" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none">
-        <div class="news-src">
-          <span>${src}</span>
-          <span class="imp-badge imp-${imp}">${imp==='H'?'HIGH':imp==='M'?'MED':'LOW'}</span>
-          <span class="pill pill-bl" style="font-size:7px">${tag}</span>
-          <span>${timeAgo(new Date(pubDate))}</span>
-        </div>
-        <div class="news-title">${item.title || 'No title'}</div>
-      </div>`;
-    }).join('');
-    
-  }catch(e){
-    console.error('📰 News error:', e.message);
-    // Graceful fallback
-    el.innerHTML = `<div class="u-pad14c" style="color:var(--tx3)">
-      <div style="margin-bottom:8px">📊 News service unavailable</div>
-      <div style="font-size:10px">Check research links below for latest updates</div>
-    </div>`;
-  }
+  
+  console.log('📰 renderNewsTab called for', sym, name);
+  console.log('📰 News auto-fetch disabled - using research links instead');
+  
+  // Show helpful message directing to research links
+  el.innerHTML = `<div class="u-pad14c">
+    <div style="color:var(--tx3);font-size:11px;line-height:1.6;text-align:center">
+      <div style="margin-bottom:8px">🔍 Research Links Loaded</div>
+      <div style="font-size:10px">Use the research links below to find latest news, reports & analysis for <strong>${sym}</strong></div>
+    </div>
+  </div>`;
 }
 
 // ════════════════════════════════════════════════════════
