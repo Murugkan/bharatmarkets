@@ -3613,17 +3613,33 @@ function extractDomain(url){try{return new URL(url).hostname.replace(/^www\./,''
 async function loadStockNews(sym,name){
   const el=document.getElementById('stock-news-list');
   if(!el)return;
-  
-  console.log('📰 renderNewsTab called for', sym, name);
-  console.log('📰 News auto-fetch disabled - using research links instead');
-  
-  // Show helpful message directing to research links
-  el.innerHTML = `<div class="u-pad14c">
-    <div style="color:var(--tx3);font-size:11px;line-height:1.6;text-align:center">
-      <div style="margin-bottom:8px">🔍 Research Links Loaded</div>
-      <div style="font-size:10px">Use the research links below to find latest news, reports & analysis for <strong>${sym}</strong></div>
-    </div>
-  </div>`;
+  try{
+    const query=encodeURIComponent(sym+' '+name+' NSE India stock');
+    const url='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://news.google.com/rss/search?q='+query+'&hl=en-IN&gl=IN&ceid=IN:en')+'&count=8';
+    console.log('📰 Fetching news from:', url.substring(0, 100) + '...');
+    const res=await fetch(url);
+    console.log('📰 Response status:', res.status, res.statusText);
+    const d=await res.json();
+    const items=d.items||[];
+    console.log('📰 Items:', items.length);
+    if(!items.length){el.innerHTML=`<div class="u-pad14c">No recent news for ${sym}</div>`;return;}
+    el.innerHTML=items.map(item=>{
+      const{tag,imp}=classifyNews(item.title);
+      const src=item.source?.name||extractDomain(item.link)||'News';
+      return `<div class="news-item" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none">
+        <div class="news-src">
+          <span>${src}</span>
+          <span class="imp-badge imp-${imp}">${imp==='H'?'HIGH':imp==='M'?'MED':'LOW'}</span>
+          <span class="pill pill-bl" style="font-size:7px">${tag}</span>
+          <span>${timeAgo(new Date(item.pubDate))}</span>
+        </div>
+        <div class="news-title">${item.title}</div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    console.error('📰 Exception:', e.message);
+    el.innerHTML=`<div class="u-pad14c">Could not load news</div>`;
+  }
 }
 
 // ════════════════════════════════════════════════════════
