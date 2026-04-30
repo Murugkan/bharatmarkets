@@ -2674,13 +2674,19 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
+  // ✅ Debounce: skip rapid redraws to prevent freezing with overlays
+  if(scheduleTACharts._pending) return;
+  scheduleTACharts._pending = true;
   
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
-      
-      drawCandlestick(s);
-      if(S.maVis.vol) drawVolume(s);
-      updateChartStats(s);
+      try {
+        drawCandlestick(s);
+        if(S.maVis.vol) drawVolume(s);
+        updateChartStats(s);
+      } finally {
+        scheduleTACharts._pending = false;
+      }
     });
   });
 }
@@ -2979,9 +2985,10 @@ function drawCandlestick(s){
   // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
 
   function xForDate(dateStr){
-    // ✅ FIX: Use FULL history range so KPI positions don't shift when panning
+    // ✅ FIX: Use VISIBLE range (same as candlesticks) for alignment
+    // Quarterly data may fall outside visible range - that's OK, they just won't show
     const t = new Date(dateStr).getTime();
-    return PAD.l + ((t - allFirst) / allRange) * cW;
+    return PAD.l + ((t - visFirst) / visRange) * cW;
   }
 
   // Search FULL history for price on/before a date
@@ -3025,10 +3032,18 @@ function drawCandlestick(s){
       }
     }
 
-      // Keep points that fall within or near visible chart area
+    // ✅ Keep points that fall within or near visible chart area
     // Extend margin so points just outside edges still connect to line
     pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
-    // If nothing visible, show all points spread across full width
+    
+    // ✅ OPTIMIZATION: Limit points per overlay when many overlays enabled
+    const enabledOverlays = Object.values(S.kpiVis).filter(v => v).length;
+    const maxPts = Math.max(4, Math.floor(100 / Math.max(1, enabledOverlays)));
+    if(pts.length > maxPts) {
+      const step = Math.ceil(pts.length / maxPts);
+      pts = pts.filter((p, i) => i % step === 0 || i === pts.length - 1);
+    }
+    
     if(!pts.length && (quarterly.length || s.pe)){
       const allPts2 = [];
       if(k==='pe'){
@@ -3124,7 +3139,7 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=75;
+  const H2=112;  // ✅ Increased 50% from 75 to 112
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;
   cv.height=H2*dpr;
@@ -3646,25 +3661,14 @@ async function loadAndRenderMovers(){
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
     
-    // Calculate real portfolio gain/loss for each holding
-    const withPortfolioGain = portfolio.map(s => ({
-      ...s,
-      holdValue: (s.qty || 0) * (s.ltp || 0),
-      holdCost: (s.qty || 0) * (s.avg || 0),
-      portfolioGain: ((s.qty || 0) * (s.ltp || 0)) - ((s.qty || 0) * (s.avg || 0)),
-      portfolioGainPct: ((s.qty || 0) * (s.avg || 0)) > 0 ? 
-        (((s.qty || 0) * (s.ltp || 0)) - ((s.qty || 0) * (s.avg || 0))) / ((s.qty || 0) * (s.avg || 0)) * 100 : 0
-    }));
-    
-    // Find gainers and losers by portfolio gain (not daily change %)
-    const gainers = [...withPortfolioGain]
-      .filter(s => s.portfolioGain > 0)
-      .sort((a, b) => b.portfolioGain - a.portfolioGain)
+    // Find gainers and losers by daily change % (1d%)
+    const withChange = portfolio.filter(s => s.chg1d !== undefined && s.chg1d !== null);
+    const gainers = [...withChange]
+      .sort((a, b) => (b.chg1d || 0) - (a.chg1d || 0))
       .slice(0, 8);
     
-    const losers = [...withPortfolioGain]
-      .filter(s => s.portfolioGain < 0)
-      .sort((a, b) => a.portfolioGain - b.portfolioGain)
+    const losers = [...withChange]
+      .sort((a, b) => (a.chg1d || 0) - (b.chg1d || 0))
       .slice(0, 8);
     
     
@@ -3707,15 +3711,15 @@ async function loadAndRenderMovers(){
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
           ${gainers.length ? gainers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${(s.qty || 0)} @ ₹${(s.ltp || 0).toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+₹${(s.portfolioGain || 0).toFixed(0)}</div><div style="color:#00e896">${(s.portfolioGainPct || 0).toFixed(1)}%</div></div>
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${((s.chg1d || 0).toFixed(2))}%</div></div>
           </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
         </div>
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
           ${losers.length ? losers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${(s.qty || 0)} @ ₹${(s.ltp || 0).toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">₹${(s.portfolioGain || 0).toFixed(0)}</div><div style="color:#ff6b85">${(s.portfolioGainPct || 0).toFixed(1)}%</div></div>
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${((s.chg1d || 0).toFixed(2))}%</div></div>
           </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
         </div>
       </div>
