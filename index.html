@@ -41,8 +41,10 @@
 <body>
 
 <header>
-    <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
+    <div class="kpi-box"><div class="kpi-label">Portfolio</div><div class="kpi-val" id="k-value">₹0L</div></div>
+    <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="k-invest">₹0L</div></div>
+    <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
+    <div class="kpi-box"><div class="kpi-label">Today</div><div class="kpi-val" id="k-today">₹0L</div></div>
     <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
 </header>
 
@@ -134,6 +136,15 @@ const resolve = (obj, field) => {
         if (obj[cleanT] !== undefined) return obj[cleanT];
     }
     return '—';
+};
+
+// Check if holding is Mutual Fund
+const isMutualFund = (stock) => {
+    const isin = resolve(stock, 'ISIN') || '';
+    const name = resolve(stock, 'NAME') || resolve(stock, 'SYM') || '';
+    if (isin.substring(0, 2) === 'IF') return true;
+    if (name.toUpperCase().includes('FUND') || name.toUpperCase().includes('MF') || name.toUpperCase().includes('SCHEME')) return true;
+    return false;
 };
 
 // ===== READ FROM INDEXEDDB =====
@@ -230,22 +241,47 @@ function render() {
     // Enrich each stock with calculated fields
     MASTER.forEach(s => enrichStock(s));
     
-    let sumPnl = 0, sumInv = 0, sc = {};
-    MASTER.forEach(s => { 
+    // Filter out MF holdings
+    const stocks = MASTER.filter(s => !isMutualFund(s));
+    
+    let sumPnl = 0, sumInv = 0, sumCurrent = 0, sumDayPnL = 0, gainers = 0, losers = 0, sc = {};
+    stocks.forEach(s => { 
         const sec = resolve(s, 'SECTOR') || 'OTHER';
-        sumPnl += cleanNum(resolve(s, 'PNL'));
-        sumInv += cleanNum(resolve(s, 'INVESTED'));
-        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || cleanNum(resolve(s, 'LTP')), 1);
+        const pnl = cleanNum(resolve(s, 'PNL'));
+        const inv = cleanNum(resolve(s, 'INVESTED'));
+        const ltp = cleanNum(resolve(s, 'LTP'));
+        const qty = cleanNum(resolve(s, 'QTY'));
+        const change = cleanNum(resolve(s, '1D%'));
+        
+        sumPnl += pnl;
+        sumInv += inv;
+        sumCurrent += qty * ltp;
+        sumDayPnL += (qty * ltp * change) / (100 + change);
+        if(change > 0) gainers++;
+        if(change < 0) losers++;
+        
+        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || ltp, 1);
         sc[sec] = (sc[sec] || 0) + weight; 
     });
-    document.getElementById('k-count').textContent = MASTER.length;
+    
+    // Update KPI boxes
+    document.getElementById('k-value').textContent = '₹' + (sumCurrent/100000).toFixed(2) + 'L';
+    document.getElementById('k-value').style.color = 'var(--bl)';
+    document.getElementById('k-invest').textContent = '₹' + (sumInv/100000).toFixed(2) + 'L';
+    document.getElementById('k-invest').style.color = 'var(--tx)';
+    
     const pEl = document.getElementById('k-pnl');
     pEl.textContent = '₹' + (sumPnl/100000).toFixed(2) + 'L';
     pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
+    
+    const todayEl = document.getElementById('k-today');
+    todayEl.textContent = '₹' + (sumDayPnL/100000).toFixed(2) + 'L (' + gainers + '▲' + losers + '▼)';
+    todayEl.style.color = sumDayPnL >= 0 ? 'var(--gr)' : 'var(--rd)';
+    
     const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
     document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
-    let rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : MASTER.slice();
+    let rows = filter ? stocks.filter(s => resolve(s, 'SECTOR') === filter) : stocks.slice();
     rows.sort((a, b) => {
         let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
         let nA = cleanNum(vA), nB = cleanNum(vB);
