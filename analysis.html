@@ -291,12 +291,7 @@ async function loadStock() {
             }
         }
         
-        
         renderHeader();
-        
-        // Load guidance data from localStorage or external source
-        loadGuidanceData(ticker);
-        
         renderTab('overview');
     } catch(e) {
         console.error('Error:', e);
@@ -318,22 +313,6 @@ function renderHeader() {
 }
 
 // Load guidance data
-async function loadGuidanceData(ticker) {
-    try {
-        // Try to fetch from guidance.json (same domain)
-        const response = await fetch('guidance.json');
-        if (response.ok) {
-            const data = await response.json();
-            if (data[ticker]) {
-                localStorage.setItem(`guidance_${ticker}`, JSON.stringify(data[ticker]));
-                
-            }
-        }
-    } catch (e) {
-        
-    }
-}
-
 // Switch tabs
 function switchTab(tab) {
     currentTab = tab;
@@ -907,51 +886,6 @@ loadStock();
 // ANALYSIS TAB DISPLAY FUNCTIONS
 // ============================================================================
 
-function loadGuidanceData(ticker) {
-    try {
-        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
-        
-        fetch(rawUrl)
-            .then(r => r.json())
-            .then(data => {
-                const guidance = data[ticker.toUpperCase()]?.guidance;
-                if (guidance) {
-                    renderFundamentalsTab(ticker, guidance);
-                } else {
-                    document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">No guidance data for ${ticker}</div>`;
-                }
-            })
-            .catch(err => {
-                console.error('Guidance fetch error:', err.message);
-                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">Guidance data unavailable</div>`;
-            });
-    } catch (error) {
-        console.error('Guidance error:', error.message);
-        document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">Could not load guidance</div>`;
-    }
-}
-
-function loadInsightsData(ticker) {
-    try {
-        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/${GITHUB_CONFIG.PATHS.guidance}`;
-        
-        fetch(rawUrl)
-            .then(r => r.json())
-            .then(data => {
-                const insights = data[ticker.toUpperCase()]?.insights;
-                if (insights) {
-                    renderInsightsTab(ticker, insights);
-                } else {
-                    document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--tx3)">No insights data for ${ticker}</div>`;
-                }
-            })
-            .catch(err => {
-                document.getElementById('content').innerHTML = `<div style="padding:20px;color:var(--rd)">Error loading data: ${err.message}</div>`;
-            });
-    } catch (error) {
-        console.error('Error loading insights:', error);
-    }
-}
 
 function renderFundamentalsTab(ticker, guidance) {
     let html = `
@@ -2372,7 +2306,6 @@ async function renderTechnicalPro(stock) {
     
     
     if (validPrices.length === 0) {
-        console.error(`❌ No valid price data! Check if close prices are null.`);
     }
     
     // VALIDATE EMA SERIES
@@ -2385,7 +2318,6 @@ async function renderTechnicalPro(stock) {
         const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
         
         if (!validPoints || validPoints.length === 0) {
-            console.error(`❌ ${seriesName}: NO valid data points! Type: ${seriesType}`);
         } else {
             
         }
@@ -2594,7 +2526,6 @@ async function renderTechnicalPro(stock) {
         
         
     } catch (err) {
-        console.error('❌ Chart 1 error:', err.message);
         document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
     }
     
@@ -2676,7 +2607,6 @@ async function renderTechnicalPro(stock) {
         const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
         
         if (!validPoints || validPoints.length === 0) {
-            console.error(`❌ ${seriesName}: NO valid data points!`);
         } else {
             
         }
@@ -2695,7 +2625,6 @@ async function renderTechnicalPro(stock) {
         // Charts are independent - users can pan each separately
         // Charts ready - pan/zoom works independently
     } catch (err) {
-        console.error('❌ Chart 2 error:', err.message);
         document.getElementById('chartPro2').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
     }
     
@@ -3559,7 +3488,6 @@ document.addEventListener('DOMContentLoaded', setupChartInteraction);
 // ════════════════════════════════════════════════════════
 
 function renderNewsTab(s){
-  console.log('📰 renderNewsTab called for', s.ticker || s.sym, s.name);
   return `<div>
     <div style="padding:10px 12px 4px">
       <div class="sec-lbl">📰 News Sources</div>
@@ -3616,12 +3544,9 @@ async function loadStockNews(sym,name){
   try{
     const query=encodeURIComponent(sym+' '+name+' NSE India stock');
     const url='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://news.google.com/rss/search?q='+query+'&hl=en-IN&gl=IN&ceid=IN:en')+'&count=8';
-    console.log('📰 Fetching news from:', url.substring(0, 100) + '...');
     const res=await fetch(url);
-    console.log('📰 Response status:', res.status, res.statusText);
     const d=await res.json();
     const items=d.items||[];
-    console.log('📰 Items:', items.length);
     if(!items.length){el.innerHTML=`<div class="u-pad14c">No recent news for ${sym}</div>`;return;}
     el.innerHTML=items.map(item=>{
       const{tag,imp}=classifyNews(item.title);
@@ -3637,7 +3562,6 @@ async function loadStockNews(sym,name){
       </div>`;
     }).join('');
   }catch(e){
-    console.error('📰 Exception:', e.message);
     el.innerHTML=`<div class="u-pad14c">Could not load news</div>`;
   }
 }
@@ -3659,18 +3583,15 @@ async function loadAndRenderMovers(){
   }
   
   c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading from IndexedDB...</div>';
-  console.log('Movers: Opening IndexedDB');
   
   try {
     // Open IndexedDB - this is where portfolio data actually lives
     const db = await new Promise((resolve, reject) => {
       const req = indexedDB.open('OnyxPortfolioDB');
       req.onsuccess = () => {
-        console.log('✅ IndexedDB opened');
         resolve(req.result);
       };
       req.onerror = () => {
-        console.error('❌ IndexedDB open failed:', req.error);
         reject(new Error('Cannot open database'));
       };
     });
@@ -3682,11 +3603,9 @@ async function loadAndRenderMovers(){
       const req = store.getAll();
       
       req.onsuccess = () => {
-        console.log('✅ Fetched', req.result.length, 'stocks from Stocks store');
         resolve(req.result || []);
       };
       req.onerror = () => {
-        console.error('❌ Error reading Stocks store:', req.error);
         reject(new Error('Cannot read stocks'));
       };
     });
@@ -3695,7 +3614,6 @@ async function loadAndRenderMovers(){
     
     // Filter stocks that have qty > 0 (actual portfolio holdings)
     const portfolio = allStocks.filter(s => (s.qty || 0) > 0);
-    console.log('Movers: Portfolio has', portfolio.length, 'holdings with qty > 0');
     console.log('Total stocks in DB:', allStocks.length, 'Portfolio holdings:', portfolio.length);
     
     if(!portfolio || !portfolio.length){
@@ -3716,14 +3634,12 @@ async function loadAndRenderMovers(){
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
-    console.log('Movers: Portfolio value ₹' + totalVal.toFixed(0) + ' Gain ₹' + totalGain.toFixed(0) + ' (' + gainPct.toFixed(2) + '%)');
     
     // Find gainers and losers by change %
     const withChange = portfolio.filter(s => s.chg1d !== undefined && s.chg1d !== 0);
     const gainers = [...withChange].sort((a, b) => (b.chg1d || 0) - (a.chg1d || 0)).slice(0, 8);
     const losers = [...withChange].sort((a, b) => (a.chg1d || 0) - (b.chg1d || 0)).slice(0, 8);
     
-    console.log('Movers: Gainers:', gainers.length, 'Losers:', losers.length);
     
     // Sector aggregation
     const sectorMap = {};
@@ -3809,11 +3725,9 @@ async function loadAndRenderMovers(){
       </div>
     </div>`;
     
-    console.log('Movers: Rendered successfully');
     
     // Draw heatmap after DOM renders
     setTimeout(() => {
-      console.log('Movers: Drawing heatmap for', portfolio.length, 'stocks');
       drawPortfolioHeatmap(portfolio);
     }, 200);
     
@@ -3832,7 +3746,6 @@ function drawPortfolioHeatmap(portfolio){
   console.log('Canvas found:', !!cv);
   
   if(!cv) {
-    console.error('❌ Canvas cv-heatmap not found');
     return;
   }
   
@@ -3850,14 +3763,12 @@ function drawPortfolioHeatmap(portfolio){
   
   const ctx = cv.getContext('2d');
   if(!ctx) {
-    console.error('❌ Could not get canvas context');
     return;
   }
   
   ctx.scale(dpr, dpr);
   ctx.fillStyle = '#060c18';
   ctx.fillRect(0, 0, W, H);
-  console.log('✅ Canvas cleared and scaled');
 
   if(!portfolio || !portfolio.length){
     ctx.fillStyle='rgba(140,176,208,.4)';
