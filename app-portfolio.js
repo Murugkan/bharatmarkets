@@ -1,10 +1,9 @@
 // ─────────────────────────────────────────────────────────────
-//  PORTFOLIO MODULE - ENHANCED v2.0
-//  Enhancements:
+//  PORTFOLIO MODULE - ENHANCED
+//  Improvements:
 //    ✓ Summary row with: Total Value, Investment, Profit, Today's PNL
-//    ✓ Mutual Fund (MF) filtering - excluded from portfolio view  
+//    ✓ Mutual Fund (MF) filtering - excluded from portfolio view
 //    ✓ Cleaner first row display of key metrics
-//    ✓ Reduced documents - no MF files included
 //
 //  Data sources:
 //    prices.json       → LTP, %1D, %5D, P/E, P/B, EPS, MCAP, 52Wk
@@ -99,6 +98,7 @@ const SECTOR_MAP = {
 
 // ─────────────────────────────────────────────────────────────
 //  SECTION 1 — Pure utility functions (no DOM, no globals)
+//  These are the testable units.
 // ─────────────────────────────────────────────────────────────
 
 function cellColor(val, goodAbove, badBelow) {
@@ -115,6 +115,7 @@ function normSector(raw){
   return SECTOR_MAP[raw] || raw;
 }
 
+// Color a cell green/amber/red by threshold
 function cc(val, greenAbove, redBelow){
   if(val===null||val===undefined||isNaN(val)) return '';
   if(val>=greenAbove) return CSS.GRN_B;
@@ -122,17 +123,20 @@ function cc(val, greenAbove, redBelow){
   return CSS.NEU;
 }
 
+// Row background tint by signal
 function rowBg(sig){
   if(sig==='BUY')  return 'background:rgba(0,160,80,.13)';
   if(sig==='SELL') return 'background:rgba(200,30,50,.13)';
   return '';
 }
 
+// Format number — dash for null/NaN
 function fn(v, dp=1, prefix='', suffix=''){
   if(v===null||v===undefined||isNaN(v)) return '<span class="u-dark">—</span>';
   return prefix+Number(v).toFixed(dp)+suffix;
 }
 
+// Format crore value with K/L suffix
 function fnCr(v){
   if(v===null||v===undefined||isNaN(v)) return '<span class="u-dark">—</span>';
   if(v>=100000) return (v/100000).toFixed(1)+'LCr';
@@ -140,6 +144,7 @@ function fnCr(v){
   return v.toFixed(0)+'Cr';
 }
 
+// Bullish signal count
 function computePos(h, f){
   let pos=0;
   const roe=f.roe||h.roe||0, pe=f.pe||h.pe||0, opm=f.opm_pct||0;
@@ -156,6 +161,7 @@ function computePos(h, f){
   return pos;
 }
 
+// Bearish signal count
 function computeNeg(h, f){
   let neg=0;
   const roe=f.roe||h.roe||0, pe=f.pe||h.pe||0, opm=f.opm_pct||0;
@@ -171,6 +177,7 @@ function computeNeg(h, f){
   return neg;
 }
 
+// Signal from local data when fundamentals.json unavailable
 function calcSignalLocal(h, f){
   let pos=0, neg=0;
   const roe=h.roe||f.roe||0, pe=h.pe||f.pe||0;
@@ -187,13 +194,13 @@ function calcSignalLocal(h, f){
 function isMutualFund(h, f){
   const isinCode=h.isin?.substring(0,2)||'';
   const name=(h.name||h.sym||'').toUpperCase();
-  // Identify MF by ISIN code (INF = Mutual Fund), name patterns, or sector
-  if(isinCode==='IN') return false; // Regular equity
-  if(isinCode==='IF') return true;  // Mutual Fund ISIN
+  // Identify MF by ISIN code (IF = Mutual Fund), name patterns, or sector
+  if(isinCode==='IF') return true;  // Mutual Fund ISIN prefix
   if(name.includes('FUND')||name.includes('MF')||name.includes('SCHEME')) return true;
   return false;
 }
 
+// Merge one holding with its FUND entry — normalises sector at merge time
 function mergeHolding(h){
   const f=FUND[h.sym]||{};
   const liveLtp=h.liveLtp||f.ltp||0;
@@ -234,6 +241,7 @@ function mergeHolding(h){
   };
 }
 
+// Aggregate portfolio totals from merged holdings
 function calcPortfolioTotals(pf){
   // Filter out Mutual Funds
   const stocks = pf.filter(h => !h.isMF);
@@ -254,6 +262,7 @@ function calcPortfolioTotals(pf){
   };
 }
 
+// Build sector allocation map from merged holdings
 function calcSectorMap(pf){
   const stocks = pf.filter(h => !h.isMF);
   const sMap={};
@@ -266,6 +275,7 @@ function calcSectorMap(pf){
   return {sMap, sTotal, sectors};
 }
 
+// Filter + sort rows — pure, no side effects
 function filterRows(pf, filt, secFilt, srch){
   let rows = pf.filter(h => !h.isMF); // Exclude MF holdings
   if(filt!=='All') rows = rows.filter(h=>h.signal===filt);
@@ -274,6 +284,7 @@ function filterRows(pf, filt, secFilt, srch){
   return rows;
 }
 
+// Sort rows in-place
 function sortRows(rows, skey, sdir){
   rows.sort((a,b)=>{
     let av,bv;
@@ -347,29 +358,35 @@ function renderTableHead(){
 
 // ── NEW: Render Summary Row with Key Metrics ────────────────────
 function renderSummaryRow(totals) {
+  if(!totals) return '';
   const pnlUp = totals.totalPnL >= 0;
   const dayUp = totals.dayPnL >= 0;
   const pCol = pnlUp ? '#00e896' : '#ff6b85';
   const dCol = dayUp ? '#00e896' : '#ff6b85';
+  const invVal = (totals.totalInv/100000).toFixed(2);
+  const curVal = (totals.totalCur/100000).toFixed(2);
+  const pnlVal = (Math.abs(totals.totalPnL)/100000).toFixed(2);
+  const dayVal = (Math.abs(totals.dayPnL)/100000).toFixed(2);
+  const pnlPct = (totals.pnlPct).toFixed(2);
 
-  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:16px;background:rgba(0,0,0,.3);border-radius:8px;margin-bottom:16px;border:1px solid rgba(100,181,246,.2)">
-    <div style="text-align:center">
-      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Portfolio Value</div>
-      <div style="font-size:18px;font-weight:700;color:#64b5f6">₹${(totals.totalCur/100000).toFixed(2)}L</div>
+  return `<div style="display:flex;justify-content:space-around;align-items:center;padding:20px 12px;background:#050a12;border-bottom:2px solid rgba(100,181,246,.3);margin-bottom:12px">
+    <div style="text-align:center;flex:1">
+      <div style="font-size:10px;color:#8eb0d0;text-transform:uppercase;margin-bottom:8px;letter-spacing:.8px;font-weight:600">Portfolio Value</div>
+      <div style="font-size:20px;font-weight:900;color:#64b5f6">₹${curVal}L</div>
     </div>
-    <div style="text-align:center">
-      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Invested</div>
-      <div style="font-size:18px;font-weight:700;color:#fff">₹${(totals.totalInv/100000).toFixed(2)}L</div>
+    <div style="text-align:center;flex:1;border-left:1px solid rgba(100,181,246,.2);border-right:1px solid rgba(100,181,246,.2)">
+      <div style="font-size:10px;color:#8eb0d0;text-transform:uppercase;margin-bottom:8px;letter-spacing:.8px;font-weight:600">Invested</div>
+      <div style="font-size:20px;font-weight:900;color:#fff">₹${invVal}L</div>
     </div>
-    <div style="text-align:center">
-      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Total P&L</div>
-      <div style="font-size:18px;font-weight:700;color:${pCol}">${pnlUp?'+':''}₹${(Math.abs(totals.totalPnL)/100000).toFixed(2)}L</div>
-      <div style="font-size:11px;color:${pCol};margin-top:4px">${totals.pnlPct.toFixed(2)}%</div>
+    <div style="text-align:center;flex:1;border-right:1px solid rgba(100,181,246,.2)">
+      <div style="font-size:10px;color:#8eb0d0;text-transform:uppercase;margin-bottom:8px;letter-spacing:.8px;font-weight:600">Total P&L</div>
+      <div style="font-size:20px;font-weight:900;color:${pCol}">${pnlUp?'+':''}₹${pnlVal}L</div>
+      <div style="font-size:9px;color:${pCol};margin-top:4px;font-weight:700">${pnlUp?'+':''}${pnlPct}%</div>
     </div>
-    <div style="text-align:center">
-      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Today's PNL</div>
-      <div style="font-size:18px;font-weight:700;color:${dCol}">${dayUp?'+':''}₹${(Math.abs(totals.dayPnL)/100000).toFixed(2)}L</div>
-      <div style="font-size:11px;color:${dCol};margin-top:4px">${totals.gainers}▲ ${totals.losers}▼</div>
+    <div style="text-align:center;flex:1">
+      <div style="font-size:10px;color:#8eb0d0;text-transform:uppercase;margin-bottom:8px;letter-spacing:.8px;font-weight:600">Today's PNL</div>
+      <div style="font-size:20px;font-weight:900;color:${dCol}">${dayUp?'+':''}₹${dayVal}L</div>
+      <div style="font-size:9px;color:${dCol};margin-top:4px;font-weight:700">${totals.gainers}▲ ${totals.losers}▼</div>
     </div>
   </div>`;
 }
@@ -484,6 +501,7 @@ function renderFundBanner(){
 </div>`;
 }
 
+// Render all data rows for the screener table
 function renderBLSRows(rows, totalCur){
   return rows.map(h=>{
     const ltp=h.ltp||0;
@@ -494,6 +512,7 @@ function renderBLSRows(rows, totalCur){
     const wt=cur!==null&&totalCur>0?cur/totalCur*100:0;
     const sig=h.signal||'HOLD';
 
+    // Cell styles — now reference CSS constants instead of inline strings
     const c1d  = h.chg1d>=0  ? CSS.GRN_BD : CSS.RED_BD;
     const c5d  = h.chg5d>=0  ? CSS.GRN    : CSS.RED;
     const cROE = cc(h.roe, 15, 8);
@@ -552,6 +571,7 @@ function renderBLSRows(rows, totalCur){
 // ─────────────────────────────────────────────────────────────
 
 function renderPortfolio(c){
+  // Search-active fast path: update only tbody to preserve input focus
   const activeEl=document.activeElement;
   if(activeEl&&activeEl.id==='pf-search'){
     const tbody=document.getElementById('bls-tbody');
@@ -581,8 +601,17 @@ function renderPortfolio(c){
   const rows    = filterRows(pf, S.pfFilter||'All', S.pfSector||'', (S.pfSearch||'').toUpperCase().trim());
   sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');
 
+  // LOG WINDOW - Debug Info
+  const logInfo = `Portfolio: ${pf.length} | Stocks: ${pf.filter(h=>!h.isMF).length} | MF: ${pf.filter(h=>h.isMF).length} | Value: ₹${(totals.totalCur/100000).toFixed(2)}L | P&L: ₹${(totals.totalPnL/100000).toFixed(2)}L`;
+  console.log('PORTFOLIO DEBUG:', logInfo);
+  console.log('Totals:', totals);
+  console.log('Summary HTML:', renderSummaryRow(totals));
+
   c.innerHTML=`<div class="bls">
 <div id="pf-status-strip"></div>
+<div style="background:#0a1428;border:1px solid #ff6b85;border-radius:6px;padding:10px;margin:10px 12px;font-size:10px;font-family:monospace;color:#ff6b85;overflow-x:auto">
+  <strong>LOG:</strong> ${logInfo}
+</div>
 ${renderSummaryRow(totals)}
 ${renderKpiStrip(totals, pf)}
 ${renderSectorBar(sectors, sTotal)}
