@@ -20,7 +20,7 @@
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
         .leg.on { color:#fff; font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 130px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:60px; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 110px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:20px; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#666; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
         th.active { color: var(--bl); }
@@ -89,7 +89,7 @@ function showToast(msg) {
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
 let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false;
-const UI_FIELDS = ['SECTOR', 'TICKER', 'SIGNAL', 'LTP', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', '1D%', 'POS', 'NEG', 'PE', 'PB', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
+const UI_FIELDS = ['SN', 'SECTOR', 'POS', 'NEG', 'SIGNAL', 'OV', 'TICKER', 'LTP', '1D%', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'PE', 'PB', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
 
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
@@ -110,6 +110,7 @@ const resolve = (obj, field) => {
     const mappings = { 
         'TICKER':['ticker','SYM','SYMBOL','TICKER'], 
         'SIGNAL':['signal','SIGNAL','TECH_SIGNAL'],
+        'OV':['ov','OV'],
         'PNL':['pnl','PNL','P/L'], 
         'PNL%':['pnlPct','PNL%','PNL_PCT'], 
         '1D%':['changePct','1D%','CHANGE_1D','CHANGE'], 
@@ -249,6 +250,14 @@ function enrichStock(stock) {
         stock.pnlPct = ((ltp - avg) / avg) * 100;
     }
     
+    // Calculate OV (Overview signal) from POS/NEG
+    const pos = cleanNum(resolve(stock, 'POS'));
+    const neg = cleanNum(resolve(stock, 'NEG'));
+    const net = pos - neg;
+    if (net >= 2) stock.ov = 'BUY';
+    else if (net <= -2) stock.ov = 'SELL';
+    else stock.ov = 'HOLD';
+    
     return stock;
 }
 
@@ -303,38 +312,45 @@ function render() {
         return sortAsc ? nA - nB : nB - nA;
     });
     let h = '<table><thead><tr>';
-    UI_FIELDS.forEach(f => h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='SECTOR'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>');
+    UI_FIELDS.forEach(f => {
+        if (f === 'SN') h += '<th style="width:40px;text-align:center">#</th>';
+        else h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='TICKER'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>';
+    });
     h += '</tr></thead><tbody>';
-    rows.forEach(s => {
-        const ticker = resolve(s, 'SYM');
+    rows.forEach((s, idx) => {
+        const ticker = resolve(s, 'TICKER');
         h += '<tr style="cursor:pointer;" onclick="window.location.href=\'analysis.html?drill=' + encodeURIComponent(ticker) + '\'">';
         UI_FIELDS.forEach(f => {
-            const raw = resolve(s, f);
-            const val = fmt(raw, f);
-            let cls = f === 'SECTOR' ? 'sticky' : '';
-            const n = cleanNum(raw);
-            if (f === 'SIGNAL' && val) {
-                const sig = val.toString().toUpperCase();
-                let emoji = '⚪';
-                let color = 'var(--tx3)';
-                if (sig === 'BUY') { emoji = '📈'; color = 'var(--gr)'; }
-                else if (sig === 'SELL') { emoji = '📉'; color = 'var(--rd)'; }
-                h += '<td class="' + cls + '" style="color:' + color + ';font-weight:800;">' + emoji + ' ' + sig + '</td>';
-            }
+            if (f === 'SN') h += '<td class="sticky" style="text-align:center;background:#0a0a0a;">' + (idx + 1) + '</td>';
             else {
-                if (n !== 0) {
-                    if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
-                    if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+                const raw = resolve(s, f);
+                const val = fmt(raw, f);
+                let cls = f === 'TICKER' ? 'sticky' : '';
+                const n = cleanNum(raw);
+                if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += '<td class="' + cls + '"><span class="sig-buy">BUY</span></td>';
+                else if (f === 'OV') {
+                    const ov = val.toString().toUpperCase();
+                    let ovCls = '';
+                    if (ov === 'BUY') ovCls = ' pos';
+                    else if (ov === 'SELL') ovCls = ' neg';
+                    h += '<td class="' + cls + ovCls + '">' + ov + '</td>';
                 }
-                h += '<td class="' + cls + '">' + val + '</td>';
+                else {
+                    if (n !== 0) {
+                        if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
+                        if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+                    }
+                    h += '<td class="' + cls + '">' + val + '</td>';
+                }
             }
         });
         h += '</tr>';
     });
     h += '</tbody><tfoot><tr>';
     UI_FIELDS.forEach(f => {
-        let cls = f === 'SECTOR' ? 'sticky' : '';
-        if (f === 'SECTOR') h += '<td class="' + cls + '">TOTAL</td>';
+        let cls = f === 'TICKER' ? 'sticky' : '';
+        if (f === 'SN') h += '<td style="text-align:center;background:#0a0a0a;"></td>';
+        else if (f === 'TICKER') h += '<td class="' + cls + '">TOTAL</td>';
         else if (f === 'PNL') h += '<td class="' + (sumPnl>=0?'pos':'neg') + '">' + fmt(sumPnl, 'PNL') + '</td>';
         else if (f === 'INVESTED') h += '<td>' + fmt(sumInv, 'INVESTED') + '</td>';
         else h += '<td class="' + cls + '"></td>';
