@@ -1,5 +1,11 @@
 // ─────────────────────────────────────────────────────────────
-//  PORTFOLIO MODULE
+//  PORTFOLIO MODULE - ENHANCED v2.0
+//  Enhancements:
+//    ✓ Summary row with: Total Value, Investment, Profit, Today's PNL
+//    ✓ Mutual Fund (MF) filtering - excluded from portfolio view  
+//    ✓ Cleaner first row display of key metrics
+//    ✓ Reduced documents - no MF files included
+//
 //  Data sources:
 //    prices.json       → LTP, %1D, %5D, P/E, P/B, EPS, MCAP, 52Wk
 //    fundamentals.json → ATH%, Prom%, Pledge%, OPM%, NPM%, ROE,
@@ -10,9 +16,6 @@
 // ─────────────────────────────────────────────────────────────
 
 // ── Style constants ───────────────────────────────────────────
-// Previously these were inlined 8-15× each across renderBLSRows.
-// Named here once; referencing a variable costs far fewer tokens
-// than repeating the string literal at every call-site.
 const CSS = {
   GRN:    'background:#003a20;color:#fff',
   GRN_B:  'background:#003a20;color:#fff;font-weight:600',
@@ -26,10 +29,7 @@ const CSS = {
 };
 
 // ── Column definitions ────────────────────────────────────────
-// Previously 29 hardcoded <th> lines in renderPortfolio.
-// Now a single source of truth: key → sort key, label, optional title.
 const TH_COLS = [
-  // key, label, [title]
   ['sym',    'Ticker'],
   ['sector', 'Sector'],
   ['pos',    'Pos',   'Bullish signals'],
@@ -60,16 +60,12 @@ const TH_COLS = [
   ['wt',     'Wt%'],
   ['sig',    'Sig'],
 ];
-// First two columns are fixed-left (sticky), rest scroll
+
 const FIX_COLS = new Set(['sym','sector']);
-// String-typed sort columns default to asc; all others default to desc
 const STR_COLS = new Set(['sym','sector','name','sig']);
 
 // ── Sector map ────────────────────────────────────────────────
-// Previously rebuilt as a literal object inside normSector() on every call.
-// Defined once at module level so lookup is O(1) with zero allocation cost.
 const SECTOR_MAP = {
-  // CDSL names
   'Auto Ancillaries':'Auto','Automobiles':'Auto',
   'Banks':'Banking','Bank':'Banking',
   'Pharmaceutical':'Pharma','Pharmaceuticals':'Pharma',
@@ -94,9 +90,7 @@ const SECTOR_MAP = {
   'Health Care':'Pharma','Healthcare':'Pharma',
   'Shipping':'Infrastructure','Steel':'Metals',
   'Construction':'Infrastructure',
-  // yfinance names
   'Technology':'IT','Real Estate':'Real Estate','Energy':'Energy',
-  // misc
   'Dry cells':'Capital Goods','Cables':'Capital Goods',
   'Alcoholic Beverages':'Consumer',
   'ETF':'Diversified','Finance':'Finance',
@@ -105,7 +99,6 @@ const SECTOR_MAP = {
 
 // ─────────────────────────────────────────────────────────────
 //  SECTION 1 — Pure utility functions (no DOM, no globals)
-//  These are the testable units.
 // ─────────────────────────────────────────────────────────────
 
 function cellColor(val, goodAbove, badBelow) {
@@ -122,7 +115,6 @@ function normSector(raw){
   return SECTOR_MAP[raw] || raw;
 }
 
-// Color a cell green/amber/red by threshold
 function cc(val, greenAbove, redBelow){
   if(val===null||val===undefined||isNaN(val)) return '';
   if(val>=greenAbove) return CSS.GRN_B;
@@ -130,20 +122,17 @@ function cc(val, greenAbove, redBelow){
   return CSS.NEU;
 }
 
-// Row background tint by signal
 function rowBg(sig){
   if(sig==='BUY')  return 'background:rgba(0,160,80,.13)';
   if(sig==='SELL') return 'background:rgba(200,30,50,.13)';
   return '';
 }
 
-// Format number — dash for null/NaN
 function fn(v, dp=1, prefix='', suffix=''){
   if(v===null||v===undefined||isNaN(v)) return '<span class="u-dark">—</span>';
   return prefix+Number(v).toFixed(dp)+suffix;
 }
 
-// Format crore value with K/L suffix
 function fnCr(v){
   if(v===null||v===undefined||isNaN(v)) return '<span class="u-dark">—</span>';
   if(v>=100000) return (v/100000).toFixed(1)+'LCr';
@@ -151,7 +140,6 @@ function fnCr(v){
   return v.toFixed(0)+'Cr';
 }
 
-// Bullish signal count
 function computePos(h, f){
   let pos=0;
   const roe=f.roe||h.roe||0, pe=f.pe||h.pe||0, opm=f.opm_pct||0;
@@ -168,7 +156,6 @@ function computePos(h, f){
   return pos;
 }
 
-// Bearish signal count
 function computeNeg(h, f){
   let neg=0;
   const roe=f.roe||h.roe||0, pe=f.pe||h.pe||0, opm=f.opm_pct||0;
@@ -184,7 +171,6 @@ function computeNeg(h, f){
   return neg;
 }
 
-// Signal from local data when fundamentals.json unavailable
 function calcSignalLocal(h, f){
   let pos=0, neg=0;
   const roe=h.roe||f.roe||0, pe=h.pe||f.pe||0;
@@ -197,7 +183,17 @@ function calcSignalLocal(h, f){
   return net>=2?'BUY':net<=-2?'SELL':'HOLD';
 }
 
-// Merge one holding with its FUND entry — normalises sector at merge time
+// ── NEW: Check if holding is Mutual Fund (to exclude) ────────
+function isMutualFund(h, f){
+  const isinCode=h.isin?.substring(0,2)||'';
+  const name=(h.name||h.sym||'').toUpperCase();
+  // Identify MF by ISIN code (INF = Mutual Fund), name patterns, or sector
+  if(isinCode==='IN') return false; // Regular equity
+  if(isinCode==='IF') return true;  // Mutual Fund ISIN
+  if(name.includes('FUND')||name.includes('MF')||name.includes('SCHEME')) return true;
+  return false;
+}
+
 function mergeHolding(h){
   const f=FUND[h.sym]||{};
   const liveLtp=h.liveLtp||f.ltp||0;
@@ -234,13 +230,15 @@ function mergeHolding(h){
     signal:     f.signal||calcSignalLocal(h,f),
     pos:        f.pos||computePos(h,f),
     neg:        f.neg||computeNeg(h,f),
+    isMF:       isMutualFund(h, f),
   };
 }
 
-// Aggregate portfolio totals from merged holdings
 function calcPortfolioTotals(pf){
-  const priced   = pf.filter(h=>h.ltp>0);
-  const totalInv = pf.reduce((a,h)=>a+h.qty*(h.avgBuy||0), 0);
+  // Filter out Mutual Funds
+  const stocks = pf.filter(h => !h.isMF);
+  const priced   = stocks.filter(h=>h.ltp>0);
+  const totalInv = stocks.reduce((a,h)=>a+h.qty*(h.avgBuy||0), 0);
   const totalCur = priced.reduce((a,h)=>a+h.qty*h.ltp, 0);
   const invPriced= priced.reduce((a,h)=>a+h.qty*(h.avgBuy||0), 0);
   const totalPnL = totalCur-invPriced;
@@ -248,17 +246,18 @@ function calcPortfolioTotals(pf){
   const dayPnL   = priced.reduce((a,h)=>{ const c=h.chg1d||0; return a+h.qty*h.ltp*c/(100+c); },0);
   return {
     priced, totalInv, totalCur, invPriced, totalPnL, pnlPct, dayPnL,
-    gainers: pf.filter(h=>h.chg1d>0).length,
-    losers:  pf.filter(h=>h.chg1d<0).length,
-    buys:    pf.filter(h=>h.signal==='BUY').length,
-    sells:   pf.filter(h=>h.signal==='SELL').length,
+    gainers: stocks.filter(h=>h.chg1d>0).length,
+    losers:  stocks.filter(h=>h.chg1d<0).length,
+    buys:    stocks.filter(h=>h.signal==='BUY').length,
+    sells:   stocks.filter(h=>h.signal==='SELL').length,
+    mfCount: pf.filter(h=>h.isMF).length,
   };
 }
 
-// Build sector allocation map from merged holdings
 function calcSectorMap(pf){
+  const stocks = pf.filter(h => !h.isMF);
   const sMap={};
-  pf.forEach(h=>{
+  stocks.forEach(h=>{
     const s=h.sector||'Other';
     sMap[s]=(sMap[s]||0)+h.qty*(h.ltp||h.avgBuy||0);
   });
@@ -267,15 +266,14 @@ function calcSectorMap(pf){
   return {sMap, sTotal, sectors};
 }
 
-// Filter + sort rows — pure, no side effects
 function filterRows(pf, filt, secFilt, srch){
-  let rows = filt==='All' ? [...pf] : pf.filter(h=>h.signal===filt);
+  let rows = pf.filter(h => !h.isMF); // Exclude MF holdings
+  if(filt!=='All') rows = rows.filter(h=>h.signal===filt);
   if(secFilt) rows=rows.filter(h=>h.sector===secFilt);
   if(srch)    rows=rows.filter(h=>h.sym.includes(srch)||(h.name||'').toUpperCase().includes(srch));
   return rows;
 }
 
-// Sort rows in-place
 function sortRows(rows, skey, sdir){
   rows.sort((a,b)=>{
     let av,bv;
@@ -347,6 +345,35 @@ function renderTableHead(){
   return `<thead><tr>${ths}</tr></thead>`;
 }
 
+// ── NEW: Render Summary Row with Key Metrics ────────────────────
+function renderSummaryRow(totals) {
+  const pnlUp = totals.totalPnL >= 0;
+  const dayUp = totals.dayPnL >= 0;
+  const pCol = pnlUp ? '#00e896' : '#ff6b85';
+  const dCol = dayUp ? '#00e896' : '#ff6b85';
+
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:16px;background:rgba(0,0,0,.3);border-radius:8px;margin-bottom:16px;border:1px solid rgba(100,181,246,.2)">
+    <div style="text-align:center">
+      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Portfolio Value</div>
+      <div style="font-size:18px;font-weight:700;color:#64b5f6">₹${(totals.totalCur/100000).toFixed(2)}L</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Invested</div>
+      <div style="font-size:18px;font-weight:700;color:#fff">₹${(totals.totalInv/100000).toFixed(2)}L</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Total P&L</div>
+      <div style="font-size:18px;font-weight:700;color:${pCol}">${pnlUp?'+':''}₹${(Math.abs(totals.totalPnL)/100000).toFixed(2)}L</div>
+      <div style="font-size:11px;color:${pCol};margin-top:4px">${totals.pnlPct.toFixed(2)}%</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:11px;color:#8eb0d0;text-transform:uppercase;margin-bottom:6px">Today's PNL</div>
+      <div style="font-size:18px;font-weight:700;color:${dCol}">${dayUp?'+':''}₹${(Math.abs(totals.dayPnL)/100000).toFixed(2)}L</div>
+      <div style="font-size:11px;color:${dCol};margin-top:4px">${totals.gainers}▲ ${totals.losers}▼</div>
+    </div>
+  </div>`;
+}
+
 function renderKpiStrip(t, pf){
   const pnlUp=t.totalPnL>=0, dayUp=t.dayPnL>=0;
   const pCol=pnlUp?'#00e896':'#ff6b85', dCol=dayUp?'#00e896':'#ff6b85';
@@ -356,13 +383,18 @@ function renderKpiStrip(t, pf){
   const pTxt=ps==='ok'?'#00e896':ps==='fail'?'#ff6b85':'#4a6888';
   const fTxt=fs==='ok'?'#00e896':fs==='stale'?'#ffbf47':'#4a6888';
   const fmtTs=(ts)=>ts?new Date(ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:false}):'—';
+  const stocks = pf.filter(h => !h.isMF).length;
+  
   return `<div class="kpi-strip" id="kpi-strip-el">
+  <div class="kpi"><div class="kpi-l">Stocks</div>
+    <div class="kpi-v" style="color:#64b5f6">${stocks}</div>
+    <div class="kpi-s">${t.priced.filter(h=>!h.isMF).length} priced</div></div>
   <div class="kpi"><div class="kpi-l">Invested</div>
-    <div class="kpi-v" style="color:#64b5f6">₹${(t.totalInv/100000).toFixed(2)}L</div>
-    <div class="kpi-s">${pf.length} stocks</div></div>
+    <div class="kpi-v">₹${(t.totalInv/100000).toFixed(2)}L</div>
+    <div class="kpi-s">Total</div></div>
   <div class="kpi"><div class="kpi-l">Mkt Value</div>
     <div class="kpi-v">₹${(t.totalCur/100000).toFixed(2)}L</div>
-    <div class="kpi-s">${t.priced.length}/${pf.length} priced</div></div>
+    <div class="kpi-s">Current</div></div>
   <div class="kpi"><div class="kpi-l">Total P&L</div>
     <div class="kpi-v" style="color:${pCol}">₹${(Math.abs(t.totalPnL)/100000).toFixed(2)}L</div>
     <div class="kpi-s" style="color:${pnlUp?'#00d084':'#ff3b5c'}">${t.pnlPct.toFixed(2)}%</div></div>
@@ -452,7 +484,6 @@ function renderFundBanner(){
 </div>`;
 }
 
-// Render all data rows for the screener table
 function renderBLSRows(rows, totalCur){
   return rows.map(h=>{
     const ltp=h.ltp||0;
@@ -463,7 +494,6 @@ function renderBLSRows(rows, totalCur){
     const wt=cur!==null&&totalCur>0?cur/totalCur*100:0;
     const sig=h.signal||'HOLD';
 
-    // Cell styles — now reference CSS constants instead of inline strings
     const c1d  = h.chg1d>=0  ? CSS.GRN_BD : CSS.RED_BD;
     const c5d  = h.chg5d>=0  ? CSS.GRN    : CSS.RED;
     const cROE = cc(h.roe, 15, 8);
@@ -522,7 +552,6 @@ function renderBLSRows(rows, totalCur){
 // ─────────────────────────────────────────────────────────────
 
 function renderPortfolio(c){
-  // Search-active fast path: update only tbody to preserve input focus
   const activeEl=document.activeElement;
   if(activeEl&&activeEl.id==='pf-search'){
     const tbody=document.getElementById('bls-tbody');
@@ -530,7 +559,7 @@ function renderPortfolio(c){
       const pf2=S.portfolio.map(mergeHolding);
       const rows2=filterRows(pf2, S.pfFilter||'All', S.pfSector||'', (S.pfSearch||'').trim());
       sortRows(rows2, S.pfSort||'wt', S.pfSortDir||'desc');
-      const tc2=pf2.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
+      const tc2=pf2.filter(h=>!h.isMF&&h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
       tbody.innerHTML=renderBLSRows(rows2,tc2);
       return;
     }
@@ -554,6 +583,7 @@ function renderPortfolio(c){
 
   c.innerHTML=`<div class="bls">
 <div id="pf-status-strip"></div>
+${renderSummaryRow(totals)}
 ${renderKpiStrip(totals, pf)}
 ${renderSectorBar(sectors, sTotal)}
 ${renderToolbar()}
@@ -591,7 +621,7 @@ function pfSearchUpdate(val){
   const pf=S.portfolio.map(mergeHolding);
   const rows=filterRows(pf, S.pfFilter||'All', S.pfSector||'', S.pfSearch.trim());
   sortRows(rows, S.pfSort||'wt', S.pfSortDir||'desc');
-  const tc=pf.filter(h=>h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
+  const tc=pf.filter(h=>!h.isMF&&h.ltp>0).reduce((a,h)=>a+h.qty*h.ltp,0);
   tbody.innerHTML=renderBLSRows(rows,tc);
 }
 
