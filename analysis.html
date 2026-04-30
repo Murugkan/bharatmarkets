@@ -2776,6 +2776,11 @@ function drawCandlestick(s){
   const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
   const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
+  
+  // ✅ FIX: KPI overlays use FULL history range for correct positioning during pan
+  const allFirst = allCandles.length ? new Date(allCandles[0].d).getTime() : visFirst;
+  const allLast = allCandles.length ? new Date(allCandles[allCandles.length-1].d).getTime() : visLast;
+  const allRange = allLast - allFirst || 1;
 
   const allPrices=candles.flatMap(c=>[c.h,c.l]);
   if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
@@ -2971,11 +2976,12 @@ function drawCandlestick(s){
   ];
 
   // Use FULL candle history for price lookups — not just visible slice
-  // (allCandles, visFirst, visRange already defined above)
+  // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
 
   function xForDate(dateStr){
+    // ✅ FIX: Use FULL history range so KPI positions don't shift when panning
     const t = new Date(dateStr).getTime();
-    return PAD.l + ((t - visFirst) / visRange) * cW;
+    return PAD.l + ((t - allFirst) / allRange) * cW;
   }
 
   // Search FULL history for price on/before a date
@@ -3137,6 +3143,11 @@ function drawVolume(s){
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
   const mv=Math.max(...candles.map(c=>c.v))||1;
+  
+  // Calculate price range from candles for labels
+  const allPrices = candles.map(c=>c.h).concat(candles.map(c=>c.l));
+  const startPrice = Math.max(...allPrices) || s.ltp || 0;
+  const endPrice = Math.min(...allPrices) || s.ltp || 0;
   
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
@@ -3635,10 +3646,26 @@ async function loadAndRenderMovers(){
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
     
-    // Find gainers and losers by change %
-    const withChange = portfolio.filter(s => s.chg1d !== undefined && s.chg1d !== 0);
-    const gainers = [...withChange].sort((a, b) => (b.chg1d || 0) - (a.chg1d || 0)).slice(0, 8);
-    const losers = [...withChange].sort((a, b) => (a.chg1d || 0) - (b.chg1d || 0)).slice(0, 8);
+    // Calculate real portfolio gain/loss for each holding
+    const withPortfolioGain = portfolio.map(s => ({
+      ...s,
+      holdValue: (s.qty || 0) * (s.ltp || 0),
+      holdCost: (s.qty || 0) * (s.avg || 0),
+      portfolioGain: ((s.qty || 0) * (s.ltp || 0)) - ((s.qty || 0) * (s.avg || 0)),
+      portfolioGainPct: ((s.qty || 0) * (s.avg || 0)) > 0 ? 
+        (((s.qty || 0) * (s.ltp || 0)) - ((s.qty || 0) * (s.avg || 0))) / ((s.qty || 0) * (s.avg || 0)) * 100 : 0
+    }));
+    
+    // Find gainers and losers by portfolio gain (not daily change %)
+    const gainers = [...withPortfolioGain]
+      .filter(s => s.portfolioGain > 0)
+      .sort((a, b) => b.portfolioGain - a.portfolioGain)
+      .slice(0, 8);
+    
+    const losers = [...withPortfolioGain]
+      .filter(s => s.portfolioGain < 0)
+      .sort((a, b) => a.portfolioGain - b.portfolioGain)
+      .slice(0, 8);
     
     
     // Sector aggregation
@@ -3680,15 +3707,15 @@ async function loadAndRenderMovers(){
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
           ${gainers.length ? gainers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${s.sector || '—'}</div></div>
-            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${(s.chg1d || 0).toFixed(2)}%</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${(s.qty || 0)} @ ₹${(s.ltp || 0).toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+₹${(s.portfolioGain || 0).toFixed(0)}</div><div style="color:#00e896">${(s.portfolioGainPct || 0).toFixed(1)}%</div></div>
           </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
         </div>
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
           ${losers.length ? losers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${s.sector || '—'}</div></div>
-            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${(s.chg1d || 0).toFixed(2)}%</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">${(s.qty || 0)} @ ₹${(s.ltp || 0).toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">₹${(s.portfolioGain || 0).toFixed(0)}</div><div style="color:#ff6b85">${(s.portfolioGainPct || 0).toFixed(1)}%</div></div>
           </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
         </div>
       </div>
