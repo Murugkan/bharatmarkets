@@ -20,7 +20,7 @@
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#aaa; cursor:pointer; }
         .leg.on { color:#fff; font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 110px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:200px; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 110px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:80px; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#999; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
         th.active { color: var(--bl); }
@@ -248,7 +248,9 @@ async function init() {
                     // Log sample data loaded
                     if (MASTER.length > 0) {
                         const sample = MASTER[0];
-                        addDebugLog(`📌 Sample: ${resolve(sample,'SYM')} | LTP: ${resolve(sample,'LTP')} | PE: ${resolve(sample,'PE')} | OPM: ${resolve(sample,'OPM%')}`);
+                        addDebugLog(`📌 Sample: ${resolve(sample,'TICKER')} | LTP: ${resolve(sample,'LTP')} | PE: ${resolve(sample,'PE')} | OPM: ${resolve(sample,'OPM%')}`);
+                        addDebugLog(`🔍 ACTUAL FIELDS IN DB: ${JSON.stringify(Object.keys(sample))}`);
+                        addDebugLog(`📊 RAW DATA: ${JSON.stringify(sample)}`);
                     }
     statusEl.style.display = "none";
     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
@@ -325,8 +327,8 @@ function render() {
     const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
     // Sort SECTORS by weight (descending) so largest sectors appear first
     SECTORS = SECTORS.sort((a, b) => (sc[b] || 0) - (sc[a] || 0));
-    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" onclick="tap(\'' + sec + '\')" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '"></div>').join('');
-    document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
+    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" onclick="tap(\'' + sec.replace(/'/g, "\\'") + '\')" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '"></div>').join('');
+    document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec.replace(/'/g, "\\'") + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
     let rows = stocks.slice();
     if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
     if (searchQuery) rows = rows.filter(s => resolve(s, 'TICKER').toString().toUpperCase().includes(searchQuery.toUpperCase()));
