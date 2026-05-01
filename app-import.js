@@ -152,9 +152,9 @@ function showImportUI() {
             'padding:20px;background:#0a0a0a;border-radius:12px;max-width:900px;' +
             '">';
         
-        // Step indicator
-        html += '<div style="margin-bottom:10px;font-size:12px;color:#555;font-family:monospace;">' +
-            'Step ' + importState.step + ' of ' + CONFIG.TOTAL_STEPS + ': ';
+        // Step indicator - BRIGHT TITLE
+        html += '<div style="margin-bottom:15px;font-size:18px;font-weight:bold;color:#00ff88;">' +
+            'Step ' + importState.step + ' of ' + CONFIG.TOTAL_STEPS + ' — ';
         
         html += CONFIG.STEP_TITLES[importState.step - 1];
         html += '</div>';
@@ -568,29 +568,38 @@ function renderStep2() {
 function addManualEntries() {
     var textarea = document.getElementById("manual-entries");
     var entries = textarea.value.split("\n").filter(function(l) { return l.trim().length > 0; });
+    var addedCount = 0;
     
     entries.forEach(function(entry) {
         var parts = entry.split(",").map(function(p) { return p.trim(); });
         var name = parts[0];
         
         if (name && !importState.stocks.find(function(s) { return s.name === name; })) {
-            var qty = parts.length > 1 ? parseFloat(parts[1]) : null;
-            var avg = parts.length > 2 ? parseFloat(parts[2]) : null;
+            var qty = parts.length > 1 && parts[1] ? parseFloat(parts[1]) : null;
+            var avg = parts.length > 2 && parts[2] ? parseFloat(parts[2]) : null;
             
             importState.stocks.push({
                 name: name,
                 isin: "",
-                qty: qty || null,
-                avg: avg || null,
+                qty: qty,
+                avg: avg,
                 sector: "",
                 industry: "",
                 type: (qty && avg) ? "PORTFOLIO" : "WATCHLIST",
                 status: ""
             });
+            addedCount++;
         }
     });
     
     textarea.value = "";
+    
+    if (addedCount > 0) {
+        alert("✅ Added " + addedCount + " stock(s)");
+    } else {
+        alert("⚠️ No new stocks added (duplicates or empty names)");
+    }
+    
     showImportUI();
     renderStep2Preview();
 }
@@ -657,7 +666,8 @@ function copyPrompt() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep4() {
-    var hasStocks = importState.stocks && importState.stocks.length > 0;
+    var hasResponse = document.getElementById('ai-response') && document.getElementById('ai-response').value.trim().length > 0;
+    
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📋 Paste Response Data (Optional)</h3>' +
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
@@ -672,9 +682,9 @@ function renderStep4() {
         '<button onclick="manuallyParseStep4()" style="margin-top:10px;padding:8px 16px;background:#ffb347;' +
         'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Data</button>' +
         
-        '<div id="step4-status" style="margin:10px 0;font-size:12px;">' + 
-        (hasStocks ? '<span style="color:#00ff88;">✅ ' + importState.stocks.length + ' stocks loaded</span>' : 
-                     '<span style="color:#ff6b85;">❌ No stocks - Go to Step 1</span>') +
+        '<div id="step4-status" style="margin:10px 0;font-size:12px;color:#888;">' + 
+        (hasResponse ? '<span style="color:#00ff88;">✅ Data ready to parse</span>' : 
+                      '<span>⏳ Paste data above and click Parse</span>') +
         '</div>' +
         '</div>';
 }
@@ -813,14 +823,25 @@ function renderStep5() {
 }
 
 function sortStocks(field) {
+    if (!importState.stocks || importState.stocks.length === 0) {
+        return;
+    }
+    
     importState.stocks.sort(function(a, b) {
         var aVal = a[field];
         var bVal = b[field];
         
-        if (typeof aVal === "string") {
+        // Handle null/undefined
+        if (aVal === null || aVal === undefined) aVal = "";
+        if (bVal === null || bVal === undefined) bVal = "";
+        
+        if (typeof aVal === "string" && typeof bVal === "string") {
             return aVal.localeCompare(bVal);
         } else {
-            return aVal - bVal;
+            // Convert to number for numeric fields
+            var aNum = parseFloat(aVal) || 0;
+            var bNum = parseFloat(bVal) || 0;
+            return aNum - bNum;
         }
     });
     
@@ -1078,43 +1099,46 @@ function renderStep6() {
     html += '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
         (isPATConfigured ? '#00ff88' : '#ffb347') + ';">' +
         '<div style="color:' + (isPATConfigured ? '#00ff88' : '#ffb347') + ';font-weight:bold;margin-bottom:10px;">' +
-        (isPATConfigured ? '✅ GitHub Ready' : '⚠️ Configure GitHub (Optional)') +
+        (isPATConfigured ? '✅ GitHub Configured' : '⚠️ Configure GitHub (Optional)') +
         '</div>';
     
     if (isPATConfigured) {
-        html += '<div style="font-size:11px;color:#888;">' +
+        html += '<div style="font-size:11px;color:#ccc;margin-bottom:10px;">' +
             'User: <b>' + ghUser + '</b><br>' +
             'Repo: <b>' + ghRepo + '</b><br>' +
             'PAT: <b>' + ghPAT.substring(0, 10) + '...</b>' +
             '</div>' +
-            '<button onclick="toggleGitHubConfig()" style="margin-top:10px;padding:8px 16px;background:#444;' +
-            'color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;">Edit Config</button>';
-    } else {
-        html += '<div id="github-config" style="display:none;margin-bottom:10px;">';
-        html += '<div style="margin:8px 0;">' +
-            '<label style="color:#888;font-size:11px;">GitHub PAT:</label><br>' +
-            '<input type="password" id="ghPAT" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;' +
-            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;' +
-            'box-sizing:border-box;">' +
-            '</div>';
-        html += '<div style="margin:8px 0;">' +
-            '<label style="color:#888;font-size:11px;">GitHub User:</label><br>' +
-            '<input type="text" id="ghUser" placeholder="murugkan" style="width:100%;padding:8px;' +
-            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
-            'box-sizing:border-box;">' +
-            '</div>';
-        html += '<div style="margin:8px 0;">' +
-            '<label style="color:#888;font-size:11px;">GitHub Repo:</label><br>' +
-            '<input type="text" id="ghRepo" placeholder="bharatmarkets" style="width:100%;padding:8px;' +
-            'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
-            'box-sizing:border-box;">' +
-            '</div>';
-        html += '<button onclick="saveGitHubConfig()" style="margin-top:10px;padding:8px 16px;background:#00ff88;' +
-            'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">Save Config</button>' +
-            '</div>' +
-            '<button onclick="toggleGitHubConfig()" style="padding:8px 16px;background:#444;color:#fff;' +
-            'border:none;border-radius:6px;cursor:pointer;font-size:11px;">Configure GitHub</button>';
+            '<button onclick="editGitHubConfig()" style="padding:8px 16px;background:#ffb347;color:#000;' +
+            'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">✏️ Edit PAT</button>';
     }
+    
+    // Config form (always show if not configured OR if editing)
+    html += '<div id="github-config-form" style="' + (isPATConfigured ? 'display:none;' : '') + 'margin-top:10px;">';
+    html += '<div style="margin:8px 0;">' +
+        '<label style="color:#ccc;font-size:11px;">GitHub PAT:</label><br>' +
+        '<input type="password" id="ghPAT" value="' + ghPAT + '" placeholder="ghp_xxxxxxxxxxxxx" style="width:100%;padding:8px;' +
+        'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-family:monospace;font-size:11px;margin-top:4px;' +
+        'box-sizing:border-box;">' +
+        '</div>';
+    html += '<div style="margin:8px 0;">' +
+        '<label style="color:#ccc;font-size:11px;">GitHub User:</label><br>' +
+        '<input type="text" id="ghUser" value="' + ghUser + '" placeholder="username" style="width:100%;padding:8px;' +
+        'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
+        'box-sizing:border-box;">' +
+        '</div>';
+    html += '<div style="margin:8px 0;">' +
+        '<label style="color:#ccc;font-size:11px;">GitHub Repo:</label><br>' +
+        '<input type="text" id="ghRepo" value="' + ghRepo + '" placeholder="repo-name" style="width:100%;padding:8px;' +
+        'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
+        'box-sizing:border-box;">' +
+        '</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
+        '<button onclick="saveGitHubConfig()" style="flex:1;padding:8px 16px;background:#00ff88;color:#000;' +
+        'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">✅ Save</button>' +
+        '<button onclick="cancelGitHubEdit()" style="flex:1;padding:8px 16px;background:#444;color:#fff;' +
+        'border:none;border-radius:6px;cursor:pointer;font-size:11px;">Cancel</button>' +
+        '</div>' +
+        '</div>';
     
     html += '</div>';
     
@@ -1181,21 +1205,36 @@ function toggleGitHubConfig() {
     }
 }
 
+function editGitHubConfig() {
+    var form = document.getElementById('github-config-form');
+    if (form) {
+        form.style.display = 'block';
+    }
+}
+
+function cancelGitHubEdit() {
+    var form = document.getElementById('github-config-form');
+    var ghPAT = localStorage.getItem('ghPAT') || '';
+    if (form && ghPAT) {
+        form.style.display = 'none';
+    }
+}
+
 function saveGitHubConfig() {
-    var pat = document.getElementById('ghPAT').value;
-    var user = document.getElementById('ghUser').value;
-    var repo = document.getElementById('ghRepo').value;
+    var pat = document.getElementById("ghPAT").value;
+    var user = document.getElementById("ghUser").value;
+    var repo = document.getElementById("ghRepo").value;
     
     if (!pat || !user || !repo) {
-        alert('Please fill all fields');
+        alert("⚠️ Please fill all fields");
         return;
     }
     
-    localStorage.setItem('ghPAT', pat);
-    localStorage.setItem('ghUser', user);
-    localStorage.setItem('ghRepo', repo);
+    localStorage.setItem("ghPAT", pat);
+    localStorage.setItem("ghUser", user);
+    localStorage.setItem("ghRepo", repo);
     
-    alert('✅ GitHub configuration saved!');
+    alert("✅ GitHub configuration saved!");
     showImportUI();
 }
 
