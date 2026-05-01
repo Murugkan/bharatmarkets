@@ -147,7 +147,7 @@ function openImportWorkflow() {
 function showImportUI() {
     try {
         var html = '<div id="import-wizard" style="' +
-            'padding:12px;background:#0a0a0a;border-radius:12px;max-width:100%;margin:0 5px;' +
+            'padding:8px;background:#0a0a0a;border-radius:0;margin:0;' +
             '">';
         
         // Step indicator - BRIGHT TITLE
@@ -158,7 +158,7 @@ function showImportUI() {
         html += '</div>';
         
         // TOP BUTTONS - no scrolling needed
-        html += '<div style="margin-bottom:15px;display:flex;gap:8px;justify-content:flex-end;">' +
+        html += '<div style="margin-bottom:15px;display:flex;gap:4px;justify-content:flex-end;">' +
             '<button onclick="closeImportModal()" style="padding:8px 16px;background:#333;border:none;color:#fff;' +
             'border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button>' +
             (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:8px 16px;background:#444;' +
@@ -197,7 +197,7 @@ function showImportUI() {
         }
         
         modal.innerHTML = '<div style="background:#000;border:1px solid #222;border-radius:12px;' +
-            'padding:20px;max-height:90vh;overflow-y:auto;width:90%;max-width:900px;margin:20px;">' +
+            'padding:8px;max-height:90vh;overflow-y:auto;width:100%;margin:0;box-sizing:border-box;">' +
             html + 
             '</div>';
         
@@ -224,13 +224,13 @@ function showImportUI() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep1() {
-    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+    return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
-        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
         '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50<br>' +
         '</div>' +
-        '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
+        '<div style="margin:8px 0;padding:10px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
         'id="drop-zone" onclick="document.getElementById(\'file-input\').click()" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">' +
         '<div style="font-size:32px;margin-bottom:10px;">📁</div>' +
@@ -239,8 +239,8 @@ function renderStep1() {
         '</div>' +
         '<input type="file" id="file-input" accept=".csv,.xls,.xlsx,.tsv,.txt" style="display:none;" ' +
         'onchange="handleImportFile(this.files[0])">' +
-        '<div id="file-status" style="margin:10px 0;font-size:12px;color:#666;"></div>' +
-        '<div id="step1-preview" style="margin:10px 0;"></div>' +
+        '<div id="file-status" style="margin:6px 0;font-size:12px;color:#666;"></div>' +
+        '<div id="step1-preview" style="margin:6px 0;"></div>' +
         '</div>';
 }
 
@@ -514,7 +514,7 @@ function processImportCSV(csv) {
 function renderStep1Preview() {
     if (importState.stocks.length === 0) return;
     
-    var html = '<div style="margin:15px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:300px;">' +
+    var html = '<div style="margin:8px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:300px;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
         '<th style="padding:6px;text-align:left;color:#00ff88;">Stock Name</th>' +
@@ -531,7 +531,7 @@ function renderStep1Preview() {
     });
     
     html += '</table></div>' +
-        '<div style="margin:10px 0;font-size:11px;color:#00ff88;">' +
+        '<div style="margin:6px 0;font-size:11px;color:#00ff88;">' +
         '✅ Loaded: ' + importState.stocks.length + ' stocks' +
         '</div>';
     
@@ -544,14 +544,14 @@ function renderStep1Preview() {
 
 function renderStep2() {
     var existingCount = importState.stocks.length;
-    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">' +
+    return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+        '<div style="display:flex;gap:6px;margin-bottom:15px;align-items:center;">' +
         '<button onclick="addManualEntries()" style="padding:8px 16px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">➕ Add Entries</button>' +
         '<span id="step2-status" style="font-size:12px;color:#888;">Total: ' + existingCount + ' stocks</span>' +
         '</div>' +
         
-        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format:</b> Name, Qty (opt), Avg (opt) - One per line<br>' +
         '<b style="color:#ffb347;">Example:</b> Apple,5,150 or Google (watchlist)<br>' +
         '</div>' +
@@ -561,7 +561,7 @@ function renderStep2() {
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
         'placeholder="Stock Name,QTY,AVG or just Stock Name"></textarea>' +
         
-        '<div id="step2-message" style="margin:10px 0;font-size:12px;color:#888;"></div>' +
+        '<div id="step2-message" style="margin:6px 0;font-size:12px;color:#888;"></div>' +
         '<div id="step2-preview"></div>' +
         '</div>';
 }
@@ -624,7 +624,7 @@ function addManualEntries() {
 function renderStep2Preview() {
     if (importState.stocks.length === 0) return;
     
-    var html = '<div style="margin:15px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:250px;">' +
+    var html = '<div style="margin:8px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:250px;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:10px;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
         '<th style="padding:4px;text-align:left;color:#00ff88;">Name</th>' +
@@ -656,13 +656,13 @@ function renderStep3() {
         "Name,Ticker,ISIN,Sector,Industry\n" +
         "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n";
     
-    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+    return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:15px;">' +
         '<button onclick="copyPrompt()" style="padding:8px 16px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📋 Copy Prompt</button>' +
         '</div>' +
         
-        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         'Copy prompt → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
         '</div>' +
         
@@ -688,17 +688,15 @@ function renderStep4() {
     var hasResponse = textarea && textarea.value.trim().length > 0;
     var stockCount = importState.stocks ? importState.stocks.length : 0;
     
-    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">' +
-        '<button onclick="manuallyParseStep4()" style="padding:8px 16px;background:#ffb347;' +
-        'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Data</button>' +
-        '<span id="step4-status" style="font-size:12px;">' + 
-        (hasResponse ? '<span style="color:#00ff88;">✅ Ready to enrich ' + stockCount + ' stocks</span>' : 
-                      '<span style="color:#888;">Paste data for ' + stockCount + ' stocks</span>') +
+    return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+        '<div style="margin-bottom:8px;font-size:12px;">' +
+        '<span id="step4-status">' + 
+        (hasResponse ? '<span style="color:#00ff88;">✅ Data pasted. Click Next to parse & enrich.</span>' : 
+                      '<span style="color:#888;">Paste data for ' + stockCount + ' stocks below</span>') +
         '</span>' +
         '</div>' +
         
-        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#ffb347;">Paste:</b> Name, Ticker, ISIN, Sector (any delimiter)' +
         '</div>' +
         
@@ -707,7 +705,7 @@ function renderStep4() {
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
         'placeholder="Paste here..."></textarea>' +
         
-        '<div id="step4-result" style="margin:10px 0;font-size:12px;color:#00ff88;"></div>' +
+        '<div id="step4-result" style="margin:6px 0;font-size:12px;color:#00ff88;"></div>' +
         '</div>';
 }
 
@@ -806,9 +804,9 @@ function parseAIResponse(delimiter) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep5() {
-    var html = '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+    var html = '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📝 Edit & Validate</h3>' +
-        '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:500px;overflow-y:auto;">' +
+        '<div style="margin:6px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:500px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
         '<tr style="background:#222;border-bottom:1px solid #333;position:sticky;top:0;">' +
         '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;" onclick="sortStocks(\'name\')">▼ Name</th>' +
@@ -842,7 +840,7 @@ function renderStep5() {
     });
     
     html += '</table></div>' +
-        '<div style="margin:15px 0;font-size:12px;color:#ccc;">' +
+        '<div style="margin:8px 0;font-size:12px;color:#ccc;">' +
         'Total: ' + importState.stocks.length + ' stocks (P=Portfolio, W=Watchlist)' +
         '</div>' +
         '</div>';
@@ -926,10 +924,10 @@ function showCustomConfirm(message, callback) {
     
     var contentDiv = document.createElement('div');
     contentDiv.style.cssText = 'background:#0a0a0a;border:2px solid #00ff88;border-radius:8px;' +
-        'padding:20px;max-width:300px;text-align:center;color:#fff;';
+        'padding:10px;max-width:300px;text-align:center;color:#fff;';
     
     contentDiv.innerHTML = '<div style="margin-bottom:15px;font-size:14px;color:#00ff88;">' + message + '</div>' +
-        '<div style="display:flex;gap:10px;">' +
+        '<div style="display:flex;gap:6px;">' +
             '<button id="confirm-yes" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;' +
                 'border-radius:6px;font-weight:bold;cursor:pointer;">Yes, Delete</button>' +
             '<button id="confirm-no" style="flex:1;padding:10px;background:#444;color:#fff;border:none;' +
@@ -1097,11 +1095,11 @@ function renderStep6() {
         }
     });
     
-    var html = '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+    var html = '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 15px 0;color:#00ff88;font-size:16px;font-weight:bold;">💾 Save & Backup to GitHub (Step 6)</h3>';
     
     // Add counts display
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:15px 0;">' +
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;">' +
         '<div style="background:#001a00;padding:15px;border-radius:8px;border:1px solid #00ff88;text-align:center;">' +
             '<div style="font-size:28px;color:#00ff88;font-weight:bold;">' + portfolioCount + '</div>' +
             '<div style="font-size:12px;color:#ccc;margin-top:8px;">Portfolio</div>' +
@@ -1112,14 +1110,14 @@ function renderStep6() {
         '</div>' +
     '</div>';
     
-    html += '<div style="margin:15px 0;padding:12px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#ccc;font-size:12px;">' +
+    html += '<div style="margin:8px 0;padding:12px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#ccc;font-size:12px;">' +
         '✅ Ready to save & optionally backup to GitHub' +
     '</div>';
     
     html += '<h4 style="margin:20px 0 10px 0;color:#ffb347;font-size:14px;font-weight:bold;">📤 GitHub Backup (Optional)</h4>';
     
     // PAT Configuration Section
-    html += '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
+    html += '<div style="margin:8px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
         (isPATConfigured ? '#00ff88' : '#ffb347') + ';">' +
         '<div style="color:' + (isPATConfigured ? '#00ff88' : '#ffb347') + ';font-weight:bold;margin-bottom:10px;">' +
         (isPATConfigured ? '✅ GitHub Configured' : '⚠️ Configure GitHub (Optional)') +
@@ -1156,7 +1154,7 @@ function renderStep6() {
         'background:#000;border:1px solid #222;color:#fff;border-radius:4px;font-size:11px;margin-top:4px;' +
         'box-sizing:border-box;">' +
         '</div>';
-    html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
+    html += '<div style="display:flex;gap:4px;margin-top:10px;">' +
         '<button onclick="saveGitHubConfig()" style="flex:1;padding:8px 16px;background:#00ff88;color:#000;' +
         'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">✅ Save</button>' +
         '<button onclick="cancelGitHubEdit()" style="flex:1;padding:8px 16px;background:#444;color:#fff;' +
@@ -1167,9 +1165,9 @@ function renderStep6() {
     html += '</div>';
     
     // Append vs Replace Option
-    html += '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;">' +
+    html += '<div style="margin:8px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;">' +
         '<div style="color:#00ff88;font-weight:bold;margin-bottom:10px;">📥 Import Mode</div>' +
-        '<div style="display:flex;gap:10px;">' +
+        '<div style="display:flex;gap:6px;">' +
         '<button onclick="setImportMode(\'append\')" id="btn-append" style="flex:1;padding:10px;' +
         'background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;' +
         'font-size:12px;">➕ APPEND to Portfolio</button>' +
@@ -1185,10 +1183,10 @@ function renderStep6() {
     
     // Data Summary
     if (isPATConfigured) {
-        html += '<div style="margin:15px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;' +
+        html += '<div style="margin:8px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;' +
             'font-size:12px;color:#888;">' +
             '<b style="color:#00ff88;">📊 Data to Post:</b><br><br>' +
-            '<div style="display:flex;justify-content:space-around;margin:10px 0;">' +
+            '<div style="display:flex;justify-content:space-around;margin:6px 0;">' +
             '<div>✅ Portfolio<br><b style="color:#00ff88;font-size:14px;">' + 
             importState.stocks.filter(function(s) { return s.type === 'PORTFOLIO'; }).length + '</b></div>' +
             '<div>📌 Watchlist<br><b style="color:#ffb347;font-size:14px;">' + 
@@ -1206,7 +1204,7 @@ function renderStep6() {
             'border:none;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:10px;">' +
             '📋 Preview JSON</button>';
         
-        html += '<div id="json-preview" style="display:none;margin:10px 0;padding:10px;background:#000;' +
+        html += '<div id="json-preview" style="display:none;margin:6px 0;padding:10px;background:#000;' +
             'border:1px solid #222;border-radius:6px;max-height:300px;overflow-y:auto;font-size:9px;' +
             'font-family:monospace;color:#0f0;"></div>';
         
@@ -1216,7 +1214,7 @@ function renderStep6() {
             'margin-top:15px;">📤 Post to GitHub</button>';
     }
     
-    html += '<div id="step7-status" style="margin:15px 0;font-size:12px;"></div>';
+    html += '<div id="step7-status" style="margin:8px 0;font-size:12px;"></div>';
     html += '</div>';
     
     return html;
@@ -1464,7 +1462,7 @@ function postToGitHub() {
     .then(function(data) {
         if (data.commit && data.commit.sha) {
             status.innerHTML = '<div style="color:#00ff88;"><b>✅ Posted Successfully!</b></div>' +
-                '<div style="margin:10px 0;font-size:11px;color:#888;">' +
+                '<div style="margin:6px 0;font-size:11px;color:#888;">' +
                 'Mode: <b>' + importState.importMode.toUpperCase() + '</b><br>' +
                 'Message: ' + data.commit.message + '<br>' +
                 'SHA: ' + data.commit.sha.substring(0, 10) + '...<br>' +
@@ -1486,8 +1484,19 @@ function postToGitHub() {
 
 function nextImportStep() {
     if (importState.step < CONFIG.TOTAL_STEPS) {
+        // Auto-parse when going from step 4 to step 5
+        if (importState.step === 4) {
+            var response = document.getElementById('ai-response').value;
+            if (!response.trim()) {
+                alert('❌ Please paste data first');
+                return;
+            }
+            manuallyParseStep4();
+            importState.step++;
+            showImportUI();
+        }
         // Auto-save to DB when going from step 5 to step 6
-        if (importState.step === 5) {
+        else if (importState.step === 5) {
             saveToIndexedDB(function(success) {
                 if (success) {
                     importState.step++;
