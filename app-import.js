@@ -149,7 +149,7 @@ function openImportWorkflow() {
 function showImportUI() {
     try {
         var html = '<div id="import-wizard" style="' +
-            'padding:20px;background:#0a0a0a;border-radius:12px;max-width:900px;' +
+            'padding:12px;background:#0a0a0a;border-radius:12px;max-width:100%;margin:0 5px;' +
             '">';
         
         // Step indicator - BRIGHT TITLE
@@ -228,7 +228,7 @@ function showImportUI() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep1() {
-    return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
@@ -547,20 +547,25 @@ function renderStep1Preview() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep2() {
-    return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">✏️ Add Manual Entries (Optional)</h3>' +
+    var existingCount = importState.stocks.length;
+    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+        '<div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">' +
+        '<button onclick="addManualEntries()" style="padding:8px 16px;background:#00ff88;' +
+        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">➕ Add Entries</button>' +
+        '<span id="step2-status" style="font-size:12px;color:#888;">Total: ' + existingCount + ' stocks</span>' +
+        '</div>' +
+        
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format:</b> Name, Qty (opt), Avg (opt) - One per line<br>' +
-        '<b style="color:#ffb347;">Example:</b> Apple Inc,5,150 or Google LLC (watchlist)<br>' +
+        '<b style="color:#ffb347;">Example:</b> Apple,5,150 or Google (watchlist)<br>' +
         '</div>' +
+        
         '<textarea id="manual-entries" style="width:100%;height:150px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Stock Name or Stock Name,QTY,AVG"></textarea>' +
-        '<div style="margin:10px 0;">' +
-        '<button onclick="addManualEntries()" style="padding:10px 20px;background:#00ff88;' +
-        'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Add Entries</button>' +
-        '</div>' +
+        'placeholder="Stock Name,QTY,AVG or just Stock Name"></textarea>' +
+        
+        '<div id="step2-message" style="margin:10px 0;font-size:12px;color:#888;"></div>' +
         '<div id="step2-preview"></div>' +
         '</div>';
 }
@@ -569,35 +574,51 @@ function addManualEntries() {
     var textarea = document.getElementById("manual-entries");
     var entries = textarea.value.split("\n").filter(function(l) { return l.trim().length > 0; });
     var addedCount = 0;
+    var duplicateCount = 0;
     
     entries.forEach(function(entry) {
         var parts = entry.split(",").map(function(p) { return p.trim(); });
         var name = parts[0];
         
-        if (name && !importState.stocks.find(function(s) { return s.name === name; })) {
-            var qty = parts.length > 1 && parts[1] ? parseFloat(parts[1]) : null;
-            var avg = parts.length > 2 && parts[2] ? parseFloat(parts[2]) : null;
-            
-            importState.stocks.push({
-                name: name,
-                isin: "",
-                qty: qty,
-                avg: avg,
-                sector: "",
-                industry: "",
-                type: (qty && avg) ? "PORTFOLIO" : "WATCHLIST",
-                status: ""
-            });
-            addedCount++;
+        if (!name) return;
+        
+        if (importState.stocks.find(function(s) { return s.name === name; })) {
+            duplicateCount++;
+            return;
         }
+        
+        var qty = parts.length > 1 && parts[1] ? parseFloat(parts[1]) : null;
+        var avg = parts.length > 2 && parts[2] ? parseFloat(parts[2]) : null;
+        
+        importState.stocks.push({
+            name: name,
+            isin: "",
+            qty: qty,
+            avg: avg,
+            sector: "",
+            industry: "",
+            type: (qty && avg) ? "PORTFOLIO" : "WATCHLIST",
+            status: ""
+        });
+        addedCount++;
     });
     
     textarea.value = "";
     
+    // Update message and status
+    var message = document.getElementById("step2-message");
+    var status = document.getElementById("step2-status");
+    
     if (addedCount > 0) {
-        alert("✅ Added " + addedCount + " stock(s)");
-    } else {
-        alert("⚠️ No new stocks added (duplicates or empty names)");
+        message.innerHTML = '<span style="color:#00ff88;">✅ Added ' + addedCount + ' stock(s)</span>';
+    } else if (duplicateCount > 0) {
+        message.innerHTML = '<span style="color:#ffb347;">⚠️ ' + duplicateCount + ' duplicate(s) skipped</span>';
+    } else if (entries.length > 0) {
+        message.innerHTML = '<span style="color:#ffb347;">⚠️ No valid entries</span>';
+    }
+    
+    if (status) {
+        status.innerHTML = 'Total: ' + importState.stocks.length + ' stocks';
     }
     
     showImportUI();
@@ -639,18 +660,19 @@ function renderStep3() {
         "Name,Ticker,ISIN,Sector,Industry\n" +
         "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n";
     
-    return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">🤖 Generate AI Prompt (Optional)</h3>' +
-        '<p style="margin:10px 0;color:#ccc;font-size:12px;">' +
-        "Copy → Paste in ChatGPT/Claude → Get data back to Step 4" +
-        '</p>' +
-        '<textarea id="ai-prompt" readonly style="width:100%;height:250px;' +
-        'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
-        '<div style="margin:10px 0;">' +
-        '<button onclick="copyPrompt()" style="padding:10px 20px;background:#00ff88;' +
+    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+        '<div style="margin-bottom:15px;">' +
+        '<button onclick="copyPrompt()" style="padding:8px 16px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📋 Copy Prompt</button>' +
         '</div>' +
+        
+        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        'Copy prompt → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
+        '</div>' +
+        
+        '<textarea id="ai-prompt" readonly style="width:100%;height:280px;' +
+        'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
+        'font-size:10px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
         '</div>';
 }
 
@@ -666,26 +688,29 @@ function copyPrompt() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep4() {
-    var hasResponse = document.getElementById('ai-response') && document.getElementById('ai-response').value.trim().length > 0;
+    var textarea = document.getElementById("ai-response");
+    var hasResponse = textarea && textarea.value.trim().length > 0;
     
-    return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📋 Paste Response Data (Optional)</h3>' +
-        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        '<b style="color:#ffb347;">Paste AI response:</b> Name, Ticker, ISIN, Sector (any delimiter)' +
+    return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+        '<div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">' +
+        '<button onclick="manuallyParseStep4()" style="padding:8px 16px;background:#ffb347;' +
+        'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Data</button>' +
+        '<span id="step4-status" style="font-size:12px;">' + 
+        (hasResponse ? '<span style="color:#00ff88;">✅ Ready</span>' : 
+                      '<span style="color:#888;">Paste data below</span>') +
+        '</span>' +
         '</div>' +
         
-        '<textarea id="ai-response" style="width:100%;height:400px;' +
+        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<b style="color:#ffb347;">Paste:</b> Name, Ticker, ISIN, Sector (any delimiter)' +
+        '</div>' +
+        
+        '<textarea id="ai-response" style="width:100%;height:350px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Paste API response or Excel data here..."></textarea>' +
+        'placeholder="Paste here..."></textarea>' +
         
-        '<button onclick="manuallyParseStep4()" style="margin-top:10px;padding:8px 16px;background:#ffb347;' +
-        'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Data</button>' +
-        
-        '<div id="step4-status" style="margin:10px 0;font-size:12px;color:#888;">' + 
-        (hasResponse ? '<span style="color:#00ff88;">✅ Data ready to parse</span>' : 
-                      '<span>⏳ Paste data above and click Parse</span>') +
-        '</div>' +
+        '<div id="step4-result" style="margin:10px 0;font-size:12px;color:#00ff88;"></div>' +
         '</div>';
 }
 
@@ -761,12 +786,18 @@ function parseAIResponse(delimiter) {
     }
     
     var status = document.getElementById('step4-status');
+    var result = document.getElementById('step4-result');
     if (status) {
         if (matched > 0) {
-            status.innerHTML = '<div style="color:#00ff88;font-weight:bold;">✅ Enriched ' + matched + '/' + 
-                importState.stocks.length + ' stocks</div>';
+            status.innerHTML = '<span style="color:#00ff88;font-weight:bold;">✅ ' + matched + '/' + importState.stocks.length + '</span>';
+            if (result) {
+                result.innerHTML = '✅ Enriched ' + matched + ' stocks with Ticker, ISIN, Sector';
+            }
         } else {
-            status.innerHTML = '<div style="color:#ffb347;">⚠️ No matching stocks found</div>';
+            status.innerHTML = '<span style="color:#ffb347;">⚠️ No matches</span>';
+            if (result) {
+                result.innerHTML = '⚠️ No stocks matched. Check names and data format.';
+            }
         }
     }
     
@@ -778,7 +809,7 @@ function parseAIResponse(delimiter) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep5() {
-    var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+    var html = '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📝 Edit & Validate</h3>' +
         '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:500px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
@@ -1074,7 +1105,7 @@ function renderStep6() {
         }
     });
     
-    var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
+    var html = '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<h3 style="margin:0 0 15px 0;color:#00ff88;font-size:16px;font-weight:bold;">💾 Save & Backup to GitHub (Step 6)</h3>';
     
     // Add counts display
@@ -1103,10 +1134,11 @@ function renderStep6() {
         '</div>';
     
     if (isPATConfigured) {
+        var maskedPAT = ghPAT.substring(0, 4) + "..." + ghPAT.substring(ghPAT.length - 4);
         html += '<div style="font-size:11px;color:#ccc;margin-bottom:10px;">' +
             'User: <b>' + ghUser + '</b><br>' +
             'Repo: <b>' + ghRepo + '</b><br>' +
-            'PAT: <b>' + ghPAT.substring(0, 10) + '...</b>' +
+            'PAT: <b>' + maskedPAT + '</b>' +
             '</div>' +
             '<button onclick="editGitHubConfig()" style="padding:8px 16px;background:#ffb347;color:#000;' +
             'border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;">✏️ Edit PAT</button>';
