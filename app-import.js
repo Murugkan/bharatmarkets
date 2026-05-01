@@ -140,9 +140,7 @@ function openImportWorkflow() {
         document.body.classList.add('modal-open');
         showImportUI();
     } catch(err) {
-        console.error('❌ Error in openImportWorkflow:', err.message);
-        console.error('Stack:', err.stack);
-        alert('❌ Error opening import wizard: ' + err.message);
+        alert("❌ Error opening import wizard. Please refresh and try again.");
     }
 }
 
@@ -217,9 +215,7 @@ function showImportUI() {
             }, 100);
         }
     } catch(err) {
-        console.error('❌ Error in showImportUI:', err.message);
-        console.error('Stack:', err.stack);
-        alert('❌ Error rendering UI: ' + err.message);
+        alert("❌ Error rendering UI. Please refresh and try again.");
     }
 }
 
@@ -690,14 +686,15 @@ function copyPrompt() {
 function renderStep4() {
     var textarea = document.getElementById("ai-response");
     var hasResponse = textarea && textarea.value.trim().length > 0;
+    var stockCount = importState.stocks ? importState.stocks.length : 0;
     
     return '<div style="padding:12px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
         '<div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">' +
         '<button onclick="manuallyParseStep4()" style="padding:8px 16px;background:#ffb347;' +
         'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Data</button>' +
         '<span id="step4-status" style="font-size:12px;">' + 
-        (hasResponse ? '<span style="color:#00ff88;">✅ Ready</span>' : 
-                      '<span style="color:#888;">Paste data below</span>') +
+        (hasResponse ? '<span style="color:#00ff88;">✅ Ready to enrich ' + stockCount + ' stocks</span>' : 
+                      '<span style="color:#888;">Paste data for ' + stockCount + ' stocks</span>') +
         '</span>' +
         '</div>' +
         
@@ -897,13 +894,11 @@ function editCell(cell, idx, field) {
 function deleteStock(idx) {
     // Validate index
     if (typeof idx !== 'number' || idx < 0 || idx >= importState.stocks.length) {
-        console.error('Invalid stock index:', idx);
         return;
     }
     
     var stock = importState.stocks[idx];
     if (!stock || !stock.name) {
-        console.error('Stock not found at index', idx);
         return;
     }
     
@@ -996,7 +991,6 @@ function saveToIndexedDB(callback) {
         var request = indexedDB.open(CONFIG.DATABASE_NAME, CONFIG.DATABASE_VERSION);
         
         request.onerror = function() {
-            console.error('❌ Database error');
             if (callback) callback(false);
         };
         
@@ -1053,12 +1047,10 @@ function saveToIndexedDB(callback) {
             };
             
             tx.onerror = function() {
-                console.error('❌ Transaction error:', tx.error);
                 if (callback) callback(false);
             };
         };
     } catch(err) {
-        console.error('Error:', err.message);
         if (callback) callback(false);
     }
 }
@@ -1441,7 +1433,7 @@ function postToGitHub() {
                     finalData.count = mergedSymbols.length;
                 }
             } catch(e) {
-                console.log('Could not parse existing data, will replace:', e);
+                // Continue with append mode if parse fails
             }
         }
         
