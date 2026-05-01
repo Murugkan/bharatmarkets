@@ -20,7 +20,7 @@
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#aaa; cursor:pointer; }
         .leg.on { color:#fff; font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 110px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:120px; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 110px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:200px; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#999; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
         th.active { color: var(--bl); }
@@ -88,7 +88,7 @@ function showToast(msg) {
 // ===== PORTFOLIO CODE =====
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
-let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, searchQuery = '';
+let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, searchQuery = '', viewMode = 'all';
 const UI_FIELDS = ['SN', 'SECTOR', 'POS', 'NEG', 'SIGNAL', 'OV', 'TICKER', 'LTP', '1D%', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'PE', 'PB', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
 
 const cleanNum = (v) => {
@@ -300,17 +300,34 @@ function render() {
     const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
     // Sort SECTORS by weight (descending) so largest sectors appear first
     SECTORS = SECTORS.sort((a, b) => (sc[b] || 0) - (sc[a] || 0));
-    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
-    document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
+    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" data-sector="' + sec + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '"></div>').join('');
+    document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" data-sector="' + sec + '"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
+    
+    // Attach sector click handlers via event delegation
+    attachSectorHandlers();
     let rows = stocks.slice();
     if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
     if (searchQuery) rows = rows.filter(s => resolve(s, 'TICKER').toString().toUpperCase().includes(searchQuery.toUpperCase()));
+    
+    // Filter by viewMode: Portfolio, Watchlist, or All
+    if (viewMode === 'portfolio') {
+        rows = rows.filter(s => {
+            const qty = resolve(s, 'QTY');
+            return qty && qty !== '—' && qty !== '' && qty !== null;
+        });
+    } else if (viewMode === 'watchlist') {
+        rows = rows.filter(s => {
+            const qty = resolve(s, 'QTY');
+            return !qty || qty === '—' || qty === '' || qty === null;
+        });
+    }
+    
     rows.sort((a, b) => {
         let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
         let nA = cleanNum(vA), nB = cleanNum(vB);
         return sortAsc ? nA - nB : nB - nA;
     });
-    let h = '<div style="padding:12px; background:#0a0a0a; border-bottom:1px solid #222;"><input type="text" id="search-input" placeholder="Search (5 chr)" style="width:80px; padding:8px; background:#111; color:#00f2ff; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:11px;" value="' + searchQuery + '"></div>';
+let h = '<div id="search-box-wrapper" style="padding:12px; background:#0a0a0a; border-bottom:1px solid #222; display:flex; gap:8px; align-items:center;"><input type="text" id="search-input" placeholder="Search (5 chr)" style="width:80px; padding:8px; background:#111; color:#00f2ff; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:11px;"><button id="viewmode-btn" style="padding:6px 10px; background:#111; color:#999; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:10px; cursor:pointer; min-width:90px;">' + (viewMode === 'all' ? 'All (P+W)' : viewMode === 'portfolio' ? 'Portfolio' : 'Watchlist') + '</button></div>';
     h += '<table><thead><tr>';
     UI_FIELDS.forEach(f => {
         if (f === 'SN') h += '<th style="width:40px;text-align:center">#</th>';
@@ -357,19 +374,64 @@ function render() {
     });
     document.getElementById('app').innerHTML = h + '</tr></tfoot></table>';
     
-    // Attach search input handler (only once, not every render)
-    if (!document.getElementById('search-input').hasAttribute('data-listener-attached')) {
-        const searchInput = document.getElementById('search-input');
-        searchInput.setAttribute('data-listener-attached', 'true');
-        searchInput.addEventListener('input', (e) => {
-            searchQuery = e.target.value.substring(0, 5);
-            render();
-        });
+    // Update search input value
+    const searchBox = document.getElementById('search-box-wrapper');
+    if (searchBox) {
+        searchBox.innerHTML = '<input type="text" id="search-input" placeholder="Search (5 chr)" style="width:80px; padding:8px; background:#111; color:#00f2ff; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:11px;" value="' + searchQuery + '">';
     }
+    
+    initSearchListener();
 }
 
 function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
+
+// Attach sector click handlers via event delegation
+function attachSectorHandlers() {
+    const barSegs = document.querySelectorAll('#tape-bar .seg');
+    const legItems = document.querySelectorAll('#legend .leg');
+    
+    barSegs.forEach(seg => {
+        seg.addEventListener('click', () => {
+            const sector = seg.getAttribute('data-sector');
+            tap(sector);
+        });
+    });
+    
+    legItems.forEach(leg => {
+        leg.addEventListener('click', () => {
+            const sector = leg.getAttribute('data-sector');
+            tap(sector);
+        });
+    });
+}
+
+// Initialize search input listener (call once)
+function initSearchListener() {
+    const searchInput = document.getElementById('search-input');
+    if (searchInput && !searchInput.hasAttribute('data-listener')) {
+        searchInput.setAttribute('data-listener', 'true');
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value.substring(0, 5);
+            render();
+            initSearchListener(); // Ensure listener stays attached after re-render
+        });
+    }
+    
+    // Attach viewmode button handler
+    const viewmodeBtn = document.getElementById('viewmode-btn');
+    if (viewmodeBtn && !viewmodeBtn.hasAttribute('data-listener')) {
+        viewmodeBtn.setAttribute('data-listener', 'true');
+        viewmodeBtn.addEventListener('click', () => {
+            // Cycle through: all → portfolio → watchlist → all
+            if (viewMode === 'all') viewMode = 'portfolio';
+            else if (viewMode === 'portfolio') viewMode = 'watchlist';
+            else viewMode = 'all';
+            render();
+            initSearchListener(); // Re-attach after render
+        });
+    }
+}
 
 // ===== SYNC ENGINE - Now reads from IndexedDB =====
 function runEngineSync() {
