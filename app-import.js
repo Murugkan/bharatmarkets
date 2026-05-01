@@ -24,19 +24,18 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 var CONFIG = {
-    TOTAL_STEPS: 7,
+    TOTAL_STEPS: 6,
     DATABASE_NAME: "OnyxPortfolioDB",
     DATABASE_VERSION: 8,
     STORE_NAME: "Stocks",
     MODAL_Z_INDEX: 9000,
     STEP_TITLES: [
-        "Upload CSV/XLS",
-        "Manual Entries (Opt)",
-        "AI Prompt (Opt)",
-        "Paste Response",
-        "Edit & Validate",
-        "Save to DB (Opt)",
-        "Post to GitHub"
+        "📤 Upload CSV/XLS",
+        "✏️ Manual Entries (Opt)",
+        "🤖 AI Prompt (Opt)",
+        "📋 Paste Response",
+        "📝 Edit & Validate",
+        "💾 Post to GitHub"
     ],
     COLORS: {
         SUCCESS: "#00ff88",
@@ -185,7 +184,6 @@ function showImportUI() {
             case 4: html += renderStep4(); break;
             case 5: html += renderStep5(); break;
             case 6: html += renderStep6(); break;
-            case 7: html += renderStep7(); break;
         }
         
         html += '</div>';
@@ -231,14 +229,10 @@ function showImportUI() {
 
 function renderStep1() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Upload Stock List</h3>' +
-        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
-        '<b style="color:#00ff88;">CSV/Excel Format:</b><br>' +
-        'Stock Name, Quantity, Average Price<br><br>' +
-        '<b style="color:#00ff88;">Examples:</b><br>' +
-        'HDFC Bank Limited,84,817.50<br>' +
-        'Reliance Industries Limited,10,2450<br>' +
-        'TCS Limited,50,3200<br>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
+        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
+        '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50<br>' +
         '</div>' +
         '<div style="margin:15px 0;padding:20px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
@@ -554,18 +548,15 @@ function renderStep1Preview() {
 
 function renderStep2() {
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Add Manual Entries (OPTIONAL)</h3>' +
-        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
-        '<b style="color:#00ff88;">Format (one per line):</b><br>' +
-        'Stock Name, QTY, AVG<br><br>' +
-        '<b style="color:#ffb347;">Examples:</b><br>' +
-        'Apple Inc,5,150<br>' +
-        'Google LLC,3,2800<br>' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">✏️ Add Manual Entries (Optional)</h3>' +
+        '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<b style="color:#00ff88;">Format:</b> Name, Qty (opt), Avg (opt) - One per line<br>' +
+        '<b style="color:#ffb347;">Example:</b> Apple Inc,5,150 or Google LLC (watchlist)<br>' +
         '</div>' +
         '<textarea id="manual-entries" style="width:100%;height:150px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Stock Name, QTY, AVG"></textarea>' +
+        'placeholder="Stock Name or Stock Name,QTY,AVG"></textarea>' +
         '<div style="margin:10px 0;">' +
         '<button onclick="addManualEntries()" style="padding:10px 20px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Add Entries</button>' +
@@ -575,32 +566,31 @@ function renderStep2() {
 }
 
 function addManualEntries() {
-    var textarea = document.getElementById('manual-entries');
-    var entries = textarea.value.split('\n').filter(function(l) { return l.trim().length > 0; });
+    var textarea = document.getElementById("manual-entries");
+    var entries = textarea.value.split("\n").filter(function(l) { return l.trim().length > 0; });
     
     entries.forEach(function(entry) {
-        var parts = entry.split(',').map(function(p) { return p.trim(); });
-        if (parts.length >= 3) {
-            var name = parts[0];
-            var qty = parseFloat(parts[1]);
-            var avg = parseFloat(parts[2]);
+        var parts = entry.split(",").map(function(p) { return p.trim(); });
+        var name = parts[0];
+        
+        if (name && !importState.stocks.find(function(s) { return s.name === name; })) {
+            var qty = parts.length > 1 ? parseFloat(parts[1]) : null;
+            var avg = parts.length > 2 ? parseFloat(parts[2]) : null;
             
-            if (name && qty && avg && !importState.stocks.find(function(s) { return s.name === name; })) {
-                importState.stocks.push({
-                    name: name,
-                    isin: '',
-                    qty: qty,
-                    avg: avg,
-                    sector: '',
-                    industry: '',
-                    type: 'PORTFOLIO',
-                    status: ''
-                });
-            }
+            importState.stocks.push({
+                name: name,
+                isin: "",
+                qty: qty || null,
+                avg: avg || null,
+                sector: "",
+                industry: "",
+                type: (qty && avg) ? "PORTFOLIO" : "WATCHLIST",
+                status: ""
+            });
         }
     });
     
-    textarea.value = '';
+    textarea.value = "";
     showImportUI();
     renderStep2Preview();
 }
@@ -631,29 +621,21 @@ function renderStep2Preview() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep3() {
-    var names = importState.stocks.map(function(s) { return s.name; }).join('\n');
+    var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var prompt = 'For these Indian company names, get NSE Ticker, ISIN code, Sector, and Industry.\n\n' +
-        'Company Names:\n' +
-        names + '\n\n' +
-        '⚠️ CRITICAL OUTPUT FORMAT (comma-separated, no extra spaces):\n\n' +
-        'Name,Ticker,ISIN,Sector,Industry\n' +
-        'HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n' +
-        'Reliance Industries Limited,RELIANCE,INE002A01015,Energy,Oil & Gas\n' +
-        '\n' +
-        'Rules:\n' +
-        '• Match EXACT company names (case-insensitive)\n' +
-        '• Get NSE Ticker (e.g., HDFCBANK, RELIANCE, TATAPOWER)\n' +
-        '• Get ISIN code (format: INE + 10 chars)\n' +
-        '• Use comma as delimiter - NO spaces around commas\n' +
-        '• Output ONLY the table, no extra text';
+    var prompt = "For these Indian companies, get NSE Ticker, ISIN, Sector, and Industry.\n\n" +
+        "Company Names:\n" +
+        names + "\n\n" +
+        "OUTPUT FORMAT (comma-separated, no spaces):\n" +
+        "Name,Ticker,ISIN,Sector,Industry\n" +
+        "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n";
     
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Generate AI Prompt (OPTIONAL)</h3>' +
-        '<p style="margin:10px 0;color:#888;font-size:12px;">' +
-        'Copy prompt → Paste in ChatGPT/Claude → Get ISIN & Sector' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">🤖 Generate AI Prompt (Optional)</h3>' +
+        '<p style="margin:10px 0;color:#ccc;font-size:12px;">' +
+        "Copy → Paste in ChatGPT/Claude → Get data back to Step 4" +
         '</p>' +
-        '<textarea id="ai-prompt" readonly style="width:100%;height:300px;' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:250px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
         '<div style="margin:10px 0;">' +
@@ -677,32 +659,22 @@ function copyPrompt() {
 function renderStep4() {
     var hasStocks = importState.stocks && importState.stocks.length > 0;
     return '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">📋 Paste Additional Data (MANDATORY)</h3>' +
-        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:11px;color:#888;border-radius:4px;">' +
-        '<b style="color:#ffb347;">⚠️ REQUIRED:</b><br>' +
-        'Paste data with Ticker, ISIN, Sector for each stock from Step 1.' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📋 Paste Response Data (Optional)</h3>' +
+        '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:10px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
+        '<b style="color:#ffb347;">Paste AI response:</b> Name, Ticker, ISIN, Sector (any delimiter)' +
         '</div>' +
         
-        '<div style="margin:10px 0;font-size:11px;color:#666;">' +
-        '<b>Format (any delimiter):</b><br>' +
-        '&bull; Comma: Stock Name,Ticker,ISIN,Sector<br>' +
-        '&bull; Tab: Stock Name\tTicker\tISIN\tSector<br>' +
-        '<b>Example:</b><br>' +
-        'HDFC Bank,HDFCBANK,INE040A01034,Banking<br>' +
-        'Reliance,RIL,INE002A01018,Oil & Gas' +
-        '</div>' +
-        
-        '<textarea id="ai-response" style="width:100%;height:180px;' +
+        '<textarea id="ai-response" style="width:100%;height:400px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Paste data here - copy from Excel/CSV/AI response"></textarea>' +
+        'placeholder="Paste API response or Excel data here..."></textarea>' +
         
         '<button onclick="manuallyParseStep4()" style="margin-top:10px;padding:8px 16px;background:#ffb347;' +
-        'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Pasted Data</button>' +
+        'color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📌 Parse Data</button>' +
         
         '<div id="step4-status" style="margin:10px 0;font-size:12px;">' + 
-        (hasStocks ? '<span style="color:#00ff88;">✅ ' + importState.stocks.length + ' stocks from Step 1</span>' : 
-                     '<span style="color:#ff6b85;">❌ No stocks from Step 1 - Go back to Step 1</span>') +
+        (hasStocks ? '<span style="color:#00ff88;">✅ ' + importState.stocks.length + ' stocks loaded</span>' : 
+                     '<span style="color:#ff6b85;">❌ No stocks - Go to Step 1</span>') +
         '</div>' +
         '</div>';
 }
@@ -797,49 +769,62 @@ function parseAIResponse(delimiter) {
 
 function renderStep5() {
     var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:14px;">Review & Edit</h3>' +
-        '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:400px;overflow-y:auto;">' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📝 Edit & Validate</h3>' +
+        '<div style="margin:10px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:500px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
-        '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;">Name</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;">ISIN</th>' +
-        '<th style="padding:4px 6px;text-align:left;color:#00ff88;">Sector</th>' +
-        '<th style="padding:4px 6px;text-align:right;color:#00ff88;">Qty</th>' +
-        '<th style="padding:4px 6px;text-align:right;color:#00ff88;">Avg</th>' +
-        '<th style="padding:4px 6px;text-align:center;color:#00ff88;">Del</th>' +
+        '<tr style="background:#222;border-bottom:1px solid #333;position:sticky;top:0;">' +
+        '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;" onclick="sortStocks(\'name\')">▼ Name</th>' +
+        '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;" onclick="sortStocks(\'isin\')">▼ ISIN</th>' +
+        '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;" onclick="sortStocks(\'sector\')">▼ Sector</th>' +
+        '<th style="padding:6px;text-align:right;color:#00ff88;cursor:pointer;user-select:none;" onclick="sortStocks(\'qty\')">▼ Qty</th>' +
+        '<th style="padding:6px;text-align:right;color:#00ff88;cursor:pointer;user-select:none;" onclick="sortStocks(\'avg\')">▼ Avg</th>' +
+        '<th style="padding:6px;text-align:center;color:#00ff88;">Del</th>' +
         '</tr>';
     
     importState.stocks.forEach(function(stock, idx) {
-        var statusColor = stock.status === 'enriched' ? '#00ff88' : '#ffb347';
-        var statusIcon = stock.status === 'enriched' ? '✅' : '⚠️';
+        var statusColor = stock.status === "enriched" ? "#00ff88" : "#ffb347";
+        var statusIcon = stock.status === "enriched" ? "✅" : "⚠️";
+        var typeLabel = stock.type === "PORTFOLIO" ? "P" : "W";
+        var typeColor = stock.type === "PORTFOLIO" ? "#00ff88" : "#ffb347";
         
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;">' +
-            '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'name\')">' +
-            stock.name.substring(0, 25) + '</td>' +
-            '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;" onclick="editCell(this, ' + idx + ', \'isin\')">' +
+            '<td style="padding:4px 6px;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'name\')">' +
+            stock.name.substring(0, 20) + ' <span style="color:' + typeColor + ';">[' + typeLabel + ']</span></td>' +
+            '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
-            '<td style="padding:4px 6px;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
+            '<td style="padding:4px 6px;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'sector\')">' +
             (stock.sector || '-') + '</td>' +
-            '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'qty\')">' +
-            stock.qty + '</td>' +
-            '<td style="padding:4px 6px;text-align:right;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
-            '₹' + stock.avg.toFixed(2) + '</td>' +
+            '<td style="padding:4px 6px;text-align:right;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'qty\')">' +
+            (stock.qty ? stock.qty : '-') + '</td>' +
+            '<td style="padding:4px 6px;text-align:right;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
+            (stock.avg ? '₹' + stock.avg.toFixed(2) : '-') + '</td>' +
             '<td style="padding:4px 6px;text-align:center;">' +
             '<button class="step5-delete-btn" data-idx="' + idx + '" style="background:#ff6b85;color:#fff;border:none;padding:2px 4px;border-radius:2px;cursor:pointer;font-size:8px;">✕</button>' +
             '</td></tr>';
     });
     
     html += '</table></div>' +
-        '<div style="margin:15px 0;font-size:11px;color:#888;">' +
-        'Total: ' + importState.stocks.length + ' stocks' +
-        '</div>' +
-        '<div style="display:flex;gap:10px;margin-top:15px;">' +
-        '<button onclick="importState.step = 4; showImportUI();" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;">← Back</button>' +
-        '<button onclick="saveAndContinue();" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Save & Continue →</button>' +
+        '<div style="margin:15px 0;font-size:12px;color:#ccc;">' +
+        'Total: ' + importState.stocks.length + ' stocks (P=Portfolio, W=Watchlist)' +
         '</div>' +
         '</div>';
     
     return html;
+}
+
+function sortStocks(field) {
+    importState.stocks.sort(function(a, b) {
+        var aVal = a[field];
+        var bVal = b[field];
+        
+        if (typeof aVal === "string") {
+            return aVal.localeCompare(bVal);
+        } else {
+            return aVal - bVal;
+        }
+    });
+    
+    showImportUI();
 }
 
 function editCell(cell, idx, field) {
@@ -941,14 +926,10 @@ function handleDeleteClick(e) {
     deleteStock(idx);
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 6: Save to IndexedDB
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function renderStep6() {
-    // Step 6 removed - save happens automatically in Step 5
-    return '';
-}
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STEP 6: Post to GitHub (Save + GitHub Backup)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function saveToIndexedDB(callback) {
     // Save to IndexedDB with callback for chaining
@@ -1051,46 +1032,53 @@ function saveAndContinue() {
 // STEP 7: Post to GitHub - PROPER UI WITH CONFIG & CONFIRMATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function renderStep7() {
-    var ghPAT = localStorage.getItem('ghPAT') || '';
-    var ghUser = localStorage.getItem('ghUser') || '';
-    var ghRepo = localStorage.getItem('ghRepo') || '';
+function renderStep6() {
+    // Try to get PAT from localStorage or let user configure it
+    var ghPAT = localStorage.getItem("ghPAT") || localStorage.getItem("github_pat") || "";
+    var ghUser = localStorage.getItem("ghUser") || localStorage.getItem("github_user") || "";
+    var ghRepo = localStorage.getItem("ghRepo") || localStorage.getItem("github_repo") || "";
     var isPATConfigured = ghPAT && ghUser && ghRepo;
     
-    // Calculate counts
-    var portfolioCount = importState.stocks.filter(function(s) { 
-        return (s.type || '').toUpperCase() === 'PORTFOLIO'; 
-    }).length;
-    var watchlistCount = importState.stocks.filter(function(s) { 
-        return (s.type || '').toUpperCase() === 'WATCHLIST'; 
-    }).length;
+    // Calculate portfolio vs watchlist based on qty/avg fields
+    var portfolioCount = 0;
+    var watchlistCount = 0;
+    
+    importState.stocks.forEach(function(s) {
+        if ((s.qty && s.qty !== null && s.qty !== "") && (s.avg && s.avg !== null && s.avg !== "")) {
+            portfolioCount++;
+            s.type = "PORTFOLIO";
+        } else {
+            watchlistCount++;
+            s.type = "WATCHLIST";
+        }
+    });
     
     var html = '<div style="padding:20px;background:#0a0a0a;border:1px solid #111;border-radius:8px;">' +
-        '<h3 style="margin:0 0 15px 0;color:#00ff88;font-size:16px;">✅ Saved to Database</h3>';
+        '<h3 style="margin:0 0 15px 0;color:#00ff88;font-size:16px;font-weight:bold;">💾 Save & Backup to GitHub (Step 6)</h3>';
     
     // Add counts display
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:15px 0;">' +
         '<div style="background:#001a00;padding:15px;border-radius:8px;border:1px solid #00ff88;text-align:center;">' +
             '<div style="font-size:28px;color:#00ff88;font-weight:bold;">' + portfolioCount + '</div>' +
-            '<div style="font-size:12px;color:#888;margin-top:8px;">Portfolio Stocks</div>' +
+            '<div style="font-size:12px;color:#ccc;margin-top:8px;">Portfolio</div>' +
         '</div>' +
         '<div style="background:#1a0000;padding:15px;border-radius:8px;border:1px solid #ff6b85;text-align:center;">' +
             '<div style="font-size:28px;color:#ff6b85;font-weight:bold;">' + watchlistCount + '</div>' +
-            '<div style="font-size:12px;color:#888;margin-top:8px;">Watchlist Stocks</div>' +
+            '<div style="font-size:12px;color:#ccc;margin-top:8px;">Watchlist</div>' +
         '</div>' +
     '</div>';
     
-    html += '<div style="margin:15px 0;padding:12px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#00ff88;font-size:12px;">' +
-        '✅ Data saved to IndexedDB. Ready for portfolio view!' +
+    html += '<div style="margin:15px 0;padding:12px;background:#111;border-radius:8px;border-left:3px solid #00ff88;color:#ccc;font-size:12px;">' +
+        '✅ Ready to save & optionally backup to GitHub' +
     '</div>';
     
-    html += '<h4 style="margin:20px 0 10px 0;color:#ffb347;font-size:14px;">📤 Optional: Backup to GitHub</h4>';
+    html += '<h4 style="margin:20px 0 10px 0;color:#ffb347;font-size:14px;font-weight:bold;">📤 GitHub Backup (Optional)</h4>';
     
     // PAT Configuration Section
     html += '<div style="margin:15px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
         (isPATConfigured ? '#00ff88' : '#ffb347') + ';">' +
         '<div style="color:' + (isPATConfigured ? '#00ff88' : '#ffb347') + ';font-weight:bold;margin-bottom:10px;">' +
-        (isPATConfigured ? '✅ GitHub Configured' : '⚠️ Configure GitHub') +
+        (isPATConfigured ? '✅ GitHub Ready' : '⚠️ Configure GitHub (Optional)') +
         '</div>';
     
     if (isPATConfigured) {
@@ -1435,8 +1423,20 @@ function postToGitHub() {
 
 function nextImportStep() {
     if (importState.step < CONFIG.TOTAL_STEPS) {
-        importState.step++;
-        showImportUI();
+        // Auto-save to DB when going from step 5 to step 6
+        if (importState.step === 5) {
+            saveToIndexedDB(function(success) {
+                if (success) {
+                    importState.step++;
+                    showImportUI();
+                } else {
+                    alert("❌ Failed to save to database. Please try again.");
+                }
+            });
+        } else {
+            importState.step++;
+            showImportUI();
+        }
     }
 }
 
