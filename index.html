@@ -88,7 +88,7 @@ function showToast(msg) {
 // ===== PORTFOLIO CODE =====
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
-let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false;
+let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, searchQuery = '';
 const UI_FIELDS = ['SN', 'SECTOR', 'POS', 'NEG', 'SIGNAL', 'OV', 'TICKER', 'LTP', '1D%', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'PE', 'PB', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
 
 const cleanNum = (v) => {
@@ -269,11 +269,12 @@ function render() {
         const inv = cleanNum(resolve(s, 'INVESTED'));
         const ltp = cleanNum(resolve(s, 'LTP'));
         const qty = cleanNum(resolve(s, 'QTY'));
-        const change = cleanNum(resolve(s, '1D%'));
+        const change = cleanNum(resolve(s, '1D%'));  // Industry standard: percentage change from previous close
         
         sumPnl += pnl;
         sumInv += inv;
         sumCurrent += qty * ltp;
+        // Convert 1D% (percentage) to rupees for this stock: (LTP × QTY × 1D%) / (100 + 1D%)
         sumDayPnL += (qty * ltp * change) / (100 + change);
         if(change > 0) gainers++;
         if(change < 0) losers++;
@@ -299,13 +300,16 @@ function render() {
     const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
     document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
-    let rows = filter ? stocks.filter(s => resolve(s, 'SECTOR') === filter) : stocks.slice();
+    let rows = stocks.slice();
+    if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
+    if (searchQuery) rows = rows.filter(s => resolve(s, 'TICKER').toString().toUpperCase().includes(searchQuery.toUpperCase()));
     rows.sort((a, b) => {
         let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
         let nA = cleanNum(vA), nB = cleanNum(vB);
         return sortAsc ? nA - nB : nB - nA;
     });
-    let h = '<table><thead><tr>';
+    let h = '<div style="padding:12px; background:#0a0a0a; border-bottom:1px solid #222;"><input type="text" id="search-input" placeholder="Search ticker (1-5 letters)" style="width:100%; padding:8px; background:#111; color:#00f2ff; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:11px;" value="' + searchQuery + '"></div>';
+    h += '<table><thead><tr>';
     UI_FIELDS.forEach(f => {
         if (f === 'SN') h += '<th style="width:40px;text-align:center">#</th>';
         else h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='TICKER'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>';
@@ -350,6 +354,16 @@ function render() {
         else h += '<td class="' + cls + '"></td>';
     });
     document.getElementById('app').innerHTML = h + '</tr></tfoot></table>';
+    
+    // Attach search input handler
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value.substring(0, 5);
+            render();
+        });
+        searchInput.focus();
+    }
 }
 
 function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
