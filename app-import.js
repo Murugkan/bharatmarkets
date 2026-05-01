@@ -1,30 +1,67 @@
 /**
- * app-import.js - Enhanced Import Workflow (FULLY FIXED)
- * Step 1: FIXED CSV/XLSX parsing with validation
- * Step 7: FIXED with PAT config UI, status display, JSON preview, and confirmation
+ * app-import.js - Enhanced Import Workflow
+ * 7-step stock data import with CSV/Excel parsing, validation, and GitHub integration
+ * 
+ * Code Style:
+ * - Uses var for compatibility with older browsers
+ * - Mix of single and double quotes for flexibility in HTML generation
+ * - Configuration constants defined in CONFIG object at top
+ * - Organized into logical sections with clear dividers
+ * 
+ * FUNCTION GROUPS:
+ * 1. Constants & State (CONFIG, importState)
+ * 2. File Import (handleFileImport, openImportWorkflow, showImportUI)
+ * 3. Step Rendering (renderStep1-7)
+ * 4. CSV Processing (processImportCSV, handleDrop, loadSheetJS)
+ * 5. Data Editing (editCell, deleteStock, attachDeleteListeners)
+ * 6. Database Operations (saveToIndexedDB, saveAndContinue)
+ * 7. GitHub Integration (postToGitHub, setImportMode)
+ * 8. Utilities (showCustomConfirm, closeImportModal, navigation)
  */
 
-var debugLog = [];
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONSTANTS & CONFIGURATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function addDebugLog(msg) {
-    debugLog.push(msg);
-    var el = document.getElementById('debug-log');
-    if (el) {
-        el.textContent = debugLog.join('\n');
-        el.scrollTop = el.scrollHeight;
+var CONFIG = {
+    TOTAL_STEPS: 7,
+    DATABASE_NAME: "OnyxPortfolioDB",
+    DATABASE_VERSION: 8,
+    STORE_NAME: "Stocks",
+    MODAL_Z_INDEX: 9000,
+    STEP_TITLES: [
+        "Upload CSV/XLS",
+        "Manual Entries (Opt)",
+        "AI Prompt (Opt)",
+        "Paste Response",
+        "Edit & Validate",
+        "Save to DB (Opt)",
+        "Post to GitHub"
+    ],
+    COLORS: {
+        SUCCESS: "#00ff88",
+        ERROR: "#ff6b85",
+        WARNING: "#ffb347",
+        DARK_BG: "#0a0a0a",
+        DARKER_BG: "#050505",
+        BORDER: "#111",
+        BORDER_LIGHT: "#222",
+        BORDER_ACCENT: "#333",
+        TEXT_MUTED: "#555",
+        TEXT_DIM: "#888"
     }
-    console.log(msg);
-}
+};
 
-function clearDebugLog() {
-    debugLog = [];
-}
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STATE MANAGEMENT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 var importState = {
     step: 1,
     stocks: [],
     aiResponse: null,
-    importMode: 'append'
+    importMode: "append"
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -118,10 +155,9 @@ function showImportUI() {
         
         // Step indicator
         html += '<div style="margin-bottom:10px;font-size:12px;color:#555;font-family:monospace;">' +
-            'Step ' + importState.step + ' of 7: ';
+            'Step ' + importState.step + ' of ' + CONFIG.TOTAL_STEPS + ': ';
         
-        var stepTitles = ['Upload CSV/XLS', 'Manual Entries (Opt)', 'AI Prompt (Opt)', 'Paste Response', 'Edit & Validate', 'Save to DB (Opt)', 'Post to GitHub'];
-        html += stepTitles[importState.step - 1];
+        html += CONFIG.STEP_TITLES[importState.step - 1];
         html += '</div>';
         
         // TOP BUTTONS - no scrolling needed
@@ -130,14 +166,14 @@ function showImportUI() {
             'border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button>' +
             (importState.step > 1 ? '<button onclick="prevImportStep()" style="padding:8px 16px;background:#444;' +
             'border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;">← Back</button>' : '') +
-            (importState.step < 7 ? '<button onclick="nextImportStep()" style="padding:8px 16px;background:#00ff88;' +
+            (importState.step < CONFIG.TOTAL_STEPS ? '<button onclick="nextImportStep()" style="padding:8px 16px;background:#00ff88;' +
             'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Next →</button>' : 
             '<button onclick="closeImportModal()" style="padding:8px 16px;background:#00ff88;' +
             'border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Close ✓</button>') +
             '</div>';
         
         // Progress bar
-        var progress = (importState.step / 7) * 100;
+        var progress = (importState.step / CONFIG.TOTAL_STEPS) * 100;
         html += '<div style="width:100%;height:4px;background:#111;border-radius:2px;margin-bottom:20px;overflow:hidden;">' +
             '<div style="width:' + progress + '%;height:100%;background:#00ff88;"></div>' +
             '</div>';
@@ -347,9 +383,6 @@ function processImportCSV(csv) {
     var isinIdx = -1;
     var sectorIdx = -1;
     
-    clearDebugLog();
-    addDebugLog("Headers: " + headerParts.join(" | "));
-    
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
         
@@ -357,40 +390,34 @@ function processImportCSV(csv) {
         if (!nameIdx && (h === 'stock name' || h === 'symbol' || h === 'ticker' || 
             h === 'name' || (h.includes('stock') && h.includes('name')))) {
             nameIdx = i;
-            addDebugLog("✓ Name @ [" + i + "]: " + h);
         }
         
         // Quantity - various forms but not "value"
         if (qtyIdx === -1 && (h === 'quantity' || h === 'qty' || h === 'shares' || 
             h.includes('quantity') || h.includes('qty')) && !h.includes('value')) {
             qtyIdx = i;
-            addDebugLog("✓ Qty @ [" + i + "]: " + h);
         }
         
         // Average Price / Cost Price - flexible matching
         if (avgIdx === -1 && ((h.includes('average') || h.includes('avg') || h.includes('cost')) && 
             (h.includes('price') || h.includes('cost')))) {
             avgIdx = i;
-            addDebugLog("✓ Avg @ [" + i + "]: " + h);
         }
         
         // ISIN
         if (isinIdx === -1 && h === 'isin') {
             isinIdx = i;
-            addDebugLog("✓ ISIN @ [" + i + "]: " + h);
         }
         
         // Sector
         if (sectorIdx === -1 && (h === 'sector' || h === 'sector name' || h.includes('sector'))) {
             sectorIdx = i;
-            addDebugLog("✓ Sector @ [" + i + "]: " + h);
         }
     }
     
     // Smarter fallback detection based on column count
     if (nameIdx === -1) {
         nameIdx = 0;
-        addDebugLog("Fallback: Name @ [0]");
     }
     
     // If Qty not found, look for numeric columns after name
@@ -399,13 +426,11 @@ function processImportCSV(csv) {
             var h = headerParts[i];
             if (h.includes('qty') || h.includes('quantity') || h.includes('shares')) {
                 qtyIdx = i;
-                addDebugLog("Fallback: Found Qty @ [" + i + "]");
                 break;
             }
         }
         if (qtyIdx === -1 && headerParts.length > 3) {
             qtyIdx = 3;  // Common position in broker exports
-            addDebugLog("Fallback: Qty @ [3]");
         }
     }
     
@@ -415,17 +440,13 @@ function processImportCSV(csv) {
             var h = headerParts[i];
             if (h.includes('average') || h.includes('avg') || (h.includes('cost') && h.includes('price'))) {
                 avgIdx = i;
-                addDebugLog("Fallback: Found Avg @ [" + i + "]");
                 break;
             }
         }
         if (avgIdx === -1 && headerParts.length > 4) {
             avgIdx = 4;  // Common position in broker exports
-            addDebugLog("Fallback: Avg @ [4]");
         }
     }
-    
-    addDebugLog("Final: Name[" + nameIdx + "], Qty[" + qtyIdx + "], Avg[" + avgIdx + "]");
     
     var stocks = [];
     var seen = new Set();
@@ -471,11 +492,6 @@ function processImportCSV(csv) {
         // Extract Sector if available
         if (sectorIdx >= 0 && sectorIdx < parts.length) {
             sector = parts[sectorIdx] || null;
-        }
-        
-        // Log first 3 rows for debugging
-        if (i <= 3) {
-            addDebugLog("Row" + i + ": " + name + " | Qty=" + qty + " | Avg=" + (avg ? avg.toFixed(2) : "null"));
         }
         
         // Skip duplicates
@@ -525,8 +541,6 @@ function renderStep1Preview() {
     });
     
     html += '</table></div>' +
-        '<div id="debug-log" style="margin:10px 0;padding:10px;background:#000;border:1px solid #333;border-radius:4px;' +
-        'font-family:monospace;font-size:10px;color:#888;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
         '<div style="margin:10px 0;font-size:11px;color:#00ff88;">' +
         '✅ Loaded: ' + importState.stocks.length + ' stocks' +
         '</div>';
@@ -844,41 +858,30 @@ function editCell(cell, idx, field) {
 }
 
 function deleteStock(idx) {
-    showDebugLog('🗑️ deleteStock(' + idx + ') called');
-    
     // Validate index
     if (typeof idx !== 'number' || idx < 0 || idx >= importState.stocks.length) {
-        showDebugLog('❌ Invalid stock index: ' + idx);
         console.error('Invalid stock index:', idx);
         return;
     }
     
     var stock = importState.stocks[idx];
     if (!stock || !stock.name) {
-        showDebugLog('❌ Stock not found at index ' + idx);
         console.error('Stock not found at index', idx);
         return;
     }
     
     var stockName = stock.name;
-    showDebugLog('🗑️ Deleting: ' + stockName);
     
     // Use custom confirmation instead of confirm() (works better on mobile)
     showCustomConfirm('Delete: ' + stockName + '?', function(confirmed) {
         if (confirmed) {
-            showDebugLog('✅ User confirmed delete');
             importState.stocks.splice(idx, 1);
-            showDebugLog('✅ Removed from array. Remaining: ' + importState.stocks.length);
             
             // Force UI refresh
             setTimeout(function() {
-                showDebugLog('🔄 Re-rendering UI...');
                 showImportUI();
                 attachDeleteListeners();
-                showDebugLog('✅ UI refreshed');
             }, 50);
-        } else {
-            showDebugLog('⚠️ User cancelled delete');
         }
     });
 }
@@ -919,7 +922,6 @@ function showCustomConfirm(message, callback) {
 function attachDeleteListeners() {
     setTimeout(function() {
         var deleteButtons = document.querySelectorAll('.step5-delete-btn');
-        showDebugLog('📌 Found ' + deleteButtons.length + ' delete buttons');
         
         deleteButtons.forEach(function(btn, i) {
             // Remove old listener
@@ -927,10 +929,6 @@ function attachDeleteListeners() {
             
             // Add new listener
             btn.addEventListener('click', handleDeleteClick);
-            
-            if (i === 0) {
-                showDebugLog('✅ Attached listeners to delete buttons');
-            }
         });
     }, 100);
 }
@@ -940,7 +938,6 @@ function handleDeleteClick(e) {
     e.stopPropagation();
     
     var idx = parseInt(this.getAttribute('data-idx'));
-    showDebugLog('🖱️ Delete button clicked: index=' + idx);
     deleteStock(idx);
 }
 
@@ -955,32 +952,26 @@ function renderStep6() {
 
 function saveToIndexedDB(callback) {
     // Save to IndexedDB with callback for chaining
-    showDebugLog('💾 saveToIndexedDB() - Saving ' + importState.stocks.length + ' stocks');
     
     if (importState.stocks.length === 0) {
-        showDebugLog('⚠️ No stocks to save');
         if (callback) callback(false);
         return;
     }
     
     try {
         // Use correct database that index.html uses
-        var request = indexedDB.open('OnyxPortfolioDB', 8);
-        showDebugLog('📂 Opening database: OnyxPortfolioDB v8');
+        var request = indexedDB.open(CONFIG.DATABASE_NAME, CONFIG.DATABASE_VERSION);
         
         request.onerror = function() {
             console.error('❌ Database error');
-            showDebugLog('❌ Database open error: ' + request.error);
             if (callback) callback(false);
         };
         
         request.onsuccess = function(e) {
             var db = e.target.result;
-            showDebugLog('✅ Database opened');
             
-            var tx = db.transaction('Stocks', 'readwrite');
-            var store = tx.objectStore('Stocks');
-            showDebugLog('📝 Transaction started on Stocks store');
+            var tx = db.transaction(CONFIG.STORE_NAME, "readwrite");
+            var store = tx.objectStore(CONFIG.STORE_NAME);
             
             // Append to existing data (don't clear)
             var savedCount = 0;
@@ -997,7 +988,6 @@ function saveToIndexedDB(callback) {
                 if (!ticker || ticker === '' || ticker === '?') {
                     skipped.push(stock.name || 'unnamed');
                     skippedCount++;
-                    showDebugLog('⚠️ Skipping stock #' + (idx + 1) + ': No ticker - ' + (stock.name || 'unnamed'));
                     return;  // Skip invalid record
                 }
                 
@@ -1018,85 +1008,44 @@ function saveToIndexedDB(callback) {
                 if (!record.ticker) {
                     skipped.push(record.name || 'unnamed');
                     skippedCount++;
-                    showDebugLog('⚠️ Validation failed for: ' + record.name);
                     return;
-                }
-                
-                if (idx === 0 || skippedCount === 0) {
-                    showDebugLog('✅ Valid record: ticker=' + record.ticker + ', name=' + record.name + ', qty=' + record.qty);
                 }
                 
                 store.put(record);
                 savedCount++;
             });
             
-            if (skippedCount > 0) {
-                showDebugLog('⚠️ Integrity check: ' + skippedCount + ' invalid records skipped');
-                showDebugLog('📋 Skipped: ' + skipped.join(', '));
-                showDebugLog('💾 Saving ' + savedCount + ' valid records...');
-            } else {
-                showDebugLog('📤 Queued ' + savedCount + ' records for save');
-            }
-            
             tx.oncomplete = function() {
-                showDebugLog('✅ Transaction complete - ' + savedCount + ' stocks saved!');
                 if (callback) callback(true);
             };
             
             tx.onerror = function() {
                 console.error('❌ Transaction error:', tx.error);
-                showDebugLog('❌ Transaction error: ' + (tx.error ? tx.error.name : 'unknown'));
                 if (callback) callback(false);
             };
         };
     } catch(err) {
         console.error('Error:', err.message);
-        showDebugLog('❌ Exception: ' + err.message);
         if (callback) callback(false);
     }
 }
 
-// New function: Save and continue to Step 7
+// Save and continue to Step 7
 function saveAndContinue() {
-    console.log('🔵 saveAndContinue() called');
-    console.log('Stocks to save:', importState.stocks);
-    console.log('First stock:', importState.stocks[0]);
-    
-    var btn = document.querySelector('button[onclick="saveAndContinue()"]');
+    var btn = document.querySelector("button[onclick=\"saveAndContinue()\"]");
     if (btn) btn.disabled = true;
-    
-    showDebugLog('📝 Saving ' + importState.stocks.length + ' stocks...');
     
     saveToIndexedDB(function(success) {
         if (success) {
-            console.log('✅ Save successful');
-            showDebugLog('✅ Save successful! Moving to Step 7...');
             importState.step = 7;
             showImportUI();
             attachDeleteListeners();
         } else {
-            console.error('❌ Save failed');
-            showDebugLog('❌ Save failed - check first stock:' + JSON.stringify(importState.stocks[0]));
             if (btn) btn.disabled = false;
         }
     });
 }
 
-// Add debug log to page
-function showDebugLog(message) {
-    var debugDiv = document.getElementById('debug-log');
-    if (!debugDiv) {
-        debugDiv = document.createElement('div');
-        debugDiv.id = 'debug-log';
-        debugDiv.style.cssText = 'position:fixed;bottom:80px;left:10px;right:10px;background:#111;' +
-            'border:1px solid #00ff88;color:#00ff88;padding:10px;font-size:11px;' +
-            'max-height:200px;overflow-y:auto;z-index:10000;border-radius:6px;font-family:monospace;';
-        document.body.appendChild(debugDiv);
-    }
-    var timestamp = new Date().toLocaleTimeString();
-    debugDiv.innerHTML += '[' + timestamp + '] ' + message + '<br>';
-    debugDiv.scrollTop = debugDiv.scrollHeight;
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // STEP 7: Post to GitHub - PROPER UI WITH CONFIG & CONFIRMATION
@@ -1485,7 +1434,7 @@ function postToGitHub() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function nextImportStep() {
-    if (importState.step < 7) {
+    if (importState.step < CONFIG.TOTAL_STEPS) {
         importState.step++;
         showImportUI();
     }

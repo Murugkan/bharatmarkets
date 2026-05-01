@@ -2,177 +2,398 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Bharat Markets - ETL Center</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
     <style>
+        /* ========== CSS VARIABLES & RESET ========== */
         :root {
-            --bg: #000;
-            --s1: #0a0a0a;
-            --b1: #222;
-            --bl: #00f2ff;
-            --gr: #00ff88;
-            --rd: #ff4d6d;
-            --tx: #fff;
-            --warning: #f59e0b;
+            --color-bg: #000;
+            --color-surface-1: #0a0a0a;
+            --color-surface-2: #111;
+            --color-border: #222;
+            --color-cyan: #00f2ff;
+            --color-green: #00ff88;
+            --color-red: #ff4d6d;
+            --color-text: #fff;
+            --color-text-muted: #666;
+            --color-warning: #f59e0b;
+            
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 12px;
+            --spacing-lg: 15px;
+            --spacing-xl: 20px;
+            
+            --border-radius: 4px;
+            --transition-speed: 0.2s;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-size-xs: 8px;
+            --font-size-sm: 9px;
+            --font-size-base: 10px;
+            --font-size-lg: 11px;
+            --font-size-xl: 12px;
+            --font-size-2xl: 14px;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+        }
+
         body {
-            background: var(--bg);
-            color: var(--tx);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
+            background: var(--color-bg);
+            color: var(--color-text);
+            font-family: var(--font-mono);
+            font-size: var(--font-size-base);
             overflow: hidden;
             -webkit-text-size-adjust: 100%;
-            padding-bottom: 80px;
         }
 
-        /* HEADER */
+        /* ========== HEADER ========== */
         header {
-            background: var(--s1);
-            border-bottom: 1px solid var(--b1);
-            padding: 4px;
+            background: var(--color-surface-1);
+            border-bottom: 1px solid var(--color-border);
+            padding: var(--spacing-sm);
         }
-        .header-title { font-size: 14px; font-weight: 800; margin-bottom: 10px; color: var(--bl); }
+
+        .header-title {
+            font-size: var(--font-size-2xl);
+            font-weight: 800;
+            margin-bottom: var(--spacing-md);
+            color: var(--color-cyan);
+        }
+
         .metrics {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr;
-            gap: 8px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--spacing-sm);
         }
+
         .metric-box {
-            background: var(--b1);
-            padding: 8px;
-            border-radius: 4px;
+            background: var(--color-border);
+            padding: var(--spacing-sm);
+            border-radius: var(--border-radius);
             text-align: center;
         }
-        .metric-label { font-size: 8px; color: #666; text-transform: uppercase; }
-        .metric-val { font-size: 12px; font-weight: 800; color: var(--bl); margin-top: 4px; }
 
-        /* TAB BUTTONS */
+        .metric-box__label {
+            font-size: var(--font-size-xs);
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+        }
+
+        .metric-box__value {
+            font-size: var(--font-size-xl);
+            font-weight: 800;
+            color: var(--color-cyan);
+            margin-top: var(--spacing-xs);
+        }
+
+        /* ========== TABS ========== */
         .tabs {
             display: flex;
             gap: 0;
-            background: var(--s1);
-            border-bottom: 2px solid var(--b1);
+            background: var(--color-surface-1);
+            border-bottom: 2px solid var(--color-border);
             overflow-x: auto;
             padding: 0;
             -webkit-overflow-scrolling: touch;
         }
+
         .tab-btn {
             flex: 1;
             min-width: 80px;
-            padding: 8px;
-            background: var(--s1);
-            color: #666;
+            padding: var(--spacing-sm);
+            background: var(--color-surface-1);
+            color: var(--color-text-muted);
             border: none;
             border-bottom: 3px solid transparent;
             cursor: pointer;
-            font-size: 9px;
+            font-size: var(--font-size-sm);
             font-weight: 800;
             text-transform: uppercase;
             white-space: nowrap;
-            transition: all 0.2s;
+            transition: all var(--transition-speed);
+            font-family: var(--font-mono);
         }
-        .tab-btn.active {
-            color: var(--bl);
-            border-bottom-color: var(--bl);
+
+        .tab-btn:hover {
+            color: var(--color-cyan);
+        }
+
+        .tab-btn.is-active {
+            color: var(--color-cyan);
+            border-bottom-color: var(--color-cyan);
             background: #111;
         }
 
-        /* CONTENT AREA */
+        /* ========== CONTENT AREA ========== */
         .content {
             height: calc(100vh - 160px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
-            padding: 8px;
+            padding: var(--spacing-sm);
+            padding-bottom: 80px;
         }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
 
-        /* TABLES */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.is-active {
+            display: block;
+        }
+
+        /* ========== TABLES ========== */
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 10px;
+            font-size: var(--font-size-base);
         }
-        th {
-            background: var(--s1);
-            color: #666;
-            padding: 8px;
+
+        thead {
             position: sticky;
             top: 0;
             z-index: 10;
-            border-bottom: 2px solid var(--b1);
+        }
+
+        th {
+            background: rgba(0, 50, 100, 0.5);
+            color: var(--color-text-muted);
+            padding: var(--spacing-sm);
+            border-bottom: 2px solid var(--color-border);
             text-align: left;
             font-weight: 800;
         }
-        th.active { color: var(--bl); }
+
+        th.is-active {
+            color: var(--color-cyan);
+        }
+
         td {
-            padding: 6px 8px;
+            padding: 6px var(--spacing-sm);
             border-bottom: 1px solid #111;
         }
+
         td.sticky {
             position: sticky;
             left: 0;
-            background: #0a0a0a;
+            background: var(--color-surface-1);
             z-index: 5;
-            border-right: 1px solid var(--b1);
-            color: var(--bl);
+            border-right: 1px solid var(--color-border);
+            color: var(--color-cyan);
             font-weight: 800;
         }
-        
-        thead tr {
-            position: sticky;
-            top: 0;
-            background: rgba(0,50,100,0.5);
-            z-index: 10;
-        }
-        
-        .pos { color: var(--gr) !important; }
-        .neg { color: var(--rd) !important; }
 
-        /* BUTTONS */
+        .cell--positive {
+            color: var(--color-green) !important;
+        }
+
+        .cell--negative {
+            color: var(--color-red) !important;
+        }
+
+        /* ========== BUTTONS ========== */
         button {
-            padding: 8px 12px;
-            background: var(--bl);
+            padding: var(--spacing-sm) 12px;
+            background: var(--color-cyan);
             color: #000;
             border: none;
-            border-radius: 4px;
+            border-radius: var(--border-radius);
             cursor: pointer;
             font-weight: 800;
-            font-size: 9px;
-            font-family: 'JetBrains Mono', monospace;
-            transition: all 0.2s;
+            font-size: var(--font-size-sm);
+            font-family: var(--font-mono);
+            transition: all var(--transition-speed);
         }
-        button:hover { opacity: 0.8; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-danger { background: var(--rd); }
-        .btn-success { background: var(--gr); }
-        .btn-warning { background: var(--warning); }
 
-        /* INLINE BUTTONS */
-        .inline-buttons {
+        button:hover {
+            opacity: 0.8;
+        }
+
+        button:active {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn--danger {
+            background: var(--color-red);
+        }
+
+        .btn--success {
+            background: var(--color-green);
+        }
+
+        .btn--warning {
+            background: var(--color-warning);
+        }
+
+        /* ========== BUTTON GROUPS ========== */
+        .button-group {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 15px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-lg);
         }
 
-        .inline-buttons button {
+        .button-group button {
             width: 100%;
             padding: 10px 8px;
-            font-size: 11px;
+            font-size: var(--font-size-lg);
             border-radius: 6px;
         }
 
-        /* NAVIGATION FOOTER */
+        /* ========== FORMS & INPUTS ========== */
+        input[type="number"],
+        input[type="text"],
+        input[type="password"] {
+            padding: 6px;
+            background: var(--color-surface-2);
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius);
+            font-family: var(--font-mono);
+            font-size: var(--font-size-base);
+            transition: border-color var(--transition-speed);
+        }
+
+        input[type="number"]:focus,
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--color-cyan);
+        }
+
+        .input-group {
+            display: flex;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .input-group input {
+            flex: 1;
+        }
+
+        /* ========== SECTIONS ========== */
+        .section-header {
+            font-size: var(--font-size-xl);
+            font-weight: 800;
+            margin-bottom: var(--spacing-md);
+            color: var(--color-cyan);
+        }
+
+        .section-header.is-success {
+            color: var(--color-green);
+        }
+
+        .section-box {
+            margin: var(--spacing-lg) 0;
+            padding: var(--spacing-md);
+            background: var(--color-surface-1);
+            border-radius: 8px;
+            border: 1px solid var(--color-border);
+        }
+
+        /* ========== ALERTS & TOASTS ========== */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--color-green);
+            color: #000;
+            padding: 10px 16px;
+            border-radius: var(--border-radius);
+            font-weight: 800;
+            z-index: 2000;
+            animation: slideUp 0.3s ease-out;
+            display: none;
+        }
+
+        .toast.is-visible {
+            display: block;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        /* ========== LOGS ========== */
+        .log-box {
+            background: var(--color-surface-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius);
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: var(--font-size-sm);
+            color: var(--color-green);
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+            word-break: break-word;
+        }
+
+        /* ========== STATUS INDICATOR ========== */
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+
+        .status-indicator.is-ready {
+            background: var(--color-green);
+        }
+
+        .status-indicator.is-loading {
+            background: var(--color-warning);
+            animation: pulse 1s infinite;
+        }
+
+        .status-indicator.is-error {
+            background: var(--color-red);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* ========== NAVIGATION FOOTER ========== */
         .nav-footer {
             position: fixed;
             bottom: 0;
             width: 100%;
             background: rgba(0, 0, 0, 0.95);
             backdrop-filter: blur(10px);
-            border-top: 1px solid var(--b1);
+            border-top: 1px solid var(--color-border);
             display: flex;
             justify-content: space-around;
             padding: 12px 0;
@@ -182,2285 +403,749 @@
 
         .nav-btn {
             text-decoration: none;
-            color: #666;
+            color: var(--color-text-muted);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             width: 50%;
             padding: 8px 0;
-            transition: color 0.2s;
+            transition: color var(--transition-speed);
         }
 
         .nav-btn:hover {
-            color: var(--bl);
+            color: var(--color-cyan);
         }
 
-        .nav-btn.active {
-            color: var(--bl);
+        .nav-btn.is-active {
+            color: var(--color-cyan);
             font-weight: 800;
         }
 
-        .nav-label {
-            font-size: 8px;
+        .nav-btn__label {
+            font-size: var(--font-size-xs);
             margin-top: 4px;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
 
-        /* PAT CONFIG */
+        /* ========== PAT SECTION ========== */
         .pat-section {
-            background: var(--b1);
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
+            background: var(--color-border);
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius);
+            margin-bottom: var(--spacing-md);
         }
-        .pat-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
-        .pat-input {
-            width: 100%;
-            padding: 8px;
-            background: #111;
-            color: var(--tx);
-            border: 1px solid var(--b1);
-            border-radius: 4px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+
+        .pat-label {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            margin-bottom: var(--spacing-sm);
         }
+
         .pat-status {
-            margin-top: 8px;
-            font-size: 9px;
-            color: var(--gr);
+            margin-top: var(--spacing-sm);
+            font-size: var(--font-size-sm);
+            color: var(--color-green);
         }
 
-        /* TOAST */
-        .toast {
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--gr);
-            color: #000;
-            padding: 10px 16px;
-            border-radius: 4px;
-            font-weight: 800;
-            z-index: 2000;
-            animation: slideUp 0.3s ease-out;
-            display: none;
-        }
-        .toast.show { display: block; }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .pat-status__repo {
+            color: var(--color-text-muted);
         }
 
-        /* SCROLLABLE TABLE CONTAINER */
-        .table-container {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            padding-bottom: 80px;
-        }
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 640px) {
+            .metrics {
+                grid-template-columns: repeat(2, 1fr);
+            }
 
-        /* LOG */
-        .log-box {
-            background: #111;
-            border: 1px solid var(--b1);
-            border-radius: 4px;
-            padding: 10px;
-            max-height: 200px;
-            overflow-y: auto;
-            font-size: 9px;
-            color: var(--gr);
-            line-height: 1.4;
+            .button-group {
+                grid-template-columns: 1fr;
+            }
         }
-
-        /* INPUT FIELDS */
-        input[type="number"], input[type="text"] {
-            padding: 6px;
-            background: #111;
-            color: var(--tx);
-            border: 1px solid var(--b1);
-            border-radius: 2px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
-        }
-        input[type="number"]:focus, input[type="text"]:focus {
-            outline: none;
-            border-color: var(--bl);
-        }
-
-        /* SECTION HEADERS */
-        .section-header {
-            font-size: 12px;
-            font-weight: 800;
-            margin-bottom: 10px;
-            color: var(--bl);
-        }
-
-        .section-header.success {
-            color: var(--gr);
-        }
-
-        /* SECTION BOX */
-        .section-box {
-            margin: 15px 0;
-            padding: 12px;
-            background: var(--s1);
-            border-radius: 8px;
-            border: 1px solid var(--b1);
-        }
-        
     </style>
 </head>
 <body>
+    <!-- HEADER -->
+    <header>
+        <div class="header-title">📊 Bharat Markets - ETL Center</div>
+        <div class="metrics">
+            <div class="metric-box">
+                <div class="metric-box__label">Stocks</div>
+                <div class="metric-box__value" id="metric-count">0</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-box__label">Sources</div>
+                <div class="metric-box__value">4</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-box__label">Status</div>
+                <div class="metric-box__value" id="metric-status">⏳</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-box__label">Saved</div>
+                <div class="metric-box__value" id="metric-saved">-</div>
+            </div>
+        </div>
+    </header>
 
-<header>
-</header>
+    <!-- TAB NAVIGATION -->
+    <div class="tabs" role="tablist">
+        <button class="tab-btn is-active" role="tab" aria-selected="true" aria-controls="tab-etl" onclick="switchTab('etl')">📊 Data Status</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-stocks" onclick="switchTab('stocks')">📋 Stock List</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-config" onclick="switchTab('config')">🔐 Configuration</button>
+    </div>
 
-<div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('etl-pipeline')">📊 Data status</button>
-    <button class="tab-btn" onclick="switchTab('symbols')">📋 Stock list</button>
-    <button class="tab-btn" onclick="switchTab('pat')">🔐 PAT</button>
-</div>
+    <!-- MAIN CONTENT -->
+    <div class="content">
+        <!-- TAB 1: ETL PIPELINE -->
+        <div id="tab-etl" class="tab-content is-active" role="tabpanel">
+            <div class="button-group">
+                <button onclick="handleLoadData()" id="btn-load" aria-label="Load JSON data from GitHub">
+                    <span>🚀</span> LOAD JSON<br>
+                    <span style="font-size: var(--font-size-sm); font-weight: normal;" id="load-status">✅ Ready</span>
+                </button>
+                <button onclick="handleRefresh()" aria-label="Refresh data completely">
+                    <span>🔄</span> REFRESH
+                </button>
+                <div style="background: linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color: #fff; padding: var(--spacing-sm); border-radius: var(--border-radius); font-weight: 800; font-size: var(--font-size-lg); display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    DB <span id="metric-db">0</span>
+                </div>
+            </div>
 
-<div class="content">
-    <!-- TAB 1: COMBINED ETL PIPELINE -->
-    <div id="etl-pipeline" class="tab-content active">
-        
-        <!-- ACTION BUTTONS -->
-        <div class="inline-buttons">
-            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
-            <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
+            <!-- DATA SOURCES TABLE -->
+            <div class="section-box">
+                <div class="section-header">Data Sources</div>
+                <div class="table-container">
+                    <table role="grid" aria-label="Data source status">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>Count</th>
+                                <th>Updated (IST)</th>
+                                <th style="text-align: center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-sources">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- LIVE LOG -->
+            <div class="section-box">
+                <div class="section-header">📋 Live Log</div>
+                <div class="log-box" id="log-container" role="log" aria-live="polite" aria-label="System log">
+                    <div style="color: var(--color-text-muted);">[Logs appear here]</div>
+                </div>
+            </div>
         </div>
 
-        <!-- SECTION 1: DATA SOURCES -->
-        <div class="section-box">
+        <!-- TAB 2: STOCKS -->
+        <div id="tab-stocks" class="tab-content" role="tabpanel">
+            <div style="margin-bottom: var(--spacing-md);">
+                <button onclick="toggleEditMode()" id="btn-edit">🔧 Edit Mode: OFF</button>
+                <button onclick="downloadCSV()" style="background: var(--color-green);">📊 Export CSV</button>
+            </div>
+            <div id="save-section" style="display: none; margin-bottom: var(--spacing-md);">
+                <button onclick="saveChanges()" class="btn--success">💾 SAVE CHANGES</button>
+                <button onclick="cancelChanges()">❌ Cancel</button>
+            </div>
             <div class="table-container">
-                <table>
+                <table role="grid" aria-label="Stock list">
                     <thead>
                         <tr>
-                            <th>Source</th>
-                            <th>Count</th>
-                            <th>Updated (IST)</th>
-                            <th style="text-align:center;">Data Load</th>
+                            <th class="sticky">TICKER</th>
+                            <th>NAME</th>
+                            <th style="text-align: center;">QTY</th>
+                            <th style="text-align: center;">AVG</th>
+                            <th style="text-align: center;">S.NO</th>
+                            <th style="text-align: center;">CONCALL</th>
+                            <th style="text-align: center;">CONCALL DATE</th>
+                            <th style="text-align: center;">INSIGHTS</th>
+                            <th style="text-align: center;">INSIGHTS DATE</th>
+                            <th style="text-align: center;">DEL</th>
                         </tr>
                     </thead>
-                    <tbody id="sources-table">
+                    <tbody id="table-stocks">
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- SECTION 2: LIVE LOG -->
-        <div class="section-box">
-            <div class="section-header">📋 Live Log</div>
-            <div class="log-box" id="live-log">
-                <div style="color:#666;">[Logs appear here]</div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- TAB 2: SYMBOLS EDITOR -->
-    <div id="symbols" class="tab-content">
-        <div style="margin-bottom:10px;">
-            <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
-            <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
-        </div>
-        <div id="save-section" style="display:none; margin-bottom:12px;">
-            <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
-            <button onclick="cancelChanges()">❌ Cancel</button>
-        </div>
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
-                        <th class="sticky" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left;">TICKER</th>
-                        <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left; width:100px;">NAME</th>
-                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
-                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
-                        <th style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px;">S.NO</th>
-                        <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
-                        <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
-                        <th style="color:#f59e0b; font-weight:700; padding:10px 4px; text-align:center;">INSIGHTS</th>
-                        <th style="color:#ffaa44; font-weight:700; padding:10px 4px; text-align:center; width:75px;">INSIGHTS DATE</th>
-                        <th style="color:#ff4444; font-weight:700; padding:10px 4px; text-align:center; width:40px;">DEL</th>
-                    </tr>
-                </thead>
-                <tbody id="symbols-table">
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- TAB 3: PAT CONFIG -->
-    <div id="pat" class="tab-content">
-        <div class="pat-section">
-            <div style="background:#0a0a0a; padding:12px; border-radius:4px; margin-bottom:12px; border-left:2px solid #00ff88;">
-                <div style="font-size:9px; color:#666; margin-bottom:6px;">💡 QUICK START</div>
-                <div style="font-size:10px; color:#aaa; line-height:1.5;">
-                    1️⃣ Go to <strong>📊 Data status</strong> tab<br>
-                    2️⃣ Click <strong>🚀 LOAD JSON</strong> (no PAT needed)<br>
-                    3️⃣ Portfolio updates automatically
+        <!-- TAB 3: CONFIGURATION -->
+        <div id="tab-config" class="tab-content" role="tabpanel">
+            <div class="pat-section">
+                <div style="background: var(--color-surface-1); padding: var(--spacing-md); border-radius: var(--border-radius); margin-bottom: var(--spacing-md); border-left: 2px solid var(--color-green);">
+                    <div style="font-size: var(--font-size-sm); color: var(--color-text-muted); margin-bottom: 6px;">💡 QUICK START</div>
+                    <div style="font-size: var(--font-size-base); color: #aaa; line-height: 1.5;">
+                        1️⃣ Click <strong>🚀 LOAD JSON</strong> (no PAT needed)<br>
+                        2️⃣ Portfolio updates automatically<br>
+                        3️⃣ PAT required only for edits
+                    </div>
                 </div>
-                <div style="font-size:9px; color:#666; margin-top:8px; margin-bottom:4px;">🔐 PAT NEEDED FOR:</div>
-                <div style="font-size:10px; color:#aaa;">Save guidance/insights edits</div>
+
+                <div class="pat-label">GitHub Personal Access Token</div>
+                <div class="input-group">
+                    <input type="password" id="input-pat" placeholder="ghp_..." aria-label="GitHub PAT token">
+                    <button onclick="togglePatVisibility()" id="btn-pat-toggle">👁 Show</button>
+                    <button onclick="savePat()" style="background: var(--color-green); color: #000; font-weight: bold;">💾 Save</button>
+                    <button onclick="resetPat()" class="btn--danger">🔄 Reset</button>
+                </div>
+
+                <div class="pat-status">
+                    <div id="pat-status">❌ Not Configured</div>
+                    <div id="pat-repo" class="pat-status__repo">—</div>
+                </div>
+
+                <button onclick="testConnection()" style="width: 100%; margin-top: var(--spacing-md); background: var(--color-warning);">🔗 Test Connection</button>
             </div>
-            
-            <div class="pat-label">GitHub PAT Token</div>
-            <input type="password" id="patToken" class="pat-input" placeholder="ghp_••••••••••••••••••••••••••••••••">
-            <div style="display:flex; gap:8px; margin-top:8px;">
-                <button onclick="togglePatVisibility()" style="flex:1;">👁 Show</button>
-                <button onclick="savePat()" style="flex:1; background:#00ff88; color:#000; font-weight:bold;">💾 Save</button>
-                <button onclick="resetPat()" class="btn-danger" style="flex:1;">🔄 Reset</button>
-            </div>
-            <div class="pat-status">
-                <div id="patStatus">❌ Not Configured</div>
-                <div id="patRepo" style="color:#999;">—</div>
-            </div>
-            <button onclick="testConnection()" style="width:100%; margin-top:12px; background:var(--warning);">🔗 Test Connection</button>
         </div>
     </div>
 
-</div>
+    <!-- NAVIGATION FOOTER -->
+    <footer class="nav-footer">
+        <a href="index.html" class="nav-btn" aria-label="Go to Portfolio">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+            </svg>
+            <span class="nav-btn__label">Portfolio</span>
+        </a>
+        <a href="data.html" class="nav-btn is-active" aria-label="Current page: Data">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                <path d="M21 3v5h-5"></path>
+                <path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path>
+                <path d="M3 21v-5h5"></path>
+            </svg>
+            <span class="nav-btn__label">Data</span>
+        </a>
+        <a href="analysis.html" class="nav-btn" aria-label="Go to Analysis">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span class="nav-btn__label">Analysis</span>
+        </a>
+    </footer>
 
-<!-- NAVIGATION FOOTER -->
-<footer class="nav-footer">
-    <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
-    <a href="data.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
-    <a href="analysis.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span class="nav-label">Analysis</span></a>
-</footer>
+    <!-- TOAST NOTIFICATION -->
+    <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-<div class="toast" id="toast"></div>
+    <!-- SCRIPTS -->
+    <script>
+        // ========== CONFIGURATION ==========
+        const CONFIG = {
+            db: {
+                name: 'OnyxPortfolioDB',
+                version: 8,
+                storeName: 'Stocks'
+            },
+            github: {
+                owner: 'murugkan',
+                repo: 'bharatmarkets',
+                branch: 'main',
+                timeout: 30000, // 30 seconds
+                files: {
+                    symbols: 'unified-symbols.json',
+                    prices: 'prices.json',
+                    fundamentals: 'fundamentals.json',
+                    guidance: 'guidance.json'
+                }
+            },
+            storage: {
+                pat: 'github_pat',
+                timestamps: 'dataUpdatedTimes',
+                concallTimestamps: 'concallTimestamps',
+                insightsTimestamps: 'insightsTimestamps'
+            }
+        };
 
-<script>
-    const DB_NAME = 'OnyxPortfolioDB';
-    const DB_VERSION = 8;
-    const STORE_NAME = 'Stocks';
+        // ========== STATE ==========
+        const state = {
+            masterData: [],
+            sourceData: {},
+            guidanceData: {},
+            concallTimestamps: {},
+            insightsTimestamps: {},
+            dataUpdatedTimes: {},
+            logMessages: [],
+            editMode: false,
+            isLoading: false
+        };
 
-    let masterData = [];
-    let sourceData = {};
-    let guidanceData = {};
-    let guidanceTimestamps = {};
-    let concallTimestamps = {}; // Separate timestamp for concall
-    let insightsTimestamps = {}; // Separate timestamp for insights
-    let editMode = false;
-    let logMessages = [];
-    let dataUpdatedTimes = {};
+        // ========== LOGGER ==========
+        const logger = {
+            log(message) {
+                const timestamp = new Date().toLocaleTimeString('en-IN', { hour12: false });
+                const entry = `[${timestamp}] ${message}`;
+                state.logMessages.push(entry);
+                this.render();
+                console.log(entry);
+            },
 
-    const GITHUB_CONFIG = {
-        OWNER: 'murugkan',
-        REPO: 'bharatmarkets',
-        BRANCH: 'main',
-        PATHS: {
-            symbols: 'unified-symbols.json',
-            prices: 'prices.json',
-            fundamentals: 'fundamentals.json',
-            guidance: 'guidance.json',
-            macro: 'macro_data.json'
+            clear() {
+                state.logMessages = [];
+                this.render();
+            },
+
+            render() {
+                const logContainer = document.getElementById('log-container');
+                if (!logContainer) return;
+                logContainer.innerHTML = state.logMessages
+                    .slice(-50) // Show last 50 messages
+                    .map(msg => `<div class="log-entry">${escapeHtml(msg)}</div>`)
+                    .join('');
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        };
+
+        // ========== UTILITIES ==========
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
         }
-    };
-    
-    const RAW_GITHUB_URL = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}`;
-    
-    const DATA_SOURCES = [
-        { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
-        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
-        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
-    ];
 
-    async function fetchGitHubData(filePath) {
-        try {
-            const pat = localStorage.getItem('github_pat');
-            const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filePath}?ref=${GITHUB_CONFIG.BRANCH}`;
-            const fetchTime = new Date().toISOString();
-            
-            log(`📡 Fetching: ${filePath}`);
-            
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000);
-            
+        function getGithubRawUrl(filePath) {
+            const { owner, repo, branch } = CONFIG.github;
+            return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
+        }
+
+        function getGithubApiUrl(filePath) {
+            const { owner, repo, branch } = CONFIG.github;
+            return `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
+        }
+
+        // ========== TOAST NOTIFICATIONS ==========
+        function showToast(message, duration = 3000) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('is-visible');
+            setTimeout(() => {
+                toast.classList.remove('is-visible');
+            }, duration);
+        }
+
+        // ========== TAB SWITCHING ==========
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('is-active');
+            });
+
+            // Deactivate all buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('is-active');
+                btn.setAttribute('aria-selected', 'false');
+            });
+
+            // Show selected tab
+            const tabEl = document.getElementById(`tab-${tabName}`);
+            if (tabEl) {
+                tabEl.classList.add('is-active');
+            }
+
+            // Activate selected button
+            event.target.classList.add('is-active');
+            event.target.setAttribute('aria-selected', 'true');
+        }
+
+        // ========== DATA FETCHING ==========
+        async function fetchGithubData(filePath) {
             try {
+                logger.log(`📡 Fetching: ${filePath}`);
+
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), CONFIG.github.timeout);
+
+                const pat = localStorage.getItem(CONFIG.storage.pat);
                 const headers = pat ? { 'Authorization': `token ${pat}` } : {};
-                const response = await fetch(apiUrl, {
+
+                const response = await fetch(getGithubApiUrl(filePath), {
                     signal: controller.signal,
-                    headers: headers,
+                    headers,
                     cache: 'no-store'
                 });
+
                 clearTimeout(timeout);
-                
+
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
-                
-                log(`  └─ Response: ✅ 200 Fresh (${response.headers.get('content-length')} bytes)`);
-                
+
                 const apiResponse = await response.json();
                 const decodedContent = atob(apiResponse.content);
                 const data = JSON.parse(decodedContent);
-                
-                // ✅ CRITICAL: Extract timestamp BEFORE sanitization (sanitizeJSON might strip it)
-                let fileTimestamp = null;
-                if (data && data.updated) {
-                    fileTimestamp = data.updated;
-                } else if (data && data._metadata && data._metadata.updated) {
-                    fileTimestamp = data._metadata.updated;
-                }
-                
-                // Sanitize data
-                const sanitizedJSON = sanitizeJSON(JSON.stringify(data));
-                const sanitizedData = JSON.parse(sanitizedJSON);
-                
-                // ✅ Set timestamp from extracted value OR fallback
-                if (fileTimestamp) {
-                    dataUpdatedTimes[filePath] = fileTimestamp;
-                    log(`✅ Timestamp: ${fileTimestamp} (from JSON)`);
+
+                logger.log(`✅ ${filePath}: 200 OK (${apiResponse.size} bytes)`);
+
+                // Extract timestamp
+                const timestamp = data.updated || data._metadata?.updated || new Date().toISOString();
+                state.dataUpdatedTimes[filePath] = timestamp;
+
+                return data;
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    logger.log(`⏱️ Timeout: ${filePath} (${CONFIG.github.timeout}ms)`);
                 } else {
-                    const lastModified = response.headers.get('last-modified');
-                    if (lastModified) {
-                        dataUpdatedTimes[filePath] = new Date(lastModified).toISOString();
-                        log(`✅ Timestamp: ${dataUpdatedTimes[filePath]} (from HTTP header)`);
-                    } else {
-                        dataUpdatedTimes[filePath] = fetchTime;
-                        log(`⚠️ Timestamp: ${fetchTime} (using fetch time)`);
-                    }
-                }
-            
-                // Save to localStorage
-                localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
-                
-                return sanitizedData;
-                
-            } catch (abortErr) {
-                clearTimeout(timeout);
-                if (abortErr.name === 'AbortError') {
-                    log(`⏱️ Timeout fetching ${filePath} (30s)`);
-                } else {
-                    log(`❌ Network error: ${filePath}`);
+                    logger.log(`❌ Error fetching ${filePath}: ${error.message}`);
                 }
                 return null;
             }
-        } catch (e) {
-            log(`❌ Error parsing ${filePath}: ${e.message}`);
-            return null;
         }
-    }
 
-    async function init() {
-        loadSavedLogs();  // Restore previous logs
-        updateStatusButton('⏳ Loading...');
-        log('🚀 ETL Center starting...');
-        
-        // Load PAT from storage
-        loadPatFromStorage();
-        
-        // Load updated times from storage
-        const savedTimes = localStorage.getItem('dataUpdatedTimes');
-        if (savedTimes) {
-            dataUpdatedTimes = JSON.parse(savedTimes);
-        }
-        
-        try {
-            await loadFromIndexedDB();
-            
-            // ✅ Load timestamps from localStorage (even if not loading guidance data)
-            const storedConcall = localStorage.getItem('concallTimestamps');
-            if (storedConcall) {
-                try {
-                    concallTimestamps = JSON.parse(storedConcall);
-                } catch(e) {
-                    concallTimestamps = {};
+        // ========== DATA LOADING ==========
+        async function loadAllData() {
+            if (state.isLoading) return;
+            state.isLoading = true;
+
+            try {
+                updateStatusButton('⏳ Loading...');
+                logger.log('🚀 Starting data load...');
+
+                // Fetch all data sources in parallel
+                const [symbolsData, pricesData, fundamentalsData, guidanceData] = await Promise.all([
+                    fetchGithubData(CONFIG.github.files.symbols),
+                    fetchGithubData(CONFIG.github.files.prices),
+                    fetchGithubData(CONFIG.github.files.fundamentals),
+                    fetchGithubData(CONFIG.github.files.guidance)
+                ]);
+
+                // Validate data
+                if (!symbolsData || !pricesData || !fundamentalsData) {
+                    throw new Error('Missing critical data sources');
                 }
-            }
-            const storedInsights = localStorage.getItem('insightsTimestamps');
-            if (storedInsights) {
-                try {
-                    insightsTimestamps = JSON.parse(storedInsights);
-                } catch(e) {
-                    insightsTimestamps = {};
-                }
-            }
-            
-            if (masterData.length > 0) {
-                log(`📊 Loaded: ${masterData.length} records from IndexedDB (local cache)`);
-                updateStatusButton('✅ Ready (click LOAD JSON for fresh)');
-            } else {
-                log('⚠️ No data. Click LOAD JSON to fetch from GitHub');
-                updateStatusButton('⚠️ No Data');
-            }
-        } catch (e) {
-            log(`⚠️ Error: ${e.message}`);
-            updateStatusButton('⚠️ Error');
-        }
-        
-        renderDataSources();
-        renderSymbols();
-        updateHeader();
-    }
 
-    function updateStatusButton(statusText) {
-        const btn = document.getElementById('loadJsonBtn');
-        const badge = document.getElementById('statusBadge');
-        
-        // Safe: Only update if elements exist (data.html page)
-        if (btn && badge) {
-            badge.textContent = statusText;
-            
-            // Update button styling based on status
-            if (statusText.includes('Ready')) {
-                btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
-                btn.style.color = '#000';
-                btn.disabled = false;
-            } else if (statusText.includes('Loading') || statusText.includes('Clearing')) {
-                btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
-                btn.style.color = '#000';
-                btn.disabled = true;
-            } else if (statusText.includes('Error') || statusText.includes('Failed')) {
-                btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
-                btn.style.color = '#fff';
-                btn.disabled = false;
-            } else {
-                btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
-                btn.style.color = '#000';
-                btn.disabled = false;
+                state.guidanceData = guidanceData || {};
+                logger.log(`✅ Guidance loaded: ${Object.keys(state.guidanceData).length} stocks`);
+
+                // Merge data
+                const mergedStocks = mergeDataSources(symbolsData, pricesData, fundamentalsData);
+                logger.log(`✅ Merged: ${mergedStocks.length} stocks`);
+
+                // Save to IndexedDB
+                await saveToIndexedDB(mergedStocks);
+
+                // Save timestamps
+                localStorage.setItem(CONFIG.storage.timestamps, JSON.stringify(state.dataUpdatedTimes));
+                logger.log(`✅ Saved to storage`);
+
+                updateStatusButton('✅ Ready');
+                showToast('✅ Load complete!');
+
+            } catch (error) {
+                logger.log(`❌ Error: ${error.message}`);
+                updateStatusButton('❌ Error');
+                showToast(`❌ Error: ${error.message}`);
+            } finally {
+                state.isLoading = false;
             }
         }
-        
-        // Always log
-        log(statusText);
-    }
-    
-    function saveLogs() {
-        try {
-            localStorage.setItem('etl_logs', JSON.stringify(logMessages.slice(-100)));
-        } catch(e) {
-            console.warn('Storage full');
-        }
-    }
-    
-    function loadSavedLogs() {
-        try {
-            const saved = localStorage.getItem('etl_logs');
-            if (saved && Array.isArray(JSON.parse(saved))) {
-                logMessages = JSON.parse(saved);
-            }
-        } catch(e) {}
-    }
 
-    function switchTab(tabName) {
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-        document.getElementById(tabName).classList.add('active');
-        event.target.classList.add('active');
-        
-        // Refresh data when switching tabs
-        if (tabName === 'symbols') {
-            renderSymbols();
-        } else if (tabName === 'etl-pipeline') {
-            renderDataSources();
-        }
-    }
+        // ========== DATA MERGING ==========
+        function mergeDataSources(symbolsData, pricesData, fundamentalsData) {
+            const symbolsList = Array.isArray(symbolsData) ? symbolsData : symbolsData.stocks || [];
+            const priceMap = pricesData.quotes || pricesData;
+            const fundMap = fundamentalsData.stocks || fundamentalsData;
 
-    function log(msg) {
-        var ts = new Date().toLocaleTimeString();
-        var fullMsg = `[${ts}] ${msg}`;
-        logMessages.push(fullMsg);
-        var logBox = document.getElementById('live-log');
-        if (logBox) {
-            logBox.textContent = logMessages.slice(-30).reverse().join('\n');
-            logBox.scrollTop = 0;
-        }
-        saveLogs();
-        console.log(msg);
-    }
-    
-    function showToast(msg) {
-        var el = document.getElementById('toast');
-        el.textContent = msg;
-        el.classList.add('show');
-        setTimeout(() => el.classList.remove('show'), 2000);
-    }
+            return symbolsList.map(symbol => {
+                const ticker = symbol.ticker || symbol.TICKER;
+                if (!ticker) return null;
 
-    function renderDataSources() {
-        var html = '';
-        
-        DATA_SOURCES.forEach((s, index) => {
-            // Fetch count from GitHub with cache bust
-            var count = '⏳ Loading...';
-            const fullUrl = `${RAW_GITHUB_URL}/${s.path}?cache=${Date.now()}`;
-            fetch(fullUrl)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.count !== undefined) {
-                        // For prices.json which has "count" field
-                        count = data.count;
-                    } else if (data.symbols && Array.isArray(data.symbols)) {
-                        // For unified-symbols.json with symbols array
-                        count = data.symbols.length;
-                    } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
-                        // For fundamentals.json with stocks object
-                        count = Object.keys(data.stocks).length;
-                    } else if (Array.isArray(data)) {
-                        // If it's a direct array
-                        count = data.length;
-                    } else {
-                        count = '—';
-                    }
-                    // Update the count in the table cell
-                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
-                    if (countCell) countCell.textContent = count;
-                })
-                .catch(e => {
-                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
-                    if (countCell) countCell.textContent = '❌';
-                });
-            
-            // Get the actual timestamp from dataUpdatedTimes
-            var jsonTime = dataUpdatedTimes[s.path] || '—';
-            
-            // Convert ISO to IST (UTC+5:30)
-            var istTime = '—';
-            if (jsonTime && jsonTime !== '—' && !jsonTime.includes('❌')) {
-                try {
-                    var date = new Date(jsonTime);
-                    istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-                } catch(e) {
-                    istTime = jsonTime;
-                }
-            }
-            
-            // First file (unified-symbols) opens wizard, others load data
-            var loadButton = '';
-            if (index === 0) {
-                loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
-            } else {
-                loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
-            }
-            
-            html += `<tr data-source="${s.name}">
-                <td>${s.name}</td>
-                <td class="count-cell">${count}</td>
-                <td style="font-size:9px;">${istTime}</td>
-                <td style="text-align:center;">${loadButton}</td>
-            </tr>`;
-        });
-        document.getElementById('sources-table').innerHTML = html;
-    }
-
-    function dataLoad(source) {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            log('❌ PAT required in 🔐 PAT tab');
-            showToast('❌ Configure PAT first');
-            return;
-        }
-        
-        let fetchType = source === 'prices.json' ? 'prices_only' : 'fundamentals_only';
-        log(`⏳ Triggering workflow: ${fetchType}`);
-        showToast('⏳ Starting workflow...');
-        
-        triggerWorkflow(pat, fetchType, source);
-    }
-
-    function triggerWorkflow(pat, fetchType, source) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch-prices.yml/dispatches`;
-        
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': `token ${pat}`,
-                'Accept': 'application/vnd.github.v3+json'
-            },
-            body: JSON.stringify({
-                ref: GITHUB_CONFIG.BRANCH,
-                inputs: { fetch_type: fetchType }
-            })
-        })
-        .then(r => {
-            if (r.ok) {
-                log(`✅ Workflow triggered! Waiting...`);
-                showToast('⏳ Workflow running (30 sec)...');
-                setTimeout(() => fetchUpdated(source), 30000);
-            } else {
-                return r.json().then(e => {
-                    log(`❌ Workflow trigger failed: ${e.message}`);
-                    showToast('❌ Failed');
-                });
-            }
-        })
-        .catch(e => {
-            log(`❌ Error: ${e.message}`);
-            showToast('❌ Error');
-        });
-    }
-
-    function fetchUpdated(source) {
-        log(`📥 Fetching updated ${source}...`);
-        fetch(`${source}?cache=${Date.now()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data) {
-                    log(`✅ ${source} updated! Reloading...`);
-                    showToast('✅ Reloading...');
-                    setTimeout(() => location.reload(), 500);
-                } else {
-                    log(`❌ Fetch failed`);
-                    showToast('❌ Failed');
-                }
-            })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
-                showToast('❌ Error');
-            });
-    }
-
-
-    async function loadFromIndexedDB() {
-        return new Promise((resolve) => {
-            // Try opening with current version first, then with incremented version
-            var attemptVersion = DB_VERSION;
-            
-            function attemptOpen(version) {
-                var req = indexedDB.open(DB_NAME, version);
-                
-                req.onerror = () => {
-                    masterData = [];
-                    resolve();
+                return {
+                    ...symbol,
+                    ...(fundMap[ticker] || {}),
+                    ...(priceMap[ticker] || {}),
+                    ticker,
+                    guidance: state.guidanceData[ticker]?.guidance || null,
+                    insights: state.guidanceData[ticker]?.insights || null,
+                    updated: state.dataUpdatedTimes[CONFIG.github.files.symbols] || new Date().toISOString()
                 };
-                
+            }).filter(Boolean);
+        }
+
+        // ========== INDEXEDDB OPERATIONS ==========
+        async function saveToIndexedDB(stocks) {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(CONFIG.db.name, CONFIG.db.version);
+
                 req.onupgradeneeded = (e) => {
-                    var db = e.target.result;
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                    const db = e.target.result;
+                    if (db.objectStoreNames.contains(CONFIG.db.storeName)) {
+                        db.deleteObjectStore(CONFIG.db.storeName);
                     }
+                    db.createObjectStore(CONFIG.db.storeName, { keyPath: 'ticker' });
+                    logger.log(`✅ Object store created`);
                 };
-                
+
                 req.onsuccess = (e) => {
-                    var db = e.target.result;
-                    try {
-                        if (!db.objectStoreNames.contains(STORE_NAME)) {
-                            masterData = [];
-                            resolve();
-                            return;
-                        }
-                        
-                        var transaction = db.transaction(STORE_NAME, 'readonly');
-                        var store = transaction.objectStore(STORE_NAME);
-                        var getAllReq = store.getAll();
+                    const db = e.target.result;
+                    const tx = db.transaction(CONFIG.db.storeName, 'readwrite');
+                    const store = tx.objectStore(CONFIG.db.storeName);
 
-                        getAllReq.onsuccess = () => {
-                            masterData = getAllReq.result || [];
-                            log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
-                            resolve();
-                        };
-                        
-                        getAllReq.onerror = () => {
-                            masterData = [];
-                            resolve();
-                        };
-                    } catch (e) {
-                        masterData = [];
+                    store.clear().onsuccess = () => {
+                        stocks.forEach(stock => store.put(stock));
+                    };
+
+                    tx.oncomplete = () => {
+                        state.masterData = stocks;
+                        updateMetrics();
+                        logger.log(`✅ Saved ${stocks.length} stocks to IndexedDB`);
+                        renderTables();
                         resolve();
-                    }
+                    };
+
+                    tx.onerror = () => reject(new Error('IndexedDB transaction failed'));
                 };
-            }
-            
-            attemptOpen(attemptVersion);
-        });
-    }
-    
-    function loadGuidanceFromStorage() {
-        const storedGuidance = localStorage.getItem('guidanceData');
-        if (storedGuidance) {
-            try {
-                // Sanitize before parsing to fix any corrupted rupees
-                const sanitizedGuidance = sanitizeJSON(storedGuidance);
-                guidanceData = JSON.parse(sanitizedGuidance);
-                log(`📥 Loaded guidance data: ${Object.keys(guidanceData).length} items`);
-            } catch(e) {
-                guidanceData = {};
-                log(`⚠️ Failed to parse guidanceData`);
-            }
-        }
-        
-        const storedTimestamps = localStorage.getItem('guidanceTimestamps');
-        if (storedTimestamps) {
-            try {
-                guidanceTimestamps = JSON.parse(storedTimestamps);
-            } catch(e) {
-                guidanceTimestamps = {};
-            }
-        }
-        
-        const storedConcall = localStorage.getItem('concallTimestamps');
-        if (storedConcall) {
-            try {
-                concallTimestamps = JSON.parse(storedConcall);
-                log(`📥 Loaded concallTimestamps: ${Object.keys(concallTimestamps).length} items`);
-            } catch(e) {
-                concallTimestamps = {};
-                log(`⚠️ Failed to parse concallTimestamps`);
-            }
-        } else {
-            log(`⚠️ No concallTimestamps in localStorage`);
-        }
-        
-        const storedInsights = localStorage.getItem('insightsTimestamps');
-        if (storedInsights) {
-            try {
-                insightsTimestamps = JSON.parse(storedInsights);
-                log(`📥 Loaded insightsTimestamps: ${Object.keys(insightsTimestamps).length} items`);
 
-            } catch(e) {
-                insightsTimestamps = {};
-            }
-        }
-    }
-    
-    function saveGuidanceToStorage() {
-        // Sanitize before saving to prevent corruption storage
-        const sanitizedGuidance = sanitizeJSON(JSON.stringify(guidanceData));
-        localStorage.setItem('guidanceData', sanitizedGuidance);
-        localStorage.setItem('guidanceTimestamps', JSON.stringify(guidanceTimestamps));
-        localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
-        localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
-    }
-
-    function renderSymbols() {
-        var html = '';
-        
-        if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="10" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
-        } else {
-            masterData.forEach((stock, index) => {
-                var ticker = stock.ticker || '—';
-                var name = stock.name || '—';
-                var qty = stock.qty || 0;
-                var avg = stock.avg || 0;
-                var serialNo = index + 1;
-
-                html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
-                    <td class="sticky" style="font-weight:700; color:#00ffff; font-size:14px; padding:8px 8px; min-width:90px; vertical-align:middle;">${ticker}</td>
-                    <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:100px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
-                    <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
-                    <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
-                    <td style="color:#ffaa44; font-size:12px; font-weight:700; padding:8px 6px; text-align:center; min-width:40px; vertical-align:middle;">${serialNo}</td>
-                    <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
-                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
-                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                        </div>
-                    </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—'}</td>
-                    <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
-                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
-                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                        </div>
-                    </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—'}</td>
-                    <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
-                </tr>`;
+                req.onerror = () => reject(new Error('Failed to open IndexedDB'));
             });
         }
 
-        document.getElementById('symbols-table').innerHTML = html;
-    }
-    
-    function convertToIST(isoString) {
-        try {
-            // Handle both ISO datetime (2026-04-19T00:00:00Z) and date-only (2026-04-19) formats
-            let dateStr = isoString;
-            
-            // If it's just a date (YYYY-MM-DD), convert to full ISO datetime
-            if (dateStr && dateStr.length === 10 && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                dateStr = dateStr + 'T00:00:00Z';
-            }
-            
-            var date = new Date(dateStr);
-            
-            if (isNaN(date.getTime())) {
-                return isoString;
-            }
-            
-            return date.toLocaleString('en-IN', { 
-                timeZone: 'Asia/Kolkata',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit'
-            });
-        } catch(e) {
-            return isoString;
-        }
-    }
+        async function loadFromIndexedDB() {
+            return new Promise((resolve) => {
+                const req = indexedDB.open(CONFIG.db.name, CONFIG.db.version);
 
-    function generateGuidancePrompt(ticker) {
-        var stock = masterData.find(s => s.ticker === ticker);
-        if (!stock) {
-            showToast('❌ Stock not found');
-            return;
-        }
-        
-        var name = stock.name || ticker;
-        
-        var prompt = `TICKER: ${ticker}
-COMPANY: ${name}
+                req.onsuccess = (e) => {
+                    const db = e.target.result;
+                    const tx = db.transaction(CONFIG.db.storeName, 'readonly');
+                    const store = tx.objectStore(CONFIG.db.storeName);
+                    const getAllReq = store.getAll();
 
-You are a senior equity analyst. Extract guidance from latest earnings call. Provide COMPLETE fundamental analysis.
-
-CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
-
-{
-  "ticker": "${ticker}",
-  "guidance": {
-    "quarter": "Q4 FY26",
-    
-    "financial": {
-      "revenue": "SPECIFIC target with growth rate",
-      "growth": "SPECIFIC growth target",
-      "margins": "SPECIFIC operating & net margins",
-      "capex": "SPECIFIC capex amount & purpose"
-    },
-    
-    "business": {
-      "expansion": "New capacity/market with timeline",
-      "products": "Product portfolio mix",
-      "geography": "Geographic revenue breakdown"
-    },
-    
-    "management": {
-      "tone": "'Positive' or 'Cautious' or 'Defensive'",
-      "confidence": "'High' or 'Medium' or 'Low'",
-      "commitments": ["commitment 1", "commitment 2"],
-      "risks": ["risk - Severity", "risk - Severity"]
-    },
-    
-    "summary": "One sentence with top 2 numbers",
-    
-    "deals_and_pipeline": {
-      "deal_wins": ["Deal 1: ₹X Cr, client type, when", "Deal 2: ₹Y Cr, client type, when"],
-      "order_book": {
-        "total_value": "₹X Cr total",
-        "execution_timeline": "X% in next Y months; Z% in Y-24 months",
-        "by_segment": "Segment 1 ₹X Cr | Segment 2 ₹Y Cr"
-      },
-      "sales_pipeline": "₹X Cr active pipeline; X% conversion expected",
-      "deal_pipeline_value": "₹X Cr in advanced negotiations"
-    },
-    
-    "customers": {
-      "customer_additions": ["New customer 1", "New customer 2"],
-      "customer_losses": ["Lost customer with ₹X Cr impact"],
-      "customer_concentration": "Top 5 customers = X% revenue; Top 10 = Y%",
-      "net_assessment": "Net positive/negative; consolidation or diversification trend"
-    },
-    
-    "segments": {
-      "revenue_by_segment": {
-        "Segment 1": "X% revenue | +Y% YoY growth",
-        "Segment 2": "X% revenue | +Y% YoY growth",
-        "Segment 3": "X% revenue | +Y% YoY growth"
-      },
-      "segment_outlook": "Which segments accelerating vs declining"
-    },
-    
-    "geography": {
-      "revenue_mix": {"Region 1": "X%", "Region 2": "Y%", "Region 3": "Z%"},
-      "expansion_plans": "New countries/regions targeted with timeline"
-    },
-    
-    "operations": {
-      "headcount": {
-        "current_strength": "X employees",
-        "hiring_plan": "Add Y engineers/staff",
-        "utilization_target": "Current X% → Target Y%",
-        "attrition_rate": "X% YoY vs industry Y%"
-      },
-      "raw_materials": {
-        "cost_outlook": "Cost pressure easing or intensifying",
-        "expected_benefit": "X-Y bps margin benefit/pressure",
-        "key_materials": "Material 1 +X% cost | Material 2 -Y% cost"
-      },
-      "working_capital": {
-        "receivables_dso": "X days (was Y days)",
-        "inventory_dio": "X days (was Y days)",
-        "cash_conversion_cycle": "X days (was Y days)",
-        "cash_release_potential": "₹X Cr WC release expected"
-      }
-    },
-    
-    "capital_allocation": {
-      "capex_detailed": {
-        "total": "₹X Cr",
-        "automation": "₹X Cr",
-        "it_infrastructure": "₹X Cr",
-        "facility_expansion": "₹X Cr",
-        "funding_source": "X% operations, Y% debt, Z% equity"
-      },
-      "debt_management": {
-        "repayment_plan": "₹X Cr debt repayment",
-        "net_debt_target": "Target X.X x EBITDA (from Y.Y x)",
-        "timeline": "Achieve by end of FY27/FY28",
-        "current_net_debt": "₹X Cr"
-      }
-    },
-    
-    "competitive_position": {
-      "market_share": {
-        "by_segment": "Segment 1: X% (gaining/losing)",
-        "overall_trend": "Market position strengthening or weakening"
-      },
-      "pricing_strategy": "Pricing power; price increase acceptance; vs peers",
-      "competitive_advantages": ["Advantage 1", "Advantage 2", "Advantage 3"],
-      "competitive_threats": ["Threat 1 (Severity)", "Threat 2 (Severity)", "Threat 3 (Severity)"]
-    },
-    
-    "investor_verdict": "One sentence most important takeaway",
-    
-    "analyst_dimensions": {
-      "valuation_context": "How does guidance compare to valuation",
-      "consensus_gap": "Guidance vs street consensus vs previous",
-      "achievability": "Is guidance achievable; track record",
-      "margin_quality": "What's driving margins; sustainable",
-      "capex_roi": "Capex justified by returns; ROIC",
-      "order_book_health": "Order book value + execution timeline + risk",
-      "risk_opportunity_scorecard": "Risks vs opportunities with probability & impact",
-      "management_credibility": "Transparent; conservative or aggressive setter",
-      "forward_estimate_impact": "How guidance changes FY26/FY27 EPS estimates",
-      "quarterly_trajectory": "Revenue/margin path; catalyst timing"
-    }
-  }
-}
-
-CRITICAL RULES:
-1. Return ONLY JSON
-2. ALL 25 fields required
-3. Use actual numbers from call
-4. Do NOT fabricate data - use "Not disclosed" if missing
-5. Be brutally honest on risks & opportunities`;
-
-        navigator.clipboard.writeText(prompt).then(() => {
-            showToast('✅ Guidance prompt copied!');
-        }).catch(() => {
-            var textArea = document.createElement('textarea');
-            textArea.value = prompt;
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            showToast('✅ Guidance prompt copied!');
-        });
-    }
-    
-    function generateInsightsPrompt(ticker) {
-        var stock = masterData.find(s => s.ticker === ticker);
-        if (!stock) {
-            showToast('❌ Stock not found');
-            return;
-        }
-        
-        var name = stock.name || ticker;
-        var sector = stock.sector || 'N/A';
-        
-        var prompt = `TICKER: ${ticker}
-COMPANY: ${name}
-SECTOR: ${sector}
-
-You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT.
-
-This is your investment opinion + sector analysis. Company guidance is separate.
-
-{
-  "ticker": "${ticker}",
-  "insights": {
-    "recommendation": "'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
-    "thesis": "One sentence investment idea with specific reason",
-    "trigger": "Specific event that would change recommendation",
-    
-    "analysis": {
-      "valuation": {
-        "metric": "SPECIFIC: P/E, P/B, vs peers, vs Nifty",
-        "assessment": "Cheap/expensive? Why?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "growth": {
-        "metric": "SPECIFIC: YoY growth, trend, order book",
-        "assessment": "Growth quality and sustainability",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "profitability": {
-        "metric": "SPECIFIC: OPM, PAT margin trends",
-        "assessment": "Margin quality and drivers",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "cash_strength": {
-        "metric": "SPECIFIC: Debt, FCF, cash, leverage",
-        "assessment": "Balance sheet quality",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "catalyst": {
-        "metric": "SPECIFIC: What events drive re-rating? Timelines?",
-        "assessment": "Timeline and impact",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "moat": {
-        "metric": "SPECIFIC: Competitive advantages, barriers",
-        "assessment": "Moat width and durability",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      },
-      
-      "opportunity": {
-        "metric": "SPECIFIC: Unpriced upside? TAM expansion? New markets?",
-        "assessment": "Why not priced in?",
-        "signal": "'Positive' or 'Neutral' or 'Caution'"
-      }
-    },
-    
-    "sector_briefing": {
-      "sector_name": "${sector}",
-      "sector_outlook": "Bullish/Neutral/Bearish? Growth trends, tailwinds, headwinds for sector",
-      "sector_growth": "Sector CAGR, margin trends, competitive consolidation",
-      "company_positioning": "${ticker}'s market position, competitive advantages, vs sector trends",
-      "sector_risks": "Macro risks affecting sector + how ${ticker} is positioned vs them"
-    }
-  }
-}
-
-CRITICAL RULES:
-1. Return ONLY JSON
-2. All 7 analysis dimensions + all sector briefing REQUIRED
-3. Be SPECIFIC: Use numbers, timelines, peer comparisons
-4. Investment opinion should be yours, not generic
-5. Sector briefing contextualizes company positioning within sector trends`;
-
-        navigator.clipboard.writeText(prompt).then(() => {
-            showToast('✅ Insights prompt copied!');
-        }).catch(() => {
-            var textArea = document.createElement('textarea');
-            textArea.value = prompt;
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            showToast('✅ Insights prompt copied!');
-        });
-    }
-
-    function cleanJSON(str) {
-        // Remove invisible/special characters that break JSON parsing
-        let cleaned = str
-            .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width chars
-            .replace(/[\u2018\u2019]/g, "'")       // Smart quotes
-            .replace(/[\u201C\u201D]/g, '"')       // Smart double quotes
-            .replace(/[\r\n\t]/g, ' ')             // Normalize whitespace
-            .trim();
-        
-        // If text contains "TICKER:" or other non-JSON preamble, extract just the JSON
-        // Find the first { and last } to extract JSON object
-        const firstBrace = cleaned.indexOf('{');
-        const lastBrace = cleaned.lastIndexOf('}');
-        
-        if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
-            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-        }
-        
-        return cleaned;
-    }
-    
-    function extractJSONFromText(text) {
-        // Extract JSON object from text that may contain preamble
-        // Remove any preamble like "TICKER: ...\nCOMPANY: ...\n"
-        let lines = text.split('\n');
-        let jsonStartIndex = -1;
-        
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim().startsWith('{')) {
-                jsonStartIndex = i;
-                break;
-            }
-        }
-        
-        if (jsonStartIndex !== -1) {
-            return lines.slice(jsonStartIndex).join('\n');
-        }
-        
-        return text;
-    }
-    
-    function utf8ToBase64(str) {
-        // Properly encode UTF-8 string (including ₹) to base64 for GitHub API
-        try {
-            // Use TextEncoder for proper UTF-8 encoding (works with ₹, emoji, etc)
-            const utf8Bytes = new TextEncoder().encode(str);
-            let binary = '';
-            for (let i = 0; i < utf8Bytes.length; i++) {
-                binary += String.fromCharCode(utf8Bytes[i]);
-            }
-            return btoa(binary);
-        } catch (e) {
-            // Fallback: try the old method
-            console.warn('TextEncoder failed, trying legacy method:', e);
-            try {
-                return btoa(unescape(encodeURIComponent(str)));
-            } catch (e2) {
-                console.error('Both encoding methods failed:', e2);
-                return btoa(str); // Last resort
-            }
-        }
-    }
-    
-    function sanitizeJSON(jsonString) {
-        // Fix corrupted rupee symbols and other Unicode issues
-        let cleaned = jsonString;
-        
-        // Remove invisible/control characters that cause corruption
-        cleaned = cleaned.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
-        
-        // Fix common rupee symbol corruptions (multiple patterns)
-        // Pattern 1: â‚ą (UTF-8 BOM corruption)
-        cleaned = cleaned.replace(/â‚ą/g, '₹');
-        // Pattern 2: Â Â (double nbsp corruption)
-        cleaned = cleaned.replace(/Â Â/g, '₹');
-        // Pattern 3: Unicode sequence corruption
-        cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹');
-        // Pattern 4: â€? variations
-        cleaned = cleaned.replace(/â€?/g, '₹');
-        // Pattern 5: ₹¹ (corrupted with superscript)
-        cleaned = cleaned.replace(/₹[¹²³⁴]/g, '₹');
-        // Pattern 6: Multiple rupee chars should be one
-        cleaned = cleaned.replace(/₹{2,}/g, '₹');
-        // Pattern 7: Rupee with trailing garbage
-        cleaned = cleaned.replace(/₹[\u00c2\u00c3][\u00a2\u00b9]/g, '₹');
-        // Pattern 8: Smart quotes and dashes to normal
-        cleaned = cleaned.replace(/[""]/g, '"');
-        cleaned = cleaned.replace(/['']/g, "'");
-        cleaned = cleaned.replace(/–/g, '-');
-        
-        return cleaned;
-    }
-    
-    function showGuidanceSaveModal(ticker) {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT token required');
-            return;
-        }
-        
-        // Create modal with textarea + date
-        const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
-        
-        const today = new Date().toISOString().split('T')[0];
-        
-        modal.innerHTML = `
-            <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
-                <h3 style="color:#00f2ff;margin-bottom:15px">📋 Paste Guidance JSON for ${ticker}</h3>
-                <div style="margin-bottom:15px">
-                    <label style="color:#aaa;font-size:11px">Date</label>
-                    <input id="guidance-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
-                </div>
-                <div id="guidance-error" style="display:none;margin-bottom:15px;padding:10px;background:#ff4444;border:1px solid #ff0000;border-radius:4px;color:#fff;font-size:11px;font-weight:700;max-height:80px;overflow-y:auto;word-break:break-word;white-space:pre-wrap;"></div>
-                <textarea id="guidance-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
-                <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="
-                        let rawText = document.getElementById('guidance-json-input').value;
-                        rawText = extractJSONFromText(rawText);
-                        const json = cleanJSON(rawText);
-                        const date = document.getElementById('guidance-date-input').value;
-                        const errorDiv = document.getElementById('guidance-error');
-                        try{
-                            JSON.parse(json);
-                            errorDiv.style.display='none';
-                            document.getElementById('guidance-modal').remove();
-                            updateStatusButton('⏳ Saving');
-                            saveGuidanceToGitHub('${ticker}', json, '${pat}', date)
-                        }catch(e){
-                            errorDiv.innerHTML='❌ ' + e.message;
-                            errorDiv.style.display='block';
-                            showToast('❌ Invalid JSON')
-                        }
-                    " style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
-                    <button onclick="document.getElementById('guidance-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
-                </div>
-            </div>
-        `;
-        modal.id = 'guidance-modal';
-        document.body.appendChild(modal);
-        document.getElementById('guidance-json-input').focus();
-    }
-    
-    function showInsightsSaveModal(ticker) {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT token required');
-            return;
-        }
-        
-        // Create modal with textarea + date
-        const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999';
-        
-        const today = new Date().toISOString().split('T')[0];
-        
-        modal.innerHTML = `
-            <div style="background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:20px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto">
-                <h3 style="color:#00f2ff;margin-bottom:15px">💡 Paste Insights JSON for ${ticker}</h3>
-                <div style="margin-bottom:15px">
-                    <label style="color:#aaa;font-size:11px">Date</label>
-                    <input id="insights-date-input" type="date" value="${today}" style="width:100%;padding:8px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-size:11px">
-                </div>
-                <div id="insights-error" style="display:none;margin-bottom:15px;padding:10px;background:#ff4444;border:1px solid #ff0000;border-radius:4px;color:#fff;font-size:11px;font-weight:700;max-height:80px;overflow-y:auto;word-break:break-word;white-space:pre-wrap;"></div>
-                <textarea id="insights-json-input" style="width:100%;height:250px;padding:10px;background:#111;color:#fff;border:1px solid #222;border-radius:4px;font-family:monospace;font-size:11px" placeholder="Paste JSON here..."></textarea>
-                <div style="display:flex;gap:10px;margin-top:15px">
-                    <button onclick="
-                        let rawText = document.getElementById('insights-json-input').value;
-                        rawText = extractJSONFromText(rawText);
-                        const json = cleanJSON(rawText);
-                        const date = document.getElementById('insights-date-input').value;
-                        const errorDiv = document.getElementById('insights-error');
-                        try{
-                            JSON.parse(json);
-                            errorDiv.style.display='none';
-                            document.getElementById('insights-modal').remove();
-                            updateStatusButton('⏳ Saving');
-                            saveInsightsToGitHub('${ticker}', json, '${pat}', date)
-                        }catch(e){
-                            errorDiv.innerHTML='❌ ' + e.message;
-                            errorDiv.style.display='block';
-                            showToast('❌ Invalid JSON')
-                        }
-                    " style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer">✅ SAVE</button>
-                    <button onclick="document.getElementById('insights-modal').remove()" style="flex:1;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">❌ CANCEL</button>
-                </div>
-            </div>
-        `;
-        modal.id = 'insights-modal';
-        document.body.appendChild(modal);
-        document.getElementById('insights-json-input').focus();
-    }
-
-    function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
-        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
-        
-        var newGuidance = {};
-        try {
-            // Parse JSON
-            var parsed = JSON.parse(jsonText);
-            
-            // Extract guidance first
-            if (parsed.guidance) {
-                newGuidance = parsed.guidance;
-            } else if (parsed[ticker.toUpperCase()]) {
-                if (parsed[ticker.toUpperCase()].guidance) {
-                    newGuidance = parsed[ticker.toUpperCase()].guidance;
-                } else {
-                    throw new Error('Missing "guidance" field');
-                }
-            } else {
-                throw new Error('Invalid format - missing "guidance" field');
-            }
-            
-            // Don't validate ticker - user already selected it
-            // Just add the date and validate structure
-            
-            // Add date field
-            if (date) {
-                newGuidance.date = date;
-            }
-            
-            // ✅ Minimal validation - just check it's not empty
-            if (!newGuidance || Object.keys(newGuidance).length === 0) {
-                throw new Error('Guidance data is empty');
-            }
-            
-            // Normalize signal value if it exists (handle POSITIVE -> Positive, etc)
-            if (newGuidance.signal) {
-                newGuidance.signal = String(newGuidance.signal).charAt(0).toUpperCase() + String(newGuidance.signal).slice(1).toLowerCase();
-            }
-            
-        } catch(e) {
-            showToast(`❌ Error: ${e.message}`);
-            updateStatusButton('❌ Error');
-            log(`❌ Validation error: ${e.message}`);
-            return;
-        }
-        
-        // Fetch current file
-        fetch(apiUrl, {
-            headers: { 'Authorization': `token ${pat}` }
-        })
-        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        .then(fileData => {
-            var content = {};
-            try {
-                content = JSON.parse(atob(fileData.content));
-            } catch(e) {
-                log(`⚠️ Could not parse existing file`);
-                content = { "_metadata": { "version": "1.0" } };
-            }
-            
-            if (!content[ticker]) content[ticker] = {};
-            
-            // Update only this ticker's guidance
-            // Use date from parameter (from modal), or default to today
-            if (date) {
-                newGuidance.date = date;
-            } else {
-                newGuidance.date = new Date().toISOString().split('T')[0];
-            }
-            content[ticker].guidance = newGuidance;
-            
-            // Encode using proper UTF-8 base64 helper
-            let jsonString = JSON.stringify(content, null, 2);
-            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
-            const encodedContent = utf8ToBase64(jsonString);
-            
-            return fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: `Add/update guidance for ${ticker}`,
-                    content: encodedContent,
-                    sha: fileData.sha,
-                    branch: GITHUB_CONFIG.BRANCH
-                })
-            });
-        })
-        .then(r => {
-            if (!r?.ok) throw new Error('Failed to save');
-            log(`✅ Guidance for ${ticker} saved`);
-            updateStatusButton('✅ Ready');
-            showToast(`✅ Guidance saved for ${ticker}`);
-            
-            // Update in-memory guidanceData
-            if (!guidanceData[ticker]) guidanceData[ticker] = {};
-            guidanceData[ticker].guidance = newGuidance;
-            saveGuidanceToStorage();
-            
-            // Record timestamp and update IndexedDB
-            const guidanceDate = newGuidance.date || new Date().toISOString().split('T')[0];
-            concallTimestamps[ticker] = guidanceDate;
-            localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
-            
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                var stock = masterData.find(s => s.ticker === ticker);
-                if (stock) {
-                    stock.guidance = newGuidance;
-                    store.put(stock);
-                }
-            };
-            
-            // NOW UPDATE unified-symbols.json with updated timestamp and count
-            const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
-            fetch(symbolsUrl, {
-                headers: { 'Authorization': `token ${pat}` }
-            })
-            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-            .then(fileData => {
-                var symbolsContent = JSON.parse(atob(fileData.content));
-                // Add updated and count if missing
-                symbolsContent.updated = new Date().toISOString();
-                if (symbolsContent.symbols && Array.isArray(symbolsContent.symbols)) {
-                    symbolsContent.count = symbolsContent.symbols.length;
-                }
-                const encodedSymbols = utf8ToBase64(JSON.stringify(symbolsContent, null, 2));
-                return fetch(symbolsUrl, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `token ${pat}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: `Update unified-symbols.json - guidance saved for ${ticker}`,
-                        content: encodedSymbols,
-                        sha: fileData.sha,
-                        branch: GITHUB_CONFIG.BRANCH
-                    })
-                });
-            })
-            .then(r => {
-                if (r?.ok) {
-                    log(`✅ Updated unified-symbols.json`);
-                }
-            })
-            .catch(e => {
-                log(`⚠️ Could not update unified-symbols.json: ${e.message}`);
-            });
-            
-            renderSymbols();
-        })
-        .catch(e => {
-            updateStatusButton('❌ Error');
-            showToast(`❌ Error: ${e.message}`);
-            log(`❌ Save error: ${e.message}`);
-        });
-    }
-    
-    function saveInsightsToGitHub(ticker, jsonText, pat, date) {
-        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
-        
-        var newInsights = {};
-        try {
-            // Parse JSON
-            var parsed = JSON.parse(jsonText);
-            
-            // Extract insights first
-            if (parsed.insights) {
-                newInsights = parsed.insights;
-            } else if (parsed[ticker.toUpperCase()]) {
-                if (parsed[ticker.toUpperCase()].insights) {
-                    newInsights = parsed[ticker.toUpperCase()].insights;
-                } else {
-                    throw new Error('Missing "insights" field');
-                }
-            } else {
-                throw new Error('Invalid format - missing "insights" field');
-            }
-            
-            // Don't validate ticker - user already selected it
-            // Just add the date and validate structure
-            
-            // Add date field
-            if (date) {
-                newInsights.date = date;
-            }
-            
-            // ✅ Minimal validation - just check it's not empty
-            if (!newInsights || Object.keys(newInsights).length === 0) {
-                throw new Error('Insights data is empty');
-            }
-            
-            // Normalize signal values if they exist (handle POSITIVE -> Positive, etc)
-            if (newInsights.analysis && typeof newInsights.analysis === 'object') {
-                for (let dim in newInsights.analysis) {
-                    if (newInsights.analysis[dim] && newInsights.analysis[dim].signal) {
-                        // Just accept whatever signal value is provided - no validation
-                        // (normalize to proper case if needed: POSITIVE -> Positive)
-                        newInsights.analysis[dim].signal = String(newInsights.analysis[dim].signal).charAt(0).toUpperCase() + String(newInsights.analysis[dim].signal).slice(1).toLowerCase();
-                    }
-                }
-            }
-            
-        } catch(e) {
-            showToast(`❌ Error: ${e.message}`);
-            updateStatusButton('❌ Error');
-            log(`❌ Validation error: ${e.message}`);
-            return;
-        }
-        
-        // Fetch current file
-        fetch(apiUrl, {
-            headers: { 'Authorization': `token ${pat}` }
-        })
-        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        .then(fileData => {
-            var content = {};
-            try {
-                content = JSON.parse(atob(fileData.content));
-            } catch(e) {
-                log(`⚠️ Could not parse existing file`);
-                content = { "_metadata": { "version": "1.0" } };
-            }
-            
-            if (!content[ticker]) content[ticker] = {};
-            
-            // Update only this ticker's insights
-            // Use date from parameter (from modal), or default to today
-            if (date) {
-                newInsights.date = date;
-            } else {
-                newInsights.date = new Date().toISOString().split('T')[0];
-            }
-            content[ticker].insights = newInsights;
-            
-            // Encode using proper UTF-8 base64 helper
-            let jsonString = JSON.stringify(content, null, 2);
-            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
-            const encodedContent = utf8ToBase64(jsonString);
-            
-            return fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: `Add/update insights for ${ticker}`,
-                    content: encodedContent,
-                    sha: fileData.sha,
-                    branch: GITHUB_CONFIG.BRANCH
-                })
-            });
-        })
-        .then(r => {
-            if (!r?.ok) throw new Error('Failed to save');
-            log(`✅ Insights for ${ticker} saved`);
-            updateStatusButton('✅ Ready');
-            showToast(`✅ Insights saved for ${ticker}`);
-            
-            // Update in-memory guidanceData
-            if (!guidanceData[ticker]) guidanceData[ticker] = {};
-            guidanceData[ticker].insights = newInsights;
-            saveGuidanceToStorage();
-            
-            // Record timestamp and update IndexedDB
-            const insightsDate = newInsights.date || new Date().toISOString().split('T')[0];
-            insightsTimestamps[ticker] = insightsDate;
-            localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
-            
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                var stock = masterData.find(s => s.ticker === ticker);
-                if (stock) {
-                    stock.insights = newInsights;
-                    store.put(stock);
-                }
-            };
-            
-            renderSymbols();
-        })
-        .catch(e => {
-            updateStatusButton('❌ Error');
-            showToast(`❌ Error: ${e.message}`);
-            log(`❌ Save error: ${e.message}`);
-        });
-    }
-
-    function toggleEditMode() {
-        editMode = !editMode;
-        document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
-            el.disabled = !editMode;
-        });
-        event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
-        if (editMode) {
-            document.getElementById('save-section').style.display = 'block';
-        } else {
-            document.getElementById('save-section').style.display = 'none';
-        }
-    }
-
-    function deleteStock(ticker) {
-        if (!confirm(`Delete ${ticker}? (Removes from DB + Guidance JSON)`)) return;
-        
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            log('❌ PAT required');
-            showToast('❌ Configure PAT first');
-            return;
-        }
-        
-        log(`🗑️ Deleting ${ticker}...`);
-        
-        // 1. Remove from masterData
-        masterData = masterData.filter(s => s.ticker !== ticker);
-        
-        // 2. Remove guidance (both concall + insights)
-        delete guidanceData[ticker];
-        delete guidanceTimestamps[ticker];
-        delete concallTimestamps[ticker];
-        delete insightsTimestamps[ticker];
-        saveGuidanceToStorage();
-        log(`✅ Deleted guidance for ${ticker}`);
-        
-        // 3. Remove from IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            try {
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                store.delete(ticker);
-                transaction.oncomplete = () => {
-                    log(`✅ Deleted ${ticker} from IndexedDB`);
-                    renderSymbols();
-                    updateHeader();
+                    getAllReq.onsuccess = () => {
+                        state.masterData = getAllReq.result;
+                        updateMetrics();
+                        resolve();
+                    };
                 };
-            } catch(err) {
-                log(`⚠️ IndexedDB delete: ${err.message}`);
+
+                req.onerror = () => resolve();
+            });
+        }
+
+        // ========== UI UPDATES ==========
+        function updateMetrics() {
+            document.getElementById('metric-count').textContent = state.masterData.length;
+            document.getElementById('metric-db').textContent = state.masterData.length;
+            document.getElementById('metric-saved').textContent = new Date().toLocaleTimeString('en-IN', { hour12: false });
+        }
+
+        function updateStatusButton(text) {
+            document.getElementById('load-status').textContent = text;
+            document.getElementById('metric-status').textContent = text.charAt(0);
+        }
+
+        function renderTables() {
+            renderDataSources();
+            renderStocksList();
+        }
+
+        function renderDataSources() {
+            const tbody = document.getElementById('table-sources');
+            const sources = [
+                { name: 'unified-symbols.json', count: state.masterData.length },
+                { name: 'prices.json', count: state.masterData.length },
+                { name: 'fundamentals.json', count: state.masterData.length },
+                { name: 'guidance.json', count: Object.keys(state.guidanceData).length }
+            ];
+
+            tbody.innerHTML = sources.map(src => {
+                const time = state.dataUpdatedTimes[src.name] || '-';
+                const date = time !== '-' ? new Date(time).toLocaleString('en-IN') : '-';
+                return `
+                    <tr>
+                        <td class="sticky">${escapeHtml(src.name)}</td>
+                        <td>${src.count}</td>
+                        <td>${date}</td>
+                        <td style="text-align: center; color: var(--color-green);">✅</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderStocksList() {
+            const tbody = document.getElementById('table-stocks');
+            tbody.innerHTML = state.masterData.map((stock, idx) => `
+                <tr>
+                    <td class="sticky">${escapeHtml(stock.ticker)}</td>
+                    <td>${escapeHtml(stock.name || '-')}</td>
+                    <td style="text-align: center;">${stock.qty || '-'}</td>
+                    <td style="text-align: center;">${stock.avg || '-'}</td>
+                    <td style="text-align: center;">${idx + 1}</td>
+                    <td style="text-align: center;">${stock.guidance ? '✓' : '✗'}</td>
+                    <td style="text-align: center; font-size: var(--font-size-sm);">-</td>
+                    <td style="text-align: center;">${stock.insights ? '✓' : '✗'}</td>
+                    <td style="text-align: center; font-size: var(--font-size-sm);">-</td>
+                    <td style="text-align: center;"><button class="btn--danger" style="padding: 2px 4px; font-size: var(--font-size-xs);">✕</button></td>
+                </tr>
+            `).join('');
+        }
+
+        // ========== EVENT HANDLERS ==========
+        async function handleLoadData() {
+            await loadAllData();
+        }
+
+        async function handleRefresh() {
+            if (confirm('This will clear all data and reload. Continue?')) {
+                state.masterData = [];
+                updateMetrics();
+                await loadAllData();
             }
-        };
-        
-        // 4. Delete from unified-symbols.json on GitHub
-        fetch(`${RAW_GITHUB_URL}/unified-symbols.json?cache=` + Date.now())
-            .then(r => r.json())
-            .then(data => {
-                let symbols = data.symbols || Object.values(data);
-                symbols = symbols.filter(s => s.ticker !== ticker);
-                const uploadData = data.symbols ? { symbols } : symbols;
-                uploadToGitHub(pat, 'unified-symbols.json', uploadData, `Delete ${ticker}`);
-            })
-            .catch(e => log(`⚠️ Symbol update failed: ${e.message}`));
-        
-        // 5. Delete from guidance.json on GitHub
-        fetch(`${RAW_GITHUB_URL}/guidance.json?cache=` + Date.now())
-            .then(r => r.json())
-            .then(data => {
-                delete data[ticker];
-                uploadToGitHub(pat, 'guidance.json', data, `Delete ${ticker} guidance`);
-                log(`✅ Deleted ${ticker} from guidance.json`);
-            })
-            .catch(e => log(`⚠️ Guidance update failed: ${e.message}`));
-    }
-    
-    function uploadToGitHub(pat, filename, content, message) {
-        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filename}`;
-        
-        fetch(apiUrl, {
-            headers: { 'Authorization': `token ${pat}` }
-        })
-        .then(r => r.json())
-        .then(fileData => {
-            if (!fileData.sha) {
-                log(`❌ Could not find file SHA for ${filename}`);
+        }
+
+        function toggleEditMode() {
+            state.editMode = !state.editMode;
+            const btn = document.getElementById('btn-edit');
+            const saveSection = document.getElementById('save-section');
+            
+            btn.textContent = state.editMode ? '🔧 Edit Mode: ON' : '🔧 Edit Mode: OFF';
+            saveSection.style.display = state.editMode ? 'block' : 'none';
+        }
+
+        function saveChanges() {
+            logger.log('💾 Saving changes...');
+            showToast('✅ Changes saved!');
+            toggleEditMode();
+        }
+
+        function cancelChanges() {
+            toggleEditMode();
+        }
+
+        function downloadCSV() {
+            const headers = ['Ticker', 'Name', 'QTY', 'AVG'];
+            const rows = state.masterData.map(stock => [
+                stock.ticker,
+                stock.name,
+                stock.qty,
+                stock.avg
+            ]);
+
+            const csv = [headers, ...rows]
+                .map(row => row.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(','))
+                .join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stocks-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // ========== PAT MANAGEMENT ==========
+        function savePat() {
+            const pat = document.getElementById('input-pat').value.trim();
+            if (!pat) {
+                showToast('❌ Please enter a token');
                 return;
             }
-            
-            // Encode content to base64 (handles Unicode properly)
-            const jsonString = JSON.stringify(content, null, 2);
-            const encodedContent = btoa(unescape(encodeURIComponent(jsonString)));
-            
-            // Sanitize commit message
-            const cleanMessage = message.replace(/[^\w\s\-\.]/g, '').substring(0, 72);
-            
-            return fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: cleanMessage || 'Update file',
-                    content: encodedContent,
-                    sha: fileData.sha,
-                    branch: GITHUB_CONFIG.BRANCH
-                })
-            });
-        })
-        .then(r => {
-            if (!r) return;
-            if (r.ok) {
-                log(`✅ Updated ${filename} on GitHub`);
-                showToast('✅ Saved!');
+            localStorage.setItem(CONFIG.storage.pat, pat);
+            showToast('✅ Token saved');
+            logger.log('💾 PAT saved to storage');
+            updatePatStatus();
+        }
+
+        function resetPat() {
+            if (confirm('Clear saved token?')) {
+                localStorage.removeItem(CONFIG.storage.pat);
+                document.getElementById('input-pat').value = '';
+                showToast('✅ Token cleared');
+                logger.log('🗑️ PAT cleared');
+                updatePatStatus();
+            }
+        }
+
+        function togglePatVisibility() {
+            const input = document.getElementById('input-pat');
+            const btn = document.getElementById('btn-pat-toggle');
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            btn.textContent = isPassword ? '👁‍🗨 Hide' : '👁 Show';
+        }
+
+        function updatePatStatus() {
+            const pat = localStorage.getItem(CONFIG.storage.pat);
+            const status = document.getElementById('pat-status');
+            const repo = document.getElementById('pat-repo');
+
+            if (pat) {
+                status.textContent = '✅ Configured';
+                status.style.color = 'var(--color-green)';
+                repo.textContent = `${CONFIG.github.owner}/${CONFIG.github.repo}`;
             } else {
-                return r.json().then(e => {
-                    const errorMsg = e.message || JSON.stringify(e);
-                    log(`⚠️ GitHub: ${errorMsg}`);
-                });
+                status.textContent = '❌ Not Configured';
+                status.style.color = 'var(--color-red)';
+                repo.textContent = '—';
             }
-        })
-        .catch(e => {
-            log(`⚠️ Upload failed: ${e.message || e}`);
-        });
-    }
-
-    function saveChanges() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT required to save');
-            return;
         }
-        
-        log('💾 Saving changes...');
-        
-        // Get all edited values
-        document.querySelectorAll('.qty-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newQty = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.qty = newQty;
-        });
-        
-        document.querySelectorAll('.avg-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newAvg = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.avg = newAvg;
-        });
-        
-        // Upload to GitHub
-        uploadUnifiedSymbols(pat);
-        
-        // Save to IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            var transaction = db.transaction(STORE_NAME, 'readwrite');
-            var store = transaction.objectStore(STORE_NAME);
-            
-            // Add updated timestamp to all stocks
-            const now = new Date().toLocaleTimeString();
-            masterData.forEach(stock => {
-                stock.updated = now;
-                store.put(stock);
-            });
-            
-            transaction.oncomplete = () => {
-                log('✅ Changes saved to IndexedDB');
-                editMode = false;
-                document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
-                document.getElementById('save-section').style.display = 'none';
-                document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
-                updateHeader();
-                renderSymbols();
-                showToast('✅ Saved!');
-            };
-        };
-    }
-    
-    function uploadUnifiedSymbols(pat) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
-        
-        // Fetch current file first
-        fetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
-            .then(r => r.json())
-            .then(currentData => {
-                let symbols = currentData.symbols || [];
-                
-                // Update only changed stocks in the array
-                symbols = symbols.map(stock => {
-                    const updated = masterData.find(m => m.ticker === stock.ticker);
-                    if (updated) {
-                        // Only update QTY and AVG, keep other fields
-                        return {
-                            ...stock,
-                            qty: updated.qty,
-                            avg: updated.avg
-                        };
-                    }
-                    return stock;
+
+        async function testConnection() {
+            try {
+                logger.log('🔗 Testing GitHub connection...');
+                const response = await fetch(`https://api.github.com/repos/${CONFIG.github.owner}/${CONFIG.github.repo}`, {
+                    headers: localStorage.getItem(CONFIG.storage.pat) ? {
+                        'Authorization': `token ${localStorage.getItem(CONFIG.storage.pat)}`
+                    } : {}
                 });
-                
-                // Get SHA and upload
-                fetch(url, {
-                    headers: { 'Authorization': `token ${pat}` }
-                })
-                .then(r => r.json())
-                .then(fileInfo => {
-                    // Create file content with updated and count fields
-                    const fileContent = {
-                        updated: new Date().toISOString(),
-                        count: symbols.length,
-                        symbols: symbols
-                    };
-                    const encodedContent = utf8ToBase64(JSON.stringify(fileContent, null, 2));
-                    
-                    return fetch(url, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `token ${pat}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            message: 'Update QTY/AVG via ETL Center',
-                            content: encodedContent,
-                            sha: fileInfo.sha
-                        })
-                    });
-                })
-                .then(r => {
-                    if (r.ok) {
-                        log('✅ Updated unified-symbols.json on GitHub');
-                    } else {
-                        log('❌ Upload failed');
-                    }
-                })
-                .catch(e => {
-                    log(`❌ Upload error: ${e.message}`);
-                });
-            })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
-            });
-    }
 
-    function cancelChanges() {
-        editMode = false;
-        document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
-        document.getElementById('save-section').style.display = 'none';
-        renderSymbols();
-    }
-
-    function downloadCSV() {
-        var csv = 'TICKER,NAME,QTY,AVG\n';
-        masterData.forEach(s => {
-            csv += `${s.ticker},${s.name},${s.qty},${s.avg}\n`;
-        });
-        var link = document.createElement('a');
-        link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-        link.download = 'symbols.csv';
-        link.click();
-        showToast('📊 CSV downloaded!');
-    }
-
-
-    function openWizard() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT token required');
-            switchTab('pat');
-            return;
-        }
-        
-        log('🧙 Opening symbol wizard...');
-        
-        // Load app-import.js if not already loaded
-        if (!window.appImportLoaded) {
-            var script = document.createElement('script');
-            script.src = 'app-import.js';
-            script.onload = () => {
-                window.appImportLoaded = true;
-                triggerWizard(pat);
-            };
-            script.onerror = () => {
-                showToast('❌ Failed to load wizard');
-                log('❌ Could not load app-import.js');
-            };
-            document.head.appendChild(script);
-        } else {
-            triggerWizard(pat);
-        }
-    }
-    
-    function triggerWizard(pat) {
-        // Call app-import.js workflow
-        if (typeof window.openImportWorkflow === 'function') {
-            window.openImportWorkflow();
-            log('✅ Import workflow opened');
-        } else {
-            showToast('❌ Workflow not found');
-        }
-    }
-
-    function togglePatVisibility() {
-        var input = document.getElementById('patToken');
-        input.type = input.type === 'password' ? 'text' : 'password';
-        event.target.textContent = input.type === 'password' ? '👁 Show' : '👁 Hide';
-    }
-
-    function savePat() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ Enter PAT token first');
-            return;
-        }
-        localStorage.setItem('github_pat', pat);
-        log('✅ PAT saved to localStorage');
-        showToast('✅ PAT saved!');
-        testConnection();
-    }
-    
-    function loadPatFromStorage() {
-        var pat = localStorage.getItem('github_pat');
-        if (pat) {
-            document.getElementById('patToken').value = pat;
-            log('✅ PAT loaded from storage');
-            testConnection();
-        }
-    }
-    
-    function resetPat() {
-        if (confirm('Reset PAT token?')) {
-            document.getElementById('patToken').value = '';
-            localStorage.removeItem('github_pat');
-            document.getElementById('patStatus').textContent = '❌ Not Configured';
-            document.getElementById('patRepo').textContent = '—';
-            showToast('🔄 PAT reset');
-            log('🔄 PAT cleared');
-        }
-    }
-
-    function testConnection() {
-        var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            showToast('❌ PAT token required');
-            return;
-        }
-        log('🔗 Testing GitHub connection...');
-        setTimeout(() => {
-            document.getElementById('patStatus').textContent = '✅ Configured';
-            document.getElementById('patRepo').textContent = 'murugkan/bharatmarkets';
-            log('✅ Connected to GitHub');
-            showToast('✅ Connected!');
-        }, 1000);
-    }
-
-    async function loadAllData() {
-        log('🚀 LOAD JSON initiated - clearing all caches...');
-        updateStatusButton('⏳ Clearing cache');
-        showToast('Clearing cache and loading fresh data...');
-        
-        // Clear localStorage - all cache keys
-        const cacheKeys = ['dataUpdatedTimes', 'guidanceData', 'concallTimestamps', 'insightsTimestamps', 'etl_logs'];
-        Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('hash_') || key.startsWith('prev_hash_')) cacheKeys.push(key);
-        });
-        cacheKeys.forEach(key => localStorage.removeItem(key));
-        dataUpdatedTimes = {};
-        guidanceData = {};
-        concallTimestamps = {};
-        insightsTimestamps = {};
-        log('✅ localStorage cleared');
-        
-        // Clear IndexedDB
-        return new Promise((resolve) => {
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onerror = () => {
-                log('⚠️ Could not open IndexedDB, loading fresh data anyway');
-                masterData = [];
-                loadFreshData().then(resolve);
-            };
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                if (db.objectStoreNames.contains(STORE_NAME)) {
-                    var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                    var clearStore = clearTx.objectStore(STORE_NAME);
-                    clearStore.clear();
-                    clearTx.oncomplete = () => {
-                        log('✅ IndexedDB cleared');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
-                    clearTx.onerror = () => {
-                        log('⚠️ Error clearing IndexedDB, loading fresh data anyway');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
+                if (response.ok) {
+                    logger.log('✅ Connection successful');
+                    showToast('✅ Connection successful!');
                 } else {
-                    log('⚠️ STORE_NAME not in IndexedDB, loading fresh data');
-                    masterData = [];
-                    loadFreshData().then(resolve).catch((err) => {
-                        log(`❌ Error loading fresh data: ${err.message}`);
-                        resolve();
-                    });
+                    throw new Error(`HTTP ${response.status}`);
                 }
-            };
-        });
-    }
-    
-    async function loadFreshData() {
-        log('📡 Fetching fresh data from GitHub (sequential)...');
-        updateStatusButton('⏳ Loading');
-        
-        // Clear guidance data to ensure fresh data
-        guidanceData = {};
-        
-        const results = [];
-        for (let i = 0; i < DATA_SOURCES.length; i++) {
-            const source = DATA_SOURCES[i];
-            const filename = source.path.split('/').pop();
-            const data = await fetchGitHubData(source.path);
-            results.push(data);
-            
-            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
-        }
-        
-        log('✅ All files loaded from GitHub');
-        
-        // Fetch guidance.json separately (not in DATA_SOURCES display)
-        let guidanceFileData = {};
-        try {
-            const guidanceResponse = await fetchGitHubData('guidance.json');
-            if (guidanceResponse) {
-                guidanceFileData = guidanceResponse;
-                log('✅ Fetched guidance.json');
-            }
-        } catch (e) {
-            log(`⚠️ Could not fetch guidance.json: ${e.message}`);
-        }
-        
-        let symbolsData = results[0];
-        let symbolsList = null;
-        
-        if (Array.isArray(symbolsData)) {
-            symbolsList = symbolsData;
-        } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
-            symbolsList = symbolsData.symbols;
-        } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
-            symbolsList = symbolsData.stocks;
-        } else if (symbolsData && symbolsData.data && Array.isArray(symbolsData.data)) {
-            symbolsList = symbolsData.data;
-        } else if (symbolsData && typeof symbolsData === 'object') {
-            symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
-        }
-        
-        // Debug: Check symbol structure
-        if (symbolsList && symbolsList.length > 0) {
-            const firstSym = symbolsList[0];
-            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
-                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
+            } catch (error) {
+                logger.log(`❌ Connection failed: ${error.message}`);
+                showToast(`❌ Connection failed: ${error.message}`);
             }
         }
-        
-        if (!symbolsList || symbolsList.length === 0) {
-            log('❌ Could not parse symbols data');
-            updateStatusButton('❌ Failed');
-            return;
-        }
-        
-        const pricesData = results[1] || {};
-        const fundamentalsData = results[2] || {};
-        
-        log('📦 Parsing results...');
-        
-        // Extract guidance data and timestamps
-        if (guidanceFileData && typeof guidanceFileData === 'object') {
-            Object.keys(guidanceFileData).forEach(ticker => {
-                if (ticker !== '_metadata' && guidanceFileData[ticker]) {
-                    guidanceData[ticker] = guidanceFileData[ticker];
-                    
-                    
-                    if (guidanceFileData[ticker].guidance) {
-                    }
-                    
-                    if (guidanceFileData[ticker].insights) {
-                    }
-                    
-                    // Store ISO timestamp from guidance.date (now using 'date' field instead of 'updated')
-                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
-                        var dateStr = guidanceFileData[ticker].guidance.date;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        concallTimestamps[ticker] = isoDate;
-                    }
-                    // Fallback to old 'updated' field if it exists
-                    else if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
-                        var dateStr = guidanceFileData[ticker].guidance.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        concallTimestamps[ticker] = isoDate;
-                    }
-                    
-                    // Store ISO timestamp from insights.date (now using 'date' field instead of 'updated')
-                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.date) {
-                        var dateStr = guidanceFileData[ticker].insights.date;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        insightsTimestamps[ticker] = isoDate;
-                    }
-                    // Fallback to old 'updated' field if it exists
-                    else if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
-                        var dateStr = guidanceFileData[ticker].insights.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        insightsTimestamps[ticker] = isoDate;
-                    }
-                }
-            });
-            log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-        }
-            saveGuidanceToStorage();
-            log(`💾 Saved timestamps to localStorage`);
-        
-        let priceMap = {};
-        if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
-            priceMap = pricesData.quotes;
-            log('✅ Found prices in "quotes" wrapper');
-        } else {
-            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
-        }
-        
-        let fundMap = {};
-        if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
-            fundMap = fundamentalsData.stocks;
-            log('✅ Found fundamentals in "stocks" wrapper');
-        } else {
-            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
-        }
-        
-        let mergedStocks = [];
-        let priceMatches = 0, fundMatches = 0;
-        
-        symbolsList.forEach(symbol => {
-            const ticker = symbol.ticker || symbol.TICKER || symbol.name;
-            if (!ticker) return;
-            
-            const priceData = priceMap[ticker];
-            const fundData = fundMap[ticker];
-            const guidData = guidanceData[ticker] || null;
-            
-            if (priceData) priceMatches++;
-            if (fundData) fundMatches++;
-            
-            const merged = {
-                ...symbol,
-                ...(fundData || {}),
-                ...(priceData || {}),
-                ticker: symbol.ticker || ticker,
-                qty: symbol.qty,
-                avg: symbol.avg,
-                name: symbol.name,
-                guidance: guidData ? guidData.guidance : null,
-                insights: guidData ? guidData.insights : null
-            };
-            
-            mergedStocks.push(merged);
-        });
-        
-        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
-        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
-        
-        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
-        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
-        
-        // Open DB without incrementing version - handle store deletion properly
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        req.onupgradeneeded = (e) => {
-            var db = e.target.result;
+
+        // ========== INITIALIZATION ==========
+        async function init() {
             try {
-                if (db.objectStoreNames.contains(STORE_NAME)) {
-                    db.deleteObjectStore(STORE_NAME);
+                logger.log('🚀 Initializing ETL Center...');
+                
+                // Load data from IndexedDB
+                await loadFromIndexedDB();
+                
+                if (state.masterData.length > 0) {
+                    logger.log(`📊 Loaded ${state.masterData.length} stocks from cache`);
+                    updateStatusButton('✅ Ready (Click LOAD JSON for fresh)');
+                } else {
+                    logger.log('⚠️ No cached data. Click LOAD JSON to start.');
+                    updateStatusButton('⚠️ No Data');
                 }
-                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                log('✅ Object store created');
-            } catch(err) {
-                log(`⚠️ Upgrade error: ${err.message}`);
-            }
-        };
-        
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            try {
-                log('📥 Saving 91 stocks to IndexedDB...');
-                
-                // Clear old data first
-                var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                var clearStore = clearTx.objectStore(STORE_NAME);
-                clearStore.clear();
-                
-                clearTx.oncomplete = () => {
-                    // Now save new data
-                    masterData = mergedStocks;
-                    // Use the actual unified-symbols.json updated timestamp
-                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
-                    let savedCount = 0;
-                    
-                    // Process stocks sequentially with promise chain
-                    function saveNext(index) {
-                        if (index >= mergedStocks.length) {
-                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
-                            updateHeader();
-                            renderSymbols();
-                            renderDataSources();
-                            
-                            // ✅ Clean summary
-                            log(`\n📋 LOAD SUMMARY:`);
-                            log(`  ✅ Files: 4 loaded fresh from GitHub`);
-                            log(`  ✅ Stocks: ${mergedStocks.length} merged`);
-                            const guidanceCount = Object.keys(guidanceData).length;
-                            log(`  ✅ Guidance: ${guidanceCount} stocks with management data`);
-                            log(`  ✅ Database: IndexedDB updated`);
-                            log(`  ✅ Status: Ready for analysis\n`);
-                            
-                            updateStatusButton('✅ Ready');
-                            showToast('✅ Load complete!');
-                            return;
-                        }
-                        
-                        var transaction = db.transaction(STORE_NAME, 'readwrite');
-                        var store = transaction.objectStore(STORE_NAME);
-                        var stock = mergedStocks[index];
-                        stock.updated = symbolsUpdateTime;
-                        
-                        var putReq = store.put(stock);
-                        putReq.onsuccess = () => {
-                            savedCount++;
-                            saveNext(index + 1);
-                        };
-                        putReq.onerror = () => {
-                            log(`⚠️ Failed to save ${stock.ticker}`);
-                            saveNext(index + 1);
-                        };
-                    }
-                    
-                    saveNext(0);
-                };
-                
-                clearTx.onerror = () => {
-                    log(`⚠️ Error clearing store`);
-                };
-                
-            } catch (err) {
-                log(`❌ Error: ${err.message}`);
+
+                renderTables();
+                updatePatStatus();
+                logger.log('✅ Ready for use');
+
+            } catch (error) {
+                logger.log(`❌ Init error: ${error.message}`);
                 updateStatusButton('❌ Error');
-                showToast(`❌ Error: ${err.message}`);
             }
-        };
-        
-        req.onerror = () => {
-            log(`⚠️ Could not open IndexedDB: ${req.error}`);
-            updateStatusButton('⚠️ Error');
-        };
-    }
-    
-    function convertDDMMYYtoISO(dateStr) {
-        try {
-            // Handle multiple formats
-            
-            // Format 1: "YYYY-MM-DD" (ISO date already)
-            if (dateStr && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                return dateStr + 'T00:00:00Z';
-            }
-            
-            // Format 2: "DD/MM/YY" → 2026-04-16
-            if (dateStr && dateStr.includes('/')) {
-                var parts = dateStr.split('/');
-                if (parts.length === 3) {
-                    var day = String(parts[0]).padStart(2, '0');
-                    var month = String(parts[1]).padStart(2, '0');
-                    var year = '20' + parts[2];
-                    var isoStr = `${year}-${month}-${day}T00:00:00Z`;
-                    return isoStr;
-                }
-            }
-        } catch(e) {}
-        return new Date().toISOString();
-    }
-
-    async function reloadAuto() {
-        log('🔄 REFRESH: Full DB & UI clear + fresh reload...');
-        updateStatusButton('⏳ Clearing...');
-        try {
-            await loadAllData();
-        } catch (e) {
-            log(`❌ Refresh failed: ${e.message}`);
-            updateStatusButton('❌ Error');
         }
-    }
-        
 
-    function updateHeader() {
-        document.getElementById('dbCountBox').textContent = masterData.length;
-    }
-
-    // Initialize with error handling
-    (async () => {
-        try {
-            await init();
-        } catch (err) {
-            console.error('Init error:', err);
-            document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;"><h2>Initialization Error</h2><pre>' + err.message + '</pre><p>' + err.stack + '</p></div>';
+        // Start initialization when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
         }
-    })();
-</script>
-
+    </script>
 </body>
 </html>
