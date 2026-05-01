@@ -31,6 +31,14 @@
         .neg { color:var(--rd)!important; }
         .sig-buy { color:#00ff88; font-weight:800; border:1px solid #00ff88; padding:2px 4px; border-radius:2px; font-size:9px; }
         #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; }
+        /* Debug Window */
+        #debug-btn { position:fixed; bottom:20px; right:20px; width:50px; height:50px; background:#111; border:2px solid #00ff88; border-radius:50%; cursor:pointer; color:#00ff88; font-weight:800; z-index:1000; display:flex; align-items:center; justify-content:center; }
+        #debug-window { position:fixed; bottom:80px; right:20px; width:280px; height:300px; background:#0a0a0a; border:2px solid #00ff88; border-radius:4px; z-index:999; display:none; flex-direction:column; }
+        #debug-header { background:#00ff88; color:#000; padding:8px; font-weight:800; font-size:10px; display:flex; justify-content:space-between; align-items:center; }
+        #debug-header .close-btn { cursor:pointer; width:16px; height:16px; display:flex; align-items:center; justify-content:center; }
+        #debug-logs { flex:1; overflow-y:auto; padding:8px; font-size:9px; color:#00ff88; font-family:'JetBrains Mono',monospace; white-space:pre-wrap; word-wrap:break-word; }
+        #debug-logs div { margin:2px 0; }
+        #debug-clear { background:#111; border-top:1px solid #00ff88; padding:6px; cursor:pointer; color:#00ff88; font-size:9px; text-align:center; }
         /* Floating menu - no footer bar needed */
     </style>
 </head>
@@ -48,6 +56,14 @@
 <div id="legend"></div>
 <div id="status">Loading Pro Engine...</div>
 <div class="view"><div id="app"></div></div>
+
+<!-- Debug Window -->
+<button id="debug-btn" title="Toggle Debug Logs">🐛</button>
+<div id="debug-window">
+    <div id="debug-header">Debug Logs <span class="close-btn">✕</span></div>
+    <div id="debug-logs"></div>
+    <div id="debug-clear">Clear Logs</div>
+</div>
 
 <footer>
     <button id="menu-btn" style="position:fixed; bottom:20px; right:20px; width:50px; height:50px; border-radius:50%; background:var(--bl); border:none; color:#000; font-size:24px; cursor:pointer; z-index:999; font-weight:800; box-shadow:0 4px 12px rgba(0,242,255,0.3);" onclick="toggleMenu()">≡</button>
@@ -79,6 +95,15 @@ document.addEventListener('click', function(event) {
 function addDebugLog(msg) {
     var ts = new Date().toLocaleTimeString();
     console.log('[' + ts + '] ' + msg);
+    
+    // Display in debug window
+    const debugLogs = document.getElementById('debug-logs');
+    if (debugLogs) {
+        const logDiv = document.createElement('div');
+        logDiv.textContent = '[' + ts + '] ' + msg;
+        debugLogs.appendChild(logDiv);
+        debugLogs.scrollTop = debugLogs.scrollHeight; // Auto scroll to bottom
+    }
 }
 
 function showToast(msg) {
@@ -300,11 +325,8 @@ function render() {
     const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
     // Sort SECTORS by weight (descending) so largest sectors appear first
     SECTORS = SECTORS.sort((a, b) => (sc[b] || 0) - (sc[a] || 0));
-    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" data-sector="' + sec + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '"></div>').join('');
-    document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" data-sector="' + sec + '"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
-    
-    // Attach sector click handlers via event delegation
-    attachSectorHandlers();
+    document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" onclick="tap(\'' + sec + '\')" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '"></div>').join('');
+    document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
     let rows = stocks.slice();
     if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
     if (searchQuery) rows = rows.filter(s => resolve(s, 'TICKER').toString().toUpperCase().includes(searchQuery.toUpperCase()));
@@ -327,7 +349,7 @@ function render() {
         let nA = cleanNum(vA), nB = cleanNum(vB);
         return sortAsc ? nA - nB : nB - nA;
     });
-let h = '<div id="search-box-wrapper" style="padding:12px; background:#0a0a0a; border-bottom:1px solid #222; display:flex; gap:8px; align-items:center;"><input type="text" id="search-input" placeholder="Search (5 chr)" style="width:80px; padding:8px; background:#111; color:#00f2ff; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:11px;"><button id="viewmode-btn" style="padding:6px 10px; background:#111; color:#999; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:10px; cursor:pointer; min-width:90px;">' + (viewMode === 'all' ? 'All (P+W)' : viewMode === 'portfolio' ? 'Portfolio' : 'Watchlist') + '</button></div>';
+let h = '<div id="search-box-wrapper" style="padding:12px; background:#0a0a0a; border-bottom:1px solid #222; display:flex; gap:8px; align-items:center;"></div>';
     h += '<table><thead><tr>';
     UI_FIELDS.forEach(f => {
         if (f === 'SN') h += '<th style="width:40px;text-align:center">#</th>';
@@ -374,10 +396,16 @@ let h = '<div id="search-box-wrapper" style="padding:12px; background:#0a0a0a; b
     });
     document.getElementById('app').innerHTML = h + '</tr></tfoot></table>';
     
-    // Update search input value
-    const searchBox = document.getElementById('search-box-wrapper');
-    if (searchBox) {
-        searchBox.innerHTML = '<input type="text" id="search-input" placeholder="Search (5 chr)" style="width:80px; padding:8px; background:#111; color:#00f2ff; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:11px;" value="' + searchQuery + '">';
+    // Update search input value (don't recreate element - just update value)
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.value = searchQuery;
+    } else {
+        // First time - create the elements
+        const searchBox = document.getElementById('search-box-wrapper');
+        if (searchBox) {
+            searchBox.innerHTML = '<input type="text" id="search-input" placeholder="Search (5 chr)" style="width:80px; padding:8px; background:#111; color:#00f2ff; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:11px;" value="' + searchQuery + '"><button id="viewmode-btn" style="padding:6px 10px; background:#111; color:#999; border:1px solid #222; border-radius:4px; font-family:monospace; font-size:10px; cursor:pointer; min-width:90px;">' + (viewMode === 'all' ? 'All (P+W)' : viewMode === 'portfolio' ? 'Portfolio' : 'Watchlist') + '</button>';
+        }
     }
     
     initSearchListener();
@@ -385,26 +413,6 @@ let h = '<div id="search-box-wrapper" style="padding:12px; background:#0a0a0a; b
 
 function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
-
-// Attach sector click handlers via event delegation
-function attachSectorHandlers() {
-    const barSegs = document.querySelectorAll('#tape-bar .seg');
-    const legItems = document.querySelectorAll('#legend .leg');
-    
-    barSegs.forEach(seg => {
-        seg.addEventListener('click', () => {
-            const sector = seg.getAttribute('data-sector');
-            tap(sector);
-        });
-    });
-    
-    legItems.forEach(leg => {
-        leg.addEventListener('click', () => {
-            const sector = leg.getAttribute('data-sector');
-            tap(sector);
-        });
-    });
-}
 
 // Initialize search input listener (call once)
 function initSearchListener() {
@@ -450,6 +458,20 @@ window.addEventListener('pageshow', function(event) {
 });
 
 init();
+
+// Debug Window Controls
+document.getElementById('debug-btn').addEventListener('click', () => {
+    const debugWin = document.getElementById('debug-window');
+    debugWin.style.display = debugWin.style.display === 'none' ? 'flex' : 'none';
+});
+
+document.querySelector('#debug-header .close-btn').addEventListener('click', () => {
+    document.getElementById('debug-window').style.display = 'none';
+});
+
+document.getElementById('debug-clear').addEventListener('click', () => {
+    document.getElementById('debug-logs').innerHTML = '';
+});
 </script>
 
 </body>
