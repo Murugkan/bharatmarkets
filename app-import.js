@@ -137,6 +137,12 @@ function openImportWorkflow() {
     try {
         importState.step = 1;
         importState.stocks = [];
+        
+        // Load GitHub PAT from localStorage for carry-forward
+        importState.githubPAT = localStorage.getItem("ghPAT") || '';
+        importState.githubUser = localStorage.getItem("ghUser") || '';
+        importState.githubRepo = localStorage.getItem("ghRepo") || '';
+        
         document.body.classList.add('modal-open');
         showImportUI();
     } catch(err) {
@@ -1262,18 +1268,18 @@ function saveAndContinue() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
-    // Try MULTIPLE sources to get PAT (in order of preference)
-    var ghPAT = localStorage.getItem("ghPAT") || 
+    // Get PAT from importState (loaded in openImportWorkflow) with localStorage fallback
+    var ghPAT = importState.githubPAT || localStorage.getItem("ghPAT") || 
                 localStorage.getItem("github_pat") || 
                 sessionStorage.getItem("ghPAT") ||
                 sessionStorage.getItem("github_pat") || "";
     
-    var ghUser = localStorage.getItem("ghUser") || 
+    var ghUser = importState.githubUser || localStorage.getItem("ghUser") || 
                  localStorage.getItem("github_user") || 
                  sessionStorage.getItem("ghUser") ||
                  sessionStorage.getItem("github_user") || "";
     
-    var ghRepo = localStorage.getItem("ghRepo") || 
+    var ghRepo = importState.githubRepo || localStorage.getItem("ghRepo") || 
                  localStorage.getItem("github_repo") || 
                  sessionStorage.getItem("ghRepo") ||
                  sessionStorage.getItem("github_repo") || "";
@@ -1322,7 +1328,7 @@ function renderStep6() {
     html += '<div style="margin:8px 0;padding:15px;background:#111;border-radius:8px;border-left:3px solid ' + 
         (isPATConfigured ? '#00ff88' : '#ffb347') + ';">' +
         '<div style="color:' + (isPATConfigured ? '#00ff88' : '#ffb347') + ';font-weight:bold;margin-bottom:10px;">' +
-        (isPATConfigured ? '✅ GitHub Configured' : '⚠️ Configure GitHub (Optional)') +
+        (isPATConfigured ? '✅ GitHub Configured (from data page)' : '⚠️ Configure GitHub (Optional)') +
         '</div>';
     
     if (isPATConfigured) {
@@ -1454,7 +1460,12 @@ function saveGitHubConfig() {
         return;
     }
     
-    // Save to both localStorage AND sessionStorage for persistence
+    // Save to importState for carry-forward within current session
+    importState.githubPAT = pat;
+    importState.githubUser = user;
+    importState.githubRepo = repo;
+    
+    // Save to localStorage for persistence across sessions
     localStorage.setItem("ghPAT", pat);
     localStorage.setItem("ghUser", user);
     localStorage.setItem("ghRepo", repo);
