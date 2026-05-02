@@ -228,7 +228,7 @@ function renderStep1() {
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
-        '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50<br>' +
+        '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50 or just HDFC Bank<br>' +
         '</div>' +
         '<div style="margin:8px 0;padding:10px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
@@ -366,11 +366,10 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
-    // Find column indices - robust matching
+    // Find column indices
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
-    var isinIdx = -1;
     var sectorIdx = -1;
     
     for (var i = 0; i < headerParts.length; i++) {
@@ -394,11 +393,6 @@ function processImportCSV(csv) {
             avgIdx = i;
         }
         
-        // ISIN
-        if (isinIdx === -1 && h === 'isin') {
-            isinIdx = i;
-        }
-        
         // Sector
         if (sectorIdx === -1 && (h === 'sector' || h === 'sector name' || h.includes('sector'))) {
             sectorIdx = i;
@@ -409,6 +403,8 @@ function processImportCSV(csv) {
     if (nameIdx === -1) {
         nameIdx = 0;
     }
+    
+    console.log('DEBUG: Column indices detected - Name:', nameIdx, 'ISIN:', isinIdx, 'Qty:', qtyIdx, 'Avg:', avgIdx, 'Sector:', sectorIdx);
     
     // If Qty not found, look for numeric columns after name
     if (qtyIdx === -1) {
@@ -459,7 +455,6 @@ function processImportCSV(csv) {
         
         var qty = null;
         var avg = null;
-        var isin = null;
         var sector = null;
         
         // Extract Quantity
@@ -472,11 +467,6 @@ function processImportCSV(csv) {
         if (avgIdx >= 0 && avgIdx < parts.length) {
             var avgVal = parseFloat(parts[avgIdx]);
             if (!isNaN(avgVal) && avgVal > 0) avg = avgVal;
-        }
-        
-        // Extract ISIN if available
-        if (isinIdx >= 0 && isinIdx < parts.length) {
-            isin = parts[isinIdx] || null;
         }
         
         // Extract Sector if available
@@ -492,7 +482,6 @@ function processImportCSV(csv) {
         if (name && (qty !== null || avg !== null)) {
             stocks.push({
                 name: name,
-                isin: isin || '',
                 qty: qty || 0,
                 avg: avg || 0,
                 sector: sector || '',
@@ -524,7 +513,7 @@ function renderStep1Preview() {
     
     importState.stocks.forEach(function(stock) {
         html += '<tr style="border-bottom:1px solid #111;">' +
-            '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>' +
+            '<td style="padding:6px;">' + stock.name.substring(0, 40) + '</td>' +
             '<td style="padding:6px;text-align:right;">' + stock.qty + '</td>' +
             '<td style="padding:6px;text-align:right;">₹' + stock.avg.toFixed(2) + '</td>' +
             '</tr>';
@@ -532,7 +521,7 @@ function renderStep1Preview() {
     
     html += '</table></div>' +
         '<div style="margin:6px 0;font-size:11px;color:#00ff88;">' +
-        '✅ Loaded: ' + importState.stocks.length + ' stocks' +
+        '✅ Loaded: ' + importState.stocks.length + ' holdings' +
         '</div>';
     
     document.getElementById('step1-preview').innerHTML = html;
@@ -647,28 +636,95 @@ function renderStep2Preview() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep3() {
-    var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
+    // Check if stocks exist
+    if (!importState.stocks || importState.stocks.length === 0) {
+        return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+            '<div style="padding:15px;background:#1a0000;border-left:3px solid #ff6b85;border-radius:4px;margin:8px 0;">' +
+            '<b style="color:#ff6b85;">⚠️ No Stocks Added</b><br>' +
+            '<span style="font-size:12px;color:#ccc;margin-top:8px;display:block;">' +
+            'Please go back and either:<br>' +
+            '• Upload a CSV file in Step 1, OR<br>' +
+            '• Add manual entries in Step 2<br>' +
+            'Then return to this step.' +
+            '</span>' +
+            '</div>' +
+            '</div>';
+    }
     
-    var prompt = "For these Indian companies, get NSE Ticker, ISIN, Sector, and Industry.\n\n" +
-        "Company Names:\n" +
-        names + "\n\n" +
-        "OUTPUT FORMAT (comma-separated, no spaces):\n" +
-        "Name,Ticker,ISIN,Sector,Industry\n" +
-        "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n";
+    
+    var inputData = importState.stocks.map(function(s) { 
+        return s.name;
+    }).join("\n");
+    
+    var prompt = "TASK: Extract NSE/BSE Ticker, ISIN, Sector, Industry for Indian financial instruments.\n\n" +
+        "INPUT:\n" + inputData + "\n\n" +
+        "STEP 0: NORMALIZE INPUT\n" +
+        "- Convert to UPPERCASE\n" +
+        "- Expand: LTD→LIMITED, L→LIMITED, IND→INDIA, TECH→TECHNOLOGIES\n" +
+        "- Remove extra spaces & special characters\n" +
+        "- Resolve truncated names using fuzzy matching\n\n" +
+        "STEP 1: CLASSIFY INSTRUMENT TYPE\n" +
+        "- EQUITY (company stock)\n" +
+        "- ETF (contains 'ETF')\n" +
+        "- MUTUAL FUND (contains 'AMC')\n" +
+        "- SOVEREIGN BOND (contains 'GOLD', '%', 'SGB')\n" +
+        "- CORPORATE BOND / NCD\n" +
+        "- SME / UNLISTED\n" +
+        "- UNKNOWN\n\n" +
+        "STEP 2: DATA EXTRACTION (TYPE-WISE)\n" +
+        "EQUITY: NSE ticker, ISIN (INE format), Sector, Industry\n" +
+        "ETF: ETF ticker, ISIN (INF format), Sector=ETF, Industry=index\n" +
+        "MUTUAL FUND: Ticker=NA, ISIN (INF format), Sector=Mutual Fund, Industry=scheme\n" +
+        "SOVEREIGN BOND: Ticker=NA, ISIN (INE format), Sector=Government Securities\n" +
+        "CORPORATE BOND: Ticker=NA, ISIN mandatory, Sector=issuer sector\n" +
+        "SME/UNLISTED: ticker or ISIN if available, else UNKNOWN\n\n" +
+        "STEP 3: SEARCH FALLBACK (MANDATORY)\n" +
+        "If not found internally, search:\n" +
+        "1. '[NAME] NSE ticker ISIN'\n" +
+        "2. '[NAME] BSE code ISIN'\n" +
+        "3. '[NAME] ETF ISIN'\n" +
+        "4. '[NAME] mutual fund ISIN AMFI'\n" +
+        "5. '[NAME] SGB series RBI ISIN'\n" +
+        "6. '[NAME] renamed OR delisted OR merged'\n\n" +
+        "STEP 4: DATA SOURCE PRIORITY\n" +
+        "1. NSE India (primary)\n" +
+        "2. BSE India\n" +
+        "3. AMFI (mutual funds)\n" +
+        "4. RBI (SGB)\n" +
+        "5. Official company filings\n\n" +
+        "STEP 5: VALIDATION RULES\n" +
+        "- NSE ticker must exactly match official symbol\n" +
+        "- ISIN format: Equity/Bonds→INE##########, ETF/MF→INF##########\n" +
+        "- Do NOT guess missing data\n" +
+        "- Prefer NSE over BSE\n" +
+        "- If multiple matches→choose primary listed\n\n" +
+        "STEP 6: OUTPUT FORMAT (STRICT, NO EXTRA SPACES)\n" +
+        "Name,Ticker,ISIN,Sector,Industry,InstrumentType\n" +
+        "- Ticker not applicable → NA\n" +
+        "- ISIN not found → UNKNOWN\n" +
+        "- Return ALL entries (no omissions)\n\n" +
+        "EXAMPLES:\n" +
+        "2.50%GOLDBONDS2032SR-IV,NA,IN0020230184,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n" +
+        "SBI ETF NIFTY 50,NIFTYBEES,INF200KA1FS1,ETF,Nifty 50 Index,ETF\n" +
+        "INDIAN BRIGHT STEEL,AZAD,INE02PY01013,Industrials,Engineering,EQUITY\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+        '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
+        'Total stocks: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
+        '</div>' +
+        
         '<div style="margin-bottom:15px;">' +
         '<button onclick="copyPrompt()" style="padding:8px 16px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📋 Copy Prompt</button>' +
         '</div>' +
         
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        'Copy prompt → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
+        'Copy → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
         '</div>' +
         
-        '<textarea id="ai-prompt" readonly style="width:100%;height:280px;' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:220px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:10px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
+        'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
         '</div>';
 }
 
@@ -1075,11 +1131,26 @@ function saveAndContinue() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
-    // Try to get PAT from localStorage or let user configure it
-    var ghPAT = localStorage.getItem("ghPAT") || localStorage.getItem("github_pat") || "";
-    var ghUser = localStorage.getItem("ghUser") || localStorage.getItem("github_user") || "";
-    var ghRepo = localStorage.getItem("ghRepo") || localStorage.getItem("github_repo") || "";
-    var isPATConfigured = ghPAT && ghUser && ghRepo;
+    // Try MULTIPLE sources to get PAT (in order of preference)
+    var ghPAT = localStorage.getItem("ghPAT") || 
+                localStorage.getItem("github_pat") || 
+                sessionStorage.getItem("ghPAT") ||
+                sessionStorage.getItem("github_pat") || "";
+    
+    var ghUser = localStorage.getItem("ghUser") || 
+                 localStorage.getItem("github_user") || 
+                 sessionStorage.getItem("ghUser") ||
+                 sessionStorage.getItem("github_user") || "";
+    
+    var ghRepo = localStorage.getItem("ghRepo") || 
+                 localStorage.getItem("github_repo") || 
+                 sessionStorage.getItem("ghRepo") ||
+                 sessionStorage.getItem("github_repo") || "";
+    
+    // Only consider it configured if ALL THREE fields have values
+    var isPATConfigured = (ghPAT && ghPAT.trim() !== "") && 
+                         (ghUser && ghUser.trim() !== "") && 
+                         (ghRepo && ghRepo.trim() !== "");
     
     // Calculate portfolio vs watchlist based on qty/avg fields
     var portfolioCount = 0;
@@ -1252,9 +1323,20 @@ function saveGitHubConfig() {
         return;
     }
     
+    // Save to both localStorage AND sessionStorage for persistence
     localStorage.setItem("ghPAT", pat);
     localStorage.setItem("ghUser", user);
     localStorage.setItem("ghRepo", repo);
+    
+    // Also save with alternate keys for compatibility
+    localStorage.setItem("github_pat", pat);
+    localStorage.setItem("github_user", user);
+    localStorage.setItem("github_repo", repo);
+    
+    // Also save to sessionStorage as fallback
+    sessionStorage.setItem("ghPAT", pat);
+    sessionStorage.setItem("ghUser", user);
+    sessionStorage.setItem("ghRepo", repo);
     
     alert("✅ GitHub configuration saved!");
     showImportUI();
