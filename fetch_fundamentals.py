@@ -71,9 +71,11 @@ import json as _json
 try:
     _sm = _json.loads(open("symbol_map.json").read())
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
+    SYMBOL_MAP_DELISTED = set(_sm.get("delisted", []))  # Load delisted array
 except Exception as _e:
     # symbol_map.json is optional — script runs fine without it
     NSE_TO_YAHOO = {}
+    SYMBOL_MAP_DELISTED = set()
 
 # Runtime alias cache — populated by yahoo_search_sym during run
 YF_ALIAS_CACHE = {}
@@ -184,7 +186,8 @@ def load_symbols():
             
             name = entry.get("name", "")
             
-            if ticker and ticker not in SKIP and ticker not in seen:
+            # Filter: skip if delisted, in SKIP list, or already seen
+            if ticker and ticker not in SKIP and ticker not in SYMBOL_MAP_DELISTED and ticker not in seen:
                 syms.append(ticker)
                 seen.add(ticker)
                 if name:
