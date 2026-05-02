@@ -82,7 +82,7 @@ function showToast(msg) {
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
 let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio', searchQuery = '', returnFilter = null;
-const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'INVESTED', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
+const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
 
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
@@ -152,9 +152,19 @@ const resolve = (obj, field) => {
 };
 
 // Get color class based on field and value (professional thresholds)
-const getMetricColor = (field, value) => {
+const getMetricColor = (field, value, stock) => {
     const n = cleanNum(value);
     if (n === 0 || value === '—') return '';
+    
+    // AVG and INVESTED: green if AVG < LTP (profit), red if AVG >= LTP (loss/breakeven)
+    if ((field === 'AVG' || field === 'INVESTED') && stock) {
+        const avg = cleanNum(resolve(stock, 'AVG'));
+        const ltp = cleanNum(resolve(stock, 'LTP'));
+        if (avg > 0 && ltp > 0) {
+            return ltp > avg ? ' pos' : ' neg';
+        }
+        return '';
+    }
     
     const thresholds = {
         'PE': { green: n < 15, red: n > 25 },
@@ -411,8 +421,8 @@ function render() {
                 const n = cleanNum(raw);
                 if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += '<td class="' + cls + '"><span class="sig-buy">BUY</span></td>';
                 else {
-                    // Use professional thresholds for colors
-                    cls += getMetricColor(f, raw);
+                    // Use professional thresholds for colors (pass stock object for AVG/INVESTED comparison)
+                    cls += getMetricColor(f, raw, s);
                     h += '<td class="' + cls + '">' + val + '</td>';
                 }
             }
