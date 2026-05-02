@@ -366,6 +366,9 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
+    console.log('DEBUG: Delimiter detected:', delimiter === '\t' ? 'TAB' : delimiter);
+    console.log('DEBUG: Header parts:', headerParts);
+    
     // Find column indices - robust matching
     var nameIdx = -1;
     var qtyIdx = -1;
@@ -409,6 +412,8 @@ function processImportCSV(csv) {
     if (nameIdx === -1) {
         nameIdx = 0;
     }
+    
+    console.log('DEBUG: Column indices detected - Name:', nameIdx, 'ISIN:', isinIdx, 'Qty:', qtyIdx, 'Avg:', avgIdx, 'Sector:', sectorIdx);
     
     // If Qty not found, look for numeric columns after name
     if (qtyIdx === -1) {
