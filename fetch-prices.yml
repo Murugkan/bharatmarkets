@@ -1,0 +1,31 @@
+name: Fetch Prices (Scheduled)
+
+on:
+  schedule:
+    - cron: '*/15 3-11 * * 1-5'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  fetch-prices:
+    name: Fetch Live Prices
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4.1.7
+        with: {ref: main}
+      - uses: actions/setup-python@v5.1.0
+        with: {python-version: '3.12'}
+      - run: pip install yfinance
+      - name: Fetch prices
+        run: python fetch_prices.py
+      - name: Commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prices.json unified-symbols.json charts/ || true
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "data: prices $(date -u +'%H:%M UTC') [skip pages]"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done

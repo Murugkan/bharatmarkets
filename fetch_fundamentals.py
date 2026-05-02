@@ -8,9 +8,14 @@ Reads symbols from:
 
 Sources for data:
   1. Yahoo Finance (yfinance) — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
-  2. Screener.in              — prom%, FII%, DII%, gap fields (if beautifulsoup4 installed)
+  2. Screener.in              — prom%, FII%, DII%, FACE VALUE, gap fields (if beautifulsoup4 installed)
 
-Outputs: fundamentals.json with 30+ fields per stock
+Outputs: fundamentals.json with 30+ fields per stock including:
+  - Valuation: PE, PB, Face Value
+  - Profitability: ROE, ROCE, OPM%, NPM%
+  - Size: MCAP, Sales, EBITDA, CFO
+  - Holdings: Promoter%, FII%, DII%, Pledge%
+  - Price Action: 52W%, ATH%, 1D%
 """
 
 import json, time, datetime, re, os
@@ -191,11 +196,45 @@ def load_symbols():
     return syms
 
 
+def resolve_symbols():
+    """Map unified-symbols (master list) against symbol_map overrides.
+    
+    unified-symbols.json is source of truth.
+    symbol_map.json provides ticker overrides for symbols that need mapping.
+    """
+    symbols = load_symbols()  # Master list from unified-symbols.json
+    
+    # Load symbol_map overrides
+    try:
+        sm = _json.loads(Path("symbol_map.json").read_text())
+        overrides = sm.get("overrides", {})
+    except Exception as e:
+        print(f"⚠ Cannot load symbol_map.json: {e}")
+        overrides = {}
+    
+    # For each symbol in master list, apply override if exists
+    resolved = {}
+    for sym in symbols:
+        if sym in overrides:
+            resolved[sym] = overrides[sym]
+            print(f"  📍 {sym} → {overrides[sym]} (mapped)")
+        else:
+            resolved[sym] = sym + ".NS"
+    
+    print(f"\n✓ Resolved {len(resolved)} symbols (overrides applied)\n")
+    return resolved
+
+
 # ── Source 1: Yahoo Finance ────────────────────────────
-def fetch_yfinance(sym):
+def fetch_yfinance(sym, yf_ticker=None):
     result = {}
     try:
-        yf_sym = resolve_yf_sym(sym)
+        # Use provided yf_ticker (from symbol_map) or resolve on the fly
+        if yf_ticker is None:
+            yf_sym = resolve_yf_sym(sym)
+        else:
+            yf_sym = yf_ticker
+        
         t = yf.Ticker(yf_sym)
 
         hist_short = None
@@ -284,10 +323,8 @@ def fetch_yfinance(sym):
 
         roe_raw = safe_float(info.get("returnOnEquity"))
         roa_raw = safe_float(info.get("returnOnAssets"))
-        roce_raw = safe_float(info.get("returnOnCapital"))
         result["roe"] = round(roe_raw * 100, 2) if roe_raw is not None else None
         result["roa"] = round(roa_raw * 100, 2) if roa_raw is not None else None
-        result["roce"] = round(roce_raw * 100, 2) if roce_raw is not None else None
 
         npm_raw = safe_float(info.get("profitMargins"))
         opm_raw = safe_float(info.get("operatingMargins"))
@@ -305,21 +342,6 @@ def fetch_yfinance(sym):
         de = safe_float(info.get("debtToEquity"))
         result["debt_eq"]   = round(de / 100, 2) if de is not None else None
         result["cur_ratio"] = safe_float(info.get("currentRatio"))
-        
-        # Additional financial metrics - use what Yahoo actually returns
-        # Note: totalDebt, totalCash often None for Indian stocks
-        # Instead, extract from quarterly data if available
-        result["quick_ratio"] = safe_float(info.get("quickRatio"))
-        
-        # Try to get debt from Yahoo, fallback to quarterly
-        total_debt_yahoo = safe_float(info.get("totalDebt"))
-        if total_debt_yahoo:
-            result["total_debt"] = to_cr(total_debt_yahoo)
-        
-        # Try to get cash from Yahoo, fallback to quarterly
-        total_cash_yahoo = safe_float(info.get("totalCash") or info.get("cash"))
-        if total_cash_yahoo:
-            result["cash"] = to_cr(total_cash_yahoo)
 
         if result.get("w52h") and ltp:
             result["w52_pct"] = round((ltp / result["w52h"] - 1) * 100, 1)
@@ -378,8 +400,6 @@ def fetch_yfinance(sym):
                         elif rl == 'ebit':                             q_data[k]['ebit']  = round(v/1e7, 2)
                         elif rl == 'gross profit':                     q_data[k]['gross'] = round(v/1e7, 2)
                         elif rl == 'operating income' or rl == 'operating profit': q_data[k].setdefault('ebit', round(v/1e7, 2))
-                        elif any(x in rl for x in ('interest expense', 'interest paid', 'finance cost', 'finance charges')): q_data[k]['int_exp'] = round(v/1e7, 2)
-                        elif any(x in rl for x in ('provision for income tax', 'income tax expense', 'tax expense')): q_data[k]['tax'] = round(v/1e7, 2)
             else:
                 print(f"  ⚠ {sym}: no income stmt data")
 
@@ -413,9 +433,6 @@ def fetch_yfinance(sym):
                             q_data[k]['cfo'] = round(v/1e7, 2)
                         elif 'free cash flow' in rl:
                             q_data[k]['fcf'] = round(v/1e7, 2)
-                        elif any(x in rl for x in ('capital expenditure', 'capex', 'capital spending',
-                                                     'purchase of ppe', 'purchase of property')):
-                            q_data[k]['capex'] = round(v/1e7, 2)
 
             # Check if CFO was populated; if not, try direct row search
             cfo_missing = any('cfo' not in v for v in q_data.values() if v)
@@ -448,57 +465,22 @@ def fetch_yfinance(sym):
             if qb is not None:
                 for row_label in qb.index:
                     rl = str(row_label).lower().strip()
-                    for col in qb.columns:
-                        k = qkey(col)
-                        if k not in q_data: q_data[k] = {}
-                        try:
-                            v = float(qb.loc[row_label, col])
-                            if v != v: continue
-                        except (TypeError, ValueError):
-                            continue
-                        if rl in ('total debt', 'long term debt', 'current debt', 'net debt', 'total borrowings'):
-                            q_data[k]['debt'] = round(v/1e7, 2)
-                        elif any(x in rl for x in ('cash and cash equivalents', 'cash', 'short term investments')):
-                            q_data[k].setdefault('cash', round(v/1e7, 2))
-                        elif rl == 'current assets':
-                            q_data[k]['cur_asset'] = round(v/1e7, 2)
-                        elif rl == 'current liabilities':
-                            q_data[k]['cur_liab'] = round(v/1e7, 2)
-                        elif rl == 'total assets':
-                            q_data[k]['tot_asset'] = round(v/1e7, 2)
-                        elif rl == 'total liabilities':
-                            q_data[k]['tot_liab'] = round(v/1e7, 2)
-                        elif rl == 'stockholders equity' or rl == 'total equity' or rl == 'shareholders equity':
-                            q_data[k]['equity'] = round(v/1e7, 2)
+                    if rl in ('total debt', 'long term debt', 'current debt', 'net debt'):
+                        for col in qb.columns:
+                            k = qkey(col)
+                            if k not in q_data: q_data[k] = {}
+                            try:
+                                v = float(qb.loc[row_label, col])
+                                if v != v: continue
+                                q_data[k]['debt'] = round(v/1e7, 2)
+                            except (TypeError, ValueError):
+                                continue
+                        break
 
             # ── Compute derived fields ─────────────────────────────────
             for k, v in q_data.items():
                 if v.get('ebit') and v.get('rev') and v['rev'] != 0:
                     v['opm'] = round(v['ebit'] / v['rev'] * 100, 1)
-                
-                # Interest Coverage Ratio = EBIT / Interest Expense
-                if v.get('ebit') and v.get('int_exp') and v['int_exp'] != 0:
-                    v['int_cov'] = round(v['ebit'] / v['int_exp'], 2)
-                
-                # FCF Conversion = FCF / Net Income
-                if v.get('fcf') and v.get('net') and v['net'] != 0:
-                    v['fcf_conv'] = round(v['fcf'] / v['net'] * 100, 1)
-                
-                # Calculate FCF if CFO and CAPEX available
-                if v.get('cfo') and v.get('capex'):
-                    v['fcf'] = round(v['cfo'] - v['capex'], 2)
-                
-                # Current Ratio = Current Assets / Current Liabilities
-                if v.get('cur_asset') and v.get('cur_liab') and v['cur_liab'] != 0:
-                    v['cur_ratio'] = round(v['cur_asset'] / v['cur_liab'], 2)
-                
-                # Net Debt = Total Debt - Cash
-                if v.get('debt') and v.get('cash'):
-                    v['net_debt'] = round(v['debt'] - v['cash'], 2)
-                
-                # Debt to EBITDA (only if EBITDA available)
-                if v.get('debt') and v.get('ebitda') and v['ebitda'] != 0:
-                    v['debt_ebitda'] = round(v['debt'] / v['ebitda'], 2)
 
             # ── Save only quarters that have at least one data field ───
             if q_data:
@@ -516,22 +498,6 @@ def fetch_yfinance(sym):
 
         except Exception as e:
             pass  # quarterly optional
-        
-        # Extract latest debt from quarterly data (Yahoo often returns None for totalDebt)
-        if result.get('quarterly') and len(result['quarterly']) > 0:
-            latest_q = result['quarterly'][-1]  # Most recent quarter
-            if 'debt' in latest_q and latest_q['debt']:
-                # Use latest quarterly debt if Yahoo didn't return totalDebt
-                if not result.get('total_debt'):
-                    result['total_debt'] = to_cr(latest_q['debt'])
-        
-        # Calculate EV/EBITDA using available debt data
-        if result.get("mcap") and result.get("ebitda") and result.get("total_debt"):
-            ev = result["mcap"] + result["total_debt"]
-            if result.get("cash"):
-                ev = ev - result["cash"]
-            if result["ebitda"] > 0:
-                result["ev_ebitda"] = round(ev / result["ebitda"], 2)
 
         print(
             f"  ✓ yfinance {sym}: ₹{ltp} | "
@@ -585,12 +551,13 @@ def fetch_screener_gaps(sym):
                 val = safe_float(raw)
                 if val is None:
                     continue
-                if "roce" in lbl:          result.setdefault("roce",    val)
-                elif "p/e" in lbl:         result.setdefault("pe",      val)
-                elif "p/b" in lbl:         result.setdefault("pb",      val)
-                elif "roe" in lbl:         result.setdefault("roe",     val)
-                elif "market cap" in lbl:  result.setdefault("mcap",    val)
-                elif "sales" in lbl:       result.setdefault("sales",   val)
+                if "roce" in lbl:          result["roce"]    = val
+                elif "p/e" in lbl:         result["pe"]      = val
+                elif "p/b" in lbl:         result["pb"]      = val
+                elif "roe" in lbl:         result["roe"]     = val
+                elif "market cap" in lbl:  result["mcap"]    = val
+                elif "sales" in lbl:       result["sales"]   = val
+                elif "face value" in lbl:  result["face_value"] = val
 
         # Shareholding table
         # Screener columns: Label | Q(oldest) ... Q(latest) | Change
@@ -636,11 +603,11 @@ def fetch_screener_gaps(sym):
                                 result["pledge_pct"] = last
 
                     elif "public" in lbl:
-                        result.setdefault("public_pct", val)
+                        result["public_pct"] = val
                     elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
-                        result.setdefault("fii_pct", val)
+                        result["fii_pct"] = val
                     elif "dii" in lbl or "institution" in lbl:
-                        result.setdefault("dii_pct", val)
+                        result["dii_pct"] = val
 
         # P&L table
         pl = soup.find("section", id="profit-loss")
@@ -655,9 +622,9 @@ def fetch_screener_gaps(sym):
                     val = safe_float(cells[-1].replace("%","").replace(",",""))
                     if val is None:
                         continue
-                    if "opm" in lbl:                                    result.setdefault("opm_pct",val)
-                    elif "npm" in lbl:                                  result.setdefault("npm_pct",val)
-                    elif lbl.startswith("sales") or "revenue" in lbl:  result.setdefault("sales",  val)
+                    if "opm" in lbl:                                    result["opm_pct"] = val
+                    elif "npm" in lbl:                                  result["npm_pct"] = val
+                    elif lbl.startswith("sales") or "revenue" in lbl:  result["sales"] = val
 
         # Cash flow
         cf = soup.find("section", id="cash-flow")
@@ -712,7 +679,8 @@ def compute_signal(d):
 
 # ── Main ───────────────────────────────────────────────
 def main():
-    syms = load_symbols()
+    resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
+    syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
     print(f"📊 BharatMarkets Fundamentals v3 | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
@@ -748,7 +716,8 @@ def main():
     done_count = [0]
 
     def fetch_one(sym):
-        data = fetch_yfinance(sym)
+        resolved_ticker = resolved_syms[sym]  # Get mapped ticker
+        data = fetch_yfinance(sym, yf_ticker=resolved_ticker)
         with lock:
             done_count[0] += 1
             elapsed = (now_utc() - ts).seconds
@@ -773,7 +742,7 @@ def main():
             print(f"↷ known delisted — skipped")
             continue
 
-        stock = {"ticker": sym}
+        stock = {}
 
         yf_data = yf_results.get(sym, {})
         if yf_data:
@@ -834,8 +803,6 @@ def main():
 
     output = {
         "updated":  ts.isoformat(),
-        "lastLoadedAt": ts.isoformat(),
-        "source": "yfinance_screener",
         "count":    len(final_result),
         "sources":  stats,
         "delisted": sorted(DELISTED),
