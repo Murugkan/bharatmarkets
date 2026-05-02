@@ -662,10 +662,15 @@ function renderStep3() {
             '</div>';
     }
     
-    var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
+    // Build list with sequence numbers
+    var stocksList = '';
+    for (var i = 0; i < importState.stocks.length; i++) {
+        stocksList += (i + 1) + ',' + importState.stocks[i].name + '\n';
+    }
     
     var prompt = "TASK: Extract NSE/BSE Ticker, ISIN, Sector, Industry for Indian financial instruments.\n\n" +
         "INPUT: Mixed holdings (equities, ETFs, mutual funds, sovereign bonds, corporate bonds, SME, partially written names)\n\n" +
+        "CRITICAL: Each holding has a SEQUENCE NUMBER (1, 2, 3...). You MUST include this sequence number in column 1 of your response.\n\n" +
         "STEP 0: NORMALIZE INPUT\n" +
         "- Convert to UPPERCASE\n" +
         "- Expand: LTD→LIMITED, L→LIMITED, IND→INDIA, TECH→TECHNOLOGIES\n" +
@@ -721,17 +726,17 @@ function renderStep3() {
         "If ticker found but ISIN NOT verified: mark ISIN=UNKNOWN, allow ticker from exchange\n" +
         "If neither ticker nor ISIN verified: classify as SME / UNLISTED\n\n" +
         "STEP 9: OUTPUT FORMAT (STRICT, NO SPACES)\n" +
-        "Name,Ticker,ISIN,Sector,Industry,InstrumentType\n" +
+        "SeqNo,Name,Ticker,ISIN,Sector,Industry,InstrumentType\n" +
         "- Ticker not applicable → NA\n" +
         "- ISIN not found → UNKNOWN\n" +
-        "- Return ALL entries\n\n" +
-        "HOLDINGS TO PROCESS:\n" +
-        names + "\n\n" +
+        "- Return ALL entries with correct sequence numbers\n\n" +
+        "HOLDINGS TO PROCESS (SeqNo,Name):\n" +
+        stocksList + "\n" +
         "EXAMPLES:\n" +
-        "2.50%GOLDBONDS2032SR-IV,NA,INE...,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n" +
-        "SBI ETF NIFTY 50,NIFTYBEES,INF...,ETF,Nifty 50 Index,ETF\n" +
-        "MIRAEAMC SMALLCAP,NA,INF...,Mutual Fund,Small Cap Fund,MUTUAL FUND\n" +
-        "INDIAN BRIGHT STEEL,AZAD,INE...,Industrials,Engineering,EQUITY\n";
+        "1,2.50%GOLDBONDS2032SR-IV,NA,INE...,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n" +
+        "2,SBI ETF NIFTY 50,NIFTYBEES,INF...,ETF,Nifty 50 Index,ETF\n" +
+        "3,MIRAEAMC SMALLCAP,NA,INF...,Mutual Fund,Small Cap Fund,MUTUAL FUND\n" +
+        "4,INDIAN BRIGHT STEEL,AZAD,INE...,Industrials,Engineering,EQUITY\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
@@ -823,6 +828,25 @@ function autoParseAIResponse() {
     // Kept for compatibility
 }
 
+// Helper: Calculate similarity score between two strings (0-1)
+function stringSimilarity(s1, s2) {
+    var s1_clean = (s1 || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    var s2_clean = (s2 || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    if (s1_clean === s2_clean) return 1.0;
+    if (!s1_clean || !s2_clean) return 0;
+    
+    // Common substring matching
+    var longer = s1_clean.length > s2_clean.length ? s1_clean : s2_clean;
+    var shorter = s1_clean.length > s2_clean.length ? s2_clean : s1_clean;
+    
+    var matches = 0;
+    for (var i = 0; i < shorter.length; i++) {
+        if (longer.indexOf(shorter[i]) > -1) matches++;
+    }
+    return matches / longer.length;
+}
+
 function parseAIResponse(delimiter) {
     var response = document.getElementById('ai-response').value;
     if (!response.trim() || !importState.stocks || importState.stocks.length === 0) {
@@ -837,28 +861,27 @@ function parseAIResponse(delimiter) {
         if (line.length === 0) continue;
         
         var parts = line.split(delimiter).map(function(p) { return p.trim(); });
-        if (parts.length < 2) continue;
+        if (parts.length < 3) continue;
         
-        var name = parts[0];
+        var seqStr = parts[0];
         
         // Skip header rows
-        if (name.toLowerCase() === 'name' || name.toLowerCase() === 'stock name' || 
-            name.toLowerCase() === 'ticker' || name.toLowerCase() === 'symbol') continue;
+        if (seqStr.toLowerCase() === 'seqno' || seqStr.toLowerCase() === 'seq' || 
+            seqStr.toLowerCase() === 'name' || seqStr.toLowerCase() === 'stock name') continue;
         
-        // Find matching stock - more lenient matching
-        var stock = importState.stocks.find(function(s) { 
-            var s1 = (s.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            var s2 = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-            return s1 === s2 || s1.includes(s2.substring(0, 8)) || s2.includes(s1.substring(0, 8));
-        });
+        // Parse sequence number (column 1)
+        var seqNo = parseInt(seqStr, 10);
+        if (isNaN(seqNo) || seqNo < 1 || seqNo > importState.stocks.length) continue;
+        
+        var stock = importState.stocks[seqNo - 1]; // 1-indexed to 0-indexed
         
         if (stock) {
-            // Enrich with additional data (6-column format: Name,Ticker,ISIN,Sector,Industry,Type)
-            if (parts[1] && parts[1] !== 'NA' && parts[1] !== 'UNKNOWN') stock.ticker = parts[1];
-            if (parts[2] && parts[2] !== 'NA' && parts[2] !== 'UNKNOWN') stock.isin = parts[2];
-            if (parts[3] && parts[3] !== '-') stock.sector = parts[3];
-            if (parts[4] && parts[4] !== '-') stock.industry = parts[4];
-            if (parts[5]) stock.instrumentType = parts[5];
+            // Enrich with additional data (7-column format: SeqNo,Name,Ticker,ISIN,Sector,Industry,Type)
+            if (parts[2] && parts[2] !== 'NA' && parts[2] !== 'UNKNOWN') stock.ticker = parts[2];
+            if (parts[3] && parts[3] !== 'NA' && parts[3] !== 'UNKNOWN') stock.isin = parts[3];
+            if (parts[4] && parts[4] !== '-') stock.sector = parts[4];
+            if (parts[5] && parts[5] !== '-') stock.industry = parts[5];
+            if (parts[6]) stock.instrumentType = parts[6];
             stock.status = 'enriched';
             matched++;
         }
@@ -870,12 +893,12 @@ function parseAIResponse(delimiter) {
         if (matched > 0) {
             status.innerHTML = '<span style="color:#00ff88;font-weight:bold;">✅ ' + matched + '/' + importState.stocks.length + '</span>';
             if (result) {
-                result.innerHTML = '✅ Enriched ' + matched + ' stocks with complete data';
+                result.innerHTML = '✅ Matched ' + matched + ' stocks by sequence number';
             }
         } else {
             status.innerHTML = '<span style="color:#ffb347;">⚠️ No matches</span>';
             if (result) {
-                result.innerHTML = '⚠️ No stocks matched. Check names and data format.';
+                result.innerHTML = '⚠️ No stocks matched. Ensure AI response includes sequence numbers in column 1.';
             }
         }
     }
