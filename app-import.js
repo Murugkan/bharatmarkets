@@ -404,8 +404,6 @@ function processImportCSV(csv) {
         nameIdx = 0;
     }
     
-    console.log('DEBUG: Column indices detected - Name:', nameIdx, 'ISIN:', isinIdx, 'Qty:', qtyIdx, 'Avg:', avgIdx, 'Sector:', sectorIdx);
-    
     // If Qty not found, look for numeric columns after name
     if (qtyIdx === -1) {
         for (var i = nameIdx + 1; i < headerParts.length; i++) {
