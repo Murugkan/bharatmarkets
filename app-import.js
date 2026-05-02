@@ -647,6 +647,21 @@ function renderStep2Preview() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep3() {
+    // Check if stocks exist
+    if (!importState.stocks || importState.stocks.length === 0) {
+        return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+            '<div style="padding:15px;background:#1a0000;border-left:3px solid #ff6b85;border-radius:4px;margin:8px 0;">' +
+            '<b style="color:#ff6b85;">⚠️ No Stocks Added</b><br>' +
+            '<span style="font-size:12px;color:#ccc;margin-top:8px;display:block;">' +
+            'Please go back and either:<br>' +
+            '• Upload a CSV file in Step 1, OR<br>' +
+            '• Add manual entries in Step 2<br>' +
+            'Then return to this step.' +
+            '</span>' +
+            '</div>' +
+            '</div>';
+    }
+    
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
     var prompt = "TASK: Get NSE Ticker, ISIN, Sector, Industry for Indian companies\n\n" +
@@ -687,6 +702,10 @@ function renderStep3() {
         "NOTE: Return data with confidence. Use UNKNOWN only when ticker cannot be verified.\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+        '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
+        'Total stocks to enrich: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
+        '</div>' +
+        
         '<div style="margin-bottom:15px;">' +
         '<button onclick="copyPrompt()" style="padding:8px 16px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📋 Copy Prompt</button>' +
