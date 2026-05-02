@@ -410,11 +410,6 @@ function processImportCSV(csv) {
         nameIdx = 0;
     }
     
-    // If ISIN not found, try column 1 (common position in broker exports)
-    if (isinIdx === -1 && headerParts.length > 1) {
-        isinIdx = 1;
-    }
-    
     // If Qty not found, look for numeric columns after name
     if (qtyIdx === -1) {
         for (var i = nameIdx + 1; i < headerParts.length; i++) {
