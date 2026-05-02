@@ -649,39 +649,12 @@ function renderStep2Preview() {
 function renderStep3() {
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var prompt = "TASK: Get NSE Ticker, ISIN, Sector, Industry for Indian companies\n\n" +
-        "CRITICAL VALIDATION RULES - MUST FOLLOW:\n\n" +
-        "1. TICKER RULES:\n" +
-        "   • ONLY use officially verified NSE symbols\n" +
-        "   • DO NOT infer, abbreviate, or guess tickers\n" +
-        "   • DO NOT use partial names (e.g., 'SHREE' for 'Shree Refrigeration Ltd')\n" +
-        "   • If ticker is not 100% certain → return 'UNKNOWN'\n\n" +
-        "2. ISIN RULES:\n" +
-        "   • Format: Must be exactly INE + 10 characters (e.g., INE040A01034)\n" +
-        "   • Cross-check: ISIN must match the company name\n" +
-        "   • If format incorrect or non-matching → return 'UNKNOWN'\n\n" +
-        "3. DATA VALIDATION:\n" +
-        "   • Verify: Company Name ↔ Ticker ↔ ISIN all align to SAME entity\n" +
-        "   • Check: Is company actively listed on NSE?\n" +
-        "   • If company not listed → return 'NOT_LISTED'\n" +
-        "   • If multiple possible matches → return 'AMBIGUOUS'\n\n" +
-        "4. QUALITY GATES:\n" +
-        "   ✓ Does ticker exist in NSE official list?\n" +
-        "   ✓ Does ISIN belong to this exact company?\n" +
-        "   ✓ Is company currently active (not delisted)?\n" +
-        "   ✗ Skip guessing or abbreviations\n" +
-        "   ✗ Never create/invent tickers\n\n" +
-        "FALLBACK RULE:\n" +
-        "If ANY check fails for a row, output:\n" +
-        "Company Name,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN\n\n" +
-        "COMPANY LIST:\n" +
+    var prompt = "For these Indian companies, get NSE Ticker, ISIN, Sector, and Industry.\n\n" +
+        "Company Names:\n" +
         names + "\n\n" +
         "OUTPUT FORMAT (comma-separated, no spaces):\n" +
         "Name,Ticker,ISIN,Sector,Industry\n" +
-        "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n" +
-        "State Bank of India,SBIN,INE062A01020,Banking,Financial Services\n" +
-        "Shree Refrigeration Ltd,SHREEREF,INE669C01037,Appliances,Industrial Products\n\n" +
-        "IMPORTANT: Return UNKNOWN for uncertain entries. Do NOT guess.\n";
+        "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:15px;">' +
