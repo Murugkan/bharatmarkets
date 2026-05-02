@@ -15,17 +15,17 @@
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
         #bar-wrap { padding:12px; background:#0a0a0a; border-bottom:2px solid #00ff88; }
         #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,255,136,0.3); transition: opacity 0.2s; }
-        .seg.dimmed { opacity: 0.3; }
+        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,255,136,0.3); transition: all 0.3s; filter: brightness(1); }
+        .seg.dimmed { opacity: 0.2; filter: brightness(0.5); }
         #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:2px solid #00f2ff; background:#000; max-height:80px; overflow-y:auto; }
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#fff; cursor:pointer; font-weight:800; }
         .leg.on { color:#000; font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 310px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:20px; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 280px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:20px; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
-        th { background:var(--s1); color:#666; padding:8px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
+        th { background:var(--s1); color:#666; padding:6px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
         th.active { color: var(--bl); }
-        td { padding:8px; border-bottom:1px solid #111; }
+        td { padding:6px; border-bottom:1px solid #111; }
         tfoot td { background: var(--s1); font-weight: 800; color: var(--tx); border-top: 2px solid var(--b1); position: sticky; bottom: 0; }
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; }
         .pos { color:var(--gr)!important; }
@@ -46,16 +46,17 @@
     <div class="kpi-box"><div class="kpi-label">Portfolio</div><div class="kpi-val" id="k-pval">₹0</div></div>
     <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="k-inv">₹0</div></div>
     <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
-    <div class="kpi-box"><div class="kpi-label">Today</div><div class="kpi-val" id="k-today" style="display:flex; align-items:center; gap:4px;"><span id="k-today-val">₹0</span><span style="font-size:8px; color:#666;" id="k-today-count">+0,-0</span></div></div>
+    <div class="kpi-box"><div class="kpi-label">Today</div><div class="kpi-val" id="k-today" style="display:flex; align-items:center; gap:6px;"><span id="k-today-val">₹0</span><span style="color:#00ff88; font-size:9px; font-weight:bold;" id="k-today-pos">↑0</span><span style="color:#ff6b85; font-size:9px; font-weight:bold;" id="k-today-neg">↓0</span></div></div>
     <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
-<div id="view-mode-toggle" style="padding:8px 12px; background:#0a0a0a; border-bottom:1px solid #00ff88; display:flex; gap:8px; justify-content:center; align-items:center;">
-    <input type="text" id="search-input" placeholder="🔍 Search..." style="padding:6px 10px; background:#111; color:#fff; border:1px solid #00ff88; border-radius:4px; font-size:11px; width:120px; outline:none;" oninput="onSearchInput(this.value)">
-    <button onclick="toggleViewMode()" id="btn-toggle" style="padding:6px 12px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">P↔W</button>
-    <button onclick="resetAll()" id="btn-all" style="padding:6px 12px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">ALL</button>
+<div id="view-mode-toggle" style="padding:8px 12px; background:#0a0a0a; border-bottom:1px solid #00ff88; display:flex; gap:6px; justify-content:flex-start; align-items:center;">
+    <input type="text" id="search-input" placeholder="🔍" maxlength="4" style="padding:6px 8px; background:#111; color:#fff; border:1px solid #00ff88; border-radius:4px; font-size:11px; width:50px; outline:none;" oninput="onSearchInput(this.value)">
+    <button onclick="toggleViewMode()" id="btn-toggle" style="padding:6px 10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">P↔W</button>
+    <button onclick="toggleReturnFilter()" id="btn-return" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">↑↓1D%</button>
+    <button onclick="resetAll()" id="btn-all" style="padding:6px 10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">ALL</button>
 </div>
 <div id="status">Loading Pro Engine...</div>
 <div class="view"><div id="app"></div></div>
@@ -80,7 +81,7 @@ function showToast(msg) {
 // ===== PORTFOLIO CODE =====
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
-let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio', searchQuery = '';
+let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio', searchQuery = '', returnFilter = null;
 const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'QTY', 'AVG', 'INVESTED', 'POS', 'NEG', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
 
 const cleanNum = (v) => {
@@ -279,13 +280,15 @@ function render() {
     const tValEl = document.getElementById('k-today-val');
     tValEl.textContent = '₹' + (sumToday/100000).toFixed(2) + 'L';
     tValEl.style.color = sumToday >= 0 ? 'var(--gr)' : 'var(--rd)';
-    const countEl = document.getElementById('k-today-count');
-    countEl.textContent = '+' + posCount + ',-' + negCount;
+    const posEl = document.getElementById('k-today-pos');
+    posEl.textContent = '↑' + posCount;
+    const negEl = document.getElementById('k-today-neg');
+    negEl.textContent = '↓' + negCount;
     const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
     document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')" style="background:' + (filter === sec ? COL[sec] + '40' : 'transparent') + '; padding:4px 8px; border-radius:4px; transition:all .2s;"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
     
-    // ===== APPLY FILTERS: Sector + View Mode (Portfolio/Watchlist) + Search =====
+    // ===== APPLY FILTERS: Sector + View Mode (Portfolio/Watchlist) + Search + Return Filter =====
     let rows = MASTER.slice();
     if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
     
@@ -298,6 +301,13 @@ function render() {
     // Apply search filter
     if (searchQuery) {
         rows = rows.filter(s => resolve(s, 'TICKER').toUpperCase().includes(searchQuery.toUpperCase()));
+    }
+    
+    // Apply return filter (positive/negative 1D%)
+    if (returnFilter === 'pos') {
+        rows = rows.filter(s => cleanNum(resolve(s, '1D%')) > 0);
+    } else if (returnFilter === 'neg') {
+        rows = rows.filter(s => cleanNum(resolve(s, '1D%')) < 0);
     }
     // 'all' shows both portfolio and watchlist
     rows.sort((a, b) => {
@@ -374,6 +384,23 @@ function toggleViewMode() {
     render();
 }
 
+function toggleReturnFilter() {
+    if (returnFilter === null) {
+        returnFilter = 'pos';  // Show only positive returns
+        document.getElementById('btn-return').style.background = '#00ff88';
+        document.getElementById('btn-return').style.color = '#000';
+    } else if (returnFilter === 'pos') {
+        returnFilter = 'neg';  // Show only negative returns
+        document.getElementById('btn-return').style.background = '#ff6b85';
+        document.getElementById('btn-return').style.color = '#fff';
+    } else {
+        returnFilter = null;  // Show all
+        document.getElementById('btn-return').style.background = '#666';
+        document.getElementById('btn-return').style.color = '#fff';
+    }
+    render();
+}
+
 function setViewMode(mode) {
     viewMode = mode;
     document.getElementById('btn-toggle').style.background = '#666';
@@ -394,10 +421,13 @@ function resetAll() {
     sortAsc = false;
     viewMode = 'portfolio';
     searchQuery = '';
+    returnFilter = null;
     document.getElementById('search-input').value = '';
     document.getElementById('btn-toggle').innerHTML = 'P↔W';
     document.getElementById('btn-toggle').style.background = '#00ff88';
     document.getElementById('btn-toggle').style.color = '#000';
+    document.getElementById('btn-return').style.background = '#666';
+    document.getElementById('btn-return').style.color = '#fff';
     document.getElementById('btn-all').style.background = '#00ff88';
     document.getElementById('btn-all').style.color = '#000';
     render();
