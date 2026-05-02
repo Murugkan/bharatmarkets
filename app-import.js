@@ -670,73 +670,153 @@ function renderStep3() {
     
     var prompt = "TASK: Extract NSE/BSE Ticker, ISIN, Sector, Industry for Indian financial instruments.\n\n" +
         "INPUT: Mixed holdings (equities, ETFs, mutual funds, sovereign bonds, corporate bonds, SME, partially written names)\n\n" +
-        "CRITICAL: Each holding has a SEQUENCE NUMBER (1, 2, 3...). You MUST include this sequence number in column 1 of your response.\n\n" +
+        "CRITICAL:\n" +
+        "- Each holding has a SEQUENCE NUMBER → MUST be preserved in output\n" +
+        "- Output must be STRICT CSV (no extra spaces)\n\n" +
+        "--------------------------------------------------\n" +
         "STEP 0: NORMALIZE INPUT\n" +
         "- Convert to UPPERCASE\n" +
-        "- Expand: LTD→LIMITED, L→LIMITED, IND→INDIA, TECH→TECHNOLOGIES\n" +
+        "- Expand abbreviations:\n" +
+        "  LTD → LIMITED\n" +
+        "  L → LIMITED\n" +
+        "  IND → INDIA\n" +
+        "  TECH → TECHNOLOGIES\n" +
         "- Remove extra spaces, punctuation, special characters\n" +
         "- Resolve truncated/partial names using fuzzy matching\n\n" +
-        "STEP 1: CLASSIFY INSTRUMENT TYPE\n" +
-        "- EQUITY (listed company)\n" +
-        "- ETF (contains 'ETF')\n" +
-        "- MUTUAL FUND (contains 'AMC')\n" +
-        "- SOVEREIGN BOND (contains 'GOLD', '%', 'SGB')\n" +
+        "--------------------------------------------------\n" +
+        "STEP 1: CLASSIFY INSTRUMENT TYPE\n\n" +
+        "Classify each entry into ONE:\n\n" +
+        "- EQUITY (listed company, including SME listings)\n" +
+        "- ETF\n" +
+        "- MUTUAL FUND\n" +
+        "- SOVEREIGN BOND (SGB)\n" +
         "- CORPORATE BOND / NCD\n" +
-        "- SME / UNLISTED\n" +
+        "- SME / UNLISTED (ONLY if NOT listed anywhere)\n" +
         "- UNKNOWN\n\n" +
-        "STEP 2: DATA EXTRACTION (TYPE-WISE)\n" +
-        "EQUITY: NSE ticker, ISIN (INE), Sector, Industry\n" +
-        "ETF: ETF ticker, ISIN (INF), Sector=ETF, Industry=index\n" +
-        "MUTUAL FUND: Ticker=NA, ISIN (INF), Sector=Mutual Fund, Industry=scheme\n" +
-        "SOVEREIGN BOND: Ticker=NA, ISIN (INE), Sector=Government Securities\n" +
-        "CORPORATE BOND: Ticker=NA, ISIN mandatory, Sector=issuer sector\n" +
-        "SME/UNLISTED: ticker or ISIN if available, else UNKNOWN\n\n" +
-        "STEP 3: SEARCH FALLBACK (MANDATORY)\n" +
-        "If not found internally, search:\n" +
-        "1. '[NAME] NSE ticker ISIN'\n" +
-        "2. '[NAME] BSE code ISIN'\n" +
-        "3. '[NAME] ETF ISIN'\n" +
-        "4. '[NAME] mutual fund ISIN AMFI'\n" +
-        "5. '[NAME] SGB series RBI ISIN'\n" +
-        "6. '[NAME] renamed OR delisted OR merged'\n\n" +
-        "STEP 4: DATA SOURCE PRIORITY (STRICT)\n" +
-        "1. NSE India (primary)\n" +
+        "CRITICAL RULE:\n" +
+        "- DO NOT assume small companies or \"[P]\" = UNLISTED\n" +
+        "- ALWAYS check if listed on:\n" +
+        "  → NSE Mainboard\n" +
+        "  → NSE SME platform\n" +
+        "  → BSE Mainboard\n" +
+        "  → BSE SME platform\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 2: DATA EXTRACTION (TYPE-WISE)\n\n" +
+        "EQUITY (INCLUDING SME-LISTED):\n" +
+        "- NSE ticker (preferred) or BSE code\n" +
+        "- ISIN (INE format)\n" +
+        "- Sector & Industry\n\n" +
+        "ETF:\n" +
+        "- ETF ticker (e.g., NIFTYBEES)\n" +
+        "- ISIN (INF format)\n" +
+        "- Sector = ETF\n" +
+        "- Industry = underlying index\n\n" +
+        "MUTUAL FUND:\n" +
+        "- Ticker = NA\n" +
+        "- ISIN (INF format)\n" +
+        "- Sector = Mutual Fund\n" +
+        "- Industry = scheme category\n\n" +
+        "SOVEREIGN BOND (SGB):\n" +
+        "- Identify exact SGB series\n" +
+        "- Ticker = NA\n" +
+        "- ISIN (INE format)\n" +
+        "- Sector = Government Securities\n" +
+        "- Industry = Sovereign Gold Bond\n\n" +
+        "CORPORATE BOND:\n" +
+        "- ISIN mandatory\n" +
+        "- Ticker = NA (if not exchange-listed)\n" +
+        "- Sector = issuer sector\n\n" +
+        "SME / UNLISTED:\n" +
+        "- ONLY if NOT found on NSE/BSE\n" +
+        "- Ticker = NA\n" +
+        "- ISIN = UNKNOWN (unless NSDL/CDSL verified)\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 3: SEARCH FALLBACK (MANDATORY)\n\n" +
+        "If not found internally, search:\n\n" +
+        "1. \"<NAME> NSE ticker ISIN\"\n" +
+        "2. \"<NAME> BSE code ISIN\"\n" +
+        "3. \"<NAME> NSE SME ticker\"\n" +
+        "4. \"<NAME> BSE SME listing\"\n" +
+        "5. \"<NAME> ETF ISIN\"\n" +
+        "6. \"<NAME> mutual fund ISIN AMFI\"\n" +
+        "7. \"<NAME> SGB series RBI ISIN\"\n" +
+        "8. \"<NAME> renamed OR delisted OR merged\"\n\n" +
+        "Resolve:\n" +
+        "- Renamed entities\n" +
+        "- Mergers\n" +
+        "- Abbreviations\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 4: DATA SOURCE PRIORITY (STRICT)\n\n" +
+        "Use ONLY in this order:\n\n" +
+        "1. NSE India (PRIMARY – includes SME)\n" +
         "2. BSE India\n" +
         "3. AMFI (mutual funds)\n" +
         "4. RBI (SGB)\n" +
         "5. NSDL/CDSL (ISIN validation)\n" +
         "6. Official company filings\n\n" +
-        "STEP 5: LIVE DATA PRIORITY (CRITICAL)\n" +
-        "- ALWAYS prioritize live exchange data over static knowledge\n" +
-        "- Query NSE/BSE live listing endpoints for latest data\n" +
-        "- Ensure newly listed companies are included\n\n" +
-        "STEP 6: RECENT IPO HANDLING (CRITICAL EDGE CASE)\n" +
-        "If IPO/listing within 12-18 months:\n" +
-        "- PRIORITIZE NSE/BSE live listing pages\n" +
-        "- DO NOT mark as UNKNOWN if listing exists on exchange\n" +
-        "- Accept ticker even if not widely indexed yet\n" +
-        "- Fetch ISIN directly from exchange page\n\n" +
-        "STEP 7: VALIDATION RULES\n" +
-        "- NSE ticker must exactly match official symbol\n" +
-        "- ISIN format: Equity/Bonds→INE##########, ETF/MF→INF##########\n" +
+        "Reject:\n" +
+        "- Unverified aggregators\n" +
+        "- Conflicting sources\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 5: LIVE DATA PRIORITY (CRITICAL)\n\n" +
+        "- ALWAYS prioritize LIVE exchange data over static knowledge\n" +
+        "- Query NSE/BSE latest listings (or equivalent)\n" +
+        "- Ensure newly listed companies are captured\n\n" +
+        "Equivalent logic:\n" +
+        "→ If conflict → trust exchange data\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 6: RECENT IPO HANDLING (CRITICAL)\n\n" +
+        "If IPO within last 12–18 months:\n\n" +
+        "- PRIORITIZE NSE/BSE listing pages\n" +
+        "- DO NOT mark as UNKNOWN if listed\n" +
+        "- Accept ticker even if low coverage\n" +
+        "- Fetch ISIN directly from exchange\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 7: SME DETECTION (CRITICAL FIX)\n\n" +
+        "Before marking UNLISTED:\n\n" +
+        "- CHECK:\n" +
+        "  → NSE SME platform\n" +
+        "  → BSE SME platform\n\n" +
+        "If found:\n" +
+        "→ classify as EQUITY (NOT SME/UNLISTED)\n" +
+        "→ return ticker + ISIN\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 8: VALIDATION RULES\n\n" +
+        "- NSE ticker must EXACTLY match official symbol\n" +
+        "- ISIN must match:\n" +
+        "  Equity/Bonds → INE##########\n" +
+        "  ETF/MF → INF##########\n" +
         "- Do NOT guess missing values\n" +
         "- Prefer NSE ticker over BSE\n" +
-        "- If multiple matches→choose primary listed\n\n" +
-        "STEP 8: CONFIDENCE HANDLING (ANTI-HALLUCINATION)\n" +
-        "If ticker found but ISIN NOT verified: mark ISIN=UNKNOWN, allow ticker from exchange\n" +
-        "If neither ticker nor ISIN verified: classify as SME / UNLISTED\n\n" +
-        "STEP 9: OUTPUT FORMAT (STRICT, NO SPACES)\n" +
-        "SeqNo,Name,Ticker,ISIN,Sector,Industry,InstrumentType\n" +
-        "- Ticker not applicable → NA\n" +
-        "- ISIN not found → UNKNOWN\n" +
-        "- Return ALL entries with correct sequence numbers\n\n" +
+        "- If multiple matches → choose primary listed entity\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 9: CONFIDENCE HANDLING\n\n" +
+        "IF:\n" +
+        "- Ticker found but ISIN NOT verified:\n" +
+        "    → ISIN = UNKNOWN\n" +
+        "    → allow ticker ONLY if from exchange\n\n" +
+        "IF:\n" +
+        "- Neither ticker nor ISIN verified:\n" +
+        "    → classify as SME / UNLISTED\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 10: OUTPUT FORMAT (STRICT)\n\n" +
+        "Comma-separated, NO spaces:\n\n" +
+        "SeqNo,Name,Ticker,ISIN,Sector,Industry,InstrumentType\n\n" +
+        "Rules:\n" +
+        "- Preserve input sequence number\n" +
+        "- If ticker not applicable → NA\n" +
+        "- If ISIN not found → UNKNOWN\n" +
+        "- Return ALL rows (no omissions)\n\n" +
+        "--------------------------------------------------\n" +
         "HOLDINGS TO PROCESS (SeqNo,Name):\n" +
         stocksList + "\n" +
-        "EXAMPLES:\n" +
-        "1,2.50%GOLDBONDS2032SR-IV,NA,INE...,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n" +
-        "2,SBI ETF NIFTY 50,NIFTYBEES,INF...,ETF,Nifty 50 Index,ETF\n" +
-        "3,MIRAEAMC SMALLCAP,NA,INF...,Mutual Fund,Small Cap Fund,MUTUAL FUND\n" +
-        "4,INDIAN BRIGHT STEEL,AZAD,INE...,Industrials,Engineering,EQUITY\n";
+        "--------------------------------------------------\n" +
+        "EXAMPLES:\n\n" +
+        "1,2.50%GOLDBONDS2032SR-IV,NA,INE...,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n\n" +
+        "2,SBI ETF NIFTY 50,NIFTYBEES,INF...,ETF,Nifty 50 Index,ETF\n\n" +
+        "3,MIRAEAMC SMALLCAP,NA,INF...,Mutual Fund,Small Cap Fund,MUTUAL FUND\n\n" +
+        "4,INDIAN BRIGHT STEEL,AZAD,INE...,Industrials,Engineering,EQUITY\n\n" +
+        "5,SMALL SME COMPANY,XYZSME,INE...,Industrials,Manufacturing,EQUITY\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
