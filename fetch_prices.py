@@ -2,7 +2,7 @@
 """
 BharatMarkets Pro — Price & Chart Fetcher
 Reads:  unified-symbols.json  (source of truth)
-        unified-symbols.json (shared exchange overrides)
+        symbol_map.json (shared exchange overrides + delisted list)
 Writes: prices.json, charts/*.json
         unified-symbols.json (resolved sym+yf written back when RESOLVE=true)
 
@@ -38,12 +38,13 @@ def load_symbol_map():
         d = json.loads(Path(SYMBOL_MAP_FILE).read_text())
         overrides = d.get("overrides", {})
         indices   = d.get("indices",   {})
-        return {**overrides, **indices}, set(indices.keys())
+        delisted  = set(d.get("delisted", []))
+        return {**overrides, **indices}, set(indices.keys()), delisted
     except Exception as e:
         print(f"⚠ symbol_map.json not found: {e}")
-        return {}, set()
+        return {}, set(), set()
 
-SYMBOL_MAP, INDICES = load_symbol_map()
+SYMBOL_MAP, INDICES, DELISTED = load_symbol_map()
 
 def now_utc():
     return datetime.datetime.now(datetime.timezone.utc)
@@ -125,8 +126,12 @@ def load_symbols():
         Path(SYMBOLS_FILE).write_text(json.dumps(data, separators=(",",":")))
         print(f"✓ {SYMBOLS_FILE} updated with confirmed symbols")
 
-    syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved")]
-    print(f"📋 {len(syms)} resolved symbols from {SYMBOLS_FILE}")
+    # Filter out delisted symbols
+    syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved") and s["sym"] not in DELISTED]
+    filtered = len([s["sym"] for s in data if s.get("sym") and s["sym"] in DELISTED])
+    if filtered:
+        print(f"🗑 Skipped {filtered} delisted symbols")
+    print(f"📋 {len(syms)} active symbols from {SYMBOLS_FILE}")
     return syms, data
 
 # ── Price fetching ────────────────────────────────────────────────────
