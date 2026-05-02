@@ -647,65 +647,43 @@ function renderStep2Preview() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep3() {
-    // Check if stocks exist
-    if (!importState.stocks || importState.stocks.length === 0) {
-        return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
-            '<div style="padding:15px;background:#1a0000;border-left:3px solid #ff6b85;border-radius:4px;margin:8px 0;">' +
-            '<b style="color:#ff6b85;">⚠️ No Stocks Added</b><br>' +
-            '<span style="font-size:12px;color:#ccc;margin-top:8px;display:block;">' +
-            'Please go back and either:<br>' +
-            '• Upload a CSV file in Step 1, OR<br>' +
-            '• Add manual entries in Step 2<br>' +
-            'Then return to this step.' +
-            '</span>' +
-            '</div>' +
-            '</div>';
-    }
-    
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
     var prompt = "TASK: Get NSE Ticker, ISIN, Sector, Industry for Indian companies\n\n" +
-        "VALIDATION RULES:\n\n" +
-        "1. TICKER MATCHING:\n" +
-        "   • Use ONLY official NSE symbols (verified sources)\n" +
-        "   • Tickers can be full name abbreviations (e.g., ACMESOLAR, AFCONS, AZAD)\n" +
-        "   • Tickers should match company name pattern\n" +
-        "   • DO NOT use partial names (e.g., use SHREEREF not SHREE for Shree Refrigeration)\n" +
-        "   • If truly uncertain → return UNKNOWN\n\n" +
-        "2. ISIN VALIDATION:\n" +
-        "   • Format: INE + 10 characters exactly\n" +
-        "   • Example: INE674K01013 (correct), INE00H201019 (correct)\n" +
-        "   • Must match the company & ticker\n" +
-        "   • If format wrong → return UNKNOWN\n\n" +
-        "3. CROSS-CHECK:\n" +
-        "   • Verify: Company Name ↔ Ticker ↔ ISIN belong to SAME entity\n" +
-        "   • Check: Company is listed on NSE (active, not delisted)\n" +
-        "   • If not listed → return NOT_LISTED\n" +
-        "   • If company ambiguous → return AMBIGUOUS\n\n" +
-        "4. CONFIDENCE RULE:\n" +
-        "   • Return ticker if found in NSE official list\n" +
-        "   • Return ticker if name-to-symbol mapping is clear\n" +
-        "   • Return UNKNOWN only if truly cannot verify\n\n" +
-        "FALLBACK:\n" +
-        "If unable to verify, return:\n" +
+        "CRITICAL VALIDATION RULES - MUST FOLLOW:\n\n" +
+        "1. TICKER RULES:\n" +
+        "   • ONLY use officially verified NSE symbols\n" +
+        "   • DO NOT infer, abbreviate, or guess tickers\n" +
+        "   • DO NOT use partial names (e.g., 'SHREE' for 'Shree Refrigeration Ltd')\n" +
+        "   • If ticker is not 100% certain → return 'UNKNOWN'\n\n" +
+        "2. ISIN RULES:\n" +
+        "   • Format: Must be exactly INE + 10 characters (e.g., INE040A01034)\n" +
+        "   • Cross-check: ISIN must match the company name\n" +
+        "   • If format incorrect or non-matching → return 'UNKNOWN'\n\n" +
+        "3. DATA VALIDATION:\n" +
+        "   • Verify: Company Name ↔ Ticker ↔ ISIN all align to SAME entity\n" +
+        "   • Check: Is company actively listed on NSE?\n" +
+        "   • If company not listed → return 'NOT_LISTED'\n" +
+        "   • If multiple possible matches → return 'AMBIGUOUS'\n\n" +
+        "4. QUALITY GATES:\n" +
+        "   ✓ Does ticker exist in NSE official list?\n" +
+        "   ✓ Does ISIN belong to this exact company?\n" +
+        "   ✓ Is company currently active (not delisted)?\n" +
+        "   ✗ Skip guessing or abbreviations\n" +
+        "   ✗ Never create/invent tickers\n\n" +
+        "FALLBACK RULE:\n" +
+        "If ANY check fails for a row, output:\n" +
         "Company Name,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN\n\n" +
         "COMPANY LIST:\n" +
         names + "\n\n" +
-        "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
+        "OUTPUT FORMAT (comma-separated, no spaces):\n" +
         "Name,Ticker,ISIN,Sector,Industry\n" +
-        "ACME SOLAR HOLDINGS LTD,ACMESOLAR,INE0K8H01019,Power,Renewable Energy\n" +
-        "AFCONS INFRASTRUCTURE LTD,AFCONS,INE101I01011,Infrastructure,Construction\n" +
-        "AMARA RAJA ENERGY MOB LTD,ARE&M,INE885A01032,Industrials,Auto Components\n" +
-        "AZAD ENGINEERING LIMITED,AZAD,INE02PY01013,Industrials,Engineering\n" +
-        "Aditya Birla Capital Ltd,ABCAPITAL,INE674K01013,Financial Services,NBFC\n" +
+        "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n" +
+        "State Bank of India,SBIN,INE062A01020,Banking,Financial Services\n" +
         "Shree Refrigeration Ltd,SHREEREF,INE669C01037,Appliances,Industrial Products\n\n" +
-        "NOTE: Return data with confidence. Use UNKNOWN only when ticker cannot be verified.\n";
+        "IMPORTANT: Return UNKNOWN for uncertain entries. Do NOT guess.\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
-        '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
-        'Total stocks to enrich: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
-        '</div>' +
-        
         '<div style="margin-bottom:15px;">' +
         '<button onclick="copyPrompt()" style="padding:8px 16px;background:#00ff88;' +
         'color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📋 Copy Prompt</button>' +
@@ -1124,26 +1102,11 @@ function saveAndContinue() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
-    // Try MULTIPLE sources to get PAT (in order of preference)
-    var ghPAT = localStorage.getItem("ghPAT") || 
-                localStorage.getItem("github_pat") || 
-                sessionStorage.getItem("ghPAT") ||
-                sessionStorage.getItem("github_pat") || "";
-    
-    var ghUser = localStorage.getItem("ghUser") || 
-                 localStorage.getItem("github_user") || 
-                 sessionStorage.getItem("ghUser") ||
-                 sessionStorage.getItem("github_user") || "";
-    
-    var ghRepo = localStorage.getItem("ghRepo") || 
-                 localStorage.getItem("github_repo") || 
-                 sessionStorage.getItem("ghRepo") ||
-                 sessionStorage.getItem("github_repo") || "";
-    
-    // Only consider it configured if ALL THREE fields have values
-    var isPATConfigured = (ghPAT && ghPAT.trim() !== "") && 
-                         (ghUser && ghUser.trim() !== "") && 
-                         (ghRepo && ghRepo.trim() !== "");
+    // Try to get PAT from localStorage or let user configure it
+    var ghPAT = localStorage.getItem("ghPAT") || localStorage.getItem("github_pat") || "";
+    var ghUser = localStorage.getItem("ghUser") || localStorage.getItem("github_user") || "";
+    var ghRepo = localStorage.getItem("ghRepo") || localStorage.getItem("github_repo") || "";
+    var isPATConfigured = ghPAT && ghUser && ghRepo;
     
     // Calculate portfolio vs watchlist based on qty/avg fields
     var portfolioCount = 0;
@@ -1316,20 +1279,9 @@ function saveGitHubConfig() {
         return;
     }
     
-    // Save to both localStorage AND sessionStorage for persistence
     localStorage.setItem("ghPAT", pat);
     localStorage.setItem("ghUser", user);
     localStorage.setItem("ghRepo", repo);
-    
-    // Also save with alternate keys for compatibility
-    localStorage.setItem("github_pat", pat);
-    localStorage.setItem("github_user", user);
-    localStorage.setItem("github_repo", repo);
-    
-    // Also save to sessionStorage as fallback
-    sessionStorage.setItem("ghPAT", pat);
-    sessionStorage.setItem("ghUser", user);
-    sessionStorage.setItem("ghRepo", repo);
     
     alert("✅ GitHub configuration saved!");
     showImportUI();
