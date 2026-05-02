@@ -664,46 +664,21 @@ function renderStep3() {
     
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var prompt = "TASK: Get NSE Ticker, ISIN, Sector, Industry for Indian companies\n\n" +
-        "VALIDATION RULES:\n\n" +
-        "1. TICKER MATCHING:\n" +
-        "   • Use ONLY official NSE symbols (verified sources)\n" +
-        "   • Tickers can be full name abbreviations (e.g., ACMESOLAR, AFCONS, AZAD)\n" +
-        "   • Tickers should match company name pattern\n" +
-        "   • DO NOT use partial names (e.g., use SHREEREF not SHREE for Shree Refrigeration)\n" +
-        "   • If truly uncertain → return UNKNOWN\n\n" +
-        "2. ISIN VALIDATION:\n" +
-        "   • Format: INE + 10 characters exactly\n" +
-        "   • Example: INE674K01013 (correct), INE00H201019 (correct)\n" +
-        "   • Must match the company & ticker\n" +
-        "   • If format wrong → return UNKNOWN\n\n" +
-        "3. CROSS-CHECK:\n" +
-        "   • Verify: Company Name ↔ Ticker ↔ ISIN belong to SAME entity\n" +
-        "   • Check: Company is listed on NSE (active, not delisted)\n" +
-        "   • If not listed → return NOT_LISTED\n" +
-        "   • If company ambiguous → return AMBIGUOUS\n\n" +
-        "4. CONFIDENCE RULE:\n" +
-        "   • Return ticker if found in NSE official list\n" +
-        "   • Return ticker if name-to-symbol mapping is clear\n" +
-        "   • Return UNKNOWN only if truly cannot verify\n\n" +
-        "FALLBACK:\n" +
-        "If unable to verify, return:\n" +
-        "Company Name,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN\n\n" +
+    var prompt = "Get NSE Ticker, ISIN, Sector, Industry for these Indian companies:\n\n" +
         "COMPANY LIST:\n" +
         names + "\n\n" +
+        "RULES:\n" +
+        "1. Use ONLY official NSE symbols (current/active tickers)\n" +
+        "2. ISIN format: INE + 10 characters (e.g., INE040A01034)\n" +
+        "3. If company name has changed → use CURRENT ticker on NSE\n" +
+        "4. Verify: Company name ↔ Ticker ↔ ISIN all match\n" +
+        "5. If unsure → return UNKNOWN (never guess)\n\n" +
         "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
-        "Name,Ticker,ISIN,Sector,Industry\n" +
-        "ACME SOLAR HOLDINGS LTD,ACMESOLAR,INE0K8H01019,Power,Renewable Energy\n" +
-        "AFCONS INFRASTRUCTURE LTD,AFCONS,INE101I01011,Infrastructure,Construction\n" +
-        "AMARA RAJA ENERGY MOB LTD,ARE&M,INE885A01032,Industrials,Auto Components\n" +
-        "AZAD ENGINEERING LIMITED,AZAD,INE02PY01013,Industrials,Engineering\n" +
-        "Aditya Birla Capital Ltd,ABCAPITAL,INE674K01013,Financial Services,NBFC\n" +
-        "Shree Refrigeration Ltd,SHREEREF,INE669C01037,Appliances,Industrial Products\n\n" +
-        "NOTE: Return data with confidence. Use UNKNOWN only when ticker cannot be verified.\n";
+        "Name,Ticker,ISIN,Sector,Industry\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
-        'Total stocks to enrich: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
+        'Total stocks: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
         '</div>' +
         
         '<div style="margin-bottom:15px;">' +
@@ -712,12 +687,12 @@ function renderStep3() {
         '</div>' +
         
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        'Copy prompt → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
+        'Copy → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
         '</div>' +
         
-        '<textarea id="ai-prompt" readonly style="width:100%;height:280px;' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:200px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:10px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
+        'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
         '</div>';
 }
 
