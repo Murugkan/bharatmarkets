@@ -228,7 +228,7 @@ function renderStep1() {
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
-        '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50 or just HDFC Bank<br>' +
+        '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50<br>' +
         '</div>' +
         '<div style="margin:8px 0;padding:10px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
@@ -366,10 +366,11 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
-    // Find column indices
+    // Find column indices - robust matching
     var nameIdx = -1;
     var qtyIdx = -1;
     var avgIdx = -1;
+    var isinIdx = -1;
     var sectorIdx = -1;
     
     for (var i = 0; i < headerParts.length; i++) {
@@ -391,6 +392,11 @@ function processImportCSV(csv) {
         if (avgIdx === -1 && ((h.includes('average') || h.includes('avg') || h.includes('cost')) && 
             (h.includes('price') || h.includes('cost')))) {
             avgIdx = i;
+        }
+        
+        // ISIN
+        if (isinIdx === -1 && h === 'isin') {
+            isinIdx = i;
         }
         
         // Sector
@@ -453,6 +459,7 @@ function processImportCSV(csv) {
         
         var qty = null;
         var avg = null;
+        var isin = null;
         var sector = null;
         
         // Extract Quantity
@@ -465,6 +472,11 @@ function processImportCSV(csv) {
         if (avgIdx >= 0 && avgIdx < parts.length) {
             var avgVal = parseFloat(parts[avgIdx]);
             if (!isNaN(avgVal) && avgVal > 0) avg = avgVal;
+        }
+        
+        // Extract ISIN if available
+        if (isinIdx >= 0 && isinIdx < parts.length) {
+            isin = parts[isinIdx] || null;
         }
         
         // Extract Sector if available
@@ -480,6 +492,7 @@ function processImportCSV(csv) {
         if (name && (qty !== null || avg !== null)) {
             stocks.push({
                 name: name,
+                isin: isin || '',
                 qty: qty || 0,
                 avg: avg || 0,
                 sector: sector || '',
@@ -511,7 +524,7 @@ function renderStep1Preview() {
     
     importState.stocks.forEach(function(stock) {
         html += '<tr style="border-bottom:1px solid #111;">' +
-            '<td style="padding:6px;">' + stock.name.substring(0, 40) + '</td>' +
+            '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>' +
             '<td style="padding:6px;text-align:right;">' + stock.qty + '</td>' +
             '<td style="padding:6px;text-align:right;">₹' + stock.avg.toFixed(2) + '</td>' +
             '</tr>';
@@ -519,7 +532,7 @@ function renderStep1Preview() {
     
     html += '</table></div>' +
         '<div style="margin:6px 0;font-size:11px;color:#00ff88;">' +
-        '✅ Loaded: ' + importState.stocks.length + ' holdings' +
+        '✅ Loaded: ' + importState.stocks.length + ' stocks' +
         '</div>';
     
     document.getElementById('step1-preview').innerHTML = html;
@@ -649,20 +662,17 @@ function renderStep3() {
             '</div>';
     }
     
-    
-    var inputData = importState.stocks.map(function(s) { 
-        return s.name;
-    }).join("\n");
+    var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
     var prompt = "TASK: Extract NSE/BSE Ticker, ISIN, Sector, Industry for Indian financial instruments.\n\n" +
-        "INPUT:\n" + inputData + "\n\n" +
+        "INPUT: Mixed holdings (equities, ETFs, mutual funds, sovereign bonds, corporate bonds, SME, partially written names)\n\n" +
         "STEP 0: NORMALIZE INPUT\n" +
         "- Convert to UPPERCASE\n" +
         "- Expand: LTD→LIMITED, L→LIMITED, IND→INDIA, TECH→TECHNOLOGIES\n" +
-        "- Remove extra spaces & special characters\n" +
-        "- Resolve truncated names using fuzzy matching\n\n" +
+        "- Remove extra spaces, punctuation, special characters\n" +
+        "- Resolve truncated/partial names using fuzzy matching\n\n" +
         "STEP 1: CLASSIFY INSTRUMENT TYPE\n" +
-        "- EQUITY (company stock)\n" +
+        "- EQUITY (listed company)\n" +
         "- ETF (contains 'ETF')\n" +
         "- MUTUAL FUND (contains 'AMC')\n" +
         "- SOVEREIGN BOND (contains 'GOLD', '%', 'SGB')\n" +
@@ -670,10 +680,10 @@ function renderStep3() {
         "- SME / UNLISTED\n" +
         "- UNKNOWN\n\n" +
         "STEP 2: DATA EXTRACTION (TYPE-WISE)\n" +
-        "EQUITY: NSE ticker, ISIN (INE format), Sector, Industry\n" +
-        "ETF: ETF ticker, ISIN (INF format), Sector=ETF, Industry=index\n" +
-        "MUTUAL FUND: Ticker=NA, ISIN (INF format), Sector=Mutual Fund, Industry=scheme\n" +
-        "SOVEREIGN BOND: Ticker=NA, ISIN (INE format), Sector=Government Securities\n" +
+        "EQUITY: NSE ticker, ISIN (INE), Sector, Industry\n" +
+        "ETF: ETF ticker, ISIN (INF), Sector=ETF, Industry=index\n" +
+        "MUTUAL FUND: Ticker=NA, ISIN (INF), Sector=Mutual Fund, Industry=scheme\n" +
+        "SOVEREIGN BOND: Ticker=NA, ISIN (INE), Sector=Government Securities\n" +
         "CORPORATE BOND: Ticker=NA, ISIN mandatory, Sector=issuer sector\n" +
         "SME/UNLISTED: ticker or ISIN if available, else UNKNOWN\n\n" +
         "STEP 3: SEARCH FALLBACK (MANDATORY)\n" +
@@ -684,31 +694,48 @@ function renderStep3() {
         "4. '[NAME] mutual fund ISIN AMFI'\n" +
         "5. '[NAME] SGB series RBI ISIN'\n" +
         "6. '[NAME] renamed OR delisted OR merged'\n\n" +
-        "STEP 4: DATA SOURCE PRIORITY\n" +
+        "STEP 4: DATA SOURCE PRIORITY (STRICT)\n" +
         "1. NSE India (primary)\n" +
         "2. BSE India\n" +
         "3. AMFI (mutual funds)\n" +
         "4. RBI (SGB)\n" +
-        "5. Official company filings\n\n" +
-        "STEP 5: VALIDATION RULES\n" +
+        "5. NSDL/CDSL (ISIN validation)\n" +
+        "6. Official company filings\n\n" +
+        "STEP 5: LIVE DATA PRIORITY (CRITICAL)\n" +
+        "- ALWAYS prioritize live exchange data over static knowledge\n" +
+        "- Query NSE/BSE live listing endpoints for latest data\n" +
+        "- Ensure newly listed companies are included\n\n" +
+        "STEP 6: RECENT IPO HANDLING (CRITICAL EDGE CASE)\n" +
+        "If IPO/listing within 12-18 months:\n" +
+        "- PRIORITIZE NSE/BSE live listing pages\n" +
+        "- DO NOT mark as UNKNOWN if listing exists on exchange\n" +
+        "- Accept ticker even if not widely indexed yet\n" +
+        "- Fetch ISIN directly from exchange page\n\n" +
+        "STEP 7: VALIDATION RULES\n" +
         "- NSE ticker must exactly match official symbol\n" +
         "- ISIN format: Equity/Bonds→INE##########, ETF/MF→INF##########\n" +
-        "- Do NOT guess missing data\n" +
-        "- Prefer NSE over BSE\n" +
+        "- Do NOT guess missing values\n" +
+        "- Prefer NSE ticker over BSE\n" +
         "- If multiple matches→choose primary listed\n\n" +
-        "STEP 6: OUTPUT FORMAT (STRICT, NO EXTRA SPACES)\n" +
+        "STEP 8: CONFIDENCE HANDLING (ANTI-HALLUCINATION)\n" +
+        "If ticker found but ISIN NOT verified: mark ISIN=UNKNOWN, allow ticker from exchange\n" +
+        "If neither ticker nor ISIN verified: classify as SME / UNLISTED\n\n" +
+        "STEP 9: OUTPUT FORMAT (STRICT, NO SPACES)\n" +
         "Name,Ticker,ISIN,Sector,Industry,InstrumentType\n" +
         "- Ticker not applicable → NA\n" +
         "- ISIN not found → UNKNOWN\n" +
-        "- Return ALL entries (no omissions)\n\n" +
+        "- Return ALL entries\n\n" +
+        "HOLDINGS TO PROCESS:\n" +
+        names + "\n\n" +
         "EXAMPLES:\n" +
-        "2.50%GOLDBONDS2032SR-IV,NA,IN0020230184,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n" +
-        "SBI ETF NIFTY 50,NIFTYBEES,INF200KA1FS1,ETF,Nifty 50 Index,ETF\n" +
-        "INDIAN BRIGHT STEEL,AZAD,INE02PY01013,Industrials,Engineering,EQUITY\n";
+        "2.50%GOLDBONDS2032SR-IV,NA,INE...,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n" +
+        "SBI ETF NIFTY 50,NIFTYBEES,INF...,ETF,Nifty 50 Index,ETF\n" +
+        "MIRAEAMC SMALLCAP,NA,INF...,Mutual Fund,Small Cap Fund,MUTUAL FUND\n" +
+        "INDIAN BRIGHT STEEL,AZAD,INE...,Industrials,Engineering,EQUITY\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
-        'Total stocks: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
+        'Total stocks to enrich: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
         '</div>' +
         
         '<div style="margin-bottom:15px;">' +
@@ -717,12 +744,12 @@ function renderStep3() {
         '</div>' +
         
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        'Copy → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
+        'Copy prompt → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
         '</div>' +
         
-        '<textarea id="ai-prompt" readonly style="width:100%;height:220px;' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:280px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
+        'font-size:10px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
         '</div>';
 }
 
