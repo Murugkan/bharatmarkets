@@ -83,7 +83,7 @@ function showToast(msg) {
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
 let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio', searchQuery = '', returnFilter = null;
-const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'];
+const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FACE_VALUE', 'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'];
 
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
@@ -98,7 +98,7 @@ const isTextField = (field) => TEXT_FIELDS.includes(field);
 const fmt = (val, field) => {
     const n = cleanNum(val);
     if (n === 0 && val === '—') return '—';
-    if (['LTP', 'AVG', 'PNL', 'INVESTED', 'MCAP'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (['LTP', 'AVG', 'PNL', 'INVESTED', 'MCAP', 'FACE_VALUE'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (['PE', 'PB'].includes(field)) return n.toFixed(1);
     if (field.includes('%')) return n.toFixed(2) + '%';
     return val;
@@ -130,6 +130,7 @@ const resolve = (obj, field) => {
         'EBITDA':['ebitda','EBITDA'], 
         'CFO':['cfo','CFO'], 
         'EPS':['eps','EPS'], 
+        'FACE_VALUE':['face_value','FACE_VALUE','faceValue'],
         'PROM%':['prom','PROM%','prom_pct'], 
         'FII%':['fii','FII%','fii_pct'], 
         'DII%':['dii','DII%','dii_pct'], 
