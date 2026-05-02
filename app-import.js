@@ -664,15 +664,40 @@ function renderStep3() {
     
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var prompt = "Get NSE Ticker, ISIN, Sector, Industry for these Indian companies:\n\n" +
-        "COMPANY LIST:\n" +
+    var prompt = "⚠️ REAL FINANCIAL HOLDINGS - PORTFOLIO DATA\n" +
+        "These are REAL holdings from an actual demat account.\n" +
+        "Data accuracy is CRITICAL - not test data, not examples.\n\n" +
+        "Find NSE/BSE Ticker & ISIN for these REAL demat holdings:\n\n" +
+        "HOLDINGS LIST:\n" +
         names + "\n\n" +
+        "CRITICAL ASSUMPTION:\n" +
+        "Every instrument in this list EXISTS on NSE/BSE (they are real holdings).\n" +
+        "These are ACTUAL portfolio holdings - must be found with correct ticker.\n" +
+        "If not found by exact name → Company/instrument has variations in name.\n\n" +
+        "MULTI-LEVEL SEARCH (Try all before UNKNOWN):\n" +
+        "Level 1: Exact name match\n" +
+        "Level 2: Partial match (first 2-3 key words)\n" +
+        "Level 3: Company renamed - search by sector\n" +
+        "  • Stocks: Industry type (Steel, Pharma, IT, etc.)\n" +
+        "  • Bonds: Maturity year (SGB 2032, etc.)\n" +
+        "  • ETFs: Index name (Nifty, Smallcap, etc.)\n" +
+        "Level 4: Abbreviation expansion\n" +
+        "  • ELEC → ELECTRICAL\n" +
+        "  • EQUP → EQUIPMENT  \n" +
+        "  • LTD → LIMITED\n" +
+        "  • MOB → MOBILITY\n" +
+        "Level 5: Alternative spellings or parent group\n\n" +
+        "EXAMPLES OF REAL HOLDINGS:\n" +
+        "• 2.50%GOLDBONDS2032SR-IV → SGB2032IV (Sovereign Gold Bond)\n" +
+        "• Indian Bright Steel → Now Azad India Mobility (Business: Steel→EV)\n" +
+        "• M AND B ENGINEERING → Search company in NSE by name variations\n" +
+        "• MIRAEAMC - SMALLCAP → ETF ticker for smallcap fund\n\n" +
         "RULES:\n" +
-        "1. Use ONLY official NSE symbols (current/active tickers)\n" +
-        "2. ISIN format: INE + 10 characters (e.g., INE040A01034)\n" +
-        "3. If company name has changed → use CURRENT ticker on NSE\n" +
-        "4. Verify: Company name ↔ Ticker ↔ ISIN all match\n" +
-        "5. If unsure → return UNKNOWN (never guess)\n\n" +
+        "• Return actual NSE/BSE ticker (not UNKNOWN)\n" +
+        "• ISIN format: INE (stocks), INF (bonds/ETFs), etc.\n" +
+        "• Verify ticker exists and is active\n" +
+        "• Return UNKNOWN ONLY after exhausting all search methods\n" +
+        "• These are REAL holdings - accuracy is non-negotiable\n\n" +
         "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
         "Name,Ticker,ISIN,Sector,Industry\n";
     
@@ -690,7 +715,7 @@ function renderStep3() {
         'Copy → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
         '</div>' +
         
-        '<textarea id="ai-prompt" readonly style="width:100%;height:200px;' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:220px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
         '</div>';
