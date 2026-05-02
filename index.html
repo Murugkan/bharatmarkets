@@ -8,31 +8,31 @@
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
         *{box-sizing:border-box;margin:0;padding:0;}
-        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; padding-bottom: 80px; }
-        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:8px; display:flex; justify-content:space-around; }
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; display:flex; flex-direction:column; height:100vh; }
+        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:8px; display:flex; justify-content:space-around; flex-shrink:0; }
         .kpi-box { text-align:center; }
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:1px; color:var(--bl); }
-        #bar-wrap { padding:8px; background:#0a0a0a; border-bottom:2px solid #00ff88; }
+        #bar-wrap { padding:8px; background:#0a0a0a; border-bottom:2px solid #00ff88; flex-shrink:0; }
         #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
         .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,255,136,0.3); transition: all 0.3s; filter: brightness(1); }
         .seg.dimmed { opacity: 0.2; filter: brightness(0.5); }
-        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:2px solid #00f2ff; background:#000; max-height:45px; overflow-y:auto; }
+        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:2px solid #00f2ff; background:#000; max-height:50px; overflow-y:auto; flex-shrink:0; }
         .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#fff; cursor:pointer; font-weight:400; }
         .leg.on { font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 240px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:10px; }
+        .view { flex:1; overflow-y:auto; overflow-x:auto; background:#000; -webkit-overflow-scrolling:touch; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#666; padding:6px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
         th.active { color: var(--bl); }
         td { padding:6px; border-bottom:1px solid #111; }
-        tfoot td { background: var(--s1); font-weight: 800; color: var(--tx); border-top: 2px solid var(--b1); position: sticky; bottom: 0; }
+        tfoot td { background: var(--s1); font-weight: 800; color: var(--tx); border-top: 2px solid var(--b1); }
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; }
         .pos { background:#00ff88!important; color:#000!important; }
         .neg { background:#ff6b85!important; color:#fff!important; }
         .sig-buy { color:#00ff88; font-weight:800; border:1px solid #00ff88; padding:2px 4px; border-radius:2px; font-size:9px; }
         #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; }
-        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 6px 0; padding-bottom: calc(6px + env(safe-area-inset-bottom)); z-index: 1000; }
+        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 6px 0; padding-bottom: calc(6px + env(safe-area-inset-bottom)); z-index: 1000; flex-shrink:0; }
         .nav-btn { text-decoration: none; color: #666; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; padding: 4px 0; transition: color 0.2s; }
         .nav-btn svg { display: none; }
         .nav-btn:hover { color: var(--bl); }
@@ -82,7 +82,7 @@ function showToast(msg) {
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
 let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio', searchQuery = '', returnFilter = null;
-const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'QTY', 'AVG', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'INVESTED', 'POS', 'NEG', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
+const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'INVESTED', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
 
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
@@ -149,6 +149,36 @@ const resolve = (obj, field) => {
         if (obj[cleanT] !== undefined) return obj[cleanT];
     }
     return '—';
+};
+
+// Get color class based on field and value (professional thresholds)
+const getMetricColor = (field, value) => {
+    const n = cleanNum(value);
+    if (n === 0 || value === '—') return '';
+    
+    const thresholds = {
+        'PE': { green: n < 15, red: n > 25 },
+        'PB': { green: n < 1, red: n > 3 },
+        'ROE%': { green: n > 20, red: n < 15 },
+        'ROCE%': { green: n > 20, red: n < 15 },
+        'OPM%': { green: n > 15, red: n < 10 },
+        'NPM%': { green: n > 10, red: n < 5 },
+        'PROM%': { green: n > 50, red: n < 40 },
+        'FII%': { green: n > 20, red: n < 10 },
+        'DII%': { green: n > 20, red: n < 10 },
+        'ATH%': { green: n < -50, red: n > -20 },
+        '52W%': { green: n > 0, red: n < 0 },
+        'PNL': { green: n > 0, red: n < 0 },
+        'PNL%': { green: n > 0, red: n < 0 },
+        '1D%': { green: n > 0, red: n < 0 }
+        // POS and NEG are counts, not metrics - no coloring
+    };
+    
+    const t = thresholds[field];
+    if (!t) return '';
+    if (t.green) return ' pos';
+    if (t.red) return ' neg';
+    return '';
 };
 
 // ===== READ FROM INDEXEDDB =====
@@ -237,6 +267,37 @@ function enrichStock(stock) {
     // Calculate PNL% = ((LTP - AVG) / AVG) * 100
     if (avg && ltp && !stock.pnlPct) {
         stock.pnlPct = ((ltp - avg) / avg) * 100;
+    }
+    
+    // Calculate POS & NEG based on 8 metrics with thresholds (only if not already set)
+    if (!stock.pos || !stock.neg) {
+        let pos = 0, neg = 0;
+        
+        const checkMetric = (field, goodFn, badFn) => {
+            const v = cleanNum(resolve(stock, field));
+            if (v === 0) return;
+            if (goodFn(v)) pos++;
+            else if (badFn(v)) neg++;
+        };
+        
+        // Check 8 key metrics
+        checkMetric('ROE%', v => v > 15, v => v < 8);
+        checkMetric('PE', v => v > 0 && v < 18, v => v > 35);
+        checkMetric('OPM%', v => v > 15, v => v > 0 && v < 8);
+        checkMetric('NPM%', v => v > 10, v => v > 0 && v < 5);
+        checkMetric('PROM%', v => v > 50, v => v > 0 && v < 35);
+        checkMetric('1D%', v => v > 1, v => v < -1);
+        checkMetric('ATH%', v => v > -10, v => v < -20);
+        checkMetric('PB', v => v > 0 && v < 0.5, v => v > 1.5);  // Using PB as proxy for debt_eq
+        
+        stock.pos = pos;
+        stock.neg = neg;
+        
+        // Compute SIGNAL based on net = pos - neg
+        const net = pos - neg;
+        if (!stock.signal) {
+            stock.signal = net >= 3 ? 'BUY' : net <= -3 ? 'SELL' : 'HOLD';
+        }
     }
     
     return stock;
@@ -350,12 +411,8 @@ function render() {
                 const n = cleanNum(raw);
                 if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += '<td class="' + cls + '"><span class="sig-buy">BUY</span></td>';
                 else {
-                    if (n !== 0) {
-                        // Positive metrics
-                        if (['PNL', 'PNL%', '1D%', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'POS'].includes(f) && n > 0) cls += ' pos';
-                        // Negative metrics
-                        if (['PNL', 'PNL%', '1D%', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'NEG'].includes(f) && n < 0) cls += ' neg';
-                    }
+                    // Use professional thresholds for colors
+                    cls += getMetricColor(f, raw);
                     h += '<td class="' + cls + '">' + val + '</td>';
                 }
             }
