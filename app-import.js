@@ -1105,11 +1105,26 @@ function saveAndContinue() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
-    // Try to get PAT from localStorage or let user configure it
-    var ghPAT = localStorage.getItem("ghPAT") || localStorage.getItem("github_pat") || "";
-    var ghUser = localStorage.getItem("ghUser") || localStorage.getItem("github_user") || "";
-    var ghRepo = localStorage.getItem("ghRepo") || localStorage.getItem("github_repo") || "";
-    var isPATConfigured = ghPAT && ghUser && ghRepo;
+    // Try MULTIPLE sources to get PAT (in order of preference)
+    var ghPAT = localStorage.getItem("ghPAT") || 
+                localStorage.getItem("github_pat") || 
+                sessionStorage.getItem("ghPAT") ||
+                sessionStorage.getItem("github_pat") || "";
+    
+    var ghUser = localStorage.getItem("ghUser") || 
+                 localStorage.getItem("github_user") || 
+                 sessionStorage.getItem("ghUser") ||
+                 sessionStorage.getItem("github_user") || "";
+    
+    var ghRepo = localStorage.getItem("ghRepo") || 
+                 localStorage.getItem("github_repo") || 
+                 sessionStorage.getItem("ghRepo") ||
+                 sessionStorage.getItem("github_repo") || "";
+    
+    // Only consider it configured if ALL THREE fields have values
+    var isPATConfigured = (ghPAT && ghPAT.trim() !== "") && 
+                         (ghUser && ghUser.trim() !== "") && 
+                         (ghRepo && ghRepo.trim() !== "");
     
     // Calculate portfolio vs watchlist based on qty/avg fields
     var portfolioCount = 0;
@@ -1282,9 +1297,20 @@ function saveGitHubConfig() {
         return;
     }
     
+    // Save to both localStorage AND sessionStorage for persistence
     localStorage.setItem("ghPAT", pat);
     localStorage.setItem("ghUser", user);
     localStorage.setItem("ghRepo", repo);
+    
+    // Also save with alternate keys for compatibility
+    localStorage.setItem("github_pat", pat);
+    localStorage.setItem("github_user", user);
+    localStorage.setItem("github_repo", repo);
+    
+    // Also save to sessionStorage as fallback
+    sessionStorage.setItem("ghPAT", pat);
+    sessionStorage.setItem("ghUser", user);
+    sessionStorage.setItem("ghRepo", repo);
     
     alert("✅ GitHub configuration saved!");
     showImportUI();
