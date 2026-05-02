@@ -446,6 +446,22 @@ function processImportCSV(csv) {
     var stocks = [];
     var seen = new Set();
     
+    // Peek at first data row to auto-detect ISIN if header didn't match
+    if (isinIdx === -1 && lines.length > 1) {
+        var firstDataLine = lines[1].trim();
+        if (firstDataLine) {
+            var firstParts = firstDataLine.split(delimiter).map(function(p) { return p.trim(); });
+            // Check if column 1 looks like ISIN (starts with IN, length 10-12)
+            if (firstParts.length > 1 && firstParts[1] && 
+                firstParts[1].match(/^IN[A-Z0-9]{10,12}$/i)) {
+                isinIdx = 1;
+                console.log('DEBUG: Auto-detected ISIN at column 1 from data pattern');
+            }
+        }
+    }
+    
+    console.log('DEBUG: Final - Name:', nameIdx, 'ISIN:', isinIdx, 'Qty:', qtyIdx, 'Avg:', avgIdx);
+    
     for (var i = 1; i < lines.length; i++) {
         var line = lines[i].trim();
         if (!line) continue;
