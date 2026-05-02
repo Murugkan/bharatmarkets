@@ -14,7 +14,7 @@
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:1px; color:var(--bl); }
         #bar-wrap { padding:8px; background:#0a0a0a; border-bottom:2px solid #00ff88; flex-shrink:0; }
-        #tape-bar { width:100%; height:24px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
+        #tape-bar { width:100%; height:20px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
         .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,255,136,0.3); transition: all 0.3s; filter: brightness(1); }
         .seg.dimmed { opacity: 0.2; filter: brightness(0.5); }
         #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:2px solid #00f2ff; background:#000; max-height:50px; overflow-y:auto; flex-shrink:0; }
@@ -22,7 +22,7 @@
         .leg.on { font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
         .view { flex:1; overflow-y:auto; overflow-x:auto; background:#000; -webkit-overflow-scrolling:touch; }
-        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; margin-bottom:150px; }
+        table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; margin-bottom:80px; }
         th { background:var(--s1); color:#666; padding:6px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
         th.active { color: var(--bl); }
         td { padding:6px; border-bottom:1px solid #111; }
@@ -32,7 +32,7 @@
         .neg { background:#ff6b85!important; color:#fff!important; }
         .sig-buy { color:#00ff88; font-weight:800; border:1px solid #00ff88; padding:2px 4px; border-radius:2px; font-size:9px; }
         #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; }
-        #app { padding-bottom: 200px; }
+        #app { padding-bottom: 100px; }
         footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 6px 0; padding-bottom: calc(6px + env(safe-area-inset-bottom)); z-index: 1000; flex-shrink:0; }
         .nav-btn { text-decoration: none; color: #666; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; padding: 4px 0; transition: color 0.2s; }
         .nav-btn svg { display: none; }
@@ -191,6 +191,41 @@ const getMetricColor = (field, value, stock) => {
         // Low EPS + High PE = Red (avoid)
         if (eps > 0 && eps < 20 && pe > 25) return ' neg';
         // Positive EPS with reasonable PE = neutral/acceptable
+        return '';
+    }
+    
+    // CFO: color based on CFO vs EPS quality
+    if (field === 'CFO' && stock) {
+        const cfo = cleanNum(value);
+        const eps = cleanNum(resolve(stock, 'EPS'));
+        
+        if (cfo < 0) return ' neg'; // Negative CFO = red (losing cash)
+        if (cfo === 0) return ''; // No CFO = neutral
+        
+        // CFO > EPS = High-quality earnings (green)
+        if (cfo > eps && eps > 0) return ' pos';
+        // CFO positive but lower than EPS = adequate (neutral)
+        if (cfo > 0 && cfo <= eps) return '';
+        
+        return '';
+    }
+    
+    // EBITDA: color based on valuation (MCAP/EBITDA ratio as proxy for EV/EBITDA)
+    if (field === 'EBITDA' && stock) {
+        const ebitda = cleanNum(value);
+        const mcap = cleanNum(resolve(stock, 'MCAP'));
+        
+        if (ebitda < 0) return ' neg'; // Negative EBITDA = red (operational loss)
+        if (ebitda === 0) return ''; // No EBITDA = neutral
+        
+        // Calculate simplified EV/EBITDA ratio using MCAP as proxy
+        const evEbitdaRatio = mcap > 0 ? mcap / ebitda : 0;
+        
+        // EV/EBITDA < 8 = Green (cheap)
+        if (ebitda > 0 && evEbitdaRatio > 0 && evEbitdaRatio < 8) return ' pos';
+        // EV/EBITDA > 20 = Red (expensive)
+        if (ebitda > 0 && evEbitdaRatio > 20) return ' neg';
+        // EV/EBITDA 8-15 = Neutral (fairly valued)
         return '';
     }
     
