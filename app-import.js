@@ -60,7 +60,10 @@ var importState = {
     step: 1,
     stocks: [],
     aiResponse: null,
-    importMode: "append"
+    importMode: "append",
+    githubPAT: '',
+    githubUser: '',
+    githubRepo: ''
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1002,10 +1005,11 @@ function renderStep5() {
         '<div style="margin:6px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:500px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
         '<tr style="background:#222;border-bottom:1px solid #333;position:sticky;top:0;">' +
+        '<th style="padding:6px;text-align:center;color:#888;min-width:30px;width:30px;">SeqNo</th>' +
         '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;" onclick="sortStocks(\'name\')">▼ Name</th>' +
         '<th style="padding:6px;text-align:left;color:#ffff00;cursor:pointer;user-select:none;min-width:60px;font-weight:bold;" onclick="sortStocks(\'ticker\')">▼ Ticker</th>' +
         '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;" onclick="sortStocks(\'isin\')">▼ ISIN</th>' +
-        '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:70px;" onclick="sortStocks(\'sector\')">▼ Sector</th>' +
+        '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:56px;" onclick="sortStocks(\'sector\')">▼ Sector</th>' +
         '<th style="padding:6px;text-align:right;color:#00ff88;cursor:pointer;user-select:none;width:40px;" onclick="sortStocks(\'qty\')">▼ Qty</th>' +
         '<th style="padding:6px;text-align:right;color:#00ff88;cursor:pointer;user-select:none;width:50px;" onclick="sortStocks(\'avg\')">▼ Avg</th>' +
         '<th style="padding:6px;text-align:center;color:#00ff88;width:30px;">Del</th>' +
@@ -1020,9 +1024,10 @@ function renderStep5() {
         var tickerText = stock.ticker ? stock.ticker : "NA";
         
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;">' +
+            '<td style="padding:4px 6px;text-align:center;color:#666;font-size:8px;">' + (idx + 1) + '</td>' +
             '<td style="padding:4px 6px;cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCell(this, ' + idx + ', \'name\')" title="' + stock.name + '">' +
             stock.name.substring(0, 15) + ' <span style="color:' + typeColor + ';">[' + typeLabel + ']</span></td>' +
-            '<td style="padding:4px 6px;color:' + tickerColor + ';font-weight:bold;cursor:pointer;text-align:center;" onclick="editCell(this, ' + idx + ', \'ticker\')">' +
+            '<td style="padding:4px 6px;color:' + tickerColor + ';font-weight:bold;cursor:pointer;text-align:left;" onclick="editCell(this, ' + idx + ', \'ticker\')">' +
             tickerText + '</td>' +
             '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
@@ -1273,21 +1278,28 @@ function saveAndContinue() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
-    // Get PAT from importState (loaded in openImportWorkflow) with localStorage fallback
-    var ghPAT = importState.githubPAT || localStorage.getItem("ghPAT") || 
-                localStorage.getItem("github_pat") || 
-                sessionStorage.getItem("ghPAT") ||
-                sessionStorage.getItem("github_pat") || "";
+    // Get PAT from importState FIRST (loaded in openImportWorkflow)
+    // Then try all localStorage/sessionStorage backups
+    var ghPAT = '';
+    var ghUser = '';
+    var ghRepo = '';
     
-    var ghUser = importState.githubUser || localStorage.getItem("ghUser") || 
-                 localStorage.getItem("github_user") || 
-                 sessionStorage.getItem("ghUser") ||
-                 sessionStorage.getItem("github_user") || "";
+    // Try importState first (populated when opening workflow)
+    if (importState.githubPAT && importState.githubPAT.trim() !== '') {
+        ghPAT = importState.githubPAT;
+        ghUser = importState.githubUser || '';
+        ghRepo = importState.githubRepo || '';
+    } else {
+        // Fallback to localStorage
+        ghPAT = localStorage.getItem("ghPAT") || localStorage.getItem("github_pat") || '';
+        ghUser = localStorage.getItem("ghUser") || localStorage.getItem("github_user") || '';
+        ghRepo = localStorage.getItem("ghRepo") || localStorage.getItem("github_repo") || '';
+    }
     
-    var ghRepo = importState.githubRepo || localStorage.getItem("ghRepo") || 
-                 localStorage.getItem("github_repo") || 
-                 sessionStorage.getItem("ghRepo") ||
-                 sessionStorage.getItem("github_repo") || "";
+    // Also check sessionStorage as last resort
+    if (!ghPAT) ghPAT = sessionStorage.getItem("ghPAT") || sessionStorage.getItem("github_pat") || '';
+    if (!ghUser) ghUser = sessionStorage.getItem("ghUser") || sessionStorage.getItem("github_user") || '';
+    if (!ghRepo) ghRepo = sessionStorage.getItem("ghRepo") || sessionStorage.getItem("github_repo") || '';
     
     // Only consider it configured if ALL THREE fields have values
     var isPATConfigured = (ghPAT && ghPAT.trim() !== "") && 
