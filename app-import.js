@@ -664,40 +664,25 @@ function renderStep3() {
     
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var prompt = "⚠️ REAL FINANCIAL HOLDINGS - PORTFOLIO DATA\n" +
-        "These are REAL holdings from an actual demat account.\n" +
-        "Data accuracy is CRITICAL - not test data, not examples.\n\n" +
-        "Find NSE/BSE Ticker & ISIN for these REAL demat holdings:\n\n" +
+    var prompt = "Find NSE/BSE Ticker & ISIN for these portfolio holdings:\n\n" +
         "HOLDINGS LIST:\n" +
         names + "\n\n" +
-        "CRITICAL ASSUMPTION:\n" +
-        "Every instrument in this list EXISTS on NSE/BSE (they are real holdings).\n" +
-        "These are ACTUAL portfolio holdings - must be found with correct ticker.\n" +
-        "If not found by exact name → Company/instrument has variations in name.\n\n" +
-        "MULTI-LEVEL SEARCH (Try all before UNKNOWN):\n" +
-        "Level 1: Exact name match\n" +
-        "Level 2: Partial match (first 2-3 key words)\n" +
-        "Level 3: Company renamed - search by sector\n" +
-        "  • Stocks: Industry type (Steel, Pharma, IT, etc.)\n" +
-        "  • Bonds: Maturity year (SGB 2032, etc.)\n" +
-        "  • ETFs: Index name (Nifty, Smallcap, etc.)\n" +
-        "Level 4: Abbreviation expansion\n" +
-        "  • ELEC → ELECTRICAL\n" +
-        "  • EQUP → EQUIPMENT  \n" +
-        "  • LTD → LIMITED\n" +
-        "  • MOB → MOBILITY\n" +
-        "Level 5: Alternative spellings or parent group\n\n" +
-        "EXAMPLES OF REAL HOLDINGS:\n" +
-        "• 2.50%GOLDBONDS2032SR-IV → SGB2032IV (Sovereign Gold Bond)\n" +
-        "• Indian Bright Steel → Now Azad India Mobility (Business: Steel→EV)\n" +
-        "• M AND B ENGINEERING → Search company in NSE by name variations\n" +
-        "• MIRAEAMC - SMALLCAP → ETF ticker for smallcap fund\n\n" +
+        "IMPORTANT:\n" +
+        "Some names may be truncated (from demat format), renamed, or delisted.\n" +
+        "Find matches where possible using:\n" +
+        "- Exact name match\n" +
+        "- Company by sector/business type\n" +
+        "- Renamed company search\n\n" +
+        "RETURN UNKNOWN IF:\n" +
+        "- Company not found after searching\n" +
+        "- Name is too truncated to match\n" +
+        "- Company appears delisted/merged\n" +
+        "- Confident ticker cannot be verified\n\n" +
+        "DO NOT GUESS - Better to return UNKNOWN than wrong ticker.\n\n" +
         "RULES:\n" +
-        "• Return actual NSE/BSE ticker (not UNKNOWN)\n" +
-        "• ISIN format: INE (stocks), INF (bonds/ETFs), etc.\n" +
-        "• Verify ticker exists and is active\n" +
-        "• Return UNKNOWN ONLY after exhausting all search methods\n" +
-        "• These are REAL holdings - accuracy is non-negotiable\n\n" +
+        "- Only official NSE/BSE tickers\n" +
+        "- ISIN: INE (stocks), INF (bonds/ETFs), etc.\n" +
+        "- Return UNKNOWN when uncertain\n\n" +
         "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
         "Name,Ticker,ISIN,Sector,Industry\n";
     
