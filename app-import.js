@@ -664,25 +664,20 @@ function renderStep3() {
     
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var prompt = "Find NSE/BSE Ticker & ISIN for these portfolio holdings:\n\n" +
-        "HOLDINGS LIST:\n" +
+    var prompt = "Find NSE/BSE Ticker & ISIN for these holdings:\n\n" +
         names + "\n\n" +
-        "IMPORTANT:\n" +
-        "Some names may be truncated (from demat format), renamed, or delisted.\n" +
-        "Find matches where possible using:\n" +
-        "- Exact name match\n" +
-        "- Company by sector/business type\n" +
-        "- Renamed company search\n\n" +
-        "RETURN UNKNOWN IF:\n" +
-        "- Company not found after searching\n" +
-        "- Name is too truncated to match\n" +
-        "- Company appears delisted/merged\n" +
-        "- Confident ticker cannot be verified\n\n" +
-        "DO NOT GUESS - Better to return UNKNOWN than wrong ticker.\n\n" +
-        "RULES:\n" +
-        "- Only official NSE/BSE tickers\n" +
-        "- ISIN: INE (stocks), INF (bonds/ETFs), etc.\n" +
-        "- Return UNKNOWN when uncertain\n\n" +
+        "FOR EACH HOLDING:\n" +
+        "Step 1: Search your knowledge for company name → get Ticker, ISIN, Sector, Industry\n" +
+        "Step 2: If NOT found in knowledge → SEARCH THE WEB for:\n" +
+        "        '[Company Name] NSE ticker ISIN'\n" +
+        "        '[Company Name] BSE listing'\n" +
+        "        '[Company Name] delisted OR renamed'\n" +
+        "Step 3: Return what you find (Ticker, ISIN, Sector, Industry)\n" +
+        "Step 4: If still not found after web search → return UNKNOWN\n\n" +
+        "EXAMPLES:\n" +
+        "Indian Bright Steel → Web search finds: Renamed to Azad India Mobility, Ticker: AZAD\n" +
+        "M AND B ENGINEERING → Web search finds: Official NSE listing with ticker\n" +
+        "QUALITY POWER ELEC E → Web search finds: Full company name + ticker\n\n" +
         "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
         "Name,Ticker,ISIN,Sector,Industry\n";
     
