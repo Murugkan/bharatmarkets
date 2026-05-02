@@ -227,8 +227,8 @@ function renderStep1() {
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
-        '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50<br>' +
+        '<b style="color:#00ff88;">Format:</b> Stock Name, ISIN (optional), Qty (optional), Avg Price (optional)<br>' +
+        '<b style="color:#00ff88;">Example:</b> HDFC Bank,INE040A01034,84,817.50 or just HDFC Bank<br>' +
         '</div>' +
         '<div style="margin:8px 0;padding:10px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
@@ -514,18 +514,31 @@ function processImportCSV(csv) {
 function renderStep1Preview() {
     if (importState.stocks.length === 0) return;
     
+    // Check if any stock has ISIN data
+    var hasISIN = importState.stocks.some(function(s) { return s.isin && s.isin.trim().length > 0; });
+    
     var html = '<div style="margin:8px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:300px;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:6px;text-align:left;color:#00ff88;">Stock Name</th>' +
-        '<th style="padding:6px;text-align:right;color:#00ff88;">QTY</th>' +
+        '<th style="padding:6px;text-align:left;color:#00ff88;">Stock Name</th>';
+    
+    if (hasISIN) {
+        html += '<th style="padding:6px;text-align:left;color:#00ff88;">ISIN</th>';
+    }
+    
+    html += '<th style="padding:6px;text-align:right;color:#00ff88;">QTY</th>' +
         '<th style="padding:6px;text-align:right;color:#00ff88;">AVG</th>' +
         '</tr>';
     
     importState.stocks.forEach(function(stock) {
         html += '<tr style="border-bottom:1px solid #111;">' +
-            '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>' +
-            '<td style="padding:6px;text-align:right;">' + stock.qty + '</td>' +
+            '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>';
+        
+        if (hasISIN) {
+            html += '<td style="padding:6px;color:#666;">' + (stock.isin && stock.isin.trim() ? stock.isin : '-') + '</td>';
+        }
+        
+        html += '<td style="padding:6px;text-align:right;">' + stock.qty + '</td>' +
             '<td style="padding:6px;text-align:right;">₹' + stock.avg.toFixed(2) + '</td>' +
             '</tr>';
     });
@@ -662,24 +675,27 @@ function renderStep3() {
             '</div>';
     }
     
-    var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var prompt = "Find NSE/BSE Ticker & ISIN for these holdings:\n\n" +
-        names + "\n\n" +
-        "FOR EACH HOLDING:\n" +
-        "Step 1: Search your knowledge for company name → get Ticker, ISIN, Sector, Industry\n" +
-        "Step 2: If NOT found in knowledge → SEARCH THE WEB for:\n" +
+    var inputData = importState.stocks.map(function(s) { 
+        return s.isin && s.isin.trim() ? s.name + " [ISIN: " + s.isin + "]" : s.name;
+    }).join("\n");
+    
+    var prompt = "Get NSE/BSE Ticker, ISIN, Sector, Industry for:\n\n" +
+        inputData + "\n\n" +
+        "MATCHING PRIORITY:\n" +
+        "1. If ISIN provided → Use ISIN as primary key for matching (most reliable)\n" +
+        "2. If ISIN not available → Use company name for matching\n\n" +
+        "PROCESS:\n" +
+        "Step 1: If ISIN given, verify & return matching company details\n" +
+        "Step 2: If no ISIN, search knowledge for company name → get Ticker, ISIN, Sector, Industry\n" +
+        "Step 3: If NOT found in knowledge → SEARCH THE WEB for:\n" +
         "        '[Company Name] NSE ticker ISIN'\n" +
+        "        '[ISIN] NSE ticker' (if ISIN provided but unverified)\n" +
         "        '[Company Name] BSE listing'\n" +
         "        '[Company Name] delisted OR renamed'\n" +
-        "Step 3: Return what you find (Ticker, ISIN, Sector, Industry)\n" +
-        "Step 4: If still not found after web search → return UNKNOWN\n\n" +
-        "EXAMPLES:\n" +
-        "Indian Bright Steel → Web search finds: Renamed to Azad India Mobility, Ticker: AZAD\n" +
-        "M AND B ENGINEERING → Web search finds: Official NSE listing with ticker\n" +
-        "QUALITY POWER ELEC E → Web search finds: Full company name + ticker\n\n" +
-        "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
-        "Name,Ticker,ISIN,Sector,Industry\n";
+        "Step 4: Return Ticker, ISIN, Sector, Industry\n" +
+        "Step 5: If still not found after web search → return UNKNOWN\n\n" +
+        "Format: Name,Ticker,ISIN,Sector,Industry\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
