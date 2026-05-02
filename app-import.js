@@ -837,7 +837,7 @@ function parseAIResponse(delimiter) {
         if (line.length === 0) continue;
         
         var parts = line.split(delimiter).map(function(p) { return p.trim(); });
-        if (parts.length < 1) continue;
+        if (parts.length < 2) continue;
         
         var name = parts[0];
         
@@ -845,17 +845,20 @@ function parseAIResponse(delimiter) {
         if (name.toLowerCase() === 'name' || name.toLowerCase() === 'stock name' || 
             name.toLowerCase() === 'ticker' || name.toLowerCase() === 'symbol') continue;
         
-        // Find matching stock from Step 1
+        // Find matching stock - more lenient matching
         var stock = importState.stocks.find(function(s) { 
-            return s.name && s.name.toLowerCase().trim() === name.toLowerCase().trim(); 
+            var s1 = (s.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            var s2 = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return s1 === s2 || s1.includes(s2.substring(0, 8)) || s2.includes(s1.substring(0, 8));
         });
         
         if (stock) {
-            // Enrich with additional data
-            if (parts[1]) stock.ticker = parts[1];
-            if (parts[2]) stock.isin = parts[2];
-            if (parts[3]) stock.sector = parts[3];
-            if (parts[4]) stock.industry = parts[4];
+            // Enrich with additional data (6-column format: Name,Ticker,ISIN,Sector,Industry,Type)
+            if (parts[1] && parts[1] !== 'NA' && parts[1] !== 'UNKNOWN') stock.ticker = parts[1];
+            if (parts[2] && parts[2] !== 'NA' && parts[2] !== 'UNKNOWN') stock.isin = parts[2];
+            if (parts[3] && parts[3] !== '-') stock.sector = parts[3];
+            if (parts[4] && parts[4] !== '-') stock.industry = parts[4];
+            if (parts[5]) stock.instrumentType = parts[5];
             stock.status = 'enriched';
             matched++;
         }
@@ -867,7 +870,7 @@ function parseAIResponse(delimiter) {
         if (matched > 0) {
             status.innerHTML = '<span style="color:#00ff88;font-weight:bold;">✅ ' + matched + '/' + importState.stocks.length + '</span>';
             if (result) {
-                result.innerHTML = '✅ Enriched ' + matched + ' stocks with Ticker, ISIN, Sector';
+                result.innerHTML = '✅ Enriched ' + matched + ' stocks with complete data';
             }
         } else {
             status.innerHTML = '<span style="color:#ffb347;">⚠️ No matches</span>';
