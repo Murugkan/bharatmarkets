@@ -80,6 +80,10 @@ const cleanNum = (v) => {
     return parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
 };
 
+// ===== TEXT FIELDS (Alphabetical Sorting) =====
+const TEXT_FIELDS = ['SYM', 'SECTOR', 'SIGNAL'];
+const isTextField = (field) => TEXT_FIELDS.includes(field);
+
 const fmt = (val, field) => {
     const n = cleanNum(val);
     if (n === 0 && val === '—') return '—';
@@ -248,6 +252,15 @@ function render() {
     let rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : MASTER.slice();
     rows.sort((a, b) => {
         let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
+        
+        // ===== TEXT FIELDS: Alphabetical Sorting =====
+        if (isTextField(sortCol)) {
+            let strA = (vA || '').toString().toUpperCase();
+            let strB = (vB || '').toString().toUpperCase();
+            return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA);
+        }
+        
+        // ===== NUMERIC FIELDS: Numeric Sorting =====
         let nA = cleanNum(vA), nB = cleanNum(vB);
         return sortAsc ? nA - nB : nB - nA;
     });
