@@ -395,7 +395,7 @@ function processImportCSV(csv) {
         }
         
         // ISIN
-        if (isinIdx === -1 && h === 'isin') {
+        if (isinIdx === -1 && (h === 'isin' || h.includes('isin'))) {
             isinIdx = i;
         }
         
@@ -408,6 +408,11 @@ function processImportCSV(csv) {
     // Smarter fallback detection based on column count
     if (nameIdx === -1) {
         nameIdx = 0;
+    }
+    
+    // If ISIN not found, try column 1 (common position in broker exports)
+    if (isinIdx === -1 && headerParts.length > 1) {
+        isinIdx = 1;
     }
     
     // If Qty not found, look for numeric columns after name
