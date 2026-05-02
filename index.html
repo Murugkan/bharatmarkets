@@ -13,14 +13,14 @@
         .kpi-box { text-align:center; }
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
         .kpi-val { font-size:14px; font-weight:800; margin-top:2px; color:var(--bl); }
-        #bar-wrap { padding:12px; background:#111; border-bottom:1px solid var(--b1); }
+        #bar-wrap { padding:12px; background:#0a0a0a; border-bottom:2px solid #00ff88; }
         #tape-bar { width:100%; height:32px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
-        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,0,0,0.3); }
-        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:1px solid var(--b1); background:#000; max-height:80px; overflow-y:auto; }
-        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#666; cursor:pointer; }
-        .leg.on { color:#fff; font-weight:800; }
+        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,255,136,0.3); }
+        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:2px solid #00f2ff; background:#000; max-height:80px; overflow-y:auto; }
+        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#00f2ff; cursor:pointer; font-weight:800; }
+        .leg.on { color:#00ff88; font-weight:800; }
         .dot { width:8px; height:8px; border-radius:2px; }
-        .view { width:100%; overflow:auto; height:calc(100vh - 210px); background:#000; -webkit-overflow-scrolling:touch; }
+        .view { width:100%; overflow:auto; height:calc(100vh - 290px); background:#000; -webkit-overflow-scrolling:touch; padding-bottom:20px; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; }
         th { background:var(--s1); color:#666; padding:12px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:left; cursor: pointer; }
         th.active { color: var(--bl); }
@@ -41,13 +41,20 @@
 <body>
 
 <header>
-    <div class="kpi-box"><div class="kpi-label">Holdings</div><div class="kpi-val" id="k-count">0</div></div>
-    <div class="kpi-box"><div class="kpi-label">P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
+    <div class="kpi-box"><div class="kpi-label">Portfolio Value</div><div class="kpi-val" id="k-pval">₹0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="k-inv">₹0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
+    <div class="kpi-box"><div class="kpi-label">Today</div><div class="kpi-val" id="k-today">₹0</div></div>
     <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
 <div id="legend"></div>
+<div id="view-mode-toggle" style="padding:8px 12px; background:#0a0a0a; border-bottom:1px solid #00ff88; display:flex; gap:8px; justify-content:center;">
+    <button onclick="toggleViewMode()" id="btn-toggle" style="padding:6px 12px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">P↔W</button>
+    <button onclick="resetAll()" id="btn-all" style="padding:6px 12px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">ALL</button>
+    <button onclick="openSearchModal()" id="btn-search" style="padding:6px 12px; background:#00f2ff; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">🔍</button>
+</div>
 <div id="status">Loading Pro Engine...</div>
 <div class="view"><div id="app"></div></div>
 
@@ -71,8 +78,8 @@ function showToast(msg) {
 // ===== PORTFOLIO CODE =====
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
-let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false;
-const UI_FIELDS = ['SYM', 'SIGNAL', 'PNL', 'PNL%', '1D%', 'LTP', 'QTY', 'AVG', 'INVESTED', 'POS', 'NEG', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'SECTOR'];
+let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio';
+const UI_FIELDS = ['#', 'SECTOR', 'SYM', 'SIGNAL', 'PNL', 'PNL%', '1D%', 'LTP', 'QTY', 'AVG', 'INVESTED', 'POS', 'NEG', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%'];
 
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
@@ -205,6 +212,7 @@ async function init() {
     statusEl.style.display = "none";
     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+    viewMode = 'portfolio';  // Initialize with portfolio view
     render();
 }
 
@@ -234,22 +242,45 @@ function render() {
     // Enrich each stock with calculated fields
     MASTER.forEach(s => enrichStock(s));
     
-    let sumPnl = 0, sumInv = 0, sc = {};
+    let sumPnl = 0, sumInv = 0, sumPVal = 0, sumToday = 0, sc = {};
     MASTER.forEach(s => { 
         const sec = resolve(s, 'SECTOR') || 'OTHER';
+        const qty = cleanNum(resolve(s, 'QTY'));
+        const ltp = cleanNum(resolve(s, 'LTP'));
+        const changePct = cleanNum(resolve(s, '1D%'));
+        
         sumPnl += cleanNum(resolve(s, 'PNL'));
         sumInv += cleanNum(resolve(s, 'INVESTED'));
-        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || cleanNum(resolve(s, 'LTP')), 1);
+        sumPVal += qty * ltp;  // Portfolio value
+        sumToday += qty * ltp * (changePct / 100);  // Today's gain/loss
+        
+        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || ltp, 1);
         sc[sec] = (sc[sec] || 0) + weight; 
     });
-    document.getElementById('k-count').textContent = MASTER.length;
+    
+    // Update KPI displays
+    document.getElementById('k-pval').textContent = '₹' + (sumPVal/100000).toFixed(2) + 'L';
+    document.getElementById('k-inv').textContent = '₹' + (sumInv/100000).toFixed(2) + 'L';
     const pEl = document.getElementById('k-pnl');
     pEl.textContent = '₹' + (sumPnl/100000).toFixed(2) + 'L';
     pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
+    const tEl = document.getElementById('k-today');
+    tEl.textContent = '₹' + (sumToday/100000).toFixed(2) + 'L';
+    tEl.style.color = sumToday >= 0 ? 'var(--gr)' : 'var(--rd)';
     const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
     document.getElementById('tape-bar').innerHTML = SECTORS.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
     document.getElementById('legend').innerHTML = SECTORS.map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
-    let rows = filter ? MASTER.filter(s => resolve(s, 'SECTOR') === filter) : MASTER.slice();
+    
+    // ===== APPLY FILTERS: Sector + View Mode (Portfolio/Watchlist) =====
+    let rows = MASTER.slice();
+    if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
+    
+    if (viewMode === 'portfolio') {
+        rows = rows.filter(s => cleanNum(resolve(s, 'QTY')) > 0);
+    } else if (viewMode === 'watchlist') {
+        rows = rows.filter(s => cleanNum(resolve(s, 'QTY')) === 0 || resolve(s, 'QTY') === '—');
+    }
+    // 'all' shows both portfolio and watchlist
     rows.sort((a, b) => {
         let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
         
@@ -265,23 +296,33 @@ function render() {
         return sortAsc ? nA - nB : nB - nA;
     });
     let h = '<table><thead><tr>';
-    UI_FIELDS.forEach(f => h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='SYM'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>');
+    UI_FIELDS.forEach(f => {
+        if (f === '#') {
+            h += '<th class="' + (f==='SYM'?'sticky':'') + '"><sup></sup>' + f + '</th>';
+        } else {
+            h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='SYM'?'sticky':'') + '"><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>';
+        }
+    });
     h += '</tr></thead><tbody>';
-    rows.forEach(s => {
+    rows.forEach((s, idx) => {
         const ticker = resolve(s, 'SYM');
         h += '<tr style="cursor:pointer;" onclick="window.location.href=\'analysis.html?drill=' + encodeURIComponent(ticker) + '\'">';
         UI_FIELDS.forEach(f => {
-            const raw = resolve(s, f);
-            const val = fmt(raw, f);
-            let cls = f === 'SYM' ? 'sticky' : '';
-            const n = cleanNum(raw);
-            if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += '<td class="' + cls + '"><span class="sig-buy">BUY</span></td>';
-            else {
-                if (n !== 0) {
-                    if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
-                    if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+            if (f === '#') {
+                h += '<td style="color:#666; text-align:center;">' + (idx + 1) + '</td>';
+            } else {
+                const raw = resolve(s, f);
+                const val = fmt(raw, f);
+                let cls = f === 'SYM' ? 'sticky' : '';
+                const n = cleanNum(raw);
+                if (f === 'SIGNAL' && val.toString().toUpperCase() === 'BUY') h += '<td class="' + cls + '"><span class="sig-buy">BUY</span></td>';
+                else {
+                    if (n !== 0) {
+                        if (['PNL', 'PNL%', '1D%', 'ROE%', 'POS'].includes(f) && n > 0) cls += ' pos';
+                        if (['PNL', 'PNL%', '1D%', 'NEG'].includes(f) && n < 0) cls += ' neg';
+                    }
+                    h += '<td class="' + cls + '">' + val + '</td>';
                 }
-                h += '<td class="' + cls + '">' + val + '</td>';
             }
         });
         h += '</tr>';
@@ -289,7 +330,8 @@ function render() {
     h += '</tbody><tfoot><tr>';
     UI_FIELDS.forEach(f => {
         let cls = f === 'SYM' ? 'sticky' : '';
-        if (f === 'SYM') h += '<td class="' + cls + '">TOTAL</td>';
+        if (f === '#') h += '<td style="color:#666;"></td>';
+        else if (f === 'SYM') h += '<td class="' + cls + '">TOTAL</td>';
         else if (f === 'PNL') h += '<td class="' + (sumPnl>=0?'pos':'neg') + '">' + fmt(sumPnl, 'PNL') + '</td>';
         else if (f === 'INVESTED') h += '<td>' + fmt(sumInv, 'INVESTED') + '</td>';
         else h += '<td class="' + cls + '"></td>';
@@ -299,6 +341,56 @@ function render() {
 
 function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
 function tap(sec) { filter = filter === sec ? null : sec; render(); }
+
+function toggleViewMode() {
+    if (viewMode === 'portfolio') {
+        viewMode = 'watchlist';
+        document.getElementById('btn-toggle').innerHTML = 'W↔P';
+    } else {
+        viewMode = 'portfolio';
+        document.getElementById('btn-toggle').innerHTML = 'P↔W';
+    }
+    document.getElementById('btn-all').style.background = '#666';
+    document.getElementById('btn-all').style.color = '#fff';
+    render();
+}
+
+function setViewMode(mode) {
+    viewMode = mode;
+    document.getElementById('btn-toggle').style.background = '#666';
+    document.getElementById('btn-toggle').style.color = '#fff';
+    document.getElementById('btn-all').style.background = mode === 'all' ? '#00ff88' : '#666';
+    document.getElementById('btn-all').style.color = mode === 'all' ? '#000' : '#fff';
+    render();
+}
+
+function openSearchModal() {
+    const query = prompt('🔍 Search (1-4 letters):', '').toUpperCase().trim();
+    if (query) {
+        const matches = MASTER.filter(s => resolve(s, 'SYM').startsWith(query));
+        if (matches.length === 1) {
+            window.location.href = 'analysis.html?drill=' + encodeURIComponent(resolve(matches[0], 'SYM'));
+        } else if (matches.length > 1) {
+            const tickers = matches.map(m => resolve(m, 'SYM')).join(', ');
+            alert('Found: ' + tickers + '\nClick on desired ticker in table');
+        } else {
+            alert('❌ No match for: ' + query);
+        }
+    }
+}
+
+function resetAll() {
+    filter = null;
+    sortCol = 'P/L';
+    sortAsc = false;
+    viewMode = 'portfolio';
+    document.getElementById('btn-toggle').innerHTML = 'P↔W';
+    document.getElementById('btn-toggle').style.background = '#00ff88';
+    document.getElementById('btn-toggle').style.color = '#000';
+    document.getElementById('btn-all').style.background = '#00ff88';
+    document.getElementById('btn-all').style.color = '#000';
+    render();
+}
 
 // ===== SYNC ENGINE - Now reads from IndexedDB =====
 function runEngineSync() {
