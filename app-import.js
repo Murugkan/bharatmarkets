@@ -227,8 +227,8 @@ function renderStep1() {
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        '<b style="color:#00ff88;">Format:</b> Stock Name, ISIN (optional), Qty (optional), Avg Price (optional)<br>' +
-        '<b style="color:#00ff88;">Example:</b> HDFC Bank,INE040A01034,84,817.50 or just HDFC Bank<br>' +
+        '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
+        '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50<br>' +
         '</div>' +
         '<div style="margin:8px 0;padding:10px;border:2px dashed #222;border-radius:8px;' +
         'text-align:center;cursor:pointer;background:#050505;position:relative;" ' +
@@ -366,9 +366,6 @@ function processImportCSV(csv) {
     
     var headerParts = headerLine.split(delimiter).map(function(p) { return p.trim().toLowerCase(); });
     
-    console.log('DEBUG: Delimiter detected:', delimiter === '\t' ? 'TAB' : delimiter);
-    console.log('DEBUG: Header parts:', headerParts);
-    
     // Find column indices - robust matching
     var nameIdx = -1;
     var qtyIdx = -1;
@@ -398,7 +395,7 @@ function processImportCSV(csv) {
         }
         
         // ISIN
-        if (isinIdx === -1 && (h === 'isin' || h.includes('isin'))) {
+        if (isinIdx === -1 && h === 'isin') {
             isinIdx = i;
         }
         
@@ -412,8 +409,6 @@ function processImportCSV(csv) {
     if (nameIdx === -1) {
         nameIdx = 0;
     }
-    
-    console.log('DEBUG: Column indices detected - Name:', nameIdx, 'ISIN:', isinIdx, 'Qty:', qtyIdx, 'Avg:', avgIdx, 'Sector:', sectorIdx);
     
     // If Qty not found, look for numeric columns after name
     if (qtyIdx === -1) {
@@ -445,22 +440,6 @@ function processImportCSV(csv) {
     
     var stocks = [];
     var seen = new Set();
-    
-    // Peek at first data row to auto-detect ISIN if header didn't match
-    if (isinIdx === -1 && lines.length > 1) {
-        var firstDataLine = lines[1].trim();
-        if (firstDataLine) {
-            var firstParts = firstDataLine.split(delimiter).map(function(p) { return p.trim(); });
-            // Check if column 1 looks like ISIN (starts with IN, length 10-12)
-            if (firstParts.length > 1 && firstParts[1] && 
-                firstParts[1].match(/^IN[A-Z0-9]{10,12}$/i)) {
-                isinIdx = 1;
-                console.log('DEBUG: Auto-detected ISIN at column 1 from data pattern');
-            }
-        }
-    }
-    
-    console.log('DEBUG: Final - Name:', nameIdx, 'ISIN:', isinIdx, 'Qty:', qtyIdx, 'Avg:', avgIdx);
     
     for (var i = 1; i < lines.length; i++) {
         var line = lines[i].trim();
@@ -535,31 +514,18 @@ function processImportCSV(csv) {
 function renderStep1Preview() {
     if (importState.stocks.length === 0) return;
     
-    // Check if any stock has ISIN data
-    var hasISIN = importState.stocks.some(function(s) { return s.isin && s.isin.trim().length > 0; });
-    
     var html = '<div style="margin:8px 0;border:1px solid #222;border-radius:8px;overflow:auto;max-height:300px;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
         '<tr style="background:#111;border-bottom:1px solid #222;position:sticky;top:0;">' +
-        '<th style="padding:6px;text-align:left;color:#00ff88;">Stock Name</th>';
-    
-    if (hasISIN) {
-        html += '<th style="padding:6px;text-align:left;color:#00ff88;">ISIN</th>';
-    }
-    
-    html += '<th style="padding:6px;text-align:right;color:#00ff88;">QTY</th>' +
+        '<th style="padding:6px;text-align:left;color:#00ff88;">Stock Name</th>' +
+        '<th style="padding:6px;text-align:right;color:#00ff88;">QTY</th>' +
         '<th style="padding:6px;text-align:right;color:#00ff88;">AVG</th>' +
         '</tr>';
     
     importState.stocks.forEach(function(stock) {
         html += '<tr style="border-bottom:1px solid #111;">' +
-            '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>';
-        
-        if (hasISIN) {
-            html += '<td style="padding:6px;color:#666;">' + (stock.isin && stock.isin.trim() ? stock.isin : '-') + '</td>';
-        }
-        
-        html += '<td style="padding:6px;text-align:right;">' + stock.qty + '</td>' +
+            '<td style="padding:6px;">' + stock.name.substring(0, 30) + '</td>' +
+            '<td style="padding:6px;text-align:right;">' + stock.qty + '</td>' +
             '<td style="padding:6px;text-align:right;">₹' + stock.avg.toFixed(2) + '</td>' +
             '</tr>';
     });
@@ -696,31 +662,48 @@ function renderStep3() {
             '</div>';
     }
     
+    var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
-    var inputData = importState.stocks.map(function(s) { 
-        return s.isin && s.isin.trim() ? s.name + " [ISIN: " + s.isin + "]" : s.name;
-    }).join("\n");
-    
-    var prompt = "Get NSE/BSE Ticker, ISIN, Sector, Industry for:\n\n" +
-        inputData + "\n\n" +
-        "MATCHING PRIORITY:\n" +
-        "1. If ISIN provided → Use ISIN as primary key for matching (most reliable)\n" +
-        "2. If ISIN not available → Use company name for matching\n\n" +
-        "PROCESS:\n" +
-        "Step 1: If ISIN given, verify & return matching company details\n" +
-        "Step 2: If no ISIN, search knowledge for company name → get Ticker, ISIN, Sector, Industry\n" +
-        "Step 3: If NOT found in knowledge → SEARCH THE WEB for:\n" +
-        "        '[Company Name] NSE ticker ISIN'\n" +
-        "        '[ISIN] NSE ticker' (if ISIN provided but unverified)\n" +
-        "        '[Company Name] BSE listing'\n" +
-        "        '[Company Name] delisted OR renamed'\n" +
-        "Step 4: Return Ticker, ISIN, Sector, Industry\n" +
-        "Step 5: If still not found after web search → return UNKNOWN\n\n" +
-        "Format: Name,Ticker,ISIN,Sector,Industry\n";
+    var prompt = "TASK: Get NSE Ticker, ISIN, Sector, Industry for Indian companies\n\n" +
+        "VALIDATION RULES:\n\n" +
+        "1. TICKER MATCHING:\n" +
+        "   • Use ONLY official NSE symbols (verified sources)\n" +
+        "   • Tickers can be full name abbreviations (e.g., ACMESOLAR, AFCONS, AZAD)\n" +
+        "   • Tickers should match company name pattern\n" +
+        "   • DO NOT use partial names (e.g., use SHREEREF not SHREE for Shree Refrigeration)\n" +
+        "   • If truly uncertain → return UNKNOWN\n\n" +
+        "2. ISIN VALIDATION:\n" +
+        "   • Format: INE + 10 characters exactly\n" +
+        "   • Example: INE674K01013 (correct), INE00H201019 (correct)\n" +
+        "   • Must match the company & ticker\n" +
+        "   • If format wrong → return UNKNOWN\n\n" +
+        "3. CROSS-CHECK:\n" +
+        "   • Verify: Company Name ↔ Ticker ↔ ISIN belong to SAME entity\n" +
+        "   • Check: Company is listed on NSE (active, not delisted)\n" +
+        "   • If not listed → return NOT_LISTED\n" +
+        "   • If company ambiguous → return AMBIGUOUS\n\n" +
+        "4. CONFIDENCE RULE:\n" +
+        "   • Return ticker if found in NSE official list\n" +
+        "   • Return ticker if name-to-symbol mapping is clear\n" +
+        "   • Return UNKNOWN only if truly cannot verify\n\n" +
+        "FALLBACK:\n" +
+        "If unable to verify, return:\n" +
+        "Company Name,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN\n\n" +
+        "COMPANY LIST:\n" +
+        names + "\n\n" +
+        "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
+        "Name,Ticker,ISIN,Sector,Industry\n" +
+        "ACME SOLAR HOLDINGS LTD,ACMESOLAR,INE0K8H01019,Power,Renewable Energy\n" +
+        "AFCONS INFRASTRUCTURE LTD,AFCONS,INE101I01011,Infrastructure,Construction\n" +
+        "AMARA RAJA ENERGY MOB LTD,ARE&M,INE885A01032,Industrials,Auto Components\n" +
+        "AZAD ENGINEERING LIMITED,AZAD,INE02PY01013,Industrials,Engineering\n" +
+        "Aditya Birla Capital Ltd,ABCAPITAL,INE674K01013,Financial Services,NBFC\n" +
+        "Shree Refrigeration Ltd,SHREEREF,INE669C01037,Appliances,Industrial Products\n\n" +
+        "NOTE: Return data with confidence. Use UNKNOWN only when ticker cannot be verified.\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
-        'Total stocks: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
+        'Total stocks to enrich: <span style="color:#00ff88;font-weight:bold;">' + importState.stocks.length + '</span>' +
         '</div>' +
         
         '<div style="margin-bottom:15px;">' +
@@ -729,12 +712,12 @@ function renderStep3() {
         '</div>' +
         
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        'Copy → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
+        'Copy prompt → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
         '</div>' +
         
-        '<textarea id="ai-prompt" readonly style="width:100%;height:220px;' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:280px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
-        'font-size:11px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
+        'font-size:10px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
         '</div>';
 }
 
