@@ -650,38 +650,41 @@ function renderStep3() {
     var names = importState.stocks.map(function(s) { return s.name; }).join("\n");
     
     var prompt = "TASK: Get NSE Ticker, ISIN, Sector, Industry for Indian companies\n\n" +
-        "CRITICAL VALIDATION RULES - MUST FOLLOW:\n\n" +
-        "1. TICKER RULES:\n" +
-        "   • ONLY use officially verified NSE symbols\n" +
-        "   • DO NOT infer, abbreviate, or guess tickers\n" +
-        "   • DO NOT use partial names (e.g., 'SHREE' for 'Shree Refrigeration Ltd')\n" +
-        "   • If ticker is not 100% certain → return 'UNKNOWN'\n\n" +
-        "2. ISIN RULES:\n" +
-        "   • Format: Must be exactly INE + 10 characters (e.g., INE040A01034)\n" +
-        "   • Cross-check: ISIN must match the company name\n" +
-        "   • If format incorrect or non-matching → return 'UNKNOWN'\n\n" +
-        "3. DATA VALIDATION:\n" +
-        "   • Verify: Company Name ↔ Ticker ↔ ISIN all align to SAME entity\n" +
-        "   • Check: Is company actively listed on NSE?\n" +
-        "   • If company not listed → return 'NOT_LISTED'\n" +
-        "   • If multiple possible matches → return 'AMBIGUOUS'\n\n" +
-        "4. QUALITY GATES:\n" +
-        "   ✓ Does ticker exist in NSE official list?\n" +
-        "   ✓ Does ISIN belong to this exact company?\n" +
-        "   ✓ Is company currently active (not delisted)?\n" +
-        "   ✗ Skip guessing or abbreviations\n" +
-        "   ✗ Never create/invent tickers\n\n" +
-        "FALLBACK RULE:\n" +
-        "If ANY check fails for a row, output:\n" +
+        "VALIDATION RULES:\n\n" +
+        "1. TICKER MATCHING:\n" +
+        "   • Use ONLY official NSE symbols (verified sources)\n" +
+        "   • Tickers can be full name abbreviations (e.g., ACMESOLAR, AFCONS, AZAD)\n" +
+        "   • Tickers should match company name pattern\n" +
+        "   • DO NOT use partial names (e.g., use SHREEREF not SHREE for Shree Refrigeration)\n" +
+        "   • If truly uncertain → return UNKNOWN\n\n" +
+        "2. ISIN VALIDATION:\n" +
+        "   • Format: INE + 10 characters exactly\n" +
+        "   • Example: INE674K01013 (correct), INE00H201019 (correct)\n" +
+        "   • Must match the company & ticker\n" +
+        "   • If format wrong → return UNKNOWN\n\n" +
+        "3. CROSS-CHECK:\n" +
+        "   • Verify: Company Name ↔ Ticker ↔ ISIN belong to SAME entity\n" +
+        "   • Check: Company is listed on NSE (active, not delisted)\n" +
+        "   • If not listed → return NOT_LISTED\n" +
+        "   • If company ambiguous → return AMBIGUOUS\n\n" +
+        "4. CONFIDENCE RULE:\n" +
+        "   • Return ticker if found in NSE official list\n" +
+        "   • Return ticker if name-to-symbol mapping is clear\n" +
+        "   • Return UNKNOWN only if truly cannot verify\n\n" +
+        "FALLBACK:\n" +
+        "If unable to verify, return:\n" +
         "Company Name,UNKNOWN,UNKNOWN,UNKNOWN,UNKNOWN\n\n" +
         "COMPANY LIST:\n" +
         names + "\n\n" +
-        "OUTPUT FORMAT (comma-separated, no spaces):\n" +
+        "OUTPUT FORMAT (comma-separated, NO spaces):\n" +
         "Name,Ticker,ISIN,Sector,Industry\n" +
-        "HDFC Bank Limited,HDFCBANK,INE040A01034,Banking,Financial Services\n" +
-        "State Bank of India,SBIN,INE062A01020,Banking,Financial Services\n" +
+        "ACME SOLAR HOLDINGS LTD,ACMESOLAR,INE0K8H01019,Power,Renewable Energy\n" +
+        "AFCONS INFRASTRUCTURE LTD,AFCONS,INE101I01011,Infrastructure,Construction\n" +
+        "AMARA RAJA ENERGY MOB LTD,ARE&M,INE885A01032,Industrials,Auto Components\n" +
+        "AZAD ENGINEERING LIMITED,AZAD,INE02PY01013,Industrials,Engineering\n" +
+        "Aditya Birla Capital Ltd,ABCAPITAL,INE674K01013,Financial Services,NBFC\n" +
         "Shree Refrigeration Ltd,SHREEREF,INE669C01037,Appliances,Industrial Products\n\n" +
-        "IMPORTANT: Return UNKNOWN for uncertain entries. Do NOT guess.\n";
+        "NOTE: Return data with confidence. Use UNKNOWN only when ticker cannot be verified.\n";
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:15px;">' +
