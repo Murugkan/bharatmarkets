@@ -57,9 +57,14 @@ def now_utc():
     return datetime.datetime.now(datetime.timezone.utc)
 
 def to_yf(sym):
+    # If already has exchange suffix (.NS, .BO, ^), return as-is
+    if "." in sym or sym.startswith("^"):
+        return sym
+    # Check symbol_map overrides
     mapped = SYMBOL_MAP.get(sym)
     if mapped:
         return mapped if ("." in mapped or mapped.startswith("^")) else mapped + ".NS"
+    # Default to NSE
     return sym + ".NS"
 
 # ── Resolve Ticker/ISIN to Actual NSE Trading Code ────────────────────────
@@ -323,6 +328,10 @@ def main():
             etf_syms.append(sym)
         elif isin.startswith("SGB"):
             sgb_syms.append(sym)
+        elif isin.startswith("IN00"):
+            # IN00* = Government securities (bonds, treasury securities, etc.)
+            # Treat as SGBs for Yahoo fetching, skip MF API
+            sgb_syms.append(sym)
         elif isin:
             mf_syms.append(sym)
         else:
@@ -330,7 +339,7 @@ def main():
     
     print(f"  Equities (INE):        {len(equity_syms)}")
     print(f"  ETFs (INF):            {len(etf_syms)}")
-    print(f"  SGBs:                  {len(sgb_syms)}")
+    print(f"  Gov Securities (SGB/IN00): {len(sgb_syms)}")
     print(f"  Mutual Funds (other):  {len(mf_syms)}")
     if unknown_syms:
         print(f"  Unknown ISIN:          {len(unknown_syms)} — {', '.join(unknown_syms[:5])}")
