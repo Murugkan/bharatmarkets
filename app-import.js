@@ -1051,6 +1051,13 @@ function parseAIResponse(delimiter) {
             if (parts[4] && parts[4] !== '-') stock.sector = parts[4];
             if (parts[5] && parts[5] !== '-') stock.industry = parts[5];
             if (parts[6]) stock.instrumentType = parts[6];
+            
+            // For MF and SGB instruments without ticker, use stock name as ticker
+            if ((stock.instrumentType === 'MUTUAL FUND' || stock.instrumentType === 'SOVEREIGN BOND') && 
+                (!stock.ticker || stock.ticker === 'NA' || stock.ticker === 'UNKNOWN')) {
+                stock.ticker = stock.name;
+            }
+            
             stock.status = 'enriched';
             matched++;
         }
@@ -1124,7 +1131,7 @@ function renderStep5() {
     
     html += '</table></div>' +
         '<div style="margin:8px 0;font-size:12px;color:#ccc;">' +
-        'Total: ' + importState.stocks.length + ' stocks (P=Portfolio, W=Watchlist) | <span style="color:#ffff00;">Yellow Ticker = Enriched by AI</span>' +
+        'Total: ' + importState.stocks.length + ' stocks (P=Portfolio, W=Watchlist) | <span style="color:#ffff00;">Yellow Ticker = AI-enriched (or Name for MF/SGB)</span>' +
         '</div>' +
         '</div>';
     

@@ -15,7 +15,7 @@ ENV vars (set by workflow):
   CLEAN_STALE=true → wipe data for symbols not in unified-symbols.json (delete/clear only)
 """
 
-import json, time, datetime, os
+import json, time, datetime, os, requests
 from pathlib import Path
 
 try:
@@ -39,12 +39,15 @@ def load_symbol_map():
         overrides = d.get("overrides", {})
         indices   = d.get("indices",   {})
         delisted  = set(d.get("delisted", []))
-        return {**overrides, **indices}, set(indices.keys()), delisted
+        sgb_map   = d.get("sgb_map", {})
+        # Remove _comment from sgb_map if present
+        sgb_map = {k: v for k, v in sgb_map.items() if k != "_comment"}
+        return {**overrides, **indices}, set(indices.keys()), delisted, sgb_map
     except Exception as e:
         print(f"⚠ symbol_map.json not found: {e}")
-        return {}, set(), set()
+        return {}, set(), set(), {}
 
-SYMBOL_MAP, INDICES, DELISTED = load_symbol_map()
+SYMBOL_MAP, INDICES, DELISTED, SGB_MAP = load_symbol_map()
 
 def now_utc():
     return datetime.datetime.now(datetime.timezone.utc)
@@ -54,6 +57,53 @@ def to_yf(sym):
     if mapped:
         return mapped if ("." in mapped or mapped.startswith("^")) else mapped + ".NS"
     return sym + ".NS"
+
+# ── Common headers for API requests ────────────────────────────────────────
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-IN,en;q=0.9",
+}
+
+# ── Fetch Mutual Fund NAV via NSE API ──────────────────────────────────────
+def fetch_mf_nav(isin):
+    """
+    Fetch Mutual Fund NAV (Net Asset Value) from NSE API using ISIN.
+    Returns: dict with 'ltp' (NAV), 'change', 'changePct' or None if failed.
+    """
+    try:
+        # NSE Mutual Fund Data API
+        url = f"https://www.nseindia.com/api/mutual-fund-data?isin={isin}"
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        if data and 'data' in data and len(data['data']) > 0:
+            mf_data = data['data'][0]
+            nav = float(mf_data.get('nav', 0))
+            prev_nav = float(mf_data.get('prevNav', nav))  # fallback to current if not available
+            change = nav - prev_nav
+            change_pct = (change / prev_nav * 100) if prev_nav != 0 else 0
+            
+            return {
+                'ltp': nav,
+                'change': change,
+                'changePct': change_pct,
+            }
+    except Exception as e:
+        print(f"  ⚠ MF NAV fetch failed for {isin}: {e}")
+    
+    return None
+
+# ── Resolve SGB ISIN to Trading Code ───────────────────────────────────────
+def resolve_sgb_code(isin):
+    """
+    Lookup SGB ISIN in sgb_map to get NSE trading code.
+    Returns: trading code (e.g., 'SGB2032IV') or None if not found.
+    """
+    return SGB_MAP.get(isin, None)
 
 # ── Yahoo search — only called when RESOLVE=true ───────────────────────
 def search_yahoo_symbol(name, isin=""):
@@ -215,27 +265,70 @@ def main():
     print(f"   RESOLVE={DO_RESOLVE} CLEAN_STALE={DO_CLEAN}")
     print(f"📋 {len(symbols)} symbols\n")
 
+    # ── Build symbol-to-entry map for ISIN lookup ─────────────────────────
+    sym_to_entry = {s["sym"]: s for s in symbols_data if s.get("sym")}
+    
+    # ── Categorize symbols by ISIN prefix ──────────────────────────────────
+    equity_syms = []    # INE ISINs
+    etf_syms = []       # INF ISINs
+    sgb_syms = []       # SGB ISINs
+    mf_syms = []        # Other ISINs (Mutual Funds)
+    unknown_syms = []   # Missing ISIN
+    
+    for sym in symbols:
+        entry = sym_to_entry.get(sym, {})
+        isin = (entry.get("isin") or "").upper()
+        
+        if isin.startswith("INE"):
+            equity_syms.append(sym)
+        elif isin.startswith("INF"):
+            etf_syms.append(sym)
+        elif isin.startswith("SGB"):
+            sgb_syms.append(sym)
+        elif isin:
+            mf_syms.append(sym)
+        else:
+            unknown_syms.append(sym)
+    
+    print(f"  Equities (INE):        {len(equity_syms)}")
+    print(f"  ETFs (INF):            {len(etf_syms)}")
+    print(f"  SGBs:                  {len(sgb_syms)}")
+    print(f"  Mutual Funds (other):  {len(mf_syms)}")
+    if unknown_syms:
+        print(f"  Unknown ISIN:          {len(unknown_syms)} — {', '.join(unknown_syms[:5])}")
+    print()
+
     quotes, errors = {}, []
     index_syms  = [s for s in symbols if s in INDICES]
-    equity_syms = [s for s in symbols if s not in INDICES]
+    all_equity_syms = [s for s in equity_syms + etf_syms if s not in INDICES]
 
-    yf_tickers = [to_yf(s) for s in equity_syms]
-    print(f"⚡ Batch downloading {len(yf_tickers)} equities…")
-    try:
-        batch_hist = yf.download(
-            tickers=" ".join(yf_tickers), period="5y", interval="1d",
-            auto_adjust=True, group_by="ticker", progress=False, threads=True)
-        print(f"  ✓ Batch done")
-    except Exception as e:
-        print(f"  ✗ Batch failed: {e}")
+    # ──────────────────────────────────────────────────────────────────────
+    # BATCH DOWNLOAD: Equities + ETFs (both use Yahoo Finance)
+    # ──────────────────────────────────────────────────────────────────────
+    if all_equity_syms:
+        yf_tickers = [to_yf(s) for s in all_equity_syms]
+        print(f"⚡ Batch downloading {len(yf_tickers)} equities/ETFs…")
+        try:
+            batch_hist = yf.download(
+                tickers=" ".join(yf_tickers), period="5y", interval="1d",
+                auto_adjust=True, group_by="ticker", progress=False, threads=True)
+            print(f"  ✓ Batch done")
+        except Exception as e:
+            print(f"  ✗ Batch failed: {e}")
+            batch_hist = None
+    else:
         batch_hist = None
 
-    for sym in equity_syms:
+    # ──────────────────────────────────────────────────────────────────────
+    # FETCH: Equities + ETFs (from batch or individual)
+    # ──────────────────────────────────────────────────────────────────────
+    print(f"\n📈 Fetching equities & ETFs…")
+    for sym in all_equity_syms:
         yf_sym = to_yf(sym)
         hist = None
         if batch_hist is not None and not batch_hist.empty:
             try:
-                if len(equity_syms) == 1:
+                if len(all_equity_syms) == 1:
                     hist = batch_hist
                 elif yf_sym in batch_hist.columns.get_level_values(0):
                     hist = batch_hist[yf_sym].dropna(how="all")
@@ -263,7 +356,64 @@ def main():
         if hist is not None and not hist.empty:
             build_chart(sym, hist)
 
-    print(f"\n📈 Fetching {len(index_syms)} indices…")
+    # ──────────────────────────────────────────────────────────────────────
+    # FETCH: Mutual Funds (via NSE API using ISIN)
+    # ──────────────────────────────────────────────────────────────────────
+    if mf_syms:
+        print(f"\n💰 Fetching mutual funds via NSE API…")
+        for sym in mf_syms:
+            entry = sym_to_entry.get(sym, {})
+            isin = entry.get("isin", "").upper()
+            nav_data = fetch_mf_nav(isin)
+            if nav_data:
+                q = {
+                    "ticker": sym,
+                    "name": entry.get("name", sym),
+                    "sector": "",
+                    "ltp": nav_data.get('ltp'),
+                    "change": nav_data.get('change'),
+                    "changePct": nav_data.get('changePct'),
+                    "open": None, "high": None, "low": None, "prev": None,
+                    "vol": 0, "w52h": None, "w52l": None, "beta": None,
+                }
+                quotes[sym] = q
+                print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%)")
+            else:
+                print(f"  ✗ {sym}: NAV fetch failed → null")
+                errors.append(sym)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # FETCH: SGBs (resolve ISIN to trading code, then fetch via Yahoo)
+    # ──────────────────────────────────────────────────────────────────────
+    if sgb_syms:
+        print(f"\n🏆 Fetching SGBs…")
+        for sym in sgb_syms:
+            entry = sym_to_entry.get(sym, {})
+            isin = entry.get("isin", "").upper()
+            trading_code = resolve_sgb_code(isin)
+            if trading_code:
+                yf_sym = trading_code + ".NS"
+                try:
+                    info = yf.Ticker(yf_sym).info or {}
+                    hist = yf.Ticker(yf_sym).history(period="5y", interval="1d")
+                    q = build_quote(sym, info, hist)
+                    if q:
+                        quotes[sym] = q
+                        print(f"  ✓ {sym} ({trading_code}): ₹{q['ltp']} ({q['changePct']:+.2f}%)")
+                    else:
+                        print(f"  ✗ {sym}: quote build failed → null")
+                        errors.append(sym)
+                except Exception as e:
+                    print(f"  ✗ {sym}: {e} → null")
+                    errors.append(sym)
+            else:
+                print(f"  ✗ {sym}: not found in sgb_map → null")
+                errors.append(sym)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # FETCH: Indices
+    # ──────────────────────────────────────────────────────────────────────
+    print(f"\n📊 Fetching {len(index_syms)} indices…")
     for sym in index_syms:
         info, hist = fetch_ticker(sym)
         q = build_quote(sym, info, hist)
