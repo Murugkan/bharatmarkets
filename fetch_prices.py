@@ -525,24 +525,15 @@ def main():
             isin = entry.get("isin", "").upper()
             trading_code, is_mapped = resolve_trading_code(sym, isin)
             
-            # If not mapped, try as-is or mark as unmapped
-            if not is_mapped:
-                print(f"  ⚠ {sym}: ISIN {isin} not in symbol_map → trying as ticker")
-            
-            yf_sym = to_yf(trading_code)
-            try:
-                info = yf.Ticker(yf_sym).info or {}
-                hist = yf.Ticker(yf_sym).history(period="5y", interval="1d")
-                q = build_quote(sym, info, hist)
-                if q:
-                    quotes[sym] = q
-                    mapped_str = " (mapped)" if is_mapped else ""
-                    print(f"  ✓ {sym} ({trading_code}): ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
-                else:
-                    print(f"  ✗ {sym}: quote build failed → null")
-                    errors.append(sym)
-            except Exception as e:
-                print(f"  ✗ {sym}: {str(e)[:60]} → null")
+            # Use fetch_ticker() which includes NSE API fallback
+            info, hist = fetch_ticker(trading_code)
+            q = build_quote(sym, info, hist)
+            if q:
+                quotes[sym] = q
+                mapped_str = " (mapped)" if is_mapped else ""
+                print(f"  ✓ {sym} ({trading_code}): ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
+            else:
+                print(f"  ✗ {sym}: quote build failed → null")
                 errors.append(sym)
 
     # ──────────────────────────────────────────────────────────────────────
