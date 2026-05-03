@@ -168,7 +168,11 @@ def search_yahoo_symbol(name, isin=""):
     return None
 
 def load_symbols():
-    """Read unified-symbols.json — extract ticker symbols for fetching fundamentals."""
+    """Read unified-symbols.json — extract ticker symbols for fetching fundamentals.
+    
+    Only processes EQUITIES (ISIN starting with 'INE').
+    Other categories (ETFs with INF/etc.) skip fundamentals but still get prices.
+    """
     global CDSL_NAMES
     syms, seen = [], set()
     try:
@@ -185,15 +189,17 @@ def load_symbols():
                 ticker = entry.get("sym", "").strip().upper()
             
             name = entry.get("name", "")
+            isin = entry.get("isin", "").strip().upper()
             
-            # Filter: skip if delisted, in SKIP list, or already seen
-            if ticker and ticker not in SKIP and ticker not in SYMBOL_MAP_DELISTED and ticker not in seen:
+            # Filter: Only fetch fundamentals for EQUITIES (INE ISINs)
+            # Skip if: delisted, in SKIP list, already seen, or non-INE ISIN
+            if ticker and ticker not in SKIP and ticker not in SYMBOL_MAP_DELISTED and ticker not in seen and isin.startswith("INE"):
                 syms.append(ticker)
                 seen.add(ticker)
                 if name:
                     CDSL_NAMES[ticker] = name
         
-        print(f"📋 {len(syms)} symbols from {SYMBOLS_FILE} | RESOLVE={DO_RESOLVE} CLEAN={DO_CLEAN}\n")
+        print(f"📋 {len(syms)} EQUITY symbols from {SYMBOLS_FILE} (INE ISINs only) | RESOLVE={DO_RESOLVE} CLEAN={DO_CLEAN}\n")
     except Exception as e:
         print(f"⚠ Cannot read {SYMBOLS_FILE}: {e}")
     return syms

@@ -141,10 +141,30 @@ function openImportWorkflow() {
         importState.step = 1;
         importState.stocks = [];
         
-        // Load GitHub PAT from localStorage for carry-forward
-        importState.githubPAT = localStorage.getItem("ghPAT") || '';
-        importState.githubUser = localStorage.getItem("ghUser") || '';
-        importState.githubRepo = localStorage.getItem("ghRepo") || '';
+        // Load GitHub PAT from localStorage - check ALL possible key name variations
+        // (data page might use different naming conventions)
+        var patValue = localStorage.getItem("ghPAT") || 
+                      localStorage.getItem("github_pat") ||
+                      localStorage.getItem("githubPAT") ||
+                      sessionStorage.getItem("ghPAT") ||
+                      sessionStorage.getItem("github_pat") || '';
+        
+        var userValue = localStorage.getItem("ghUser") || 
+                       localStorage.getItem("github_user") ||
+                       localStorage.getItem("githubUser") ||
+                       sessionStorage.getItem("ghUser") ||
+                       sessionStorage.getItem("github_user") || '';
+        
+        var repoValue = localStorage.getItem("ghRepo") || 
+                       localStorage.getItem("github_repo") ||
+                       localStorage.getItem("githubRepo") ||
+                       sessionStorage.getItem("ghRepo") ||
+                       sessionStorage.getItem("github_repo") || '';
+        
+        // Store in importState for carry-forward
+        importState.githubPAT = patValue;
+        importState.githubUser = userValue;
+        importState.githubRepo = repoValue;
         
         document.body.classList.add('modal-open');
         showImportUI();
@@ -862,25 +882,85 @@ function renderStep4() {
     var textarea = document.getElementById("ai-response");
     var hasResponse = textarea && textarea.value.trim().length > 0;
     var stockCount = importState.stocks ? importState.stocks.length : 0;
+    var hasEnrichedData = importState.stocks && importState.stocks.some(function(s) { 
+        return s.ticker || s.sector || s.industry; 
+    });
     
+    // If data has been parsed, show editable table instead of textarea
+    if (hasEnrichedData) {
+        var html = '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+            '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">🔍 Verify & Edit Enriched Data</h3>' +
+            '<div style="margin:6px 0;padding:12px;background:#1a2a0a;border-left:3px solid #00ff88;border-radius:4px;font-size:12px;color:#ccc;">' +
+            '<b style="color:#00ff88;">✅ Data Parsed & Enriched!</b> Edit any field if needed, then proceed to Step 5.' +
+            '</div>' +
+            
+            '<div style="margin:6px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:400px;overflow-y:auto;">' +
+            '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
+            '<tr style="background:#222;border-bottom:1px solid #333;position:sticky;top:0;">' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;">Name</th>' +
+            '<th style="padding:6px;text-align:left;color:#ffff00;cursor:pointer;user-select:none;min-width:60px;font-weight:bold;">Ticker</th>' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;">ISIN</th>' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:56px;">Sector</th>' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:70px;">Industry</th>' +
+            '</tr>';
+        
+        importState.stocks.forEach(function(stock, idx) {
+            var hasEnrichment = stock.ticker || stock.sector || stock.industry;
+            var statusColor = hasEnrichment ? "#00ff88" : "#ffb347";
+            var statusIcon = hasEnrichment ? "✅" : "⚠️";
+            
+            html += '<tr style="border-bottom:0.5px solid #111;background:#050505;">' +
+                '<td style="padding:4px 6px;cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCellStep4(this, ' + idx + ', \'name\')" title="' + stock.name + '">' +
+                stock.name.substring(0, 15) + '</td>' +
+                '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;cursor:pointer;text-align:center;" onclick="editCellStep4(this, ' + idx + ', \'ticker\')">' +
+                (stock.ticker ? stock.ticker : '-') + '</td>' +
+                '<td style="padding:4px 6px;cursor:pointer;" onclick="editCellStep4(this, ' + idx + ', \'isin\')">' +
+                statusIcon + ' ' + (stock.isin || '-') + '</td>' +
+                '<td style="padding:4px 6px;cursor:pointer;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCellStep4(this, ' + idx + ', \'sector\')" title="' + (stock.sector || '') + '">' +
+                (stock.sector || '-') + '</td>' +
+                '<td style="padding:4px 6px;cursor:pointer;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCellStep4(this, ' + idx + ', \'industry\')" title="' + (stock.industry || '') + '">' +
+                (stock.industry || '-') + '</td>' +
+                '</tr>';
+        });
+        
+        html += '</table></div>' +
+            '<div style="margin:8px 0;font-size:12px;color:#ccc;">' +
+            'Total: ' + importState.stocks.length + ' stocks enriched | Click any field to edit' +
+            '</div>' +
+            '<div style="margin:8px 0;display:flex;gap:6px;">' +
+            '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back to Paste</button>' +
+            '<button onclick="goToStep(5)" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Proceed to Step 5 →</button>' +
+            '</div>' +
+            '</div>';
+        
+        return html;
+    }
+    
+    // Show textarea for initial paste
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
+        '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📋 Paste AI Response</h3>' +
         '<div style="margin-bottom:8px;font-size:12px;">' +
         '<span id="step4-status">' + 
-        (hasResponse ? '<span style="color:#00ff88;">✅ Data pasted. Click Next to parse & enrich.</span>' : 
+        (hasResponse ? '<span style="color:#00ff88;">✅ Data pasted. Click "Parse Data" to enrich.</span>' : 
                       '<span style="color:#888;">Paste data for ' + stockCount + ' stocks below</span>') +
         '</span>' +
         '</div>' +
         
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        '<b style="color:#ffb347;">Paste:</b> Name, Ticker, ISIN, Sector (any delimiter)' +
+        '<b style="color:#ffb347;">Format:</b> SeqNo, Name, Ticker, ISIN, Sector, Industry (any delimiter: comma, tab, pipe)' +
         '</div>' +
         
         '<textarea id="ai-response" style="width:100%;height:350px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Paste here..."></textarea>' +
+        'placeholder="Paste AI response here..."></textarea>' +
         
         '<div id="step4-result" style="margin:6px 0;font-size:12px;color:#00ff88;"></div>' +
+        
+        '<div style="margin:8px 0;display:flex;gap:6px;">' +
+        '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back</button>' +
+        '<button onclick="manuallyParseStep4()" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">🔄 Parse Data</button>' +
+        '</div>' +
         '</div>';
 }
 
@@ -1074,6 +1154,26 @@ function sortStocks(field) {
         }
     });
     
+    showImportUI();
+}
+
+function editCellStep4(cell, idx, field) {
+    var stock = importState.stocks[idx];
+    var currentValue = stock[field] || '';
+    var newValue = prompt('Edit ' + field + ':', currentValue);
+    
+    if (newValue !== null) {
+        if (field === 'qty' || field === 'avg') {
+            stock[field] = newValue ? parseFloat(newValue) : null;
+        } else {
+            stock[field] = newValue;
+        }
+        showImportUI();
+    }
+}
+
+function goToStep(stepNum) {
+    importState.step = stepNum;
     showImportUI();
 }
 
@@ -1278,28 +1378,32 @@ function saveAndContinue() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep6() {
-    // Get PAT from importState FIRST (loaded in openImportWorkflow)
-    // Then try all localStorage/sessionStorage backups
-    var ghPAT = '';
-    var ghUser = '';
-    var ghRepo = '';
+    // PRIORITY: importState → localStorage variants → sessionStorage
+    // Check ALL possible key name variations (data page might use different naming)
     
-    // Try importState first (populated when opening workflow)
-    if (importState.githubPAT && importState.githubPAT.trim() !== '') {
-        ghPAT = importState.githubPAT;
-        ghUser = importState.githubUser || '';
-        ghRepo = importState.githubRepo || '';
-    } else {
-        // Fallback to localStorage
-        ghPAT = localStorage.getItem("ghPAT") || localStorage.getItem("github_pat") || '';
-        ghUser = localStorage.getItem("ghUser") || localStorage.getItem("github_user") || '';
-        ghRepo = localStorage.getItem("ghRepo") || localStorage.getItem("github_repo") || '';
-    }
+    var ghPAT = importState.githubPAT ||
+                localStorage.getItem("ghPAT") || 
+                localStorage.getItem("github_pat") ||
+                localStorage.getItem("githubPAT") ||
+                sessionStorage.getItem("ghPAT") || 
+                sessionStorage.getItem("github_pat") ||
+                sessionStorage.getItem("githubPAT") || '';
     
-    // Also check sessionStorage as last resort
-    if (!ghPAT) ghPAT = sessionStorage.getItem("ghPAT") || sessionStorage.getItem("github_pat") || '';
-    if (!ghUser) ghUser = sessionStorage.getItem("ghUser") || sessionStorage.getItem("github_user") || '';
-    if (!ghRepo) ghRepo = sessionStorage.getItem("ghRepo") || sessionStorage.getItem("github_repo") || '';
+    var ghUser = importState.githubUser ||
+                 localStorage.getItem("ghUser") || 
+                 localStorage.getItem("github_user") ||
+                 localStorage.getItem("githubUser") ||
+                 sessionStorage.getItem("ghUser") || 
+                 sessionStorage.getItem("github_user") ||
+                 sessionStorage.getItem("githubUser") || '';
+    
+    var ghRepo = importState.githubRepo ||
+                 localStorage.getItem("ghRepo") || 
+                 localStorage.getItem("github_repo") ||
+                 localStorage.getItem("githubRepo") ||
+                 sessionStorage.getItem("ghRepo") || 
+                 sessionStorage.getItem("github_repo") ||
+                 sessionStorage.getItem("githubRepo") || '';
     
     // Only consider it configured if ALL THREE fields have values
     var isPATConfigured = (ghPAT && ghPAT.trim() !== "") && 
@@ -1482,20 +1586,31 @@ function saveGitHubConfig() {
     importState.githubUser = user;
     importState.githubRepo = repo;
     
-    // Save to localStorage for persistence across sessions
+    // Save to localStorage with ALL key name variations for cross-module compatibility
     localStorage.setItem("ghPAT", pat);
     localStorage.setItem("ghUser", user);
     localStorage.setItem("ghRepo", repo);
     
-    // Also save with alternate keys for compatibility
     localStorage.setItem("github_pat", pat);
     localStorage.setItem("github_user", user);
     localStorage.setItem("github_repo", repo);
+    
+    localStorage.setItem("githubPAT", pat);
+    localStorage.setItem("githubUser", user);
+    localStorage.setItem("githubRepo", repo);
     
     // Also save to sessionStorage as fallback
     sessionStorage.setItem("ghPAT", pat);
     sessionStorage.setItem("ghUser", user);
     sessionStorage.setItem("ghRepo", repo);
+    
+    sessionStorage.setItem("github_pat", pat);
+    sessionStorage.setItem("github_user", user);
+    sessionStorage.setItem("github_repo", repo);
+    
+    sessionStorage.setItem("githubPAT", pat);
+    sessionStorage.setItem("githubUser", user);
+    sessionStorage.setItem("githubRepo", repo);
     
     alert("✅ GitHub configuration saved!");
     showImportUI();
@@ -1725,16 +1840,27 @@ function postToGitHub() {
 
 function nextImportStep() {
     if (importState.step < CONFIG.TOTAL_STEPS) {
-        // Auto-parse when going from step 4 to step 5
+        // Handle step 4: parse data or move to next step
         if (importState.step === 4) {
-            var response = document.getElementById('ai-response').value;
-            if (!response.trim()) {
-                alert('❌ Please paste data first');
-                return;
+            var hasEnrichedData = importState.stocks && importState.stocks.some(function(s) { 
+                return s.ticker || s.sector || s.industry; 
+            });
+            
+            // If already parsed, just move to step 5
+            if (hasEnrichedData) {
+                importState.step++;
+                showImportUI();
+            } else {
+                // Parse data first
+                var response = document.getElementById('ai-response');
+                if (!response || !response.value.trim()) {
+                    alert('❌ Please paste data first');
+                    return;
+                }
+                manuallyParseStep4();
+                // Stay in step 4 to show parsed data table
+                showImportUI();
             }
-            manuallyParseStep4();
-            importState.step++;
-            showImportUI();
         }
         // Auto-save to DB when going from step 5 to step 6
         else if (importState.step === 5) {

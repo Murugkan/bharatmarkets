@@ -56,6 +56,7 @@
 <div id="view-mode-toggle" style="padding:8px 12px; background:#0a0a0a; border-bottom:1px solid #00ff88; display:flex; gap:6px; justify-content:flex-start; align-items:center;">
     <input type="text" id="search-input" placeholder="🔍" maxlength="4" style="padding:6px 8px; background:#111; color:#fff; border:1px solid #00ff88; border-radius:4px; font-size:11px; width:50px; outline:none;" oninput="onSearchInput(this.value)">
     <button onclick="toggleViewMode()" id="btn-toggle" style="padding:6px 10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">P↔W</button>
+    <button onclick="toggleCategoryFilter()" id="btn-category" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">EQ↔OTH</button>
     <button onclick="toggleReturnFilter()" id="btn-return" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">↑↓1D%</button>
     <button onclick="resetAll()" id="btn-all" style="padding:6px 10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">ALL</button>
 </div>
@@ -82,8 +83,8 @@ function showToast(msg) {
 // ===== PORTFOLIO CODE =====
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
 const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
-let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio', searchQuery = '', returnFilter = null;
-const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'TICKER', '1D%', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV', 'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'];
+let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'portfolio', searchQuery = '', returnFilter = null, categoryFilter = null;
+const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'TICKER', '1D%', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV', 'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'];
 
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
@@ -98,11 +99,19 @@ const isTextField = (field) => TEXT_FIELDS.includes(field);
 const fmt = (val, field) => {
     const n = cleanNum(val);
     if (n === 0 && val === '—') return '—';
-    if (['MCAP', 'EBITDA', 'SALES', 'CFO', 'INVESTED', 'PNL'].includes(field)) return Math.round(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    
+    // Format large numbers with k (thousands) or L (Lakhs)
+    const formatLargeNum = (num) => {
+        if (Math.abs(num) >= 100000) return (num / 100000).toFixed(1) + 'L';
+        if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'k';
+        return Math.round(num).toString();
+    };
+    
+    if (['MCAP', 'EBITDA', 'SALES', 'CFO', 'INVESTED', 'PNL', '1D_GAIN'].includes(field)) return formatLargeNum(n);
     if (['LTP', 'AVG'].includes(field)) return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (['FV'].includes(field)) return Math.round(n).toString();
     if (['PE', 'PB'].includes(field)) return n.toFixed(1);
-    if (field.includes('%')) return n.toFixed(2) + '%';
+    if (field.includes('%')) return n.toFixed(1) + '%';
     return val;
 };
 
@@ -115,6 +124,7 @@ const resolve = (obj, field) => {
         'PNL':['pnl','PNL','P/L'], 
         'PNL%':['pnlPct','PNL%','PNL_PCT'], 
         '1D%':['changePct','1D%','CHANGE_1D','CHANGE'], 
+        '1D_GAIN':['1dGain','1D_GAIN','1DGAIN'],
         'LTP':['ltp','LTP','PRICE','price'], 
         'QTY':['qty','QTY','quantity'], 
         'AVG':['avg','AVG','AVGBUY','avgbuy'], 
@@ -246,7 +256,8 @@ const getMetricColor = (field, value, stock) => {
         '52W%': { green: n > 0, red: n < 0 },
         'PNL': { green: n > 0, red: n < 0 },
         'PNL%': { green: n > 0, red: n < 0 },
-        '1D%': { green: n > 0, red: n < 0 }
+        '1D%': { green: n > 0, red: n < 0 },
+        '1D_GAIN': { green: n > 0, red: n < 0 }
         // POS and NEG are counts, not metrics - no coloring
     };
     
@@ -345,6 +356,12 @@ function enrichStock(stock) {
         stock.pnlPct = ((ltp - avg) / avg) * 100;
     }
     
+    // Calculate 1D_GAIN = QTY * (LTP * changePct / 100)
+    const changePct = cleanNum(resolve(stock, '1D%'));
+    if (qty && ltp && !stock['1dGain']) {
+        stock['1dGain'] = qty * (ltp * changePct / 100);
+    }
+    
     // Calculate POS & NEG based on 8 metrics with thresholds (only if not already set)
     if (!stock.pos || !stock.neg) {
         let pos = 0, neg = 0;
@@ -383,7 +400,7 @@ function render() {
     // Enrich each stock with calculated fields
     MASTER.forEach(s => enrichStock(s));
     
-    let sumPnl = 0, sumInv = 0, sumPVal = 0, sumToday = 0, posCount = 0, negCount = 0, sc = {};
+    let sumPnl = 0, sumInv = 0, sumPVal = 0, sumToday = 0, sumLTP = 0, sum1dGain = 0, posCount = 0, negCount = 0, sc = {};
     MASTER.forEach(s => { 
         const sec = resolve(s, 'SECTOR') || 'OTHER';
         const qty = cleanNum(resolve(s, 'QTY'));
@@ -392,11 +409,13 @@ function render() {
         
         sumPnl += cleanNum(resolve(s, 'PNL'));
         sumInv += cleanNum(resolve(s, 'INVESTED'));
+        sumLTP += qty * ltp;
         sumPVal += qty * ltp;  // Portfolio value
         
         // Today's gain/loss: If price changed by X%, then gain = currentValue * (X% / 100)
         const todayGain = (qty * ltp * changePct) / 100;
         sumToday += todayGain;
+        sum1dGain += cleanNum(resolve(s, '1D_GAIN'));
         
         // Count positive and negative changes
         if (qty > 0) {  // Only count stocks in portfolio
@@ -428,7 +447,7 @@ function render() {
     document.getElementById('tape-bar').innerHTML = sortedSectors.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
     document.getElementById('legend').innerHTML = (filter ? SECTORS.filter(s => s === filter) : SECTORS).map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')" style="padding:4px 8px; border-radius:4px; transition:all .2s;"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
     
-    // ===== APPLY FILTERS: Sector + View Mode (Portfolio/Watchlist) + Search + Return Filter =====
+    // ===== APPLY FILTERS: Sector + View Mode (Portfolio/Watchlist) + Search + Category (Equity/Other) + Return Filter =====
     let rows = MASTER.slice();
     if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
     
@@ -436,6 +455,19 @@ function render() {
         rows = rows.filter(s => cleanNum(resolve(s, 'QTY')) > 0);
     } else if (viewMode === 'watchlist') {
         rows = rows.filter(s => cleanNum(resolve(s, 'QTY')) === 0 || resolve(s, 'QTY') === '—');
+    }
+    
+    // Apply category filter (equity vs other categories)
+    if (categoryFilter === 'equity') {
+        rows = rows.filter(s => {
+            const isin = (s.isin || '').toUpperCase();
+            return isin.startsWith('INE');
+        });
+    } else if (categoryFilter === 'other') {
+        rows = rows.filter(s => {
+            const isin = (s.isin || '').toUpperCase();
+            return !isin.startsWith('INE');
+        });
     }
     
     // Apply search filter
@@ -469,7 +501,7 @@ function render() {
         if (f === '#') {
             h += '<th class="' + (f==='TICKER'?'sticky':'') + '"><sup></sup>' + f + '</th>';
         } else {
-            const sectorWidth = f === 'SECTOR' ? 'style="max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"' : '';
+            const sectorWidth = f === 'SECTOR' ? 'style="max-width:49px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"' : '';
             h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='TICKER'?'sticky':'') + '" ' + sectorWidth + '><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + f + '</th>';
         }
     });
@@ -502,6 +534,8 @@ function render() {
         else if (f === 'TICKER') h += '<td class="' + cls + '">TOTAL</td>';
         else if (f === 'PNL') h += '<td class="' + (sumPnl>=0?'pos':'neg') + '">' + fmt(sumPnl, 'PNL') + '</td>';
         else if (f === 'INVESTED') h += '<td>' + fmt(sumInv, 'INVESTED') + '</td>';
+        else if (f === 'LTP') h += '<td class="' + (sumLTP>=0?'pos':'neg') + '">' + fmt(sumLTP, 'LTP') + '</td>';
+        else if (f === '1D_GAIN') h += '<td class="' + (sum1dGain>=0?'pos':'neg') + '">' + fmt(sum1dGain, '1D_GAIN') + '</td>';
         else h += '<td class="' + cls + '"></td>';
     });
     document.getElementById('app').innerHTML = h + '</tr></tfoot></table>';
@@ -540,6 +574,23 @@ function toggleReturnFilter() {
     render();
 }
 
+function toggleCategoryFilter() {
+    if (categoryFilter === null) {
+        categoryFilter = 'equity';  // Show only equities (INE)
+        document.getElementById('btn-category').style.background = '#007aff';
+        document.getElementById('btn-category').style.color = '#fff';
+    } else if (categoryFilter === 'equity') {
+        categoryFilter = 'other';  // Show only non-equities (non-INE)
+        document.getElementById('btn-category').style.background = '#ff9500';
+        document.getElementById('btn-category').style.color = '#fff';
+    } else {
+        categoryFilter = null;  // Show all
+        document.getElementById('btn-category').style.background = '#666';
+        document.getElementById('btn-category').style.color = '#fff';
+    }
+    render();
+}
+
 function setViewMode(mode) {
     viewMode = mode;
     document.getElementById('btn-toggle').style.background = '#666';
@@ -561,10 +612,13 @@ function resetAll() {
     viewMode = 'portfolio';
     searchQuery = '';
     returnFilter = null;
+    categoryFilter = null;
     document.getElementById('search-input').value = '';
     document.getElementById('btn-toggle').innerHTML = 'P↔W';
     document.getElementById('btn-toggle').style.background = '#00ff88';
     document.getElementById('btn-toggle').style.color = '#000';
+    document.getElementById('btn-category').style.background = '#666';
+    document.getElementById('btn-category').style.color = '#fff';
     document.getElementById('btn-return').style.background = '#666';
     document.getElementById('btn-return').style.color = '#fff';
     document.getElementById('btn-all').style.background = '#00ff88';
