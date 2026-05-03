@@ -153,7 +153,7 @@ def fetch_from_nse_api(symbol):
     Fetch stock/SGB price directly from NSE API.
     Used as fallback when Yahoo Finance doesn't have data.
     
-    Returns: dict with 'ltp', 'change', 'changePct' or None if failed.
+    Returns: dict with all price fields (mapped to yfinance structure) or None if failed.
     """
     try:
         url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
@@ -162,15 +162,22 @@ def fetch_from_nse_api(symbol):
         data = resp.json()
         
         if data and 'priceInfo' in data:
-            info = data['priceInfo']
-            ltp = float(info.get('lastPrice', 0))
-            change = float(info.get('change', 0))
-            change_pct = float(info.get('pChange', 0))
+            price_info = data['priceInfo']
+            info_header = data.get('info', {})
             
+            # Map NSE fields to yfinance field names for build_quote()
             return {
-                'ltp': ltp,
-                'change': change,
-                'changePct': change_pct,
+                'currentPrice': float(price_info.get('lastPrice', 0)),
+                'previousClose': float(price_info.get('previousClose', 0)),
+                'open': float(price_info.get('open', None)) if price_info.get('open') else None,
+                'dayHigh': float(price_info.get('intraDayHighLow', {}).get('max', None)) if price_info.get('intraDayHighLow', {}).get('max') else None,
+                'dayLow': float(price_info.get('intraDayHighLow', {}).get('min', None)) if price_info.get('intraDayHighLow', {}).get('min') else None,
+                'fiftyTwoWeekHigh': float(price_info.get('weekHighLow', {}).get('max', None)) if price_info.get('weekHighLow', {}).get('max') else None,
+                'fiftyTwoWeekLow': float(price_info.get('weekHighLow', {}).get('min', None)) if price_info.get('weekHighLow', {}).get('min') else None,
+                'volume': None,  # NSE equity API doesn't provide volume
+                'beta': None,    # Not applicable for bonds/SGBs
+                'longName': info_header.get('companyName', symbol),
+                'sector': 'Government Securities' if symbol.startswith('SGB') else info_header.get('industry', 'NA'),
             }
     except Exception as e:
         pass
