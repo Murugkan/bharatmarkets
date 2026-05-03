@@ -710,6 +710,7 @@ function renderStep3() {
         "- Resolve truncated/partial names using fuzzy matching\n\n" +
         "--------------------------------------------------\n" +
         "STEP 1: CLASSIFY INSTRUMENT TYPE\n\n" +
+        "Classify each entry into ONE:\n\n" +
         "- EQUITY (listed company, including SME listings)\n" +
         "- ETF\n" +
         "- MUTUAL FUND\n" +
@@ -717,30 +718,70 @@ function renderStep3() {
         "- CORPORATE BOND / NCD\n" +
         "- SME / UNLISTED (ONLY if NOT listed anywhere)\n" +
         "- UNKNOWN\n\n" +
-        "CRITICAL: Always check NSE/BSE (Mainboard + SME) before marking UNLISTED\n\n" +
+        "CRITICAL RULE:\n" +
+        "- DO NOT assume small companies or \"[P]\" = UNLISTED\n" +
+        "- ALWAYS check if listed on:\n" +
+        "  → NSE Mainboard\n" +
+        "  → NSE SME platform\n" +
+        "  → BSE Mainboard\n" +
+        "  → BSE SME platform\n\n" +
         "--------------------------------------------------\n" +
         "STEP 2: DATA EXTRACTION (TYPE-WISE)\n\n" +
-        "EQUITY: NSE ticker, ISIN (INE), Sector, Industry\n" +
-        "ETF: Ticker, ISIN (INF), Sector=ETF, Industry=index\n" +
-        "MUTUAL FUND: Ticker=NA, ISIN (INF), Sector=Mutual Fund, Industry=scheme\n" +
-        "SGB: Ticker=NA (or SGB series if traded), ISIN (INE), Sector=Government Securities\n" +
-        "CORPORATE BOND: Ticker=NA (if not listed), ISIN mandatory\n" +
-        "SME/UNLISTED: Ticker=NA, ISIN=UNKNOWN (unless verified)\n\n" +
+        "EQUITY (INCLUDING SME-LISTED):\n" +
+        "- NSE ticker (preferred) or BSE code\n" +
+        "- ISIN (INE format)\n" +
+        "- Sector & Industry\n\n" +
+        "ETF:\n" +
+        "- ETF ticker (e.g., NIFTYBEES)\n" +
+        "- ISIN (INF format)\n" +
+        "- Sector = ETF\n" +
+        "- Industry = underlying index\n\n" +
+        "MUTUAL FUND:\n" +
+        "- Ticker = NA\n" +
+        "- ISIN (INF format)\n" +
+        "- Sector = Mutual Fund\n" +
+        "- Industry = scheme category\n\n" +
+        "SOVEREIGN BOND (SGB):\n" +
+        "- Identify exact SGB series (e.g., SGBFEB32IV)\n" +
+        "- ISIN (IN/INE format)\n" +
+        "- Sector = Government Securities\n" +
+        "- Industry = Sovereign Gold Bond\n\n" +
+        "CORPORATE BOND:\n" +
+        "- ISIN mandatory\n" +
+        "- Ticker = NA (if not exchange-listed)\n" +
+        "- Sector = issuer sector\n\n" +
+        "SME / UNLISTED:\n" +
+        "- ONLY if NOT found on NSE/BSE\n" +
+        "- Ticker = NA\n" +
+        "- ISIN = UNKNOWN (unless NSDL/CDSL verified)\n\n" +
         "--------------------------------------------------\n" +
         "STEP 3: SPECIAL INSTRUMENT RULES (CRITICAL)\n\n" +
         "SGB TICKER RULE:\n" +
-        "- If SGB is traded (e.g., SGBFEB32IV) → use as ticker\n" +
-        "- Else → Ticker = NA\n" +
-        "- ISIN is primary identifier\n\n" +
+        "- Check NSE/BSE for traded SGB symbol (e.g., SGBFEB32IV)\n" +
+        "- If found → use as ticker\n" +
+        "- If not → Ticker = NA\n" +
+        "- ISIN remains primary identifier\n\n" +
         "INF ISIN RULE:\n" +
-        "- ISIN starts with INF?\n" +
-        "  → If has NSE ticker → ETF\n" +
-        "  → Else → MUTUAL FUND (Ticker = NA)\n\n" +
-        "RENAME VALIDATION:\n" +
-        "- Only if confirmed by NSE/BSE corporate actions or official filings\n" +
-        "- ISIN continuity = same entity\n\n" +
+        "- If ISIN starts with INF:\n" +
+        "    → Check if ETF (has NSE ticker)\n" +
+        "    → Else classify as MUTUAL FUND\n" +
+        "- Mutual Fund → Ticker = NA\n\n" +
+        "RENAME VALIDATION RULE (ENHANCED):\n" +
+        "- Only consider rename if confirmed by:\n" +
+        "    → NSE corporate actions OR\n" +
+        "    → BSE corporate announcements OR\n" +
+        "    → Official filings\n" +
+        "- IF:\n" +
+        "    → ISIN continuity exists AND\n" +
+        "    → Exchange shows updated company name\n" +
+        "  THEN:\n" +
+        "    → Treat as SAME entity\n" +
+        "    → Use LATEST company name + ticker\n" +
+        "- ELSE:\n" +
+        "    → Treat as separate entity (do NOT merge)\n\n" +
         "--------------------------------------------------\n" +
         "STEP 4: SEARCH FALLBACK (MANDATORY)\n\n" +
+        "If not found internally, search:\n\n" +
         "1. \"<NAME> NSE ticker ISIN\"\n" +
         "2. \"<NAME> BSE code ISIN\"\n" +
         "3. \"<NAME> NSE SME ticker\"\n" +
@@ -749,31 +790,43 @@ function renderStep3() {
         "6. \"<NAME> mutual fund ISIN AMFI\"\n" +
         "7. \"<NAME> SGB series RBI ISIN\"\n" +
         "8. \"<NAME> renamed OR delisted OR merged\"\n\n" +
+        "Resolve:\n" +
+        "- Renamed entities\n" +
+        "- Mergers\n" +
+        "- Abbreviations\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 5: DATA SOURCE PRIORITY\n\n" +
+        "STEP 5: DATA SOURCE PRIORITY (STRICT)\n\n" +
+        "Use ONLY in this order:\n\n" +
         "1. NSE India (PRIMARY – includes SME)\n" +
         "2. BSE India\n" +
         "3. AMFI (mutual funds)\n" +
         "4. RBI (SGB)\n" +
         "5. NSDL/CDSL (ISIN validation)\n" +
         "6. Official company filings\n\n" +
+        "Reject:\n" +
+        "- Unverified aggregators\n" +
+        "- Conflicting sources\n\n" +
         "--------------------------------------------------\n" +
         "STEP 6: LIVE DATA PRIORITY (CRITICAL)\n\n" +
-        "- ALWAYS use LIVE exchange data over static knowledge\n" +
-        "- Include newly listed companies\n" +
-        "- On conflict → trust exchange data\n\n" +
+        "- ALWAYS prioritize LIVE exchange data over static knowledge\n" +
+        "- Ensure newly listed companies are included\n" +
+        "- If conflict → trust exchange data\n\n" +
         "--------------------------------------------------\n" +
         "STEP 7: RECENT IPO HANDLING\n\n" +
-        "If IPO within 12-18 months:\n" +
-        "- Check NSE/BSE listing pages\n" +
-        "- Do NOT mark UNKNOWN if listed\n" +
-        "- Accept ticker even if low coverage\n\n" +
+        "If IPO within last 12–18 months:\n" +
+        "- PRIORITIZE NSE/BSE listing pages\n" +
+        "- DO NOT mark UNKNOWN if listed\n" +
+        "- Accept ticker even if low coverage\n" +
+        "- Fetch ISIN directly from exchange\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 8: SME DETECTION (CRITICAL)\n\n" +
-        "Before marking UNLISTED, check:\n" +
-        "- NSE SME platform\n" +
-        "- BSE SME platform\n\n" +
-        "If found → Classify as EQUITY (return ticker + ISIN)\n\n" +
+        "STEP 8: SME DETECTION (CRITICAL FIX)\n\n" +
+        "Before marking UNLISTED:\n\n" +
+        "- CHECK:\n" +
+        "  → NSE SME platform\n" +
+        "  → BSE SME platform\n\n" +
+        "If found:\n" +
+        "→ classify as EQUITY\n" +
+        "→ return ticker + ISIN\n\n" +
         "--------------------------------------------------\n" +
         "STEP 9: VALIDATION RULES\n\n" +
         "- NSE ticker must EXACTLY match official symbol\n" +
@@ -782,14 +835,22 @@ function renderStep3() {
         "    ETF/MF → INF##########\n" +
         "    SGB → IN##########\n" +
         "- Do NOT guess missing values\n" +
-        "- Prefer NSE ticker over BSE\n\n" +
+        "- Prefer NSE ticker over BSE\n" +
+        "- If multiple matches → choose primary listing\n\n" +
         "--------------------------------------------------\n" +
         "STEP 10: CONFIDENCE HANDLING\n\n" +
-        "Ticker found + ISIN not verified → ISIN=UNKNOWN\n" +
-        "Neither verified → Classify as SME/UNLISTED\n\n" +
+        "IF:\n" +
+        "- Ticker found but ISIN NOT verified:\n" +
+        "    → ISIN = UNKNOWN\n" +
+        "    → allow ticker ONLY if from exchange\n\n" +
+        "IF:\n" +
+        "- Neither ticker nor ISIN verified:\n" +
+        "    → classify as SME / UNLISTED\n\n" +
         "--------------------------------------------------\n" +
         "STEP 11: OUTPUT FORMAT (STRICT)\n\n" +
+        "Comma-separated, NO spaces:\n\n" +
         "SeqNo,Name,Ticker,ISIN,Sector,Industry,InstrumentType\n\n" +
+        "Rules:\n" +
         "- Preserve sequence number\n" +
         "- Ticker not applicable → NA\n" +
         "- ISIN not found → UNKNOWN\n" +
