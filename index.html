@@ -71,29 +71,89 @@
 </footer>
 
 <script>
-// ===== MAIN APPLICATION =====
+/**
+ * BHARATMARKETS ONYX PRO TERMINAL
+ * Portfolio Manager & Analytics Dashboard
+ * 
+ * Version: 1.0 | Status: Production | Last Updated: May 3, 2026
+ * 
+ * CODE ORGANIZATION:
+ *   - Constants & Configuration (DB, Colors, Fields)
+ *   - Global State (MASTER, SECTORS, Filters, etc)
+ *   - Utility Functions (cleanNum, fmt, resolve, etc)
+ *   - Business Logic (enrichStock, getMetricColor, init)
+ *   - UI & Rendering (render function, table generation)
+ *   - Event Handlers (doSort, tap, toggle functions)
+ *   - Page Initialization
+ */
 
-// ===== PORTFOLIO CODE =====
-const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
-const PALETTE = ['#00f2ff','#7000ff','#ff007a','#ffb800','#00ff88','#007aff','#ff4d6d','#f97316','#a3e635','#ec4899','#8b5cf6','#f43f5e'];
-let MASTER = [], SECTORS = [], COL = {}, filter = null, sortCol = 'P/L', sortAsc = false, viewMode = 'all', searchQuery = '', returnFilter = null, categoryFilter = null;
-const UI_FIELDS = ['#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%', 'TICKER', '1D%', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV', 'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'];
+// ===== CONSTANTS & CONFIGURATION =====
+const DB_NAME = 'OnyxPortfolioDB';
+const STORE_NAME = 'Stocks';
+const DB_VERSION = 8;
 
+const PALETTE = [
+    '#00f2ff', '#7000ff', '#ff007a', '#ffb800', '#00ff88', '#007aff',
+    '#ff4d6d', '#f97316', '#a3e635', '#ec4899', '#8b5cf6', '#f43f5e'
+];
+
+const UI_FIELDS = [
+    '#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
+    'TICKER', '1D%', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV',
+    'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'
+];
+
+const TEXT_FIELDS = ['TICKER', 'SECTOR', 'SIGNAL'];
+
+// ===== GLOBAL STATE =====
+let MASTER = [];          // All stocks (portfolio + watchlist)
+let SECTORS = [];         // Unique sectors
+let COL = {};             // Sector -> Color mapping
+let filter = null;        // Current sector filter
+let sortCol = 'PNL';      // Current sort column
+let sortAsc = false;      // Sort direction (ascending/descending)
+let viewMode = 'all';     // View mode: 'all', 'portfolio', 'watchlist'
+let searchQuery = '';     // Search filter text
+let returnFilter = null;  // Return filter state
+let categoryFilter = null; // Category filter: 'equity', 'other', or null
+
+// ===== UTILITY FUNCTIONS =====
+
+/**
+ * Convert value to number, handling various formats and edge cases
+ * Safely parses strings, handles '—' (dash), null, undefined
+ * @param {*} v - Value to convert (number, string, null, undefined, '—')
+ * @returns {number} Parsed number or 0 if invalid
+ */
 const cleanNum = (v) => {
     if (typeof v === 'number') return v;
     if (!v || v === '—') return 0;
-    return parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
+    const parsed = parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
+    return isNaN(parsed) ? 0 : parsed;
 };
 
-// ===== TEXT FIELDS (Alphabetical Sorting) =====
-const TEXT_FIELDS = ['TICKER', 'SECTOR', 'SIGNAL'];
+
+/**
+ * Check if a field should be sorted alphabetically (text) vs numerically
+ * @param {string} field - Field name to check
+ * @returns {boolean} True if field is text-based
+ */
 const isTextField = (field) => TEXT_FIELDS.includes(field);
 
+/**
+ * Format value for display based on field type
+ * Handles: K/L currency format, decimals, percentages
+ * Examples: 100000 → '1.0L', 1500 → '1.5k', 0.95 → '0.9%'
+ * @param {*} val - Raw value to format
+ * @param {string} field - Field name (determines format rules)
+ * @returns {string} Formatted display value
+ */
 const fmt = (val, field) => {
+    if (!field || typeof field !== 'string') return val;
+    
     const n = cleanNum(val);
     if (n === 0 && val === '—') return '—';
     
-    // Format large numbers with k (thousands) or L (Lakhs)
     const formatLargeNum = (num) => {
         if (Math.abs(num) >= 100000) return (num / 100000).toFixed(1) + 'L';
         if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'k';
@@ -115,7 +175,19 @@ const fmt = (val, field) => {
     return val;
 };
 
+/**
+ * Resolve field value from object using field mappings and aliases
+ * Maps common field names to actual object properties
+ * Examples: 'TICKER' resolves to 'ticker', 'SYM', 'SYMBOL', etc
+ * @param {Object} obj - Data object to search (null-checked)
+ * @param {string} field - Field name to resolve
+ * @returns {*} Field value from object or '—' if not found
+ */
 const resolve = (obj, field) => {
+    // Validation: check inputs
+    if (!obj || typeof obj !== 'object') return '—';
+    if (!field || typeof field !== 'string') return '—';
+    
     const f = field.toUpperCase();
     const mappings = { 
         'SYM':['ticker','SYM','SYMBOL','TICKER'], 
@@ -168,7 +240,15 @@ const resolve = (obj, field) => {
     return '—';
 };
 
-// Get color class based on field and value (professional thresholds)
+/**
+ * Determine color class for field value based on professional thresholds
+ * Returns CSS class: ' pos' (green), ' neg' (red), or '' (neutral)
+ * Applies different logic for different metrics (LTP, PE, ROE, etc)
+ * @param {string} field - Field name
+ * @param {*} value - Field value to evaluate
+ * @param {Object} stock - Stock object for context (optional)
+ * @returns {string} CSS class for coloring (' pos', ' neg', or '')
+ */
 const getMetricColor = (field, value, stock) => {
     const n = cleanNum(value);
     if (n === 0 || value === '—') return '';
@@ -270,7 +350,14 @@ const getMetricColor = (field, value, stock) => {
     return '';
 };
 
-// ===== READ FROM INDEXEDDB =====
+// ===== DATA INITIALIZATION =====
+
+/**
+ * Initialize portfolio data from IndexedDB
+ * Loads stock data, calculates metrics, populates UI
+ * Handles database errors gracefully with user feedback
+ * @returns {Promise<void>}
+ */
 async function init() {
     const statusEl = document.getElementById('status');
     const db = await new Promise(res => {
@@ -324,6 +411,13 @@ async function init() {
     render();
 }
 
+/**
+ * Calculate and enrich stock with derived metrics
+ * Computes: INVESTED, PNL, PNL%, 1D_GAIN, ATH%, POS, NEG, SIGNAL
+ * Modifies stock object in-place with calculated fields
+ * @param {Object} stock - Stock object from MASTER array
+ * @returns {Object} Enriched stock object with all calculated fields
+ */
 function enrichStock(stock) {
     // Calculate INVESTED = QTY * AVG
     const qty = cleanNum(resolve(stock, 'QTY'));
@@ -389,165 +483,335 @@ function enrichStock(stock) {
     return stock;
 }
 
-function render() {
-    // Enrich each stock with calculated fields
-    MASTER.forEach(s => enrichStock(s));
+// ===== HELPER FUNCTIONS FOR RENDERING =====
+
+/**
+ * Calculate portfolio totals and metrics
+ * Computes: total PNL, invested, portfolio value, daily gains, sector weights
+ * @param {Array} stocks - Array of stock objects to analyze
+ * @returns {Object} Totals object with sums and metrics
+ */
+function calculateTotals(stocks) {
+    let sumPnl = 0, sumInv = 0, sumPVal = 0, sumToday = 0, sumLTP = 0, sum1dGain = 0;
+    let posCount = 0, negCount = 0, sectorWeights = {};
     
-    let sumPnl = 0, sumInv = 0, sumPVal = 0, sumToday = 0, sumLTP = 0, sum1dGain = 0, posCount = 0, negCount = 0, sc = {};
-    MASTER.forEach(s => { 
-        const sec = resolve(s, 'SECTOR') || 'OTHER';
-        const qty = cleanNum(resolve(s, 'QTY'));
-        const ltp = cleanNum(resolve(s, 'LTP'));
-        const changePct = cleanNum(resolve(s, '1D%'));
+    stocks.forEach(stock => { 
+        const sector = resolve(stock, 'SECTOR') || 'OTHER';
+        const qty = cleanNum(resolve(stock, 'QTY'));
+        const ltp = cleanNum(resolve(stock, 'LTP'));
+        const changePct = cleanNum(resolve(stock, '1D%'));
         
-        sumPnl += cleanNum(resolve(s, 'PNL'));
-        sumInv += cleanNum(resolve(s, 'INVESTED'));
+        sumPnl += cleanNum(resolve(stock, 'PNL'));
+        sumInv += cleanNum(resolve(stock, 'INVESTED'));
         sumLTP += qty * ltp;
         sumPVal += qty * ltp;  // Portfolio value
         
-        // Today's gain/loss: If price changed by X%, then gain = currentValue * (X% / 100)
+        // Today's gain/loss calculation
         const todayGain = (qty * ltp * changePct) / 100;
         sumToday += todayGain;
-        const gain1d = cleanNum(resolve(s, '1D_GAIN'));
+        const gain1d = cleanNum(resolve(stock, '1D_GAIN'));
         sum1dGain += gain1d;
         
-        // Count positive and negative changes
-        if (qty > 0) {  // Only count stocks in portfolio
+        // Count positive and negative changes (portfolio stocks only)
+        if (qty > 0) {
             if (changePct > 0) posCount++;
             else if (changePct < 0) negCount++;
         }
         
-        const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || ltp, 1);
-        sc[sec] = (sc[sec] || 0) + weight; 
+        // Sector weight calculation
+        const weight = Math.max(cleanNum(resolve(stock, 'MCAP')) || ltp, 1);
+        sectorWeights[sector] = (sectorWeights[sector] || 0) + weight; 
     });
     
-    // Update KPI displays
+    return { sumPnl, sumInv, sumPVal, sumToday, sumLTP, sum1dGain, posCount, negCount, sectorWeights };
+}
+
+/**
+ * Update KPI display elements with calculated totals
+ * Updates: Portfolio Value, Invested, PNL, Daily Gain, Gainers/Losers count
+ * @param {Object} totals - Totals object from calculateTotals()
+ * @returns {void}
+ */
+function updateKPIDisplay(totals) {
+    const { sumPnl, sumInv, sumPVal, sumToday, posCount, negCount, sectorWeights } = totals;
+    
     document.getElementById('k-pval').textContent = '₹' + (sumPVal/100000).toFixed(2) + 'L';
     document.getElementById('k-inv').textContent = '₹' + (sumInv/100000).toFixed(2) + 'L';
+    
     const pEl = document.getElementById('k-pnl');
     pEl.textContent = '₹' + (sumPnl/100000).toFixed(2) + 'L';
     pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
+    
     const tValEl = document.getElementById('k-today-val');
     tValEl.textContent = '₹' + Math.abs(sumToday/100000).toFixed(2) + 'L';
     tValEl.style.color = sumToday >= 0 ? 'var(--gr)' : 'var(--rd)';
-    const posEl = document.getElementById('k-today-pos');
-    posEl.textContent = '↑' + posCount;
-    const negEl = document.getElementById('k-today-neg');
-    negEl.textContent = '↓' + negCount;
-    const totalW = Object.values(sc).reduce((a, b) => a + b, 0);
-    // Sort sectors by weight for bar display
-    const sortedSectors = SECTORS.slice().sort((a, b) => (sc[b] || 0) - (sc[a] || 0));
     
-    document.getElementById('tape-bar').innerHTML = sortedSectors.map(sec => '<div class="seg' + (filter && filter !== sec ? ' dimmed' : '') + '" style="flex-basis:' + ((sc[sec]/totalW)*100) + '%;background:' + COL[sec] + '" onclick="tap(\'' + sec + '\')"></div>').join('');
-    document.getElementById('legend').innerHTML = (filter ? SECTORS.filter(s => s === filter) : SECTORS).map(sec => '<div class="leg ' + (filter === sec ? 'on' : '') + '" onclick="tap(\'' + sec + '\')" style="padding:4px 8px; border-radius:4px; transition:all .2s;"><div class="dot" style="background:' + COL[sec] + '"></div>' + sec + '</div>').join('');
+    document.getElementById('k-today-pos').textContent = '↑' + posCount;
+    document.getElementById('k-today-neg').textContent = '↓' + negCount;
     
-    // ===== APPLY FILTERS: Sector + View Mode (Portfolio/Watchlist) + Search + Category (Equity/Other) + Return Filter =====
-    let rows = MASTER.slice();
-    if (filter) rows = rows.filter(s => resolve(s, 'SECTOR') === filter);
+    // Update sector bars
+    const totalWeight = Object.values(sectorWeights).reduce((a, b) => a + b, 0);
+    const sortedSectors = SECTORS.slice().sort((a, b) => (sectorWeights[b] || 0) - (sectorWeights[a] || 0));
     
-    if (viewMode === 'portfolio') {
-        rows = rows.filter(s => cleanNum(resolve(s, 'QTY')) > 0);
-    } else if (viewMode === 'watchlist') {
-        rows = rows.filter(s => cleanNum(resolve(s, 'QTY')) === 0 || resolve(s, 'QTY') === '—');
+    document.getElementById('tape-bar').innerHTML = sortedSectors.map(sector => 
+        '<div class="seg' + (filter && filter !== sector ? ' dimmed' : '') + '" ' +
+        'style="flex-basis:' + ((sectorWeights[sector]/totalWeight)*100) + '%;background:' + COL[sector] + '" ' +
+        'onclick="tap(\'' + sector + '\')"></div>'
+    ).join('');
+    
+    document.getElementById('legend').innerHTML = (filter ? SECTORS.filter(s => s === filter) : SECTORS)
+        .map(sector => 
+            '<div class="leg ' + (filter === sector ? 'on' : '') + '" ' +
+            'onclick="tap(\'' + sector + '\')" ' +
+            'style="padding:4px 8px; border-radius:4px; transition:all .2s;">' +
+            '<div class="dot" style="background:' + COL[sector] + '"></div>' + sector + '</div>'
+        ).join('');
+}
+
+/**
+ * Apply all active filters to stocks array
+ * Filters by: sector, view mode (portfolio/watchlist), category (equity/other), search, return
+ * @param {Array} stocks - Array of all stocks
+ * @returns {Array} Filtered stocks array
+ */
+function applyFilters(stocks) {
+    let filtered = stocks.slice();
+    
+    // Sector filter
+    if (filter) {
+        filtered = filtered.filter(stock => resolve(stock, 'SECTOR') === filter);
     }
     
-    // Apply category filter (equity vs other categories)
+    // View mode filter (portfolio/watchlist)
+    if (viewMode === 'portfolio') {
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, 'QTY')) > 0);
+    } else if (viewMode === 'watchlist') {
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, 'QTY')) === 0 || resolve(stock, 'QTY') === '—');
+    }
+    
+    // Category filter (equity vs other)
     if (categoryFilter === 'equity') {
-        rows = rows.filter(s => {
-            const isin = (s.isin || '').toUpperCase();
+        filtered = filtered.filter(stock => {
+            const isin = (stock.isin || '').toUpperCase();
             return isin.startsWith('INE');
         });
     } else if (categoryFilter === 'other') {
-        rows = rows.filter(s => {
-            const isin = (s.isin || '').toUpperCase();
+        filtered = filtered.filter(stock => {
+            const isin = (stock.isin || '').toUpperCase();
             return !isin.startsWith('INE');
         });
     }
     
-    // Apply search filter
+    // Search filter
     if (searchQuery) {
-        rows = rows.filter(s => resolve(s, 'TICKER').toUpperCase().includes(searchQuery.toUpperCase()));
+        filtered = filtered.filter(stock => 
+            resolve(stock, 'TICKER').toUpperCase().includes(searchQuery.toUpperCase())
+        );
     }
     
-    // Apply return filter (positive/negative 1D%)
+    // Return filter (positive/negative 1D%)
     if (returnFilter === 'pos') {
-        rows = rows.filter(s => cleanNum(resolve(s, '1D%')) > 0);
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, '1D%')) > 0);
     } else if (returnFilter === 'neg') {
-        rows = rows.filter(s => cleanNum(resolve(s, '1D%')) < 0);
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, '1D%')) < 0);
     }
-    // 'all' shows both portfolio and watchlist
-    rows.sort((a, b) => {
-        let vA = resolve(a, sortCol), vB = resolve(b, sortCol);
+    
+    return filtered;
+}
+
+/**
+ * Sort stocks array by specified column
+ * Handles: text sorting (alphabetical) vs numeric sorting
+ * @param {Array} stocks - Array of stocks to sort
+ * @returns {Array} Sorted stocks array
+ */
+function sortStocks(stocks) {
+    const sorted = stocks.slice();
+    
+    sorted.sort((a, b) => {
+        let valueA = resolve(a, sortCol);
+        let valueB = resolve(b, sortCol);
         
-        // ===== TEXT FIELDS: Alphabetical Sorting =====
+        // Text fields: alphabetical sorting
         if (isTextField(sortCol)) {
-            let strA = (vA || '').toString().toUpperCase();
-            let strB = (vB || '').toString().toUpperCase();
+            let strA = (valueA || '').toString().toUpperCase();
+            let strB = (valueB || '').toString().toUpperCase();
             return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA);
         }
         
-        // ===== NUMERIC FIELDS: Numeric Sorting =====
-        let nA = cleanNum(vA), nB = cleanNum(vB);
-        return sortAsc ? nA - nB : nB - nA;
+        // Numeric fields: numeric sorting
+        let numA = cleanNum(valueA);
+        let numB = cleanNum(valueB);
+        return sortAsc ? numA - numB : numB - numA;
     });
-    let h = '<table><thead><tr>';
-    UI_FIELDS.forEach(f => {
-        if (f === '#') {
-            h += '<th class="' + (f==='TICKER'?'sticky':'') + '"><sup></sup>' + f + '</th>';
+    
+    return sorted;
+}
+
+/**
+ * Build table header HTML
+ * Includes column names, sort indicators, click handlers
+ * @returns {string} HTML for table header
+ */
+function buildTableHeader() {
+    let html = '<table><thead><tr>';
+    
+    UI_FIELDS.forEach(field => {
+        if (field === '#') {
+            html += '<th class="' + (field === 'TICKER' ? 'sticky' : '') + '"><sup></sup>#</th>';
         } else {
             let widthStyle = '';
-            if (f === 'SECTOR') widthStyle = 'style="max-width:30px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-            else if (f === 'TICKER') widthStyle = 'style="max-width:25px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-            const displayName = {'INVESTED':'inv', '1D_GAIN':'1dg', '1D%':'1dg%'}[f] || f;
-            h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='TICKER'?'sticky':'') + '" ' + widthStyle + '><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + displayName + '</th>';
+            if (field === 'SECTOR') widthStyle = 'style="max-width:30px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            else if (field === 'TICKER') widthStyle = 'style="max-width:25px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            
+            const displayName = {'INVESTED':'inv', '1D_GAIN':'1dg', '1D%':'1dg%'}[field] || field;
+            const sortIndicator = field === sortCol ? (sortAsc ? '▲' : '▼') : '';
+            
+            html += '<th onclick="doSort(\'' + field + '\')" ' +
+                    'class="' + (field === sortCol ? 'active' : '') + ' ' + (field === 'TICKER' ? 'sticky' : '') + '" ' +
+                    widthStyle + '>' +
+                    '<sup>' + sortIndicator + '</sup>' + displayName + '</th>';
         }
     });
-    h += '</tr></thead><tbody>';
-    rows.forEach((s, idx) => {
-        const ticker = resolve(s, 'TICKER');
-        h += '<tr style="cursor:pointer;" onclick="window.location.href=\'analysis.html?drill=' + encodeURIComponent(ticker) + '\'">';
-        UI_FIELDS.forEach(f => {
-            if (f === '#') {
-                h += '<td style="color:#666; text-align:center;">' + (idx + 1) + '</td>';
+    
+    html += '</tr></thead><tbody>';
+    return html;
+}
+
+/**
+ * Build table body rows HTML
+ * Renders each stock with formatted values and color coding
+ * @param {Array} stocks - Array of stocks to render
+ * @returns {string} HTML for table rows
+ */
+function buildTableRows(stocks) {
+    let html = '';
+    
+    stocks.forEach((stock, index) => {
+        const ticker = resolve(stock, 'TICKER');
+        html += '<tr style="cursor:pointer;" onclick="window.location.href=\'analysis.html?drill=' + encodeURIComponent(ticker) + '\'">';
+        
+        UI_FIELDS.forEach(field => {
+            if (field === '#') {
+                html += '<td style="color:#666; text-align:center;">' + (index + 1) + '</td>';
             } else {
-                const raw = resolve(s, f);
-                const val = fmt(raw, f);
-                let cls = f === 'TICKER' ? 'sticky' : '';
+                const rawValue = resolve(stock, field);
+                const formattedValue = fmt(rawValue, field);
+                let cellClass = field === 'TICKER' ? 'sticky' : '';
                 let cellStyle = '';
-                if (f === 'SECTOR') cellStyle = 'style="max-width:30px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-                else if (f === 'TICKER') cellStyle = 'style="max-width:25px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-                const n = cleanNum(raw);
-                if (f === 'SIGNAL') {
-                    const sig = val.toString().toUpperCase();
-                    if (sig === 'BUY') h += '<td class="' + cls + '" ' + cellStyle + '><span class="sig-buy">BUY</span></td>';
-                    else if (sig === 'SELL') h += '<td class="' + cls + '" ' + cellStyle + '><span class="sig-sell">SELL</span></td>';
-                    else h += '<td class="' + cls + '" ' + cellStyle + '>' + val + '</td>';
+                
+                if (field === 'SECTOR') cellStyle = 'style="max-width:30px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                else if (field === 'TICKER') cellStyle = 'style="max-width:25px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                
+                if (field === 'SIGNAL') {
+                    const signalValue = formattedValue.toString().toUpperCase();
+                    if (signalValue === 'BUY') html += '<td class="' + cellClass + '" ' + cellStyle + '><span class="sig-buy">BUY</span></td>';
+                    else if (signalValue === 'SELL') html += '<td class="' + cellClass + '" ' + cellStyle + '><span class="sig-sell">SELL</span></td>';
+                    else html += '<td class="' + cellClass + '" ' + cellStyle + '>' + formattedValue + '</td>';
                 } else {
-                    // Use professional thresholds for colors (pass stock object for AVG/INVESTED comparison)
-                    cls += getMetricColor(f, raw, s);
-                    h += '<td class="' + cls + '" ' + cellStyle + '>' + val + '</td>';
+                    cellClass += getMetricColor(field, rawValue, stock);
+                    html += '<td class="' + cellClass + '" ' + cellStyle + '>' + formattedValue + '</td>';
                 }
             }
         });
-        h += '</tr>';
+        
+        html += '</tr>';
     });
-    h += '</tbody><tfoot><tr>';
-    UI_FIELDS.forEach(f => {
-        let cls = f === 'TICKER' ? 'sticky' : '';
-        if (f === '#') h += '<td style="color:#666;"></td>';
-        else if (f === 'TICKER') h += '<td class="' + cls + '">TOTAL</td>';
-        else if (f === 'PNL') h += '<td class="' + (sumPnl>=0?'pos':'neg') + '">' + fmt(sumPnl, 'PNL') + '</td>';
-        else if (f === 'INVESTED') h += '<td>' + fmt(sumInv, 'INVESTED') + '</td>';
-        else if (f === '1D_GAIN') h += '<td class="' + (sum1dGain>=0?'pos':'neg') + '">' + fmt(sum1dGain, '1D_GAIN') + '</td>';
-        else h += '<td class="' + cls + '"></td>';
-    });
-    document.getElementById('app').innerHTML = h + '</tr></tfoot></table>';
+    
+    return html;
 }
 
-function doSort(f) { if(sortCol === f) sortAsc = !sortAsc; else { sortCol = f; sortAsc = false; } render(); }
-function tap(sec) { filter = filter === sec ? null : sec; render(); }
+/**
+ * Build table footer HTML with totals
+ * Shows total PNL, Invested amount, Daily gain across all visible stocks
+ * @param {Object} totals - Totals object from calculateTotals()
+ * @returns {string} HTML for table footer
+ */
+function buildTableFooter(totals) {
+    const { sumPnl, sumInv, sum1dGain } = totals;
+    let html = '</tbody><tfoot><tr>';
+    
+    UI_FIELDS.forEach(field => {
+        let cellClass = field === 'TICKER' ? 'sticky' : '';
+        
+        if (field === '#') {
+            html += '<td style="color:#666;"></td>';
+        } else if (field === 'TICKER') {
+            html += '<td class="' + cellClass + '">TOTAL</td>';
+        } else if (field === 'PNL') {
+            html += '<td class="' + (sumPnl >= 0 ? 'pos' : 'neg') + '">' + fmt(sumPnl, 'PNL') + '</td>';
+        } else if (field === 'INVESTED') {
+            html += '<td>' + fmt(sumInv, 'INVESTED') + '</td>';
+        } else if (field === '1D_GAIN') {
+            html += '<td class="' + (sum1dGain >= 0 ? 'pos' : 'neg') + '">' + fmt(sum1dGain, '1D_GAIN') + '</td>';
+        } else {
+            html += '<td class="' + cellClass + '"></td>';
+        }
+    });
+    
+    html += '</tr></tfoot></table>';
+    return html;
+}
 
-function toggleViewMode() {
+// ===== UI & RENDERING =====
+
+/**
+ * Main render function - orchestrates table generation and display
+ * Calls helper functions for: filtering, sorting, calculating totals, building table
+ * Updates KPI display and renders table HTML
+ * Called after any filter/sort change or data update
+ * @returns {void}
+ */
+function render() {
+    // Enrich all stocks with calculated fields
+    MASTER.forEach(stock => enrichStock(stock));
+    
+    // Calculate totals from all master stocks (for KPI display)
+    const totals = calculateTotals(MASTER);
+    updateKPIDisplay(totals);
+    
+    // Apply filters and sort
+    let filteredRows = applyFilters(MASTER);
+    filteredRows = sortStocks(filteredRows);
+    
+    // Build and render table
+    let html = buildTableHeader();
+    html += buildTableRows(filteredRows);
+    html += buildTableFooter(totals);
+    
+    document.getElementById('app').innerHTML = html;
+}
+
+// ===== EVENT HANDLERS & CONTROLS =====
+
+/**
+ * Handle column sort clicks
+ * Toggles sort direction if same column clicked, resets to ascending for new column
+ * @param {string} fieldName - Field/column name to sort by
+ * @returns {void}
+ */
+function doSort(fieldName) {
+    if (sortCol === fieldName) sortAsc = !sortAsc;
+    else { sortCol = fieldName; sortAsc = false; }
+    render();
+}
+
+/**
+ * Handle sector filter toggle (tapping sector bar)
+ * Toggles between filtering to sector and showing all
+ * @param {string} sector - Sector name to filter
+ * @returns {void}
+ */
+function tap(sector) {
+    filter = filter === sector ? null : sector;
+    render();
+}
+
+/**
+ * Toggle view mode: All → Portfolio → Watchlist → All
+ * Updates button text and color, re-renders table
+ * @returns {void}
+ */
     if (viewMode === 'all') {
         viewMode = 'portfolio';
         document.getElementById('btn-toggle').innerHTML = 'PT';
@@ -569,6 +833,11 @@ function toggleViewMode() {
     render();
 }
 
+/**
+ * Toggle return/daily gain filter: All → Gainers (↑) → Losers (↓) → All
+ * Shows stocks by daily return (1D_GAIN): positive, negative, or all
+ * @returns {void}
+ */
 function toggleReturnFilter() {
     if (returnFilter === null) {
         returnFilter = 'pos';  // Show only positive returns
@@ -589,6 +858,11 @@ function toggleReturnFilter() {
     render();
 }
 
+/**
+ * Toggle category filter: All → Equity (INE) → Other (non-INE) → All
+ * Filters stocks by ISIN type: equity stocks vs mutual funds/bonds
+ * @returns {void}
+ */
 function toggleCategoryFilter() {
     if (categoryFilter === null) {
         categoryFilter = 'equity';  // Show only equities (INE)
@@ -609,6 +883,12 @@ function toggleCategoryFilter() {
     render();
 }
 
+/**
+ * Set view mode programmatically
+ * Used by "ALL" button to reset to all-stocks view
+ * @param {string} mode - View mode: 'all', 'portfolio', 'watchlist'
+ * @returns {void}
+ */
 function setViewMode(mode) {
     viewMode = mode;
     document.getElementById('btn-toggle').style.background = '#666';
@@ -618,11 +898,23 @@ function setViewMode(mode) {
     render();
 }
 
+/**
+ * Handle search input changes
+ * Updates searchQuery and re-renders table with search filter applied
+ * @param {string} value - Search query text
+ * @returns {void}
+ */
 function onSearchInput(value) {
     searchQuery = value;
     render();
 }
 
+/**
+ * Reset all filters and view modes to defaults
+ * Clears: search, sector filter, view mode, return filter, category filter
+ * Resets all button styles to default
+ * @returns {void}
+ */
 function resetAll() {
     filter = null;
     sortCol = 'P/L';
@@ -646,20 +938,35 @@ function resetAll() {
     render();
 }
 
-// ===== SYNC ENGINE - Now reads from IndexedDB =====
+/**
+ * Sync engine - refresh data from IndexedDB
+ * Called by manual sync controls (if implemented)
+ * @returns {Promise<void>}
+ */
 function runEngineSync() {
-    init().then(() => {
+    init().catch(err => {
+        console.error('Sync error:', err);
     });
 }
 
 // Initialize on page load
 window.addEventListener('pageshow', function(event) {
     if (event.persisted) {
-        init();
+        init().catch(err => {
+            console.error('Page reload error:', err);
+        });
     }
 });
 
-init();
+// Initialize on first page load
+init().catch(err => {
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.innerHTML = 'ERROR: Failed to load portfolio<br>' + (err.message || 'Unknown error');
+        statusEl.style.display = 'block';
+    }
+    console.error('Initialization error:', err);
+});
 </script>
 
 </body>
