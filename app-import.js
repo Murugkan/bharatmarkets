@@ -705,16 +705,11 @@ function renderStep3() {
         "--------------------------------------------------\n" +
         "STEP 0: NORMALIZE INPUT\n" +
         "- Convert to UPPERCASE\n" +
-        "- Expand abbreviations:\n" +
-        "  LTD → LIMITED\n" +
-        "  L → LIMITED\n" +
-        "  IND → INDIA\n" +
-        "  TECH → TECHNOLOGIES\n" +
+        "- Expand abbreviations: LTD→LIMITED, L→LIMITED, IND→INDIA, TECH→TECHNOLOGIES\n" +
         "- Remove extra spaces, punctuation, special characters\n" +
         "- Resolve truncated/partial names using fuzzy matching\n\n" +
         "--------------------------------------------------\n" +
         "STEP 1: CLASSIFY INSTRUMENT TYPE\n\n" +
-        "Classify each entry into ONE:\n\n" +
         "- EQUITY (listed company, including SME listings)\n" +
         "- ETF\n" +
         "- MUTUAL FUND\n" +
@@ -722,46 +717,30 @@ function renderStep3() {
         "- CORPORATE BOND / NCD\n" +
         "- SME / UNLISTED (ONLY if NOT listed anywhere)\n" +
         "- UNKNOWN\n\n" +
-        "CRITICAL RULE:\n" +
-        "- DO NOT assume small companies or \"[P]\" = UNLISTED\n" +
-        "- ALWAYS check if listed on:\n" +
-        "  → NSE Mainboard\n" +
-        "  → NSE SME platform\n" +
-        "  → BSE Mainboard\n" +
-        "  → BSE SME platform\n\n" +
+        "CRITICAL: Always check NSE/BSE (Mainboard + SME) before marking UNLISTED\n\n" +
         "--------------------------------------------------\n" +
         "STEP 2: DATA EXTRACTION (TYPE-WISE)\n\n" +
-        "EQUITY (INCLUDING SME-LISTED):\n" +
-        "- NSE ticker (preferred) or BSE code\n" +
-        "- ISIN (INE format)\n" +
-        "- Sector & Industry\n\n" +
-        "ETF:\n" +
-        "- ETF ticker (e.g., NIFTYBEES)\n" +
-        "- ISIN (INF format)\n" +
-        "- Sector = ETF\n" +
-        "- Industry = underlying index\n\n" +
-        "MUTUAL FUND:\n" +
-        "- Ticker = NA\n" +
-        "- ISIN (INF format)\n" +
-        "- Sector = Mutual Fund\n" +
-        "- Industry = scheme category\n\n" +
-        "SOVEREIGN BOND (SGB):\n" +
-        "- Identify exact SGB series\n" +
-        "- Ticker = NA\n" +
-        "- ISIN (INE format)\n" +
-        "- Sector = Government Securities\n" +
-        "- Industry = Sovereign Gold Bond\n\n" +
-        "CORPORATE BOND:\n" +
-        "- ISIN mandatory\n" +
-        "- Ticker = NA (if not exchange-listed)\n" +
-        "- Sector = issuer sector\n\n" +
-        "SME / UNLISTED:\n" +
-        "- ONLY if NOT found on NSE/BSE\n" +
-        "- Ticker = NA\n" +
-        "- ISIN = UNKNOWN (unless NSDL/CDSL verified)\n\n" +
+        "EQUITY: NSE ticker, ISIN (INE), Sector, Industry\n" +
+        "ETF: Ticker, ISIN (INF), Sector=ETF, Industry=index\n" +
+        "MUTUAL FUND: Ticker=NA, ISIN (INF), Sector=Mutual Fund, Industry=scheme\n" +
+        "SGB: Ticker=NA (or SGB series if traded), ISIN (INE), Sector=Government Securities\n" +
+        "CORPORATE BOND: Ticker=NA (if not listed), ISIN mandatory\n" +
+        "SME/UNLISTED: Ticker=NA, ISIN=UNKNOWN (unless verified)\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 3: SEARCH FALLBACK (MANDATORY)\n\n" +
-        "If not found internally, search:\n\n" +
+        "STEP 3: SPECIAL INSTRUMENT RULES (CRITICAL)\n\n" +
+        "SGB TICKER RULE:\n" +
+        "- If SGB is traded (e.g., SGBFEB32IV) → use as ticker\n" +
+        "- Else → Ticker = NA\n" +
+        "- ISIN is primary identifier\n\n" +
+        "INF ISIN RULE:\n" +
+        "- ISIN starts with INF?\n" +
+        "  → If has NSE ticker → ETF\n" +
+        "  → Else → MUTUAL FUND (Ticker = NA)\n\n" +
+        "RENAME VALIDATION:\n" +
+        "- Only if confirmed by NSE/BSE corporate actions or official filings\n" +
+        "- ISIN continuity = same entity\n\n" +
+        "--------------------------------------------------\n" +
+        "STEP 4: SEARCH FALLBACK (MANDATORY)\n\n" +
         "1. \"<NAME> NSE ticker ISIN\"\n" +
         "2. \"<NAME> BSE code ISIN\"\n" +
         "3. \"<NAME> NSE SME ticker\"\n" +
@@ -770,82 +749,54 @@ function renderStep3() {
         "6. \"<NAME> mutual fund ISIN AMFI\"\n" +
         "7. \"<NAME> SGB series RBI ISIN\"\n" +
         "8. \"<NAME> renamed OR delisted OR merged\"\n\n" +
-        "Resolve:\n" +
-        "- Renamed entities\n" +
-        "- Mergers\n" +
-        "- Abbreviations\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 4: DATA SOURCE PRIORITY (STRICT)\n\n" +
-        "Use ONLY in this order:\n\n" +
+        "STEP 5: DATA SOURCE PRIORITY\n\n" +
         "1. NSE India (PRIMARY – includes SME)\n" +
         "2. BSE India\n" +
         "3. AMFI (mutual funds)\n" +
         "4. RBI (SGB)\n" +
         "5. NSDL/CDSL (ISIN validation)\n" +
         "6. Official company filings\n\n" +
-        "Reject:\n" +
-        "- Unverified aggregators\n" +
-        "- Conflicting sources\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 5: LIVE DATA PRIORITY (CRITICAL)\n\n" +
-        "- ALWAYS prioritize LIVE exchange data over static knowledge\n" +
-        "- Query NSE/BSE latest listings (or equivalent)\n" +
-        "- Ensure newly listed companies are captured\n\n" +
-        "Equivalent logic:\n" +
-        "→ If conflict → trust exchange data\n\n" +
+        "STEP 6: LIVE DATA PRIORITY (CRITICAL)\n\n" +
+        "- ALWAYS use LIVE exchange data over static knowledge\n" +
+        "- Include newly listed companies\n" +
+        "- On conflict → trust exchange data\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 6: RECENT IPO HANDLING (CRITICAL)\n\n" +
-        "If IPO within last 12–18 months:\n\n" +
-        "- PRIORITIZE NSE/BSE listing pages\n" +
-        "- DO NOT mark as UNKNOWN if listed\n" +
-        "- Accept ticker even if low coverage\n" +
-        "- Fetch ISIN directly from exchange\n\n" +
+        "STEP 7: RECENT IPO HANDLING\n\n" +
+        "If IPO within 12-18 months:\n" +
+        "- Check NSE/BSE listing pages\n" +
+        "- Do NOT mark UNKNOWN if listed\n" +
+        "- Accept ticker even if low coverage\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 7: SME DETECTION (CRITICAL FIX)\n\n" +
-        "Before marking UNLISTED:\n\n" +
-        "- CHECK:\n" +
-        "  → NSE SME platform\n" +
-        "  → BSE SME platform\n\n" +
-        "If found:\n" +
-        "→ classify as EQUITY (NOT SME/UNLISTED)\n" +
-        "→ return ticker + ISIN\n\n" +
+        "STEP 8: SME DETECTION (CRITICAL)\n\n" +
+        "Before marking UNLISTED, check:\n" +
+        "- NSE SME platform\n" +
+        "- BSE SME platform\n\n" +
+        "If found → Classify as EQUITY (return ticker + ISIN)\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 8: VALIDATION RULES\n\n" +
+        "STEP 9: VALIDATION RULES\n\n" +
         "- NSE ticker must EXACTLY match official symbol\n" +
-        "- ISIN must match:\n" +
-        "  Equity/Bonds → INE##########\n" +
-        "  ETF/MF → INF##########\n" +
+        "- ISIN formats:\n" +
+        "    Equity/Bonds → INE##########\n" +
+        "    ETF/MF → INF##########\n" +
+        "    SGB → IN##########\n" +
         "- Do NOT guess missing values\n" +
-        "- Prefer NSE ticker over BSE\n" +
-        "- If multiple matches → choose primary listed entity\n\n" +
+        "- Prefer NSE ticker over BSE\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 9: CONFIDENCE HANDLING\n\n" +
-        "IF:\n" +
-        "- Ticker found but ISIN NOT verified:\n" +
-        "    → ISIN = UNKNOWN\n" +
-        "    → allow ticker ONLY if from exchange\n\n" +
-        "IF:\n" +
-        "- Neither ticker nor ISIN verified:\n" +
-        "    → classify as SME / UNLISTED\n\n" +
+        "STEP 10: CONFIDENCE HANDLING\n\n" +
+        "Ticker found + ISIN not verified → ISIN=UNKNOWN\n" +
+        "Neither verified → Classify as SME/UNLISTED\n\n" +
         "--------------------------------------------------\n" +
-        "STEP 10: OUTPUT FORMAT (STRICT)\n\n" +
-        "Comma-separated, NO spaces:\n\n" +
+        "STEP 11: OUTPUT FORMAT (STRICT)\n\n" +
         "SeqNo,Name,Ticker,ISIN,Sector,Industry,InstrumentType\n\n" +
-        "Rules:\n" +
-        "- Preserve input sequence number\n" +
-        "- If ticker not applicable → NA\n" +
-        "- If ISIN not found → UNKNOWN\n" +
-        "- Return ALL rows (no omissions)\n\n" +
+        "- Preserve sequence number\n" +
+        "- Ticker not applicable → NA\n" +
+        "- ISIN not found → UNKNOWN\n" +
+        "- Return ALL rows\n\n" +
         "--------------------------------------------------\n" +
         "HOLDINGS TO PROCESS (SeqNo,Name):\n" +
-        stocksList + "\n" +
-        "--------------------------------------------------\n" +
-        "EXAMPLES:\n\n" +
-        "1,2.50%GOLDBONDS2032SR-IV,NA,INE...,Government Securities,Sovereign Gold Bond,SOVEREIGN BOND\n\n" +
-        "2,SBI ETF NIFTY 50,NIFTYBEES,INF...,ETF,Nifty 50 Index,ETF\n\n" +
-        "3,MIRAEAMC SMALLCAP,NA,INF...,Mutual Fund,Small Cap Fund,MUTUAL FUND\n\n" +
-        "4,INDIAN BRIGHT STEEL,AZAD,INE...,Industrials,Engineering,EQUITY\n\n" +
-        "5,SMALL SME COMPANY,XYZSME,INE...,Industrials,Manufacturing,EQUITY\n";
+        stocksList;
     
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<div style="margin-bottom:8px;font-size:12px;color:#888;">' +
@@ -890,18 +841,27 @@ function renderStep4() {
     if (hasEnrichedData) {
         var html = '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
             '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">🔍 Verify & Edit Enriched Data</h3>' +
-            '<div style="margin:6px 0;padding:12px;background:#1a2a0a;border-left:3px solid #00ff88;border-radius:4px;font-size:12px;color:#ccc;">' +
-            '<b style="color:#00ff88;">✅ Data Parsed & Enriched!</b> Edit any field if needed, then proceed to Step 5.' +
+            
+            // BUTTONS AT TOP
+            '<div style="margin:8px 0;display:flex;gap:6px;margin-bottom:15px;">' +
+            '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back to Paste</button>' +
+            '<button onclick="goToStep(5)" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Proceed to Step 5 →</button>' +
             '</div>' +
             
+            // STATUS MESSAGE
+            '<div style="margin:6px 0;padding:12px;background:#1a2a0a;border-left:3px solid #00ff88;border-radius:4px;font-size:12px;color:#ccc;">' +
+            '<b style="color:#00ff88;">✅ Data Parsed & Enriched!</b> Edit any field if needed.' +
+            '</div>' +
+            
+            // TABLE CONTENT
             '<div style="margin:6px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:400px;overflow-y:auto;">' +
             '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
             '<tr style="background:#222;border-bottom:1px solid #333;position:sticky;top:0;">' +
-            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;">Name</th>' +
-            '<th style="padding:6px;text-align:left;color:#ffff00;cursor:pointer;user-select:none;min-width:60px;font-weight:bold;">Ticker</th>' +
-            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;">ISIN</th>' +
-            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:56px;">Sector</th>' +
-            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:70px;">Industry</th>' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;" onclick="sortStocks(\'name\')">▼ Name</th>' +
+            '<th style="padding:6px;text-align:left;color:#ffff00;cursor:pointer;user-select:none;min-width:60px;font-weight:bold;" onclick="sortStocks(\'ticker\')">▼ Ticker</th>' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;" onclick="sortStocks(\'isin\')">▼ ISIN</th>' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:56px;" onclick="sortStocks(\'sector\')">▼ Sector</th>' +
+            '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:70px;" onclick="sortStocks(\'industry\')">▼ Industry</th>' +
             '</tr>';
         
         importState.stocks.forEach(function(stock, idx) {
@@ -909,11 +869,17 @@ function renderStep4() {
             var statusColor = hasEnrichment ? "#00ff88" : "#ffb347";
             var statusIcon = hasEnrichment ? "✅" : "⚠️";
             
+            // Check if ticker is auto-filled (same as name) for MF/SGB
+            var isAutoFilled = (stock.instrumentType === 'MUTUAL FUND' || stock.instrumentType === 'SOVEREIGN BOND') && 
+                               stock.ticker === stock.name;
+            var tickerColor = isAutoFilled ? "#ccc" : (stock.ticker ? statusColor : "#888");
+            var tickerDisplay = stock.ticker ? stock.ticker : '-';
+            
             html += '<tr style="border-bottom:0.5px solid #111;background:#050505;">' +
                 '<td style="padding:4px 6px;cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCellStep4(this, ' + idx + ', \'name\')" title="' + stock.name + '">' +
                 stock.name.substring(0, 15) + '</td>' +
-                '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;cursor:pointer;text-align:center;" onclick="editCellStep4(this, ' + idx + ', \'ticker\')">' +
-                (stock.ticker ? stock.ticker : '-') + '</td>' +
+                '<td style="padding:4px 6px;color:' + tickerColor + ';font-weight:bold;cursor:pointer;text-align:center;" onclick="editCellStep4(this, ' + idx + ', \'ticker\')" title="' + (isAutoFilled ? '[Auto-filled from name]' : '') + '">' +
+                tickerDisplay + '</td>' +
                 '<td style="padding:4px 6px;cursor:pointer;" onclick="editCellStep4(this, ' + idx + ', \'isin\')">' +
                 statusIcon + ' ' + (stock.isin || '-') + '</td>' +
                 '<td style="padding:4px 6px;cursor:pointer;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCellStep4(this, ' + idx + ', \'sector\')" title="' + (stock.sector || '') + '">' +
@@ -925,11 +891,7 @@ function renderStep4() {
         
         html += '</table></div>' +
             '<div style="margin:8px 0;font-size:12px;color:#ccc;">' +
-            'Total: ' + importState.stocks.length + ' stocks enriched | Click any field to edit' +
-            '</div>' +
-            '<div style="margin:8px 0;display:flex;gap:6px;">' +
-            '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back to Paste</button>' +
-            '<button onclick="goToStep(5)" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Proceed to Step 5 →</button>' +
+            'Total: ' + importState.stocks.length + ' stocks | Click any field to edit | Yellow=AI-enriched, Gray=Auto-filled' +
             '</div>' +
             '</div>';
         
@@ -939,6 +901,14 @@ function renderStep4() {
     // Show textarea for initial paste
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📋 Paste AI Response</h3>' +
+        
+        // BUTTONS AT TOP
+        '<div style="margin:8px 0;display:flex;gap:6px;margin-bottom:15px;">' +
+        '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back</button>' +
+        '<button onclick="manuallyParseStep4()" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">🔄 Parse Data</button>' +
+        '</div>' +
+        
+        // STATUS MESSAGE
         '<div style="margin-bottom:8px;font-size:12px;">' +
         '<span id="step4-status">' + 
         (hasResponse ? '<span style="color:#00ff88;">✅ Data pasted. Click "Parse Data" to enrich.</span>' : 
@@ -946,21 +916,18 @@ function renderStep4() {
         '</span>' +
         '</div>' +
         
+        // FORMAT INFO
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        '<b style="color:#ffb347;">Format:</b> SeqNo, Name, Ticker, ISIN, Sector, Industry (any delimiter: comma, tab, pipe)' +
+        '<b style="color:#ffb347;">Format:</b> SeqNo, Name, Ticker, ISIN, Sector, Industry (comma/tab/pipe separated)' +
         '</div>' +
         
+        // TEXTAREA CONTENT
         '<textarea id="ai-response" style="width:100%;height:350px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
         'placeholder="Paste AI response here..."></textarea>' +
         
         '<div id="step4-result" style="margin:6px 0;font-size:12px;color:#00ff88;"></div>' +
-        
-        '<div style="margin:8px 0;display:flex;gap:6px;">' +
-        '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back</button>' +
-        '<button onclick="manuallyParseStep4()" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">🔄 Parse Data</button>' +
-        '</div>' +
         '</div>';
 }
 
@@ -1089,6 +1056,14 @@ function parseAIResponse(delimiter) {
 function renderStep5() {
     var html = '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📝 Edit & Validate</h3>' +
+        
+        // INFO AT TOP
+        '<div style="margin:8px 0;padding:12px;background:#1a2a0a;border-left:3px solid #00ff88;border-radius:4px;font-size:12px;color:#ccc;">' +
+        'Total: <b style="color:#00ff88;">' + importState.stocks.length + '</b> stocks (P=Portfolio, W=Watchlist) | ' +
+        '<span style="color:#ffff00;">Yellow</span>=AI-enriched | <span style="color:#ccc;">Gray</span>=Auto-filled (MF/SGB)' +
+        '</div>' +
+        
+        // TABLE CONTENT
         '<div style="margin:6px 0;overflow-x:auto;border:1px solid #111;border-radius:8px;max-height:500px;overflow-y:auto;">' +
         '<table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.3;">' +
         '<tr style="background:#222;border-bottom:1px solid #333;position:sticky;top:0;">' +
@@ -1107,14 +1082,18 @@ function renderStep5() {
         var statusIcon = stock.status === "enriched" ? "✅" : "⚠️";
         var typeLabel = stock.type === "PORTFOLIO" ? "P" : "W";
         var typeColor = stock.type === "PORTFOLIO" ? "#00ff88" : "#ffb347";
-        var tickerColor = stock.ticker ? "#ffff00" : "#ff6b85";
+        
+        // Check if ticker is auto-filled (MF/SGB name) or AI-enriched
+        var isAutoFilled = (stock.instrumentType === 'MUTUAL FUND' || stock.instrumentType === 'SOVEREIGN BOND') && 
+                          stock.ticker === stock.name;
+        var tickerColor = !stock.ticker ? "#ff6b85" : (isAutoFilled ? "#ccc" : "#ffff00");
         var tickerText = stock.ticker ? stock.ticker : "NA";
         
         html += '<tr style="border-bottom:0.5px solid #111;background:#050505;">' +
             '<td style="padding:4px 6px;text-align:center;color:#666;font-size:8px;">' + (idx + 1) + '</td>' +
             '<td style="padding:4px 6px;cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCell(this, ' + idx + ', \'name\')" title="' + stock.name + '">' +
             stock.name.substring(0, 15) + ' <span style="color:' + typeColor + ';">[' + typeLabel + ']</span></td>' +
-            '<td style="padding:4px 6px;color:' + tickerColor + ';font-weight:bold;cursor:pointer;text-align:left;" onclick="editCell(this, ' + idx + ', \'ticker\')">' +
+            '<td style="padding:4px 6px;color:' + tickerColor + ';font-weight:bold;cursor:pointer;text-align:left;" onclick="editCell(this, ' + idx + ', \'ticker\')" title="' + (isAutoFilled ? '[Auto-filled from name]' : '') + '">' +
             tickerText + '</td>' +
             '<td style="padding:4px 6px;color:' + statusColor + ';font-weight:bold;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'isin\')">' +
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
@@ -1130,9 +1109,6 @@ function renderStep5() {
     });
     
     html += '</table></div>' +
-        '<div style="margin:8px 0;font-size:12px;color:#ccc;">' +
-        'Total: ' + importState.stocks.length + ' stocks (P=Portfolio, W=Watchlist) | <span style="color:#ffff00;">Yellow Ticker = AI-enriched (or Name for MF/SGB)</span>' +
-        '</div>' +
         '</div>';
     
     return html;
@@ -1180,6 +1156,24 @@ function editCellStep4(cell, idx, field) {
 }
 
 function goToStep(stepNum) {
+    // Preserve Step 4 textarea data before navigating away
+    if (importState.step === 4) {
+        var textarea = document.getElementById('ai-response');
+        if (textarea) {
+            importState.aiResponseData = textarea.value;
+        }
+    }
+    
+    // Restore Step 4 textarea data when returning
+    if (stepNum === 4 && importState.aiResponseData) {
+        setTimeout(function() {
+            var textarea = document.getElementById('ai-response');
+            if (textarea) {
+                textarea.value = importState.aiResponseData;
+            }
+        }, 50);
+    }
+    
     importState.step = stepNum;
     showImportUI();
 }
