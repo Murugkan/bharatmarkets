@@ -85,9 +85,8 @@ def resolve_trading_code(ticker, isin):
     # Check existing symbol_map overrides first
     if ticker in SYMBOL_MAP:
         mapped = SYMBOL_MAP[ticker]
-        # Return without .NS suffix as to_yf will add it
-        clean_code = mapped.replace(".NS", "").replace(".BO", "")
-        return clean_code, True
+        # Return mapped value as-is (already has correct exchange suffix like .NS or .BO)
+        return mapped, True
     
     # Check isin_map for ISIN-based mappings
     isin_upper = (isin or "").upper()
@@ -147,6 +146,37 @@ def resolve_sgb_code(isin):
     Returns: trading code (e.g., 'SGB2032IV') or None if not found.
     """
     return SGB_MAP.get(isin, None)
+
+# ── Fetch Stock Price from NSE API (Fallback for Yahoo misses) ───────────────
+def fetch_from_nse_api(symbol):
+    """
+    Fetch stock/SGB price directly from NSE API.
+    Used as fallback when Yahoo Finance doesn't have data.
+    
+    Returns: dict with 'ltp', 'change', 'changePct' or None if failed.
+    """
+    try:
+        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        if data and 'priceInfo' in data:
+            info = data['priceInfo']
+            ltp = float(info.get('lastPrice', 0))
+            change = float(info.get('change', 0))
+            change_pct = float(info.get('pChange', 0))
+            
+            return {
+                'ltp': ltp,
+                'change': change,
+                'changePct': change_pct,
+            }
+    except Exception as e:
+        pass
+    
+    return None
+
 
 # ── Yahoo search — only called when RESOLVE=true ───────────────────────
 def search_yahoo_symbol(name, isin=""):
@@ -248,6 +278,13 @@ def fetch_ticker(sym):
                 try:    info_bo = t_bo.info or {}
                 except: info_bo = {}
                 return info_bo, hist_bo
+            
+            # Try NSE API as final fallback (for CNINFOTECH, HIGHENE, SGBFEB32IV, etc.)
+            nse_data = fetch_from_nse_api(sym)
+            if nse_data:
+                print(f"  ⚠ {sym}: using NSE API")
+                return nse_data, None
+            
             print(f"  ✗ {sym}: not found")
             return {}, None
     except Exception as e:
