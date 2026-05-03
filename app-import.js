@@ -870,20 +870,61 @@ function renderStep3() {
         '</div>' +
         
         '<div style="padding:10px;background:#1a2a0a;border-left:3px solid #ffb347;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
-        'Copy prompt → Paste in ChatGPT/Claude → Copy response → Paste in Step 4' +
+        '📋 Copy prompt → Paste in ChatGPT/Claude with web search → Copy AI response → Paste in Step 4' +
         '</div>' +
         
-        '<textarea id="ai-prompt" readonly style="width:100%;height:280px;' +
+        '<textarea id="ai-prompt" readonly style="width:100%;height:500px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:10px;border-radius:6px;resize:none;">' + prompt + '</textarea>' +
+        '<div style="margin:8px 0;font-size:11px;color:#888;">' +
+        '<span style="color:#00ff88;">✓ Stock list included</span> | Scroll to see holdings' +
+        '</div>' +
         '</div>';
 }
 
 function copyPrompt() {
-    var prompt = document.getElementById('ai-prompt');
-    prompt.select();
-    document.execCommand('copy');
-    alert('✅ Prompt copied to clipboard!');
+    // Get textarea element
+    var textarea = document.getElementById('ai-prompt');
+    
+    if (!textarea || !textarea.value) {
+        alert('❌ Prompt not found. Please reload Step 3.');
+        return;
+    }
+    
+    // Get the full text content including stock list
+    var fullContent = textarea.value;
+    
+    // Fallback: if stock list seems missing, reconstruct it
+    if (!fullContent.includes('HOLDINGS TO PROCESS') || importState.stocks.length > 0) {
+        // Rebuild if needed
+        var stocksList = '';
+        for (var i = 0; i < importState.stocks.length; i++) {
+            stocksList += (i + 1) + ',' + importState.stocks[i].name + '\n';
+        }
+        
+        // If stock list not in textarea, append it
+        if (!fullContent.includes('HOLDINGS TO PROCESS')) {
+            fullContent += '\n--------------------------------------------------\nHOLDINGS TO PROCESS (SeqNo,Name):\n' + stocksList;
+        }
+    }
+    
+    // Copy to clipboard using modern API if available
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(fullContent).then(function() {
+            alert('✅ Prompt + Stock List copied to clipboard!\n\n📋 Paste in ChatGPT/Claude with web search enabled');
+        }).catch(function(err) {
+            console.error('Clipboard error:', err);
+            // Fallback to old method
+            textarea.select();
+            document.execCommand('copy');
+            alert('✅ Prompt + Stock List copied to clipboard!\n\n📋 Paste in ChatGPT/Claude with web search enabled');
+        });
+    } else {
+        // Old method for older browsers
+        textarea.select();
+        document.execCommand('copy');
+        alert('✅ Prompt + Stock List copied to clipboard!\n\n📋 Paste in ChatGPT/Claude with web search enabled');
+    }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

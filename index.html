@@ -64,15 +64,6 @@
 <div id="status">Loading Pro Engine...</div>
 <div class="view"><div id="app"></div></div>
 
-<div id="debug-panel" style="position:fixed; bottom:80px; right:10px; width:340px; max-height:350px; background:#111; color:#0f0; border:2px solid #0f0; border-radius:6px; padding:12px; font-family:monospace; font-size:11px; overflow-y:auto; z-index:9999; display:none; box-shadow:0 0 10px #0f0;">
-    <div style="display:flex; justify-content:space-between; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #0f0;">
-        <strong style="font-size:12px;">⚙️ DEBUG STATS</strong>
-        <button onclick="document.getElementById('debug-panel').style.display='none'" style="background:#0f0; color:#000; border:none; padding:2px 8px; cursor:pointer; font-size:10px; border-radius:3px; font-weight:bold;">✕</button>
-    </div>
-    <div id="debug-content" style="white-space:pre-wrap; word-break:break-all; line-height:1.4;"></div>
-</div>
-<button id="debug-toggle" onclick="toggleDebug()" style="position:fixed; bottom:10px; right:10px; background:#0f0; color:#000; border:none; padding:8px 12px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px; z-index:9998; box-shadow:0 0 5px #0f0;">🔧 DEBUG</button>
-
 <footer>
     <a href="index.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
     <a href="data.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
@@ -80,25 +71,7 @@
 </footer>
 
 <script>
-// ===== DEBUG LOG (Console only) =====
-function addDebugLog(msg) {
-    var ts = new Date().toLocaleTimeString();
-    console.log('[' + ts + '] ' + msg);
-}
-
-function toggleDebug() {
-    const panel = document.getElementById('debug-panel');
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-}
-
-function updateDebugPanel(stats) {
-    const content = document.getElementById('debug-content');
-    content.textContent = stats;
-}
-
-function showToast(msg) {
-    console.log('📢 ' + msg);
-}
+// ===== MAIN APPLICATION =====
 
 // ===== PORTFOLIO CODE =====
 const DB_NAME = "OnyxPortfolioDB", STORE_NAME = "Stocks", DB_VERSION = 8;
@@ -134,8 +107,7 @@ const fmt = (val, field) => {
     }
     
     if (['MCAP', 'EBITDA', 'SALES', 'CFO'].includes(field)) return formatLargeNum(n);
-    if (['INVESTED', '1D_GAIN'].includes(field)) return formatLargeNum(n);
-    if (['PNL'].includes(field)) return Math.round(n).toString(); // Remove decimals
+    if (['INVESTED', '1D_GAIN', 'PNL'].includes(field)) return formatLargeNum(n);
     if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
     if (['FV'].includes(field)) return Math.round(n).toString();
     if (['PE', 'PB', 'EPS'].includes(field)) return n.toFixed(1); // 1 decimal for EPS
@@ -176,6 +148,8 @@ const resolve = (obj, field) => {
         'DII%':['dii','DII%','dii_pct'], 
         'ATH%':['ath','ATH%','ath_pct'], 
         '52W%':['w52','52W%','52WEEK','w52_pct'], 
+        'W52H':['w52h','W52H','52WH','52weekHigh'],
+        'W52L':['w52l','W52L','52WL','52weekLow'],
         'SECTOR':['sector','SECTOR'],
         'NAME':['name','NAME','COMPANY'],
         'OPEN':['open','OPEN'],
@@ -309,18 +283,15 @@ async function init() {
             }
         };
         req.onsuccess = () => {
-            addDebugLog('✅ IndexedDB opened successfully');
             res(req.result);
         };
         req.onerror = () => {
-            addDebugLog('❌ Failed to open IndexedDB: ' + req.error);
             res(null);
         };
     });
     
     if (!db) {
         statusEl.innerHTML = "FAILED TO OPEN DATABASE<br>Check browser storage settings";
-        addDebugLog('⚠️ Database connection failed');
         return;
     }
     
@@ -330,34 +301,22 @@ async function init() {
             const req = tx.objectStore(STORE_NAME).getAll();
             req.onsuccess = e => {
                 const result = e.target.result || [];
-                addDebugLog('📖 Read ' + result.length + ' records from object store');
                 res(result);
             };
             req.onerror = () => {
-                addDebugLog('❌ Error reading object store: ' + req.error);
                 rej(req.error);
             };
         });
     } catch(e) {
         statusEl.innerHTML = "ERROR READING DATABASE<br>" + e.message;
-        addDebugLog('❌ Transaction error: ' + e.message);
         return;
     }
     
     if (MASTER.length === 0) {
         statusEl.innerHTML = "DATABASE EMPTY<br><br>📊 Go to Data tab → Click 🚀 LOAD JSON<br>(No authentication required)";
-        addDebugLog('⚠️ No data in IndexedDB');
         return;
     }
     
-    addDebugLog('✅ Loaded ' + MASTER.length + ' stocks');
-                    addDebugLog('✅ Loaded ' + MASTER.length + ' stocks');
-                    
-                    // Log sample data loaded
-                    if (MASTER.length > 0) {
-                        const sample = MASTER[0];
-                        addDebugLog(`📌 Sample: ${resolve(sample,'TICKER')} | LTP: ${resolve(sample,'LTP')} | PE: ${resolve(sample,'PE')} | OPM: ${resolve(sample,'OPM%')}`);
-                    }
     statusEl.style.display = "none";
     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
@@ -388,6 +347,12 @@ function enrichStock(stock) {
     const changePct = cleanNum(resolve(stock, '1D%'));
     if (qty && ltp && !stock['1dGain']) {
         stock['1dGain'] = qty * (ltp * changePct / 100);
+    }
+    
+    // Calculate ATH% = ((LTP - 52W High) / 52W High) * 100
+    const w52h = cleanNum(resolve(stock, 'W52H'));
+    if (ltp && w52h && !stock.ath) {
+        stock.ath = ((ltp - w52h) / w52h) * 100;
     }
     
     // Calculate POS & NEG based on 8 metrics with thresholds (only if not already set)
@@ -429,8 +394,6 @@ function render() {
     MASTER.forEach(s => enrichStock(s));
     
     let sumPnl = 0, sumInv = 0, sumPVal = 0, sumToday = 0, sumLTP = 0, sum1dGain = 0, posCount = 0, negCount = 0, sc = {};
-    let debug1dList = [];
-    let debugCount = 0;
     MASTER.forEach(s => { 
         const sec = resolve(s, 'SECTOR') || 'OTHER';
         const qty = cleanNum(resolve(s, 'QTY'));
@@ -447,12 +410,6 @@ function render() {
         sumToday += todayGain;
         const gain1d = cleanNum(resolve(s, '1D_GAIN'));
         sum1dGain += gain1d;
-        debugCount++;
-        
-        // Debug: log 1D_GAIN items for verification
-        if (qty > 0) {
-            debug1dList.push({ticker: resolve(s, 'TICKER'), qty, changePct, gain1d});
-        }
         
         // Count positive and negative changes
         if (qty > 0) {  // Only count stocks in portfolio
@@ -463,30 +420,6 @@ function render() {
         const weight = Math.max(cleanNum(resolve(s, 'MCAP')) || ltp, 1);
         sc[sec] = (sc[sec] || 0) + weight; 
     });
-    
-    // Debug output - create formatted string for panel
-    const topLosers = debug1dList.filter(x=>x.gain1d<0).sort((a,b) => a.gain1d - b.gain1d).slice(0, 8);
-    const topGainers = debug1dList.filter(x=>x.gain1d>0).sort((a,b) => b.gain1d - a.gain1d).slice(0, 8);
-    
-    let debugStats = `📊 1D_GAIN Analysis\n`;
-    debugStats += `━━━━━━━━━━━━━━━━━━━━\n`;
-    debugStats += `Total Sum: ₹${(sum1dGain/100000).toFixed(2)}L\n`;
-    debugStats += `Items: ${debugCount} stocks\n`;
-    debugStats += `Holdings: ${debug1dList.length} qty>0\n\n`;
-    
-    debugStats += `🔴 Top Losers:\n`;
-    topLosers.forEach(s => {
-        debugStats += `${s.ticker.padEnd(15)} -₹${Math.abs(s.gain1d).toFixed(0).padStart(6)} (${s.changePct.toFixed(2)}%)\n`;
-    });
-    
-    debugStats += `\n🟢 Top Gainers:\n`;
-    topGainers.forEach(s => {
-        debugStats += `${s.ticker.padEnd(15)} +₹${s.gain1d.toFixed(0).padStart(6)} (${s.changePct.toFixed(2)}%)\n`;
-    });
-    
-    // Update both console and debug panel
-    console.log(`✓ Calculated sum1dGain: ₹${(sum1dGain/100000).toFixed(2)}L from ${debugCount} items`);
-    updateDebugPanel(debugStats);
     
     // Update KPI displays
     document.getElementById('k-pval').textContent = '₹' + (sumPVal/100000).toFixed(2) + 'L';
@@ -563,8 +496,8 @@ function render() {
             h += '<th class="' + (f==='TICKER'?'sticky':'') + '"><sup></sup>' + f + '</th>';
         } else {
             let widthStyle = '';
-            if (f === 'SECTOR') widthStyle = 'style="max-width:28px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-            else if (f === 'TICKER') widthStyle = 'style="max-width:50px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            if (f === 'SECTOR') widthStyle = 'style="max-width:30px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            else if (f === 'TICKER') widthStyle = 'style="max-width:25px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
             const displayName = {'INVESTED':'inv', '1D_GAIN':'1dg', '1D%':'1dg%'}[f] || f;
             h += '<th onclick="doSort(\'' + f + '\')" class="' + (f===sortCol?'active':'') + ' ' + (f==='TICKER'?'sticky':'') + '" ' + widthStyle + '><sup>' + (f===sortCol?(sortAsc?'▲':'▼'):'') + '</sup>' + displayName + '</th>';
         }
@@ -581,8 +514,8 @@ function render() {
                 const val = fmt(raw, f);
                 let cls = f === 'TICKER' ? 'sticky' : '';
                 let cellStyle = '';
-                if (f === 'SECTOR') cellStyle = 'style="max-width:28px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-                else if (f === 'TICKER') cellStyle = 'style="max-width:50px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                if (f === 'SECTOR') cellStyle = 'style="max-width:30px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                else if (f === 'TICKER') cellStyle = 'style="max-width:25px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
                 const n = cleanNum(raw);
                 if (f === 'SIGNAL') {
                     const sig = val.toString().toUpperCase();
@@ -715,16 +648,13 @@ function resetAll() {
 
 // ===== SYNC ENGINE - Now reads from IndexedDB =====
 function runEngineSync() {
-    addDebugLog('🔄 Refreshing from IndexedDB...');
     init().then(() => {
-        addDebugLog('✅ Sync complete');
     });
 }
 
 // Initialize on page load
 window.addEventListener('pageshow', function(event) {
     if (event.persisted) {
-        addDebugLog('📄 Page restored from cache - syncing...');
         init();
     }
 });
