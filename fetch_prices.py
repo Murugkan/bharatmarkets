@@ -40,14 +40,18 @@ def load_symbol_map():
         indices   = d.get("indices",   {})
         delisted  = set(d.get("delisted", []))
         sgb_map   = d.get("sgb_map", {})
-        # Remove _comment from sgb_map if present
+        isin_map  = d.get("isin_map", {})
+        
+        # Remove _comment from maps if present
         sgb_map = {k: v for k, v in sgb_map.items() if k != "_comment"}
-        return {**overrides, **indices}, set(indices.keys()), delisted, sgb_map
+        isin_map = {k: v for k, v in isin_map.items() if k != "_comment"}
+        
+        return {**overrides, **indices}, set(indices.keys()), delisted, sgb_map, isin_map
     except Exception as e:
         print(f"⚠ symbol_map.json not found: {e}")
-        return {}, set(), set(), {}
+        return {}, set(), set(), {}, {}
 
-SYMBOL_MAP, INDICES, DELISTED, SGB_MAP = load_symbol_map()
+SYMBOL_MAP, INDICES, DELISTED, SGB_MAP, ISIN_MAP = load_symbol_map()
 
 def now_utc():
     return datetime.datetime.now(datetime.timezone.utc)
@@ -58,7 +62,41 @@ def to_yf(sym):
         return mapped if ("." in mapped or mapped.startswith("^")) else mapped + ".NS"
     return sym + ".NS"
 
-# ── Common headers for API requests ────────────────────────────────────────
+# ── Resolve Ticker/ISIN to Actual NSE Trading Code ────────────────────────
+def resolve_trading_code(ticker, isin):
+    """
+    Resolve demat ticker to actual NSE trading code.
+    
+    Priority:
+    1. Check if ticker is in symbol_map overrides (existing mappings)
+    2. Check if ISIN is in isin_map (new CDSL name → NSE code mappings)
+    3. Check if ISIN is in sgb_map (legacy SGB mappings)
+    4. Use ticker as-is (fallback)
+    
+    Returns: (trading_code, is_mapped)
+       trading_code: code to use for Yahoo Finance
+       is_mapped: whether we found a mapping (vs using ticker as-is)
+    """
+    # Check existing symbol_map overrides first
+    if ticker in SYMBOL_MAP:
+        mapped = SYMBOL_MAP[ticker]
+        # Return without .NS suffix as to_yf will add it
+        clean_code = mapped.replace(".NS", "").replace(".BO", "")
+        return clean_code, True
+    
+    # Check isin_map for ISIN-based mappings
+    isin_upper = (isin or "").upper()
+    if isin_upper in ISIN_MAP:
+        mapped = ISIN_MAP[isin_upper]
+        return mapped, True
+    
+    # Check sgb_map for legacy SGB mappings
+    if isin_upper in SGB_MAP:
+        mapped = SGB_MAP[isin_upper]
+        return mapped, True
+    
+    # No mapping found, use ticker as-is
+    return ticker, False
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -306,8 +344,20 @@ def main():
     # BATCH DOWNLOAD: Equities + ETFs (both use Yahoo Finance)
     # ──────────────────────────────────────────────────────────────────────
     if all_equity_syms:
-        yf_tickers = [to_yf(s) for s in all_equity_syms]
+        # Resolve trading codes and build Yahoo tickers
+        yf_tickers = []
+        resolved_codes = {}
+        for sym in all_equity_syms:
+            entry = sym_to_entry.get(sym, {})
+            isin = entry.get("isin", "")
+            trading_code, is_mapped = resolve_trading_code(sym, isin)
+            resolved_codes[sym] = (trading_code, is_mapped)
+            yf_tickers.append(to_yf(trading_code))
+        
         print(f"⚡ Batch downloading {len(yf_tickers)} equities/ETFs…")
+        if any(is_mapped for _, is_mapped in resolved_codes.values()):
+            mapped_count = sum(1 for _, is_mapped in resolved_codes.values() if is_mapped)
+            print(f"   ({mapped_count} tickers resolved via symbol_map/isin_map)")
         try:
             batch_hist = yf.download(
                 tickers=" ".join(yf_tickers), period="5y", interval="1d",
@@ -318,13 +368,22 @@ def main():
             batch_hist = None
     else:
         batch_hist = None
+        resolved_codes = {}
 
     # ──────────────────────────────────────────────────────────────────────
     # FETCH: Equities + ETFs (from batch or individual)
     # ──────────────────────────────────────────────────────────────────────
     print(f"\n📈 Fetching equities & ETFs…")
     for sym in all_equity_syms:
-        yf_sym = to_yf(sym)
+        # Get resolved trading code
+        if sym in resolved_codes:
+            trading_code, is_mapped = resolved_codes[sym]
+        else:
+            entry = sym_to_entry.get(sym, {})
+            isin = entry.get("isin", "")
+            trading_code, is_mapped = resolve_trading_code(sym, isin)
+        
+        yf_sym = to_yf(trading_code)
         hist = None
         if batch_hist is not None and not batch_hist.empty:
             try:
@@ -336,7 +395,7 @@ def main():
                     hist = batch_hist.xs(yf_sym, axis=1, level=1).dropna(how="all")
             except: hist = None
         if hist is None or hist.empty:
-            _, hist = fetch_ticker(sym)
+            _, hist = fetch_ticker(trading_code)
         info = {}
         try:
             info = yf.Ticker(yf_sym).info or {}
@@ -350,37 +409,58 @@ def main():
         q = build_quote(sym, info, hist)
         if q:
             quotes[sym] = q
-            print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%)")
+            mapped_str = " (mapped)" if is_mapped else ""
+            print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
         else:
             errors.append(sym)
         if hist is not None and not hist.empty:
             build_chart(sym, hist)
 
     # ──────────────────────────────────────────────────────────────────────
-    # FETCH: Mutual Funds (via NSE API using ISIN)
+    # FETCH: Mutual Funds (try Yahoo first, then NSE API)
     # ──────────────────────────────────────────────────────────────────────
     if mf_syms:
-        print(f"\n💰 Fetching mutual funds via NSE API…")
+        print(f"\n💰 Fetching mutual funds…")
         for sym in mf_syms:
             entry = sym_to_entry.get(sym, {})
             isin = entry.get("isin", "").upper()
-            nav_data = fetch_mf_nav(isin)
-            if nav_data:
-                q = {
-                    "ticker": sym,
-                    "name": entry.get("name", sym),
-                    "sector": "",
-                    "ltp": nav_data.get('ltp'),
-                    "change": nav_data.get('change'),
-                    "changePct": nav_data.get('changePct'),
-                    "open": None, "high": None, "low": None, "prev": None,
-                    "vol": 0, "w52h": None, "w52l": None, "beta": None,
-                }
-                quotes[sym] = q
-                print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%)")
-            else:
-                print(f"  ✗ {sym}: NAV fetch failed → null")
-                errors.append(sym)
+            
+            # Try Yahoo first (in case it's mapped or has a ticker)
+            trading_code, is_mapped = resolve_trading_code(sym, isin)
+            yf_sym = to_yf(trading_code)
+            q = None
+            
+            try:
+                info = yf.Ticker(yf_sym).info or {}
+                hist = yf.Ticker(yf_sym).history(period="1d")
+                if hist is not None and not hist.empty:
+                    q = build_quote(sym, info, hist)
+                    if q:
+                        quotes[sym] = q
+                        mapped_str = " (mapped via Yahoo)" if is_mapped else " (Yahoo)"
+                        print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
+            except:
+                pass
+            
+            # If Yahoo failed, try NSE API
+            if not q:
+                nav_data = fetch_mf_nav(isin)
+                if nav_data:
+                    q = {
+                        "ticker": sym,
+                        "name": entry.get("name", sym),
+                        "sector": "",
+                        "ltp": nav_data.get('ltp'),
+                        "change": nav_data.get('change'),
+                        "changePct": nav_data.get('changePct'),
+                        "open": None, "high": None, "low": None, "prev": None,
+                        "vol": 0, "w52h": None, "w52l": None, "beta": None,
+                    }
+                    quotes[sym] = q
+                    print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%) (NSE API)")
+                else:
+                    print(f"  ✗ {sym}: Both Yahoo & NSE API failed → null")
+                    errors.append(sym)
 
     # ──────────────────────────────────────────────────────────────────────
     # FETCH: SGBs (resolve ISIN to trading code, then fetch via Yahoo)
@@ -390,24 +470,26 @@ def main():
         for sym in sgb_syms:
             entry = sym_to_entry.get(sym, {})
             isin = entry.get("isin", "").upper()
-            trading_code = resolve_sgb_code(isin)
-            if trading_code:
-                yf_sym = trading_code + ".NS"
-                try:
-                    info = yf.Ticker(yf_sym).info or {}
-                    hist = yf.Ticker(yf_sym).history(period="5y", interval="1d")
-                    q = build_quote(sym, info, hist)
-                    if q:
-                        quotes[sym] = q
-                        print(f"  ✓ {sym} ({trading_code}): ₹{q['ltp']} ({q['changePct']:+.2f}%)")
-                    else:
-                        print(f"  ✗ {sym}: quote build failed → null")
-                        errors.append(sym)
-                except Exception as e:
-                    print(f"  ✗ {sym}: {e} → null")
+            trading_code, is_mapped = resolve_trading_code(sym, isin)
+            
+            # If not mapped, try as-is or mark as unmapped
+            if not is_mapped:
+                print(f"  ⚠ {sym}: ISIN {isin} not in symbol_map → trying as ticker")
+            
+            yf_sym = to_yf(trading_code)
+            try:
+                info = yf.Ticker(yf_sym).info or {}
+                hist = yf.Ticker(yf_sym).history(period="5y", interval="1d")
+                q = build_quote(sym, info, hist)
+                if q:
+                    quotes[sym] = q
+                    mapped_str = " (mapped)" if is_mapped else ""
+                    print(f"  ✓ {sym} ({trading_code}): ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
+                else:
+                    print(f"  ✗ {sym}: quote build failed → null")
                     errors.append(sym)
-            else:
-                print(f"  ✗ {sym}: not found in sgb_map → null")
+            except Exception as e:
+                print(f"  ✗ {sym}: {str(e)[:60]} → null")
                 errors.append(sym)
 
     # ──────────────────────────────────────────────────────────────────────
