@@ -23,8 +23,8 @@
         .dot { width:8px; height:8px; border-radius:2px; }
         .view { flex:1; overflow-y:auto; overflow-x:auto; background:#000; -webkit-overflow-scrolling:touch; }
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; margin-bottom:80px; }
-        th { background:var(--s1); color:#666; padding:6px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--b1); text-align:center; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
-        th.active { color: var(--bl); }
+        th { background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%); color:#aaa; padding:8px 6px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--bl); text-align:center; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; font-weight: 600; box-shadow: 0 2px 8px rgba(0, 242, 255, 0.1); transition: all 0.2s ease; }
+        th.active { color: var(--bl); font-weight: 700; text-shadow: 0 0 6px rgba(0, 242, 255, 0.5); }
         td { padding:6px; border-bottom:1px solid #111; }
         tfoot td { background: var(--s1); font-weight: 800; color: var(--tx); border-top: 2px solid var(--b1); }
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; }
@@ -449,6 +449,12 @@ function enrichStock(stock) {
         stock.ath = ((ltp - w52h) / w52h) * 100;
     }
     
+    // Calculate 52W% = ((LTP - 52W Low) / 52W Low) * 100
+    const w52l = cleanNum(resolve(stock, 'W52L'));
+    if (ltp && w52l) {
+        stock.w52 = ((ltp - w52l) / w52l) * 100;
+    }
+    
     // Calculate POS & NEG based on 8 metrics with thresholds (only if not already set)
     if (!stock.pos || !stock.neg) {
         let pos = 0, neg = 0;
@@ -661,8 +667,8 @@ function buildTableHeader() {
             html += '<th class="' + (field === 'TICKER' ? 'sticky' : '') + '"><sup></sup>#</th>';
         } else {
             let widthStyle = '';
-            if (field === 'SECTOR') widthStyle = 'style="max-width:60px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-            else if (field === 'TICKER') widthStyle = 'style="max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            if (field === 'SECTOR') widthStyle = 'style="max-width:75px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            else if (field === 'TICKER') widthStyle = 'style="max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
             
             const displayName = {'INVESTED':'inv', '1D_GAIN':'1dg', '1D%':'1dg%'}[field] || field;
             const sortIndicator = field === sortCol ? (sortAsc ? '▲' : '▼') : '';
@@ -700,8 +706,8 @@ function buildTableRows(stocks) {
                 let cellClass = field === 'TICKER' ? 'sticky' : '';
                 let cellStyle = '';
                 
-                if (field === 'SECTOR') cellStyle = 'style="max-width:60px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
-                else if (field === 'TICKER') cellStyle = 'style="max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                if (field === 'SECTOR') cellStyle = 'style="max-width:75px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                else if (field === 'TICKER') cellStyle = 'style="max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
                 
                 if (field === 'SIGNAL') {
                     const signalValue = formattedValue.toString().toUpperCase();
