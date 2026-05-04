@@ -507,18 +507,23 @@ function calculateTotals(stocks) {
         const sector = resolve(stock, 'SECTOR') || 'OTHER';
         const qty = cleanNum(resolve(stock, 'QTY'));
         const ltp = cleanNum(resolve(stock, 'LTP'));
+        const avg = cleanNum(resolve(stock, 'AVG'));
         const changePct = cleanNum(resolve(stock, '1D%'));
+        const change = cleanNum(resolve(stock, '1DCH'));
         
-        sumPnl += cleanNum(resolve(stock, 'PNL'));
-        sumInv += cleanNum(resolve(stock, 'INVESTED'));
+        // Compute PNL directly: (LTP - AVG) * QTY
+        sumPnl += (ltp - avg) * qty;
+        
+        // Compute INVESTED directly: QTY * AVG
+        sumInv += qty * avg;
+        
+        // Portfolio value
         sumLTP += qty * ltp;
-        sumPVal += qty * ltp;  // Portfolio value
+        sumPVal += qty * ltp;
         
-        // Today's gain/loss calculation - use 1D_GAIN if available
-        const gain1d = cleanNum(resolve(stock, '1D_GAIN'));
-        const todayGain = gain1d > 0 || gain1d < 0 ? gain1d : (qty * ltp * changePct) / 100;
-        sumToday += todayGain;
-        sum1dGain += gain1d;
+        // Today's gain/loss: CHANGE * QTY
+        sumToday += change * qty;
+        sum1dGain += change * qty;
         
         // Count positive and negative changes (portfolio stocks only)
         if (qty > 0) {
@@ -774,13 +779,13 @@ function render() {
     // Enrich all stocks with calculated fields
     MASTER.forEach(stock => enrichStock(stock));
     
-    // Calculate totals from all master stocks (for KPI display)
-    const totals = calculateTotals(MASTER);
-    updateKPIDisplay(totals);
-    
     // Apply filters and sort
     let filteredRows = applyFilters(MASTER);
     filteredRows = sortStocks(filteredRows);
+    
+    // Calculate totals from displayed table rows (not all master stocks)
+    const totals = calculateTotals(filteredRows);
+    updateKPIDisplay(totals);
     
     // Build and render table
     let html = buildTableHeader();
