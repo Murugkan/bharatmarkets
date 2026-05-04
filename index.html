@@ -507,23 +507,17 @@ function calculateTotals(stocks) {
         const sector = resolve(stock, 'SECTOR') || 'OTHER';
         const qty = cleanNum(resolve(stock, 'QTY'));
         const ltp = cleanNum(resolve(stock, 'LTP'));
-        const avg = cleanNum(resolve(stock, 'AVG'));
         const changePct = cleanNum(resolve(stock, '1D%'));
-        const change = cleanNum(resolve(stock, '1DCH'));
         
-        // Compute PNL directly: (LTP - AVG) * QTY
-        sumPnl += (ltp - avg) * qty;
-        
-        // Compute INVESTED directly: QTY * AVG
-        sumInv += qty * avg;
-        
-        // Portfolio value
+        // Sum the SAME values displayed in table rows
+        sumPnl += cleanNum(resolve(stock, 'PNL'));
+        sumInv += cleanNum(resolve(stock, 'INVESTED'));
         sumLTP += qty * ltp;
         sumPVal += qty * ltp;
         
-        // Today's gain/loss: CHANGE * QTY
-        sumToday += change * qty;
-        sum1dGain += change * qty;
+        // Sum 1D_GAIN (daily change)
+        sum1dGain += cleanNum(resolve(stock, '1D_GAIN'));
+        sumToday += cleanNum(resolve(stock, '1D_GAIN'));
         
         // Count positive and negative changes (portfolio stocks only)
         if (qty > 0) {
@@ -674,7 +668,7 @@ function buildTableHeader() {
             html += '<th class="' + (field === 'TICKER' ? 'sticky' : '') + '"><sup></sup>#</th>';
         } else {
             let widthStyle = '';
-            if (field === 'SECTOR') widthStyle = 'style="max-width:75px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            if (field === 'SECTOR') widthStyle = 'style="max-width:85px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
             else if (field === 'TICKER') widthStyle = 'style="max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
             
             const displayName = {'INVESTED':'inv', '1D_GAIN':'1dg', '1D%':'1dg%'}[field] || field;
