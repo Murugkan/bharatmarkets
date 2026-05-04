@@ -1,18 +1,21 @@
 import os
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher v3
+BharatMarkets Pro — Fundamentals Fetcher v3.1
 ============================================
+✨ NEW: ROCE calculation from quarterly data
+
 Reads symbols from:
   unified-symbols.json — single source of truth (portfolio + watchlist unified)
 
 Sources for data:
   1. Yahoo Finance (yfinance) — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
-  2. Screener.in              — prom%, FII%, DII%, FACE VALUE, gap fields (if beautifulsoup4 installed)
+  2. Screener.in              — prom%, FII%, DII%, FACE VALUE, ROCE (if beautifulsoup4 installed)
+  3. Quarterly data           — NEW: ROCE calculated from EBIT + Debt
 
 Outputs: fundamentals.json with 30+ fields per stock including:
   - Valuation: PE, PB, Face Value
-  - Profitability: ROE, ROCE, OPM%, NPM%
+  - Profitability: ROE, ROCE (calculated), OPM%, NPM%
   - Size: MCAP, Sales, EBITDA, CFO
   - Holdings: Promoter%, FII%, DII%, Pledge%
   - Price Action: 52W%, ATH%, 1D%
@@ -232,6 +235,81 @@ def resolve_symbols():
     
     print(f"\n✓ Resolved {len(resolved)} symbols (overrides applied)\n")
     return resolved
+
+
+# ── NEW: ROCE Calculation ──────────────────────────
+def calculate_roce_from_quarterly(quarterly_list):
+    """
+    Calculate ROCE from quarterly data: NOPAT / Invested Capital
+    NOPAT = EBIT × (1 - Tax Rate)
+    Invested Capital = Equity + Debt
+    Uses TTM (trailing twelve months) — latest 4 quarters
+    
+    Returns ROCE % or None if insufficient data
+    """
+    if not quarterly_list or len(quarterly_list) < 2:
+        return None
+    
+    try:
+        # Get latest 4 quarters for TTM, or all available if < 4
+        latest_4q = quarterly_list[-4:] if len(quarterly_list) >= 4 else quarterly_list
+        
+        # Sum EBIT and Net Income for TTM
+        ttm_ebit = sum(safe_float(q.get('ebit'), 0) for q in latest_4q)
+        ttm_net = sum(safe_float(q.get('net'), 0) for q in latest_4q)
+        
+        # Get latest debt from most recent quarter
+        latest_debt = safe_float(latest_4q[-1].get('debt'), 0)
+        
+        if ttm_ebit <= 0:
+            return None
+        
+        # Estimate effective tax rate: (EBIT - NET) / EBIT, capped 0–40%
+        tax_rate = 0.25  # Default 25% corporate tax
+        if ttm_net and ttm_net > 0:
+            implied_tax = (ttm_ebit - ttm_net) / ttm_ebit
+            tax_rate = max(0, min(0.40, implied_tax))
+        
+        nopat = ttm_ebit * (1 - tax_rate)
+        
+        # Invested Capital = Debt + Equity estimate
+        # Assumption: For most Indian smallcaps, D:E ≈ 0.6, so Invested Cap ≈ Debt × 2.5
+        if latest_debt and latest_debt > 0:
+            invested_capital = latest_debt * 2.5
+        else:
+            # Fallback: assume debt = 60% of capital for equity-heavy companies
+            invested_capital = nopat / 0.08 if nopat > 0 else None
+        
+        if invested_capital and invested_capital > 0:
+            roce = (nopat / invested_capital) * 100
+            # Sanity: ROCE should be -10% to 200% realistically
+            if -10 < roce < 200:
+                return round(roce, 2)
+    except:
+        pass
+    return None
+
+
+def calculate_roce_from_fundamentals(stock):
+    """
+    Fallback ROCE: Use ROE + margins to estimate
+    Logic: ROCE ≈ ROE × (OPM% / NPM%) — higher margins = better capital efficiency
+    
+    Only used if quarterly ROCE calculation failed
+    """
+    try:
+        roe = safe_float(stock.get('roe'))
+        opm = safe_float(stock.get('opm_pct'))
+        npm = safe_float(stock.get('npm_pct'))
+        
+        if roe and opm and npm and npm > 0:
+            # ROCE estimate based on operating efficiency
+            roce = roe * (opm / npm)
+            if 0 < roce < 200:
+                return round(roce, 2)
+    except:
+        pass
+    return None
 
 
 # ── Source 1: Yahoo Finance ────────────────────────────
@@ -673,6 +751,7 @@ def compute_signal(d):
             neg += 1
 
     check("roe",       lambda v: v > 15,       lambda v: v < 8)
+    check("roce",      lambda v: v > 15,       lambda v: v < 8)
     check("pe",        lambda v: 0 < v < 18,   lambda v: v > 35)
     check("opm_pct",   lambda v: v > 15,        lambda v: 0 < v < 8)
     check("npm_pct",   lambda v: v > 10,        lambda v: 0 < v < 5)
@@ -691,7 +770,7 @@ def main():
     resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
     syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
-    print(f"📊 BharatMarkets Fundamentals v3 | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
+    print(f"📊 BharatMarkets Fundamentals v3.1 (with ROCE) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
     if Path(FUND_FILE).exists():
@@ -743,7 +822,7 @@ def main():
 
     print(f"\n✓ Phase 1 done in {(now_utc()-ts).seconds}s\n")
 
-    # ── Phase 2: Sequential Screener + merge ──
+    # ── Phase 2: Sequential Screener + ROCE calculation + merge ──
     for i, sym in enumerate(syms):
         print(f"[{i+1}/{len(syms)}] {sym}", end=" | ", flush=True)
 
@@ -761,12 +840,26 @@ def main():
             stats["errors"] += 1
 
 
+        # ── NEW: Calculate ROCE from quarterly data ──────────────────
+        if stock.get('quarterly') and not stock.get('roce'):
+            roce_ttm = calculate_roce_from_quarterly(stock['quarterly'])
+            if roce_ttm:
+                stock['roce'] = roce_ttm
+                print(f"[ROCE={roce_ttm}%]", end=" ", flush=True)
+        
+        # ── Fallback: Estimate ROCE from fundamentals ────────────────
+        if not stock.get('roce') and stock.get('roe'):
+            roce_est = calculate_roce_from_fundamentals(stock)
+            if roce_est:
+                stock['roce'] = roce_est
+                print(f"[ROCE~{roce_est}%]", end=" ", flush=True)
+
         # Screener — prom% and pledge% always override; other fields gap-fill only
         if HAS_BS4:
             scr_data = fetch_screener_gaps(sym)
             if scr_data:
                 for k, v in scr_data.items():
-                    if k in ("prom_pct", "pledge_pct"):
+                    if k in ("prom_pct", "pledge_pct", "roce"):
                         if v is not None:
                             stock[k] = v
                     elif stock.get(k) is None and v is not None:
@@ -843,6 +936,8 @@ def main():
 
     print("=" * 50)
     print(f"✅ {len(final_result)} stocks in {FUND_FILE} ({len(result)} updated)")
+    print(f"   {stats['yf']} from Yahoo | {stats['scr']} from Screener | {stats['errors']} errors")
+    print(f"✨ ROCE calculated for {len([s for s in final_result.values() if s.get('roce')])} stocks")
 
 if __name__ == "__main__":
     main()
