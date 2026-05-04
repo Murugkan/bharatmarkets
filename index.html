@@ -99,7 +99,7 @@ const PALETTE = [
 
 const UI_FIELDS = [
     '#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
-    'TICKER', '1D%', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV',
+    'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV',
     'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'
 ];
 
@@ -167,7 +167,7 @@ const fmt = (val, field) => {
     }
     
     if (['MCAP', 'EBITDA', 'SALES', 'CFO'].includes(field)) return formatLargeNum(n);
-    if (['INVESTED', '1D_GAIN', 'PNL'].includes(field)) return formatLargeNum(n);
+    if (['INVESTED', '1D_GAIN', '1DCH', 'PNL'].includes(field)) return formatLargeNum(n);
     if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
     if (['FV'].includes(field)) return Math.round(n).toString();
     if (['PE', 'PB', 'EPS'].includes(field)) return n.toFixed(1); // 1 decimal for EPS
@@ -195,7 +195,8 @@ const resolve = (obj, field) => {
         'SIGNAL':['signal','SIGNAL','TECH_SIGNAL'],
         'PNL':['pnl','PNL','P/L'], 
         'PNL%':['pnlPct','PNL%','PNL_PCT'], 
-        '1D%':['changePct','1D%','CHANGE_1D','CHANGE'], 
+        '1D%':['changePct','1D%','CHANGE','CHANGE_1D'], 
+        '1DCH':['change','1DCH','1D_CHANGE'],
         '1D_GAIN':['1dGain','1D_GAIN','1DGAIN'],
         'LTP':['ltp','LTP','PRICE','price'], 
         'QTY':['qty','QTY','quantity'], 
@@ -339,6 +340,7 @@ const getMetricColor = (field, value, stock) => {
         'PNL': { green: n > 0, red: n < 0 },
         'PNL%': { green: n > 0, red: n < 0 },
         '1D%': { green: n > 0, red: n < 0 },
+        '1DCH': { green: n > 0, red: n < 0 },
         '1D_GAIN': { green: n > 0, red: n < 0 }
         // POS and NEG are counts, not metrics - no coloring
     };
@@ -437,10 +439,10 @@ function enrichStock(stock) {
         stock.pnlPct = ((ltp - avg) / avg) * 100;
     }
     
-    // Calculate 1D_GAIN = QTY * (LTP * changePct / 100)
-    const changePct = cleanNum(resolve(stock, '1D%'));
-    if (qty && ltp && !stock['1dGain']) {
-        stock['1dGain'] = qty * (ltp * changePct / 100);
+    // Calculate 1D_GAIN = CHANGE * QTY (absolute daily gain/loss per unit × quantity)
+    const change = cleanNum(resolve(stock, '1DCH'));
+    if (qty && !stock['1dGain']) {
+        stock['1dGain'] = change * qty;
     }
     
     // Calculate ATH% = ((LTP - 52W High) / 52W High) * 100
@@ -512,10 +514,10 @@ function calculateTotals(stocks) {
         sumLTP += qty * ltp;
         sumPVal += qty * ltp;  // Portfolio value
         
-        // Today's gain/loss calculation
-        const todayGain = (qty * ltp * changePct) / 100;
-        sumToday += todayGain;
+        // Today's gain/loss calculation - use 1D_GAIN if available
         const gain1d = cleanNum(resolve(stock, '1D_GAIN'));
+        const todayGain = gain1d > 0 || gain1d < 0 ? gain1d : (qty * ltp * changePct) / 100;
+        sumToday += todayGain;
         sum1dGain += gain1d;
         
         // Count positive and negative changes (portfolio stocks only)
