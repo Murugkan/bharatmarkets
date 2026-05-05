@@ -735,6 +735,65 @@ def fetch_screener_gaps(sym):
 
     return result
 
+# ── Moneycontrol Fallback ──────────────────────────────
+def fetch_moneycontrol_gaps(sym):
+    """
+    Fallback to Moneycontrol if Screener gaps remain.
+    Fills: ROE, ROCE, Face Value, Holdings (Prom%, FII%, DII%)
+    """
+    result = {}
+    if not HAS_BS4:
+        return result
+    try:
+        url = f"https://www.moneycontrol.com/stock/{sym}/share-price"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return result
+        
+        soup = BeautifulSoup(r.text, "html.parser")
+        
+        # Try to extract key metrics from Moneycontrol
+        # Looking for common patterns in their layout
+        tables = soup.find_all("table")
+        for table in tables:
+            rows = table.find_all("tr")
+            for row in rows:
+                cells = [c.get_text(strip=True) for c in row.find_all(["td", "th"])]
+                if len(cells) < 2:
+                    continue
+                    
+                lbl = cells[0].lower()
+                try:
+                    val = safe_float(cells[-1].replace("%", "").replace(",", ""))
+                except:
+                    val = None
+                
+                if val is None:
+                    continue
+                    
+                # Map Moneycontrol labels to our fields
+                if "roe" in lbl and "roce" not in lbl:
+                    result.setdefault("roe", val)
+                elif "roce" in lbl:
+                    result.setdefault("roce", val)
+                elif "face value" in lbl or "fv" in lbl:
+                    result.setdefault("face_value", val)
+                elif "promoter" in lbl and "%" in cells[-1]:
+                    result.setdefault("prom_pct", val)
+                elif "fii" in lbl or "fpi" in lbl:
+                    result.setdefault("fii_pct", val)
+                elif "dii" in lbl or "institution" in lbl:
+                    result.setdefault("dii_pct", val)
+        
+        if result:
+            print(f"  ✓ Moneycontrol {sym}: {len(result)} gap fields filled")
+    
+    except Exception as e:
+        pass  # Silent fail for fallback source
+    
+    return result
+
 # ── Signal ─────────────────────────────────────────────
 def compute_signal(d):
     pos = 0
@@ -870,6 +929,17 @@ def main():
                 stats["scr"] += 1
             time.sleep(SCR_DELAY)
 
+        # Moneycontrol fallback — fill remaining gaps (ROE, ROCE, Holdings)
+        # Only if Screener didn't have them
+        gaps_remaining = sum(1 for f in ['roe', 'roce', 'prom_pct', 'fii_pct', 'dii_pct', 'face_value'] 
+                            if stock.get(f) is None)
+        if gaps_remaining > 0 and HAS_BS4:
+            mc_data = fetch_moneycontrol_gaps(sym)
+            if mc_data:
+                for k, v in mc_data.items():
+                    if stock.get(k) is None and v is not None:
+                        stock[k] = v
+            time.sleep(SCR_DELAY)
 
         # prices.json fallback
         pq = prices.get(sym, {})
