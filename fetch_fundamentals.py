@@ -691,6 +691,8 @@ def fetch_screener_gaps(sym):
 
                     elif "public" in lbl:
                         result["public_pct"] = val
+                    elif "nii" in lbl or "non-institutional" in lbl:
+                        result["nii_pct"] = val
                     elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
                         result["fii_pct"] = val
                     elif "dii" in lbl or "institution" in lbl:
@@ -712,6 +714,8 @@ def fetch_screener_gaps(sym):
                     if "opm" in lbl:                                    result["opm_pct"] = val
                     elif "npm" in lbl:                                  result["npm_pct"] = val
                     elif lbl.startswith("sales") or "revenue" in lbl:  result["sales"] = val
+                    elif "ebitda" in lbl:                               result.setdefault("ebitda", val)
+                    elif "debt" in lbl and "equity" not in lbl:         result.setdefault("debt", val)
 
         # Cash flow
         cf = soup.find("section", id="cash-flow")
@@ -722,13 +726,14 @@ def fetch_screener_gaps(sym):
                     cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
                     if len(cells) < 2:
                         continue
-                    if "operating" in cells[0].lower():
-                        val = safe_float(cells[-1].replace(",",""))
-                        if val is not None:
+                    lbl = cells[0].lower()
+                    val = safe_float(cells[-1].replace(",",""))
+                    if val is not None:
+                        if "operating" in lbl or "cfo" in lbl or "operating cash" in lbl:
                             result.setdefault("cfo", val)
 
         if result:
-            print(f"  ✓ Screener {sym}: {len(result)} gap fields filled")
+            print(f"  ✓ Screener {sym}: {len(result)} fields ({', '.join(result.keys())})")
 
     except Exception as e:
         print(f"  ⚠ Screener {sym}: {e}")
