@@ -679,22 +679,15 @@ def fetch_screener_gaps(sym):
                     if "promoter" in lbl and "pledge" not in lbl:
                         result["prom_pct"] = val
 
-                    elif "pledge" in lbl:
-                        # Sanity check: pledge must be 0–100
-                        if 0 <= val <= 100:
-                            result["pledge_pct"] = val
-                        else:
-                            # Fallback: try last column value
-                            last = numeric_vals[-1]
-                            if 0 <= last <= 100:
-                                result["pledge_pct"] = last
-
                     elif "public" in lbl:
-                        result["public_pct"] = val
+                        result["nii_pct"] = val
                     elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
                         result["fii_pct"] = val
                     elif "dii" in lbl or "institution" in lbl:
                         result["dii_pct"] = val
+                    elif "pledge" in lbl:
+                        if 0 <= val <= 100:
+                            result["pledge_pct"] = val
 
         # P&L table
         pl = soup.find("section", id="profit-loss")
