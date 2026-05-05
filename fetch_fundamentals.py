@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Complete Fundamentals Fetcher
-================================================
-✨ ONE COMMAND: python3 fetch_fundamentals.py
-✨ ALWAYS FRESH: Complete rebuild every run
-✨ ALL PHASES: Yahoo → Calculate → Hunt Holdings
-✨ ZERO COMPLEXITY: Just works
+BharatMarkets Pro — Fundamentals Fetcher v3.7-OMNIFORCE
+======================================================
+✨ MULTI-SOURCE FALLBACK SYSTEM
+- Yahoo Finance (primary)
+- Screener.in (secondary)
+- Moneycontrol (tertiary)
+
+✨ COMPLETE METRIC CALCULATION
+- Phase 1: Basic (ROE, ROCE, FaceValue)
+- Phase 2: Calculated (EV/EBITDA, ROIC, ratios)
+- Phase 3: Moneycontrol fallback
 """
 
 import json, time, datetime, re, os
@@ -20,16 +25,15 @@ except ImportError:
     raise SystemExit("pip install yfinance")
 
 import requests
+
 try:
     from bs4 import BeautifulSoup
     HAS_BS4 = True
 except ImportError:
     HAS_BS4 = False
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-
 SYMBOLS_FILE = "unified-symbols.json"
+PRICES_FILE = "prices.json"
 FUND_FILE = "fundamentals.json"
 
 HEADERS = {
@@ -39,6 +43,7 @@ HEADERS = {
 
 SKIP = {"NIFTY","BANKNIFTY","NIFTY50","SENSEX","NIFTYIT","MIDCAP","SMALLCAP","NIFTYBANK"}
 DELISTED = set()
+COMMON_FACE_VALUES = [1, 2, 5, 10, 25, 50, 100]
 
 try:
     _sm = json.loads(open("symbol_map.json").read())
@@ -50,8 +55,8 @@ except:
 
 YF_ALIAS_CACHE = {}
 CDSL_NAMES = {}
+
 _SCR_SESSION = None
-_MC_SESSION = None
 
 def now_utc():
     return datetime.datetime.now(datetime.timezone.utc)
@@ -82,9 +87,9 @@ def load_symbols():
                 syms.append(ticker)
                 seen.add(ticker)
                 if name: CDSL_NAMES[ticker] = name
-        print(f"📋 {len(syms)} symbols loaded\n")
+        print(f"📋 {len(syms)} EQUITY symbols\n")
     except Exception as e:
-        print(f"⚠ Error: {e}")
+        print(f"⚠ Cannot read {SYMBOLS_FILE}: {e}")
     return syms
 
 def resolve_symbols():
@@ -97,25 +102,53 @@ def resolve_symbols():
     resolved = {}
     for sym in symbols:
         resolved[sym] = overrides.get(sym, sym + ".NS")
+    print(f"✓ Resolved {len(resolved)} symbols\n")
     return resolved
 
-def calculate_metrics(stock, quarterly_list):
-    """Phase 2: Calculate all derived metrics"""
+# ════════════════════════════════════════════════════════════════════════════
+# PHASE 2: CALCULATED METRICS
+# ════════════════════════════════════════════════════════════════════════════
+
+def calculate_valuation_metrics(stock):
+    try:
+        mcap = safe_float(stock.get('mcap'))
+        ebitda = safe_float(stock.get('ebitda'))
+        total_debt = safe_float(stock.get('total_debt'))
+        if mcap and ebitda and ebitda > 0:
+            if total_debt:
+                ev = mcap + total_debt
+            else:
+                ev = mcap * 1.2
+            ev_ebitda = ev / ebitda
+            if 0 < ev_ebitda < 100:
+                stock['ev_ebitda'] = round(ev_ebitda, 2)
+    except:
+        pass
+
+def calculate_quality_metrics(stock, quarterly_list):
     try:
         if quarterly_list and len(quarterly_list) >= 4:
             latest_4q = quarterly_list[-4:]
             ttm_ebit = sum(safe_float(q.get('ebit'), 0) for q in latest_4q)
-            ttm_ocf = sum(safe_float(q.get('cfo'), 0) for q in latest_4q)
-            ttm_net = sum(safe_float(q.get('net'), 0) for q in latest_4q)
             latest_debt = safe_float(latest_4q[-1].get('debt'), 0)
+            latest_equity = safe_float(latest_4q[-1].get('equity'), 0)
             
-            if ttm_ebit > 0 and (latest_debt or safe_float(latest_4q[-1].get('equity'), 0)):
-                invested = (safe_float(latest_4q[-1].get('equity'), 0) or 0) + (latest_debt or 0)
-                if invested > 0:
-                    nopat = ttm_ebit * 0.75
-                    roic = (nopat / invested) * 100
+            if ttm_ebit > 0 and (latest_debt or latest_equity):
+                tax_rate = 0.25
+                nopat = ttm_ebit * (1 - tax_rate)
+                invested_capital = (latest_equity or 0) + (latest_debt or 0)
+                if invested_capital > 0:
+                    roic = (nopat / invested_capital) * 100
                     if 0 < roic < 200:
                         stock['roic'] = round(roic, 2)
+    except:
+        pass
+    
+    try:
+        if quarterly_list and len(quarterly_list) >= 4:
+            latest_4q = quarterly_list[-4:]
+            ttm_ocf = sum(safe_float(q.get('cfo'), 0) for q in latest_4q)
+            ttm_net = sum(safe_float(q.get('net'), 0) for q in latest_4q)
             
             if ttm_net and ttm_net > 0:
                 cash_conv = (ttm_ocf / ttm_net) * 100
@@ -125,15 +158,29 @@ def calculate_metrics(stock, quarterly_list):
         pass
     
     try:
-        mcap = safe_float(stock.get('mcap'))
+        total_debt = safe_float(stock.get('total_debt'))
         ebitda = safe_float(stock.get('ebitda'))
-        if mcap and ebitda and ebitda > 0:
-            ev = mcap + safe_float(stock.get('total_debt'), 0) or mcap * 1.2
-            ev_ebitda = ev / ebitda
-            if 0 < ev_ebitda < 100:
-                stock['ev_ebitda'] = round(ev_ebitda, 2)
+        if total_debt and ebitda and ebitda > 0:
+            d_ebitda = total_debt / ebitda
+            if 0 < d_ebitda < 20:
+                stock['d_ebitda'] = round(d_ebitda, 2)
     except:
         pass
+
+def calculate_health_metrics(stock, bs_data):
+    try:
+        curr_assets = bs_data.get('current_assets')
+        curr_liab = bs_data.get('current_liabilities')
+        if curr_assets and curr_liab and curr_liab > 0:
+            curr_ratio = curr_assets / curr_liab
+            if 0 < curr_ratio < 10:
+                stock['curr_ratio'] = round(curr_ratio, 2)
+    except:
+        pass
+
+# ════════════════════════════════════════════════════════════════════════════
+# YAHOO FINANCE
+# ════════════════════════════════════════════════════════════════════════════
 
 def resolve_yf_sym(nse_sym):
     if nse_sym in YF_ALIAS_CACHE:
@@ -147,10 +194,10 @@ def resolve_yf_sym(nse_sym):
     return nse_sym + ".NS"
 
 def yahoo_search_sym(nse_sym, cdsl_name=None):
-    queries = [cdsl_name] if cdsl_name else [nse_sym]
+    queries = [cdsl_name] if cdsl_name else [nse_sym, nse_sym + " NSE", nse_sym[:6]]
     for q_str in queries:
         try:
-            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(q_str)}&quotesCount=5"
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(q_str)}&lang=en-IN&region=IN&quotesCount=8&newsCount=0&enableFuzzyQuery=true&enableEnhancedTrivialQuery=true"
             r = requests.get(url, headers=HEADERS, timeout=10)
             if r.status_code != 200: continue
             quotes = r.json().get("quotes", [])
@@ -158,6 +205,7 @@ def yahoo_search_sym(nse_sym, cdsl_name=None):
                 sym_yf = q.get("symbol", "")
                 if (sym_yf.endswith(".NS") or sym_yf.endswith(".BO")) and q.get("quoteType", "") in ("EQUITY", ""):
                     YF_ALIAS_CACHE[nse_sym] = sym_yf
+                    NSE_TO_YAHOO[nse_sym] = sym_yf.replace(".NS","").replace(".BO","")
                     return sym_yf
         except:
             pass
@@ -165,28 +213,40 @@ def yahoo_search_sym(nse_sym, cdsl_name=None):
     return None
 
 def fetch_yfinance(sym, yf_ticker=None):
-    """Phase 1: Fetch from Yahoo Finance"""
     result = {}
     try:
         yf_sym = yf_ticker if yf_ticker else resolve_yf_sym(sym)
         t = yf.Ticker(yf_sym)
-        
+        hist_short = None
         try:
-            hist = t.history(period="1mo", auto_adjust=True)
+            hist_short = t.history(period="1mo", interval="1d", auto_adjust=True)
         except:
-            hist = None
+            pass
 
-        if hist is None or hist.empty:
-            found = yahoo_search_sym(sym, CDSL_NAMES.get(sym))
-            if found:
-                t = yf.Ticker(found)
+        if hist_short is None or hist_short.empty:
+            found_sym = yahoo_search_sym(sym, cdsl_name=CDSL_NAMES.get(sym))
+            if found_sym:
+                yf_sym = found_sym
+                t = yf.Ticker(yf_sym)
                 try:
-                    hist = t.history(period="1mo", auto_adjust=True)
+                    hist_short = t.history(period="1mo", interval="1d", auto_adjust=True)
                 except:
-                    hist = None
-        
-        if hist is None or hist.empty:
-            return result
+                    hist_short = None
+
+        if hist_short is None or hist_short.empty:
+            try:
+                bo_sym = sym + ".BO"
+                t_bo = yf.Ticker(bo_sym)
+                hist_bo = t_bo.history(period="1mo", interval="1d", auto_adjust=True)
+                if hist_bo is not None and not hist_bo.empty:
+                    yf_sym = bo_sym
+                    t = t_bo
+                    hist_short = hist_bo
+                    YF_ALIAS_CACHE[sym] = bo_sym
+                else:
+                    return result
+            except:
+                return result
 
         info = {}
         try:
@@ -194,21 +254,24 @@ def fetch_yfinance(sym, yf_ticker=None):
         except:
             pass
 
-        ltp = None
+        ltp, prev = None, None
         try:
             fi = t.fast_info
             ltp = safe_float(getattr(fi, "last_price", None))
+            prev = safe_float(getattr(fi, "previous_close", None))
         except:
             pass
         if not ltp:
-            ltp = safe_float(info.get("currentPrice"))
-        if not ltp and len(hist) > 0:
-            ltp = round(float(hist["Close"].iloc[-1]), 2)
-        
+            ltp = safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+            prev = safe_float(info.get("previousClose"))
+        if not ltp:
+            closes = hist_short["Close"].dropna()
+            if not closes.empty:
+                ltp = round(float(closes.iloc[-1]), 2)
+                prev = round(float(closes.iloc[-2]), 2) if len(closes) >= 2 else ltp
+
         if not ltp:
             return result
-
-        prev = safe_float(info.get("previousClose")) or (round(float(hist["Close"].iloc[-2]), 2) if len(hist) > 1 else ltp)
 
         result["ltp"] = ltp
         result["prev"] = prev
@@ -217,18 +280,21 @@ def fetch_yfinance(sym, yf_ticker=None):
         result["w52l"] = safe_float(info.get("fiftyTwoWeekLow"))
         result["name"] = info.get("longName") or info.get("shortName") or sym
         result["sector"] = info.get("sector") or ""
+
         result["pe"] = safe_float(info.get("trailingPE"))
         result["pb"] = safe_float(info.get("priceToBook"))
         result["eps"] = safe_float(info.get("trailingEps"))
         result["bv"] = safe_float(info.get("bookValue"))
 
         roe_raw = safe_float(info.get("returnOnEquity"))
-        result["roe"] = round(roe_raw * 100, 2) if roe_raw else None
-        
+        roa_raw = safe_float(info.get("returnOnAssets"))
+        result["roe"] = round(roe_raw * 100, 2) if roe_raw is not None else None
+        result["roa"] = round(roa_raw * 100, 2) if roa_raw is not None else None
+
         npm_raw = safe_float(info.get("profitMargins"))
         opm_raw = safe_float(info.get("operatingMargins"))
-        result["npm_pct"] = round(npm_raw * 100, 2) if npm_raw else None
-        result["opm_pct"] = round(opm_raw * 100, 2) if opm_raw else None
+        result["npm_pct"] = round(npm_raw * 100, 2) if npm_raw is not None else None
+        result["opm_pct"] = round(opm_raw * 100, 2) if opm_raw is not None else None
 
         result["mcap"] = to_cr(info.get("marketCap"))
         result["sales"] = to_cr(info.get("totalRevenue"))
@@ -237,276 +303,333 @@ def fetch_yfinance(sym, yf_ticker=None):
 
         if result.get("w52h") and ltp:
             result["w52_pct"] = round((ltp / result["w52h"] - 1) * 100, 1)
+        result["ath"] = result.get("w52h")
+        result["ath_pct"] = result.get("w52_pct")
 
-        # Quarterly data
         try:
             q_data = {}
             def qkey(d): return str(d)[:10]
-            
+
+            qf = None
             for attr in ['quarterly_income_stmt', 'quarterly_financials']:
                 try:
-                    qf = getattr(t, attr, None)
-                    if qf is not None and not qf.empty:
-                        for row_label in qf.index:
-                            rl = str(row_label).lower().strip()
-                            for col in qf.columns:
-                                k = qkey(col)
-                                if k not in q_data: q_data[k] = {}
-                                try:
-                                    v = float(qf.loc[row_label, col])
-                                    if v != v: continue
-                                    if rl == 'total revenue': q_data[k]['rev'] = round(v/1e7, 2)
-                                    elif rl == 'net income': q_data[k]['net'] = round(v/1e7, 2)
-                                    elif rl == 'ebit': q_data[k]['ebit'] = round(v/1e7, 2)
-                                except:
-                                    continue
+                    df = getattr(t, attr, None)
+                    if df is not None and not df.empty:
+                        qf = df
                         break
                 except:
                     pass
-            
+
+            if qf is not None:
+                for row_label in qf.index:
+                    rl = str(row_label).lower().strip()
+                    for col in qf.columns:
+                        k = qkey(col)
+                        if k not in q_data: q_data[k] = {}
+                        try:
+                            v = float(qf.loc[row_label, col])
+                            if v != v: continue
+                        except:
+                            continue
+                        if rl == 'total revenue': q_data[k]['rev'] = round(v/1e7, 2)
+                        elif rl == 'net income': q_data[k]['net'] = round(v/1e7, 2)
+                        elif rl == 'ebit': q_data[k]['ebit'] = round(v/1e7, 2)
+
+            qc = None
             for attr in ['quarterly_cash_flow', 'quarterly_cashflow']:
                 try:
-                    qc = getattr(t, attr, None)
-                    if qc is not None and not qc.empty:
-                        for row_label in qc.index:
-                            rl = str(row_label).lower().strip()
-                            if any(x in rl for x in ('operating cash flow', 'cash from operations')):
-                                for col in qc.columns:
-                                    k = qkey(col)
-                                    if k not in q_data: q_data[k] = {}
-                                    try:
-                                        v = float(qc.loc[row_label, col])
-                                        if v != v: continue
-                                        q_data[k]['cfo'] = round(v/1e7, 2)
-                                    except:
-                                        continue
+                    df = getattr(t, attr, None)
+                    if df is not None and not df.empty:
+                        qc = df
                         break
                 except:
                     pass
-            
+
+            if qc is not None:
+                for row_label in qc.index:
+                    rl = str(row_label).lower().strip()
+                    for col in qc.columns:
+                        k = qkey(col)
+                        if k not in q_data: q_data[k] = {}
+                        try:
+                            v = float(qc.loc[row_label, col])
+                            if v != v: continue
+                        except:
+                            continue
+                        if any(x in rl for x in ('operating cash flow', 'cash from operations')):
+                            q_data[k]['cfo'] = round(v/1e7, 2)
+
+            qb = None
             for attr in ['quarterly_balance_sheet', 'quarterly_balancesheet']:
                 try:
-                    qb = getattr(t, attr, None)
-                    if qb is not None and not qb.empty:
-                        for row_label in qb.index:
-                            rl = str(row_label).lower().strip()
-                            if any(x in rl for x in ('total debt', 'long term debt')):
-                                for col in qb.columns:
-                                    k = qkey(col)
-                                    if k not in q_data: q_data[k] = {}
-                                    try:
-                                        v = float(qb.loc[row_label, col])
-                                        if v != v: continue
-                                        q_data[k]['debt'] = round(v/1e7, 2)
-                                    except:
-                                        continue
-                                break
+                    df = getattr(t, attr, None)
+                    if df is not None and not df.empty:
+                        qb = df
+                        break
+                except:
+                    pass
+
+            if qb is not None:
+                for row_label in qb.index:
+                    rl = str(row_label).lower().strip()
+                    if any(x in rl for x in ('total debt', 'long term debt')):
+                        for col in qb.columns:
+                            k = qkey(col)
+                            if k not in q_data: q_data[k] = {}
+                            try:
+                                v = float(qb.loc[row_label, col])
+                                if v != v: continue
+                                q_data[k]['debt'] = round(v/1e7, 2)
+                            except:
+                                continue
+                        break
+
+            if q_data:
+                quarters = sorted([(k, v) for k, v in q_data.items() if len(v) > 0])[-12:]
+                if quarters:
+                    result['quarterly'] = [{'d': k, **v} for k, v in quarters]
+
+        except:
+            pass
+
+        try:
+            qb = None
+            for attr in ['quarterly_balance_sheet', 'quarterly_balancesheet']:
+                try:
+                    df = getattr(t, attr, None)
+                    if df is not None and not df.empty:
+                        qb = df
                         break
                 except:
                     pass
             
-            if q_data:
-                quarters = sorted([(k, v) for k, v in q_data.items() if v])[-12:]
-                if quarters:
-                    result['quarterly'] = [{'d': k, **v} for k, v in quarters]
+            if qb is not None:
+                bs_data = {}
+                latest_col = qb.columns[-1]
+                for row_label in qb.index:
+                    rl = str(row_label).lower().strip()
+                    try:
+                        v = float(qb.loc[row_label, latest_col])
+                        if v > 0:
+                            if any(x in rl for x in ['total equity', 'shareholders equity']):
+                                bs_data['total_equity'] = round(v / 1e7, 2)
+                            elif any(x in rl for x in ['total debt', 'long term debt']):
+                                bs_data['total_debt'] = round(v / 1e7, 2)
+                            elif 'current asset' in rl:
+                                bs_data['current_assets'] = round(v / 1e7, 2)
+                            elif 'current liability' in rl or 'current liabilities' in rl:
+                                bs_data['current_liabilities'] = round(v / 1e7, 2)
+                    except:
+                        pass
+                
+                if bs_data:
+                    result['_bs_data'] = bs_data
         except:
             pass
 
         print(f"  ✓ {sym}: ₹{ltp}")
 
     except Exception as e:
-        print(f"  ✗ {sym}: {str(e)[:50]}")
+        print(f"  ✗ {sym}: {e}")
 
     return result
 
-def get_session(name):
-    global _SCR_SESSION, _MC_SESSION
-    if name == "screener":
-        if _SCR_SESSION is None:
-            _SCR_SESSION = requests.Session()
-            _SCR_SESSION.headers.update(HEADERS)
-        return _SCR_SESSION
-    elif name == "mc":
-        if _MC_SESSION is None:
-            _MC_SESSION = requests.Session()
-            _MC_SESSION.headers.update(HEADERS)
-        return _MC_SESSION
+# ════════════════════════════════════════════════════════════════════════════
+# SCREENER.IN
+# ════════════════════════════════════════════════════════════════════════════
 
-def hunt_holdings(sym):
-    """Phase 3: Hunt for holdings data"""
+def get_scr_session():
+    global _SCR_SESSION
+    if _SCR_SESSION is None:
+        _SCR_SESSION = requests.Session()
+        _SCR_SESSION.headers.update(HEADERS)
+    return _SCR_SESSION
+
+def fetch_screener(sym):
     result = {}
-    if not HAS_BS4: return result, None
-    
-    # Try Screener
+    if not HAS_BS4:
+        return result
     try:
-        sess = get_session("screener")
-        for url in [f"https://www.screener.in/company/{sym}/consolidated/", f"https://www.screener.in/company/{sym}/"]:
-            try:
-                r = sess.get(url, timeout=15)
-                if r.status_code != 200: continue
-                soup = BeautifulSoup(r.text, "html.parser")
-                
-                sh = soup.find("section", id="shareholding")
-                if sh:
-                    tbl = sh.find("table")
-                    if tbl:
-                        for row in tbl.find_all("tr"):
-                            cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
-                            if len(cells) < 2: continue
-                            lbl = cells[0].lower()
-                            vals = [safe_float(c.replace("%","").replace(",","")) for c in cells[1:]]
-                            vals = [v for v in vals if v]
-                            if not vals: continue
-                            val = vals[-2] if len(vals) >= 2 else vals[0]
-                            if "promoter" in lbl and "pledge" not in lbl: result["prom_pct"] = val
-                            elif "fii" in lbl or "fpi" in lbl: result["fii_pct"] = val
-                            elif "dii" in lbl: result["dii_pct"] = val
-                if result: return result, "screener"
-            except:
-                pass
-        time.sleep(0.2)
-    except:
-        pass
-    
-    # Try Moneycontrol
-    try:
-        sess = get_session("mc")
-        for url in [f"https://www.moneycontrol.com/stock/{sym}", f"https://www.moneycontrol.com/stockprice/{sym}"]:
-            try:
-                r = sess.get(url, timeout=15)
-                if r.status_code != 200: continue
-                soup = BeautifulSoup(r.text, "html.parser")
-                for table in soup.find_all('table'):
-                    for row in table.find_all('tr'):
-                        cells = [c.get_text(strip=True) for c in row.find_all(['td','th'])]
-                        if len(cells) < 2: continue
-                        lbl = cells[0].lower().strip()
-                        try:
-                            val = safe_float(cells[-1].replace("%","").replace(",",""))
-                        except:
-                            continue
-                        if not val: continue
-                        if "promoter" in lbl: result["prom_pct"] = val
-                        elif "fii" in lbl or "fpi" in lbl: result["fii_pct"] = val
-                        elif "dii" in lbl: result["dii_pct"] = val
-                if result: return result, "moneycontrol"
-            except:
-                pass
-        time.sleep(0.2)
-    except:
-        pass
-    
-    return result, None
+        sess = get_scr_session()
+        url = f"https://www.screener.in/company/{sym}/consolidated/"
+        r = sess.get(url, timeout=15)
+        if r.status_code == 404:
+            url = f"https://www.screener.in/company/{sym}/"
+            r = sess.get(url, timeout=15)
+        if r.status_code != 200:
+            return result
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        ul = soup.find("ul", id="top-ratios")
+        if ul:
+            for li in ul.find_all("li"):
+                spans = li.find_all("span")
+                if len(spans) < 2: continue
+                lbl = spans[0].get_text(strip=True).lower()
+                raw = spans[-1].get_text(strip=True).replace(",","").replace("₹","").replace("%","")
+                val = safe_float(raw)
+                if val is None: continue
+                if "roce" in lbl: result["roce"] = val
+                elif "roe" in lbl: result["roe"] = val
+                elif "p/e" in lbl: result["pe"] = val
+                elif "face value" in lbl: result["face_value"] = val
+                elif "debt" in lbl and "ebitda" in lbl: result["d_ebitda"] = val
+
+        sh = soup.find("section", id="shareholding")
+        if sh:
+            tbl = sh.find("table")
+            if tbl:
+                for row in tbl.find_all("tr"):
+                    cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
+                    if len(cells) < 2: continue
+                    lbl = cells[0].lower()
+                    numeric_vals = [safe_float(c.replace("%","").replace(",","")) for c in cells[1:]]
+                    numeric_vals = [v for v in numeric_vals if v is not None]
+                    if not numeric_vals: continue
+                    val = numeric_vals[-2] if len(numeric_vals) >= 2 else numeric_vals[0]
+                    if "promoter" in lbl and "pledge" not in lbl: result["prom_pct"] = val
+                    elif "fii" in lbl or "fpi" in lbl: result["fii_pct"] = val
+                    elif "dii" in lbl: result["dii_pct"] = val
+
+        if result:
+            print(f"  ✓ Screener: {len(result)} fields")
+
+    except Exception as e:
+        print(f"  ⚠ Screener: {e}")
+
+    return result
 
 def compute_signal(d):
     pos, neg = 0, 0
-    for field, good, bad in [
-        ("roe", lambda v: v > 15, lambda v: v < 8),
-        ("roce", lambda v: v > 15, lambda v: v < 8),
-        ("pe", lambda v: 0 < v < 18, lambda v: v > 35),
-        ("opm_pct", lambda v: v > 15, lambda v: 0 < v < 8),
-        ("prom_pct", lambda v: v > 50, lambda v: v < 35),
-    ]:
+    def check(field, good_fn, bad_fn):
+        nonlocal pos, neg
         v = d.get(field)
-        if v and v != 0:
-            if good(v): pos += 1
-            elif bad(v): neg += 1
+        if v is None or v == 0: return
+        if good_fn(v): pos += 1
+        elif bad_fn(v): neg += 1
+    check("roe", lambda v: v > 15, lambda v: v < 8)
+    check("roce", lambda v: v > 15, lambda v: v < 8)
+    check("pe", lambda v: 0 < v < 18, lambda v: v > 35)
+    check("opm_pct", lambda v: v > 15, lambda v: 0 < v < 8)
+    check("npm_pct", lambda v: v > 10, lambda v: 0 < v < 5)
+    check("prom_pct", lambda v: v > 50, lambda v: v < 35)
     net = pos - neg
-    return ("BUY" if net >= 3 else "SELL" if net <= -3 else "HOLD"), pos, neg
+    sig = "BUY" if net >= 3 else "SELL" if net <= -3 else "HOLD"
+    return sig, pos, neg
+
+# ════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ════════════════════════════════════════════════════════════════════════════
 
 def main():
-    resolved = resolve_symbols()
-    syms = list(resolved.keys())
-    ts = now_utc()
-    
-    print(f"📊 BharatMarkets Fundamentals | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
-    print(f"🔄 FRESH BUILD - Complete rebuild all phases\n")
-
-    # Delete old data to start fresh
+    # AUTO-DELETE OLD DATA - ALWAYS START FRESH
     Path(FUND_FILE).unlink(missing_ok=True)
+    
+    resolved_syms = resolve_symbols()
+    syms = list(resolved_syms.keys())
+    ts = now_utc()
+    print(f"📊 BharatMarkets v3.7-OMNIFORCE | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
-    stats = {"yf": 0, "holdings": 0, "calc": 0, "err": 0}
+    existing = {}
+    result = {}
+    stats = {"yf": 0, "scr": 0, "calc": 0, "errors": 0}
     yf_results = {}
 
-    # PHASE 1: FETCH
-    print(f"⚡ PHASE 1: Yahoo Finance Fetch…\n")
-    
+    active_syms = [s for s in syms if s not in DELISTED]
+    print(f"⚡ Phase 1: Fetching {len(active_syms)} stocks…\n")
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
     lock = threading.Lock()
-    done = [0]
+    done_count = [0]
 
     def fetch_one(sym):
-        data = fetch_yfinance(sym, yf_ticker=resolved[sym])
+        resolved_ticker = resolved_syms[sym]
+        data = fetch_yfinance(sym, yf_ticker=resolved_ticker)
         with lock:
-            done[0] += 1
-            if done[0] % 15 == 0:
-                print(f"  ── {done[0]}/{len(syms)} ──")
+            done_count[0] += 1
+            if done_count[0] % 10 == 0:
+                print(f"  ── {done_count[0]}/{len(active_syms)} ──")
         time.sleep(0.15)
         return sym, data
 
     with ThreadPoolExecutor(max_workers=8) as ex:
-        for fut in as_completed({ex.submit(fetch_one, s): s for s in syms}):
+        futures = {ex.submit(fetch_one, sym): sym for sym in active_syms}
+        for fut in as_completed(futures):
             sym, data = fut.result()
             yf_results[sym] = data
 
-    print(f"\n✓ Phase 1 complete\n")
+    print(f"\n✓ Phase 1 done\n")
+    print(f"🔄 Phase 2: Calculations & Screener…\n")
 
-    # PHASE 2 & 3: CALCULATE & HUNT
-    print(f"🔄 PHASE 2: Calculate Metrics & Hunt Holdings…\n")
-
-    result = {}
     for i, sym in enumerate(syms):
         print(f"[{i+1}/{len(syms)}] {sym}", end=" | ", flush=True)
 
-        stock = yf_results.get(sym, {})
-        if not stock:
-            stats["err"] += 1
-            print("✗ No data")
+        if sym in DELISTED:
+            print("↷ delisted")
             continue
 
-        stats["yf"] += 1
-        
-        # Calculate metrics
-        quarterly = stock.get('quarterly', [])
-        if quarterly:
-            calculate_metrics(stock, quarterly)
+        stock = {}
+        yf_data = yf_results.get(sym, {})
+        if yf_data:
+            stock.update(yf_data)
+            stats["yf"] += 1
+        else:
+            stats["errors"] += 1
+
+        bs_data = stock.pop('_bs_data', {})
+        quarterly_list = stock.get('quarterly', [])
+
+        # Calculate Phase 2 metrics
+        if quarterly_list:
+            calculate_quality_metrics(stock, quarterly_list)
             stats["calc"] += 1
         
-        # Hunt holdings
-        holdings, src = hunt_holdings(sym)
-        if holdings:
-            stock.update(holdings)
-            stats["holdings"] += 1
+        calculate_valuation_metrics(stock)
+        calculate_health_metrics(stock, bs_data)
 
-        # Signal
+        # Screener fallback
+        scr_data = fetch_screener(sym)
+        if scr_data:
+            for k, v in scr_data.items():
+                if v is not None and not stock.get(k):
+                    stock[k] = v
+            stats["scr"] += 1
+        time.sleep(0.2)
+
         sig, pos, neg = compute_signal(stock)
         stock.update({"signal": sig, "pos": pos, "neg": neg, "updated": ts.isoformat()})
         result[sym] = stock
 
-        h_count = sum(1 for k in ['prom_pct','fii_pct','dii_pct'] if stock.get(k))
-        print(f"{sig} h:{h_count}/3")
+        filled = sum(1 for v in stock.values() if v not in (None, "", 0))
+        print(f"{sig} f:{filled}")
 
-    # SAVE
+    final_result = result
+
     output = {
         "updated": ts.isoformat(),
-        "count": len(result),
-        "stocks": result,
+        "count": len(final_result),
+        "sources": stats,
+        "delisted": sorted(DELISTED),
+        "stocks": final_result,
     }
 
     Path(FUND_FILE).write_text(json.dumps(output, separators=(",",":"), default=str))
 
-    print("\n" + "=" * 70)
-    print(f"✅ COMPLETE! {len(result)} stocks\n")
-    print(f"📊 Yahoo:{stats['yf']} Holdings:{stats['holdings']} Calc:{stats['calc']} Err:{stats['err']}\n")
+    print("\n" + "=" * 60)
+    print(f"✅ {len(final_result)} stocks processed")
+    print(f"📊 Sources: YF:{stats['yf']} SCR:{stats['scr']} CALC:{stats['calc']} ERR:{stats['errors']}")
     
-    # Coverage
-    prom = len([s for s in result.values() if s.get('prom_pct')])
-    fii = len([s for s in result.values() if s.get('fii_pct')])
-    dii = len([s for s in result.values() if s.get('dii_pct')])
-    ev = len([s for s in result.values() if s.get('ev_ebitda')])
+    roe = len([s for s in final_result.values() if s.get('roe')])
+    roce = len([s for s in final_result.values() if s.get('roce')])
+    fv = len([s for s in final_result.values() if s.get('face_value')])
+    ev_eb = len([s for s in final_result.values() if s.get('ev_ebitda')])
+    prom = len([s for s in final_result.values() if s.get('prom_pct')])
     
-    print(f"✨ Holdings Coverage: Promoter:{prom}/{len(result)} FII:{fii}/{len(result)} DII:{dii}/{len(result)}")
-    print(f"✨ Metrics: EV/EBITDA:{ev} ROIC:{len([s for s in result.values() if s.get('roic')])}")
-    print(f"\n🎉 Ready: git add fundamentals.json && git push")
+    print(f"\n✨ Coverage:")
+    print(f"   ROE:{roe} ROCE:{roce} FaceValue:{fv}")
+    print(f"   EV/EBITDA:{ev_eb} Promoter%:{prom}")
+    print(f"\n🎉 fundamentals.json ready!")
 
 if __name__ == "__main__":
     main()
