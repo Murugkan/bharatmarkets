@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher COMPLETE v3.8
-=====================================================
-✨ ALL-IN-ONE: Fetch + Calculate + Hunt Holdings
-- Phase 1: Yahoo Finance (primary)
+BharatMarkets Pro — Fundamentals Fetcher COMPLETE v3.8-v2
+=========================================================
+✨ ALL-IN-ONE with --fresh flag for complete rebuild
+- Phase 1: Yahoo Finance (fresh fetch)
 - Phase 2: Screener.in (secondary)
 - Phase 3: Calculated metrics (EV/EBITDA, ROIC, ratios)
-- Phase 4: Holdings hunter (Screener → Moneycontrol → TickerTape → StockEdge)
+- Phase 4: Holdings hunter (Screener → Moneycontrol → TickerTape)
+
+Usage:
+  python3 fetch_fundamentals_COMPLETE_v2.py         # Incremental
+  python3 fetch_fundamentals_COMPLETE_v2.py --fresh # Fresh rebuild
 """
 
-import json, time, datetime, re, os
+import json, time, datetime, re, os, sys
 from pathlib import Path
 
 try:
@@ -33,6 +37,7 @@ import threading
 
 SYMBOLS_FILE = "unified-symbols.json"
 FUND_FILE = "fundamentals.json"
+FRESH_MODE = "--fresh" in sys.argv
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36",
@@ -617,10 +622,12 @@ def main():
     resolved_syms = resolve_symbols()
     syms = list(resolved_syms.keys())
     ts = now_utc()
-    print(f"📊 BharatMarkets COMPLETE v3.8 | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
+    
+    mode_str = "🔄 FRESH REBUILD" if FRESH_MODE else "♻️  INCREMENTAL"
+    print(f"📊 BharatMarkets COMPLETE v3.8-v2 | {mode_str} | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
-    if Path(FUND_FILE).exists():
+    if not FRESH_MODE and Path(FUND_FILE).exists():
         try:
             d = json.loads(Path(FUND_FILE).read_text())
             existing = d.get("stocks", {})
@@ -629,9 +636,12 @@ def main():
             print(f"♻  {len(existing)} existing stocks loaded\n")
         except:
             pass
+    elif FRESH_MODE:
+        print(f"🔄 FRESH MODE: Starting from scratch\n")
+        Path(FUND_FILE).unlink(missing_ok=True)
 
     result = {}
-    stats = {"yf": 0, "scr": 0, "mc": 0, "tt": 0, "calc": 0, "errors": 0}
+    stats = {"yf": 0, "scr": 0, "mc": 0, "tt": 0, "calc": 0, "errors": 0, "updated": 0}
     yf_results = {}
 
     active_syms = [s for s in syms if s not in DELISTED]
@@ -671,9 +681,18 @@ def main():
             continue
 
         stock = {}
+        
+        # In FRESH mode, start from zero. In incremental, load existing
+        if not FRESH_MODE and sym in existing:
+            stock.update(existing[sym])
+        
         yf_data = yf_results.get(sym, {})
         if yf_data:
-            stock.update(yf_data)
+            # FRESH mode: replace all. Incremental: merge
+            if FRESH_MODE:
+                stock = yf_data.copy()
+            else:
+                stock.update(yf_data)
             stats["yf"] += 1
         else:
             stats["errors"] += 1
@@ -693,28 +712,23 @@ def main():
         holdings, src = hunt_holdings(sym)
         if holdings:
             for k, v in holdings.items():
-                if v is not None and not stock.get(k):
+                if v is not None and (FRESH_MODE or not stock.get(k)):
                     stock[k] = v
             if src == "screener": stats["scr"] += 1
             elif src == "moneycontrol": stats["mc"] += 1
             elif src == "tickertape": stats["tt"] += 1
 
-        # Merge
-        merged = {**existing.get(sym, {})}
-        for k, v in stock.items():
-            if v is not None and v != "":
-                merged[k] = v
+        # Finalize
+        sig, pos, neg = compute_signal(stock)
+        stock.update({"signal": sig, "pos": pos, "neg": neg, "updated": ts.isoformat()})
+        result[sym] = stock
+        stats["updated"] += 1
 
-        sig, pos, neg = compute_signal(merged)
-        merged.update({"signal": sig, "pos": pos, "neg": neg, "updated": ts.isoformat()})
-        result[sym] = merged
-
-        filled = sum(1 for v in merged.values() if v not in (None, "", 0))
-        holdings_filled = sum(1 for k in ['prom_pct','fii_pct','dii_pct'] if merged.get(k))
+        filled = sum(1 for v in stock.values() if v not in (None, "", 0))
+        holdings_filled = sum(1 for k in ['prom_pct','fii_pct','dii_pct'] if stock.get(k))
         print(f"{sig} h:{holdings_filled}/3 f:{filled}")
 
-    existing.update(result)
-    final_result = existing
+    final_result = result
 
     output = {
         "updated": ts.isoformat(),
@@ -727,7 +741,7 @@ def main():
     Path(FUND_FILE).write_text(json.dumps(output, separators=(",",":"), default=str))
 
     print("\n" + "=" * 70)
-    print(f"✅ COMPLETE! {len(final_result)} stocks processed\n")
+    print(f"✅ COMPLETE! {len(final_result)} stocks {'FRESH rebuilt' if FRESH_MODE else 'updated'}\n")
     print(f"📊 Phase 1 Sources: YF:{stats['yf']} ERR:{stats['errors']}")
     print(f"📊 Phase 2 Calc: {stats['calc']} stocks")
     print(f"📊 Holdings Found: Screener:{stats['scr']} Moneycontrol:{stats['mc']} TickerTape:{stats['tt']}\n")
@@ -750,6 +764,7 @@ def main():
     print(f"   Health: D/EBITDA:{d_eb} CurrRatio:{curr_r}")
     print(f"   Holdings: Promoter:{prom}/{len(final_result)} FII:{fii}/{len(final_result)} DII:{dii}/{len(final_result)}")
     print(f"\n🎉 Ready to deploy! fundamentals.json updated")
+    print(f"\n💡 Next time: python3 fetch_fundamentals_COMPLETE_v2.py --fresh")
 
 if __name__ == "__main__":
     main()
