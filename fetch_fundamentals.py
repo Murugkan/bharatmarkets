@@ -691,8 +691,6 @@ def fetch_screener_gaps(sym):
 
                     elif "public" in lbl:
                         result["public_pct"] = val
-                    elif "nii" in lbl or "non-institutional" in lbl:
-                        result["nii_pct"] = val
                     elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
                         result["fii_pct"] = val
                     elif "dii" in lbl or "institution" in lbl:
@@ -714,8 +712,6 @@ def fetch_screener_gaps(sym):
                     if "opm" in lbl:                                    result["opm_pct"] = val
                     elif "npm" in lbl:                                  result["npm_pct"] = val
                     elif lbl.startswith("sales") or "revenue" in lbl:  result["sales"] = val
-                    elif "ebitda" in lbl:                               result.setdefault("ebitda", val)
-                    elif "debt" in lbl and "equity" not in lbl:         result.setdefault("debt", val)
 
         # Cash flow
         cf = soup.find("section", id="cash-flow")
@@ -726,14 +722,13 @@ def fetch_screener_gaps(sym):
                     cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
                     if len(cells) < 2:
                         continue
-                    lbl = cells[0].lower()
-                    val = safe_float(cells[-1].replace(",",""))
-                    if val is not None:
-                        if "operating" in lbl or "cfo" in lbl or "operating cash" in lbl:
+                    if "operating" in cells[0].lower():
+                        val = safe_float(cells[-1].replace(",",""))
+                        if val is not None:
                             result.setdefault("cfo", val)
 
         if result:
-            print(f"  ✓ Screener {sym}: {len(result)} fields ({', '.join(result.keys())})")
+            print(f"  ✓ Screener {sym}: {len(result)} gap fields filled")
 
     except Exception as e:
         print(f"  ⚠ Screener {sym}: {e}")
@@ -859,12 +854,12 @@ def main():
                 stock['roce'] = roce_est
                 print(f"[ROCE~{roce_est}%]", end=" ", flush=True)
 
-        # Screener — prom% and pledge% always override; other fields gap-fill only
+        # Screener — override key metrics; gap-fill others
         if HAS_BS4:
             scr_data = fetch_screener_gaps(sym)
             if scr_data:
                 for k, v in scr_data.items():
-                    if k in ("prom_pct", "pledge_pct", "roce"):
+                    if k in ("prom_pct", "pledge_pct", "roce", "roe", "cfo", "dii_pct", "nii_pct", "ebitda", "debt", "face_value"):
                         if v is not None:
                             stock[k] = v
                     elif stock.get(k) is None and v is not None:
@@ -881,6 +876,9 @@ def main():
             "w52h": pq.get("w52h"), "w52l": pq.get("w52l"),
             "prom_pct": pq.get("promoter"),
             "beta": pq.get("beta"),
+            "cfo": pq.get("cfo"),
+            "dii_pct": pq.get("dii_pct"),
+            "nii_pct": pq.get("nii_pct"),
         }
         for k, v in fb.items():
             if stock.get(k) is None and v:
