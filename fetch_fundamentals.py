@@ -767,6 +767,9 @@ def compute_signal(d):
 
 # ── Main ───────────────────────────────────────────────
 def main():
+    # AUTO-DELETE OLD DATA - FRESH REBUILD EVERY RUN
+    Path(FUND_FILE).unlink(missing_ok=True)
+    
     resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
     syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
