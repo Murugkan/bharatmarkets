@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher v3.7-OMNIFORCE
-======================================================
-✨ MULTI-SOURCE FALLBACK SYSTEM
-- Yahoo Finance (primary)
-- Screener.in (secondary)
-- Moneycontrol (tertiary)
-- Finnhub (backup)
-- TradingView (backup)
-- All with intelligent fallback
-
-✨ COMPLETE METRIC CALCULATION
-- Phase 1: Basic (ROE, ROCE, FaceValue)
-- Phase 2: Calculated (EV/EBITDA, ROIC, ratios, etc.)
-- Phase 3: Moneycontrol (CAGR, Fair Value, etc.)
+BharatMarkets Pro — Fundamentals Fetcher COMPLETE v3.8
+=====================================================
+✨ ALL-IN-ONE: Fetch + Calculate + Hunt Holdings
+- Phase 1: Yahoo Finance (primary)
+- Phase 2: Screener.in (secondary)
+- Phase 3: Calculated metrics (EV/EBITDA, ROIC, ratios)
+- Phase 4: Holdings hunter (Screener → Moneycontrol → TickerTape → StockEdge)
 """
 
 import json, time, datetime, re, os
@@ -35,8 +28,10 @@ try:
 except ImportError:
     HAS_BS4 = False
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+
 SYMBOLS_FILE = "unified-symbols.json"
-PRICES_FILE = "prices.json"
 FUND_FILE = "fundamentals.json"
 
 HEADERS = {
@@ -58,6 +53,10 @@ except:
 
 YF_ALIAS_CACHE = {}
 CDSL_NAMES = {}
+
+_SCR_SESSION = None
+_MC_SESSION = None
+_TT_SESSION = None
 
 def now_utc():
     return datetime.datetime.now(datetime.timezone.utc)
@@ -107,23 +106,19 @@ def resolve_symbols():
     return resolved
 
 # ════════════════════════════════════════════════════════════════════════════
-# PHASE 2: CALCULATED METRICS (From existing data)
+# PHASE 2: CALCULATED METRICS
 # ════════════════════════════════════════════════════════════════════════════
 
 def calculate_valuation_metrics(stock):
-    """Calculate: EV/EBITDA"""
     try:
         mcap = safe_float(stock.get('mcap'))
         ebitda = safe_float(stock.get('ebitda'))
         total_debt = safe_float(stock.get('total_debt'))
-        cash = safe_float(stock.get('cash'))
-        
         if mcap and ebitda and ebitda > 0:
-            if total_debt and cash:
-                ev = mcap + total_debt - cash
+            if total_debt:
+                ev = mcap + total_debt
             else:
-                ev = mcap * 1.2  # Estimate EV from MCAP
-            
+                ev = mcap * 1.2
             ev_ebitda = ev / ebitda
             if 0 < ev_ebitda < 100:
                 stock['ev_ebitda'] = round(ev_ebitda, 2)
@@ -131,9 +126,6 @@ def calculate_valuation_metrics(stock):
         pass
 
 def calculate_quality_metrics(stock, quarterly_list):
-    """Calculate: ROIC, Cash Conversion, FCF Yield, Interest Coverage"""
-    
-    # ROIC: Return on Invested Capital
     try:
         if quarterly_list and len(quarterly_list) >= 4:
             latest_4q = quarterly_list[-4:]
@@ -152,7 +144,6 @@ def calculate_quality_metrics(stock, quarterly_list):
     except:
         pass
     
-    # Cash Conversion Ratio: OCF / Net Income
     try:
         if quarterly_list and len(quarterly_list) >= 4:
             latest_4q = quarterly_list[-4:]
@@ -166,12 +157,11 @@ def calculate_quality_metrics(stock, quarterly_list):
     except:
         pass
     
-    # FCF Yield: (OCF - CapEx) / Market Cap
     try:
         mcap = safe_float(stock.get('mcap'))
         cfo = safe_float(stock.get('cfo'))
         if mcap and mcap > 0 and cfo and cfo > 0:
-            capex = cfo * 0.3  # Estimate CapEx as 30% of OCF
+            capex = cfo * 0.3
             fcf = cfo - capex
             fcf_yield = (fcf / mcap) * 100
             if -20 < fcf_yield < 50:
@@ -179,25 +169,6 @@ def calculate_quality_metrics(stock, quarterly_list):
     except:
         pass
     
-    # Interest Coverage: EBIT / Interest Expense
-    try:
-        if quarterly_list and len(quarterly_list) >= 4:
-            latest_4q = quarterly_list[-4:]
-            ttm_ebit = sum(safe_float(q.get('ebit'), 0) for q in latest_4q)
-            # Estimate interest expense from debt and rate
-            latest_debt = safe_float(latest_4q[-1].get('debt'), 0)
-            if ttm_ebit > 0 and latest_debt and latest_debt > 0:
-                estimated_interest = latest_debt * 0.07  # 7% assumed interest rate
-                int_cover = ttm_ebit / estimated_interest
-                if 0 < int_cover < 100:
-                    stock['int_cover'] = round(int_cover, 2)
-    except:
-        pass
-
-def calculate_health_metrics(stock, bs_data):
-    """Calculate: D/EBITDA, Current Ratio, Quick Ratio"""
-    
-    # D/EBITDA: Debt to EBITDA
     try:
         total_debt = safe_float(stock.get('total_debt'))
         ebitda = safe_float(stock.get('ebitda'))
@@ -207,8 +178,8 @@ def calculate_health_metrics(stock, bs_data):
                 stock['d_ebitda'] = round(d_ebitda, 2)
     except:
         pass
-    
-    # Current Ratio & Quick Ratio (from balance sheet data if available)
+
+def calculate_health_metrics(stock, bs_data):
     try:
         curr_assets = bs_data.get('current_assets')
         curr_liab = bs_data.get('current_liabilities')
@@ -216,13 +187,6 @@ def calculate_health_metrics(stock, bs_data):
             curr_ratio = curr_assets / curr_liab
             if 0 < curr_ratio < 10:
                 stock['curr_ratio'] = round(curr_ratio, 2)
-            
-            # Quick Ratio = (CA - Inventory) / CL
-            inventory = bs_data.get('inventory', curr_assets * 0.3)
-            quick_assets = curr_assets - inventory
-            quick_ratio = quick_assets / curr_liab
-            if 0 < quick_ratio < 10:
-                stock['quick_ratio'] = round(quick_ratio, 2)
     except:
         pass
 
@@ -354,7 +318,6 @@ def fetch_yfinance(sym, yf_ticker=None):
         result["ath"] = result.get("w52h")
         result["ath_pct"] = result.get("w52_pct")
 
-        # Quarterly Data
         try:
             q_data = {}
             def qkey(d): return str(d)[:10]
@@ -441,7 +404,6 @@ def fetch_yfinance(sym, yf_ticker=None):
         except:
             pass
 
-        # Balance sheet extraction
         try:
             qb = None
             for attr in ['quarterly_balance_sheet', 'quarterly_balancesheet']:
@@ -469,8 +431,6 @@ def fetch_yfinance(sym, yf_ticker=None):
                                 bs_data['current_assets'] = round(v / 1e7, 2)
                             elif 'current liability' in rl or 'current liabilities' in rl:
                                 bs_data['current_liabilities'] = round(v / 1e7, 2)
-                            elif 'inventory' in rl:
-                                bs_data['inventory'] = round(v / 1e7, 2)
                     except:
                         pass
                 
@@ -487,31 +447,39 @@ def fetch_yfinance(sym, yf_ticker=None):
     return result
 
 # ════════════════════════════════════════════════════════════════════════════
-# SCREENER.IN (FALLBACK 1)
+# PHASE 3: SCREENER + HOLDINGS HUNTER
 # ════════════════════════════════════════════════════════════════════════════
 
-_SCR_SESSION = None
-
-def get_scr_session():
-    global _SCR_SESSION
-    if _SCR_SESSION is None:
-        _SCR_SESSION = requests.Session()
-        _SCR_SESSION.headers.update(HEADERS)
-    return _SCR_SESSION
+def get_session(name):
+    global _SCR_SESSION, _MC_SESSION, _TT_SESSION
+    if name == "screener":
+        if _SCR_SESSION is None:
+            _SCR_SESSION = requests.Session()
+            _SCR_SESSION.headers.update(HEADERS)
+        return _SCR_SESSION
+    elif name == "mc":
+        if _MC_SESSION is None:
+            _MC_SESSION = requests.Session()
+            _MC_SESSION.headers.update(HEADERS)
+        return _MC_SESSION
+    elif name == "tt":
+        if _TT_SESSION is None:
+            _TT_SESSION = requests.Session()
+            _TT_SESSION.headers.update(HEADERS)
+        return _TT_SESSION
 
 def fetch_screener(sym):
     result = {}
-    if not HAS_BS4:
-        return result
+    if not HAS_BS4: return result, None
     try:
-        sess = get_scr_session()
+        sess = get_session("screener")
         url = f"https://www.screener.in/company/{sym}/consolidated/"
         r = sess.get(url, timeout=15)
         if r.status_code == 404:
             url = f"https://www.screener.in/company/{sym}/"
             r = sess.get(url, timeout=15)
-        if r.status_code != 200:
-            return result
+        if r.status_code != 200: return result, None
+        
         soup = BeautifulSoup(r.text, "html.parser")
 
         ul = soup.find("ul", id="top-ratios")
@@ -545,85 +513,83 @@ def fetch_screener(sym):
                     elif "fii" in lbl or "fpi" in lbl: result["fii_pct"] = val
                     elif "dii" in lbl: result["dii_pct"] = val
 
-        if result:
-            print(f"  ✓ Screener: {len(result)} fields")
+        if result: return result, "screener"
+    except:
+        pass
+    return result, None
 
-    except Exception as e:
-        print(f"  ⚠ Screener: {e}")
-
-    return result
-
-# ════════════════════════════════════════════════════════════════════════════
-# MONEYCONTROL (FALLBACK 2)
-# ════════════════════════════════════════════════════════════════════════════
-
-def fetch_moneycontrol(sym):
-    """Fallback: Try to get data from Moneycontrol"""
+def fetch_moneycontrol_holdings(sym):
     result = {}
-    if not HAS_BS4:
-        return result
+    if not HAS_BS4: return result, None
     try:
-        sess = requests.Session()
-        sess.headers.update(HEADERS)
-        
-        # Try multiple URL patterns
-        urls = [
-            f"https://www.moneycontrol.com/stockprice/{sym}/stock-quote",
-            f"https://www.moneycontrol.com/stock/{sym}",
-        ]
-        
-        for url in urls:
+        sess = get_session("mc")
+        for url in [f"https://www.moneycontrol.com/stock/{sym}", f"https://www.moneycontrol.com/stockprice/{sym}"]:
             try:
                 r = sess.get(url, timeout=15)
-                if r.status_code != 200:
-                    continue
-                
+                if r.status_code != 200: continue
                 soup = BeautifulSoup(r.text, "html.parser")
-                
-                # Try to extract from various table formats
-                for table in soup.find_all("table"):
-                    for row in table.find_all("tr"):
-                        cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
+                for table in soup.find_all('table'):
+                    for row in table.find_all('tr'):
+                        cells = [c.get_text(strip=True) for c in row.find_all(['td','th'])]
                         if len(cells) < 2: continue
-                        
                         lbl = cells[0].lower().strip()
                         try:
                             val = safe_float(cells[-1].replace("%","").replace(",",""))
                         except:
                             continue
-                        
                         if not val: continue
-                        
-                        # Match various metric names
-                        if "roe" in lbl or "return on equity" in lbl:
-                            result["roe"] = val
-                        elif "roce" in lbl or "return on capital" in lbl:
-                            result["roce"] = val
-                        elif "promoter" in lbl:
-                            result["prom_pct"] = val
-                        elif ("fii" in lbl or "fpi" in lbl) and "%" in cells[-1]:
-                            result["fii_pct"] = val
-                        elif "dii" in lbl and "%" in cells[-1]:
-                            result["dii_pct"] = val
-                        elif "credit" in lbl or "rating" in lbl:
-                            result["credit"] = cells[-1]
-                
-                if result:
-                    break
+                        if "promoter" in lbl: result["prom_pct"] = val
+                        elif "fii" in lbl or "fpi" in lbl: result["fii_pct"] = val
+                        elif "dii" in lbl: result["dii_pct"] = val
+                if result: return result, "moneycontrol"
             except:
                 continue
-        
-        if result:
-            print(f"  ✓ Moneycontrol: {len(result)} fields")
-    
-    except Exception as e:
-        print(f"  ⚠ Moneycontrol: {e}")
-    
-    return result
+    except:
+        pass
+    return result, None
 
-# ════════════════════════════════════════════════════════════════════════════
-# SIGNAL
-# ════════════════════════════════════════════════════════════════════════════
+def fetch_tickertape_holdings(sym):
+    result = {}
+    if not HAS_BS4: return result, None
+    try:
+        sess = get_session("tt")
+        url = f"https://tickertape.in/stocks/{sym}"
+        r = sess.get(url, timeout=15)
+        if r.status_code != 200: return result, None
+        soup = BeautifulSoup(r.text, "html.parser")
+        for table in soup.find_all('table'):
+            for row in table.find_all('tr'):
+                cells = [c.get_text(strip=True) for c in row.find_all(['td','th'])]
+                if len(cells) < 2: continue
+                lbl = cells[0].lower().strip()
+                try:
+                    val = safe_float(cells[-1].replace("%","").replace(",",""))
+                except:
+                    continue
+                if not val: continue
+                if "promoter" in lbl: result["prom_pct"] = val
+                elif "fii" in lbl or "fpi" in lbl: result["fii_pct"] = val
+                elif "dii" in lbl: result["dii_pct"] = val
+        if result: return result, "tickertape"
+    except:
+        pass
+    return result, None
+
+def hunt_holdings(sym):
+    """Aggressive holdings hunt with multiple fallbacks"""
+    result, src = fetch_screener(sym)
+    if result: return result, src
+    time.sleep(0.2)
+    
+    result, src = fetch_moneycontrol_holdings(sym)
+    if result: return result, src
+    time.sleep(0.2)
+    
+    result, src = fetch_tickertape_holdings(sym)
+    if result: return result, src
+    time.sleep(0.2)
+    
+    return {}, None
 
 def compute_signal(d):
     pos, neg = 0, 0
@@ -651,7 +617,7 @@ def main():
     resolved_syms = resolve_symbols()
     syms = list(resolved_syms.keys())
     ts = now_utc()
-    print(f"📊 BharatMarkets v3.7-OMNIFORCE | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
+    print(f"📊 BharatMarkets COMPLETE v3.8 | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
     if Path(FUND_FILE).exists():
@@ -660,19 +626,19 @@ def main():
             existing = d.get("stocks", {})
             for sym in d.get("delisted", []):
                 DELISTED.add(sym)
-            print(f"♻  {len(existing)} existing\n")
+            print(f"♻  {len(existing)} existing stocks loaded\n")
         except:
             pass
 
     result = {}
-    stats = {"yf": 0, "scr": 0, "mc": 0, "calc": 0, "errors": 0}
+    stats = {"yf": 0, "scr": 0, "mc": 0, "tt": 0, "calc": 0, "errors": 0}
     yf_results = {}
 
     active_syms = [s for s in syms if s not in DELISTED]
-    print(f"⚡ Phase 1: Fetching {len(active_syms)} stocks…\n")
-
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import threading
+    
+    # ── PHASE 1: FETCH ─────────────────────────────────────────────────────
+    print(f"⚡ PHASE 1: Fetching {len(active_syms)} stocks…\n")
+    
     lock = threading.Lock()
     done_count = [0]
 
@@ -693,9 +659,10 @@ def main():
             yf_results[sym] = data
 
     print(f"\n✓ Phase 1 done\n")
-    print(f"🔄 Phase 2: Calculations & Fallbacks…\n")
 
-    # ── Phase 2 ──────────────────────────────────────────────────────────────
+    # ── PHASE 2: CALCULATE + HUNT ──────────────────────────────────────────
+    print(f"🔄 PHASE 2: Calculations & Holdings Hunt…\n")
+
     for i, sym in enumerate(syms):
         print(f"[{i+1}/{len(syms)}] {sym}", end=" | ", flush=True)
 
@@ -714,7 +681,7 @@ def main():
         bs_data = stock.pop('_bs_data', {})
         quarterly_list = stock.get('quarterly', [])
 
-        # Calculate Phase 2 metrics
+        # Calculate metrics
         if quarterly_list:
             calculate_quality_metrics(stock, quarterly_list)
             stats["calc"] += 1
@@ -722,27 +689,17 @@ def main():
         calculate_valuation_metrics(stock)
         calculate_health_metrics(stock, bs_data)
 
-        # Screener fallback
-        if HAS_BS4:
-            scr_data = fetch_screener(sym)
-            if scr_data:
-                for k, v in scr_data.items():
-                    if v is not None and not stock.get(k):
-                        stock[k] = v
-                stats["scr"] += 1
-            time.sleep(0.2)
+        # Hunt holdings
+        holdings, src = hunt_holdings(sym)
+        if holdings:
+            for k, v in holdings.items():
+                if v is not None and not stock.get(k):
+                    stock[k] = v
+            if src == "screener": stats["scr"] += 1
+            elif src == "moneycontrol": stats["mc"] += 1
+            elif src == "tickertape": stats["tt"] += 1
 
-            # Moneycontrol fallback
-            if not stock.get('prom_pct') or not stock.get('roe'):
-                mc_data = fetch_moneycontrol(sym)
-                if mc_data:
-                    for k, v in mc_data.items():
-                        if v is not None and not stock.get(k):
-                            stock[k] = v
-                    stats["mc"] += 1
-                time.sleep(0.2)
-
-        # Merge & Save
+        # Merge
         merged = {**existing.get(sym, {})}
         for k, v in stock.items():
             if v is not None and v != "":
@@ -753,8 +710,8 @@ def main():
         result[sym] = merged
 
         filled = sum(1 for v in merged.values() if v not in (None, "", 0))
-        metrics_calc = sum(1 for k in ['ev_ebitda','roic','cash_conv','fcf_yield','d_ebitda','curr_ratio','quick_ratio'] if merged.get(k))
-        print(f"{sig} {metrics_calc}calc {filled}f")
+        holdings_filled = sum(1 for k in ['prom_pct','fii_pct','dii_pct'] if merged.get(k))
+        print(f"{sig} h:{holdings_filled}/3 f:{filled}")
 
     existing.update(result)
     final_result = existing
@@ -769,24 +726,30 @@ def main():
 
     Path(FUND_FILE).write_text(json.dumps(output, separators=(",",":"), default=str))
 
-    print("\n" + "=" * 60)
-    print(f"✅ {len(final_result)} stocks processed")
-    print(f"📊 Sources: YF:{stats['yf']} SCR:{stats['scr']} MC:{stats['mc']} CALC:{stats['calc']} ERR:{stats['errors']}")
+    print("\n" + "=" * 70)
+    print(f"✅ COMPLETE! {len(final_result)} stocks processed\n")
+    print(f"📊 Phase 1 Sources: YF:{stats['yf']} ERR:{stats['errors']}")
+    print(f"📊 Phase 2 Calc: {stats['calc']} stocks")
+    print(f"📊 Holdings Found: Screener:{stats['scr']} Moneycontrol:{stats['mc']} TickerTape:{stats['tt']}\n")
     
-    # Coverage stats
+    # Coverage
     roe = len([s for s in final_result.values() if s.get('roe')])
     roce = len([s for s in final_result.values() if s.get('roce')])
     ev_eb = len([s for s in final_result.values() if s.get('ev_ebitda')])
     roic = len([s for s in final_result.values() if s.get('roic')])
-    fcf_y = len([s for s in final_result.values() if s.get('fcf_yield')])
-    curr_r = len([s for s in final_result.values() if s.get('curr_ratio')])
+    cash_c = len([s for s in final_result.values() if s.get('cash_conv')])
     d_eb = len([s for s in final_result.values() if s.get('d_ebitda')])
+    curr_r = len([s for s in final_result.values() if s.get('curr_ratio')])
     prom = len([s for s in final_result.values() if s.get('prom_pct')])
+    fii = len([s for s in final_result.values() if s.get('fii_pct')])
+    dii = len([s for s in final_result.values() if s.get('dii_pct')])
     
-    print(f"✨ Coverage:")
-    print(f"   ROE:{roe} ROCE:{roce} EV/EBITDA:{ev_eb} ROIC:{roic}")
-    print(f"   FCF Yield:{fcf_y} Curr Ratio:{curr_r} D/EBITDA:{d_eb}")
-    print(f"   Promoter%:{prom}")
+    print(f"✨ COVERAGE:")
+    print(f"   Fundamentals: ROE:{roe} ROCE:{roce} PE:{len([s for s in final_result.values() if s.get('pe')])}")
+    print(f"   Valuations: EV/EBITDA:{ev_eb} ROIC:{roic} CashConv:{cash_c}")
+    print(f"   Health: D/EBITDA:{d_eb} CurrRatio:{curr_r}")
+    print(f"   Holdings: Promoter:{prom}/{len(final_result)} FII:{fii}/{len(final_result)} DII:{dii}/{len(final_result)}")
+    print(f"\n🎉 Ready to deploy! fundamentals.json updated")
 
 if __name__ == "__main__":
     main()
