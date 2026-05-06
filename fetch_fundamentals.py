@@ -577,9 +577,9 @@ def calculate_roce_from_quarterly(quarterly_list):
             return None
         
         roce = (nopat / invested_capital) * 100
-            # Sanity: ROCE should be -10% to 200% realistically
-            if -10 < roce < 200:
-                return round(roce, 2)
+        # Sanity: ROCE should be -10% to 200% realistically
+        if -10 < roce < 200:
+            return round(roce, 2)
     except:
         pass
     return None
