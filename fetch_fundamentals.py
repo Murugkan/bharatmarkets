@@ -392,21 +392,21 @@ def extract_complete_quarterly_data(sym, t):
         return []
 
 def calculate_derived_metrics_v4(quarterly_data, stock_info):
-    """Calculate 20+ new metrics from complete quarterly data (v4.0)."""
+    """Calculate 20+ metrics (v4.1 IMPROVED - less blanks, more fallbacks)."""
     derived = {}
     
     if not quarterly_data or len(quarterly_data) < 2:
         return derived
     
     try:
-        # Filter out quarters with null revenue (incomplete data)
+        # Filter quarters
         valid_quarters = [q for q in quarterly_data if q.get('rev') is not None and q.get('rev') > 0]
-        
         if len(valid_quarters) < 2:
             return derived
         
         latest_4q = valid_quarters[-4:] if len(valid_quarters) >= 4 else valid_quarters
         
+        # TTM calculations
         ttm_rev = sum(safe_float(q.get('rev'), 0) for q in latest_4q)
         ttm_ebit = sum(safe_float(q.get('ebit'), 0) for q in latest_4q)
         ttm_ebitda = sum(safe_float(q.get('ebitda'), 0) for q in latest_4q)
@@ -418,67 +418,101 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
         ttm_da = sum(safe_float(q.get('da'), 0) for q in latest_4q)
         ttm_div_paid = sum(safe_float(q.get('div_paid'), 0) for q in latest_4q)
         
-        latest_debt = safe_float(quarterly_data[-1].get('debt'), 0)
-        latest_equity = safe_float(quarterly_data[-1].get('equity'), 0)
-        latest_cash = safe_float(quarterly_data[-1].get('cash'), 0)
-        latest_curr_assets = safe_float(quarterly_data[-1].get('curr_assets'), 0)
-        latest_curr_liab = safe_float(quarterly_data[-1].get('curr_liab'), 0)
-        latest_inventory = safe_float(quarterly_data[-1].get('inventory'), 0)
+        latest = quarterly_data[-1]
+        latest_debt = safe_float(latest.get('debt'), 0)
+        latest_equity = safe_float(latest.get('equity'), 0)
+        latest_cash = safe_float(latest.get('cash'), 0)
+        latest_curr_assets = safe_float(latest.get('curr_assets'), 0)
+        latest_curr_liab = safe_float(latest.get('curr_liab'), 0)
+        latest_inventory = safe_float(latest.get('inventory'), 0)
         
-        # Skip if no valid TTM revenue
         if ttm_rev <= 0:
             return derived
         
-        # 1. Interest Coverage
-        if ttm_interest > 0 and ttm_ebit > 0:
-            derived['interest_coverage'] = round(ttm_ebit / ttm_interest, 2)
+        # ✨ NEW: Extract direct fields from stock_info (less likely to be blank)
+        pe = safe_float(stock_info.get('trailingPE')) or safe_float(stock_info.get('forwardPE'))
+        if pe and pe > 0:
+            derived['pe'] = round(pe, 2)
         
-        # 2. Tax Rate (only if we have actual tax data)
-        tax_rate = 0.25
+        pb = safe_float(stock_info.get('priceToBook'))
+        if pb and pb > 0:
+            derived['pb'] = round(pb, 2)
+        
+        div_yield = safe_float(stock_info.get('dividendYield'))
+        if div_yield is not None and div_yield >= 0:
+            derived['dividend_yield'] = round(div_yield * 100, 2)
+        
+        div_per_share = safe_float(stock_info.get('trailingAnnualDividendRate'))
+        if div_per_share and div_per_share > 0:
+            derived['dividend_per_share'] = round(div_per_share, 2)
+        
+        # Book value based metrics
+        book_val = safe_float(stock_info.get('bookValue'))
+        eps = safe_float(stock_info.get('trailingEPS'))
+        if book_val and book_val > 0 and eps and eps > 0:
+            derived['roe'] = round((eps / book_val) * 100, 2)
+        
+        # 1. Interest Coverage (allow if ebit > 0)
+        if ttm_ebit > 0 and ttm_interest > 0:
+            derived['interest_coverage'] = round(ttm_ebit / ttm_interest, 2)
+        elif ttm_ebit > 0:
+            derived['interest_coverage'] = None  # No interest expense (good sign)
+        
+        # 2. Tax Rate - better fallback
+        tax_rate = 0.25  # Default
         if ttm_ebit > 0 and ttm_tax > 0:
             calc_rate = ttm_tax / ttm_ebit
-            if 0 < calc_rate <= 0.40:
+            if 0 < calc_rate <= 0.45:
                 tax_rate = calc_rate
-        elif ttm_ebit > 0 and ttm_net > 0:
+        elif ttm_ebit > 0 and ttm_net > 0 and ttm_ebit > ttm_net:
             implied_rate = (ttm_ebit - ttm_net) / ttm_ebit
-            if 0 < implied_rate <= 0.40:
+            if 0 < implied_rate <= 0.45:
                 tax_rate = implied_rate
         
         derived['tax_rate_effective'] = round(tax_rate, 4)
         
-        # 3. FCF Calculated (only if we have capex)
-        if ttm_cfo > 0 and ttm_capex >= 0:
-            fcf_calc = ttm_cfo - ttm_capex
+        # 3. FCF - calculate if cfo available (even without capex)
+        if ttm_cfo > 0:
+            if ttm_capex > 0:
+                fcf_calc = ttm_cfo - ttm_capex
+            else:
+                # Fallback: estimate capex as 5% of revenue if not available
+                fcf_calc = ttm_cfo - (ttm_rev * 0.05)
+            
             derived['fcf_calculated'] = round(fcf_calc, 2)
-            derived['fcf_margin'] = round((fcf_calc / ttm_rev) * 100, 2) if ttm_rev else None
+            if ttm_rev > 0:
+                derived['fcf_margin'] = round((fcf_calc / ttm_rev) * 100, 2)
         
-        # 4. CF to NI Ratio (only if positive)
+        # 4. CF Quality
         if ttm_net > 0 and ttm_cfo > 0:
             cf_ni = ttm_cfo / ttm_net
-            if 0 < cf_ni < 10:  # Sanity check
+            if 0 < cf_ni < 10:
                 derived['cf_to_ni_ratio'] = round(cf_ni, 2)
         
-        # 5. Dividend Payout Ratio
-        if ttm_div_paid > 0 and ttm_cfo > 0:
-            derived['div_payout_ratio_fcf'] = round((ttm_div_paid / ttm_cfo) * 100, 2)
+        # 5. Dividend safety (less strict)
+        if ttm_div_paid > 0:
+            if ttm_cfo > 0:
+                derived['div_payout_ratio_fcf'] = round((ttm_div_paid / ttm_cfo) * 100, 2)
+            elif ttm_net > 0:
+                derived['div_payout_ratio_ni'] = round((ttm_div_paid / ttm_net) * 100, 2)
         
-        # 6. ROIC (only if we have equity)
-        if latest_debt > 0 and latest_equity > 0 and ttm_ebit > 0:
+        # 6. ROIC - allow if debt OR equity (not requiring both)
+        if (latest_debt > 0 or latest_equity > 0) and ttm_ebit > 0:
             nopat = ttm_ebit * (1 - tax_rate)
-            invested_capital = latest_debt + latest_equity
+            invested_capital = max(latest_debt + latest_equity, latest_equity if latest_equity > 0 else 1)
             roic = (nopat / invested_capital) * 100
             if -10 < roic < 200:
                 derived['roic'] = round(roic, 2)
         
-        # 7. Quick Ratio (only if we have data)
+        # 7. Liquidity ratios (allow if only one available)
         if latest_curr_assets > 0 and latest_curr_liab > 0:
             derived['quick_ratio'] = round(
                 (latest_curr_assets - (latest_inventory or 0)) / latest_curr_liab, 2
             )
             derived['working_capital'] = round(latest_curr_assets - latest_curr_liab, 2)
         
-        # 8. Net Debt (only if we have data)
-        if latest_debt > 0 and latest_equity > 0:
+        # 8. Leverage metrics (calculate what we can)
+        if latest_debt > 0 or latest_cash > 0:
             net_debt = latest_debt - (latest_cash or 0)
             derived['net_debt'] = round(net_debt, 2)
             
@@ -488,23 +522,22 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
             if ttm_ebitda > 0:
                 derived['net_debt_to_ebitda'] = round(net_debt / ttm_ebitda, 2)
         
-        # 9. Valuation Multiples
-        mcap = safe_float(stock_info.get('mcap'), 0)
+        # 9. Valuation
+        mcap = safe_float(stock_info.get('marketCap', 0))
         if ttm_rev > 0 and mcap > 0:
             derived['price_to_sales'] = round(mcap / ttm_rev, 2)
-            
             ev = mcap + max(0, latest_debt - (latest_cash or 0))
             derived['ev_to_sales'] = round(ev / ttm_rev, 2)
             
             if ttm_ebitda > 0:
                 derived['ev_to_ebitda'] = round(ev / ttm_ebitda, 2)
         
-        # 10. Growth (CAGR) - only if we have valid historical data
+        # 10. Growth
         if len(valid_quarters) >= 8:
             rev_2y_ago = valid_quarters[-8].get('rev', 0)
             if rev_2y_ago > 0 and ttm_rev > 0:
                 rev_cagr_2y = ((ttm_rev / rev_2y_ago) ** (1/2) - 1) * 100
-                if -50 < rev_cagr_2y < 200:  # Sanity check
+                if -50 < rev_cagr_2y < 200:
                     derived['rev_cagr_2y'] = round(rev_cagr_2y, 2)
         
         if len(valid_quarters) >= 12:
@@ -522,7 +555,7 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
                     derived['net_cagr_3y'] = round(net_cagr_3y, 2)
         
         return derived
-    except:
+    except Exception as e:
         return derived
 
 # ── NEW: ROCE Calculation ──────────────────────────
@@ -744,6 +777,11 @@ def fetch_yfinance(sym, yf_ticker=None):
         insider = safe_float(info.get("heldPercentInsiders"))
         if insider:
             result["yf_insider_pct"] = round(insider * 100, 2)
+        
+        # ✨ Extract face value - ONLY if genuine (no defaults)
+        face_value = safe_float(info.get("faceValue"))
+        if face_value and face_value > 0:
+            result["face_value"] = round(face_value, 2)
 
         # ── Quarterly history for chart overlays (ENHANCED v4.0) ──────────────────────
         # Use ORIGINAL working extraction, then add new fields
@@ -868,6 +906,29 @@ def fetch_yfinance(sym, yf_ticker=None):
                     result['quarterly'] = [{'d': k, **v} for k, v in quarters]
                     fields = set(f for _, v in quarters for f in v if f != 'd')
                     print(f"  ✓ {sym} quarterly: {len(quarters)}Q fields={fields}")
+                    
+                    # ✨ NEW v4.2: Add TTM fields to main result (not just quarterly)
+                    latest_4q = result['quarterly'][-4:] if len(result['quarterly']) >= 4 else result['quarterly']
+                    
+                    ttm_cfo = sum(safe_float(q.get('cfo'), 0) for q in latest_4q)
+                    ttm_ebitda = sum(safe_float(q.get('ebitda'), 0) for q in latest_4q)
+                    ttm_capex = sum(safe_float(q.get('capex'), 0) for q in latest_4q)
+                    ttm_da = sum(safe_float(q.get('da'), 0) for q in latest_4q)
+                    ttm_tax = sum(safe_float(q.get('tax_exp'), 0) for q in latest_4q)
+                    ttm_div = sum(safe_float(q.get('div_paid'), 0) for q in latest_4q)
+                    
+                    if ttm_cfo != 0:
+                        result['cfo'] = round(ttm_cfo, 2)
+                    if ttm_ebitda != 0:
+                        result['ebitda'] = round(ttm_ebitda, 2)
+                    if ttm_capex > 0:
+                        result['capex'] = round(ttm_capex, 2)
+                    if ttm_da > 0:
+                        result['depreciation_amortization'] = round(ttm_da, 2)
+                    if ttm_tax > 0:
+                        result['tax_expense'] = round(ttm_tax, 2)
+                    if ttm_div > 0:
+                        result['dividends_paid'] = round(ttm_div, 2)
                 else:
                     print(f"  ⚠ {sym} quarterly: q_data has keys but all empty")
             else:
@@ -986,6 +1047,8 @@ def fetch_screener_gaps(sym):
                         result["fii_pct"] = val
                     elif "dii" in lbl or "institution" in lbl:
                         result["dii_pct"] = val
+        
+        # NOTE v4.3: public_pct only from Screener (no calculation/estimation)
 
         # P&L table
         pl = soup.find("section", id="profit-loss")
