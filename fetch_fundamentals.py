@@ -249,176 +249,146 @@ def extract_complete_quarterly_data(sym, t):
         cash = None
         balance = None
         
+        # Try to get income statement
         for attr in ['quarterly_income_stmt', 'quarterly_financials']:
             try:
                 df = getattr(t, attr, None)
                 if df is not None and not df.empty:
                     income = df
                     break
-            except:
+            except Exception as e:
                 pass
         
+        # Try to get cash flow
         for attr in ['quarterly_cash_flow', 'quarterly_cashflow']:
             try:
                 df = getattr(t, attr, None)
                 if df is not None and not df.empty:
                     cash = df
                     break
-            except:
+            except Exception as e:
                 pass
         
+        # Try to get balance sheet
         for attr in ['quarterly_balance_sheet', 'quarterly_balancesheet']:
             try:
                 df = getattr(t, attr, None)
                 if df is not None and not df.empty:
                     balance = df
                     break
-            except:
+            except Exception as e:
                 pass
         
         if income is None or income.empty:
             return []
         
-        dates = income.columns[:20]
+        dates = list(income.columns)[:20]
         
         for date in dates:
-            q = {'d': date.strftime('%Y-%m-%d')}
+            q = {'d': date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)[:10]}
             
             try:
-                # Revenue
-                for label in ['Total Revenue', 'Operating Revenue']:
-                    if label in income.index:
-                        q['rev'] = to_cr(safe_float(income.loc[label, date]))
-                        break
-                
-                # Gross Profit
-                if 'Gross Profit' in income.index:
-                    q['gross'] = to_cr(safe_float(income.loc['Gross Profit', date]))
-                
-                # EBIT
-                for label in ['Operating Income', 'EBIT', 'Operating Profit']:
-                    if label in income.index:
-                        q['ebit'] = to_cr(safe_float(income.loc[label, date]))
-                        break
-                
-                # EBITDA
-                for label in ['EBITDA', 'Normalized EBITDA']:
-                    if label in income.index:
-                        val = safe_float(income.loc[label, date])
-                        if val:
-                            q['ebitda'] = to_cr(val)
-                            break
-                
-                # ✅ NEW v4.0: Interest Expense
-                if 'Interest Expense' in income.index:
-                    val = safe_float(income.loc['Interest Expense', date])
-                    if val:
-                        q['interest_exp'] = to_cr(val)
-                
-                # ✅ NEW v4.0: Tax Expense
-                for label in ['Income Tax Expense', 'Income Taxes', 'Tax']:
-                    if label in income.index:
-                        val = safe_float(income.loc[label, date])
-                        if val:
-                            q['tax_exp'] = to_cr(val)
-                            break
-                
-                # ✅ NEW v4.0: Depreciation & Amortization
-                for label in ['Depreciation And Amortization', 'D&A', 'Depreciation']:
-                    if label in income.index:
-                        val = safe_float(income.loc[label, date])
-                        if val:
-                            q['da'] = to_cr(val)
-                            break
-                
-                # Net Income
-                if 'Net Income' in income.index:
-                    q['net'] = to_cr(safe_float(income.loc['Net Income', date]))
-                
-                # EPS
-                for label in ['Basic EPS', 'EPS', 'Diluted EPS']:
-                    if label in income.index:
-                        eps = safe_float(income.loc[label, date])
-                        if eps:
-                            q['eps'] = round(eps, 2)
-                            break
+                # Income Statement
+                for row_label in income.index:
+                    rl = str(row_label).lower().strip()
+                    try:
+                        raw = income.loc[row_label, date]
+                        # Check for NaN
+                        if raw != raw:  # NaN check
+                            continue
+                        v = float(raw)
+                        if v != v:  # NaN
+                            continue
+                    except (TypeError, ValueError):
+                        continue
+                    
+                    if rl == 'total revenue' or rl == 'operating revenue':
+                        q['rev'] = round(v/1e7, 2)
+                    elif rl == 'gross profit':
+                        q['gross'] = round(v/1e7, 2)
+                    elif rl == 'ebit' or rl == 'operating income':
+                        q['ebit'] = round(v/1e7, 2)
+                    elif 'ebitda' in rl:
+                        q['ebitda'] = round(v/1e7, 2)
+                    elif 'interest' in rl and 'expense' in rl:
+                        q['interest_exp'] = round(v/1e7, 2)
+                    elif 'tax' in rl and ('expense' in rl or 'income tax' in rl):
+                        q['tax_exp'] = round(v/1e7, 2)
+                    elif 'depreciation' in rl or 'd&a' in rl or 'amortization' in rl:
+                        q['da'] = round(v/1e7, 2)
+                    elif rl == 'net income':
+                        q['net'] = round(v/1e7, 2)
+                    elif 'eps' in rl:
+                        q['eps'] = round(v, 2)
             except:
                 pass
             
             # Cash Flow
             if cash is not None and not cash.empty:
                 try:
-                    for label in ['Operating Cash Flow', 'Net Cash from Operating Activities']:
-                        if label in cash.index:
-                            cfo = safe_float(cash.loc[label, date])
-                            if cfo:
-                                q['cfo'] = to_cr(cfo)
-                                break
-                    
-                    # ✅ NEW v4.0: CapEx
-                    for label in ['Capital Expenditures', 'Purchases Of Property Plant And Equipment']:
-                        if label in cash.index:
-                            capex = safe_float(cash.loc[label, date])
-                            if capex:
-                                q['capex'] = to_cr(abs(capex))
-                                break
-                    
-                    if 'Free Cash Flow' in cash.index:
-                        fcf = safe_float(cash.loc['Free Cash Flow', date])
-                        if fcf:
-                            q['fcf'] = to_cr(fcf)
-                    
-                    # ✅ NEW v4.0: Dividends Paid
-                    for label in ['Dividends Paid', 'Cash Paid For Dividends']:
-                        if label in cash.index:
-                            div = safe_float(cash.loc[label, date])
-                            if div:
-                                q['div_paid'] = to_cr(abs(div))
-                                break
+                    for row_label in cash.index:
+                        rl = str(row_label).lower().strip()
+                        try:
+                            raw = cash.loc[row_label, date]
+                            if raw != raw:  # NaN
+                                continue
+                            v = float(raw)
+                            if v != v:  # NaN
+                                continue
+                        except (TypeError, ValueError):
+                            continue
+                        
+                        if 'operating cash' in rl or 'cash from operations' in rl:
+                            q['cfo'] = round(v/1e7, 2)
+                        elif 'capital expenditure' in rl or 'capex' in rl:
+                            q['capex'] = round(abs(v)/1e7, 2)
+                        elif 'free cash' in rl:
+                            q['fcf'] = round(v/1e7, 2)
+                        elif 'dividend' in rl:
+                            q['div_paid'] = round(abs(v)/1e7, 2)
                 except:
                     pass
             
             # Balance Sheet
             if balance is not None and not balance.empty:
                 try:
-                    if 'Total Assets' in balance.index:
-                        q['total_assets'] = to_cr(safe_float(balance.loc['Total Assets', date]))
-                    
-                    if 'Current Assets' in balance.index:
-                        q['curr_assets'] = to_cr(safe_float(balance.loc['Current Assets', date]))
-                    
-                    for label in ['Cash And Cash Equivalents', 'Cash']:
-                        if label in balance.index:
-                            cash_val = safe_float(balance.loc[label, date])
-                            if cash_val:
-                                q['cash'] = to_cr(cash_val)
-                                break
-                    
-                    if 'Inventory' in balance.index:
-                        inv = safe_float(balance.loc['Inventory', date])
-                        if inv:
-                            q['inventory'] = to_cr(inv)
-                    
-                    if 'Current Liabilities' in balance.index:
-                        q['curr_liab'] = to_cr(safe_float(balance.loc['Current Liabilities', date]))
-                    
-                    if 'Total Debt' in balance.index:
-                        q['debt'] = to_cr(safe_float(balance.loc['Total Debt', date]))
-                    
-                    for label in ['Stockholders Equity', 'Total Equity']:
-                        if label in balance.index:
-                            eq = safe_float(balance.loc[label, date])
-                            if eq:
-                                q['equity'] = to_cr(eq)
-                                break
+                    for row_label in balance.index:
+                        rl = str(row_label).lower().strip()
+                        try:
+                            raw = balance.loc[row_label, date]
+                            if raw != raw:  # NaN
+                                continue
+                            v = float(raw)
+                            if v != v:  # NaN
+                                continue
+                        except (TypeError, ValueError):
+                            continue
+                        
+                        if rl == 'total assets':
+                            q['total_assets'] = round(v/1e7, 2)
+                        elif rl == 'current assets':
+                            q['curr_assets'] = round(v/1e7, 2)
+                        elif 'cash' in rl:
+                            q['cash'] = round(v/1e7, 2)
+                        elif rl == 'inventory':
+                            q['inventory'] = round(v/1e7, 2)
+                        elif rl == 'current liabilities':
+                            q['curr_liab'] = round(v/1e7, 2)
+                        elif 'total debt' in rl or 'debt' in rl:
+                            q['debt'] = round(v/1e7, 2)
+                        elif 'equity' in rl or 'stockholders equity' in rl:
+                            q['equity'] = round(v/1e7, 2)
                 except:
                     pass
             
-            if q and len(q) > 1:
-                quarterly_data.append(q)
+            # Save quarter if has meaningful data
+            if len(q) > 1:
+                non_null = sum(1 for k, v in q.items() if k != 'd' and v is not None)
+                if non_null >= 1:
+                    quarterly_data.append(q)
         
         return quarterly_data
-    except:
+    except Exception as e:
         return []
 
 def calculate_derived_metrics_v4(quarterly_data, stock_info):
@@ -429,7 +399,13 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
         return derived
     
     try:
-        latest_4q = quarterly_data[-4:] if len(quarterly_data) >= 4 else quarterly_data
+        # Filter out quarters with null revenue (incomplete data)
+        valid_quarters = [q for q in quarterly_data if q.get('rev') is not None and q.get('rev') > 0]
+        
+        if len(valid_quarters) < 2:
+            return derived
+        
+        latest_4q = valid_quarters[-4:] if len(valid_quarters) >= 4 else valid_quarters
         
         ttm_rev = sum(safe_float(q.get('rev'), 0) for q in latest_4q)
         ttm_ebit = sum(safe_float(q.get('ebit'), 0) for q in latest_4q)
@@ -449,11 +425,15 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
         latest_curr_liab = safe_float(quarterly_data[-1].get('curr_liab'), 0)
         latest_inventory = safe_float(quarterly_data[-1].get('inventory'), 0)
         
+        # Skip if no valid TTM revenue
+        if ttm_rev <= 0:
+            return derived
+        
         # 1. Interest Coverage
         if ttm_interest > 0 and ttm_ebit > 0:
             derived['interest_coverage'] = round(ttm_ebit / ttm_interest, 2)
         
-        # 2. Tax Rate
+        # 2. Tax Rate (only if we have actual tax data)
         tax_rate = 0.25
         if ttm_ebit > 0 and ttm_tax > 0:
             calc_rate = ttm_tax / ttm_ebit
@@ -466,22 +446,23 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
         
         derived['tax_rate_effective'] = round(tax_rate, 4)
         
-        # 3. FCF Calculated
-        if ttm_cfo > 0 and ttm_capex > 0:
+        # 3. FCF Calculated (only if we have capex)
+        if ttm_cfo > 0 and ttm_capex >= 0:
             fcf_calc = ttm_cfo - ttm_capex
             derived['fcf_calculated'] = round(fcf_calc, 2)
-            if ttm_rev > 0:
-                derived['fcf_margin'] = round((fcf_calc / ttm_rev) * 100, 2)
+            derived['fcf_margin'] = round((fcf_calc / ttm_rev) * 100, 2) if ttm_rev else None
         
-        # 4. CF to NI Ratio
-        if ttm_net > 0:
-            derived['cf_to_ni_ratio'] = round(ttm_cfo / ttm_net, 2)
+        # 4. CF to NI Ratio (only if positive)
+        if ttm_net > 0 and ttm_cfo > 0:
+            cf_ni = ttm_cfo / ttm_net
+            if 0 < cf_ni < 10:  # Sanity check
+                derived['cf_to_ni_ratio'] = round(cf_ni, 2)
         
         # 5. Dividend Payout Ratio
         if ttm_div_paid > 0 and ttm_cfo > 0:
             derived['div_payout_ratio_fcf'] = round((ttm_div_paid / ttm_cfo) * 100, 2)
         
-        # 6. ROIC (Improved ROCE)
+        # 6. ROIC (only if we have equity)
         if latest_debt > 0 and latest_equity > 0 and ttm_ebit > 0:
             nopat = ttm_ebit * (1 - tax_rate)
             invested_capital = latest_debt + latest_equity
@@ -489,16 +470,16 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
             if -10 < roic < 200:
                 derived['roic'] = round(roic, 2)
         
-        # 7. Quick Ratio
+        # 7. Quick Ratio (only if we have data)
         if latest_curr_assets > 0 and latest_curr_liab > 0:
             derived['quick_ratio'] = round(
                 (latest_curr_assets - (latest_inventory or 0)) / latest_curr_liab, 2
             )
             derived['working_capital'] = round(latest_curr_assets - latest_curr_liab, 2)
         
-        # 8. Net Debt
-        if latest_cash and latest_debt:
-            net_debt = latest_debt - latest_cash
+        # 8. Net Debt (only if we have data)
+        if latest_debt > 0 and latest_equity > 0:
+            net_debt = latest_debt - (latest_cash or 0)
             derived['net_debt'] = round(net_debt, 2)
             
             if latest_equity > 0:
@@ -518,24 +499,27 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
             if ttm_ebitda > 0:
                 derived['ev_to_ebitda'] = round(ev / ttm_ebitda, 2)
         
-        # 10. Growth (CAGR)
-        if len(quarterly_data) >= 8:
-            rev_2y_ago = quarterly_data[-8].get('rev', 0)
-            if rev_2y_ago > 0:
+        # 10. Growth (CAGR) - only if we have valid historical data
+        if len(valid_quarters) >= 8:
+            rev_2y_ago = valid_quarters[-8].get('rev', 0)
+            if rev_2y_ago > 0 and ttm_rev > 0:
                 rev_cagr_2y = ((ttm_rev / rev_2y_ago) ** (1/2) - 1) * 100
-                derived['rev_cagr_2y'] = round(rev_cagr_2y, 2)
+                if -50 < rev_cagr_2y < 200:  # Sanity check
+                    derived['rev_cagr_2y'] = round(rev_cagr_2y, 2)
         
-        if len(quarterly_data) >= 12:
-            rev_3y_ago = quarterly_data[-12].get('rev', 0)
-            net_3y_ago = quarterly_data[-12].get('net', 0)
+        if len(valid_quarters) >= 12:
+            rev_3y_ago = valid_quarters[-12].get('rev', 0)
+            net_3y_ago = valid_quarters[-12].get('net', 0)
             
-            if rev_3y_ago > 0:
+            if rev_3y_ago > 0 and ttm_rev > 0:
                 rev_cagr_3y = ((ttm_rev / rev_3y_ago) ** (1/3) - 1) * 100
-                derived['rev_cagr_3y'] = round(rev_cagr_3y, 2)
+                if -50 < rev_cagr_3y < 200:
+                    derived['rev_cagr_3y'] = round(rev_cagr_3y, 2)
             
-            if net_3y_ago > 0:
+            if net_3y_ago > 0 and ttm_net > 0:
                 net_cagr_3y = ((ttm_net / net_3y_ago) ** (1/3) - 1) * 100
-                derived['net_cagr_3y'] = round(net_cagr_3y, 2)
+                if -50 < net_cagr_3y < 200:
+                    derived['net_cagr_3y'] = round(net_cagr_3y, 2)
         
         return derived
     except:
@@ -555,37 +539,44 @@ def calculate_roce_from_quarterly(quarterly_list):
         return None
     
     try:
+        # Filter valid quarters (non-null revenue)
+        valid_quarters = [q for q in quarterly_list if q.get('rev') is not None and q.get('rev') > 0]
+        
+        if len(valid_quarters) < 2:
+            return None
+        
         # Get latest 4 quarters for TTM, or all available if < 4
-        latest_4q = quarterly_list[-4:] if len(quarterly_list) >= 4 else quarterly_list
+        latest_4q = valid_quarters[-4:] if len(valid_quarters) >= 4 else valid_quarters
         
         # Sum EBIT and Net Income for TTM
         ttm_ebit = sum(safe_float(q.get('ebit'), 0) for q in latest_4q)
         ttm_net = sum(safe_float(q.get('net'), 0) for q in latest_4q)
+        ttm_tax = sum(safe_float(q.get('tax_exp'), 0) for q in latest_4q)
         
         # Get latest debt from most recent quarter
-        latest_debt = safe_float(latest_4q[-1].get('debt'), 0)
+        latest_debt = safe_float(quarterly_list[-1].get('debt'), 0)
+        latest_equity = safe_float(quarterly_list[-1].get('equity'), 0)
         
-        if ttm_ebit <= 0:
+        if ttm_ebit <= 0 or latest_equity <= 0:
             return None
         
-        # Estimate effective tax rate: (EBIT - NET) / EBIT, capped 0–40%
-        tax_rate = 0.25  # Default 25% corporate tax
-        if ttm_net and ttm_net > 0:
+        # Calculate tax rate from actual tax expense if available
+        tax_rate = 0.25  # Default
+        if ttm_tax > 0 and ttm_ebit > 0:
+            tax_rate = min(0.40, ttm_tax / ttm_ebit)
+        elif ttm_net > 0:
             implied_tax = (ttm_ebit - ttm_net) / ttm_ebit
             tax_rate = max(0, min(0.40, implied_tax))
         
         nopat = ttm_ebit * (1 - tax_rate)
         
-        # Invested Capital = Debt + Equity estimate
-        # Assumption: For most Indian smallcaps, D:E ≈ 0.6, so Invested Cap ≈ Debt × 2.5
-        if latest_debt and latest_debt > 0:
-            invested_capital = latest_debt * 2.5
-        else:
-            # Fallback: assume debt = 60% of capital for equity-heavy companies
-            invested_capital = nopat / 0.08 if nopat > 0 else None
+        # Invested Capital = Debt + Equity
+        invested_capital = latest_debt + latest_equity
         
-        if invested_capital and invested_capital > 0:
-            roce = (nopat / invested_capital) * 100
+        if invested_capital <= 0:
+            return None
+        
+        roce = (nopat / invested_capital) * 100
             # Sanity: ROCE should be -10% to 200% realistically
             if -10 < roce < 200:
                 return round(roce, 2)
@@ -755,12 +746,136 @@ def fetch_yfinance(sym, yf_ticker=None):
             result["yf_insider_pct"] = round(insider * 100, 2)
 
         # ── Quarterly history for chart overlays (ENHANCED v4.0) ──────────────────────
-        # Use new complete extraction function
-        quarterly_data = extract_complete_quarterly_data(sym, t)
-        
-        if quarterly_data:
-            result["quarterly"] = quarterly_data
-            print(f"  ✓ {sym} quarterly: {len(quarterly_data)}Q with complete extraction")
+        # Use ORIGINAL working extraction, then add new fields
+        try:
+            q_data = {}
+            def qkey(d): return str(d)[:10]
+
+            # ── Income statement ──────
+            qf = None
+            for attr in ['quarterly_income_stmt', 'quarterly_financials']:
+                try:
+                    df = getattr(t, attr, None)
+                    if df is not None and not df.empty:
+                        qf = df
+                        break
+                except Exception as ex:
+                    pass
+
+            if qf is not None:
+                for row_label in qf.index:
+                    rl = str(row_label).lower().strip()
+                    for col in qf.columns:
+                        k = qkey(col)
+                        if k not in q_data: q_data[k] = {}
+                        raw = qf.loc[row_label, col]
+                        try:
+                            v = float(raw)
+                            if v != v: continue  # nan
+                        except (TypeError, ValueError):
+                            continue
+                        if   rl == 'total revenue':                    q_data[k]['rev']   = round(v/1e7, 2)
+                        elif rl == 'operating revenue':                q_data[k].setdefault('rev', round(v/1e7, 2))
+                        elif rl == 'net income':                       q_data[k]['net']   = round(v/1e7, 2)
+                        elif rl == 'basic eps':                        q_data[k]['eps']   = round(v, 2)
+                        elif rl == 'diluted eps':                      q_data[k].setdefault('eps', round(v, 2))
+                        elif rl == 'ebitda' or rl == 'normalized ebitda': q_data[k]['ebitda']= round(v/1e7, 2)
+                        elif rl == 'ebit':                             q_data[k]['ebit']  = round(v/1e7, 2)
+                        elif rl == 'gross profit':                     q_data[k]['gross'] = round(v/1e7, 2)
+                        elif rl == 'operating income' or rl == 'operating profit': q_data[k].setdefault('ebit', round(v/1e7, 2))
+                        # ✨ NEW v4.0: Extract new fields
+                        elif rl == 'interest expense':                 q_data[k]['interest_exp'] = round(v/1e7, 2)
+                        elif 'tax' in rl and 'expense' in rl:          q_data[k].setdefault('tax_exp', round(v/1e7, 2))
+                        elif 'depreciation' in rl or 'd&a' in rl:      q_data[k].setdefault('da', round(v/1e7, 2))
+
+            # ── Cash flow ──────────────────────────────────────────────
+            qc = None
+            for attr in ['quarterly_cash_flow', 'quarterly_cashflow']:
+                try:
+                    df = getattr(t, attr, None)
+                    if df is not None and not df.empty:
+                        qc = df
+                        break
+                except Exception as ex:
+                    pass
+
+            if qc is not None:
+                for row_label in qc.index:
+                    rl = str(row_label).lower().strip()
+                    for col in qc.columns:
+                        k = qkey(col)
+                        if k not in q_data: q_data[k] = {}
+                        try:
+                            v = float(qc.loc[row_label, col])
+                            if v != v: continue
+                        except (TypeError, ValueError):
+                            continue
+                        if any(x in rl for x in ('operating cash flow', 'cash from operations', 'net cash from operating')):
+                            q_data[k].setdefault('cfo', round(v/1e7, 2))
+                        elif 'free cash flow' in rl:
+                            q_data[k]['fcf'] = round(v/1e7, 2)
+                        elif 'capital expenditure' in rl or 'capex' in rl:  # ✨ NEW v4.0
+                            q_data[k]['capex'] = round(abs(v)/1e7, 2)
+                        elif 'dividend' in rl:  # ✨ NEW v4.0
+                            q_data[k]['div_paid'] = round(abs(v)/1e7, 2)
+
+            # ── Balance sheet ──────────────────────────────────────────
+            qb = None
+            for attr in ['quarterly_balance_sheet', 'quarterly_balancesheet']:
+                try:
+                    df = getattr(t, attr, None)
+                    if df is not None and not df.empty:
+                        qb = df
+                        break
+                except Exception as ex:
+                    pass
+
+            if qb is not None:
+                for row_label in qb.index:
+                    rl = str(row_label).lower().strip()
+                    for col in qb.columns:
+                        k = qkey(col)
+                        if k not in q_data: q_data[k] = {}
+                        try:
+                            v = float(qb.loc[row_label, col])
+                            if v != v: continue
+                        except (TypeError, ValueError):
+                            continue
+                        if 'total debt' in rl or 'long term debt' in rl:
+                            q_data[k]['debt'] = round(v/1e7, 2)
+                        elif 'current assets' in rl:  # ✨ NEW v4.0
+                            q_data[k]['curr_assets'] = round(v/1e7, 2)
+                        elif rl == 'cash' or 'cash and' in rl:  # ✨ NEW v4.0
+                            q_data[k]['cash'] = round(v/1e7, 2)
+                        elif rl == 'inventory':  # ✨ NEW v4.0
+                            q_data[k]['inventory'] = round(v/1e7, 2)
+                        elif 'current liabilities' in rl:  # ✨ NEW v4.0
+                            q_data[k]['curr_liab'] = round(v/1e7, 2)
+                        elif 'total equity' in rl or 'stockholders equity' in rl:  # ✨ NEW v4.0
+                            q_data[k]['equity'] = round(v/1e7, 2)
+                        elif rl == 'total assets':  # ✨ NEW v4.0
+                            q_data[k]['total_assets'] = round(v/1e7, 2)
+
+            # ── Compute derived fields ─────────────────────────────────
+            for k, v in q_data.items():
+                if v.get('ebit') and v.get('rev') and v['rev'] != 0:
+                    v['opm'] = round(v['ebit'] / v['rev'] * 100, 1)
+
+            # ── Save quarters ───
+            if q_data:
+                quarters = sorted([(k, v) for k, v in q_data.items() if len(v) > 0])[-20:]  # Keep up to 20 quarters
+                if quarters:
+                    result['quarterly'] = [{'d': k, **v} for k, v in quarters]
+                    fields = set(f for _, v in quarters for f in v if f != 'd')
+                    print(f"  ✓ {sym} quarterly: {len(quarters)}Q fields={fields}")
+                else:
+                    print(f"  ⚠ {sym} quarterly: q_data has keys but all empty")
+            else:
+                print(f"  ⚠ {sym} quarterly: q_data empty")
+
+        except Exception as e:
+            print(f"  ⚠ {sym} quarterly extraction: {e}")
+            pass  # quarterly optional
 
         print(
             f"  ✓ yfinance {sym}: ₹{ltp} | "
