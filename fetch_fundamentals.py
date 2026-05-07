@@ -1451,10 +1451,20 @@ def main():
         json.dumps(output, separators=(",",":"), default=str)
     )
 
+    # ✨ v4.4: Calculate fallback statistics
+    cfo_filled = sum(1 for s in final_result.values() if s.get('cfo') and s.get('cfo') != 0)
+    ebitda_filled = sum(1 for s in final_result.values() if s.get('ebitda') and s.get('ebitda') != 0)
+    capex_filled = sum(1 for s in final_result.values() if s.get('capex') and s.get('capex') != 0)
+    total_stocks = len(final_result)
+    
     print("=" * 50)
-    print(f"✅ {len(final_result)} stocks in {FUND_FILE} ({len(result)} updated)")
+    print(f"✅ {total_stocks} stocks in {FUND_FILE} ({len(result)} updated)")
     print(f"   {stats['yf']} from Yahoo | {stats['scr']} from Screener | {stats['errors']} errors")
-    print(f"✨ v4.0: Complete quarterly extraction + 20+ derived metrics")
+    print(f"\n✨ v4.4: yfinance + Finnhub fallback + Screener + 20+ derived metrics")
+    print(f"\n📊 Data Coverage:")
+    print(f"   CFO:    {cfo_filled:>3}/{total_stocks} ({100*cfo_filled/total_stocks:>5.1f}%)")
+    print(f"   EBITDA: {ebitda_filled:>3}/{total_stocks} ({100*ebitda_filled/total_stocks:>5.1f}%)")
+    print(f"   CapEx:  {capex_filled:>3}/{total_stocks} ({100*capex_filled/total_stocks:>5.1f}%)")
 
 if __name__ == "__main__":
     main()
