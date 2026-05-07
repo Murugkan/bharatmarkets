@@ -1,29 +1,37 @@
 import os
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher v4.4
-============================================
-✨ ENHANCED: Complete quarterly extraction + Finnhub fallback + 20+ derived metrics
+BharatMarkets Pro — Fundamentals Fetcher v4.5 COMPLETE
+=====================================================
+✨ BEST OF ALL WORLDS: v4.4's professional metrics + v3.1's ROCE calculation + Delisted tracking
 
 Reads symbols from:
   unified-symbols.json — single source of truth (portfolio + watchlist unified)
 
 Sources for data:
   1. Yahoo Finance (yfinance)    — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
-  2. Finnhub API (v4.4 NEW!)     — fallback quarterly: revenue, profit, CFO, capex, etc.
+  2. Finnhub API (v4.4)          — fallback quarterly: revenue, profit, CFO, capex, etc.
   3. Screener.in                 — prom%, FII%, DII%, FACE VALUE, ROCE
-  4. Quarterly data (ENHANCED)   — Interest, CapEx, Tax, D&A + 20+ derived metrics
+  4. Quarterly data (ENHANCED)   — v4.4: Interest, CapEx, Tax, D&A + v3.1: ROCE calculation
 
 Outputs: fundamentals.json with 60+ fields per stock including:
   - Valuation: PE, PB, P/S, EV/EBITDA
-  - Profitability: ROE, ROCE, ROIC, Margins
+  - Profitability: ROE, ROCE (calculated from quarterly), ROIC, Margins
   - Solvency: Interest Coverage, Tax Rate, Net Debt
   - Cash Flow: FCF, Dividend Payout Ratio, CF/NI Ratio
   - Growth: Revenue CAGR, Earnings CAGR
   - Size: MCAP, Sales, EBITDA, CFO (now from Finnhub if yfinance missing)
   - Holdings: Promoter%, FII%, DII%, Pledge%
   - Price Action: 52W%, ATH%, 1D%
-  - Data Tracking: source field shows where each value came from
+  - Data Tracking: Delisted tracking, stale stock cleanup
+  
+v4.5 Features:
+  ✅ v3.1: ROCE calculation from quarterly EBIT + NOPAT
+  ✅ v3.1: Delisted stock tracking & optional cleanup
+  ✅ v4.4: Finnhub API fallback (78% CFO, 90% EBITDA fill)
+  ✅ v4.4: 20+ derived metrics (FCF, interest coverage, net debt, etc.)
+  ✅ v4.4: Professional signal logic (20+ metrics)
+  ✅ v4.4: Explicit data quality policy (no guesses, only genuine data)
 """
 
 import json, time, datetime, re, os
@@ -506,6 +514,9 @@ def calculate_derived_metrics_v4(quarterly_data, stock_info):
         if ttm_div_paid > 0:
             if ttm_cfo > 0:
                 derived['div_payout_ratio_fcf'] = round((ttm_div_paid / ttm_cfo) * 100, 2)
+            if ttm_net > 0:
+                # ✨ v4.4.1: PAYOUT% = Dividends / Net Income
+                derived['div_payout_ratio'] = round((ttm_div_paid / ttm_net) * 100, 2)
             elif ttm_net > 0:
                 derived['div_payout_ratio_ni'] = round((ttm_div_paid / ttm_net) * 100, 2)
         
@@ -1281,7 +1292,7 @@ def main():
     resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
     syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
-    print(f"📊 BharatMarkets Fundamentals v3.1 (with ROCE) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
+    print(f"📊 BharatMarkets Fundamentals v4.5 (COMPLETE: ROCE + Delisted + Finnhub + 20+ Metrics) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
     if Path(FUND_FILE).exists():
@@ -1460,7 +1471,9 @@ def main():
     print("=" * 50)
     print(f"✅ {total_stocks} stocks in {FUND_FILE} ({len(result)} updated)")
     print(f"   {stats['yf']} from Yahoo | {stats['scr']} from Screener | {stats['errors']} errors")
-    print(f"\n✨ v4.4: yfinance + Finnhub fallback + Screener + 20+ derived metrics")
+    print(f"\n✨ v4.5 COMPLETE: Best of all worlds!")
+    print(f"   - v3.1 features: ROCE calculation + Delisted tracking")
+    print(f"   - v4.4 features: Finnhub fallback + 20+ metrics")
     print(f"\n📊 Data Coverage:")
     print(f"   CFO:    {cfo_filled:>3}/{total_stocks} ({100*cfo_filled/total_stocks:>5.1f}%)")
     print(f"   EBITDA: {ebitda_filled:>3}/{total_stocks} ({100*ebitda_filled/total_stocks:>5.1f}%)")
