@@ -100,7 +100,8 @@ const PALETTE = [
 const UI_FIELDS = [
     '#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
     'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV',
-    'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO'
+    'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO',
+    'CAPEX', 'FCF', 'DIV_YIELD', 'DEBT_EQ', 'INT_COV', 'P/S', 'EV/EBITDA', 'PAYOUT%', 'TAX_RATE', 'CAGR_3Y'
 ];
 
 const TEXT_FIELDS = ['TICKER', 'SECTOR', 'SIGNAL'];
@@ -230,7 +231,17 @@ const resolve = (obj, field) => {
         'LOW':['low','LOW'],
         'CHANGE':['change','CHANGE'],
         'VOL':['vol','VOL','VOLUME'],
-        'BETA':['beta','BETA']
+        'BETA':['beta','BETA'],
+        'CAPEX':['capex','CAPEX','capital_expenditure'],
+        'FCF':['fcf','FCF','freeCashFlow','free_cash_flow'],
+        'DIV_YIELD':['div_yield','DIV_YIELD','dividend_yield','dividendYield'],
+        'DEBT_EQ':['debt_eq','DEBT_EQ','debt_equity','debtToEquity'],
+        'INT_COV':['interest_coverage','INT_COV','INTEREST_COVERAGE'],
+        'P/S':['price_to_sales','P/S','PS','priceToSales'],
+        'EV/EBITDA':['ev_to_ebitda','EV/EBITDA','EV_EBITDA','evToEbitda'],
+        'PAYOUT%':['div_payout_ratio','PAYOUT%','payout_ratio','payoutRatio'],
+        'TAX_RATE':['tax_rate_effective','TAX_RATE','tax_rate','effectiveTaxRate'],
+        'CAGR_3Y':['net_cagr_3y','CAGR_3Y','cagr_3y','netCagr3y']
     };
     const targets = mappings[f] || [f];
     for (let t of targets) {
@@ -341,8 +352,17 @@ const getMetricColor = (field, value, stock) => {
         'PNL%': { green: n > 0, red: n < 0 },
         '1D%': { green: n > 0, red: n < 0 },
         '1DCH': { green: n > 0, red: n < 0 },
-        '1D_GAIN': { green: n > 0, red: n < 0 }
-        // POS and NEG are counts, not metrics - no coloring
+        '1D_GAIN': { green: n > 0, red: n < 0 },
+        'CAPEX': { green: n > 0, red: n < 0 },  // Positive capex is investment
+        'FCF': { green: n > 0, red: n < 0 },  // Positive FCF is good
+        'DIV_YIELD': { green: n > 2, red: n < 1 },  // >2% good, <1% not very generous
+        'DEBT_EQ': { green: n < 0.5, red: n > 2 },  // Low debt is good, high is risky
+        'INT_COV': { green: n > 5, red: n < 2 },  // >5x safe, <2x risky
+        'P/S': { green: n < 2, red: n > 5 },  // <2 cheap, >5 expensive
+        'EV/EBITDA': { green: n < 12, red: n > 20 },  // <12x fair, >20x expensive
+        'PAYOUT%': { green: n > 20 && n < 60, red: n > 100 || n < 5 },  // 20-60% good, >100% unsustainable
+        'TAX_RATE': { green: n > 0.15 && n < 0.35, red: n < 0.1 || n > 0.4 },  // 15-35% normal, extremes bad
+        'CAGR_3Y': { green: n > 15, red: n < 0 }  // >15% growth good, negative bad
     };
     
     const t = thresholds[field];
