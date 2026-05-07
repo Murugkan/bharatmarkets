@@ -1,17 +1,18 @@
 import os
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher v4.0
+BharatMarkets Pro — Fundamentals Fetcher v4.4
 ============================================
-✨ ENHANCED: Complete quarterly extraction + 20+ derived metrics
+✨ ENHANCED: Complete quarterly extraction + Finnhub fallback + 20+ derived metrics
 
 Reads symbols from:
   unified-symbols.json — single source of truth (portfolio + watchlist unified)
 
 Sources for data:
-  1. Yahoo Finance (yfinance) — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
-  2. Screener.in              — prom%, FII%, DII%, FACE VALUE, ROCE (if beautifulsoup4 installed)
-  3. Quarterly data (ENHANCED) — Interest, CapEx, Tax, D&A + 20+ derived metrics
+  1. Yahoo Finance (yfinance)    — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
+  2. Finnhub API (v4.4 NEW!)     — fallback quarterly: revenue, profit, CFO, capex, etc.
+  3. Screener.in                 — prom%, FII%, DII%, FACE VALUE, ROCE
+  4. Quarterly data (ENHANCED)   — Interest, CapEx, Tax, D&A + 20+ derived metrics
 
 Outputs: fundamentals.json with 60+ fields per stock including:
   - Valuation: PE, PB, P/S, EV/EBITDA
@@ -19,9 +20,10 @@ Outputs: fundamentals.json with 60+ fields per stock including:
   - Solvency: Interest Coverage, Tax Rate, Net Debt
   - Cash Flow: FCF, Dividend Payout Ratio, CF/NI Ratio
   - Growth: Revenue CAGR, Earnings CAGR
-  - Size: MCAP, Sales, EBITDA, CFO
+  - Size: MCAP, Sales, EBITDA, CFO (now from Finnhub if yfinance missing)
   - Holdings: Promoter%, FII%, DII%, Pledge%
   - Price Action: 52W%, ATH%, 1D%
+  - Data Tracking: source field shows where each value came from
 """
 
 import json, time, datetime, re, os
@@ -44,6 +46,17 @@ try:
 except ImportError:
     HAS_BS4 = False
     print("⚠ beautifulsoup4 not installed — Screener.in disabled (pip install beautifulsoup4 lxml)")
+
+# ✨ v4.4: FINNHUB API KEY CONFIGURATION
+# Get free API key from https://finnhub.io/register
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "YOUR_FINNHUB_API_KEY_HERE")
+FINNHUB_ENABLED = FINNHUB_API_KEY != "YOUR_FINNHUB_API_KEY_HERE"
+FINNHUB_RATE_LIMITER = 0.1  # Seconds between Finnhub API calls (10 per second max for parallel)
+
+if FINNHUB_ENABLED:
+    print(f"✓ Finnhub API enabled (fallback source for quarterly data)")
+else:
+    print(f"⚠ Finnhub API disabled — set FINNHUB_API_KEY env var or edit script")
 
 SYMBOLS_FILE    = "unified-symbols.json"
 PRICES_FILE     = "prices.json"
@@ -938,6 +951,64 @@ def fetch_yfinance(sym, yf_ticker=None):
             print(f"  ⚠ {sym} quarterly extraction: {e}")
             pass  # quarterly optional
 
+        # ✨ v4.4: FINNHUB FALLBACK - If yfinance quarterly is missing/empty, try Finnhub
+        if not result.get('quarterly') or len(result.get('quarterly', [])) < 4:
+            print(f"  → Attempting Finnhub fallback for {sym}...")
+            fh_quarters = fetch_finnhub_quarterly(sym)
+            
+            if fh_quarters:
+                # Convert Finnhub format to our format and merge
+                merged_q_data = {}
+                
+                # First add any existing yfinance data
+                if result.get('quarterly'):
+                    for q in result['quarterly']:
+                        d = q.pop('d', None)
+                        if d:
+                            merged_q_data[d] = q
+                
+                # Then add Finnhub data (only if not already in yfinance)
+                for period, fh_data in fh_quarters.items():
+                    if period not in merged_q_data:
+                        merged_q_data[period] = fh_data
+                    else:
+                        # If period exists in yfinance, only add missing fields from Finnhub
+                        for key, val in fh_data.items():
+                            if key not in merged_q_data[period] or merged_q_data[period][key] is None:
+                                merged_q_data[period][key] = val
+                
+                # Update result with merged quarterly data
+                if merged_q_data:
+                    quarters = sorted([(k, v) for k, v in merged_q_data.items() if len(v) > 0])[-20:]
+                    if quarters:
+                        result['quarterly'] = [{'d': k, **v} for k, v in quarters]
+                        print(f"  ✓ Finnhub fallback: {len(quarters)}Q merged with yfinance")
+                        
+                        # Recalculate TTM fields with merged data
+                        latest_4q = result['quarterly'][-4:] if len(result['quarterly']) >= 4 else result['quarterly']
+                        
+                        ttm_cfo = sum(safe_float(q.get('cfo'), 0) for q in latest_4q)
+                        ttm_ebitda = sum(safe_float(q.get('ebitda'), 0) for q in latest_4q)
+                        ttm_capex = sum(safe_float(q.get('capex'), 0) for q in latest_4q)
+                        ttm_da = sum(safe_float(q.get('da'), 0) for q in latest_4q)
+                        ttm_tax = sum(safe_float(q.get('tax_exp'), 0) for q in latest_4q)
+                        ttm_div = sum(safe_float(q.get('div_paid'), 0) for q in latest_4q)
+                        
+                        # Only add if not already present from yfinance
+                        if not result.get('cfo') and ttm_cfo != 0:
+                            result['cfo'] = round(ttm_cfo, 2)
+                        if not result.get('ebitda') and ttm_ebitda != 0:
+                            result['ebitda'] = round(ttm_ebitda, 2)
+                        if not result.get('capex') and ttm_capex > 0:
+                            result['capex'] = round(ttm_capex, 2)
+                        if not result.get('depreciation_amortization') and ttm_da > 0:
+                            result['depreciation_amortization'] = round(ttm_da, 2)
+                        if not result.get('tax_expense') and ttm_tax > 0:
+                            result['tax_expense'] = round(ttm_tax, 2)
+                        if not result.get('dividends_paid') and ttm_div > 0:
+                            result['dividends_paid'] = round(ttm_div, 2)
+
+
         print(
             f"  ✓ yfinance {sym}: ₹{ltp} | "
             f"P/E:{result.get('pe') or '—'} | "
@@ -961,6 +1032,90 @@ def get_scr_session():
         _SCR_SESSION = requests.Session()
         _SCR_SESSION.headers.update(HEADERS)
     return _SCR_SESSION
+
+# ✨ v4.4: FINNHUB API FALLBACK FUNCTION
+def fetch_finnhub_quarterly(sym):
+    """
+    Fetch quarterly financial data from Finnhub API as FALLBACK
+    Only used if yfinance quarterly data is missing/incomplete
+    
+    Returns dict of quarterly data: {period: {revenue, profit, cfo, capex, ...}}
+    """
+    if not FINNHUB_ENABLED:
+        return {}
+    
+    try:
+        # Rate limiting: respect Finnhub API limits (60 calls/min)
+        time.sleep(FINNHUB_RATE_LIMITER)
+        
+        url = "https://finnhub.io/api/v1/stock/financials-reported"
+        params = {
+            "symbol": sym,
+            "token": FINNHUB_API_KEY
+        }
+        
+        r = requests.get(url, params=params, timeout=15)
+        
+        if r.status_code != 200:
+            return {}
+        
+        data = r.json()
+        
+        if "data" not in data or not data["data"]:
+            return {}
+        
+        quarters = {}
+        
+        for q in data["data"]:
+            period = q.get("period")
+            if not period:
+                continue
+            
+            quarter_data = {}
+            
+            # Extract from income statement (netRevenue, netIncome)
+            if q.get("income"):
+                inc = q["income"]
+                if inc.get("netRevenue"):
+                    # Finnhub: INR in actual amount, convert to Cr
+                    quarter_data["revenue"] = round(inc["netRevenue"] / 10000000, 2)
+                if inc.get("netIncome"):
+                    quarter_data["profit"] = round(inc["netIncome"] / 10000000, 2)
+                if inc.get("operatingIncome"):
+                    quarter_data["ebit"] = round(inc["operatingIncome"] / 10000000, 2)
+            
+            # Extract from cash flow (operatingCashFlow, capex, dividends)
+            if q.get("cashflow"):
+                cf = q["cashflow"]
+                if cf.get("operatingCashFlow"):
+                    quarter_data["cfo"] = round(cf["operatingCashFlow"] / 10000000, 2)
+                if cf.get("capitalExpenditure"):
+                    quarter_data["capex"] = round(cf["capitalExpenditure"] / 10000000, 2)
+                if cf.get("dividendsPaid"):
+                    quarter_data["div_paid"] = round(cf["dividendsPaid"] / 10000000, 2)
+            
+            # Extract from balance sheet (assets, liabilities, equity, debt)
+            if q.get("balance"):
+                bal = q["balance"]
+                if bal.get("cash"):
+                    quarter_data["cash"] = round(bal["cash"] / 10000000, 2)
+                if bal.get("currentAssets"):
+                    quarter_data["curr_assets"] = round(bal["currentAssets"] / 10000000, 2)
+                if bal.get("totalEquity"):
+                    quarter_data["equity"] = round(bal["totalEquity"] / 10000000, 2)
+                if bal.get("debt"):
+                    quarter_data["debt"] = round(bal["debt"] / 10000000, 2)
+                if bal.get("currentLiabilities"):
+                    quarter_data["curr_liab"] = round(bal["currentLiabilities"] / 10000000, 2)
+            
+            if quarter_data:
+                quarters[period] = quarter_data
+        
+        return quarters
+    
+    except Exception as e:
+        print(f"  ⚠ Finnhub error for {sym}: {e}")
+        return {}
 
 def fetch_screener_gaps(sym):
     result = {}
