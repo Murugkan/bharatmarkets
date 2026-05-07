@@ -49,7 +49,7 @@ except ImportError:
 
 # ✨ v4.4: FINNHUB API KEY CONFIGURATION
 # Get free API key from https://finnhub.io/register
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "YOUR_FINNHUB_API_KEY_HERE")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "d7u9sj1r01qnv95mqqu0d7u9sj1r01qnv95mqqug")
 FINNHUB_ENABLED = FINNHUB_API_KEY != "YOUR_FINNHUB_API_KEY_HERE"
 FINNHUB_RATE_LIMITER = 0.1  # Seconds between Finnhub API calls (10 per second max for parallel)
 
