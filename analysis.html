@@ -89,10 +89,6 @@
         .pill{font-size:7px;padding:2px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)}
         .pill-bl{background:#1e3350;color:#64b5f6}
         
-        /* Canvas interaction fixes */
-        canvas { user-select: none; -webkit-user-select: none; }
-        #chart-wrap, #vol-wrap { touch-action: none; }
-        
     </style>
 </head>
 <body>
@@ -3339,14 +3335,23 @@ let chartInteraction = {
 
 function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
-  const volCanvas = document.getElementById('cv-vol');
   if (!canvas) return;
   
+  // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
+  let lastRedrawTime = 0;
+  const REDRAW_THROTTLE_MS = 16;  // ✅ Throttle to ~60fps for smooth motion
   
-  // ═══════════════════════════════════════════════════
-  // MOUSE EVENTS
-  // ═══════════════════════════════════════════════════
+  // Debounced redraw: only redraw if 16ms has passed (prevents excessive redraws)
+  const throttledRedraw = (stock) => {
+    const now = performance.now();
+    if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
+      scheduleTACharts(stock);
+      lastRedrawTime = now;
+    }
+  };
+  
+  // Mouse/Touch Pan on canvas
   canvas.addEventListener('mousedown', (e) => {
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
@@ -3360,42 +3365,41 @@ function setupChartInteraction() {
     let newPan = chartInteraction.startPan + delta;
     newPan = Math.max(-400, Math.min(400, newPan));
     
-    if (S.chartPan !== newPan) {
-      S.chartPan = newPan;
-      scheduleTACharts(currentStock);
-    }
+    S.chartPan = newPan;
+    scheduleTACharts(currentStock);
   });
   
-  document.addEventListener('mouseup', () => {
-    chartInteraction.isPanning = false;
-  });
+  document.addEventListener('mouseup', () => { chartInteraction.isPanning = false; });
   
-  // ═══════════════════════════════════════════════════
-  // TOUCH EVENTS
-  // ═══════════════════════════════════════════════════
+  // Touch handlers with pinch support
   const handleTouchStart = (e) => {
+    
     if (e.touches.length === 2) {
+      // PINCH DETECTED: Calculate initial distance
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       touchState.lastDistance = Math.sqrt(dx*dx + dy*dy);
       chartInteraction.isPanning = false;
     } else if (e.touches.length === 1) {
+      // SINGLE TOUCH PAN
       chartInteraction.isPanning = true;
       chartInteraction.startX = e.touches[0].clientX;
       chartInteraction.startPan = S.chartPan;
       touchState.lastDistance = 0;
+      
     }
   };
   
   const handleTouchMove = (e) => {
-    if (!currentStock) return;
-    
     if (e.touches.length === 2) {
-      // PINCH ZOOM
+      // TWO-FINGER PINCH: Detect direction (vertical vs horizontal)
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const distance = Math.sqrt(dx*dx + dy*dy);
+      
+      // Determine pinch direction: which is dominant?
       const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
+      
       
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
@@ -3405,55 +3409,92 @@ function setupChartInteraction() {
           const smoothFactor = 1.0 + (delta * 0.5);
           
           if (isVerticalPinch) {
+            // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
+            const oldYZoom = S.yAxisZoom || 1.0;
             S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
           } else {
+            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
+            const oldZoom = S.chartZoom;
             S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
           }
-          scheduleTACharts(currentStock);
+          
+          if (currentStock) {
+            scheduleTACharts(currentStock);
+          }
         }
       }
       touchState.lastDistance = distance;
       e.preventDefault();
     } else if (e.touches.length === 1) {
-      // TOUCH PAN
-      if (chartInteraction.isPanning) {
+      // SINGLE TOUCH PAN
+      if (chartInteraction.isPanning && currentStock) {
         const delta = e.touches[0].clientX - chartInteraction.startX;
         let newPan = chartInteraction.startPan + delta;
         newPan = Math.max(-400, Math.min(400, newPan));
-        
-        if (S.chartPan !== newPan) {
-          S.chartPan = newPan;
-          scheduleTACharts(currentStock);
-        }
+        S.chartPan = newPan;
+        scheduleTACharts(currentStock);  // ✅ No throttle for pan - needs instant response
       }
     }
   };
   
   const handleTouchEnd = () => {
+    
     chartInteraction.isPanning = false;
     touchState.lastDistance = 0;
   };
   
-  canvas.addEventListener('touchstart', handleTouchStart, false);
-  canvas.addEventListener('touchmove', handleTouchMove, false);
-  canvas.addEventListener('touchend', handleTouchEnd, false);
+  canvas.ontouchstart = handleTouchStart;
+  canvas.ontouchmove = handleTouchMove;
+  canvas.ontouchend = handleTouchEnd;
   
-  if (volCanvas) {
-    volCanvas.addEventListener('touchstart', handleTouchStart, false);
-    volCanvas.addEventListener('touchmove', handleTouchMove, false);
-    volCanvas.addEventListener('touchend', handleTouchEnd, false);
-  }
+  // iOS Pinch Support - gesturechange detects pinch on iOS (shared state)
+  const handleGestureStart = (e) => {
+    touchState.gestureStart = e.scale;
+    
+  };
   
-  // ═══════════════════════════════════════════════════
-  // WHEEL ZOOM
-  // ═══════════════════════════════════════════════════
-  canvas.addEventListener('wheel', (e) => {
+  const handleGestureChange = (e) => {
+    if (!currentStock) {
+      
+      return;
+    }
+    const scaleFactor = e.scale / touchState.gestureStart;
+    const factor = scaleFactor > 1.02 ? 1.08 : scaleFactor < 0.98 ? 0.92 : 1.0;
+    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
+    scheduleTACharts(currentStock);
+    e.preventDefault();
+  };
+  
+  const handleGestureEnd = (e) => {
+  };
+  
+  // DISABLED: Gesture events cause conflict with touch-based pinch detection
+  // Use smooth touch-based pinch instead (no gesture events)
+  // canvas.ongesturestart = handleGestureStart;
+  // canvas.ongesturechange = handleGestureChange;
+  // canvas.ongestureend = handleGestureEnd;
+  
+  // Wheel Zoom on canvas
+  canvas.onwheel = (e) => {
     if (!currentStock) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
     S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
     scheduleTACharts(currentStock);
-  }, { passive: false });
+  };
+  
+  // Volume canvas - touch-based pinch only (no gesture events)
+  const volCanvas = document.getElementById('cv-vol');
+  if (volCanvas) {
+    volCanvas.ontouchstart = handleTouchStart;
+    volCanvas.ontouchmove = handleTouchMove;
+    volCanvas.ontouchend = handleTouchEnd;
+    // DISABLED: Gesture events conflict with touch-based detection
+    // volCanvas.ongesturestart = handleGestureStart;
+    // volCanvas.ongesturechange = handleGestureChange;
+    // volCanvas.ongestureend = handleGestureEnd;
+    
+  }
 }
 
 // Auto-setup when canvas is ready
