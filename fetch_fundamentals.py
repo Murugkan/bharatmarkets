@@ -1,29 +1,9 @@
 import os
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher v4.7 COMPLETE FIX
-===========================================================
-✨ COMPLETE SYMBOL MAPPING: All 12 missing stocks now mapped!
-
-v4.7 Changes (Based on 2nd run analysis):
-  ✅ Complete Screener.in symbol mapping for all 12 missing stocks
-  ✅ Mapped: AZADIND, BLACKBOX, CAPITALNUM, HEBL, KPENERGY, KPPL,
-            MCDOWELL-N, QUALITY, REVATHI, SHILCHAR, SHREEREF, 
-            TITANBIO, ZINKA
-  ✅ Expected improvement: 87% → 98%+ Screener.in coverage
-
-Previous v4.6 Fixes:
-  ✅ SCR_DELAY increased from 0.2 to 1.0 (fixes rate limiting)
-  ✅ Resolved 44 stocks with HTTP 429 errors
-  ✅ Coverage improved from 50% to 87%
-
-Previous Features (v4.5):
-  ✅ v3.1: ROCE calculation from quarterly EBIT + NOPAT
-  ✅ v3.1: Delisted stock tracking & optional cleanup
-  ✅ v4.4: Finnhub API fallback (78% CFO, 90% EBITDA fill)
-  ✅ v4.4: 20+ derived metrics (FCF, interest coverage, net debt, etc.)
-  ✅ v4.4: Professional signal logic (20+ metrics)
-  ✅ v4.4: Explicit data quality policy (no guesses, only genuine data)
+BharatMarkets Pro — Fundamentals Fetcher v4.5 COMPLETE
+=====================================================
+✨ BEST OF ALL WORLDS: v4.4's professional metrics + v3.1's ROCE calculation + Delisted tracking
 
 Reads symbols from:
   unified-symbols.json — single source of truth (portfolio + watchlist unified)
@@ -44,6 +24,14 @@ Outputs: fundamentals.json with 60+ fields per stock including:
   - Holdings: Promoter%, FII%, DII%, Pledge%
   - Price Action: 52W%, ATH%, 1D%
   - Data Tracking: Delisted tracking, stale stock cleanup
+  
+v4.5 Features:
+  ✅ v3.1: ROCE calculation from quarterly EBIT + NOPAT
+  ✅ v3.1: Delisted stock tracking & optional cleanup
+  ✅ v4.4: Finnhub API fallback (78% CFO, 90% EBITDA fill)
+  ✅ v4.4: 20+ derived metrics (FCF, interest coverage, net debt, etc.)
+  ✅ v4.4: Professional signal logic (20+ metrics)
+  ✅ v4.4: Explicit data quality policy (no guesses, only genuine data)
 """
 
 import json, time, datetime, re, os
@@ -82,7 +70,7 @@ SYMBOLS_FILE    = "unified-symbols.json"
 PRICES_FILE     = "prices.json"
 FUND_FILE       = "fundamentals.json"
 YF_DELAY        = 0.15
-SCR_DELAY       = 1.0  # ✅ FIXED: Increased from 0.2 to 1.0 to avoid rate limiting (429 errors)
+SCR_DELAY       = 0.2
 
 HEADERS = {
     "User-Agent": (
@@ -111,12 +99,10 @@ try:
     _sm = _json.loads(open("symbol_map.json").read())
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
     SYMBOL_MAP_DELISTED = set(_sm.get("delisted", []))  # Load delisted array
-    SCREENER_OVERRIDES = _sm.get("screener_overrides", {})  # Load Screener.in symbol mapping
 except Exception as _e:
     # symbol_map.json is optional — script runs fine without it
     NSE_TO_YAHOO = {}
     SYMBOL_MAP_DELISTED = set()
-    SCREENER_OVERRIDES = {}
 
 # Runtime alias cache — populated by yahoo_search_sym during run
 YF_ALIAS_CACHE = {}
@@ -1146,18 +1132,13 @@ def fetch_screener_gaps(sym):
     result = {}
     if not HAS_BS4:
         return result
-    
-    # Use Screener.in symbol mapping from symbol_map.json (screener_overrides section)
-    # Falls back to original symbol if no mapping exists
-    screener_sym = SCREENER_OVERRIDES.get(sym, sym)
-    
     try:
         sess = get_scr_session()
 
-        url = f"https://www.screener.in/company/{screener_sym}/consolidated/"
+        url = f"https://www.screener.in/company/{sym}/consolidated/"
         r   = sess.get(url, timeout=15)
         if r.status_code == 404:
-            url = f"https://www.screener.in/company/{screener_sym}/"
+            url = f"https://www.screener.in/company/{sym}/"
             r   = sess.get(url, timeout=15)
         if r.status_code != 200:
             return result
@@ -1311,7 +1292,7 @@ def main():
     resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
     syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
-    print(f"📊 BharatMarkets Fundamentals v4.7 COMPLETE (All Symbols Mapped) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
+    print(f"📊 BharatMarkets Fundamentals v4.5 (COMPLETE: ROCE + Delisted + Finnhub + 20+ Metrics) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
     if Path(FUND_FILE).exists():
@@ -1490,10 +1471,9 @@ def main():
     print("=" * 50)
     print(f"✅ {total_stocks} stocks in {FUND_FILE} ({len(result)} updated)")
     print(f"   {stats['yf']} from Yahoo | {stats['scr']} from Screener | {stats['errors']} errors")
-    print(f"\n✨ v4.7 COMPLETE: All symbols mapped!")
-    print(f"   - SCR_DELAY: 0.2 → 1.0 seconds (fixed rate limiting)")
-    print(f"   - Symbol mapping: 12 stocks now mapped to Screener.in")
-    print(f"   - Expected Screener coverage: 87% → 98%+")
+    print(f"\n✨ v4.5 COMPLETE: Best of all worlds!")
+    print(f"   - v3.1 features: ROCE calculation + Delisted tracking")
+    print(f"   - v4.4 features: Finnhub fallback + 20+ metrics")
     print(f"\n📊 Data Coverage:")
     print(f"   CFO:    {cfo_filled:>3}/{total_stocks} ({100*cfo_filled/total_stocks:>5.1f}%)")
     print(f"   EBITDA: {ebitda_filled:>3}/{total_stocks} ({100*ebitda_filled/total_stocks:>5.1f}%)")
