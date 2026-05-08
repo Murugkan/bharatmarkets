@@ -36,10 +36,36 @@ v4.5 Features:
 
 import json, time, datetime, re, os
 from pathlib import Path
+import logging
+
+# ═══════════════════════════════════════════════════════════════
+# ENHANCED LOGGING CONFIGURATION v4.6
+# ═══════════════════════════════════════════════════════════════
+LOG_FILE = "fetch_fundamentals_detailed.log"
+SCREENER_LOG = "screener_failures.json"
+
+# Configure detailed logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler(LOG_FILE, mode='w'),  # Overwrite each run
+        logging.StreamHandler()  # Also print to console
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Track failures for analysis
+FAILURES = {
+    "yfinance": [],
+    "screener": [],
+    "finnhub": [],
+    "timestamp": None
+}
 
 try:
     import yfinance as yf
-    import logging
     # Suppress yfinance noise for delisted/404 symbols
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
     logging.getLogger("peewee").setLevel(logging.CRITICAL)
@@ -1132,21 +1158,43 @@ def fetch_screener_gaps(sym):
     result = {}
     if not HAS_BS4:
         return result
+    
+    logger.info(f"[SCREENER] Starting fetch for {sym}")
+    
     try:
         sess = get_scr_session()
 
         url = f"https://www.screener.in/company/{sym}/consolidated/"
-        r   = sess.get(url, timeout=15)
+        logger.debug(f"[SCREENER] {sym} - Trying URL: {url}")
+        
+        r = sess.get(url, timeout=15)
+        logger.debug(f"[SCREENER] {sym} - Status: {r.status_code}")
+        
         if r.status_code == 404:
             url = f"https://www.screener.in/company/{sym}/"
-            r   = sess.get(url, timeout=15)
+            logger.debug(f"[SCREENER] {sym} - Retrying standalone URL: {url}")
+            r = sess.get(url, timeout=15)
+            logger.debug(f"[SCREENER] {sym} - Standalone status: {r.status_code}")
+        
         if r.status_code != 200:
+            failure_record = {
+                "symbol": sym,
+                "url": url,
+                "status_code": r.status_code,
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+            FAILURES["screener"].append(failure_record)
+            logger.warning(f"[SCREENER] {sym} - FAILED with status {r.status_code}")
             return result
+        
+        logger.info(f"[SCREENER] {sym} - Successfully fetched page ({len(r.text)} bytes)")
         soup = BeautifulSoup(r.text, "html.parser")
 
         # Top ratios
+        logger.debug(f"[SCREENER] {sym} - Parsing top ratios section")
         ul = soup.find("ul", id="top-ratios")
         if ul:
+            ratios_found = []
             for li in ul.find_all("li"):
                 spans = li.find_all("span")
                 if len(spans) < 2:
@@ -1156,6 +1204,9 @@ def fetch_screener_gaps(sym):
                 val = safe_float(raw)
                 if val is None:
                     continue
+                
+                ratios_found.append(f"{lbl}={val}")
+                
                 if "roce" in lbl:          result["roce"]    = val
                 elif "p/e" in lbl:         result["pe"]      = val
                 elif "p/b" in lbl:         result["pb"]      = val
@@ -1163,15 +1214,21 @@ def fetch_screener_gaps(sym):
                 elif "market cap" in lbl:  result["mcap"]    = val
                 elif "sales" in lbl:       result["sales"]   = val
                 elif "face value" in lbl:  result["face_value"] = val
+            
+            logger.debug(f"[SCREENER] {sym} - Top ratios extracted: {', '.join(ratios_found)}")
+        else:
+            logger.warning(f"[SCREENER] {sym} - No 'top-ratios' section found")
 
         # Shareholding table
         # Screener columns: Label | Q(oldest) ... Q(latest) | Change
         # THE FIX: use second-to-last numeric value = latest quarter
         # Last value = QoQ change column (can be negative or zero — was causing wrong 0.0)
+        logger.debug(f"[SCREENER] {sym} - Parsing shareholding section")
         sh = soup.find("section", id="shareholding")
         if sh:
             tbl = sh.find("table")
             if tbl:
+                shareholding_data = []
                 for row in tbl.find_all("tr"):
                     cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
                     if len(cells) < 2:
@@ -1193,6 +1250,8 @@ def fetch_screener_gaps(sym):
                         val = numeric_vals[-2]
                     else:
                         val = numeric_vals[0]
+                    
+                    shareholding_data.append(f"{lbl}={val}")
 
                     if "promoter" in lbl and "pledge" not in lbl:
                         result["prom_pct"] = val
@@ -1213,14 +1272,22 @@ def fetch_screener_gaps(sym):
                         result["fii_pct"] = val
                     elif "dii" in lbl or "institution" in lbl:
                         result["dii_pct"] = val
+                
+                logger.debug(f"[SCREENER] {sym} - Shareholding data: {', '.join(shareholding_data)}")
+            else:
+                logger.warning(f"[SCREENER] {sym} - Shareholding section has no table")
+        else:
+            logger.warning(f"[SCREENER] {sym} - No shareholding section found")
         
         # NOTE v4.3: public_pct only from Screener (no calculation/estimation)
 
         # P&L table
+        logger.debug(f"[SCREENER] {sym} - Parsing P&L section")
         pl = soup.find("section", id="profit-loss")
         if pl:
             tbl = pl.find("table")
             if tbl:
+                pl_data = []
                 for row in tbl.find_all("tr"):
                     cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
                     if len(cells) < 2:
@@ -1229,11 +1296,17 @@ def fetch_screener_gaps(sym):
                     val = safe_float(cells[-1].replace("%","").replace(",",""))
                     if val is None:
                         continue
+                    
+                    pl_data.append(f"{lbl}={val}")
+                    
                     if "opm" in lbl:                                    result["opm_pct"] = val
                     elif "npm" in lbl:                                  result["npm_pct"] = val
                     elif lbl.startswith("sales") or "revenue" in lbl:  result["sales"] = val
+                
+                logger.debug(f"[SCREENER] {sym} - P&L data: {', '.join(pl_data)}")
 
         # Cash flow
+        logger.debug(f"[SCREENER] {sym} - Parsing cash flow section")
         cf = soup.find("section", id="cash-flow")
         if cf:
             tbl = cf.find("table")
@@ -1246,11 +1319,29 @@ def fetch_screener_gaps(sym):
                         val = safe_float(cells[-1].replace(",",""))
                         if val is not None:
                             result.setdefault("cfo", val)
+                            logger.debug(f"[SCREENER] {sym} - Cash flow: cfo={val}")
 
         if result:
+            logger.info(f"[SCREENER] {sym} - SUCCESS: {len(result)} fields extracted: {list(result.keys())}")
             print(f"  ✓ Screener {sym}: {len(result)} gap fields filled")
+        else:
+            logger.warning(f"[SCREENER] {sym} - No data extracted (page loaded but parsing failed)")
+            FAILURES["screener"].append({
+                "symbol": sym,
+                "url": url,
+                "status_code": 200,
+                "reason": "parsing_failed",
+                "timestamp": datetime.datetime.now().isoformat()
+            })
 
     except Exception as e:
+        logger.error(f"[SCREENER] {sym} - EXCEPTION: {type(e).__name__}: {str(e)}")
+        FAILURES["screener"].append({
+            "symbol": sym,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "timestamp": datetime.datetime.now().isoformat()
+        })
         print(f"  ⚠ Screener {sym}: {e}")
 
     return result
@@ -1289,9 +1380,17 @@ def compute_signal(d):
 
 # ── Main ───────────────────────────────────────────────
 def main():
+    logger.info("=" * 70)
+    logger.info("BharatMarkets Fundamentals Fetcher v4.6 (Enhanced Logging)")
+    logger.info("=" * 70)
+    
     resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
     syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
+    
+    logger.info(f"Total symbols to process: {len(syms)}")
+    logger.info(f"Run timestamp: {ts.strftime('%Y-%m-%d %H:%M UTC')}")
+    
     print(f"📊 BharatMarkets Fundamentals v4.5 (COMPLETE: ROCE + Delisted + Finnhub + 20+ Metrics) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
@@ -1301,21 +1400,25 @@ def main():
             existing = d.get("stocks", {})
             for sym in d.get("delisted", []):
                 DELISTED.add(sym)
+            logger.info(f"Loaded existing data: {len(existing)} stocks, {len(DELISTED)} delisted")
             print(f"♻  {len(existing)} existing | {len(DELISTED)} known-delisted\n")
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Error loading existing data: {e}")
 
 
     prices = {}
     if Path(PRICES_FILE).exists():
         try:
             prices = json.loads(Path(PRICES_FILE).read_text()).get("quotes", {})
-        except:
-            pass
+            logger.info(f"Loaded prices for {len(prices)} stocks")
+        except Exception as e:
+            logger.error(f"Error loading prices: {e}")
 
     result = {}
     stats  = {"yf": 0, "scr": 0, "errors": 0}
     yf_results = {}
+    
+    FAILURES["timestamp"] = ts.isoformat()
 
     # ── Phase 1: Parallel yfinance ──
     active_syms = [s for s in syms if s not in DELISTED]
@@ -1467,6 +1570,64 @@ def main():
     ebitda_filled = sum(1 for s in final_result.values() if s.get('ebitda') and s.get('ebitda') != 0)
     capex_filled = sum(1 for s in final_result.values() if s.get('capex') and s.get('capex') != 0)
     total_stocks = len(final_result)
+    
+    # ═══════════════════════════════════════════════════════════════
+    # SAVE DETAILED FAILURE LOG
+    # ═══════════════════════════════════════════════════════════════
+    logger.info("=" * 70)
+    logger.info("GENERATING FAILURE REPORT")
+    logger.info("=" * 70)
+    
+    # Count stocks missing key Screener.in fields
+    missing_promoter = [s for s in final_result if not final_result[s].get('prom_pct')]
+    missing_fii = [s for s in final_result if not final_result[s].get('fii_pct')]
+    missing_dii = [s for s in final_result if not final_result[s].get('dii_pct')]
+    missing_face_value = [s for s in final_result if not final_result[s].get('face_value')]
+    
+    failure_summary = {
+        "timestamp": ts.isoformat(),
+        "total_stocks": total_stocks,
+        "stats": stats,
+        "screener_failures": {
+            "total": len(FAILURES["screener"]),
+            "details": FAILURES["screener"]
+        },
+        "missing_data": {
+            "promoter_pct": {
+                "count": len(missing_promoter),
+                "symbols": missing_promoter
+            },
+            "fii_pct": {
+                "count": len(missing_fii),
+                "symbols": missing_fii
+            },
+            "dii_pct": {
+                "count": len(missing_dii),
+                "symbols": missing_dii
+            },
+            "face_value": {
+                "count": len(missing_face_value),
+                "symbols": missing_face_value
+            }
+        },
+        "coverage": {
+            "promoter_pct": f"{100*(total_stocks-len(missing_promoter))/total_stocks:.1f}%",
+            "fii_pct": f"{100*(total_stocks-len(missing_fii))/total_stocks:.1f}%",
+            "cfo": f"{100*cfo_filled/total_stocks:.1f}%",
+            "ebitda": f"{100*ebitda_filled/total_stocks:.1f}%"
+        }
+    }
+    
+    # Save failure log
+    Path(SCREENER_LOG).write_text(
+        json.dumps(failure_summary, indent=2, default=str)
+    )
+    
+    logger.info(f"Screener.in failures: {len(FAILURES['screener'])}")
+    logger.info(f"Missing promoter %: {len(missing_promoter)} stocks")
+    logger.info(f"Missing FII %: {len(missing_fii)} stocks")
+    logger.info(f"Missing DII %: {len(missing_dii)} stocks")
+    logger.info(f"Failure log saved to: {SCREENER_LOG}")
     
     print("=" * 50)
     print(f"✅ {total_stocks} stocks in {FUND_FILE} ({len(result)} updated)")

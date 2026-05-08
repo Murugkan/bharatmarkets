@@ -2678,6 +2678,8 @@ function scheduleTACharts(s){
   if(scheduleTACharts._pending) return;
   scheduleTACharts._pending = true;
   
+  console.log('🎨 Redrawing chart... pan=' + S.chartPan.toFixed(0));
+  
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
       try {
@@ -3334,8 +3336,19 @@ let chartInteraction = {
 };
 
 function setupChartInteraction() {
+  // Prevent duplicate setup
+  if (setupChartInteraction._initialized) return;
+  setupChartInteraction._initialized = true;
+  
+  console.log('⚙️ Setting up chart interaction...');
+  
   const canvas = document.getElementById('cv-candle');
-  if (!canvas) return;
+  if (!canvas) {
+    console.error('❌ Canvas not found!');
+    return;
+  }
+  
+  console.log('✓ Canvas found, attaching event listeners');
   
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
@@ -3353,6 +3366,7 @@ function setupChartInteraction() {
   
   // Mouse/Touch Pan on canvas
   canvas.addEventListener('mousedown', (e) => {
+    console.log('🖱️ Pan START');
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
@@ -3365,11 +3379,17 @@ function setupChartInteraction() {
     let newPan = chartInteraction.startPan + delta;
     newPan = Math.max(-400, Math.min(400, newPan));
     
-    S.chartPan = newPan;
-    scheduleTACharts(currentStock);
+    if (S.chartPan !== newPan) {
+      console.log('📊 Panning... pan=' + newPan.toFixed(0));
+      S.chartPan = newPan;
+      scheduleTACharts(currentStock);
+    }
   });
   
-  document.addEventListener('mouseup', () => { chartInteraction.isPanning = false; });
+  document.addEventListener('mouseup', () => { 
+    console.log('🖱️ Pan END');
+    chartInteraction.isPanning = false; 
+  });
   
   // Touch handlers with pinch support
   const handleTouchStart = (e) => {
