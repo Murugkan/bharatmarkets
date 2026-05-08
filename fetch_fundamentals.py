@@ -111,10 +111,12 @@ try:
     _sm = _json.loads(open("symbol_map.json").read())
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
     SYMBOL_MAP_DELISTED = set(_sm.get("delisted", []))  # Load delisted array
+    SCREENER_OVERRIDES = _sm.get("screener_overrides", {})  # Load Screener.in symbol mapping
 except Exception as _e:
     # symbol_map.json is optional — script runs fine without it
     NSE_TO_YAHOO = {}
     SYMBOL_MAP_DELISTED = set()
+    SCREENER_OVERRIDES = {}
 
 # Runtime alias cache — populated by yahoo_search_sym during run
 YF_ALIAS_CACHE = {}
@@ -1145,29 +1147,9 @@ def fetch_screener_gaps(sym):
     if not HAS_BS4:
         return result
     
-    # ✅ FIXED: Symbol mapping for stocks with different names on Screener.in
-    # Based on GitHub Actions log analysis + Yahoo Finance symbol mappings
-    SCREENER_SYMBOL_MAP = {
-        # Stocks that failed with 404 in initial run
-        "AZADIND": "azadind",
-        "BLACKBOX": "bbox",
-        "CAPITALNUM": "cninfotech",
-        
-        # Stocks missing Screener data (mapped from Yahoo Finance symbols)
-        "HEBL": "highene",              # HIGHENE.BO → highene
-        "KPENERGY": "kpel",             # KPEL.NS → kpel
-        "KPPL": "kpl",                  # KPL.BO → kpl
-        "MCDOWELL-N": "unitdspr",       # UNITDSPR.NS → unitdspr (United Spirits)
-        "QUALITY": "qpower",            # QPOWER.NS → qpower
-        "REVATHI": "rvth",              # RVTH.NS → rvth
-        "SHILCHAR": "shilctech",        # SHILCTECH.NS → shilctech
-        "SHREEREF": "shreeref",         # SHREEREF.BO → shreeref
-        "TITANBIO": "titanbio",         # TITANBIO.BO → titanbio
-        "ZINKA": "blackbuck",           # BLACKBUCK.NS → blackbuck
-    }
-    
-    # Use mapped symbol if available, otherwise use original
-    screener_sym = SCREENER_SYMBOL_MAP.get(sym, sym)
+    # Use Screener.in symbol mapping from symbol_map.json (screener_overrides section)
+    # Falls back to original symbol if no mapping exists
+    screener_sym = SCREENER_OVERRIDES.get(sym, sym)
     
     try:
         sess = get_scr_session()
