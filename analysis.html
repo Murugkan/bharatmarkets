@@ -89,12 +89,9 @@
         .pill{font-size:7px;padding:2px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)}
         .pill-bl{background:#1e3350;color:#64b5f6}
         
-        /* Canvas Overlay Pointer Events Fix */
-        canvas { pointer-events: auto !important; touch-action: manipulation; }
-        #chart-wrap, #vol-wrap { pointer-events: auto !important; }
-        #chart-overlay-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none !important; z-index: 500; }
-        #chart-overlay-wrapper > div { pointer-events: auto; }
-        #hm-tooltip { pointer-events: auto !important; position: fixed !important; z-index: 1000 !important; }
+        /* Canvas interaction fixes */
+        canvas { user-select: none; -webkit-user-select: none; }
+        #chart-wrap, #vol-wrap { touch-action: none; }
         
     </style>
 </head>
@@ -641,8 +638,8 @@ function renderTab(tab) {
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-              <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation;pointer-events:auto"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation;pointer-events:auto"></canvas></div>
-              <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation;pointer-events:auto"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation;pointer-events:auto"></canvas></div>
+              <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+              <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
             </div>
           </div>`;
         document.getElementById('content').innerHTML = html;
@@ -3331,55 +3328,6 @@ async function canvasLoadAndDrawChart(sym) {
 }
 
 // ════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════
-// OVERLAY MANAGEMENT - Prevents panning freeze
-// ════════════════════════════════════════════════════
-
-function getOrCreateOverlayWrapper() {
-  let wrapper = document.getElementById('chart-overlay-wrapper');
-  if (!wrapper) {
-    wrapper = document.createElement('div');
-    wrapper.id = 'chart-overlay-wrapper';
-    wrapper.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 500;
-    `;
-    document.body.appendChild(wrapper);
-  }
-  return wrapper;
-}
-
-function initializeChartTooltip() {
-  const wrapper = getOrCreateOverlayWrapper();
-  
-  let tooltip = document.getElementById('hm-tooltip');
-  if (!tooltip) {
-    tooltip = document.createElement('div');
-    tooltip.id = 'hm-tooltip';
-    tooltip.style.cssText = `
-      position: fixed;
-      pointer-events: auto;
-      background: var(--card);
-      border: 1px solid var(--b1);
-      border-radius: 6px;
-      padding: 10px;
-      font-size: 11px;
-      z-index: 1000;
-      display: none;
-      max-width: 160px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    `;
-    wrapper.appendChild(tooltip);
-  }
-  return tooltip;
-}
-
 // PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
 
@@ -3391,80 +3339,63 @@ let chartInteraction = {
 
 function setupChartInteraction() {
   const canvas = document.getElementById('cv-candle');
+  const volCanvas = document.getElementById('cv-vol');
   if (!canvas) return;
   
-  // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
-  let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 16;  // ✅ Throttle to ~60fps for smooth motion
   
-  // Debounced redraw: only redraw if 16ms has passed (prevents excessive redraws)
-  const throttledRedraw = (stock) => {
-    const now = performance.now();
-    if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
-      scheduleTACharts(stock);
-      lastRedrawTime = now;
-    }
-  };
-  
-  // Mouse/Touch Pan on canvas
-  canvas.onmousedown = (e) => {
-    
+  // ═══════════════════════════════════════════════════
+  // MOUSE EVENTS
+  // ═══════════════════════════════════════════════════
+  canvas.addEventListener('mousedown', (e) => {
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
-  };
+  });
   
-  canvas.onmousemove = (e) => {
-    if (!chartInteraction.isPanning || !currentStock) {
-      
-      return;
-    }
+  document.addEventListener('mousemove', (e) => {
+    if (!chartInteraction.isPanning || !currentStock) return;
+    
     const delta = e.clientX - chartInteraction.startX;
     let newPan = chartInteraction.startPan + delta;
-    
-    
-    
-    // Allow free panning with generous limits
     newPan = Math.max(-400, Math.min(400, newPan));
     
-    S.chartPan = newPan;
-    
-    scheduleTACharts(currentStock);
-  };
+    if (S.chartPan !== newPan) {
+      S.chartPan = newPan;
+      scheduleTACharts(currentStock);
+    }
+  });
   
-  canvas.onmouseup = () => { chartInteraction.isPanning = false; };
-  canvas.onmouseleave = () => { chartInteraction.isPanning = false; };
+  document.addEventListener('mouseup', () => {
+    chartInteraction.isPanning = false;
+  });
   
-  // Touch handlers with pinch support
+  // ═══════════════════════════════════════════════════
+  // TOUCH EVENTS
+  // ═══════════════════════════════════════════════════
   const handleTouchStart = (e) => {
-    
     if (e.touches.length === 2) {
-      // PINCH DETECTED: Calculate initial distance
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       touchState.lastDistance = Math.sqrt(dx*dx + dy*dy);
       chartInteraction.isPanning = false;
     } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN
       chartInteraction.isPanning = true;
       chartInteraction.startX = e.touches[0].clientX;
       chartInteraction.startPan = S.chartPan;
       touchState.lastDistance = 0;
-      
     }
   };
   
   const handleTouchMove = (e) => {
+    if (!currentStock) return;
+    
     if (e.touches.length === 2) {
-      // TWO-FINGER PINCH: Detect direction (vertical vs horizontal)
+      // PINCH ZOOM
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const distance = Math.sqrt(dx*dx + dy*dy);
-      
-      // Determine pinch direction: which is dominant?
       const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
-      
       
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
@@ -3474,99 +3405,59 @@ function setupChartInteraction() {
           const smoothFactor = 1.0 + (delta * 0.5);
           
           if (isVerticalPinch) {
-            // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
-            const oldYZoom = S.yAxisZoom || 1.0;
             S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
           } else {
-            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
-            const oldZoom = S.chartZoom;
             S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
           }
-          
-          if (currentStock) {
-            scheduleTACharts(currentStock);
-          }
+          scheduleTACharts(currentStock);
         }
       }
       touchState.lastDistance = distance;
       e.preventDefault();
     } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN
-      if (chartInteraction.isPanning && currentStock) {
+      // TOUCH PAN
+      if (chartInteraction.isPanning) {
         const delta = e.touches[0].clientX - chartInteraction.startX;
         let newPan = chartInteraction.startPan + delta;
         newPan = Math.max(-400, Math.min(400, newPan));
-        S.chartPan = newPan;
-        scheduleTACharts(currentStock);  // ✅ No throttle for pan - needs instant response
+        
+        if (S.chartPan !== newPan) {
+          S.chartPan = newPan;
+          scheduleTACharts(currentStock);
+        }
       }
     }
   };
   
   const handleTouchEnd = () => {
-    
     chartInteraction.isPanning = false;
     touchState.lastDistance = 0;
   };
   
-  canvas.ontouchstart = handleTouchStart;
-  canvas.ontouchmove = handleTouchMove;
-  canvas.ontouchend = handleTouchEnd;
+  canvas.addEventListener('touchstart', handleTouchStart, false);
+  canvas.addEventListener('touchmove', handleTouchMove, false);
+  canvas.addEventListener('touchend', handleTouchEnd, false);
   
-  // iOS Pinch Support - gesturechange detects pinch on iOS (shared state)
-  const handleGestureStart = (e) => {
-    touchState.gestureStart = e.scale;
-    
-  };
+  if (volCanvas) {
+    volCanvas.addEventListener('touchstart', handleTouchStart, false);
+    volCanvas.addEventListener('touchmove', handleTouchMove, false);
+    volCanvas.addEventListener('touchend', handleTouchEnd, false);
+  }
   
-  const handleGestureChange = (e) => {
-    if (!currentStock) {
-      
-      return;
-    }
-    const scaleFactor = e.scale / touchState.gestureStart;
-    const factor = scaleFactor > 1.02 ? 1.08 : scaleFactor < 0.98 ? 0.92 : 1.0;
-    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
-    scheduleTACharts(currentStock);
-    e.preventDefault();
-  };
-  
-  const handleGestureEnd = (e) => {
-  };
-  
-  // DISABLED: Gesture events cause conflict with touch-based pinch detection
-  // Use smooth touch-based pinch instead (no gesture events)
-  // canvas.ongesturestart = handleGestureStart;
-  // canvas.ongesturechange = handleGestureChange;
-  // canvas.ongestureend = handleGestureEnd;
-  
-  // Wheel Zoom on canvas
-  canvas.onwheel = (e) => {
+  // ═══════════════════════════════════════════════════
+  // WHEEL ZOOM
+  // ═══════════════════════════════════════════════════
+  canvas.addEventListener('wheel', (e) => {
     if (!currentStock) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
     S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
     scheduleTACharts(currentStock);
-  };
-  
-  // Volume canvas - touch-based pinch only (no gesture events)
-  const volCanvas = document.getElementById('cv-vol');
-  if (volCanvas) {
-    volCanvas.ontouchstart = handleTouchStart;
-    volCanvas.ontouchmove = handleTouchMove;
-    volCanvas.ontouchend = handleTouchEnd;
-    // DISABLED: Gesture events conflict with touch-based detection
-    // volCanvas.ongesturestart = handleGestureStart;
-    // volCanvas.ongesturechange = handleGestureChange;
-    // volCanvas.ongestureend = handleGestureEnd;
-    
-  }
+  }, { passive: false });
 }
 
 // Auto-setup when canvas is ready
-document.addEventListener('DOMContentLoaded', () => {
-  setupChartInteraction();
-  initializeChartTooltip();
-});
+document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
 // ════════════════════════════════════════════════════════
 // NEWS TAB FUNCTIONS (from app-drill.js & app.js)
@@ -4030,7 +3921,7 @@ function drawPortfolioHeatmap(portfolio){
     const scX=W/br.width, scY=H/br.height;
     const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
     const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
-    const tip=initializeChartTooltip();
+    const tip=document.getElementById('hm-tooltip');
     
     // If clicking on empty space or same tooltip, hide it
     if(!hit || currentTooltip === hit.name){
