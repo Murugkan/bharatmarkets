@@ -89,6 +89,13 @@
         .pill{font-size:7px;padding:2px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)}
         .pill-bl{background:#1e3350;color:#64b5f6}
         
+        /* Canvas Overlay Pointer Events Fix */
+        canvas { pointer-events: auto !important; touch-action: manipulation; }
+        #chart-wrap, #vol-wrap { pointer-events: auto !important; }
+        #chart-overlay-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none !important; z-index: 500; }
+        #chart-overlay-wrapper > div { pointer-events: auto; }
+        #hm-tooltip { pointer-events: auto !important; position: fixed !important; z-index: 1000 !important; }
+        
     </style>
 </head>
 <body>
@@ -634,8 +641,8 @@ function renderTab(tab) {
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-              <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-              <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+              <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation;pointer-events:auto"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation;pointer-events:auto"></canvas></div>
+              <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation;pointer-events:auto"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation;pointer-events:auto"></canvas></div>
             </div>
           </div>`;
         document.getElementById('content').innerHTML = html;
@@ -3324,6 +3331,55 @@ async function canvasLoadAndDrawChart(sym) {
 }
 
 // ════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════
+// OVERLAY MANAGEMENT - Prevents panning freeze
+// ════════════════════════════════════════════════════
+
+function getOrCreateOverlayWrapper() {
+  let wrapper = document.getElementById('chart-overlay-wrapper');
+  if (!wrapper) {
+    wrapper = document.createElement('div');
+    wrapper.id = 'chart-overlay-wrapper';
+    wrapper.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 500;
+    `;
+    document.body.appendChild(wrapper);
+  }
+  return wrapper;
+}
+
+function initializeChartTooltip() {
+  const wrapper = getOrCreateOverlayWrapper();
+  
+  let tooltip = document.getElementById('hm-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'hm-tooltip';
+    tooltip.style.cssText = `
+      position: fixed;
+      pointer-events: auto;
+      background: var(--card);
+      border: 1px solid var(--b1);
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 11px;
+      z-index: 1000;
+      display: none;
+      max-width: 160px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+    wrapper.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
 // PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
 
@@ -3507,7 +3563,10 @@ function setupChartInteraction() {
 }
 
 // Auto-setup when canvas is ready
-document.addEventListener('DOMContentLoaded', setupChartInteraction);
+document.addEventListener('DOMContentLoaded', () => {
+  setupChartInteraction();
+  initializeChartTooltip();
+});
 
 // ════════════════════════════════════════════════════════
 // NEWS TAB FUNCTIONS (from app-drill.js & app.js)
@@ -3971,7 +4030,7 @@ function drawPortfolioHeatmap(portfolio){
     const scX=W/br.width, scY=H/br.height;
     const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
     const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
-    const tip=document.getElementById('hm-tooltip');
+    const tip=initializeChartTooltip();
     
     // If clicking on empty space or same tooltip, hide it
     if(!hit || currentTooltip === hit.name){
