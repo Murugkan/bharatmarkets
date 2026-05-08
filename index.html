@@ -99,8 +99,8 @@ const PALETTE = [
 
 const UI_FIELDS = [
     '#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
-    'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'FV',
-    'PB', 'EPS', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO',
+    'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'BV',
+    'EPS', 'FV', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'NETCF',
     'CAPEX', 'FCF', 'DIV_YIELD', 'DEBT_EQ', 'INT_COV', 'P/S', 'EV/EBITDA', 'TAX_RATE'
 ];
 
@@ -167,7 +167,7 @@ const fmt = (val, field) => {
         return n.toFixed(1);
     }
     
-    if (['MCAP', 'EBITDA', 'SALES', 'CFO'].includes(field)) return formatLargeNum(n);
+    if (['MCAP', 'EBITDA', 'SALES', 'CFO', 'NETCF'].includes(field)) return formatLargeNum(n);
     if (['INVESTED', '1D_GAIN', '1DCH', 'PNL'].includes(field)) return formatLargeNum(n);
     if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
     if (['FV'].includes(field)) return Math.round(n).toString();
@@ -211,10 +211,12 @@ const resolve = (obj, field) => {
         'NPM%':['npm','NPM%','NPM','npmPct','npm_pct'], 
         'PE':['pe','PE','P/E'], 
         'PB':['pb','PB','P/B'], 
+        'BV':['book_value','BV','BOOK_VALUE','bookValue'],  // ✨ NEW v4.8
         'MCAP':['mcap','MCAP','marketcap'], 
         'SALES':['sales','SALES','revenue'], 
         'EBITDA':['ebitda','EBITDA'], 
         'CFO':['cfo','CFO'], 
+        'NETCF':['net_cf','NETCF','NET_CF','netCF'],  // ✨ NEW v4.8
         'EPS':['eps','EPS'], 
         'FV':['face_value','FV','FACE_VALUE','faceValue'],
         'PROM%':['prom','PROM%','prom_pct'], 
@@ -337,6 +339,7 @@ const getMetricColor = (field, value, stock) => {
     const thresholds = {
         'PE': { green: n < 15, red: n > 25 },
         'PB': { green: n < 1, red: n > 3 },
+        'BV': { green: n > 100, red: n < 50 },  // ✨ NEW v4.8: Book value >100 good, <50 low
         'ROE%': { green: n > 20, red: n < 15 },
         'ROCE%': { green: n > 20, red: n < 15 },
         'OPM%': { green: n > 15, red: n < 10 },
@@ -353,6 +356,7 @@ const getMetricColor = (field, value, stock) => {
         '1D_GAIN': { green: n > 0, red: n < 0 },
         'CAPEX': { green: n > 0, red: n < 0 },  // Positive capex is investment
         'FCF': { green: n > 0, red: n < 0 },  // Positive FCF is good
+        'NETCF': { green: n > 0, red: n < 0 },  // ✨ NEW v4.8: Positive Net CF is good
         'DIV_YIELD': { green: n > 2, red: n < 1 },  // >2% good, <1% not very generous
         'DEBT_EQ': { green: n < 0.5, red: n > 2 },  // Low debt is good, high is risky
         'INT_COV': { green: n > 5, red: n < 2 },  // >5x safe, <2x risky

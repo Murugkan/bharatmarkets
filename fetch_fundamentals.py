@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher v4.8 ENHANCED
-========================================================
-✨ v4.8 ENHANCED: New 7 core metrics from Screener.in
+BharatMarkets Pro — Fundamentals Fetcher v4.8 CLEAN
+====================================================
+✨ v4.8 CLEAN: TTM-based metrics, consolidated field names
 
 v4.8 Changes (Latest):
-  ✅ Enhanced Screener scraper with 7 core metrics extraction
-  ✅ New fields: OPM, CFO, Net CF, NPM, Book Value, ROE, ROCE
-  ✅ Improved cash flow detection (Net CF added)
-  ✅ Better logging for field population tracking
+  ✅ Consolidated to TTM (Trailing Twelve Months) metrics
+  ✅ Removed redundant annual values (opm_pct, npm_pct)
+  ✅ Clean field names: opm, npm (calculated from quarterly, not Screener)
+  ✅ 7 core metrics from Screener: CFO, Net CF, Book Value, ROE, ROCE
+  ✅ More accurate margins: TTM reflects current operational state
 
 Previous v4.7 Fixes:
   ✅ Complete Screener.in symbol mapping for all 12 missing stocks
@@ -28,18 +29,18 @@ Reads symbols from:
   unified-symbols.json — single source of truth (portfolio + watchlist unified)
 
 Sources for data:
-  1. Yahoo Finance (yfinance)    — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
-  2. Finnhub API (v4.4)          — fallback quarterly: revenue, profit, CFO, capex, etc.
-  3. Screener.in (v4.8 ENHANCED) — OPM, CFO, Net CF, NPM, Book Value, ROCE, ROE
-  4. Quarterly data (ENHANCED)   — v4.4: Interest, CapEx, Tax, D&A + v3.1: ROCE calculation
+  1. Yahoo Finance (yfinance)    — primary: PE, PB, EPS, ROE, MCAP, etc.
+  2. Quarterly data (TTM)        — OPM, NPM, Derived metrics, ROCE calculation
+  3. Screener.in (v4.8 CLEAN)    — CFO, Net CF, Book Value, ROE, ROCE (override only)
+  4. Finnhub API (v4.4)          — fallback quarterly: revenue, profit, CFO, capex, etc.
 
 Outputs: fundamentals.json with 60+ fields per stock including:
-  - Valuation: PE, PB, P/S, EV/EBITDA
-  - Profitability: ROE, ROCE (calculated from quarterly), ROIC, Margins
-  - Solvency: Interest Coverage, Tax Rate, Net Debt
+  - Valuation: PE, PB, P/S, EV/EBITDA, Book Value
+  - Profitability: ROE, ROCE, ROIC, OPM, NPM (all TTM-based)
+  - Solvency: Interest Coverage, Tax Rate, Net Debt, Debt/Equity
   - Cash Flow: CFO, Net CF, FCF, Dividend Payout Ratio, CF/NI Ratio
   - Growth: Revenue CAGR, Earnings CAGR
-  - Size: MCAP, Sales, EBITDA, CFO (now from Finnhub if yfinance missing)
+  - Size: MCAP, Sales, EBITDA
   - Holdings: Promoter%, FII%, DII%, Pledge%
   - Price Action: 52W%, ATH%, 1D%
   - Data Tracking: Delisted tracking, stale stock cleanup
@@ -153,12 +154,11 @@ def yahoo_search_sym(nse_sym, cdsl_name=None):
                 exch   = q.get("exchange", "")
                 qtype  = q.get("quoteType", "")
                 if (sym_yf.endswith(".NS") or sym_yf.endswith(".BO")) and qtype in ("EQUITY", ""):
-                    print(f"  🔍 {nse_sym} → {sym_yf} (via search)")
                     YF_ALIAS_CACHE[nse_sym] = sym_yf
                     NSE_TO_YAHOO[nse_sym] = sym_yf.replace(".NS","").replace(".BO","")
                     return sym_yf
         except Exception as e:
-            print(f"  ⚠ Yahoo search '{q_str}': {e}")
+            pass  # Silent on errors
         time.sleep(0.2)
     return None
 
@@ -941,8 +941,6 @@ def fetch_yfinance(sym, yf_ticker=None):
                 quarters = sorted([(k, v) for k, v in q_data.items() if len(v) > 0])[-20:]  # Keep up to 20 quarters
                 if quarters:
                     result['quarterly'] = [{'d': k, **v} for k, v in quarters]
-                    fields = set(f for _, v in quarters for f in v if f != 'd')
-                    print(f"  ✓ {sym} quarterly: {len(quarters)}Q fields={fields}")
                     
                     # ✨ NEW v4.2: Add TTM fields to main result (not just quarterly)
                     latest_4q = result['quarterly'][-4:] if len(result['quarterly']) >= 4 else result['quarterly']
@@ -1143,8 +1141,9 @@ def fetch_finnhub_quarterly(sym):
 
 def fetch_screener_gaps(sym):
     """
-    ✨ v4.8 ENHANCED: Extract 7 core metrics from Screener.in
-    Fields: OPM, CFO, Net CF, NPM, Book Value, ROE, ROCE
+    ✨ v4.8 CLEAN: Extract only Screener-exclusive metrics
+    Fields: CFO, Net CF, Book Value, ROE, ROCE, Shareholding %
+    OPM & NPM removed (now TTM-calculated from quarterly data)
     """
     result = {}
     if not HAS_BS4:
@@ -1230,22 +1229,8 @@ def fetch_screener_gaps(sym):
                     elif "dii" in lbl or "institution" in lbl:
                         result["dii_pct"] = val
 
-        # ✨ P&L table — OPM, NPM
-        pl = soup.find("section", id="profit-loss")
-        if pl:
-            tbl = pl.find("table")
-            if tbl:
-                for row in tbl.find_all("tr"):
-                    cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
-                    if len(cells) < 2:
-                        continue
-                    lbl = cells[0].lower()
-                    val = safe_float(cells[-1].replace("%","").replace(",",""))
-                    if val is None:
-                        continue
-                    if "opm" in lbl:                                    result["opm"] = val  # ✨ v4.8
-                    elif "npm" in lbl:                                  result["npm"] = val  # ✨ v4.8
-                    elif lbl.startswith("sales") or "revenue" in lbl:  result["sales"] = val
+        # NOTE: OPM and NPM are now calculated from TTM quarterly data (more accurate)
+        # Removed P&L table extraction to avoid redundant annual values
 
         # ✨ Cash flow — CFO, Net CF
         cf = soup.find("section", id="cash-flow")
@@ -1265,10 +1250,10 @@ def fetch_screener_gaps(sym):
                             result["net_cf"] = val
 
         if result:
-            print(f"  ✓ Screener {sym}: {len(result)} fields → opm={result.get('opm')}, npm={result.get('npm')}, cfo={result.get('cfo')}, net_cf={result.get('net_cf')}, roe={result.get('roe')}, roce={result.get('roce')}, bv={result.get('book_value')}")
+            pass  # Silently add fields, no verbose logging
 
     except Exception as e:
-        print(f"  ⚠ Screener {sym}: {e}")
+        pass  # Silently skip on error, no verbose logging
 
     return result
 
@@ -1291,8 +1276,8 @@ def compute_signal(d):
     check("roce",      lambda v: v > 15,       lambda v: v < 8)
     check("roic",      lambda v: v > 15,       lambda v: v < 8)  # NEW v4.0
     check("pe",        lambda v: 0 < v < 18,   lambda v: v > 35)
-    check("opm_pct",   lambda v: v > 15,        lambda v: 0 < v < 8)
-    check("npm_pct",   lambda v: v > 10,        lambda v: 0 < v < 5)
+    check("opm",       lambda v: v > 15,        lambda v: 0 < v < 8)  # ✨ v4.8: TTM-based
+    check("npm",       lambda v: v > 10,        lambda v: 0 < v < 5)  # ✨ v4.8: TTM-based
     check("prom_pct",  lambda v: v > 50,        lambda v: 0 < v < 35)
     check("chg1d",     lambda v: v > 1,         lambda v: v < -1)
     check("ath_pct",   lambda v: v > -10,       lambda v: v < -20)
@@ -1309,7 +1294,7 @@ def main():
     resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
     syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
-    print(f"📊 BharatMarkets Fundamentals v4.8 ENHANCED (7 Core Metrics) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
+    print(f"📊 BharatMarkets Fundamentals v4.8 CLEAN | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
     if Path(FUND_FILE).exists():
@@ -1359,14 +1344,14 @@ def main():
             sym, data = fut.result()
             yf_results[sym] = data
 
-    print(f"\n✓ Phase 1 done in {(now_utc()-ts).seconds}s\n")
+    print(f"✓ Phase 1 done in {(now_utc()-ts).seconds}s\n")
 
     # ── Phase 2: Sequential Screener + ROCE calculation + merge ──
     for i, sym in enumerate(syms):
-        print(f"[{i+1}/{len(syms)}] {sym}", end=" | ", flush=True)
+        if (i + 1) % 20 == 0:
+            print(f"  ── {i+1}/{len(syms)} processed ──")
 
         if sym in DELISTED:
-            print(f"↷ known delisted — skipped")
             continue
 
         stock = {}
@@ -1378,26 +1363,22 @@ def main():
         else:
             stats["errors"] += 1
 
-
-        # ── NEW v4.0: Calculate derived metrics from complete quarterly data ──────────────────
+        # ── Calculate derived metrics from complete quarterly data ──────────────────
         if stock.get('quarterly'):
             derived = calculate_derived_metrics_v4(stock['quarterly'], stock)
             stock.update(derived)
-            print(f"[Derived={len(derived)}]", end=" ", flush=True)
 
-        # ── NEW: Calculate ROCE from quarterly data ──────────────────
+        # ── Calculate ROCE from quarterly data ──────────────────
         if stock.get('quarterly') and not stock.get('roce'):
             roce_ttm = calculate_roce_from_quarterly(stock['quarterly'])
             if roce_ttm:
                 stock['roce'] = roce_ttm
-                print(f"[ROCE={roce_ttm}%]", end=" ", flush=True)
         
         # ── Fallback: Estimate ROCE from fundamentals ────────────────
         if not stock.get('roce') and stock.get('roe'):
             roce_est = calculate_roce_from_fundamentals(stock)
             if roce_est:
                 stock['roce'] = roce_est
-                print(f"[ROCE~{roce_est}%]", end=" ", flush=True)
 
         # Screener — prom% and pledge% always override; other fields gap-fill only
         if HAS_BS4:
@@ -1440,9 +1421,6 @@ def main():
             "updated": ts.isoformat(),
         })
         result[sym] = merged
-
-        filled = sum(1 for v in merged.values() if v not in (None, "", 0))
-        print(f"{sig}({pos}B/{neg}S) {filled}f")
 
     # Merge new results into existing — preserves all other stocks
     existing.update(result)
@@ -1488,10 +1466,11 @@ def main():
     print("=" * 50)
     print(f"✅ {total_stocks} stocks in {FUND_FILE} ({len(result)} updated)")
     print(f"   {stats['yf']} from Yahoo | {stats['scr']} from Screener | {stats['errors']} errors")
-    print(f"\n✨ v4.8 ENHANCED: 7 Core Metrics from Screener!")
-    print(f"   - OPM, NPM (from P&L table)")
-    print(f"   - CFO, Net CF (from Cash Flow table)")
-    print(f"   - ROE, ROCE, Book Value (from Top Ratios)")
+    print(f"\n✨ v4.8 CLEAN: TTM-based metrics only")
+    print(f"   - OPM, NPM: calculated from last 4 quarters (TTM)")
+    print(f"   - CFO, Net CF: from Screener.in")
+    print(f"   - ROE, ROCE, Book Value: from Screener.in")
+    print(f"   - No redundant annual values")
     print(f"\n📊 Data Coverage:")
     print(f"   CFO:    {cfo_filled:>3}/{total_stocks} ({100*cfo_filled/total_stocks:>5.1f}%)")
     print(f"   EBITDA: {ebitda_filled:>3}/{total_stocks} ({100*ebitda_filled/total_stocks:>5.1f}%)")
