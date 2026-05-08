@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Fundamentals Fetcher v4.8 CLEAN
-====================================================
-✨ v4.8 CLEAN: TTM-based metrics, consolidated field names
+BharatMarkets Pro — Fundamentals Fetcher v4.8 ENHANCED
+========================================================
+✨ v4.8 ENHANCED: New 7 core metrics from Screener.in
 
 v4.8 Changes (Latest):
-  ✅ Consolidated to TTM (Trailing Twelve Months) metrics
-  ✅ Removed redundant annual values (opm_pct, npm_pct)
-  ✅ Clean field names: opm, npm (calculated from quarterly, not Screener)
-  ✅ 7 core metrics from Screener: CFO, Net CF, Book Value, ROE, ROCE
-  ✅ More accurate margins: TTM reflects current operational state
+  ✅ Enhanced Screener scraper with 7 core metrics extraction
+  ✅ New fields: OPM, CFO, Net CF, NPM, Book Value, ROE, ROCE
+  ✅ Improved cash flow detection (Net CF added)
+  ✅ Better logging for field population tracking
 
 Previous v4.7 Fixes:
   ✅ Complete Screener.in symbol mapping for all 12 missing stocks
@@ -29,18 +28,18 @@ Reads symbols from:
   unified-symbols.json — single source of truth (portfolio + watchlist unified)
 
 Sources for data:
-  1. Yahoo Finance (yfinance)    — primary: PE, PB, EPS, ROE, MCAP, etc.
-  2. Quarterly data (TTM)        — OPM, NPM, Derived metrics, ROCE calculation
-  3. Screener.in (v4.8 CLEAN)    — CFO, Net CF, Book Value, ROE, ROCE (override only)
-  4. Finnhub API (v4.4)          — fallback quarterly: revenue, profit, CFO, capex, etc.
+  1. Yahoo Finance (yfinance)    — primary: PE, PB, EPS, ROE, OPM%, NPM%, MCAP, etc.
+  2. Finnhub API (v4.4)          — fallback quarterly: revenue, profit, CFO, capex, etc.
+  3. Screener.in (v4.8 ENHANCED) — OPM, CFO, Net CF, NPM, Book Value, ROCE, ROE
+  4. Quarterly data (ENHANCED)   — v4.4: Interest, CapEx, Tax, D&A + v3.1: ROCE calculation
 
 Outputs: fundamentals.json with 60+ fields per stock including:
-  - Valuation: PE, PB, P/S, EV/EBITDA, Book Value
-  - Profitability: ROE, ROCE, ROIC, OPM, NPM (all TTM-based)
-  - Solvency: Interest Coverage, Tax Rate, Net Debt, Debt/Equity
+  - Valuation: PE, PB, P/S, EV/EBITDA
+  - Profitability: ROE, ROCE (calculated from quarterly), ROIC, Margins
+  - Solvency: Interest Coverage, Tax Rate, Net Debt
   - Cash Flow: CFO, Net CF, FCF, Dividend Payout Ratio, CF/NI Ratio
   - Growth: Revenue CAGR, Earnings CAGR
-  - Size: MCAP, Sales, EBITDA
+  - Size: MCAP, Sales, EBITDA, CFO (now from Finnhub if yfinance missing)
   - Holdings: Promoter%, FII%, DII%, Pledge%
   - Price Action: 52W%, ATH%, 1D%
   - Data Tracking: Delisted tracking, stale stock cleanup
@@ -154,11 +153,12 @@ def yahoo_search_sym(nse_sym, cdsl_name=None):
                 exch   = q.get("exchange", "")
                 qtype  = q.get("quoteType", "")
                 if (sym_yf.endswith(".NS") or sym_yf.endswith(".BO")) and qtype in ("EQUITY", ""):
+                    print(f"  🔍 {nse_sym} → {sym_yf} (via search)")
                     YF_ALIAS_CACHE[nse_sym] = sym_yf
                     NSE_TO_YAHOO[nse_sym] = sym_yf.replace(".NS","").replace(".BO","")
                     return sym_yf
         except Exception as e:
-            pass  # Silent on errors
+            print(f"  ⚠ Yahoo search '{q_str}': {e}")
         time.sleep(0.2)
     return None
 
@@ -941,6 +941,8 @@ def fetch_yfinance(sym, yf_ticker=None):
                 quarters = sorted([(k, v) for k, v in q_data.items() if len(v) > 0])[-20:]  # Keep up to 20 quarters
                 if quarters:
                     result['quarterly'] = [{'d': k, **v} for k, v in quarters]
+                    fields = set(f for _, v in quarters for f in v if f != 'd')
+                    print(f"  ✓ {sym} quarterly: {len(quarters)}Q fields={fields}")
                     
                     # ✨ NEW v4.2: Add TTM fields to main result (not just quarterly)
                     latest_4q = result['quarterly'][-4:] if len(result['quarterly']) >= 4 else result['quarterly']
@@ -1141,27 +1143,30 @@ def fetch_finnhub_quarterly(sym):
 
 def fetch_screener_gaps(sym):
     """
-    ✨ v4.8: Extract Screener data - simple, targeted approach
-    Fields: CFO, Net CF, Book Value, ROE, ROCE, Shareholding %
+    ✨ v4.8 ENHANCED: Extract 7 core metrics from Screener.in
+    Fields: OPM, CFO, Net CF, NPM, Book Value, ROE, ROCE
     """
     result = {}
     if not HAS_BS4:
         return result
     
+    # Use Screener.in symbol mapping from symbol_map.json (screener_overrides section)
+    # Falls back to original symbol if no mapping exists
     screener_sym = SCREENER_OVERRIDES.get(sym, sym)
     
     try:
         sess = get_scr_session()
+
         url = f"https://www.screener.in/company/{screener_sym}/consolidated/"
-        r = sess.get(url, timeout=15)
+        r   = sess.get(url, timeout=15)
         if r.status_code == 404:
             url = f"https://www.screener.in/company/{screener_sym}/"
-            r = sess.get(url, timeout=15)
+            r   = sess.get(url, timeout=15)
         if r.status_code != 200:
             return result
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # ── Top ratios: PE, PB, ROE, ROCE, MCAP, SALES, FV, BOOK VALUE ──
+        # ✨ Top ratios — ROE, ROCE, Book Value
         ul = soup.find("ul", id="top-ratios")
         if ul:
             for li in ul.find_all("li"):
@@ -1173,25 +1178,16 @@ def fetch_screener_gaps(sym):
                 val = safe_float(raw)
                 if val is None:
                     continue
-                
-                if "roce" in lbl:
-                    result["roce"] = val
-                elif "p/e" in lbl:
-                    result["pe"] = val
-                elif "p/b" in lbl:
-                    result["pb"] = val
-                elif "roe" in lbl:
-                    result["roe"] = val
-                elif "market cap" in lbl:
-                    result["mcap"] = val
-                elif "sales" in lbl:
-                    result["sales"] = val
-                elif "face value" in lbl:
-                    result["face_value"] = val
-                elif "book value" in lbl:
-                    result["book_value"] = val
+                if "roce" in lbl:          result["roce"]      = val
+                elif "p/e" in lbl:         result["pe"]        = val
+                elif "p/b" in lbl:         result["pb"]        = val
+                elif "roe" in lbl:         result["roe"]       = val
+                elif "market cap" in lbl:  result["mcap"]      = val
+                elif "sales" in lbl:       result["sales"]     = val
+                elif "face value" in lbl:  result["face_value"] = val
+                elif "book value" in lbl:  result["book_value"] = val  # ✨ NEW v4.8
 
-        # ── Shareholding: Promoter, Pledge, Public, FII, DII ──
+        # Shareholding table
         sh = soup.find("section", id="shareholding")
         if sh:
             tbl = sh.find("table")
@@ -1201,18 +1197,23 @@ def fetch_screener_gaps(sym):
                     if len(cells) < 2:
                         continue
                     lbl = cells[0].strip().rstrip("+").strip().lower()
-                    
+
+                    # Collect ALL numeric values from data columns
                     numeric_vals = []
                     for c in cells[1:]:
                         v = safe_float(c.replace("%","").replace(",","").strip())
                         if v is not None:
                             numeric_vals.append(v)
-                    
+
                     if not numeric_vals:
                         continue
-                    
-                    val = numeric_vals[-2] if len(numeric_vals) >= 2 else numeric_vals[0]
-                    
+
+                    # Second-to-last = latest quarter; last = change col
+                    if len(numeric_vals) >= 2:
+                        val = numeric_vals[-2]
+                    else:
+                        val = numeric_vals[0]
+
                     if "promoter" in lbl and "pledge" not in lbl:
                         result["prom_pct"] = val
                     elif "pledge" in lbl:
@@ -1229,7 +1230,24 @@ def fetch_screener_gaps(sym):
                     elif "dii" in lbl or "institution" in lbl:
                         result["dii_pct"] = val
 
-        # ── Cash Flow: CFO, Net CF ──
+        # ✨ P&L table — OPM, NPM
+        pl = soup.find("section", id="profit-loss")
+        if pl:
+            tbl = pl.find("table")
+            if tbl:
+                for row in tbl.find_all("tr"):
+                    cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
+                    if len(cells) < 2:
+                        continue
+                    lbl = cells[0].lower()
+                    val = safe_float(cells[-1].replace("%","").replace(",",""))
+                    if val is None:
+                        continue
+                    if "opm" in lbl:                                    result["opm"] = val  # ✨ v4.8
+                    elif "npm" in lbl:                                  result["npm"] = val  # ✨ v4.8
+                    elif lbl.startswith("sales") or "revenue" in lbl:  result["sales"] = val
+
+        # ✨ Cash flow — CFO, Net CF
         cf = soup.find("section", id="cash-flow")
         if cf:
             tbl = cf.find("table")
@@ -1240,71 +1258,17 @@ def fetch_screener_gaps(sym):
                         continue
                     lbl = cells[0].lower()
                     val = safe_float(cells[-1].replace(",",""))
-                    
                     if val is not None:
                         if "operating" in lbl and "cash" in lbl:
-                            result["cfo"] = val
-                        elif "net cash" in lbl and val != 0:
+                            result.setdefault("cfo", val)
+                        elif "net cash" in lbl or "net cf" in lbl:  # ✨ NEW v4.8
                             result["net_cf"] = val
-        
-        # ── FALLBACK: Search entire page for missing fields ──
-        # Screener displays data as "Label Value" pairs, not always in structured sections
-        page_text = soup.get_text()
-        
-        # Define all field label patterns to search for
-        field_patterns = {
-            'mcap': ['market cap', 'mcap'],
-            'pe': ['stock p/e', 'p/e', 'pe ratio'],
-            'pb': ['p/b', 'pb ratio'],
-            'book_value': ['book value'],
-            'div_yield': ['dividend yield'],
-            'roce': ['roce'],
-            'roe': ['roe'],
-            'face_value': ['face value'],
-            'cfo': ['cf operations', 'operating cash', 'cash from operations'],
-            'net_cf': ['net cf', 'net cashflow'],
-            'opm': ['opm', 'operating profit margin'],
-            'npm': ['npm', 'npm last year', 'net profit margin'],
-            'ps': ['price to sales', 'p/s'],
-            'w52_pct': ['up from 52w low'],
-            'ath_pct': ['down from 52w high'],
-            'gpm': ['gpm', 'gross profit margin', 'gpm latest'],
-            'debt_eq': ['debt to equity'],
-            'sales': ['sales prev qtr']
-        }
-        
-        for line in page_text.split('\n'):
-            line_clean = line.strip()
-            if not line_clean or len(line_clean) < 3:
-                continue
-            
-            # Split into label and value (value is last numeric part)
-            parts = line_clean.rsplit(None, 1)
-            if len(parts) != 2:
-                continue
-            
-            label, val_str = parts
-            label_lower = label.lower().strip()
-            
-            # Clean value: remove currency symbols, percentage, Cr., L, etc.
-            val_clean = (val_str.replace(",", "").replace("₹", "").replace("Cr.", "")
-                        .replace("L", "").replace("%", "").replace("₹", "").strip())
-            val = safe_float(val_clean)
-            
-            if val is None:
-                continue
-            
-            # Match field patterns
-            for field, patterns in field_patterns.items():
-                if field not in result and any(p in label_lower for p in patterns):
-                    # Skip if already has better source (like pe from Yahoo)
-                    if field in ['pe', 'pb'] and field in result:
-                        continue
-                    result[field] = val
-                    break
+
+        if result:
+            print(f"  ✓ Screener {sym}: {len(result)} fields → opm={result.get('opm')}, npm={result.get('npm')}, cfo={result.get('cfo')}, net_cf={result.get('net_cf')}, roe={result.get('roe')}, roce={result.get('roce')}, bv={result.get('book_value')}")
 
     except Exception as e:
-        pass
+        print(f"  ⚠ Screener {sym}: {e}")
 
     return result
 
@@ -1327,8 +1291,8 @@ def compute_signal(d):
     check("roce",      lambda v: v > 15,       lambda v: v < 8)
     check("roic",      lambda v: v > 15,       lambda v: v < 8)  # NEW v4.0
     check("pe",        lambda v: 0 < v < 18,   lambda v: v > 35)
-    check("opm",       lambda v: v > 15,        lambda v: 0 < v < 8)  # ✨ v4.8: TTM-based
-    check("npm",       lambda v: v > 10,        lambda v: 0 < v < 5)  # ✨ v4.8: TTM-based
+    check("opm_pct",   lambda v: v > 15,        lambda v: 0 < v < 8)
+    check("npm_pct",   lambda v: v > 10,        lambda v: 0 < v < 5)
     check("prom_pct",  lambda v: v > 50,        lambda v: 0 < v < 35)
     check("chg1d",     lambda v: v > 1,         lambda v: v < -1)
     check("ath_pct",   lambda v: v > -10,       lambda v: v < -20)
@@ -1345,7 +1309,7 @@ def main():
     resolved_syms = resolve_symbols()  # Map unified-symbols with symbol_map overrides
     syms = list(resolved_syms.keys())  # Symbol names (master list)
     ts   = now_utc()
-    print(f"📊 BharatMarkets Fundamentals v4.8 CLEAN | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
+    print(f"📊 BharatMarkets Fundamentals v4.8 ENHANCED (7 Core Metrics) | {ts.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
     existing = {}
     if Path(FUND_FILE).exists():
@@ -1395,14 +1359,14 @@ def main():
             sym, data = fut.result()
             yf_results[sym] = data
 
-    print(f"✓ Phase 1 done in {(now_utc()-ts).seconds}s\n")
+    print(f"\n✓ Phase 1 done in {(now_utc()-ts).seconds}s\n")
 
     # ── Phase 2: Sequential Screener + ROCE calculation + merge ──
     for i, sym in enumerate(syms):
-        if (i + 1) % 20 == 0:
-            print(f"  ── {i+1}/{len(syms)} processed ──")
+        print(f"[{i+1}/{len(syms)}] {sym}", end=" | ", flush=True)
 
         if sym in DELISTED:
+            print(f"↷ known delisted — skipped")
             continue
 
         stock = {}
@@ -1414,22 +1378,26 @@ def main():
         else:
             stats["errors"] += 1
 
-        # ── Calculate derived metrics from complete quarterly data ──────────────────
+
+        # ── NEW v4.0: Calculate derived metrics from complete quarterly data ──────────────────
         if stock.get('quarterly'):
             derived = calculate_derived_metrics_v4(stock['quarterly'], stock)
             stock.update(derived)
+            print(f"[Derived={len(derived)}]", end=" ", flush=True)
 
-        # ── Calculate ROCE from quarterly data ──────────────────
+        # ── NEW: Calculate ROCE from quarterly data ──────────────────
         if stock.get('quarterly') and not stock.get('roce'):
             roce_ttm = calculate_roce_from_quarterly(stock['quarterly'])
             if roce_ttm:
                 stock['roce'] = roce_ttm
+                print(f"[ROCE={roce_ttm}%]", end=" ", flush=True)
         
         # ── Fallback: Estimate ROCE from fundamentals ────────────────
         if not stock.get('roce') and stock.get('roe'):
             roce_est = calculate_roce_from_fundamentals(stock)
             if roce_est:
                 stock['roce'] = roce_est
+                print(f"[ROCE~{roce_est}%]", end=" ", flush=True)
 
         # Screener — prom% and pledge% always override; other fields gap-fill only
         if HAS_BS4:
@@ -1472,6 +1440,9 @@ def main():
             "updated": ts.isoformat(),
         })
         result[sym] = merged
+
+        filled = sum(1 for v in merged.values() if v not in (None, "", 0))
+        print(f"{sig}({pos}B/{neg}S) {filled}f")
 
     # Merge new results into existing — preserves all other stocks
     existing.update(result)
@@ -1517,11 +1488,10 @@ def main():
     print("=" * 50)
     print(f"✅ {total_stocks} stocks in {FUND_FILE} ({len(result)} updated)")
     print(f"   {stats['yf']} from Yahoo | {stats['scr']} from Screener | {stats['errors']} errors")
-    print(f"\n✨ v4.8 CLEAN: TTM-based metrics only")
-    print(f"   - OPM, NPM: calculated from last 4 quarters (TTM)")
-    print(f"   - CFO, Net CF: from Screener.in")
-    print(f"   - ROE, ROCE, Book Value: from Screener.in")
-    print(f"   - No redundant annual values")
+    print(f"\n✨ v4.8 ENHANCED: 7 Core Metrics from Screener!")
+    print(f"   - OPM, NPM (from P&L table)")
+    print(f"   - CFO, Net CF (from Cash Flow table)")
+    print(f"   - ROE, ROCE, Book Value (from Top Ratios)")
     print(f"\n📊 Data Coverage:")
     print(f"   CFO:    {cfo_filled:>3}/{total_stocks} ({100*cfo_filled/total_stocks:>5.1f}%)")
     print(f"   EBITDA: {ebitda_filled:>3}/{total_stocks} ({100*ebitda_filled/total_stocks:>5.1f}%)")
