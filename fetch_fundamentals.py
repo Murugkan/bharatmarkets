@@ -92,6 +92,41 @@ CRITICAL_FIELDS = [
     "prom_pct","fii_pct","dii_pct"
 ]
 
+
+
+def is_value_available(value):
+    """Robust missing-value checker"""
+
+    # None
+    if value is None:
+        return False
+
+    # NaN
+    try:
+        if pd.isna(value):
+            return False
+    except Exception:
+        pass
+
+    # Strings
+    if isinstance(value, str):
+        return value.strip().upper() not in ("", "NA", "N/A", "NONE", "-")
+
+    # Dict / List / Tuple / Set
+    if isinstance(value, (dict, list, tuple, set)):
+        return len(value) > 0
+
+    # NumPy arrays
+    if isinstance(value, np.ndarray):
+        return value.size > 0
+
+    # Pandas Series/DataFrame
+    if isinstance(value, (pd.Series, pd.DataFrame)):
+        return not value.empty
+
+    return True
+
+
 def build_data_gap_reports(stocks_data):
     """
     Generate:
@@ -123,7 +158,7 @@ def build_data_gap_reports(stocks_data):
 
         for field in all_fields:
             value = payload.get(field)
-            available = value not in (None, "", [], {}, "NA", "N/A")
+            available = is_value_available(value)
 
             row[field] = 1 if available else 0
 
