@@ -1,5 +1,21 @@
 
 # ============================================================
+# BHARATMARKETS FULL PRODUCTION ENGINE
+# ============================================================
+# Includes:
+# - Fetch Pipeline
+# - Normalization Engine
+# - Validation Engine
+# - Derivation Engine
+# - Confidence Engine
+# - Extraction Engine
+# - Snapshot Engine
+# - Ownership Engine
+# - Guidance Engine
+# ============================================================
+
+
+# ============================================================
 # FINAL PRODUCTION FILE
 # ============================================================
 
@@ -2405,4 +2421,229 @@ def main():
 if __name__ == "__main__":
     main()
 
+
+
+
+# ============================================================
+# PHASE 2 EXTRACTION ENGINE
+# ============================================================
+
+
+"""
+fetch_fundamentals_PHASE2_EXTRACTION_ENGINE.py
+
+PHASE 2:
+- Cashflow enrichment
+- Guidance extraction
+- Ownership history
+- Historical snapshots
+- Extraction confidence
+- Provider reconciliation
+
+Integrated over finalized normalization layer.
+"""
+
+from datetime import datetime
+
+
+# ============================================================
+# EXTRACTION CONFIDENCE
+# ============================================================
+
+def extraction_confidence(record):
+
+    score = 1.0
+
+    important = [
+        "sales",
+        "ebitda",
+        "cfo",
+        "fcf",
+        "capex"
+    ]
+
+    missing = 0
+
+    for field in important:
+
+        if record.get(field) in [
+            None,
+            0,
+            "0"
+        ]:
+            missing += 1
+
+    score -= missing * 0.1
+
+    if record.get("guidance") is None:
+        score -= 0.1
+
+    if record.get("quarterly") is None:
+        score -= 0.2
+
+    if score < 0:
+        score = 0
+
+    return round(score, 2)
+
+
+# ============================================================
+# CASHFLOW ENRICHMENT
+# ============================================================
+
+def enrich_cashflow(stock):
+
+    cfo = stock.get("cfo")
+    capex = stock.get("capex")
+
+    if (
+        cfo is not None and
+        capex is not None
+    ):
+
+        stock["fcf_calculated"] = round(
+            cfo - capex,
+            2
+        )
+
+    return stock
+
+
+# ============================================================
+# GUIDANCE EXTRACTION
+# ============================================================
+
+GUIDANCE_KEYWORDS = [
+
+    "guidance",
+    "revenue target",
+    "ebitda margin",
+    "capex",
+    "order book",
+    "utilization"
+]
+
+
+def extract_guidance(text):
+
+    if not text:
+        return None
+
+    lowered = text.lower()
+
+    extracted = []
+
+    for keyword in GUIDANCE_KEYWORDS:
+
+        if keyword in lowered:
+            extracted.append(keyword)
+
+    return extracted
+
+
+# ============================================================
+# OWNERSHIP HISTORY
+# ============================================================
+
+def build_ownership_history(stock):
+
+    return {
+
+        "promoter": stock.get("prom_pct"),
+        "fii": stock.get("fii_pct"),
+        "dii": stock.get("dii_pct"),
+        "public": stock.get("public_pct"),
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# SNAPSHOT ENGINE
+# ============================================================
+
+def build_snapshot(stock):
+
+    return {
+
+        "ticker": stock.get("ticker"),
+        "ltp": stock.get("ltp"),
+        "mcap": stock.get("mcap"),
+        "pe": stock.get("pe"),
+        "pb": stock.get("pb"),
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# PROVIDER RECONCILIATION
+# ============================================================
+
+def reconcile(primary, fallback):
+
+    final = {}
+
+    keys = set(
+        list(primary.keys())
+        +
+        list(fallback.keys())
+    )
+
+    for key in keys:
+
+        if primary.get(key) not in [
+            None,
+            "",
+            0
+        ]:
+
+            final[key] = primary.get(key)
+
+        else:
+
+            final[key] = fallback.get(key)
+
+    return final
+
+
+# ============================================================
+# PIPELINE
+# ============================================================
+
+def process_stock(stock):
+
+    stock = enrich_cashflow(stock)
+
+    stock["ownership_history"] = (
+        build_ownership_history(stock)
+    )
+
+    stock["snapshot"] = (
+        build_snapshot(stock)
+    )
+
+    stock["extraction_confidence"] = (
+        extraction_confidence(stock)
+    )
+
+    return stock
+
+
+# ============================================================
+# METADATA
+# ============================================================
+
+def metadata():
+
+    return {
+
+        "phase": "phase2_extraction_engine",
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+if __name__ == "__main__":
+
+    print(
+        "Phase 2 extraction engine loaded"
+    )
 
