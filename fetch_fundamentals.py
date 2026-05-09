@@ -103,27 +103,27 @@ def is_value_available(value):
     if value is None:
         return False
 
-    # NumPy arrays
-    if isinstance(value, np.ndarray):
-        return value.size > 0
-
-    # Pandas objects
-    if isinstance(value, (pd.Series, pd.DataFrame)):
-        return not value.empty
-
-    # Containers
-    if isinstance(value, (dict, list, tuple, set)):
-        return len(value) > 0
-
     # Strings
     if isinstance(value, str):
         cleaned = value.strip().upper()
         return cleaned not in ("", "NA", "N/A", "NONE", "-", "NAN")
 
-    # Numeric NaN
+    # pandas handling
     try:
+        import pandas as pd
+
+        if isinstance(value, (pd.Series, pd.DataFrame)):
+            return not value.empty
+
         if pd.isna(value):
             return False
+    except Exception:
+        pass
+
+    # Generic container handling
+    try:
+        if hasattr(value, "__len__") and not isinstance(value, (int, float, bool)):
+            return len(value) > 0
     except Exception:
         pass
 
