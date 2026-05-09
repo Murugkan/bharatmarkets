@@ -1581,11 +1581,7 @@ def main():
                 if key not in stock or stock[key] is None:
                     stock[key] = val
         
-        # ── Fallback: Estimate ROCE from fundamentals ────────────────
-        if not stock.get('roce') and stock.get('roe'):
-            roce_est = calculate_roce_from_fundamentals(stock)
-            if roce_est:
-                stock['roce'] = roce_est
+
 
         # Screener — prom% and pledge% always override; other fields gap-fill only
         screener_attempt = False
