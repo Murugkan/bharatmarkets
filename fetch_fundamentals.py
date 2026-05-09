@@ -1365,6 +1365,9 @@ def main():
 
     stats  = {"yf": 0, "scr": 0, "errors": 0, "errors_detail": []}
     yf_results = {}
+
+    # ── Phase 1: Parallel yfinance ──
+    active_syms = [s for s in syms if s not in DELISTED]
     
     # ═══════════════════════════════════════════════════════════════════════════
     # PHASE 1 LOGGING: Track fetch attempts and failures
@@ -1378,9 +1381,7 @@ def main():
         "delisted": [],
         "partial": []
     }
-
-    # ── Phase 1: Parallel yfinance ──
-    active_syms = [s for s in syms if s not in DELISTED]
+    
     print(f"⚡ Fetching {len(active_syms)} stocks in parallel (8 workers)…\n")
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
