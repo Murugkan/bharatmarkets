@@ -1935,3 +1935,140 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ============================================================
+# PHASE 4 QUARTERLY NORMALIZATION ENGINE
+# ============================================================
+
+def validate_quarterly_balance_sheet(row):
+
+    try:
+
+        curr_assets = normalize_number(
+            row.get("curr_assets")
+        )
+
+        curr_liab = normalize_number(
+            row.get("curr_liab")
+        )
+
+        inventory = normalize_number(
+            row.get("inventory")
+        )
+
+        cash = normalize_number(
+            row.get("cash")
+        )
+
+        total_assets = normalize_number(
+            row.get("total_assets")
+        )
+
+        # impossible inventory > current assets
+        if (
+            curr_assets is not None and
+            inventory is not None and
+            inventory > curr_assets
+        ):
+            row["curr_assets"] = None
+
+        # impossible cash > current assets
+        if (
+            curr_assets is not None and
+            cash is not None and
+            cash > curr_assets
+        ):
+            row["curr_assets"] = None
+
+        # impossible current assets > total assets
+        if (
+            curr_assets is not None and
+            total_assets is not None and
+            curr_assets > total_assets
+        ):
+            row["curr_assets"] = None
+
+        # current liabilities sanity
+        if (
+            curr_liab is not None and
+            curr_liab < 0
+        ):
+            row["curr_liab"] = None
+
+        # total assets sanity
+        if (
+            total_assets is not None and
+            total_assets < 0
+        ):
+            row["total_assets"] = None
+
+        return row
+
+    except:
+        return row
+
+
+def normalize_quarterly_rows(rows):
+
+    if not rows:
+        return rows
+
+    normalized = []
+
+    for row in rows:
+
+        row = validate_quarterly_balance_sheet(
+            row
+        )
+
+        normalized.append(row)
+
+    return normalized
+
+
+def compute_current_ratio_from_quarterly(row,
+                                         sector=None):
+
+    try:
+
+        if sector and not metric_allowed(
+            "cur_ratio",
+            sector
+        ):
+            return None
+
+        curr_assets = normalize_number(
+            row.get("curr_assets")
+        )
+
+        curr_liab = normalize_number(
+            row.get("curr_liab")
+        )
+
+        if curr_assets is None:
+            return None
+
+        if curr_liab is None:
+            return None
+
+        if curr_liab <= 0:
+            return None
+
+        ratio = curr_assets / curr_liab
+
+        if ratio < 0:
+            return None
+
+        if ratio > 20:
+            return None
+
+        return round(ratio, 2)
+
+    except:
+        return None
+
+# ============================================================
+# END PHASE 4
+# ============================================================
+
