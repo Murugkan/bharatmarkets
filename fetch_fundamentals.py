@@ -297,6 +297,106 @@ def validate_revenue(revenue):
 
 # ============================================================
 # END PHASE 1 LAYER
+
+# ============================================================
+# PHASE 2 VALIDATION + NORMALIZATION
+# ============================================================
+
+PERCENTAGE_FIELDS = {
+    "div_yield",
+    "roe",
+    "roa",
+    "npm_pct",
+    "opm_pct",
+    "gpm_pct"
+}
+
+
+def normalize_percentage(value):
+
+    value = normalize_number(value)
+
+    if value is None:
+        return None
+
+    # convert decimal ratios to %
+    if value <= 1 and value >= -1:
+        value = value * 100
+
+    return round(value, 2)
+
+
+def validate_balance_sheet(curr_assets,
+                           inventory,
+                           total_assets=None,
+                           cash=None):
+
+    try:
+
+        curr_assets = normalize_number(curr_assets)
+        inventory = normalize_number(inventory)
+        total_assets = normalize_number(total_assets)
+        cash = normalize_number(cash)
+
+        # impossible inventory > current assets
+        if (
+            curr_assets is not None and
+            inventory is not None and
+            inventory > curr_assets
+        ):
+            return None
+
+        # impossible cash > total assets
+        if (
+            cash is not None and
+            total_assets is not None and
+            cash > total_assets
+        ):
+            return None
+
+        return curr_assets
+
+    except:
+        return None
+
+
+def validate_gross_profit(gross_profit,
+                          revenue):
+
+    gross_profit = normalize_number(gross_profit)
+
+    revenue = normalize_number(revenue)
+
+    if gross_profit is None:
+        return None
+
+    if revenue is None:
+        return gross_profit
+
+    if gross_profit > revenue:
+        return None
+
+    return gross_profit
+
+
+def normalize_interest_expense(value):
+
+    value = normalize_number(value)
+
+    if value is None:
+        return None
+
+    # negative interest expense anomaly
+    if value < 0:
+        return None
+
+    return value
+
+# ============================================================
+# END PHASE 2
+# ============================================================
+
+
 # ============================================================
 
 
