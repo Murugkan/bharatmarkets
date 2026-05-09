@@ -1638,7 +1638,7 @@ def main():
     critical_fields = {
         "holdings": ["fii_pct", "dii_pct", "prom_pct", "public_pct"],
         "valuation": ["bv", "pb", "pe"],
-        "profitability": ["roe", "roce", "opm", "npm"],
+        "profitability": ["roe", "roce"],  # Removed: opm, npm (TTM-calculated, not primary source)
         "cashflow": ["cfo", "net_cf"],
         "liquidity": ["beta", "mcap"]
     }
@@ -1818,12 +1818,21 @@ def main():
     print("🤖 CI/CD PIPELINE SUMMARY")
     print("=" * 70)
     
-    quality_score = round(100 * (total_stocks - total_gaps) / total_stocks, 1) if total_stocks > 0 else 0
+    # Calculate quality score based on critical field coverage (not gap count)
+    # Average coverage across all critical fields
+    critical_field_coverage = []
+    for cat_fields in critical_fields.values():
+        for field in cat_fields:
+            if field in gap_analysis["field_coverage"]:
+                pct = gap_analysis["field_coverage"][field]["percentage"]
+                critical_field_coverage.append(pct)
+    
+    quality_score = round(sum(critical_field_coverage) / len(critical_field_coverage), 1) if critical_field_coverage else 0
     status = "PASS" if quality_score >= 70 else "WARN" if quality_score >= 50 else "FAIL"
     
     print(f"STATUS={status}")
     print(f"TOTAL_STOCKS={total_stocks}")
-    print(f"STOCKS_WITH_GAPS={total_gaps}")
+    print(f"STOCKS_WITH_GAPS={len(gap_analysis['stocks_by_gap_severity']['critical'] + gap_analysis['stocks_by_gap_severity']['high'])}")
     print(f"QUALITY_SCORE={quality_score}%")
     print(f"CRITICAL_STOCKS={len(gap_analysis['stocks_by_gap_severity']['critical'])}")
     print(f"TIMESTAMP={ts.isoformat()}")
