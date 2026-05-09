@@ -46,17 +46,12 @@ Outputs: fundamentals.json with 60+ fields per stock including:
   - Data Tracking: Delisted tracking, stale stock cleanup
 """
 
+import os
+import re
 import json
 
 def json_safe(obj):
     """Convert non-serializable objects"""
-
-    try:
-        import numpy as np
-        if isinstance(obj, np.generic):
-            return obj.item()
-    except Exception:
-        pass
 
     try:
         import pandas as pd
@@ -70,7 +65,9 @@ def json_safe(obj):
         return str(obj)
     except Exception:
         return None
-, time, datetime, re, os
+
+import time
+import datetime
 from pathlib import Path
 
 try:
@@ -269,31 +266,7 @@ DELISTED = set()
 # Optional: symbol_map.json can override tickers for stocks where NSE ≠ Yahoo
 # For most stocks, SYM.NS works directly — only exceptions need mapping
 # ── Load optional symbol map (NSE_TO_YAHOO overrides) ──────────
-import json
-
-def json_safe(obj):
-    """Convert non-serializable objects"""
-
-    try:
-        import numpy as np
-        if isinstance(obj, np.generic):
-            return obj.item()
-    except Exception:
-        pass
-
-    try:
-        import pandas as pd
-
-        if isinstance(obj, (pd.Series, pd.DataFrame)):
-            return obj.to_dict()
-    except Exception:
-        pass
-
-    try:
-        return str(obj)
-    except Exception:
-        return None
- as _json
+import json as _json
 try:
     _sm = _json.loads(open("symbol_map.json").read())
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
