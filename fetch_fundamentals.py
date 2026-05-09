@@ -1,3 +1,377 @@
+# ============================================================
+# V2 CLEAN DATA ENGINE INTEGRATION
+# ============================================================
+
+"""
+fetch_fundamentals_v2_clean_engine.py
+
+Consolidated scalable financial data engine.
+Designed for:
+- GitHub Actions
+- iPhone frontend
+- IndexedDB compatibility
+- Rule-driven validation
+"""
+
+from datetime import datetime
+
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+CANONICAL_UNIT = "CR"
+
+SECTOR_RULES = {
+    "Financial Services": {
+        "suppress": ["cur_ratio", "quick_ratio"]
+    },
+    "Banks": {
+        "suppress": ["cur_ratio", "quick_ratio"]
+    }
+}
+
+FIELD_ALIASES = {
+    "cash": [
+        "cash",
+        "totalCash",
+        "cashAndCashEquivalents"
+    ],
+    "debt": [
+        "debt",
+        "totalDebt"
+    ],
+    "revenue": [
+        "revenue",
+        "totalRevenue"
+    ]
+}
+
+
+# ============================================================
+# NORMALIZATION
+# ============================================================
+
+def normalize_number(value):
+
+    if value is None:
+        return None
+
+    try:
+        return round(float(value), 2)
+    except:
+        return None
+
+
+def normalize_percentage(value):
+
+    value = normalize_number(value)
+
+    if value is None:
+        return None
+
+    if -1 <= value <= 1:
+        value = value * 100
+
+    return round(value, 2)
+
+
+def detect_scale(value, reference=None):
+
+    value = normalize_number(value)
+
+    if value is None:
+        return None
+
+    if abs(value) > 10000000:
+        return round(value / 10000000, 2)
+
+    if reference:
+        reference = normalize_number(reference)
+
+        if reference and value > reference * 100:
+            return round(value / 100, 2)
+
+    return value
+
+
+# ============================================================
+# RESOLVER
+# ============================================================
+
+def resolve_field(field_name, *sources):
+
+    aliases = FIELD_ALIASES.get(field_name, [])
+
+    for source in sources:
+
+        if not source:
+            continue
+
+        for alias in aliases:
+
+            value = source.get(alias)
+
+            value = normalize_number(value)
+
+            if value not in [None, 0]:
+                return value
+
+    return None
+
+
+# ============================================================
+# RULE ENGINE
+# ============================================================
+
+def apply_balance_sheet_rules(row):
+
+    curr_assets = normalize_number(
+        row.get("curr_assets")
+    )
+
+    inventory = normalize_number(
+        row.get("inventory")
+    )
+
+    cash = normalize_number(
+        row.get("cash")
+    )
+
+    total_assets = normalize_number(
+        row.get("total_assets")
+    )
+
+    anomalies = []
+
+    if (
+        curr_assets is not None and
+        inventory is not None and
+        inventory > curr_assets
+    ):
+        row["curr_assets"] = None
+        anomalies.append(
+            "inventory_gt_current_assets"
+        )
+
+    if (
+        curr_assets is not None and
+        cash is not None and
+        cash > curr_assets
+    ):
+        row["curr_assets"] = None
+        anomalies.append(
+            "cash_gt_current_assets"
+        )
+
+    if (
+        curr_assets is not None and
+        total_assets is not None and
+        curr_assets > total_assets
+    ):
+        row["curr_assets"] = None
+        anomalies.append(
+            "current_assets_gt_total_assets"
+        )
+
+    row["anomalies"] = anomalies
+
+    return row
+
+
+def apply_margin_rules(row):
+
+    revenue = normalize_number(
+        row.get("rev")
+    )
+
+    gross = normalize_number(
+        row.get("gross")
+    )
+
+    if (
+        revenue is not None and
+        gross is not None and
+        gross > revenue
+    ):
+        row["gross"] = None
+
+    return row
+
+
+# ============================================================
+# DERIVED METRICS
+# ============================================================
+
+def derive_current_ratio(row, sector=None):
+
+    if sector in SECTOR_RULES:
+
+        suppressed = SECTOR_RULES[
+            sector
+        ].get("suppress", [])
+
+        if "cur_ratio" in suppressed:
+            return None
+
+    curr_assets = normalize_number(
+        row.get("curr_assets")
+    )
+
+    curr_liab = normalize_number(
+        row.get("curr_liab")
+    )
+
+    if curr_assets is None:
+        return None
+
+    if curr_liab is None:
+        return None
+
+    if curr_liab <= 0:
+        return None
+
+    ratio = curr_assets / curr_liab
+
+    if ratio < 0 or ratio > 20:
+        return None
+
+    return round(ratio, 2)
+
+
+def derive_quick_ratio(row, sector=None):
+
+    if sector in SECTOR_RULES:
+
+        suppressed = SECTOR_RULES[
+            sector
+        ].get("suppress", [])
+
+        if "quick_ratio" in suppressed:
+            return None
+
+    curr_assets = normalize_number(
+        row.get("curr_assets")
+    )
+
+    inventory = normalize_number(
+        row.get("inventory")
+    )
+
+    curr_liab = normalize_number(
+        row.get("curr_liab")
+    )
+
+    if curr_assets is None:
+        return None
+
+    if curr_liab is None:
+        return None
+
+    if curr_liab <= 0:
+        return None
+
+    inventory = inventory or 0
+
+    ratio = (
+        (curr_assets - inventory) /
+        curr_liab
+    )
+
+    if ratio < 0 or ratio > 20:
+        return None
+
+    return round(ratio, 2)
+
+
+def derive_net_debt(debt, cash):
+
+    debt = normalize_number(debt)
+    cash = normalize_number(cash)
+
+    if debt is None:
+        return None
+
+    cash = cash or 0
+
+    return round(debt - cash, 2)
+
+
+# ============================================================
+# CONFIDENCE ENGINE
+# ============================================================
+
+def confidence_score(row):
+
+    score = 1.0
+
+    anomalies = row.get("anomalies", [])
+
+    score -= len(anomalies) * 0.2
+
+    if score < 0:
+        score = 0
+
+    return round(score, 2)
+
+
+# ============================================================
+# PIPELINE
+# ============================================================
+
+def process_quarterly_rows(rows, sector=None):
+
+    cleaned = []
+
+    for row in rows:
+
+        row = apply_balance_sheet_rules(row)
+
+        row = apply_margin_rules(row)
+
+        row["cur_ratio"] = derive_current_ratio(
+            row,
+            sector
+        )
+
+        row["quick_ratio"] = derive_quick_ratio(
+            row,
+            sector
+        )
+
+        row["quarterly_confidence"] = (
+            confidence_score(row)
+        )
+
+        cleaned.append(row)
+
+    return cleaned
+
+
+# ============================================================
+# SERIALIZER
+# ============================================================
+
+def build_metadata():
+
+    return {
+        "engine": "v2_clean_engine",
+        "updated": datetime.utcnow().isoformat(),
+        "unit": CANONICAL_UNIT
+    }
+
+
+if __name__ == "__main__":
+
+    print(
+        "Financial data engine loaded successfully."
+    )
+
+
+# ============================================================
+# ORIGINAL FETCHER
+# ============================================================
+
 #!/usr/bin/env python3
 """
 BharatMarkets Pro — Fundamentals Fetcher v4.8 CLEAN
@@ -96,415 +470,6 @@ DO_RESOLVE = os.environ.get("RESOLVE",     "").lower() in ("true","1")
 DO_CLEAN   = os.environ.get("CLEAN_STALE", "").lower() in ("true","1")
 
 SKIP = {"NIFTY","BANKNIFTY","NIFTY50","SENSEX","NIFTYIT","MIDCAP","SMALLCAP","NIFTYBANK"}
-
-# ============================================================
-# PHASE 1 CANONICAL RESOLUTION + VALIDATION LAYER
-# ============================================================
-
-FIELD_REGISTRY = {
-
-    "cash": {
-        "aliases": [
-            "cash",
-            "totalCash",
-            "cashAndCashEquivalents",
-            "cashAndShortTermInvestments"
-        ]
-    },
-
-    "debt": {
-        "aliases": [
-            "debt",
-            "totalDebt",
-            "longTermDebt",
-            "shortLongTermDebtTotal"
-        ]
-    },
-
-    "revenue": {
-        "aliases": [
-            "revenue",
-            "totalRevenue",
-            "sales",
-            "operatingRevenue"
-        ]
-    },
-
-    "current_assets": {
-        "aliases": [
-            "currentAssets",
-            "totalCurrentAssets",
-            "assetsCurrent"
-        ]
-    },
-
-    "current_liabilities": {
-        "aliases": [
-            "currentLiabilities",
-            "totalCurrentLiabilities",
-            "liabilitiesCurrent"
-        ]
-    },
-
-    "current_ratio": {
-        "aliases": [
-            "currentRatio"
-        ]
-    },
-
-    "cfo": {
-        "aliases": [
-            "operatingCashFlow",
-            "cashFlowFromOperations",
-            "Operating Cash Flow"
-        ]
-    },
-
-    "capex": {
-        "aliases": [
-            "capitalExpenditures",
-            "capitalExpenditure",
-            "Purchase Of PPE"
-        ]
-    }
-}
-
-
-SECTOR_RULES = {
-
-    "Financial Services": {
-        "skip_metrics": [
-            "cur_ratio"
-        ]
-    },
-
-    "Banks": {
-        "skip_metrics": [
-            "cur_ratio"
-        ]
-    }
-}
-
-
-def normalize_number(value):
-
-    if value is None:
-        return None
-
-    try:
-        return float(value)
-    except:
-        return None
-
-
-def resolve_field(field_name, *payloads):
-
-    field = FIELD_REGISTRY.get(field_name)
-
-    if not field:
-        return None
-
-    aliases = field["aliases"]
-
-    for payload in payloads:
-
-        if not payload:
-            continue
-
-        for alias in aliases:
-
-            value = payload.get(alias)
-
-            value = normalize_number(value)
-
-            if value not in [None, 0]:
-                return value
-
-    return None
-
-
-def metric_allowed(metric_name, sector):
-
-    rules = SECTOR_RULES.get(sector, {})
-
-    skipped = rules.get("skip_metrics", [])
-
-    return metric_name not in skipped
-
-
-def compute_current_ratio_internal(current_assets,
-                                   current_liabilities,
-                                   sector=None):
-
-    try:
-
-        if sector and not metric_allowed(
-            "cur_ratio",
-            sector
-        ):
-            return None
-
-        if not current_assets:
-            return None
-
-        if not current_liabilities:
-            return None
-
-        ratio = (
-            current_assets /
-            current_liabilities
-        )
-
-        if ratio < 0:
-            return None
-
-        if ratio > 20:
-            return None
-
-        return round(ratio, 2)
-
-    except:
-        return None
-
-
-def safe_fcf(cfo, capex):
-
-    try:
-
-        if cfo is None:
-            return None
-
-        if capex is None:
-            return None
-
-        capex = abs(capex)
-
-        return cfo - capex
-
-    except:
-        return None
-
-
-def validate_revenue(revenue):
-
-    if revenue is None:
-        return None
-
-    if revenue < 0:
-        return None
-
-    return revenue
-
-# ============================================================
-# END PHASE 1 LAYER
-
-# ============================================================
-# PHASE 2 VALIDATION + NORMALIZATION
-# ============================================================
-
-PERCENTAGE_FIELDS = {
-    "div_yield",
-    "roe",
-    "roa",
-    "npm_pct",
-    "opm_pct",
-    "gpm_pct"
-}
-
-
-def normalize_percentage(value):
-
-    value = normalize_number(value)
-
-    if value is None:
-        return None
-
-    # convert decimal ratios to %
-    if value <= 1 and value >= -1:
-        value = value * 100
-
-    return round(value, 2)
-
-
-def validate_balance_sheet(curr_assets,
-                           inventory,
-                           total_assets=None,
-                           cash=None):
-
-    try:
-
-        curr_assets = normalize_number(curr_assets)
-        inventory = normalize_number(inventory)
-        total_assets = normalize_number(total_assets)
-        cash = normalize_number(cash)
-
-        # impossible inventory > current assets
-        if (
-            curr_assets is not None and
-            inventory is not None and
-            inventory > curr_assets
-        ):
-            return None
-
-        # impossible cash > total assets
-        if (
-            cash is not None and
-            total_assets is not None and
-            cash > total_assets
-        ):
-            return None
-
-        return curr_assets
-
-    except:
-        return None
-
-
-def validate_gross_profit(gross_profit,
-                          revenue):
-
-    gross_profit = normalize_number(gross_profit)
-
-    revenue = normalize_number(revenue)
-
-    if gross_profit is None:
-        return None
-
-    if revenue is None:
-        return gross_profit
-
-    if gross_profit > revenue:
-        return None
-
-    return gross_profit
-
-
-def normalize_interest_expense(value):
-
-    value = normalize_number(value)
-
-    if value is None:
-        return None
-
-    # negative interest expense anomaly
-    if value < 0:
-        return None
-
-    return value
-
-# ============================================================
-# END PHASE 2
-
-
-# ============================================================
-# PHASE 3 BALANCE SHEET INTEGRITY ENGINE
-# ============================================================
-
-def validate_current_assets(curr_assets,
-                            inventory=None,
-                            cash=None,
-                            total_assets=None):
-
-    curr_assets = normalize_number(curr_assets)
-    inventory = normalize_number(inventory)
-    cash = normalize_number(cash)
-    total_assets = normalize_number(total_assets)
-
-    if curr_assets is None:
-        return None
-
-    # impossible inventory > current assets
-    if (
-        inventory is not None and
-        inventory > curr_assets
-    ):
-        return None
-
-    # impossible cash > current assets
-    if (
-        cash is not None and
-        cash > curr_assets
-    ):
-        return None
-
-    # impossible current assets > total assets
-    if (
-        total_assets is not None and
-        curr_assets > total_assets
-    ):
-        return None
-
-    return curr_assets
-
-
-def validate_equity(equity):
-
-    equity = normalize_number(equity)
-
-    if equity is None:
-        return None
-
-    # reject absurd negative equity
-    if equity < -100000:
-        return None
-
-    return equity
-
-
-def compute_current_ratio_internal(curr_assets,
-                                   curr_liabilities,
-                                   sector=None):
-
-    try:
-
-        if sector and not metric_allowed(
-            "cur_ratio",
-            sector
-        ):
-            return None
-
-        curr_assets = normalize_number(curr_assets)
-
-        curr_liabilities = normalize_number(
-            curr_liabilities
-        )
-
-        if curr_assets is None:
-            return None
-
-        if curr_liabilities is None:
-            return None
-
-        if curr_liabilities <= 0:
-            return None
-
-        ratio = (
-            curr_assets /
-            curr_liabilities
-        )
-
-        if ratio < 0:
-            return None
-
-        if ratio > 20:
-            return None
-
-        return round(ratio, 2)
-
-    except:
-        return None
-
-# ============================================================
-# END PHASE 3
-# ============================================================
-
-
-# ============================================================
-
-
-# ============================================================
-
-
 
 # Runtime cache of confirmed-delisted symbols — populated during run, skipped on re-runs
 # Also persisted in fundamentals.json under "delisted" key
@@ -1195,7 +1160,7 @@ def fetch_yfinance(sym, yf_ticker=None):
         result["gpm_pct"] = round(gpm_raw * 100, 2) if gpm_raw is not None else None
 
         result["mcap"]  = to_cr(info.get("marketCap"))
-        result["sales"] = to_cr(validate_revenue(resolve_field("revenue", info)))
+        result["sales"] = to_cr(info.get("totalRevenue"))
         result["ebitda"]= to_cr(info.get("ebitda"))
         result["cfo"]   = to_cr(info.get("operatingCashflow"))
         result["fcf"]   = to_cr(info.get("freeCashflow"))
@@ -1935,506 +1900,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# ============================================================
-# PHASE 4 QUARTERLY NORMALIZATION ENGINE
-# ============================================================
-
-def validate_quarterly_balance_sheet(row):
-
-    try:
-
-        curr_assets = normalize_number(
-            row.get("curr_assets")
-        )
-
-        curr_liab = normalize_number(
-            row.get("curr_liab")
-        )
-
-        inventory = normalize_number(
-            row.get("inventory")
-        )
-
-        cash = normalize_number(
-            row.get("cash")
-        )
-
-        total_assets = normalize_number(
-            row.get("total_assets")
-        )
-
-        # impossible inventory > current assets
-        if (
-            curr_assets is not None and
-            inventory is not None and
-            inventory > curr_assets
-        ):
-            row["curr_assets"] = None
-
-        # impossible cash > current assets
-        if (
-            curr_assets is not None and
-            cash is not None and
-            cash > curr_assets
-        ):
-            row["curr_assets"] = None
-
-        # impossible current assets > total assets
-        if (
-            curr_assets is not None and
-            total_assets is not None and
-            curr_assets > total_assets
-        ):
-            row["curr_assets"] = None
-
-        # current liabilities sanity
-        if (
-            curr_liab is not None and
-            curr_liab < 0
-        ):
-            row["curr_liab"] = None
-
-        # total assets sanity
-        if (
-            total_assets is not None and
-            total_assets < 0
-        ):
-            row["total_assets"] = None
-
-        return row
-
-    except:
-        return row
-
-
-def normalize_quarterly_rows(rows):
-
-    if not rows:
-        return rows
-
-    normalized = []
-
-    for row in rows:
-
-        row = validate_quarterly_balance_sheet(
-            row
-        )
-
-        normalized.append(row)
-
-    return normalized
-
-
-def compute_current_ratio_from_quarterly(row,
-                                         sector=None):
-
-    try:
-
-        if sector and not metric_allowed(
-            "cur_ratio",
-            sector
-        ):
-            return None
-
-        curr_assets = normalize_number(
-            row.get("curr_assets")
-        )
-
-        curr_liab = normalize_number(
-            row.get("curr_liab")
-        )
-
-        if curr_assets is None:
-            return None
-
-        if curr_liab is None:
-            return None
-
-        if curr_liab <= 0:
-            return None
-
-        ratio = curr_assets / curr_liab
-
-        if ratio < 0:
-            return None
-
-        if ratio > 20:
-            return None
-
-        return round(ratio, 2)
-
-    except:
-        return None
-
-# ============================================================
-# END PHASE 4
-# ============================================================
-
-
-
-# ============================================================
-# PHASE 5 STRICT QUARTERLY INTEGRITY + CONFIDENCE
-# ============================================================
-
-def quarterly_confidence_score(row):
-
-    score = 1.0
-
-    curr_assets = normalize_number(
-        row.get("curr_assets")
-    )
-
-    curr_liab = normalize_number(
-        row.get("curr_liab")
-    )
-
-    inventory = normalize_number(
-        row.get("inventory")
-    )
-
-    cash = normalize_number(
-        row.get("cash")
-    )
-
-    total_assets = normalize_number(
-        row.get("total_assets")
-    )
-
-    if (
-        curr_assets is not None and
-        inventory is not None and
-        inventory > curr_assets
-    ):
-        score -= 0.35
-
-    if (
-        curr_assets is not None and
-        cash is not None and
-        cash > curr_assets
-    ):
-        score -= 0.35
-
-    if (
-        curr_assets is not None and
-        total_assets is not None and
-        curr_assets > total_assets
-    ):
-        score -= 0.35
-
-    if (
-        curr_liab is not None and
-        curr_liab < 0
-    ):
-        score -= 0.25
-
-    if score < 0:
-        score = 0
-
-    return round(score, 2)
-
-
-def strict_quarterly_cleanup(row):
-
-    try:
-
-        curr_assets = normalize_number(
-            row.get("curr_assets")
-        )
-
-        inventory = normalize_number(
-            row.get("inventory")
-        )
-
-        cash = normalize_number(
-            row.get("cash")
-        )
-
-        total_assets = normalize_number(
-            row.get("total_assets")
-        )
-
-        if (
-            curr_assets is not None and
-            inventory is not None and
-            inventory > curr_assets
-        ):
-            row["curr_assets"] = None
-
-        if (
-            curr_assets is not None and
-            cash is not None and
-            cash > curr_assets
-        ):
-            row["curr_assets"] = None
-
-        if (
-            curr_assets is not None and
-            total_assets is not None and
-            curr_assets > total_assets
-        ):
-            row["curr_assets"] = None
-
-        curr_assets = normalize_number(
-            row.get("curr_assets")
-        )
-
-        curr_liab = normalize_number(
-            row.get("curr_liab")
-        )
-
-        if (
-            curr_assets is not None and
-            curr_liab is not None and
-            curr_liab > 0
-        ):
-
-            ratio = curr_assets / curr_liab
-
-            if ratio >= 0 and ratio <= 20:
-                row["cur_ratio"] = round(
-                    ratio,
-                    2
-                )
-            else:
-                row["cur_ratio"] = None
-
-        else:
-            row["cur_ratio"] = None
-
-        row["quarterly_confidence"] = (
-            quarterly_confidence_score(row)
-        )
-
-        return row
-
-    except:
-        return row
-
-# ============================================================
-# END PHASE 5
-# ============================================================
-
-
-
-# ============================================================
-# PHASE 6 UNIT NORMALIZATION + PROVIDER PRIORITY
-# ============================================================
-
-CANONICAL_UNIT = "INR"
-
-
-FIELD_PROVIDER_PRIORITY = {
-
-    "cash": [
-        "scr",
-        "yf"
-    ],
-
-    "debt": [
-        "scr",
-        "yf"
-    ],
-
-    "revenue": [
-        "scr",
-        "yf"
-    ],
-
-    "quarterly": [
-        "scr"
-    ]
-}
-
-
-def detect_scale(value,
-                 reference=None):
-
-    value = normalize_number(value)
-
-    reference = normalize_number(reference)
-
-    if value is None:
-        return value
-
-    # likely already normalized
-    if abs(value) < 100000:
-        return value
-
-    # detect raw INR → Cr conversion candidates
-    if value > 10000000:
-        return round(value / 10000000, 2)
-
-    # detect scaling mismatch
-    if (
-        reference is not None and
-        reference > 0 and
-        value > reference * 100
-    ):
-        return round(value / 100, 2)
-
-    return value
-
-
-def normalize_financial_unit(value):
-
-    value = normalize_number(value)
-
-    if value is None:
-        return None
-
-    # canonical internal representation
-    return value
-
-
-def derive_net_debt(debt,
-                    cash):
-
-    debt = normalize_number(debt)
-
-    cash = normalize_number(cash)
-
-    if debt is None:
-        return None
-
-    if cash is None:
-        cash = 0
-
-    return round(debt - cash, 2)
-
-
-def derive_quick_ratio(curr_assets,
-                       inventory,
-                       curr_liab):
-
-    curr_assets = normalize_number(curr_assets)
-
-    inventory = normalize_number(inventory)
-
-    curr_liab = normalize_number(curr_liab)
-
-    if curr_assets is None:
-        return None
-
-    if curr_liab is None:
-        return None
-
-    if curr_liab <= 0:
-        return None
-
-    if inventory is None:
-        inventory = 0
-
-    ratio = (
-        (curr_assets - inventory) /
-        curr_liab
-    )
-
-    if ratio < 0:
-        return None
-
-    if ratio > 20:
-        return None
-
-    return round(ratio, 2)
-
-
-def derive_interest_coverage(ebit,
-                             interest_exp):
-
-    ebit = normalize_number(ebit)
-
-    interest_exp = normalize_number(
-        interest_exp
-    )
-
-    if ebit is None:
-        return None
-
-    if interest_exp is None:
-        return None
-
-    if interest_exp <= 0:
-        return None
-
-    ratio = ebit / interest_exp
-
-    if ratio < 0:
-        return None
-
-    return round(ratio, 2)
-
-
-def build_anomaly_registry(row):
-
-    anomalies = []
-
-    curr_assets = normalize_number(
-        row.get("curr_assets")
-    )
-
-    inventory = normalize_number(
-        row.get("inventory")
-    )
-
-    cash = normalize_number(
-        row.get("cash")
-    )
-
-    total_assets = normalize_number(
-        row.get("total_assets")
-    )
-
-    revenue = normalize_number(
-        row.get("rev")
-    )
-
-    gross = normalize_number(
-        row.get("gross")
-    )
-
-    if (
-        curr_assets is not None and
-        inventory is not None and
-        inventory > curr_assets
-    ):
-        anomalies.append(
-            "inventory_gt_current_assets"
-        )
-
-    if (
-        curr_assets is not None and
-        cash is not None and
-        cash > curr_assets
-    ):
-        anomalies.append(
-            "cash_gt_current_assets"
-        )
-
-    if (
-        curr_assets is not None and
-        total_assets is not None and
-        curr_assets > total_assets
-    ):
-        anomalies.append(
-            "current_assets_gt_total_assets"
-        )
-
-    if (
-        revenue is not None and
-        gross is not None and
-        gross > revenue
-    ):
-        anomalies.append(
-            "gross_profit_gt_revenue"
-        )
-
-    row["anomalies"] = anomalies
-
-    return row
-
-# ============================================================
-# END PHASE 6
-# ============================================================
-
