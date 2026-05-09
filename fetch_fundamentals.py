@@ -1,5 +1,43 @@
 
 # ============================================================
+# BHARATMARKETS COMPLETE PRODUCTION PLATFORM
+# ============================================================
+# Includes:
+# - Fetch Pipeline
+# - Normalization Engine
+# - Validation Engine
+# - Derivation Engine
+# - Confidence Engine
+# - Extraction Matrix
+# - Multi Provider Reconciliation
+# - Cashflow Reconstruction
+# - Guidance Extraction
+# - Snapshot Engine
+# - Ownership History
+# - Quarterly Completeness Engine
+# - Mandatory Field Validation
+# ============================================================
+
+
+# ============================================================
+# BHARATMARKETS FULL STACK PRODUCTION ENGINE
+# ============================================================
+# Includes:
+# - Fetch Pipeline
+# - Normalization Engine
+# - Validation Engine
+# - Derivation Engine
+# - Confidence Engine
+# - Extraction Engine
+# - Snapshot Engine
+# - Ownership Engine
+# - Guidance Engine
+# - Cashflow Enrichment
+# - Provider Reconciliation
+# ============================================================
+
+
+# ============================================================
 # BHARATMARKETS FULL PRODUCTION ENGINE
 # ============================================================
 # Includes:
@@ -2645,5 +2683,785 @@ if __name__ == "__main__":
 
     print(
         "Phase 2 extraction engine loaded"
+    )
+
+
+
+# ============================================================
+# EXTRACTION ENGINE V1
+# ============================================================
+
+
+"""
+bharatmarkets_extraction_engine_v1.py
+
+NEXT PHASE EXTRACTION ENGINE
+- cashflow enrichment
+- guidance extraction
+- historical snapshots
+- provider reconciliation
+- extraction confidence
+- quarterly completeness gating
+"""
+
+from datetime import datetime
+from statistics import median
+
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+MIN_QUARTER_COMPLETENESS = 0.40
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def n(value):
+
+    try:
+
+        if value is None:
+            return None
+
+        return round(float(value), 2)
+
+    except:
+
+        return None
+
+
+# ============================================================
+# QUARTER COMPLETENESS
+# ============================================================
+
+def quarterly_completeness(row):
+
+    fields = [
+        "rev",
+        "ebitda",
+        "ebit",
+        "net",
+        "eps"
+    ]
+
+    valid = 0
+
+    for field in fields:
+
+        if row.get(field) not in [
+            None,
+            "",
+            0
+        ]:
+            valid += 1
+
+    return round(valid / len(fields), 2)
+
+
+def filter_sparse_quarters(quarters):
+
+    final = []
+
+    for row in quarters:
+
+        completeness = quarterly_completeness(row)
+
+        row["quarterly_completeness"] = completeness
+
+        if completeness >= MIN_QUARTER_COMPLETENESS:
+
+            final.append(row)
+
+    return final
+
+
+# ============================================================
+# CASHFLOW ENRICHMENT
+# ============================================================
+
+def enrich_cashflow(stock):
+
+    cfo = n(stock.get("cfo"))
+    capex = n(stock.get("capex"))
+
+    if cfo is not None and capex is not None:
+
+        stock["fcf_calculated"] = round(
+            cfo - capex,
+            2
+        )
+
+    fcf = n(stock.get("fcf"))
+
+    sales = n(stock.get("sales"))
+
+    if fcf is not None and sales:
+
+        stock["fcf_margin"] = round(
+            (fcf / sales) * 100,
+            2
+        )
+
+    return stock
+
+
+# ============================================================
+# GUIDANCE EXTRACTION
+# ============================================================
+
+GUIDANCE_KEYWORDS = [
+
+    "guidance",
+    "revenue target",
+    "margin guidance",
+    "ebitda margin",
+    "capex",
+    "orderbook",
+    "order book",
+    "utilization",
+    "growth target",
+    "expansion",
+    "commissioning"
+]
+
+
+def extract_guidance(text):
+
+    if not text:
+        return []
+
+    lowered = text.lower()
+
+    extracted = []
+
+    for keyword in GUIDANCE_KEYWORDS:
+
+        if keyword in lowered:
+
+            extracted.append(keyword)
+
+    return extracted
+
+
+# ============================================================
+# SNAPSHOT ENGINE
+# ============================================================
+
+def build_snapshot(stock):
+
+    return {
+
+        "ticker": stock.get("ticker"),
+        "ltp": stock.get("ltp"),
+        "mcap": stock.get("mcap"),
+        "pe": stock.get("pe"),
+        "pb": stock.get("pb"),
+        "roe": stock.get("roe"),
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# OWNERSHIP HISTORY
+# ============================================================
+
+def build_ownership_history(stock):
+
+    return {
+
+        "promoter": stock.get("prom_pct"),
+        "fii": stock.get("fii_pct"),
+        "dii": stock.get("dii_pct"),
+        "public": stock.get("public_pct"),
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# PROVIDER RECONCILIATION
+# ============================================================
+
+def reconcile(primary, fallback):
+
+    final = {}
+
+    keys = set(
+        list(primary.keys())
+        +
+        list(fallback.keys())
+    )
+
+    for key in keys:
+
+        primary_value = primary.get(key)
+
+        fallback_value = fallback.get(key)
+
+        if primary_value not in [
+            None,
+            "",
+            0
+        ]:
+
+            final[key] = primary_value
+
+        else:
+
+            final[key] = fallback_value
+
+    return final
+
+
+# ============================================================
+# EXTRACTION CONFIDENCE
+# ============================================================
+
+def extraction_confidence(stock):
+
+    score = 1.0
+
+    important = [
+
+        "sales",
+        "ebitda",
+        "cfo",
+        "fcf",
+        "capex"
+    ]
+
+    missing = 0
+
+    for field in important:
+
+        if stock.get(field) in [
+            None,
+            "",
+            0
+        ]:
+
+            missing += 1
+
+    score -= missing * 0.1
+
+    quarterly = stock.get("quarterly", [])
+
+    if not quarterly:
+
+        score -= 0.2
+
+    if stock.get("guidance") is None:
+
+        score -= 0.1
+
+    if score < 0:
+
+        score = 0
+
+    return round(score, 2)
+
+
+# ============================================================
+# MAIN PIPELINE
+# ============================================================
+
+def process_stock(stock):
+
+    quarterly = stock.get("quarterly", [])
+
+    stock["quarterly"] = filter_sparse_quarters(
+        quarterly
+    )
+
+    stock = enrich_cashflow(stock)
+
+    stock["ownership_history"] = (
+        build_ownership_history(stock)
+    )
+
+    stock["snapshot"] = (
+        build_snapshot(stock)
+    )
+
+    stock["extraction_confidence"] = (
+        extraction_confidence(stock)
+    )
+
+    return stock
+
+
+# ============================================================
+# ENTRY
+# ============================================================
+
+if __name__ == "__main__":
+
+    print(
+        "bharatmarkets extraction engine loaded"
+    )
+
+
+
+# ============================================================
+# EXTRACTION MATRIX ENGINE V8
+# ============================================================
+
+
+"""
+BHARATMARKETS_FULL_EXTRACTION_MATRIX_v8.py
+
+FULL EXTRACTION MATRIX ENGINE
+
+Includes:
+- field-first extraction
+- provider fallback matrix
+- derived reconstruction
+- confidence-aware acceptance
+- mandatory field enforcement
+- quarterly completeness gating
+- cashflow reconstruction
+- guidance extraction
+- snapshot engine
+- ownership history
+"""
+
+from datetime import datetime
+from statistics import median
+
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+MIN_QUARTER_COMPLETENESS = 0.40
+
+MANDATORY_FIELDS = {
+
+    "Financial Services": [
+        "sales",
+        "net",
+        "book_value"
+    ],
+
+    "Industrials": [
+        "sales",
+        "ebitda",
+        "debt_eq",
+        "cfo"
+    ],
+
+    "Healthcare": [
+        "sales",
+        "ebitda",
+        "cfo"
+    ],
+
+    "Utilities": [
+        "sales",
+        "ebitda",
+        "debt_eq"
+    ]
+}
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def n(value):
+
+    try:
+
+        if value is None:
+            return None
+
+        return round(float(value), 2)
+
+    except:
+
+        return None
+
+
+# ============================================================
+# QUARTERLY COMPLETENESS
+# ============================================================
+
+def quarterly_completeness(row):
+
+    fields = [
+        "rev",
+        "ebitda",
+        "ebit",
+        "net",
+        "eps"
+    ]
+
+    valid = 0
+
+    for field in fields:
+
+        if row.get(field) not in [
+            None,
+            "",
+            0
+        ]:
+
+            valid += 1
+
+    return round(valid / len(fields), 2)
+
+
+def filter_sparse_quarters(quarters):
+
+    final = []
+
+    for row in quarters:
+
+        completeness = quarterly_completeness(
+            row
+        )
+
+        row["quarterly_completeness"] = completeness
+
+        if completeness >= MIN_QUARTER_COMPLETENESS:
+
+            final.append(row)
+
+    return final
+
+
+# ============================================================
+# FIELD-FIRST EXTRACTION
+# ============================================================
+
+def extract_field(
+    primary,
+    fallback,
+    field
+):
+
+    primary_value = primary.get(field)
+
+    if primary_value not in [
+        None,
+        "",
+        0
+    ]:
+
+        return primary_value
+
+    fallback_value = fallback.get(field)
+
+    return fallback_value
+
+
+# ============================================================
+# PROVIDER RECONCILIATION
+# ============================================================
+
+def reconcile_record(
+    primary,
+    fallback
+):
+
+    final = {}
+
+    keys = set(
+        list(primary.keys())
+        +
+        list(fallback.keys())
+    )
+
+    for key in keys:
+
+        final[key] = extract_field(
+            primary,
+            fallback,
+            key
+        )
+
+    return final
+
+
+# ============================================================
+# DERIVED RECONSTRUCTION
+# ============================================================
+
+def derive_fcf(stock):
+
+    cfo = n(stock.get("cfo"))
+    capex = n(stock.get("capex"))
+
+    if (
+        cfo is not None and
+        capex is not None
+    ):
+
+        return round(
+            cfo - capex,
+            2
+        )
+
+    return None
+
+
+def derive_capex_from_balance_sheet(stock):
+
+    ppe_current = n(
+        stock.get("ppe")
+    )
+
+    ppe_prev = n(
+        stock.get("ppe_prev")
+    )
+
+    depreciation = n(
+        stock.get("depreciation_amortization")
+    )
+
+    if (
+        ppe_current is None or
+        ppe_prev is None or
+        depreciation is None
+    ):
+
+        return None
+
+    capex = (
+        ppe_current
+        -
+        ppe_prev
+        +
+        depreciation
+    )
+
+    if capex < 0:
+        return None
+
+    return round(capex, 2)
+
+
+def reconstruct_fields(stock):
+
+    if stock.get("capex") is None:
+
+        stock["capex"] = (
+            derive_capex_from_balance_sheet(
+                stock
+            )
+        )
+
+    if stock.get("fcf") is None:
+
+        stock["fcf"] = (
+            derive_fcf(stock)
+        )
+
+    return stock
+
+
+# ============================================================
+# GUIDANCE EXTRACTION
+# ============================================================
+
+GUIDANCE_KEYWORDS = [
+
+    "guidance",
+    "revenue target",
+    "ebitda margin",
+    "orderbook",
+    "capex",
+    "utilization",
+    "growth target",
+    "expansion",
+    "commissioning"
+]
+
+
+def extract_guidance(text):
+
+    if not text:
+        return []
+
+    lowered = text.lower()
+
+    found = []
+
+    for keyword in GUIDANCE_KEYWORDS:
+
+        if keyword in lowered:
+
+            found.append(keyword)
+
+    return found
+
+
+# ============================================================
+# OWNERSHIP HISTORY
+# ============================================================
+
+def ownership_history(stock):
+
+    return {
+
+        "promoter": stock.get("prom_pct"),
+        "fii": stock.get("fii_pct"),
+        "dii": stock.get("dii_pct"),
+        "public": stock.get("public_pct"),
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# SNAPSHOT ENGINE
+# ============================================================
+
+def build_snapshot(stock):
+
+    return {
+
+        "ticker": stock.get("ticker"),
+        "ltp": stock.get("ltp"),
+        "mcap": stock.get("mcap"),
+        "pe": stock.get("pe"),
+        "pb": stock.get("pb"),
+        "roe": stock.get("roe"),
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# EXTRACTION CONFIDENCE
+# ============================================================
+
+def extraction_confidence(stock):
+
+    score = 1.0
+
+    missing = 0
+
+    important = [
+
+        "sales",
+        "ebitda",
+        "cfo",
+        "capex",
+        "fcf"
+    ]
+
+    for field in important:
+
+        if stock.get(field) in [
+            None,
+            "",
+            0
+        ]:
+
+            missing += 1
+
+    score -= missing * 0.08
+
+    if not stock.get("quarterly"):
+
+        score -= 0.2
+
+    if score < 0:
+        score = 0
+
+    return round(score, 2)
+
+
+# ============================================================
+# MANDATORY FIELD ENFORCEMENT
+# ============================================================
+
+def validate_required_fields(stock):
+
+    sector = stock.get("sector")
+
+    required = MANDATORY_FIELDS.get(
+        sector,
+        []
+    )
+
+    missing = []
+
+    for field in required:
+
+        if stock.get(field) in [
+            None,
+            "",
+            0
+        ]:
+
+            missing.append(field)
+
+    stock["missing_required_fields"] = missing
+
+    return stock
+
+
+# ============================================================
+# MAIN PIPELINE
+# ============================================================
+
+def process_stock(
+    primary,
+    fallback={}
+):
+
+    stock = reconcile_record(
+        primary,
+        fallback
+    )
+
+    stock["quarterly"] = filter_sparse_quarters(
+        stock.get("quarterly", [])
+    )
+
+    stock = reconstruct_fields(stock)
+
+    stock["ownership_history"] = (
+        ownership_history(stock)
+    )
+
+    stock["snapshot"] = (
+        build_snapshot(stock)
+    )
+
+    stock["extraction_confidence"] = (
+        extraction_confidence(stock)
+    )
+
+    stock = validate_required_fields(
+        stock
+    )
+
+    return stock
+
+
+# ============================================================
+# METADATA
+# ============================================================
+
+def metadata():
+
+    return {
+
+        "engine": "v8_extraction_matrix",
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# ENTRY
+# ============================================================
+
+if __name__ == "__main__":
+
+    print(
+        "bharatmarkets full extraction matrix loaded"
     )
 
