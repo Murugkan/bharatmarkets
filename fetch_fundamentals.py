@@ -112,6 +112,7 @@ try:
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
     SYMBOL_MAP_DELISTED = set(_sm.get("delisted", []))  # Load delisted array
     SCREENER_OVERRIDES = _sm.get("screener_overrides", {})  # Load Screener.in symbol mapping
+    print(f"✅ Loaded symbol_map.json: {len(SCREENER_OVERRIDES)} Screener overrides, {len(NSE_TO_YAHOO)} Yahoo overrides")
 except Exception as _e:
     # symbol_map.json is optional — script runs fine without it
     NSE_TO_YAHOO = {}
@@ -125,12 +126,13 @@ def resolve_yf_sym(nse_sym):
     """Return the correct Yahoo Finance ticker for an NSE symbol."""
     if nse_sym in YF_ALIAS_CACHE:
         v = YF_ALIAS_CACHE[nse_sym]
-        return v if ("." in v or v.startswith("^")) else v + ".NS"
+        return v  # Already has .NS or .BO extension
     if nse_sym in NSE_TO_YAHOO:
         v = NSE_TO_YAHOO[nse_sym]
         result = v if ("." in v or v.startswith("^")) else v + ".NS"
         YF_ALIAS_CACHE[nse_sym] = result
         return result
+    # Check if it's a BSE stock (ends with .BO in overrides)
     return nse_sym + ".NS"
 
 def yahoo_search_sym(nse_sym, cdsl_name=None):
@@ -655,7 +657,50 @@ def calculate_roce_from_quarterly(quarterly_list):
     return None
 
 
-def calculate_roce_from_fundamentals(stock):
+def calculate_roe_roce_from_quarterly(quarterly_data, stock_data):
+    """
+    ✨ v4.8+: Calculate ROE and ROCE from quarterly data
+    This fixes the 14 stocks missing profitability metrics
+    
+    ROE = Net Income / Shareholder Equity
+    ROCE = EBIT / Capital Employed (Debt + Equity)
+    """
+    results = {}
+    
+    if not quarterly_data or len(quarterly_data) < 2:
+        return results
+    
+    try:
+        # Use last 4 quarters (TTM)
+        recent = quarterly_data[-4:] if len(quarterly_data) >= 4 else quarterly_data
+        
+        # Sum metrics for TTM
+        total_net = sum(q.get("net", 0) or 0 for q in recent if q.get("net"))
+        total_ebit = sum(q.get("ebit", 0) or 0 for q in recent if q.get("ebit"))
+        
+        # Use latest quarter equity
+        latest = quarterly_data[-1]
+        equity = latest.get("equity")
+        debt = latest.get("debt")
+        
+        # Calculate ROE = Net Income / Equity
+        if total_net and equity and equity > 0:
+            roe = round(100 * total_net / equity, 2)
+            if 0 < roe < 200:  # Sanity check
+                results["roe"] = roe
+        
+        # Calculate ROCE = EBIT / (Debt + Equity)
+        if total_ebit and equity and equity > 0:
+            capital_employed = (debt or 0) + equity
+            if capital_employed > 0:
+                roce = round(100 * total_ebit / capital_employed, 2)
+                if 0 < roce < 200:  # Sanity check
+                    results["roce"] = roce
+    
+    except Exception as e:
+        pass  # Silent fail - don't break pipeline
+    
+    return results
     """
     Fallback ROCE: Use ROE + margins to estimate
     Logic: ROCE ≈ ROE × (OPM% / NPM%) — higher margins = better capital efficiency
@@ -1529,6 +1574,13 @@ def main():
             if roce_ttm:
                 stock['roce'] = roce_ttm
         
+        # ✨ NEW: Calculate ROE/ROCE from quarterly data (fixes 14 missing stocks)
+        if stock.get('quarterly'):
+            calculated = calculate_roe_roce_from_quarterly(stock['quarterly'], stock)
+            for key, val in calculated.items():
+                if key not in stock or stock[key] is None:
+                    stock[key] = val
+        
         # ── Fallback: Estimate ROCE from fundamentals ────────────────
         if not stock.get('roce') and stock.get('roe'):
             roce_est = calculate_roce_from_fundamentals(stock)
@@ -1562,7 +1614,34 @@ def main():
             screener_log["failed"].append(f"{sym} (BS4 disabled)")
 
 
-        # prices.json fallback
+        # ✨ v4.8+: Finnhub fallback for cashflow data (fixes 17 missing stocks)
+        if FINNHUB_ENABLED and (not stock.get('cfo') or not stock.get('net_cf')):
+            try:
+                fh_url = f"https://finnhub.io/api/v1/financials-reported?symbol={sym}&token={FINNHUB_API_KEY}&freq=annual"
+                fh_r = requests.get(fh_url, timeout=10)
+                if fh_r.status_code == 200:
+                    fh_data = fh_r.json()
+                    
+                    # Extract operating cash flow and free cash flow
+                    if "data" in fh_data and len(fh_data["data"]) > 0:
+                        latest_report = fh_data["data"][0]
+                        report = latest_report.get("report", {})
+                        
+                        # Look for operating cash flow
+                        if not stock.get('cfo'):
+                            cfo = report.get("CashFlowStatement", {}).get("OperatingCashFlow")
+                            if cfo:
+                                stock['cfo'] = to_cr(safe_float(cfo))
+                        
+                        # Look for free cash flow / net cash flow
+                        if not stock.get('net_cf'):
+                            fcf = report.get("CashFlowStatement", {}).get("FreeCashFlow")
+                            if fcf:
+                                stock['net_cf'] = to_cr(safe_float(fcf))
+                
+                time.sleep(FINNHUB_RATE_LIMITER)
+            except Exception as e:
+                pass  # Silent fail
         pq = prices.get(sym, {})
         fb = {
             "pe": pq.get("pe"), "pb": pq.get("pb"),
@@ -1978,10 +2057,14 @@ def main():
         }
     
     # Save detailed report
-    report_file = Path("stock_inventory_report.json")
-    report_file.write_text(json.dumps(stock_report, indent=2, default=str))
+    try:
+        report_file = Path("stock_inventory_report.json")
+        report_file.write_text(json.dumps(stock_report, indent=2, default=str))
+        print(f"\n✅ Stock inventory report generated: stock_inventory_report.json")
+        print(f"   File size: {len(json.dumps(stock_report))} bytes")
+    except Exception as e:
+        print(f"\n❌ ERROR generating JSON report: {e}")
     
-    print(f"\n✅ Stock inventory report generated: stock_inventory_report.json")
     print(f"\n📊 REPORT SUMMARY:")
     print(f"   Complete (0 gaps):              {stock_report['summary']['complete']:3} stocks")
     print(f"   Partial (1 gap):                {stock_report['summary']['partial_1_gap']:3} stocks")
@@ -2077,9 +2160,15 @@ DETAILED STOCK-BY-STOCK INVENTORY
     text_report += "\n\nFIELD COVERAGE SUMMARY\n"
     text_report += "═" * 80 + "\n\n"
     
-    for cat, fields in all_tracked_fields.items():
-        if cat == "optional":
-            continue
+    all_tracked_fields_local = {
+        "holdings": ["fii_pct", "dii_pct", "prom_pct", "public_pct"],
+        "valuation": ["bv", "pb", "pe"],
+        "profitability": ["roe", "roce"],
+        "cashflow": ["cfo", "net_cf"],
+        "liquidity": ["beta", "mcap"]
+    }
+    
+    for cat, fields in all_tracked_fields_local.items():
         text_report += f"{cat.upper()}\n"
         for field in fields:
             if field in field_coverage_summary:
@@ -2095,12 +2184,77 @@ DETAILED STOCK-BY-STOCK INVENTORY
     text_report += f"END OF REPORT - {ts.isoformat()}\n"
     text_report += "=" * 80
     
-    # Save text report
-    text_report_file = Path("stock_inventory_report.txt")
-    text_report_file.write_text(text_report)
+    # Save text report with error handling
+    try:
+        text_report_file = Path("stock_inventory_report.txt")
+        text_report_file.write_text(text_report)
+        print(f"✅ Human-readable report generated: stock_inventory_report.txt")
+        print(f"   File size: {len(text_report)} bytes")
+    except Exception as e:
+        print(f"❌ ERROR generating TXT report: {e}")
     
-    print(f"✅ Human-readable report generated: stock_inventory_report.txt")
     print(f"✅ JSON report with detailed fields: stock_inventory_report.json")
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ✨ TICKER vs FIELD STATUS - ONE FILE ONLY
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    print("\n" + "=" * 80)
+    print("📊 GENERATING ticker_field_status.json")
+    print("=" * 80)
+    
+    all_fields = ["fii_pct", "dii_pct", "prom_pct", "public_pct", "bv", "pb", "pe", "roe", "roce", "cfo", "net_cf", "beta", "mcap"]
+    
+    ticker_field_data = {
+        "timestamp": ts.isoformat(),
+        "total_tickers": len(final_result),
+        "tickers_with_gaps": 0,
+        "tickers_complete": 0,
+        "data": {}
+    }
+    
+    # Build single data structure
+    for sym in sorted(final_result.keys()):
+        stock = final_result[sym]
+        ticker_data = {
+            "name": stock.get("name", ""),
+            "sector": stock.get("sector", ""),
+            "coverage": 0.0,
+            "gaps": [],
+            "fields": {}
+        }
+        
+        available_count = 0
+        for field in all_fields:
+            has_value = stock.get(field) is not None and stock.get(field) != "" and stock.get(field) != 0
+            ticker_data["fields"][field] = {
+                "status": "✓" if has_value else "✗",
+                "value": stock.get(field) if has_value else None
+            }
+            if has_value:
+                available_count += 1
+            else:
+                ticker_data["gaps"].append(field)
+        
+        coverage = round(100 * available_count / len(all_fields), 1)
+        ticker_data["coverage"] = coverage
+        
+        if ticker_data["gaps"]:
+            ticker_field_data["tickers_with_gaps"] += 1
+        else:
+            ticker_field_data["tickers_complete"] += 1
+        
+        ticker_field_data["data"][sym] = ticker_data
+        
+        # Print gaps
+        if ticker_data["gaps"]:
+            print(f"{sym:15} | Coverage: {coverage:5.1f}% | Missing: {', '.join(ticker_data['gaps'][:3])}")
+    
+    # Save single file
+    Path("ticker_field_status.json").write_text(json.dumps(ticker_field_data, indent=2, default=str))
+    print(f"\n✅ Saved: ticker_field_status.json")
+    print(f"   Complete: {ticker_field_data['tickers_complete']}")
+    print(f"   With gaps: {ticker_field_data['tickers_with_gaps']}")
+    
     print(f"\n{'='*70}")
     print("🤖 CI/CD PIPELINE SUMMARY")
     print("=" * 70)
