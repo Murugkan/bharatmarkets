@@ -232,9 +232,9 @@ def metric_allowed(metric_name, sector):
     return metric_name not in skipped
 
 
-def safe_current_ratio(current_assets,
-                       current_liabilities,
-                       sector=None):
+def compute_current_ratio_internal(current_assets,
+                                   current_liabilities,
+                                   sector=None):
 
     try:
 
@@ -394,6 +394,111 @@ def normalize_interest_expense(value):
 
 # ============================================================
 # END PHASE 2
+
+
+# ============================================================
+# PHASE 3 BALANCE SHEET INTEGRITY ENGINE
+# ============================================================
+
+def validate_current_assets(curr_assets,
+                            inventory=None,
+                            cash=None,
+                            total_assets=None):
+
+    curr_assets = normalize_number(curr_assets)
+    inventory = normalize_number(inventory)
+    cash = normalize_number(cash)
+    total_assets = normalize_number(total_assets)
+
+    if curr_assets is None:
+        return None
+
+    # impossible inventory > current assets
+    if (
+        inventory is not None and
+        inventory > curr_assets
+    ):
+        return None
+
+    # impossible cash > current assets
+    if (
+        cash is not None and
+        cash > curr_assets
+    ):
+        return None
+
+    # impossible current assets > total assets
+    if (
+        total_assets is not None and
+        curr_assets > total_assets
+    ):
+        return None
+
+    return curr_assets
+
+
+def validate_equity(equity):
+
+    equity = normalize_number(equity)
+
+    if equity is None:
+        return None
+
+    # reject absurd negative equity
+    if equity < -100000:
+        return None
+
+    return equity
+
+
+def compute_current_ratio_internal(curr_assets,
+                                   curr_liabilities,
+                                   sector=None):
+
+    try:
+
+        if sector and not metric_allowed(
+            "cur_ratio",
+            sector
+        ):
+            return None
+
+        curr_assets = normalize_number(curr_assets)
+
+        curr_liabilities = normalize_number(
+            curr_liabilities
+        )
+
+        if curr_assets is None:
+            return None
+
+        if curr_liabilities is None:
+            return None
+
+        if curr_liabilities <= 0:
+            return None
+
+        ratio = (
+            curr_assets /
+            curr_liabilities
+        )
+
+        if ratio < 0:
+            return None
+
+        if ratio > 20:
+            return None
+
+        return round(ratio, 2)
+
+    except:
+        return None
+
+# ============================================================
+# END PHASE 3
+# ============================================================
+
+
 # ============================================================
 
 
