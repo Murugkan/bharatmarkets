@@ -2072,3 +2072,147 @@ def compute_current_ratio_from_quarterly(row,
 # END PHASE 4
 # ============================================================
 
+
+
+# ============================================================
+# PHASE 5 STRICT QUARTERLY INTEGRITY + CONFIDENCE
+# ============================================================
+
+def quarterly_confidence_score(row):
+
+    score = 1.0
+
+    curr_assets = normalize_number(
+        row.get("curr_assets")
+    )
+
+    curr_liab = normalize_number(
+        row.get("curr_liab")
+    )
+
+    inventory = normalize_number(
+        row.get("inventory")
+    )
+
+    cash = normalize_number(
+        row.get("cash")
+    )
+
+    total_assets = normalize_number(
+        row.get("total_assets")
+    )
+
+    if (
+        curr_assets is not None and
+        inventory is not None and
+        inventory > curr_assets
+    ):
+        score -= 0.35
+
+    if (
+        curr_assets is not None and
+        cash is not None and
+        cash > curr_assets
+    ):
+        score -= 0.35
+
+    if (
+        curr_assets is not None and
+        total_assets is not None and
+        curr_assets > total_assets
+    ):
+        score -= 0.35
+
+    if (
+        curr_liab is not None and
+        curr_liab < 0
+    ):
+        score -= 0.25
+
+    if score < 0:
+        score = 0
+
+    return round(score, 2)
+
+
+def strict_quarterly_cleanup(row):
+
+    try:
+
+        curr_assets = normalize_number(
+            row.get("curr_assets")
+        )
+
+        inventory = normalize_number(
+            row.get("inventory")
+        )
+
+        cash = normalize_number(
+            row.get("cash")
+        )
+
+        total_assets = normalize_number(
+            row.get("total_assets")
+        )
+
+        if (
+            curr_assets is not None and
+            inventory is not None and
+            inventory > curr_assets
+        ):
+            row["curr_assets"] = None
+
+        if (
+            curr_assets is not None and
+            cash is not None and
+            cash > curr_assets
+        ):
+            row["curr_assets"] = None
+
+        if (
+            curr_assets is not None and
+            total_assets is not None and
+            curr_assets > total_assets
+        ):
+            row["curr_assets"] = None
+
+        curr_assets = normalize_number(
+            row.get("curr_assets")
+        )
+
+        curr_liab = normalize_number(
+            row.get("curr_liab")
+        )
+
+        if (
+            curr_assets is not None and
+            curr_liab is not None and
+            curr_liab > 0
+        ):
+
+            ratio = curr_assets / curr_liab
+
+            if ratio >= 0 and ratio <= 20:
+                row["cur_ratio"] = round(
+                    ratio,
+                    2
+                )
+            else:
+                row["cur_ratio"] = None
+
+        else:
+            row["cur_ratio"] = None
+
+        row["quarterly_confidence"] = (
+            quarterly_confidence_score(row)
+        )
+
+        return row
+
+    except:
+        return row
+
+# ============================================================
+# END PHASE 5
+# ============================================================
+
