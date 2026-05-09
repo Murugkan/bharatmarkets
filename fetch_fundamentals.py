@@ -3,6 +3,8 @@
 BharatMarkets Pro — Fundamentals Fetcher v4.8 CLEAN
 ====================================================
 ✨ v4.8 CLEAN: TTM-based metrics, consolidated field names
+import pandas as pd
+import numpy as np
 
 v4.8 Changes (Latest):
   ✅ Consolidated to TTM (Trailing Twelve Months) metrics
@@ -101,28 +103,29 @@ def is_value_available(value):
     if value is None:
         return False
 
-    # NaN
+    # NumPy arrays
+    if isinstance(value, np.ndarray):
+        return value.size > 0
+
+    # Pandas objects
+    if isinstance(value, (pd.Series, pd.DataFrame)):
+        return not value.empty
+
+    # Containers
+    if isinstance(value, (dict, list, tuple, set)):
+        return len(value) > 0
+
+    # Strings
+    if isinstance(value, str):
+        cleaned = value.strip().upper()
+        return cleaned not in ("", "NA", "N/A", "NONE", "-", "NAN")
+
+    # Numeric NaN
     try:
         if pd.isna(value):
             return False
     except Exception:
         pass
-
-    # Strings
-    if isinstance(value, str):
-        return value.strip().upper() not in ("", "NA", "N/A", "NONE", "-")
-
-    # Dict / List / Tuple / Set
-    if isinstance(value, (dict, list, tuple, set)):
-        return len(value) > 0
-
-    # NumPy arrays
-    if isinstance(value, np.ndarray):
-        return value.size > 0
-
-    # Pandas Series/DataFrame
-    if isinstance(value, (pd.Series, pd.DataFrame)):
-        return not value.empty
 
     return True
 
