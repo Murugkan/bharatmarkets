@@ -1,18 +1,26 @@
 # ============================================================
-# V2 CLEAN DATA ENGINE INTEGRATION
+# BIG BANG V3 DATA ENGINE
 # ============================================================
 
-"""
-fetch_fundamentals_v2_clean_engine.py
 
-Consolidated scalable financial data engine.
-Designed for:
-- GitHub Actions
-- iPhone frontend
-- IndexedDB compatibility
-- Rule-driven validation
+"""
+fetch_fundamentals_v3_bigbang.py
+
+Big-bang consolidated financial data engine.
+
+Includes:
+- canonical resolver
+- unit normalization
+- statistical scale validation
+- relative validation rules
+- sector-aware suppression
+- anomaly registry
+- confidence scoring
+- derived metrics
+- quarterly cleanup
 """
 
+from statistics import median
 from datetime import datetime
 
 
@@ -20,30 +28,54 @@ from datetime import datetime
 # CONFIG
 # ============================================================
 
+ENGINE_VERSION = "v3_bigbang"
+
 CANONICAL_UNIT = "CR"
 
 SECTOR_RULES = {
     "Financial Services": {
-        "suppress": ["cur_ratio", "quick_ratio"]
+        "suppress": [
+            "cur_ratio",
+            "quick_ratio"
+        ]
     },
+
     "Banks": {
-        "suppress": ["cur_ratio", "quick_ratio"]
+        "suppress": [
+            "cur_ratio",
+            "quick_ratio"
+        ]
+    },
+
+    "Insurance": {
+        "suppress": [
+            "inventory"
+        ]
     }
 }
 
+
 FIELD_ALIASES = {
+
     "cash": [
         "cash",
         "totalCash",
         "cashAndCashEquivalents"
     ],
+
     "debt": [
         "debt",
         "totalDebt"
     ],
+
     "revenue": [
         "revenue",
         "totalRevenue"
+    ],
+
+    "cfo": [
+        "operatingCashFlow",
+        "cashFlowFromOperations"
     ]
 }
 
@@ -71,28 +103,36 @@ def normalize_percentage(value):
         return None
 
     if -1 <= value <= 1:
-        value = value * 100
+        value *= 100
 
     return round(value, 2)
 
 
-def detect_scale(value, reference=None):
+def detect_scale_outlier(base,
+                         compare,
+                         threshold=5):
+
+    base = normalize_number(base)
+    compare = normalize_number(compare)
+
+    if base is None or compare is None:
+        return False
+
+    if base <= 0:
+        return False
+
+    return compare > (base * threshold)
+
+
+def auto_rescale(value,
+                 factor=100):
 
     value = normalize_number(value)
 
     if value is None:
         return None
 
-    if abs(value) > 10000000:
-        return round(value / 10000000, 2)
-
-    if reference:
-        reference = normalize_number(reference)
-
-        if reference and value > reference * 100:
-            return round(value / 100, 2)
-
-    return value
+    return round(value * factor, 2)
 
 
 # ============================================================
@@ -101,7 +141,10 @@ def detect_scale(value, reference=None):
 
 def resolve_field(field_name, *sources):
 
-    aliases = FIELD_ALIASES.get(field_name, [])
+    aliases = FIELD_ALIASES.get(
+        field_name,
+        []
+    )
 
     for source in sources:
 
@@ -124,7 +167,9 @@ def resolve_field(field_name, *sources):
 # RULE ENGINE
 # ============================================================
 
-def apply_balance_sheet_rules(row):
+def apply_relative_scale_rules(row):
+
+    anomalies = row.get("anomalies", [])
 
     curr_assets = normalize_number(
         row.get("curr_assets")
@@ -142,36 +187,93 @@ def apply_balance_sheet_rules(row):
         row.get("total_assets")
     )
 
-    anomalies = []
+    revenue = normalize_number(
+        row.get("rev")
+    )
 
-    if (
-        curr_assets is not None and
-        inventory is not None and
-        inventory > curr_assets
+    curr_liab = normalize_number(
+        row.get("curr_liab")
+    )
+
+    # inventory scale mismatch
+    if detect_scale_outlier(
+        curr_assets,
+        inventory
     ):
-        row["curr_assets"] = None
-        anomalies.append(
-            "inventory_gt_current_assets"
+
+        scaled = auto_rescale(
+            curr_assets
         )
 
-    if (
-        curr_assets is not None and
-        cash is not None and
-        cash > curr_assets
+        if (
+            scaled and
+            inventory < scaled * 5
+        ):
+            row["curr_assets"] = scaled
+            anomalies.append(
+                "curr_assets_rescaled"
+            )
+        else:
+            row["curr_assets"] = None
+            anomalies.append(
+                "inventory_gt_current_assets"
+            )
+
+    # cash scale mismatch
+    curr_assets = normalize_number(
+        row.get("curr_assets")
+    )
+
+    if detect_scale_outlier(
+        curr_assets,
+        cash,
+        threshold=2
     ):
-        row["curr_assets"] = None
-        anomalies.append(
-            "cash_gt_current_assets"
+
+        scaled = auto_rescale(
+            curr_assets
         )
+
+        if (
+            scaled and
+            cash < scaled * 2
+        ):
+            row["curr_assets"] = scaled
+            anomalies.append(
+                "cash_scale_resolved"
+            )
+        else:
+            row["curr_assets"] = None
+            anomalies.append(
+                "cash_gt_current_assets"
+            )
+
+    # current assets > total assets
+    curr_assets = normalize_number(
+        row.get("curr_assets")
+    )
 
     if (
         curr_assets is not None and
         total_assets is not None and
         curr_assets > total_assets
     ):
+
         row["curr_assets"] = None
+
         anomalies.append(
             "current_assets_gt_total_assets"
+        )
+
+    # current liabilities suspicious
+    if (
+        revenue is not None and
+        curr_liab is not None and
+        curr_liab < (revenue * 0.01)
+    ):
+
+        anomalies.append(
+            "tiny_current_liabilities"
         )
 
     row["anomalies"] = anomalies
@@ -180,6 +282,8 @@ def apply_balance_sheet_rules(row):
 
 
 def apply_margin_rules(row):
+
+    anomalies = row.get("anomalies", [])
 
     revenue = normalize_number(
         row.get("rev")
@@ -194,24 +298,63 @@ def apply_margin_rules(row):
         gross is not None and
         gross > revenue
     ):
+
         row["gross"] = None
 
+        anomalies.append(
+            "gross_profit_gt_revenue"
+        )
+
     return row
+
+
+def apply_historical_continuity(rows):
+
+    previous_revenue = None
+
+    for row in rows:
+
+        revenue = normalize_number(
+            row.get("rev")
+        )
+
+        anomalies = row.get(
+            "anomalies",
+            []
+        )
+
+        if (
+            previous_revenue and
+            revenue and
+            revenue > previous_revenue * 20
+        ):
+
+            anomalies.append(
+                "revenue_jump_anomaly"
+            )
+
+        row["anomalies"] = anomalies
+
+        if revenue:
+            previous_revenue = revenue
+
+    return rows
 
 
 # ============================================================
 # DERIVED METRICS
 # ============================================================
 
-def derive_current_ratio(row, sector=None):
+def derive_current_ratio(row,
+                         sector=None):
 
     if sector in SECTOR_RULES:
 
-        suppressed = SECTOR_RULES[
+        suppress = SECTOR_RULES[
             sector
         ].get("suppress", [])
 
-        if "cur_ratio" in suppressed:
+        if "cur_ratio" in suppress:
             return None
 
     curr_assets = normalize_number(
@@ -222,13 +365,11 @@ def derive_current_ratio(row, sector=None):
         row.get("curr_liab")
     )
 
-    if curr_assets is None:
-        return None
-
-    if curr_liab is None:
-        return None
-
-    if curr_liab <= 0:
+    if (
+        curr_assets is None or
+        curr_liab is None or
+        curr_liab <= 0
+    ):
         return None
 
     ratio = curr_assets / curr_liab
@@ -239,15 +380,16 @@ def derive_current_ratio(row, sector=None):
     return round(ratio, 2)
 
 
-def derive_quick_ratio(row, sector=None):
+def derive_quick_ratio(row,
+                       sector=None):
 
     if sector in SECTOR_RULES:
 
-        suppressed = SECTOR_RULES[
+        suppress = SECTOR_RULES[
             sector
         ].get("suppress", [])
 
-        if "quick_ratio" in suppressed:
+        if "quick_ratio" in suppress:
             return None
 
     curr_assets = normalize_number(
@@ -262,13 +404,11 @@ def derive_quick_ratio(row, sector=None):
         row.get("curr_liab")
     )
 
-    if curr_assets is None:
-        return None
-
-    if curr_liab is None:
-        return None
-
-    if curr_liab <= 0:
+    if (
+        curr_assets is None or
+        curr_liab is None or
+        curr_liab <= 0
+    ):
         return None
 
     inventory = inventory or 0
@@ -284,9 +424,11 @@ def derive_quick_ratio(row, sector=None):
     return round(ratio, 2)
 
 
-def derive_net_debt(debt, cash):
+def derive_net_debt(debt,
+                    cash):
 
     debt = normalize_number(debt)
+
     cash = normalize_number(cash)
 
     if debt is None:
@@ -297,17 +439,44 @@ def derive_net_debt(debt, cash):
     return round(debt - cash, 2)
 
 
+def derive_interest_coverage(
+    ebit,
+    interest_exp
+):
+
+    ebit = normalize_number(ebit)
+
+    interest_exp = normalize_number(
+        interest_exp
+    )
+
+    if (
+        ebit is None or
+        interest_exp is None or
+        interest_exp <= 0
+    ):
+        return None
+
+    return round(
+        ebit / interest_exp,
+        2
+    )
+
+
 # ============================================================
 # CONFIDENCE ENGINE
 # ============================================================
 
-def confidence_score(row):
+def calculate_confidence(row):
 
     score = 1.0
 
-    anomalies = row.get("anomalies", [])
+    anomalies = row.get(
+        "anomalies",
+        []
+    )
 
-    score -= len(anomalies) * 0.2
+    score -= len(anomalies) * 0.15
 
     if score < 0:
         score = 0
@@ -319,57 +488,77 @@ def confidence_score(row):
 # PIPELINE
 # ============================================================
 
-def process_quarterly_rows(rows, sector=None):
+def process_quarterly_rows(
+    rows,
+    sector=None
+):
 
     cleaned = []
 
     for row in rows:
 
-        row = apply_balance_sheet_rules(row)
+        row["anomalies"] = []
 
-        row = apply_margin_rules(row)
-
-        row["cur_ratio"] = derive_current_ratio(
-            row,
-            sector
+        row = apply_relative_scale_rules(
+            row
         )
 
-        row["quick_ratio"] = derive_quick_ratio(
-            row,
-            sector
+        row = apply_margin_rules(
+            row
+        )
+
+        row["cur_ratio"] = (
+            derive_current_ratio(
+                row,
+                sector
+            )
+        )
+
+        row["quick_ratio"] = (
+            derive_quick_ratio(
+                row,
+                sector
+            )
         )
 
         row["quarterly_confidence"] = (
-            confidence_score(row)
+            calculate_confidence(row)
         )
 
         cleaned.append(row)
+
+    cleaned = apply_historical_continuity(
+        cleaned
+    )
 
     return cleaned
 
 
 # ============================================================
-# SERIALIZER
+# METADATA
 # ============================================================
 
 def build_metadata():
 
     return {
-        "engine": "v2_clean_engine",
-        "updated": datetime.utcnow().isoformat(),
-        "unit": CANONICAL_UNIT
+
+        "engine": ENGINE_VERSION,
+
+        "unit": CANONICAL_UNIT,
+
+        "updated": datetime.utcnow().isoformat()
     }
 
 
 if __name__ == "__main__":
 
     print(
-        "Financial data engine loaded successfully."
+        "V3 big-bang financial engine loaded."
     )
 
 
 # ============================================================
-# ORIGINAL FETCHER
+# ORIGINAL PRODUCTION FETCHER
 # ============================================================
 
 #!/usr/bin/env python3
