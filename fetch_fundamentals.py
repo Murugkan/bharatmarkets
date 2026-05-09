@@ -1139,28 +1139,43 @@ def fetch_finnhub_quarterly(sym):
         print(f"  ⚠ Finnhub error for {sym}: {e}")
         return {}
 
-def fetch_screener_gaps(sym):
+def fetch_screener_gaps(sym, log_failures=None):
     """
     ✨ v4.8 SMART: Extract Screener data with generic fallback + deduplication
     - Searches all sections (top-ratios, tables, etc) for each field
     - Once field found, skip duplicates
     - Automatic fallback for ANY missing data across sections
+    - NEW: Detailed failure logging for diagnostics
     """
     result = {}
     if not HAS_BS4:
         return result
     
     screener_sym = SCREENER_OVERRIDES.get(sym, sym)
+    failure_reason = None
+    fields_found = []
     
     try:
         sess = get_scr_session()
         url = f"https://www.screener.in/company/{screener_sym}/consolidated/"
         r = sess.get(url, timeout=15)
+        
+        # Detailed status tracking
         if r.status_code == 404:
             url = f"https://www.screener.in/company/{screener_sym}/"
             r = sess.get(url, timeout=15)
+            if r.status_code == 404:
+                failure_reason = "404_not_found"
+                if log_failures is not None:
+                    log_failures.append({"symbol": sym, "reason": "404_not_found", "url": url})
+                return result
+        
         if r.status_code != 200:
+            failure_reason = f"http_{r.status_code}"
+            if log_failures is not None:
+                log_failures.append({"symbol": sym, "reason": f"http_{r.status_code}", "url": url})
             return result
+        
         soup = BeautifulSoup(r.text, "html.parser")
 
         # Field aliases: map output key → all possible Screener label variations
@@ -1202,6 +1217,7 @@ def fetch_screener_gaps(sym):
                 for field, aliases in field_aliases.items():
                     if field not in result and any(alias in lbl for alias in aliases):
                         result[field] = val
+                        fields_found.append(field)
                         break
 
         # ── SECTION 2: Shareholding Table ──
@@ -1229,19 +1245,25 @@ def fetch_screener_gaps(sym):
                     # Match shareholding fields
                     if 'prom_pct' not in result and "promoter" in lbl and "pledge" not in lbl:
                         result["prom_pct"] = val
+                        fields_found.append("prom_pct")
                     elif 'pledge_pct' not in result and "pledge" in lbl:
                         if 0 <= val <= 100:
                             result["pledge_pct"] = val
+                            fields_found.append("pledge_pct")
                         else:
                             last = numeric_vals[-1]
                             if 0 <= last <= 100:
                                 result["pledge_pct"] = last
+                                fields_found.append("pledge_pct")
                     elif 'public_pct' not in result and "public" in lbl:
                         result["public_pct"] = val
+                        fields_found.append("public_pct")
                     elif 'fii_pct' not in result and any(x in lbl for x in ['fii', 'fpi', 'foreign']):
                         result["fii_pct"] = val
+                        fields_found.append("fii_pct")
                     elif 'dii_pct' not in result and any(x in lbl for x in ['dii', 'domestic', 'institution']):
                         result["dii_pct"] = val
+                        fields_found.append("dii_pct")
 
         # ── SECTION 3: Balance Sheet ──
         bs = soup.find("section", id="balance-sheet")
@@ -1259,8 +1281,10 @@ def fetch_screener_gaps(sym):
                     
                     if 'book_value' not in result and "book value" in lbl:
                         result["book_value"] = val
+                        fields_found.append("book_value")
                     elif 'equity' not in result and "equity" in lbl and "total" in lbl:
                         result["equity"] = val
+                        fields_found.append("equity")
 
         # ── SECTION 4: Cash Flow ──
         cf = soup.find("section", id="cash-flow")
@@ -1276,8 +1300,10 @@ def fetch_screener_gaps(sym):
                     if val is not None:
                         if 'cfo' not in result and any(x in lbl for x in field_aliases['cfo']):
                             result["cfo"] = val
+                            fields_found.append("cfo")
                         elif 'net_cf' not in result and any(x in lbl for x in field_aliases['net_cf']) and val != 0:
                             result["net_cf"] = val
+                            fields_found.append("net_cf")
 
         # ── SECTION 5: Profit & Loss ──
         pl = soup.find("section", id="profit-loss")
@@ -1295,13 +1321,32 @@ def fetch_screener_gaps(sym):
                     
                     if 'roe' not in result and "roe" in lbl:
                         result["roe"] = val
+                        fields_found.append("roe")
                     elif 'roce' not in result and "roce" in lbl:
                         result["roce"] = val
+                        fields_found.append("roce")
                     elif 'sales' not in result and any(x in lbl for x in ['sales', 'revenue']):
                         result["sales"] = val
+                        fields_found.append("sales")
 
+        # If we fetched but got no critical fields, it might be a different page structure
+        if not result:
+            failure_reason = "no_data_found"
+            if log_failures is not None:
+                log_failures.append({"symbol": sym, "reason": "page_parsed_but_no_data", "url": url})
+
+    except requests.exceptions.Timeout:
+        failure_reason = "timeout"
+        if log_failures is not None:
+            log_failures.append({"symbol": sym, "reason": "timeout", "url": f"https://www.screener.in/company/{screener_sym}/"})
+    except requests.exceptions.ConnectionError:
+        failure_reason = "connection_error"
+        if log_failures is not None:
+            log_failures.append({"symbol": sym, "reason": "connection_error", "url": f"https://www.screener.in/company/{screener_sym}/"})
     except Exception as e:
-        pass
+        failure_reason = f"parse_error: {type(e).__name__}"
+        if log_failures is not None:
+            log_failures.append({"symbol": sym, "reason": f"parse_error: {str(e)[:50]}", "url": f"https://www.screener.in/company/{screener_sym}/"})
 
     return result
 
@@ -1444,6 +1489,7 @@ def main():
         "successful": 0,
         "skipped_delisted": 0,
         "failed": [],
+        "failure_details": [],  # NEW: Track why each failed
         "fields_fetched": {
             "fii_pct": 0,
             "dii_pct": 0,
@@ -1493,7 +1539,7 @@ def main():
         screener_attempt = False
         if HAS_BS4:
             screener_attempt = True
-            scr_data = fetch_screener_gaps(sym)
+            scr_data = fetch_screener_gaps(sym, log_failures=screener_log["failure_details"])
             if scr_data:
                 screener_log["successful"] += 1
                 # Track which fields were found
@@ -1555,6 +1601,24 @@ def main():
     for field, count in screener_log["fields_fetched"].items():
         pct = round(100 * count / screener_log['attempted'], 1) if screener_log['attempted'] > 0 else 0
         print(f"     • {field:15} {count:3}/{screener_log['attempted']} ({pct:5.1f}%)")
+    
+    # Detailed failure analysis
+    if screener_log["failure_details"]:
+        print(f"\n   🔍 FAILURE DIAGNOSTICS ({len(screener_log['failure_details'])} stocks):")
+        
+        # Group by failure reason
+        failure_reasons = {}
+        for failure in screener_log["failure_details"]:
+            reason = failure["reason"]
+            sym = failure["symbol"]
+            if reason not in failure_reasons:
+                failure_reasons[reason] = []
+            failure_reasons[reason].append(sym)
+        
+        for reason, symbols in sorted(failure_reasons.items()):
+            print(f"      • {reason:30} ({len(symbols):2} stocks): {', '.join(symbols[:3])}")
+            if len(symbols) > 3:
+                print(f"        {'':30} ... and {len(symbols)-3} more")
 
     # Merge new results into existing — preserves all other stocks
     existing.update(result)
@@ -1813,7 +1877,230 @@ def main():
     print(f"   ✅ gap_report.json        — Detailed gap analysis")
     print(f"   ✅ {FUND_FILE}            — All fields documented")
     
-    # CI/CD-friendly output
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ✨ COMPREHENSIVE PER-STOCK REPORT
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    print("\n\n" + "=" * 80)
+    print("📄 GENERATING DETAILED PER-STOCK REPORT")
+    print("=" * 80)
+    
+    # Build comprehensive stock report
+    stock_report = {
+        "timestamp": ts.isoformat(),
+        "total_stocks": total_stocks,
+        "report_type": "comprehensive_stock_inventory",
+        "summary": {
+            "total": total_stocks,
+            "complete": 0,  # 0 gaps
+            "partial_1_gap": 0,
+            "partial_2_3_gaps": 0,
+            "critical_4plus_gaps": 0
+        },
+        "stocks": {}
+    }
+    
+    # Define all fields to track
+    all_tracked_fields = {
+        "holdings": ["fii_pct", "dii_pct", "prom_pct", "public_pct"],
+        "valuation": ["bv", "pb", "pe"],
+        "profitability": ["roe", "roce"],
+        "cashflow": ["cfo", "net_cf"],
+        "liquidity": ["beta", "mcap"],
+        "optional": ["sales", "ebitda", "debt_eq", "face_value", "eps"]
+    }
+    
+    # Flatten for easier iteration
+    critical_fields_flat = []
+    for cat_fields in [all_tracked_fields["holdings"], all_tracked_fields["valuation"], 
+                       all_tracked_fields["profitability"], all_tracked_fields["cashflow"],
+                       all_tracked_fields["liquidity"]]:
+        critical_fields_flat.extend(cat_fields)
+    
+    # Analyze each stock
+    for sym in sorted(final_result.keys()):
+        stock_data = final_result[sym]
+        
+        # Track each field
+        field_status = {}
+        gaps = []
+        filled_count = 0
+        
+        for field in critical_fields_flat:
+            has_value = stock_data.get(field) is not None and stock_data.get(field) != "" and stock_data.get(field) != 0
+            field_status[field] = {
+                "present": has_value,
+                "value": stock_data.get(field) if has_value else None,
+                "category": None
+            }
+            
+            # Categorize field
+            for cat, fields in all_tracked_fields.items():
+                if field in fields:
+                    field_status[field]["category"] = cat
+                    break
+            
+            if has_value:
+                filled_count += 1
+            else:
+                gaps.append(field)
+        
+        # Calculate severity
+        gap_count = len(gaps)
+        if gap_count == 0:
+            severity = "COMPLETE"
+            stock_report["summary"]["complete"] += 1
+        elif gap_count == 1:
+            severity = "PARTIAL_1"
+            stock_report["summary"]["partial_1_gap"] += 1
+        elif gap_count <= 3:
+            severity = "PARTIAL_2_3"
+            stock_report["summary"]["partial_2_3_gaps"] += 1
+        else:
+            severity = "CRITICAL_4PLUS"
+            stock_report["summary"]["critical_4plus_gaps"] += 1
+        
+        # Store stock report
+        stock_report["stocks"][sym] = {
+            "name": stock_data.get("name", ""),
+            "sector": stock_data.get("sector", ""),
+            "severity": severity,
+            "gaps": gap_count,
+            "filled": filled_count,
+            "coverage": round(100 * filled_count / len(critical_fields_flat), 1),
+            "missing_fields": gaps,
+            "fields": field_status,
+            "fetch_source": {
+                "yahoo": stock_data.get("pe") is not None,
+                "screener": any(stock_data.get(f) is not None for f in ["fii_pct", "dii_pct", "prom_pct", "roe", "roce", "cfo"]),
+                "quarterly": stock_data.get("quarterly") is not None
+            }
+        }
+    
+    # Save detailed report
+    report_file = Path("stock_inventory_report.json")
+    report_file.write_text(json.dumps(stock_report, indent=2, default=str))
+    
+    print(f"\n✅ Stock inventory report generated: stock_inventory_report.json")
+    print(f"\n📊 REPORT SUMMARY:")
+    print(f"   Complete (0 gaps):              {stock_report['summary']['complete']:3} stocks")
+    print(f"   Partial (1 gap):                {stock_report['summary']['partial_1_gap']:3} stocks")
+    print(f"   Partial (2-3 gaps):             {stock_report['summary']['partial_2_3_gaps']:3} stocks")
+    print(f"   Critical (4+ gaps):             {stock_report['summary']['critical_4plus_gaps']:3} stocks")
+    print(f"   TOTAL:                          {stock_report['summary']['total']:3} stocks")
+    
+    # Generate human-readable text report
+    text_report = f"""
+╔════════════════════════════════════════════════════════════════════════╗
+║                    BHARATMARKETS STOCK INVENTORY REPORT                ║
+║                                                                        ║
+║  Generated: {ts.isoformat()}                               ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+EXECUTIVE SUMMARY
+═════════════════════════════════════════════════════════════════════════
+
+Total Stocks Analyzed:           {stock_report['summary']['total']}
+Complete (0 gaps):              {stock_report['summary']['complete']} ({round(100*stock_report['summary']['complete']/stock_report['summary']['total'], 1)}%)
+Partial with 1 gap:             {stock_report['summary']['partial_1_gap']} ({round(100*stock_report['summary']['partial_1_gap']/stock_report['summary']['total'], 1)}%)
+Partial with 2-3 gaps:          {stock_report['summary']['partial_2_3_gaps']} ({round(100*stock_report['summary']['partial_2_3_gaps']/stock_report['summary']['total'], 1)}%)
+Critical with 4+ gaps:          {stock_report['summary']['critical_4plus_gaps']} ({round(100*stock_report['summary']['critical_4plus_gaps']/stock_report['summary']['total'], 1)}%)
+
+DATA SOURCES COVERAGE
+═════════════════════════════════════════════════════════════════════════
+
+Yahoo Finance:  {sum(1 for s in stock_report['stocks'].values() if s['fetch_source']['yahoo'])}/{stock_report['summary']['total']} stocks
+Screener.in:    {sum(1 for s in stock_report['stocks'].values() if s['fetch_source']['screener'])}/{stock_report['summary']['total']} stocks
+Quarterly Data: {sum(1 for s in stock_report['stocks'].values() if s['fetch_source']['quarterly'])}/{stock_report['summary']['total']} stocks
+
+DETAILED STOCK-BY-STOCK INVENTORY
+═════════════════════════════════════════════════════════════════════════
+
+"""
+    
+    # Group by severity for the text report
+    by_severity = {
+        "COMPLETE": [],
+        "PARTIAL_1": [],
+        "PARTIAL_2_3": [],
+        "CRITICAL_4PLUS": []
+    }
+    
+    for sym, data in sorted(stock_report["stocks"].items()):
+        by_severity[data["severity"]].append((sym, data))
+    
+    # Print COMPLETE stocks
+    if by_severity["COMPLETE"]:
+        text_report += f"\n{'🟢 COMPLETE (0 gaps)':60} {len(by_severity['COMPLETE']):3} stocks\n"
+        text_report += "-" * 80 + "\n"
+        for sym, data in by_severity["COMPLETE"]:
+            text_report += f"  {sym:15} {data['name']:35} Coverage: 100.0%\n"
+    
+    # Print PARTIAL_1 stocks
+    if by_severity["PARTIAL_1"]:
+        text_report += f"\n{'🟡 PARTIAL - 1 gap':60} {len(by_severity['PARTIAL_1']):3} stocks\n"
+        text_report += "-" * 80 + "\n"
+        for sym, data in sorted(by_severity["PARTIAL_1"], key=lambda x: x[0]):
+            text_report += f"  {sym:15} {data['name']:30} Missing: {', '.join(data['missing_fields'])}\n"
+    
+    # Print PARTIAL_2_3 stocks
+    if by_severity["PARTIAL_2_3"]:
+        text_report += f"\n{'🟠 PARTIAL - 2-3 gaps':60} {len(by_severity['PARTIAL_2_3']):3} stocks\n"
+        text_report += "-" * 80 + "\n"
+        for sym, data in sorted(by_severity["PARTIAL_2_3"], key=lambda x: x[0]):
+            text_report += f"  {sym:15} {data['name']:30} Missing: {', '.join(data['missing_fields'][:3])}"
+            if len(data['missing_fields']) > 3:
+                text_report += f" + {len(data['missing_fields'])-3} more"
+            text_report += "\n"
+    
+    # Print CRITICAL stocks
+    if by_severity["CRITICAL_4PLUS"]:
+        text_report += f"\n{'🔴 CRITICAL - 4+ gaps':60} {len(by_severity['CRITICAL_4PLUS']):3} stocks\n"
+        text_report += "-" * 80 + "\n"
+        for sym, data in sorted(by_severity["CRITICAL_4PLUS"], key=lambda x: x[0]):
+            text_report += f"  {sym:15} {data['name']:30} Missing: {', '.join(data['missing_fields'][:3])}"
+            if len(data['missing_fields']) > 3:
+                text_report += f" + {len(data['missing_fields'])-3} more"
+            text_report += f" ({data['gaps']} gaps total)\n"
+    
+    # Field coverage summary
+    field_coverage_summary = {}
+    for sym, data in stock_report["stocks"].items():
+        for field, status in data["fields"].items():
+            if field not in field_coverage_summary:
+                field_coverage_summary[field] = {"present": 0, "missing": 0}
+            if status["present"]:
+                field_coverage_summary[field]["present"] += 1
+            else:
+                field_coverage_summary[field]["missing"] += 1
+    
+    text_report += "\n\nFIELD COVERAGE SUMMARY\n"
+    text_report += "═" * 80 + "\n\n"
+    
+    for cat, fields in all_tracked_fields.items():
+        if cat == "optional":
+            continue
+        text_report += f"{cat.upper()}\n"
+        for field in fields:
+            if field in field_coverage_summary:
+                present = field_coverage_summary[field]["present"]
+                total = stock_report['summary']['total']
+                pct = round(100 * present / total, 1)
+                bar_len = int(pct / 5)
+                bar = "█" * bar_len + "░" * (20 - bar_len)
+                text_report += f"  {field:15} {bar} {present:3}/{total} ({pct:5.1f}%) | {total-present:2} gaps\n"
+        text_report += "\n"
+    
+    text_report += "\n" + "=" * 80 + "\n"
+    text_report += f"END OF REPORT - {ts.isoformat()}\n"
+    text_report += "=" * 80
+    
+    # Save text report
+    text_report_file = Path("stock_inventory_report.txt")
+    text_report_file.write_text(text_report)
+    
+    print(f"✅ Human-readable report generated: stock_inventory_report.txt")
+    print(f"✅ JSON report with detailed fields: stock_inventory_report.json")
     print(f"\n{'='*70}")
     print("🤖 CI/CD PIPELINE SUMMARY")
     print("=" * 70)
