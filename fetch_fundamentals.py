@@ -1,5 +1,534 @@
 
 # ============================================================
+# FINAL PRODUCTION FILE
+# ============================================================
+
+# ============================================================
+# V5 FINALIZED DATA ENGINE
+# ============================================================
+
+
+"""
+fetch_fundamentals_full_v5_finalized.py
+
+FINALIZED DATA LAYER + FETCH PIPELINE
+
+Includes:
+- parse-time scale normalization
+- multi-field statistical validation
+- sector-aware relaxations
+- quarterly completeness engine
+- derived metric sanitization
+- confidence-aware cleanup
+- canonical normalization
+- anomaly registry
+"""
+
+from statistics import median
+from datetime import datetime
+
+
+# ============================================================
+# ENGINE CONFIG
+# ============================================================
+
+ENGINE_VERSION = "v5_finalized"
+
+SECTOR_SUPPRESSIONS = {
+
+    "Financial Services": [
+        "cur_ratio",
+        "quick_ratio",
+        "inventory"
+    ],
+
+    "Banks": [
+        "cur_ratio",
+        "quick_ratio",
+        "inventory"
+    ],
+
+    "Insurance": [
+        "inventory"
+    ],
+
+    "Industrials": [],
+
+    "Utilities": []
+}
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def n(value):
+
+    try:
+
+        if value is None:
+            return None
+
+        return round(float(value), 2)
+
+    except:
+
+        return None
+
+
+def median_scale(values):
+
+    cleaned = []
+
+    for value in values:
+
+        value = n(value)
+
+        if value is not None and value > 0:
+            cleaned.append(value)
+
+    if not cleaned:
+        return None
+
+    return median(cleaned)
+
+
+# ============================================================
+# SCALE ENGINE
+# ============================================================
+
+def estimate_scale(row):
+
+    revenue = n(row.get("rev"))
+    inventory = n(row.get("inventory"))
+    cash = n(row.get("cash"))
+    total_assets = n(row.get("total_assets"))
+
+    estimates = []
+
+    if revenue:
+        estimates.append(revenue * 0.15)
+
+    if inventory:
+        estimates.append(inventory)
+
+    if cash:
+        estimates.append(cash)
+
+    if total_assets:
+        estimates.append(total_assets * 0.2)
+
+    return median_scale(estimates)
+
+
+def normalize_working_capital_fields(row):
+
+    anomalies = row.get("anomalies", [])
+
+    expected_scale = estimate_scale(row)
+
+    if expected_scale is None:
+        return row
+
+    for field in [
+        "curr_assets",
+        "curr_liab"
+    ]:
+
+        value = n(row.get(field))
+
+        if value is None:
+            continue
+
+        if value <= 0:
+
+            row[field] = None
+
+            anomalies.append(
+                f"{field}_invalid"
+            )
+
+            continue
+
+        if value < expected_scale * 0.05:
+
+            scaled = value * 100
+
+            if scaled <= expected_scale * 5:
+
+                row[field] = round(
+                    scaled,
+                    2
+                )
+
+                anomalies.append(
+                    f"{field}_rescaled"
+                )
+
+            else:
+
+                row[field] = None
+
+                anomalies.append(
+                    f"{field}_invalid_scale"
+                )
+
+    row["anomalies"] = anomalies
+
+    return row
+
+
+# ============================================================
+# RELATIONSHIP VALIDATION
+# ============================================================
+
+def validate_relationships(row):
+
+    anomalies = row.get("anomalies", [])
+
+    curr_assets = n(
+        row.get("curr_assets")
+    )
+
+    curr_liab = n(
+        row.get("curr_liab")
+    )
+
+    inventory = n(
+        row.get("inventory")
+    )
+
+    cash = n(
+        row.get("cash")
+    )
+
+    total_assets = n(
+        row.get("total_assets")
+    )
+
+    revenue = n(
+        row.get("rev")
+    )
+
+    gross = n(
+        row.get("gross")
+    )
+
+    if (
+        curr_assets is not None and
+        inventory is not None and
+        inventory > curr_assets * 3
+    ):
+
+        anomalies.append(
+            "inventory_gt_curr_assets"
+        )
+
+    if (
+        curr_assets is not None and
+        cash is not None and
+        cash > curr_assets * 2
+    ):
+
+        anomalies.append(
+            "cash_gt_curr_assets"
+        )
+
+    if (
+        curr_assets is not None and
+        total_assets is not None and
+        curr_assets > total_assets
+    ):
+
+        anomalies.append(
+            "curr_assets_gt_total_assets"
+        )
+
+    if (
+        revenue is not None and
+        gross is not None and
+        gross > revenue
+    ):
+
+        row["gross"] = None
+
+        anomalies.append(
+            "gross_gt_revenue"
+        )
+
+    if (
+        curr_liab is not None and
+        revenue is not None and
+        curr_liab < revenue * 0.005
+    ):
+
+        anomalies.append(
+            "tiny_curr_liab"
+        )
+
+    row["anomalies"] = anomalies
+
+    return row
+
+
+# ============================================================
+# DERIVED METRICS
+# ============================================================
+
+def derive_current_ratio(row, sector=None):
+
+    if sector in SECTOR_SUPPRESSIONS:
+
+        if (
+            "cur_ratio"
+            in
+            SECTOR_SUPPRESSIONS[
+                sector
+            ]
+        ):
+            return None
+
+    curr_assets = n(
+        row.get("curr_assets")
+    )
+
+    curr_liab = n(
+        row.get("curr_liab")
+    )
+
+    if (
+        curr_assets is None or
+        curr_liab is None or
+        curr_liab <= 0
+    ):
+        return None
+
+    ratio = curr_assets / curr_liab
+
+    if ratio <= 0 or ratio > 20:
+        return None
+
+    return round(ratio, 2)
+
+
+def derive_quick_ratio(row, sector=None):
+
+    if sector in SECTOR_SUPPRESSIONS:
+
+        if (
+            "quick_ratio"
+            in
+            SECTOR_SUPPRESSIONS[
+                sector
+            ]
+        ):
+            return None
+
+    curr_assets = n(
+        row.get("curr_assets")
+    )
+
+    inventory = n(
+        row.get("inventory")
+    ) or 0
+
+    curr_liab = n(
+        row.get("curr_liab")
+    )
+
+    if (
+        curr_assets is None or
+        curr_liab is None or
+        curr_liab <= 0
+    ):
+        return None
+
+    ratio = (
+        (curr_assets - inventory)
+        /
+        curr_liab
+    )
+
+    if ratio <= 0 or ratio > 20:
+        return None
+
+    return round(ratio, 2)
+
+
+def derive_interest_coverage(row):
+
+    ebit = n(
+        row.get("ebit")
+    )
+
+    interest = n(
+        row.get("interest_exp")
+    )
+
+    if (
+        ebit is None or
+        interest is None or
+        interest <= 0
+    ):
+        return None
+
+    ratio = ebit / interest
+
+    if ratio < -50 or ratio > 1000:
+        return None
+
+    return round(ratio, 2)
+
+
+# ============================================================
+# COMPLETENESS ENGINE
+# ============================================================
+
+def quarterly_completeness(row):
+
+    important_fields = [
+
+        "rev",
+        "ebitda",
+        "ebit",
+        "net",
+        "eps"
+    ]
+
+    available = 0
+
+    for field in important_fields:
+
+        if row.get(field) is not None:
+            available += 1
+
+    return round(
+        available / len(important_fields),
+        2
+    )
+
+
+# ============================================================
+# CONFIDENCE ENGINE
+# ============================================================
+
+def confidence(row):
+
+    anomalies = row.get(
+        "anomalies",
+        []
+    )
+
+    completeness = quarterly_completeness(
+        row
+    )
+
+    score = 1.0
+
+    score -= len(anomalies) * 0.1
+
+    score *= completeness
+
+    if score < 0:
+        score = 0
+
+    return round(score, 2)
+
+
+# ============================================================
+# MAIN QUARTERLY PIPELINE
+# ============================================================
+
+def process_quarterly_rows(
+    rows,
+    sector=None
+):
+
+    cleaned = []
+
+    for row in rows:
+
+        row["anomalies"] = []
+
+        # parse-time normalization
+        row = normalize_working_capital_fields(
+            row
+        )
+
+        # statistical validation
+        row = validate_relationships(
+            row
+        )
+
+        # derived metrics
+        row["cur_ratio"] = (
+            derive_current_ratio(
+                row,
+                sector
+            )
+        )
+
+        row["quick_ratio"] = (
+            derive_quick_ratio(
+                row,
+                sector
+            )
+        )
+
+        row["interest_coverage_calc"] = (
+            derive_interest_coverage(
+                row
+            )
+        )
+
+        # completeness
+        row["quarterly_completeness"] = (
+            quarterly_completeness(
+                row
+            )
+        )
+
+        # confidence
+        row["quarterly_confidence"] = (
+            confidence(row)
+        )
+
+        cleaned.append(row)
+
+    return cleaned
+
+
+# ============================================================
+# SERIALIZER
+# ============================================================
+
+def build_metadata():
+
+    return {
+
+        "engine": ENGINE_VERSION,
+
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# RUNTIME
+# ============================================================
+
+if __name__ == "__main__":
+
+    print(
+        "v5 finalized data layer loaded"
+    )
+
+
+# ============================================================
+# LEGACY FETCH + PROVIDER + SERIALIZER PIPELINE
+# ============================================================
+
+
+# ============================================================
 # V4 FINAL DATA LAYER
 # ============================================================
 
@@ -1875,4 +2404,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
