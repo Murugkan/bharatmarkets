@@ -1,5 +1,10 @@
 
 # ============================================================
+# BHARATMARKETS COMPLETE STABILIZED PLATFORM
+# ============================================================
+
+
+# ============================================================
 # BHARATMARKETS COMPLETE PRODUCTION PLATFORM
 # ============================================================
 # Includes:
@@ -3463,5 +3468,443 @@ if __name__ == "__main__":
 
     print(
         "bharatmarkets full extraction matrix loaded"
+    )
+
+
+
+# ============================================================
+# V9 STABILIZED ENGINE
+# ============================================================
+
+
+"""
+BHARATMARKETS_PLATFORM_v9_STABILIZED.py
+
+FINAL STABILIZED PLATFORM
+
+Fixes:
+- canonical quarterly schema
+- derived field centralization
+- confidence-driven suppression
+- sector-native routing
+- mandatory canonical export
+- universal enrichment execution
+"""
+
+from datetime import datetime
+
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+MIN_CONFIDENCE = 0.45
+
+CANONICAL_QUARTER_FIELDS = [
+
+    "d",
+    "rev",
+    "ebitda",
+    "ebit",
+    "net",
+    "eps",
+    "debt",
+    "equity",
+    "cash",
+    "opm"
+]
+
+
+BANKING_SECTORS = [
+
+    "Financial Services",
+    "Banks",
+    "Insurance"
+]
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def n(value):
+
+    try:
+
+        if value is None:
+            return None
+
+        return round(float(value), 2)
+
+    except:
+
+        return None
+
+
+# ============================================================
+# CANONICAL QUARTERS
+# ============================================================
+
+def canonicalize_quarter(row):
+
+    final = {}
+
+    for field in CANONICAL_QUARTER_FIELDS:
+
+        final[field] = row.get(field)
+
+    return final
+
+
+def quarterly_completeness(row):
+
+    important = [
+
+        "rev",
+        "ebitda",
+        "ebit",
+        "net",
+        "eps"
+    ]
+
+    valid = 0
+
+    for field in important:
+
+        if row.get(field) not in [
+            None,
+            "",
+            0
+        ]:
+
+            valid += 1
+
+    return round(
+        valid / len(important),
+        2
+    )
+
+
+def normalize_quarters(quarters):
+
+    final = []
+
+    for row in quarters:
+
+        row = canonicalize_quarter(row)
+
+        completeness = quarterly_completeness(
+            row
+        )
+
+        row["quarterly_completeness"] = completeness
+
+        if completeness >= 0.40:
+
+            final.append(row)
+
+    return final
+
+
+# ============================================================
+# DERIVED ENGINE
+# ============================================================
+
+def derive_fcf(stock):
+
+    cfo = n(stock.get("cfo"))
+    capex = n(stock.get("capex"))
+
+    if (
+        cfo is None or
+        capex is None
+    ):
+        return None
+
+    return round(
+        cfo - capex,
+        2
+    )
+
+
+def derive_net_debt(stock):
+
+    debt = n(stock.get("debt"))
+    cash = n(stock.get("cash"))
+
+    if debt is None:
+        return None
+
+    if cash is None:
+        cash = 0
+
+    return round(
+        debt - cash,
+        2
+    )
+
+
+def derive_current_ratio(stock):
+
+    curr_assets = n(
+        stock.get("curr_assets")
+    )
+
+    curr_liab = n(
+        stock.get("curr_liab")
+    )
+
+    if (
+        curr_assets is None or
+        curr_liab is None or
+        curr_liab <= 0
+    ):
+        return None
+
+    ratio = curr_assets / curr_liab
+
+    if ratio <= 0 or ratio > 20:
+        return None
+
+    return round(ratio, 2)
+
+
+def run_derivations(stock):
+
+    stock["fcf"] = (
+        stock.get("fcf")
+        or
+        derive_fcf(stock)
+    )
+
+    stock["net_debt"] = (
+        stock.get("net_debt")
+        or
+        derive_net_debt(stock)
+    )
+
+    stock["cur_ratio"] = (
+        stock.get("cur_ratio")
+        or
+        derive_current_ratio(stock)
+    )
+
+    return stock
+
+
+# ============================================================
+# CONFIDENCE ENGINE
+# ============================================================
+
+def extraction_confidence(stock):
+
+    score = 1.0
+
+    important = [
+
+        "sales",
+        "ebitda",
+        "cfo",
+        "fcf",
+        "capex"
+    ]
+
+    missing = 0
+
+    for field in important:
+
+        if stock.get(field) in [
+            None,
+            "",
+            0
+        ]:
+
+            missing += 1
+
+    score -= missing * 0.1
+
+    if not stock.get("quarterly"):
+
+        score -= 0.2
+
+    if score < 0:
+        score = 0
+
+    return round(score, 2)
+
+
+# ============================================================
+# CONFIDENCE SUPPRESSION
+# ============================================================
+
+def suppress_low_confidence(stock):
+
+    confidence = extraction_confidence(
+        stock
+    )
+
+    stock["extraction_confidence"] = confidence
+
+    if confidence >= MIN_CONFIDENCE:
+        return stock
+
+    suppress_fields = [
+
+        "fcf",
+        "capex",
+        "quick_ratio",
+        "cur_ratio",
+        "net_debt"
+    ]
+
+    for field in suppress_fields:
+
+        stock[field] = None
+
+    return stock
+
+
+# ============================================================
+# SECTOR ROUTING
+# ============================================================
+
+def sector_native_cleanup(stock):
+
+    sector = stock.get("sector")
+
+    if sector in BANKING_SECTORS:
+
+        remove = [
+
+            "inventory",
+            "quick_ratio",
+            "cur_ratio",
+            "fcf"
+        ]
+
+        for field in remove:
+
+            stock[field] = None
+
+    return stock
+
+
+# ============================================================
+# SNAPSHOT ENGINE
+# ============================================================
+
+def snapshot(stock):
+
+    return {
+
+        "ticker": stock.get("ticker"),
+        "ltp": stock.get("ltp"),
+        "mcap": stock.get("mcap"),
+        "pe": stock.get("pe"),
+        "pb": stock.get("pb"),
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# OWNERSHIP
+# ============================================================
+
+def ownership(stock):
+
+    return {
+
+        "promoter": stock.get("prom_pct"),
+        "fii": stock.get("fii_pct"),
+        "dii": stock.get("dii_pct"),
+        "public": stock.get("public_pct")
+    }
+
+
+# ============================================================
+# CANONICAL EXPORT
+# ============================================================
+
+def canonical_export(stock):
+
+    return {
+
+        "ticker": stock.get("ticker"),
+        "name": stock.get("name"),
+        "sector": stock.get("sector"),
+
+        "ltp": stock.get("ltp"),
+        "mcap": stock.get("mcap"),
+
+        "sales": stock.get("sales"),
+        "ebitda": stock.get("ebitda"),
+        "cfo": stock.get("cfo"),
+        "fcf": stock.get("fcf"),
+        "capex": stock.get("capex"),
+
+        "roe": stock.get("roe"),
+        "roce": stock.get("roce"),
+
+        "debt_eq": stock.get("debt_eq"),
+        "net_debt": stock.get("net_debt"),
+
+        "cur_ratio": stock.get("cur_ratio"),
+
+        "quarterly": stock.get("quarterly"),
+
+        "ownership": stock.get("ownership"),
+
+        "snapshot": stock.get("snapshot"),
+
+        "extraction_confidence": stock.get(
+            "extraction_confidence"
+        )
+    }
+
+
+# ============================================================
+# MAIN PIPELINE
+# ============================================================
+
+def process_stock(stock):
+
+    stock["quarterly"] = normalize_quarters(
+        stock.get("quarterly", [])
+    )
+
+    stock = run_derivations(stock)
+
+    stock = sector_native_cleanup(stock)
+
+    stock = suppress_low_confidence(stock)
+
+    stock["snapshot"] = snapshot(stock)
+
+    stock["ownership"] = ownership(stock)
+
+    return canonical_export(stock)
+
+
+# ============================================================
+# METADATA
+# ============================================================
+
+def metadata():
+
+    return {
+
+        "engine": "v9_stabilized",
+        "updated": datetime.utcnow().isoformat()
+    }
+
+
+# ============================================================
+# ENTRY
+# ============================================================
+
+if __name__ == "__main__":
+
+    print(
+        "bharatmarkets v9 stabilized platform loaded"
     )
 
