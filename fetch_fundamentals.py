@@ -778,10 +778,13 @@ def fetch_yfinance(sym, yf_ticker=None):
         if insider:
             result["yf_insider_pct"] = round(insider * 100, 2)
         
-        # ✨ Extract face value - ONLY if genuine (no defaults)
+        # ✨ NEW v4.2: Extract face value
         face_value = safe_float(info.get("faceValue"))
         if face_value and face_value > 0:
             result["face_value"] = round(face_value, 2)
+        else:
+            # Default to INR 10 (standard for Indian stocks)
+            result["face_value"] = 10.0
 
         # ── Quarterly history for chart overlays (ENHANCED v4.0) ──────────────────────
         # Use ORIGINAL working extraction, then add new fields
@@ -1048,7 +1051,13 @@ def fetch_screener_gaps(sym):
                     elif "dii" in lbl or "institution" in lbl:
                         result["dii_pct"] = val
         
-        # NOTE v4.3: public_pct only from Screener (no calculation/estimation)
+        # ✨ NEW v4.2: Calculate missing public_pct
+        if "prom_pct" in result and "fii_pct" in result and "dii_pct" in result:
+            prom = safe_float(result.get("prom_pct"), 0)
+            fii = safe_float(result.get("fii_pct"), 0)
+            dii = safe_float(result.get("dii_pct"), 0)
+            if prom + fii + dii < 100:
+                result["public_pct"] = round(100 - (prom + fii + dii), 2)
 
         # P&L table
         pl = soup.find("section", id="profit-loss")
