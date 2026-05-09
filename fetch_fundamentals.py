@@ -1141,8 +1141,10 @@ def fetch_finnhub_quarterly(sym):
 
 def fetch_screener_gaps(sym):
     """
-    ✨ v4.8: Extract Screener data - simple, targeted approach
-    Fields: CFO, Net CF, Book Value, ROE, ROCE, Shareholding %
+    ✨ v4.8 SMART: Extract Screener data with generic fallback + deduplication
+    - Searches all sections (top-ratios, tables, etc) for each field
+    - Once field found, skip duplicates
+    - Automatic fallback for ANY missing data across sections
     """
     result = {}
     if not HAS_BS4:
@@ -1161,7 +1163,29 @@ def fetch_screener_gaps(sym):
             return result
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # ── Top ratios: PE, PB, ROE, ROCE, MCAP, SALES, FV, BOOK VALUE ──
+        # Field aliases: map output key → all possible Screener label variations
+        field_aliases = {
+            'roce': ['roce', 'return on capital', 'roic'],
+            'roe': ['roe', 'return on equity', 'return on'],
+            'pe': ['p/e', 'pe ratio', 'price earnings'],
+            'pb': ['p/b', 'pb ratio', 'price book'],
+            'book_value': ['book value', 'bv per share', 'book'],
+            'mcap': ['market cap', 'mcap', 'market capitalization'],
+            'sales': ['sales', 'revenue', 'total revenue'],
+            'face_value': ['face value', 'fv', 'par value'],
+            'cfo': ['operating cash', 'cash from operations', 'cfo', 'operating cash flow'],
+            'net_cf': ['net cash', 'net cf', 'net cashflow'],
+            'prom_pct': ['promoter', 'promoter%', 'promoter holding'],
+            'pledge_pct': ['pledge', 'pledged shares', 'pledge%'],
+            'public_pct': ['public', 'public%', 'public holding'],
+            'fii_pct': ['fii', 'fpi', 'foreign', 'foreign%', 'fii%'],
+            'dii_pct': ['dii', 'domestic', 'dii%', 'domestic institution']
+        }
+
+        # Search all text in page for field matches
+        all_text = soup.get_text().lower()
+        
+        # ── SECTION 1: Top Ratios (ulid="top-ratios") ──
         ul = soup.find("ul", id="top-ratios")
         if ul:
             for li in ul.find_all("li"):
@@ -1174,24 +1198,13 @@ def fetch_screener_gaps(sym):
                 if val is None:
                     continue
                 
-                if "roce" in lbl:
-                    result["roce"] = val
-                elif "p/e" in lbl:
-                    result["pe"] = val
-                elif "p/b" in lbl:
-                    result["pb"] = val
-                elif "roe" in lbl:
-                    result["roe"] = val
-                elif "market cap" in lbl:
-                    result["mcap"] = val
-                elif "sales" in lbl:
-                    result["sales"] = val
-                elif "face value" in lbl:
-                    result["face_value"] = val
-                elif "book value" in lbl:
-                    result["book_value"] = val
+                # Match against all field aliases
+                for field, aliases in field_aliases.items():
+                    if field not in result and any(alias in lbl for alias in aliases):
+                        result[field] = val
+                        break
 
-        # ── Shareholding: Promoter, Pledge, Public, FII, DII ──
+        # ── SECTION 2: Shareholding Table ──
         sh = soup.find("section", id="shareholding")
         if sh:
             tbl = sh.find("table")
@@ -1213,23 +1226,43 @@ def fetch_screener_gaps(sym):
                     
                     val = numeric_vals[-2] if len(numeric_vals) >= 2 else numeric_vals[0]
                     
-                    if "promoter" in lbl and "pledge" not in lbl:
+                    # Match shareholding fields
+                    if 'prom_pct' not in result and "promoter" in lbl and "pledge" not in lbl:
                         result["prom_pct"] = val
-                    elif "pledge" in lbl:
+                    elif 'pledge_pct' not in result and "pledge" in lbl:
                         if 0 <= val <= 100:
                             result["pledge_pct"] = val
                         else:
                             last = numeric_vals[-1]
                             if 0 <= last <= 100:
                                 result["pledge_pct"] = last
-                    elif "public" in lbl:
+                    elif 'public_pct' not in result and "public" in lbl:
                         result["public_pct"] = val
-                    elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
+                    elif 'fii_pct' not in result and any(x in lbl for x in ['fii', 'fpi', 'foreign']):
                         result["fii_pct"] = val
-                    elif "dii" in lbl or "institution" in lbl:
+                    elif 'dii_pct' not in result and any(x in lbl for x in ['dii', 'domestic', 'institution']):
                         result["dii_pct"] = val
 
-        # ── Cash Flow: CFO, Net CF ──
+        # ── SECTION 3: Balance Sheet ──
+        bs = soup.find("section", id="balance-sheet")
+        if bs:
+            tbl = bs.find("table")
+            if tbl:
+                for row in tbl.find_all("tr"):
+                    cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
+                    if len(cells) < 2:
+                        continue
+                    lbl = cells[0].lower()
+                    val = safe_float(cells[-1].replace(",",""))
+                    if val is None:
+                        continue
+                    
+                    if 'book_value' not in result and "book value" in lbl:
+                        result["book_value"] = val
+                    elif 'equity' not in result and "equity" in lbl and "total" in lbl:
+                        result["equity"] = val
+
+        # ── SECTION 4: Cash Flow ──
         cf = soup.find("section", id="cash-flow")
         if cf:
             tbl = cf.find("table")
@@ -1240,68 +1273,32 @@ def fetch_screener_gaps(sym):
                         continue
                     lbl = cells[0].lower()
                     val = safe_float(cells[-1].replace(",",""))
-                    
                     if val is not None:
-                        if "operating" in lbl and "cash" in lbl:
+                        if 'cfo' not in result and any(x in lbl for x in field_aliases['cfo']):
                             result["cfo"] = val
-                        elif "net cash" in lbl and val != 0:
+                        elif 'net_cf' not in result and any(x in lbl for x in field_aliases['net_cf']) and val != 0:
                             result["net_cf"] = val
-        
-        # ── FALLBACK: Search entire page for missing fields ──
-        # Screener displays data as "Label Value" pairs, not always in structured sections
-        page_text = soup.get_text()
-        
-        # Define all field label patterns to search for
-        field_patterns = {
-            'mcap': ['market cap', 'mcap'],
-            'pe': ['stock p/e', 'p/e', 'pe ratio'],
-            'pb': ['p/b', 'pb ratio'],
-            'book_value': ['book value'],
-            'div_yield': ['dividend yield'],
-            'roce': ['roce'],
-            'roe': ['roe'],
-            'face_value': ['face value'],
-            'cfo': ['cf operations', 'operating cash', 'cash from operations'],
-            'net_cf': ['net cf', 'net cashflow'],
-            'opm': ['opm', 'operating profit margin'],
-            'npm': ['npm', 'npm last year', 'net profit margin'],
-            'ps': ['price to sales', 'p/s'],
-            'w52_pct': ['up from 52w low'],
-            'ath_pct': ['down from 52w high'],
-            'gpm': ['gpm', 'gross profit margin', 'gpm latest'],
-            'debt_eq': ['debt to equity'],
-            'sales': ['sales prev qtr']
-        }
-        
-        for line in page_text.split('\n'):
-            line_clean = line.strip()
-            if not line_clean or len(line_clean) < 3:
-                continue
-            
-            # Split into label and value (value is last numeric part)
-            parts = line_clean.rsplit(None, 1)
-            if len(parts) != 2:
-                continue
-            
-            label, val_str = parts
-            label_lower = label.lower().strip()
-            
-            # Clean value: remove currency symbols, percentage, Cr., L, etc.
-            val_clean = (val_str.replace(",", "").replace("₹", "").replace("Cr.", "")
-                        .replace("L", "").replace("%", "").replace("₹", "").strip())
-            val = safe_float(val_clean)
-            
-            if val is None:
-                continue
-            
-            # Match field patterns
-            for field, patterns in field_patterns.items():
-                if field not in result and any(p in label_lower for p in patterns):
-                    # Skip if already has better source (like pe from Yahoo)
-                    if field in ['pe', 'pb'] and field in result:
+
+        # ── SECTION 5: Profit & Loss ──
+        pl = soup.find("section", id="profit-loss")
+        if pl:
+            tbl = pl.find("table")
+            if tbl:
+                for row in tbl.find_all("tr"):
+                    cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
+                    if len(cells) < 2:
                         continue
-                    result[field] = val
-                    break
+                    lbl = cells[0].lower()
+                    val = safe_float(cells[-1].replace("%","").replace(",",""))
+                    if val is None:
+                        continue
+                    
+                    if 'roe' not in result and "roe" in lbl:
+                        result["roe"] = val
+                    elif 'roce' not in result and "roce" in lbl:
+                        result["roce"] = val
+                    elif 'sales' not in result and any(x in lbl for x in ['sales', 'revenue']):
+                        result["sales"] = val
 
     except Exception as e:
         pass
