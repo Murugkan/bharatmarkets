@@ -3,7 +3,7 @@
 BharatMarkets Pro — Fundamentals Fetcher v4.8 CLEAN
 ====================================================
 ✨ v4.8 CLEAN: TTM-based metrics, consolidated field names
-import pandas as pd
+
 v4.8 Changes (Latest):
   ✅ Consolidated to TTM (Trailing Twelve Months) metrics
   ✅ Removed redundant annual values (opm_pct, npm_pct)
@@ -46,28 +46,7 @@ Outputs: fundamentals.json with 60+ fields per stock including:
   - Data Tracking: Delisted tracking, stale stock cleanup
 """
 
-import os
-import re
-import json
-
-def json_safe(obj):
-    """Convert non-serializable objects"""
-
-    try:
-        import pandas as pd
-
-        if isinstance(obj, (pd.Series, pd.DataFrame)):
-            return obj.to_dict()
-    except Exception:
-        pass
-
-    try:
-        return str(obj)
-    except Exception:
-        return None
-
-import time
-import datetime
+import json, time, datetime, re, os
 from pathlib import Path
 
 try:
@@ -102,145 +81,6 @@ else:
 SYMBOLS_FILE    = "unified-symbols.json"
 PRICES_FILE     = "prices.json"
 FUND_FILE       = "fundamentals.json"
-
-AVAILABILITY_FILE = "fundamentals_data_availability.csv"
-GAPS_LOG_FILE    = "fundamentals_gap_logs.json"
-
-CRITICAL_FIELDS = [
-    "market_cap","sales","profit","pe","pb","roe","roce","eps",
-    "opm","npm","cfo","fcf","capex","ebitda","book_value",
-    "debt_to_equity","current_ratio","dividend_yield",
-    "prom_pct","fii_pct","dii_pct"
-]
-
-
-
-def is_value_available(value):
-    """Robust missing-value checker"""
-
-    if value is None:
-        return False
-
-    # String handling
-    if isinstance(value, str):
-        cleaned = value.strip().upper()
-        return cleaned not in ("", "NA", "N/A", "NONE", "-", "NAN")
-
-    # pandas handling
-    try:
-        import pandas as pd
-
-        if isinstance(value, (pd.Series, pd.DataFrame)):
-            return not value.empty
-
-        if pd.isna(value):
-            return False
-    except Exception:
-        pass
-
-    # Generic container handling
-    try:
-        if hasattr(value, "__len__") and not isinstance(value, (int, float, bool)):
-            return len(value) > 0
-    except Exception:
-        pass
-
-    return True
-
-
-def build_data_gap_reports(stocks_data):
-    """
-    Generate:
-      1. Stock vs field availability matrix (CSV)
-      2. Detailed gap logs (JSON)
-    """
-    import csv
-
-    all_fields = set()
-    for payload in stocks_data.values():
-        all_fields.update(payload.keys())
-
-    excluded = {"updated", "signal", "pos", "neg"}
-    all_fields = sorted(f for f in all_fields if f not in excluded)
-
-    availability_rows = []
-    gap_logs = {
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "summary": {},
-        "stocks": {}
-    }
-
-    field_missing_counts = {f: 0 for f in all_fields}
-
-    for symbol, payload in sorted(stocks_data.items()):
-        row = {"symbol": symbol}
-        missing_fields = []
-        available_fields = []
-
-        for field in all_fields:
-            value = payload.get(field)
-            available = is_value_available(value)
-
-            row[field] = 1 if available else 0
-
-            if available:
-                available_fields.append(field)
-            else:
-                missing_fields.append(field)
-                field_missing_counts[field] += 1
-
-        availability_pct = round(
-            (len(available_fields) / len(all_fields)) * 100, 2
-        ) if all_fields else 0
-
-        critical_missing = [
-            f for f in missing_fields if f in CRITICAL_FIELDS
-        ]
-
-        row["available_fields"] = len(available_fields)
-        row["missing_fields"] = len(missing_fields)
-        row["availability_pct"] = availability_pct
-        row["critical_gaps"] = "|".join(critical_missing)
-
-        availability_rows.append(row)
-
-        gap_logs["stocks"][symbol] = {
-            "availability_pct": availability_pct,
-            "available_fields_count": len(available_fields),
-            "missing_fields_count": len(missing_fields),
-            "critical_missing_fields": critical_missing,
-            "missing_fields": missing_fields
-        }
-
-    gap_logs["summary"] = {
-        "total_stocks": len(stocks_data),
-        "tracked_fields": len(all_fields),
-        "field_missing_counts": dict(
-            sorted(field_missing_counts.items(),
-                   key=lambda x: x[1],
-                   reverse=True)
-        )
-    }
-
-    csv_fields = (
-        ["symbol"] +
-        all_fields +
-        ["available_fields", "missing_fields",
-         "availability_pct", "critical_gaps"]
-    )
-
-    with open(AVAILABILITY_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=csv_fields)
-        writer.writeheader()
-        writer.writerows(availability_rows)
-
-    Path(GAPS_LOG_FILE).write_text(
-        json.dumps(gap_logs, indent=2, default=str)
-    )
-
-    print(f"\n📋 Availability Matrix: {AVAILABILITY_FILE}")
-    print(f"🪵 Gap Logs: {GAPS_LOG_FILE}")
-
 YF_DELAY        = 0.15
 SCR_DELAY       = 1.0  # ✅ FIXED: Increased from 0.2 to 1.0 to avoid rate limiting (429 errors)
 
@@ -256,6 +96,167 @@ DO_RESOLVE = os.environ.get("RESOLVE",     "").lower() in ("true","1")
 DO_CLEAN   = os.environ.get("CLEAN_STALE", "").lower() in ("true","1")
 
 SKIP = {"NIFTY","BANKNIFTY","NIFTY50","SENSEX","NIFTYIT","MIDCAP","SMALLCAP","NIFTYBANK"}
+
+# ============================================================
+# CANONICAL FINANCIAL ENGINE (Phase 1)
+# ============================================================
+
+FIELD_REGISTRY = {
+
+    "cash": {
+        "aliases": [
+            "cash",
+            "totalCash",
+            "cashAndCashEquivalents",
+            "cashAndShortTermInvestments"
+        ]
+    },
+
+    "debt": {
+        "aliases": [
+            "debt",
+            "totalDebt",
+            "longTermDebt",
+            "shortLongTermDebtTotal"
+        ]
+    },
+
+    "revenue": {
+        "aliases": [
+            "revenue",
+            "totalRevenue",
+            "sales",
+            "operatingRevenue"
+        ]
+    },
+
+    "current_assets": {
+        "aliases": [
+            "currentAssets",
+            "totalCurrentAssets",
+            "assetsCurrent"
+        ]
+    },
+
+    "current_liabilities": {
+        "aliases": [
+            "currentLiabilities",
+            "totalCurrentLiabilities",
+            "liabilitiesCurrent"
+        ]
+    },
+
+    "current_ratio": {
+        "aliases": [
+            "currentRatio"
+        ]
+    },
+
+    "cfo": {
+        "aliases": [
+            "operatingCashFlow",
+            "cashFlowFromOperations",
+            "Operating Cash Flow"
+        ]
+    },
+
+    "capex": {
+        "aliases": [
+            "capitalExpenditures",
+            "capitalExpenditure",
+            "Purchase Of PPE"
+        ]
+    }
+}
+
+
+def normalize_number(value):
+
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except:
+        return None
+
+
+def resolve_field(field_name, *payloads):
+
+    field = FIELD_REGISTRY.get(field_name)
+
+    if not field:
+        return None
+
+    aliases = field["aliases"]
+
+    for payload in payloads:
+
+        if not payload:
+            continue
+
+        for alias in aliases:
+
+            value = payload.get(alias)
+
+            value = normalize_number(value)
+
+            if value not in [None, 0]:
+                return value
+
+    return None
+
+
+def safe_current_ratio(current_assets,
+                       current_liabilities):
+
+    try:
+
+        if not current_assets:
+            return None
+
+        if not current_liabilities:
+            return None
+
+        ratio = (
+            current_assets /
+            current_liabilities
+        )
+
+        if ratio < 0:
+            return None
+
+        if ratio > 20:
+            return None
+
+        return round(ratio, 2)
+
+    except:
+        return None
+
+
+def safe_fcf(cfo, capex):
+
+    try:
+
+        if cfo is None:
+            return None
+
+        if capex is None:
+            return None
+
+        capex = abs(capex)
+
+        return cfo - capex
+
+    except:
+        return None
+
+# ============================================================
+# END CANONICAL ENGINE
+# ============================================================
+
+
 
 # Runtime cache of confirmed-delisted symbols — populated during run, skipped on re-runs
 # Also persisted in fundamentals.json under "delisted" key
@@ -1664,9 +1665,6 @@ def main():
     Path(FUND_FILE).write_text(
         json.dumps(output, separators=(",",":"), default=str)
     )
-
-    # Generate gap analysis artifacts
-    build_data_gap_reports(final_result)
 
     # ✨ v4.4: Calculate fallback statistics
     cfo_filled = sum(1 for s in final_result.values() if s.get('cfo') and s.get('cfo') != 0)
