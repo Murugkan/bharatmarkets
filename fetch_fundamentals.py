@@ -98,7 +98,7 @@ DO_CLEAN   = os.environ.get("CLEAN_STALE", "").lower() in ("true","1")
 SKIP = {"NIFTY","BANKNIFTY","NIFTY50","SENSEX","NIFTYIT","MIDCAP","SMALLCAP","NIFTYBANK"}
 
 # ============================================================
-# CANONICAL FINANCIAL ENGINE (Phase 1)
+# PHASE 1 CANONICAL RESOLUTION + VALIDATION LAYER
 # ============================================================
 
 FIELD_REGISTRY = {
@@ -170,6 +170,22 @@ FIELD_REGISTRY = {
 }
 
 
+SECTOR_RULES = {
+
+    "Financial Services": {
+        "skip_metrics": [
+            "cur_ratio"
+        ]
+    },
+
+    "Banks": {
+        "skip_metrics": [
+            "cur_ratio"
+        ]
+    }
+}
+
+
 def normalize_number(value):
 
     if value is None:
@@ -207,10 +223,26 @@ def resolve_field(field_name, *payloads):
     return None
 
 
+def metric_allowed(metric_name, sector):
+
+    rules = SECTOR_RULES.get(sector, {})
+
+    skipped = rules.get("skip_metrics", [])
+
+    return metric_name not in skipped
+
+
 def safe_current_ratio(current_assets,
-                       current_liabilities):
+                       current_liabilities,
+                       sector=None):
 
     try:
+
+        if sector and not metric_allowed(
+            "cur_ratio",
+            sector
+        ):
+            return None
 
         if not current_assets:
             return None
@@ -252,8 +284,19 @@ def safe_fcf(cfo, capex):
     except:
         return None
 
+
+def validate_revenue(revenue):
+
+    if revenue is None:
+        return None
+
+    if revenue < 0:
+        return None
+
+    return revenue
+
 # ============================================================
-# END CANONICAL ENGINE
+# END PHASE 1 LAYER
 # ============================================================
 
 
@@ -947,7 +990,7 @@ def fetch_yfinance(sym, yf_ticker=None):
         result["gpm_pct"] = round(gpm_raw * 100, 2) if gpm_raw is not None else None
 
         result["mcap"]  = to_cr(info.get("marketCap"))
-        result["sales"] = to_cr(info.get("totalRevenue"))
+        result["sales"] = to_cr(validate_revenue(resolve_field("revenue", info)))
         result["ebitda"]= to_cr(info.get("ebitda"))
         result["cfo"]   = to_cr(info.get("operatingCashflow"))
         result["fcf"]   = to_cr(info.get("freeCashflow"))
