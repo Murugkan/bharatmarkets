@@ -1363,9 +1363,21 @@ def main():
         except:
             pass
 
-    result = {}
-    stats  = {"yf": 0, "scr": 0, "errors": 0}
+    stats  = {"yf": 0, "scr": 0, "errors": 0, "errors_detail": []}
     yf_results = {}
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PHASE 1 LOGGING: Track fetch attempts and failures
+    # ═══════════════════════════════════════════════════════════════════════════
+    fetch_log = {
+        "timestamp": ts.isoformat(),
+        "phase": "yfinance_fetch",
+        "total_attempted": len(active_syms),
+        "successful": 0,
+        "failed": [],
+        "delisted": [],
+        "partial": []
+    }
 
     # ── Phase 1: Parallel yfinance ──
     active_syms = [s for s in syms if s not in DELISTED]
@@ -1393,13 +1405,59 @@ def main():
             yf_results[sym] = data
 
     print(f"✓ Phase 1 done in {(now_utc()-ts).seconds}s\n")
+    
+    # Analyze Phase 1 results
+    print("📋 Phase 1 Fetch Analysis:")
+    for sym, data in yf_results.items():
+        if data:
+            fetch_log["successful"] += 1
+            # Check if partial (missing some fields)
+            required_fields = ["pe", "pb", "mcap", "eps"]
+            missing = [f for f in required_fields if not data.get(f)]
+            if missing:
+                fetch_log["partial"].append({"symbol": sym, "missing": missing})
+        else:
+            fetch_log["failed"].append(sym)
+    
+    print(f"   ✅ Successful: {fetch_log['successful']}/{len(active_syms)}")
+    print(f"   ⚠️  Failed: {len(fetch_log['failed'])}")
+    print(f"   📊 Partial: {len(fetch_log['partial'])}")
+    if fetch_log["failed"]:
+        print(f"   Failed symbols: {', '.join(fetch_log['failed'][:5])}")
+        if len(fetch_log["failed"]) > 5:
+            print(f"   ... and {len(fetch_log['failed']) - 5} more")
+    
+    # Save Phase 1 log
+    Path("fetch_log_phase1.json").write_text(json.dumps(fetch_log, indent=2))
+    print()
 
     # ── Phase 2: Sequential Screener + ROCE calculation + merge ──
+    print("📝 PHASE 2 LOGGING:")
+    print("-" * 60)
+    
+    screener_log = {
+        "timestamp": ts.isoformat(),
+        "phase": "screener_fetch",
+        "attempted": len(syms),
+        "successful": 0,
+        "skipped_delisted": 0,
+        "failed": [],
+        "fields_fetched": {
+            "fii_pct": 0,
+            "dii_pct": 0,
+            "prom_pct": 0,
+            "book_value": 0,
+            "roce": 0,
+            "roe": 0
+        }
+    }
+    
     for i, sym in enumerate(syms):
         if (i + 1) % 20 == 0:
             print(f"  ── {i+1}/{len(syms)} processed ──")
 
         if sym in DELISTED:
+            screener_log["skipped_delisted"] += 1
             continue
 
         stock = {}
@@ -1410,6 +1468,7 @@ def main():
             stats["yf"] += 1
         else:
             stats["errors"] += 1
+            stats["errors_detail"].append(f"YF failed: {sym}")
 
         # ── Calculate derived metrics from complete quarterly data ──────────────────
         if stock.get('quarterly'):
@@ -1429,9 +1488,17 @@ def main():
                 stock['roce'] = roce_est
 
         # Screener — prom% and pledge% always override; other fields gap-fill only
+        screener_attempt = False
         if HAS_BS4:
+            screener_attempt = True
             scr_data = fetch_screener_gaps(sym)
             if scr_data:
+                screener_log["successful"] += 1
+                # Track which fields were found
+                for field in screener_log["fields_fetched"]:
+                    if field in scr_data and scr_data[field] is not None:
+                        screener_log["fields_fetched"][field] += 1
+                
                 for k, v in scr_data.items():
                     if k in ("prom_pct", "pledge_pct", "roce"):
                         if v is not None:
@@ -1439,7 +1506,12 @@ def main():
                     elif stock.get(k) is None and v is not None:
                         stock[k] = v
                 stats["scr"] += 1
+            else:
+                screener_log["failed"].append(sym)
             time.sleep(SCR_DELAY)
+        
+        if not screener_attempt:
+            screener_log["failed"].append(f"{sym} (BS4 disabled)")
 
 
         # prices.json fallback
@@ -1469,10 +1541,51 @@ def main():
             "updated": ts.isoformat(),
         })
         result[sym] = merged
+    
+    # Save Phase 2 log
+    Path("fetch_log_phase2.json").write_text(json.dumps(screener_log, indent=2))
+    
+    print("\n📋 Phase 2 Screener Results:")
+    print(f"   ✅ Successful: {screener_log['successful']}/{screener_log['attempted']}")
+    print(f"   ⚠️  Failed: {len(screener_log['failed'])}")
+    print(f"   ⏭️  Skipped (delisted): {screener_log['skipped_delisted']}")
+    print(f"   Fields by coverage:")
+    for field, count in screener_log["fields_fetched"].items():
+        pct = round(100 * count / screener_log['attempted'], 1) if screener_log['attempted'] > 0 else 0
+        print(f"     • {field:15} {count:3}/{screener_log['attempted']} ({pct:5.1f}%)")
 
     # Merge new results into existing — preserves all other stocks
     existing.update(result)
     final_result = existing
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ✨ AUTOMATIC GAP-FILLING (v4.8+)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Apply hardcoded fallbacks for stocks with critical missing data
+    # This ensures mobile app gets usable data even if Screener.in has issues
+    
+    gap_fills_applied = 0
+    
+    # Hardcoded overrides for known gaps (can be updated based on Screener data)
+    # Format: "SYMBOL": {"field": value, ...}
+    known_gaps = {
+        # Example structure - add your known gaps here
+        # "CAPITALNUM": {"fii_pct": 5.2, "dii_pct": 8.1, "prom_pct": 79.76, "bv": 70.355},
+    }
+    
+    print(f"\n📝 GAP-FILLING LOG (if configured):")
+    
+    if known_gaps:
+        for sym, patch in known_gaps.items():
+            if sym in final_result:
+                for field, value in patch.items():
+                    # Only fill if missing
+                    if not final_result[sym].get(field) or final_result[sym][field] is None:
+                        final_result[sym][field] = value
+                        gap_fills_applied += 1
+                        print(f"   ✅ {sym:12} {field:15} = {value}")
+    else:
+        print(f"   ℹ No hardcoded gaps configured (optional feature)")
 
     output = {
         "updated":  ts.isoformat(),
@@ -1511,18 +1624,207 @@ def main():
     capex_filled = sum(1 for s in final_result.values() if s.get('capex') and s.get('capex') != 0)
     total_stocks = len(final_result)
     
-    print("=" * 50)
-    print(f"✅ {total_stocks} stocks in {FUND_FILE} ({len(result)} updated)")
-    print(f"   {stats['yf']} from Yahoo | {stats['scr']} from Screener | {stats['errors']} errors")
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ✨ v4.8 ENHANCED: INTEGRATED GAP DETECTION & REPORTING
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    print("\n" + "=" * 70)
+    print("🔍 DATA QUALITY ANALYSIS & GAP REPORTING")
+    print("=" * 70)
+    
+    # Define critical fields by category
+    critical_fields = {
+        "holdings": ["fii_pct", "dii_pct", "prom_pct", "public_pct"],
+        "valuation": ["bv", "pb", "pe"],
+        "profitability": ["roe", "roce", "opm", "npm"],
+        "cashflow": ["cfo", "net_cf"],
+        "liquidity": ["beta", "mcap"]
+    }
+    
+    # Initialize gap tracking
+    gap_analysis = {
+        "timestamp": ts.isoformat(),
+        "total_stocks": total_stocks,
+        "categories": {},
+        "stocks_by_gap_severity": {
+            "critical": [],  # Missing >3 critical fields
+            "high": [],      # Missing 2-3 critical fields
+            "medium": [],    # Missing 1 critical field
+            "low": []        # All critical fields present
+        },
+        "field_coverage": {}
+    }
+    
+    # Scan for gaps in each category
+    for category, fields in critical_fields.items():
+        category_data = {
+            "total_gaps": 0,
+            "affected_stocks": [],
+            "field_status": {}
+        }
+        
+        # Count coverage for each field
+        for field in fields:
+            field_count = sum(1 for s in final_result.values() 
+                            if s.get(field) and s.get(field) != 0 and s.get(field) is not None)
+            coverage_pct = round(100 * field_count / total_stocks, 1)
+            
+            category_data["field_status"][field] = {
+                "filled": field_count,
+                "percentage": coverage_pct
+            }
+            gap_analysis["field_coverage"][field] = {
+                "filled": field_count,
+                "gaps": total_stocks - field_count,
+                "percentage": coverage_pct
+            }
+        
+        # Find affected stocks per category
+        for sym, stock in final_result.items():
+            missing = [f for f in fields if not stock.get(f) or stock.get(f) is None or stock.get(f) == 0]
+            if missing:
+                category_data["affected_stocks"].append({
+                    "symbol": sym,
+                    "missing": missing,
+                    "count": len(missing)
+                })
+                category_data["total_gaps"] += len(missing)
+        
+        gap_analysis["categories"][category] = category_data
+    
+    # Classify stocks by gap severity
+    for sym, stock in final_result.items():
+        total_gaps = 0
+        for category, fields in critical_fields.items():
+            missing = [f for f in fields if not stock.get(f) or stock.get(f) is None]
+            total_gaps += len(missing)
+        
+        if total_gaps >= 4:
+            gap_analysis["stocks_by_gap_severity"]["critical"].append(sym)
+        elif total_gaps >= 2:
+            gap_analysis["stocks_by_gap_severity"]["high"].append(sym)
+        elif total_gaps >= 1:
+            gap_analysis["stocks_by_gap_severity"]["medium"].append(sym)
+        else:
+            gap_analysis["stocks_by_gap_severity"]["low"].append(sym)
+    
+    # Print analysis by category
+    print("\n📊 GAPS BY CATEGORY:")
+    print("-" * 70)
+    
+    for category, cat_data in gap_analysis["categories"].items():
+        if cat_data["total_gaps"] > 0:
+            print(f"\n  {category.upper()}")
+            print(f"  Total gaps: {cat_data['total_gaps']}")
+            print(f"  Affected stocks: {len(cat_data['affected_stocks'])}")
+            
+            # Show field coverage
+            for field, status in sorted(cat_data["field_status"].items()):
+                bar_len = int(status["percentage"] / 5)
+                bar = "█" * bar_len + "░" * (20 - bar_len)
+                print(f"    {field:15} {bar} {status['filled']:3}/{total_stocks} ({status['percentage']:5.1f}%)")
+            
+            # Show affected stocks
+            if cat_data["affected_stocks"]:
+                print(f"\n  ⚠️  Stocks needing {category} data:")
+                for item in sorted(cat_data["affected_stocks"], key=lambda x: -x["count"])[:5]:
+                    print(f"      • {item['symbol']:12} missing: {', '.join(item['missing'])}")
+                if len(cat_data["affected_stocks"]) > 5:
+                    print(f"      ... and {len(cat_data['affected_stocks']) - 5} more")
+    
+    # Print severity breakdown
+    print("\n\n🚨 STOCK SEVERITY CLASSIFICATION:")
+    print("-" * 70)
+    
+    severity_levels = {
+        "critical": {"count": len(gap_analysis["stocks_by_gap_severity"]["critical"]), 
+                    "emoji": "🔴", "msg": "4+ critical fields missing"},
+        "high": {"count": len(gap_analysis["stocks_by_gap_severity"]["high"]), 
+                "emoji": "🟠", "msg": "2-3 critical fields missing"},
+        "medium": {"count": len(gap_analysis["stocks_by_gap_severity"]["medium"]), 
+                  "emoji": "🟡", "msg": "1 critical field missing"},
+        "low": {"count": len(gap_analysis["stocks_by_gap_severity"]["low"]), 
+               "emoji": "🟢", "msg": "All critical fields present"}
+    }
+    
+    total_gaps = sum(len(v) for k, v in gap_analysis["stocks_by_gap_severity"].items() if k != "low")
+    
+    for level, info in severity_levels.items():
+        pct = round(100 * info["count"] / total_stocks, 1) if total_stocks > 0 else 0
+        print(f"  {info['emoji']} {level.upper():8} {info['count']:3} stocks ({pct:5.1f}%) — {info['msg']}")
+    
+    # Critical stocks list
+    if gap_analysis["stocks_by_gap_severity"]["critical"]:
+        print(f"\n  🔴 CRITICAL ATTENTION NEEDED:")
+        for sym in gap_analysis["stocks_by_gap_severity"]["critical"][:10]:
+            print(f"      • {sym}")
+        if len(gap_analysis["stocks_by_gap_severity"]["critical"]) > 10:
+            print(f"      ... and {len(gap_analysis['stocks_by_gap_severity']['critical']) - 10} more")
+    
+    # Print field coverage summary
+    print("\n\n📈 OVERALL FIELD COVERAGE:")
+    print("-" * 70)
+    
+    coverage_sorted = sorted(gap_analysis["field_coverage"].items(), 
+                            key=lambda x: -x[1]["percentage"])
+    
+    for field, coverage in coverage_sorted:
+        bar_len = int(coverage["percentage"] / 5)
+        bar = "█" * bar_len + "░" * (20 - bar_len)
+        gap_count = coverage["gaps"]
+        status = "✅" if coverage["percentage"] >= 80 else "⚠️ " if coverage["percentage"] >= 50 else "🔴"
+        print(f"  {status} {field:15} {bar} {coverage['filled']:3}/{total_stocks} ({coverage['percentage']:5.1f}%) | {gap_count:2} gaps")
+    
+    # Save detailed gap report to file
+    gap_report_file = Path("gap_report.json")
+    gap_report_file.write_text(json.dumps(gap_analysis, indent=2, default=str))
+    
+    # Print execution summary
+    print("\n" + "=" * 70)
+    print("✅ EXECUTION SUMMARY")
+    print("=" * 70)
+    
+    print(f"\n📦 FETCH STATISTICS:")
+    print(f"   Total stocks:       {total_stocks}")
+    print(f"   Updated this run:   {len(result)}")
+    print(f"   From Yahoo:         {stats['yf']}")
+    print(f"   From Screener:      {stats['scr']}")
+    print(f"   Fetch errors:       {stats['errors']}")
+    
+    print(f"\n📊 DATA QUALITY METRICS:")
+    print(f"   Stocks with 0 gaps:      {len(gap_analysis['stocks_by_gap_severity']['low']):3} ({round(100*len(gap_analysis['stocks_by_gap_severity']['low'])/total_stocks, 1)}%)")
+    print(f"   Stocks with 1+ gaps:     {total_gaps:3} ({round(100*total_gaps/total_stocks, 1)}%)")
+    print(f"   Critical attention:      {len(gap_analysis['stocks_by_gap_severity']['critical']):3}")
+    
+    total_field_gaps = sum(cov["gaps"] for cov in gap_analysis["field_coverage"].values())
+    print(f"   Total field gaps:        {total_field_gaps}")
+    print(f"   Average gaps per stock:  {round(total_field_gaps / total_stocks, 2)}")
+    
     print(f"\n✨ v4.8 CLEAN: TTM-based metrics only")
     print(f"   - OPM, NPM: calculated from last 4 quarters (TTM)")
     print(f"   - CFO, Net CF: from Screener.in")
     print(f"   - ROE, ROCE, Book Value: from Screener.in")
     print(f"   - No redundant annual values")
-    print(f"\n📊 Data Coverage:")
-    print(f"   CFO:    {cfo_filled:>3}/{total_stocks} ({100*cfo_filled/total_stocks:>5.1f}%)")
-    print(f"   EBITDA: {ebitda_filled:>3}/{total_stocks} ({100*ebitda_filled/total_stocks:>5.1f}%)")
-    print(f"   CapEx:  {capex_filled:>3}/{total_stocks} ({100*capex_filled/total_stocks:>5.1f}%)")
+    
+    print(f"\n📋 OUTPUT FILES:")
+    print(f"   ✅ fundamentals.json      — Main data file ({total_stocks} stocks)")
+    print(f"   ✅ gap_report.json        — Detailed gap analysis")
+    print(f"   ✅ {FUND_FILE}            — All fields documented")
+    
+    # CI/CD-friendly output
+    print(f"\n{'='*70}")
+    print("🤖 CI/CD PIPELINE SUMMARY")
+    print("=" * 70)
+    
+    quality_score = round(100 * (total_stocks - total_gaps) / total_stocks, 1) if total_stocks > 0 else 0
+    status = "PASS" if quality_score >= 70 else "WARN" if quality_score >= 50 else "FAIL"
+    
+    print(f"STATUS={status}")
+    print(f"TOTAL_STOCKS={total_stocks}")
+    print(f"STOCKS_WITH_GAPS={total_gaps}")
+    print(f"QUALITY_SCORE={quality_score}%")
+    print(f"CRITICAL_STOCKS={len(gap_analysis['stocks_by_gap_severity']['critical'])}")
+    print(f"TIMESTAMP={ts.isoformat()}")
 
 if __name__ == "__main__":
     main()
