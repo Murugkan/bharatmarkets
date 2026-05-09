@@ -1363,6 +1363,7 @@ def main():
         except:
             pass
 
+    result = {}
     stats  = {"yf": 0, "scr": 0, "errors": 0, "errors_detail": []}
     yf_results = {}
 
