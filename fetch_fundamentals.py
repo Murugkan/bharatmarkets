@@ -4,8 +4,6 @@ BharatMarkets Pro — Fundamentals Fetcher v4.8 CLEAN
 ====================================================
 ✨ v4.8 CLEAN: TTM-based metrics, consolidated field names
 import pandas as pd
-import numpy as np
-
 v4.8 Changes (Latest):
   ✅ Consolidated to TTM (Trailing Twelve Months) metrics
   ✅ Removed redundant annual values (opm_pct, npm_pct)
@@ -48,7 +46,31 @@ Outputs: fundamentals.json with 60+ fields per stock including:
   - Data Tracking: Delisted tracking, stale stock cleanup
 """
 
-import json, time, datetime, re, os
+import json
+
+def json_safe(obj):
+    """Convert non-serializable objects"""
+
+    try:
+        import numpy as np
+        if isinstance(obj, np.generic):
+            return obj.item()
+    except Exception:
+        pass
+
+    try:
+        import pandas as pd
+
+        if isinstance(obj, (pd.Series, pd.DataFrame)):
+            return obj.to_dict()
+    except Exception:
+        pass
+
+    try:
+        return str(obj)
+    except Exception:
+        return None
+, time, datetime, re, os
 from pathlib import Path
 
 try:
@@ -99,11 +121,10 @@ CRITICAL_FIELDS = [
 def is_value_available(value):
     """Robust missing-value checker"""
 
-    # None
     if value is None:
         return False
 
-    # Strings
+    # String handling
     if isinstance(value, str):
         cleaned = value.strip().upper()
         return cleaned not in ("", "NA", "N/A", "NONE", "-", "NAN")
@@ -248,7 +269,31 @@ DELISTED = set()
 # Optional: symbol_map.json can override tickers for stocks where NSE ≠ Yahoo
 # For most stocks, SYM.NS works directly — only exceptions need mapping
 # ── Load optional symbol map (NSE_TO_YAHOO overrides) ──────────
-import json as _json
+import json
+
+def json_safe(obj):
+    """Convert non-serializable objects"""
+
+    try:
+        import numpy as np
+        if isinstance(obj, np.generic):
+            return obj.item()
+    except Exception:
+        pass
+
+    try:
+        import pandas as pd
+
+        if isinstance(obj, (pd.Series, pd.DataFrame)):
+            return obj.to_dict()
+    except Exception:
+        pass
+
+    try:
+        return str(obj)
+    except Exception:
+        return None
+ as _json
 try:
     _sm = _json.loads(open("symbol_map.json").read())
     NSE_TO_YAHOO = {**_sm.get("overrides",{}), **_sm.get("indices",{})}
