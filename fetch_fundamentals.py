@@ -3913,45 +3913,15 @@ if __name__ == "__main__":
 
 
 # ============================================================
-# STATEMENT-NATIVE EXTRACTION PATCH
+# BIG BANG STATEMENT ENGINE
 # ============================================================
 
-STATEMENT_REQUIRED_FIELDS = {
-    "income": ["rev", "ebitda", "ebit", "net"],
-    "balance": ["equity", "total_assets"],
-}
-
-def detect_statement_type(q):
-
-    income_fields = 0
-    balance_fields = 0
-
-    for field in STATEMENT_REQUIRED_FIELDS["income"]:
-
-        if q.get(field) not in [None, "", 0]:
-            income_fields += 1
-
-    for field in STATEMENT_REQUIRED_FIELDS["balance"]:
-
-        if q.get(field) not in [None, "", 0]:
-            balance_fields += 1
-
-    if income_fields >= 2 and balance_fields >= 1:
-        return "combined"
-
-    if income_fields >= 2:
-        return "income"
-
-    if balance_fields >= 1:
-        return "balance"
-
-    return "unknown"
+import concurrent.futures
+from collections import defaultdict
 
 
-def canonicalize_quarter(q):
-
-    fields = [
-        "d",
+CANONICAL_FIELDS = {
+    "income_statement": [
         "rev",
         "gross",
         "ebitda",
@@ -3960,32 +3930,215 @@ def canonicalize_quarter(q):
         "interest_exp",
         "net",
         "eps",
+        "opm",
+        "npm"
+    ],
+
+    "balance_sheet": [
+        "cash",
+        "inventory",
+        "curr_assets",
+        "curr_liab",
         "debt",
         "equity",
-        "curr_liab",
         "total_assets",
-        "curr_assets",
-        "inventory",
-        "cash",
-        "opm"
+        "working_capital"
+    ],
+
+    "cashflow": [
+        "cfo",
+        "capex",
+        "fcf",
+        "div_paid",
+        "net_cf"
+    ],
+
+    "ratios": [
+        "roe",
+        "roce",
+        "roic",
+        "roa",
+        "cur_ratio",
+        "quick_ratio",
+        "debt_eq",
+        "interest_coverage"
     ]
+}
+
+
+PROVIDER_PRIORITY = {
+    "statement_parser": 1,
+    "screener": 2,
+    "yahoo": 3
+}
+
+
+SECTOR_RULES = {
+
+    "Financial Services": {
+        "suppress": [
+            "inventory",
+            "fcf",
+            "cur_ratio",
+            "quick_ratio"
+        ]
+    },
+
+    "Technology": {
+        "suppress": [
+            "inventory"
+        ]
+    }
+}
+
+
+def fetch_provider_parallel(ticker):
+
+    providers = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+
+        futures = {}
+
+        try:
+            futures[executor.submit(fetch_from_yahoo, ticker)] = "yahoo"
+        except:
+            pass
+
+        try:
+            futures[executor.submit(fetch_from_screener, ticker)] = "screener"
+        except:
+            pass
+
+        try:
+            futures[executor.submit(fetch_from_statement_parser, ticker)] = "statement_parser"
+        except:
+            pass
+
+        for future in concurrent.futures.as_completed(futures):
+
+            provider = futures[future]
+
+            try:
+                providers[provider] = future.result()
+            except:
+                providers[provider] = {}
+
+    return providers
+
+
+def canonical_metric_name(name):
+
+    mapping = {
+
+        "revenue": "rev",
+        "sales": "rev",
+        "operating_revenue": "rev",
+
+        "ebitda_margin": "opm",
+        "operating_margin": "opm",
+
+        "pat": "net",
+        "profit_after_tax": "net",
+
+        "shareholder_equity": "equity",
+
+        "current_assets": "curr_assets",
+        "current_liabilities": "curr_liab",
+
+        "cash_and_equivalents": "cash"
+    }
+
+    return mapping.get(name, name)
+
+
+def canonicalize_dataset(data):
 
     canonical = {}
 
-    for field in fields:
-        canonical[field] = q.get(field)
+    for k, v in data.items():
+
+        ck = canonical_metric_name(k)
+
+        canonical[ck] = v
 
     return canonical
 
 
-def validate_statement_integrity(q):
+def reconcile_metric(field, provider_data):
 
-    cash = q.get("cash")
-    curr_assets = q.get("curr_assets")
-    total_assets = q.get("total_assets")
-    equity = q.get("equity")
+    ranked = sorted(
+        provider_data.items(),
+        key=lambda x: PROVIDER_PRIORITY.get(x[0], 99)
+    )
+
+    for provider, dataset in ranked:
+
+        dataset = canonicalize_dataset(dataset)
+
+        value = dataset.get(field)
+
+        if value not in [None, "", 0]:
+            return value
+
+    return None
+
+
+def build_canonical_stock(provider_data):
+
+    stock = {}
+
+    all_fields = []
+
+    for section_fields in CANONICAL_FIELDS.values():
+        all_fields.extend(section_fields)
+
+    for field in all_fields:
+
+        stock[field] = reconcile_metric(
+            field,
+            provider_data
+        )
+
+    return stock
+
+
+def build_quarter_map(rows):
+
+    merged = defaultdict(dict)
+
+    for row in rows:
+
+        d = row.get("d")
+
+        if not d:
+            continue
+
+        for k, v in row.items():
+
+            if v not in [None, "", 0]:
+                merged[d][k] = v
+
+    final = []
+
+    for d, row in merged.items():
+
+        row["d"] = d
+
+        final.append(row)
+
+    return final
+
+
+def statement_integrity(q):
 
     try:
+
+        cash = q.get("cash")
+        curr_assets = q.get("curr_assets")
+        total_assets = q.get("total_assets")
+        equity = q.get("equity")
+        curr_liab = q.get("curr_liab")
 
         if cash and curr_assets:
 
@@ -4002,27 +4155,34 @@ def validate_statement_integrity(q):
             if float(equity) > float(total_assets):
                 return False
 
+        if curr_liab and total_assets:
+
+            if float(curr_liab) < 10 and float(total_assets) > 1000:
+                return False
+
     except:
         return False
 
     return True
 
 
-def validate_operating_structure(stock, q):
-
-    gross = q.get("gross")
-    net = q.get("net")
-    rev = q.get("rev")
+def operating_integrity(q):
 
     try:
 
-        if gross is not None and float(gross) < 0:
+        rev = q.get("rev")
+        gross = q.get("gross")
+        net = q.get("net")
 
-            if net and float(net) > 0:
+        if rev is not None:
+
+            if float(rev) <= 0:
                 return False
 
-        if rev is not None and float(rev) <= 0:
-            return False
+        if gross is not None and net is not None:
+
+            if float(gross) < 0 and float(net) > 0:
+                return False
 
     except:
         return False
@@ -4030,33 +4190,9 @@ def validate_operating_structure(stock, q):
     return True
 
 
-def strict_merge_quarters(rows):
+def quarter_quality(q):
 
-    merged = {}
-
-    for row in rows:
-
-        d = row.get("d")
-
-        if not d:
-            continue
-
-        row = canonicalize_quarter(row)
-
-        if d not in merged:
-            merged[d] = {}
-
-        merged[d].update({
-            k: v for k, v in row.items()
-            if v not in [None, "", 0]
-        })
-
-    return list(merged.values())
-
-
-def statement_quality_score(q):
-
-    important = [
+    required = [
         "rev",
         "ebitda",
         "ebit",
@@ -4067,49 +4203,148 @@ def statement_quality_score(q):
 
     valid = 0
 
-    for field in important:
+    for field in required:
 
         if q.get(field) not in [None, "", 0]:
             valid += 1
 
-    return valid / len(important)
+    return valid / len(required)
 
 
-def reject_low_quality_quarters(rows):
+def derive_metrics(stock):
 
-    final = []
+    try:
 
-    for q in rows:
+        cfo = stock.get("cfo")
+        capex = stock.get("capex")
 
-        score = statement_quality_score(q)
+        if cfo is not None and capex is not None:
 
-        if score >= 0.50:
-            final.append(q)
+            stock["fcf"] = round(
+                float(cfo) - float(capex),
+                2
+            )
 
-    return final
+    except:
+        pass
+
+    try:
+
+        debt = stock.get("debt")
+        cash = stock.get("cash")
+
+        if debt is not None:
+
+            if cash is None:
+                cash = 0
+
+            stock["net_debt"] = round(
+                float(debt) - float(cash),
+                2
+            )
+
+    except:
+        pass
+
+    try:
+
+        ca = stock.get("curr_assets")
+        cl = stock.get("curr_liab")
+
+        if ca and cl and float(cl) > 0:
+
+            ratio = float(ca) / float(cl)
+
+            if ratio > 0 and ratio < 20:
+                stock["cur_ratio"] = round(ratio, 2)
+
+    except:
+        pass
+
+    return stock
 
 
-def clean_statement_stock(stock):
+def apply_sector_rules(stock):
 
-    rows = stock.get("quarterly", [])
+    sector = stock.get("sector")
 
-    rows = strict_merge_quarters(rows)
+    rules = SECTOR_RULES.get(sector)
+
+    if not rules:
+        return stock
+
+    for field in rules.get("suppress", []):
+
+        stock[field] = None
+
+    return stock
+
+
+def confidence_score(stock):
+
+    critical = [
+        "rev",
+        "ebitda",
+        "net",
+        "cash",
+        "equity",
+        "total_assets"
+    ]
+
+    valid = 0
+
+    for field in critical:
+
+        if stock.get(field) not in [None, "", 0]:
+            valid += 1
+
+    return round(valid / len(critical), 2)
+
+
+def clean_quarters(rows):
+
+    rows = build_quarter_map(rows)
 
     cleaned = []
 
     for q in rows:
 
-        if not validate_statement_integrity(q):
+        if not statement_integrity(q):
             continue
 
-        if not validate_operating_structure(stock, q):
+        if not operating_integrity(q):
+            continue
+
+        if quarter_quality(q) < 0.5:
             continue
 
         cleaned.append(q)
 
-    cleaned = reject_low_quality_quarters(cleaned)
+    return cleaned
 
-    stock["quarterly"] = cleaned
 
-    return stock
+def big_bang_process_stock(ticker, raw_stock):
+
+    provider_data = fetch_provider_parallel(ticker)
+
+    canonical = build_canonical_stock(provider_data)
+
+    for k, v in raw_stock.items():
+
+        if canonical.get(k) in [None, "", 0]:
+            canonical[k] = v
+
+    canonical["quarterly"] = clean_quarters(
+        raw_stock.get("quarterly", [])
+    )
+
+    canonical = derive_metrics(canonical)
+
+    canonical = apply_sector_rules(canonical)
+
+    canonical["extraction_confidence"] = confidence_score(canonical)
+
+    canonical["updated"] = datetime.utcnow().isoformat()
+
+    return canonical
 
