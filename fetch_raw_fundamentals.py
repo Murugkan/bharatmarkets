@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from datetime import datetime, UTC
 
-from provider_native import fetch_yahoo_history, fetch_screener_history
+from fetch_raw_provider import fetch_yahoo_history, fetch_screener_history
 
 BASE_DIR = Path(__file__).resolve().parent
 
