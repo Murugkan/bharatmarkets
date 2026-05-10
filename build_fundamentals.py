@@ -1,8 +1,15 @@
-
 import json
+from pathlib import Path
 
-RAW_FUNDAMENTALS_FILE = "raw_fundamentals.json"
-FUNDAMENTALS_FILE = "fundamentals.json"
+BASE_DIR = Path(__file__).resolve().parent
+
+RAW_FUNDAMENTALS_FILE = (
+    BASE_DIR / "raw_fundamentals.json"
+)
+
+FUNDAMENTALS_FILE = (
+    BASE_DIR / "fundamentals.json"
+)
 
 
 def load_json(path):
@@ -38,7 +45,10 @@ def save_json(path, data):
         )
 
 
-def latest_value(history, field):
+def latest_value(
+    history,
+    field
+):
 
     for row in reversed(history):
 
@@ -47,29 +57,32 @@ def latest_value(history, field):
             {}
         )
 
-        if field in values:
+        value = values.get(field)
 
-            value = values[field]
+        if value not in [
+            None,
+            ""
+        ]:
 
-            if value not in [
-                None,
-                ""
-            ]:
-
-                return value
+            return value
 
     return None
 
 
 def build_stock(raw_stock):
 
-    result = {}
+    output = {}
 
-    result["name"] = raw_stock["metadata"].get("name")
-    result["sector"] = raw_stock["metadata"].get("sector")
-    result["industry"] = raw_stock["metadata"].get("industry")
+    metadata = raw_stock.get(
+        "metadata",
+        {}
+    )
 
-    result["ltp"] = latest_value(
+    output["name"] = metadata.get("name")
+    output["sector"] = metadata.get("sector")
+    output["industry"] = metadata.get("industry")
+
+    output["ltp"] = latest_value(
         raw_stock.get(
             "market_data_history",
             []
@@ -77,7 +90,7 @@ def build_stock(raw_stock):
         "ltp"
     )
 
-    result["market_cap"] = latest_value(
+    output["market_cap"] = latest_value(
         raw_stock.get(
             "market_data_history",
             []
@@ -85,7 +98,7 @@ def build_stock(raw_stock):
         "market_cap"
     )
 
-    result["roe"] = latest_value(
+    output["roe"] = latest_value(
         raw_stock.get(
             "ratio_history",
             []
@@ -93,7 +106,7 @@ def build_stock(raw_stock):
         "roe"
     )
 
-    result["roce"] = latest_value(
+    output["roce"] = latest_value(
         raw_stock.get(
             "ratio_history",
             []
@@ -101,18 +114,21 @@ def build_stock(raw_stock):
         "roce"
     )
 
-    result["quarterly"] = []
+    output["quarterly"] = []
 
     for row in raw_stock.get(
         "quarterly_history",
         []
     ):
 
-        result["quarterly"].append(
-            row["values"]
+        output["quarterly"].append(
+            row.get(
+                "values",
+                {}
+            )
         )
 
-    return result
+    return output
 
 
 def main():

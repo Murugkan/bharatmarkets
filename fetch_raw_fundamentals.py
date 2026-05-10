@@ -1,11 +1,18 @@
-
 import json
 import traceback
+from pathlib import Path
 from datetime import datetime, UTC
 
-MASTER_SYMBOLS_FILE = "unified-symbols.json"
-RAW_FUNDAMENTALS_FILE = "raw_fundamentals.json"
-RUNTIME_LOG_FILE = "runtime.log"
+BASE_DIR = Path(__file__).resolve().parent
+
+MASTER_SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
+RAW_FUNDAMENTALS_FILE = BASE_DIR / "raw_fundamentals.json"
+FUNDAMENTALS_FILE = BASE_DIR / "fundamentals.json"
+GUIDANCE_FILE = BASE_DIR / "guidance.json"
+RUNTIME_LOG_FILE = BASE_DIR / "runtime.log"
+RAW_PAYLOADS_DIR = BASE_DIR / "raw_payloads"
+
+RAW_PAYLOADS_DIR.mkdir(exist_ok=True)
 
 
 def now():
@@ -60,7 +67,32 @@ def save_json(path, data):
         )
 
 
-def ensure_stock(raw_store, symbol):
+def save_payload(
+    ticker,
+    provider,
+    payload
+):
+
+    path = (
+        RAW_PAYLOADS_DIR /
+        f"{ticker}_{provider}.json"
+    )
+
+    save_json(path, payload)
+
+    log(
+        "INFO",
+        f"PAYLOAD_SAVED "
+        f"ticker={ticker} "
+        f"provider={provider} "
+        f"path={path}"
+    )
+
+
+def ensure_stock(
+    raw_store,
+    symbol
+):
 
     ticker = symbol["ticker"]
 
@@ -73,10 +105,9 @@ def ensure_stock(raw_store, symbol):
                 "isin": symbol.get("isin"),
                 "sector": symbol.get("sector"),
                 "industry": symbol.get("industry"),
-                "type": symbol.get("type"),
-                "created_at": now(),
                 "updated_at": now()
             },
+
             "market_data_history": [],
             "ratio_history": [],
             "ownership_history": [],
@@ -106,7 +137,6 @@ def append_fetch_event(
     stock,
     provider,
     success,
-    warning=None,
     error=None
 ):
 
@@ -114,65 +144,43 @@ def append_fetch_event(
         "timestamp": now(),
         "provider": provider,
         "success": success,
-        "warning": warning,
         "error": error
     })
 
 
-def ingest_provider_payload(
+def ingest_screener(
     stock,
-    provider,
     payload
 ):
 
-    if provider == "yahoo_finance":
+    top_ratios = payload.get(
+        "top_ratios",
+        {}
+    )
+
+    if top_ratios:
 
         append_history(
             stock,
-            "market_data_history",
-            provider,
-            payload
+            "ratio_history",
+            "screener",
+            top_ratios
         )
 
-    elif provider == "nse":
+    quarterly = payload.get(
+        "quarterly",
+        []
+    )
+
+    for row in quarterly:
 
         append_history(
             stock,
-            "ownership_history",
-            provider,
-            payload
+            "quarterly_history",
+            "screener",
+            row,
+            row.get("quarter")
         )
-
-    elif provider == "screener":
-
-        ratios = payload.get(
-            "top_ratios",
-            {}
-        )
-
-        if ratios:
-
-            append_history(
-                stock,
-                "ratio_history",
-                provider,
-                ratios
-            )
-
-        quarterly = payload.get(
-            "quarterly",
-            []
-        )
-
-        for row in quarterly:
-
-            append_history(
-                stock,
-                "quarterly_history",
-                provider,
-                row,
-                row.get("quarter")
-            )
 
 
 def main():
@@ -191,7 +199,7 @@ def main():
     )
 
     success_count = 0
-    failure_count = 0
+    failed_count = 0
 
     for symbol in symbols:
 
@@ -223,20 +231,39 @@ def main():
                 "promoter": None
             }
 
-            ingest_provider_payload(
-                stock,
+            save_payload(
+                ticker,
                 "yahoo_finance",
                 yahoo_payload
             )
 
-            ingest_provider_payload(
-                stock,
+            save_payload(
+                ticker,
                 "screener",
                 screener_payload
             )
 
-            ingest_provider_payload(
+            save_payload(
+                ticker,
+                "nse",
+                nse_payload
+            )
+
+            append_history(
                 stock,
+                "market_data_history",
+                "yahoo_finance",
+                yahoo_payload
+            )
+
+            ingest_screener(
+                stock,
+                screener_payload
+            )
+
+            append_history(
+                stock,
+                "ownership_history",
                 "nse",
                 nse_payload
             )
@@ -247,7 +274,9 @@ def main():
                 True
             )
 
-            stock["metadata"]["updated_at"] = now()
+            stock["metadata"][
+                "updated_at"
+            ] = now()
 
             success_count += 1
 
@@ -258,18 +287,19 @@ def main():
 
         except Exception as e:
 
+            failed_count += 1
+
             append_fetch_event(
                 stock,
                 "all",
                 False,
-                error=str(e)
+                str(e)
             )
-
-            failure_count += 1
 
             log(
                 "ERROR",
-                f"FAILED ticker={ticker} error={str(e)}"
+                f"FAILED ticker={ticker} "
+                f"error={str(e)}"
             )
 
             log(
@@ -284,7 +314,9 @@ def main():
 
     log(
         "INFO",
-        f"SUMMARY total={len(symbols)} success={success_count} failed={failure_count}"
+        f"SUMMARY total={len(symbols)} "
+        f"success={success_count} "
+        f"failed={failed_count}"
     )
 
 
