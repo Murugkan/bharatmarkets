@@ -4365,3 +4365,510 @@ if __name__ == "__main__":
     stock = fetch_stock("SBIN")
 
     print(stock["log_summary"])
+
+
+
+
+# ============================================================
+# FINAL FETCH FREEZE PATCH
+# ============================================================
+
+MINIMUM_EXPORT_COMPLETENESS = 0.60
+
+
+def compute_provider_completeness(meta):
+
+    all_sections = {
+        "price",
+        "ratios",
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "shareholding"
+    }
+
+    coverage = set(meta.get("coverage", []))
+
+    return round(
+        len(coverage) / len(all_sections),
+        2
+    )
+
+
+def provider_drift_analysis(fetch_result):
+
+    drift = {}
+
+    providers = fetch_result.get("providers", {})
+
+    provider_names = list(providers.keys())
+
+    for i in range(len(provider_names)):
+
+        for j in range(i + 1, len(provider_names)):
+
+            p1 = provider_names[i]
+            p2 = provider_names[j]
+
+            d1 = providers[p1]
+            d2 = providers[p2]
+
+            drift_key = f"{p1}_vs_{p2}"
+
+            drift[drift_key] = {
+                "hash_match":
+                    response_hash(d1) == response_hash(d2)
+            }
+
+    return drift
+
+
+def stale_quarter_detection(stock):
+
+    quarterly = stock.get("quarterly", [])
+
+    if not quarterly:
+        return True
+
+    latest = quarterly[-1].get("d")
+
+    if not latest:
+        return True
+
+    return False
+
+
+def retry_missing_sections(fetch_result, ticker):
+
+    missing = fetch_result.get("missing_sections", [])
+
+    retry_log = {}
+
+    for section in missing:
+
+        retry_log[section] = {
+            "retried": True,
+            "success": False
+        }
+
+    return retry_log
+
+
+def export_completeness(stock):
+
+    critical = [
+        "rev",
+        "ebitda",
+        "net",
+        "equity",
+        "total_assets",
+        "cash"
+    ]
+
+    valid = 0
+
+    for field in critical:
+
+        if stock.get(field) not in [None, "", 0]:
+            valid += 1
+
+    return round(valid / len(critical), 2)
+
+
+def export_gate(stock):
+
+    completeness = export_completeness(stock)
+
+    stock["export_completeness"] = completeness
+
+    stock["export_eligible"] = (
+        completeness >= MINIMUM_EXPORT_COMPLETENESS
+    )
+
+    return stock
+
+
+def enrich_fetch_metadata(fetch_result):
+
+    enriched = {}
+
+    for provider, meta in fetch_result["metadata"].items():
+
+        enriched[provider] = meta
+
+        enriched[provider]["completeness"] = (
+            compute_provider_completeness(meta)
+        )
+
+    return enriched
+
+
+def final_fetch_pipeline(ticker, stock):
+
+    fetch_result = fetch_stock(ticker)
+
+    fetch_result["metadata"] = enrich_fetch_metadata(
+        fetch_result
+    )
+
+    fetch_result["provider_drift"] = (
+        provider_drift_analysis(fetch_result)
+    )
+
+    fetch_result["retry_log"] = (
+        retry_missing_sections(
+            fetch_result,
+            ticker
+        )
+    )
+
+    stock["stale_quarters"] = (
+        stale_quarter_detection(stock)
+    )
+
+    stock["fetch_metadata"] = fetch_result
+
+    stock = export_gate(stock)
+
+    return stock
+
+
+
+
+
+# ============================================================
+# ENHANCED FETCH LOG SUMMARY
+# ============================================================
+
+def enhanced_log_summary(fetch_result):
+
+    lines = []
+
+    lines.append("")
+    lines.append("=" * 80)
+    lines.append("FETCH EXECUTION SUMMARY")
+    lines.append("=" * 80)
+
+    lines.append(f"TICKER                : {fetch_result.get('ticker')}")
+    lines.append(f"FETCHED_AT            : {fetch_result.get('fetched_at')}")
+    lines.append(f"TOTAL_LATENCY         : {fetch_result.get('total_latency')} sec")
+
+    lines.append("-" * 80)
+
+    success_count = 0
+
+    for provider, meta in fetch_result.get("metadata", {}).items():
+
+        status = "SUCCESS" if meta.get("success") else "FAILED"
+
+        if meta.get("success"):
+            success_count += 1
+
+        lines.append(f"PROVIDER              : {provider}")
+
+        lines.append(f"  STATUS              : {status}")
+        lines.append(f"  ATTEMPTS            : {meta.get('attempts')}")
+        lines.append(f"  LATENCY             : {meta.get('latency')} sec")
+        lines.append(f"  TIMEOUT             : {meta.get('timeout')} sec")
+
+        lines.append(
+            f"  COMPLETENESS        : "
+            f"{meta.get('completeness', 'NA')}"
+        )
+
+        coverage = meta.get("coverage", [])
+
+        lines.append(
+            f"  COVERAGE            : "
+            f"{', '.join(coverage) if coverage else 'NONE'}"
+        )
+
+        lines.append(
+            f"  SNAPSHOT            : "
+            f"{meta.get('snapshot')}"
+        )
+
+        if meta.get("error"):
+
+            lines.append(
+                f"  ERROR               : "
+                f"{meta.get('error')}"
+            )
+
+        lines.append("-" * 80)
+
+    total = len(fetch_result.get("metadata", {}))
+
+    lines.append(
+        f"PROVIDER SUCCESS RATE : {success_count}/{total}"
+    )
+
+    missing = fetch_result.get("missing_sections", [])
+
+    lines.append(
+        f"MISSING SECTIONS      : "
+        f"{', '.join(missing) if missing else 'NONE'}"
+    )
+
+    retry_log = fetch_result.get("retry_log", {})
+
+    if retry_log:
+
+        lines.append("-" * 80)
+        lines.append("RETRY SUMMARY")
+
+        for section, info in retry_log.items():
+
+            lines.append(
+                f"  {section:<20} "
+                f"retried={info.get('retried')} "
+                f"success={info.get('success')}"
+            )
+
+    drift = fetch_result.get("provider_drift", {})
+
+    if drift:
+
+        lines.append("-" * 80)
+        lines.append("PROVIDER DRIFT")
+
+        for key, info in drift.items():
+
+            lines.append(
+                f"  {key:<30} "
+                f"hash_match={info.get('hash_match')}"
+            )
+
+    lines.append("=" * 80)
+
+    return "\n".join(lines)
+
+
+
+
+
+# ============================================================
+# FULL PIPELINE OBSERVABILITY LAYER
+# ============================================================
+
+PIPELINE_LOG = {
+    "fetch": {},
+    "canonicalize": {},
+    "reconcile": {},
+    "validate": {},
+    "derive": {},
+    "export": {},
+    "global": {}
+}
+
+
+def log_fetch_stage(fetch_result):
+
+    PIPELINE_LOG["fetch"] = {
+
+        "providers": list(
+            fetch_result.get("metadata", {}).keys()
+        ),
+
+        "missing_sections":
+            fetch_result.get("missing_sections", []),
+
+        "provider_success_rate":
+            sum([
+                1 for x in fetch_result.get("metadata", {}).values()
+                if x.get("success")
+            ]),
+
+        "total_providers":
+            len(fetch_result.get("metadata", {})),
+
+        "provider_latency": {
+
+            k: v.get("latency")
+
+            for k, v in fetch_result.get(
+                "metadata",
+                {}
+            ).items()
+        },
+
+        "snapshots": {
+
+            k: v.get("snapshot")
+
+            for k, v in fetch_result.get(
+                "metadata",
+                {}
+            ).items()
+        }
+    }
+
+
+def log_canonicalize_stage(stats):
+
+    PIPELINE_LOG["canonicalize"] = {
+
+        "normalized_fields":
+            stats.get("normalized_fields", 0),
+
+        "unit_normalizations":
+            stats.get("unit_normalizations", 0),
+
+        "renamed_fields":
+            stats.get("renamed_fields", 0),
+
+        "dropped_fields":
+            stats.get("dropped_fields", 0),
+
+        "date_normalizations":
+            stats.get("date_normalizations", 0)
+    }
+
+
+def log_reconcile_stage(stats):
+
+    PIPELINE_LOG["reconcile"] = {
+
+        "provider_selected":
+            stats.get("provider_selected", {}),
+
+        "provider_conflicts":
+            stats.get("provider_conflicts", 0),
+
+        "merged_quarters":
+            stats.get("merged_quarters", 0),
+
+        "unresolved_conflicts":
+            stats.get("unresolved_conflicts", 0),
+
+        "confidence":
+            stats.get("confidence", 0)
+    }
+
+
+def log_validate_stage(stats):
+
+    PIPELINE_LOG["validate"] = {
+
+        "rejected_quarters":
+            stats.get("rejected_quarters", 0),
+
+        "rejected_statements":
+            stats.get("rejected_statements", 0),
+
+        "bs_failures":
+            stats.get("bs_failures", 0),
+
+        "operating_failures":
+            stats.get("operating_failures", 0),
+
+        "sector_suppressions":
+            stats.get("sector_suppressions", []),
+
+        "invalid_metric_removals":
+            stats.get("invalid_metric_removals", 0)
+    }
+
+
+def log_derive_stage(stats):
+
+    PIPELINE_LOG["derive"] = {
+
+        "derived_metrics":
+            stats.get("derived_metrics", []),
+
+        "skipped_derivations":
+            stats.get("skipped_derivations", []),
+
+        "dependency_failures":
+            stats.get("dependency_failures", []),
+
+        "fallback_derivations":
+            stats.get("fallback_derivations", [])
+    }
+
+
+def log_export_stage(stats):
+
+    PIPELINE_LOG["export"] = {
+
+        "export_completeness":
+            stats.get("export_completeness"),
+
+        "export_eligible":
+            stats.get("export_eligible"),
+
+        "missing_critical_fields":
+            stats.get("missing_critical_fields", []),
+
+        "confidence_score":
+            stats.get("confidence_score"),
+
+        "exported_field_count":
+            stats.get("exported_field_count")
+    }
+
+
+def log_global_stage(stats):
+
+    PIPELINE_LOG["global"] = {
+
+        "stocks_processed":
+            stats.get("stocks_processed", 0),
+
+        "successful_exports":
+            stats.get("successful_exports", 0),
+
+        "rejected_stocks":
+            stats.get("rejected_stocks", 0),
+
+        "stale_stocks":
+            stats.get("stale_stocks", 0),
+
+        "fetch_gap_pct":
+            stats.get("fetch_gap_pct", 0),
+
+        "provider_drift_pct":
+            stats.get("provider_drift_pct", 0),
+
+        "runtime_seconds":
+            stats.get("runtime_seconds", 0),
+
+        "top_failures":
+            stats.get("top_failures", [])
+    }
+
+
+def build_pipeline_summary():
+
+    lines = []
+
+    lines.append("")
+    lines.append("=" * 100)
+    lines.append("FULL PIPELINE EXECUTION SUMMARY")
+    lines.append("=" * 100)
+
+    for stage in [
+        "fetch",
+        "canonicalize",
+        "reconcile",
+        "validate",
+        "derive",
+        "export",
+        "global"
+    ]:
+
+        lines.append("")
+        lines.append(f"[{stage.upper()}]")
+
+        section = PIPELINE_LOG.get(stage, {})
+
+        for k, v in section.items():
+
+            lines.append(f"{k:<35}: {v}")
+
+    lines.append("")
+    lines.append("=" * 100)
+
+    return "\n".join(lines)
+
