@@ -3908,3 +3908,152 @@ if __name__ == "__main__":
         "bharatmarkets v9 stabilized platform loaded"
     )
 
+
+
+
+
+# ============================================================
+# STRICT VALIDATION PATCH
+# ============================================================
+
+CORE_QUARTER_FIELDS = [
+    "rev",
+    "ebitda",
+    "ebit",
+    "net",
+    "eps"
+]
+
+def validate_balance_sheet(q):
+
+    cash = q.get("cash")
+    curr_assets = q.get("curr_assets")
+    total_assets = q.get("total_assets")
+    equity = q.get("equity")
+
+    try:
+
+        if cash and curr_assets and float(cash) > float(curr_assets):
+            return None
+
+        if curr_assets and total_assets and float(curr_assets) > float(total_assets):
+            return None
+
+        if equity and total_assets and float(equity) > float(total_assets):
+            return None
+
+    except:
+        return None
+
+    return q
+
+
+def validate_curr_liab(q):
+
+    cl = q.get("curr_liab")
+    ta = q.get("total_assets")
+
+    try:
+
+        if cl and ta:
+
+            if float(cl) < 10 and float(ta) > 1000:
+                return None
+
+    except:
+        return None
+
+    return q
+
+
+def validate_gross(stock, q):
+
+    gross = q.get("gross")
+    npm = stock.get("npm_pct")
+
+    try:
+
+        if gross is not None and float(gross) < 0:
+
+            if npm and float(npm) > 0:
+                q["gross"] = None
+
+    except:
+        pass
+
+    return q
+
+
+def quarter_score(q):
+
+    valid = 0
+
+    for field in CORE_QUARTER_FIELDS:
+
+        if q.get(field) not in [None, "", 0]:
+            valid += 1
+
+    return valid / len(CORE_QUARTER_FIELDS)
+
+
+def reject_partial_quarters(quarters):
+
+    final = []
+
+    for q in quarters:
+
+        if quarter_score(q) >= 0.5:
+            final.append(q)
+
+    return final
+
+
+def merge_quarters(rows):
+
+    merged = {}
+
+    for row in rows:
+
+        d = row.get("d")
+
+        if not d:
+            continue
+
+        if d not in merged:
+            merged[d] = {}
+
+        merged[d].update(row)
+
+    return list(merged.values())
+
+
+def strict_clean_stock(stock):
+
+    quarters = stock.get("quarterly", [])
+
+    quarters = merge_quarters(quarters)
+
+    cleaned = []
+
+    for q in quarters:
+
+        q = validate_balance_sheet(q)
+
+        if q is None:
+            continue
+
+        q = validate_curr_liab(q)
+
+        if q is None:
+            continue
+
+        q = validate_gross(stock, q)
+
+        cleaned.append(q)
+
+    cleaned = reject_partial_quarters(cleaned)
+
+    stock["quarterly"] = cleaned
+
+    return stock
+
