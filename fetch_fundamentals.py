@@ -1,32 +1,6 @@
 
 # ============================================================
-# CLEAN RAW SOURCING BUILD
-# ============================================================
-# PURPOSE
-# -------
-# Pure raw ingestion layer.
-#
-# ONLY DOES:
-# - fetch raw provider payloads
-# - provider delays
-# - retries
-# - raw payload persistence
-# - field-level extraction
-# - forensic runtime logs
-# - raw audit csv export
-#
-# DOES NOT:
-# - normalize
-# - reconcile
-# - derive
-# - validate
-# - export canonical metrics
-#
-# OUTPUTS
-# -------
-# logs/runtime_fetch.log
-# raw_payloads/<ticker>_<provider>.json
-# raw_fetched_data.csv
+# REAL RAW FETCH INGESTION
 # ============================================================
 
 import os
@@ -35,12 +9,10 @@ import json
 import time
 import random
 import traceback
-from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime, UTC
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-# ============================================================
-# CONFIG
-# ============================================================
 
 RAW_DIR = "raw_payloads"
 LOG_DIR = "logs"
@@ -48,190 +20,43 @@ LOG_DIR = "logs"
 RAW_CSV = "raw_fetched_data.csv"
 RUNTIME_LOG = f"{LOG_DIR}/runtime_fetch.log"
 
-MAX_WORKERS = 2
+os.makedirs(RAW_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 "
+        "(Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/124.0 Safari/537.36"
+    )
+}
 
 PROVIDERS = {
-    "yahoo": {
-        "delay": 2.5,
-        "retries": 2
-    },
     "screener": {
-        "delay": 5.0,
-        "retries": 2
-    },
-    "nse": {
-        "delay": 3.0,
+        "delay": 5,
         "retries": 2
     }
 }
 
-# ============================================================
-# SETUP
-# ============================================================
 
-os.makedirs(RAW_DIR, exist_ok=True)
-os.makedirs(LOG_DIR, exist_ok=True)
+def now():
 
-# ============================================================
-# LOGGING
-# ============================================================
+    return datetime.now(UTC).isoformat()
+
 
 def log(msg):
 
-    ts = datetime.utcnow().isoformat()
-
-    line = f"[{ts}] {msg}"
+    line = f"[{now()}] {msg}"
 
     print(line)
 
     with open(RUNTIME_LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
-# ============================================================
-# RAW SAVE
-# ============================================================
 
-def save_payload(
-    ticker,
-    provider,
-    payload
-):
-
-    path = (
-        f"{RAW_DIR}/"
-        f"{ticker}_{provider}.json"
-    )
-
-    with open(path, "w", encoding="utf-8") as f:
-
-        json.dump(
-            payload,
-            f,
-            indent=2,
-            default=str
-        )
-
-    return path
-
-# ============================================================
-# PROVIDER FETCHERS
-# REPLACE WITH REAL IMPLEMENTATION
-# ============================================================
-
-def fetch_yahoo(ticker):
-
-    return {
-        "ratios": {
-            "roe": 14.44,
-            "roce": 19.76
-        },
-        "income_statement": {
-            "ebitda": 869.88
-        }
-    }
-
-
-def fetch_screener(ticker):
-
-    return {
-        "cashflow": {
-            "cfo": 1200,
-            "fcf": 950
-        },
-        "ratios": {
-            "cur_ratio": 1.22
-        }
-    }
-
-
-def fetch_nse(ticker):
-
-    return {
-        "shareholding": {
-            "promoter": 74.93
-        }
-    }
-
-FETCHERS = {
-    "yahoo": fetch_yahoo,
-    "screener": fetch_screener,
-    "nse": fetch_nse
-}
-
-# ============================================================
-# FORENSIC FIELD LOGGER
-# ============================================================
-
-def extract_fields(
-    ticker,
-    provider,
-    node,
-    statement,
-    quarter,
-    rows,
-    path=""
-):
-
-    if isinstance(node, dict):
-
-        for k, v in node.items():
-
-            next_path = (
-                f"{path}.{k}"
-                if path else k
-            )
-
-            next_quarter = quarter
-
-            if (
-                "202" in str(k)
-                or "Q" in str(k).upper()
-                or "FY" in str(k).upper()
-            ):
-                next_quarter = k
-
-            extract_fields(
-                ticker=ticker,
-                provider=provider,
-                node=v,
-                statement=statement,
-                quarter=next_quarter,
-                rows=rows,
-                path=next_path
-            )
-
-    elif isinstance(node, list):
-
-        for item in node:
-
-            extract_fields(
-                ticker=ticker,
-                provider=provider,
-                node=item,
-                statement=statement,
-                quarter=quarter,
-                rows=rows,
-                path=path
-            )
-
-    else:
-
-        field = path.split(".")[-1]
-
-        rows.append({
-            "ticker": ticker,
-            "provider": provider,
-            "statement": statement,
-            "quarter": quarter,
-            "field": field,
-            "raw_value": node
-        })
-
-# ============================================================
-# RAW CSV EXPORT
-# ============================================================
-
-def append_raw_rows(rows):
+def write_csv_rows(rows):
 
     file_exists = os.path.exists(RAW_CSV)
 
@@ -259,9 +84,176 @@ def append_raw_rows(rows):
 
         writer.writerows(rows)
 
+    size = os.path.getsize(RAW_CSV)
+
+    log(
+        f"[CSV_WRITE] "
+        f"rows={len(rows)} "
+        f"file={RAW_CSV} "
+        f"size={size}"
+    )
+
+
+def save_payload(
+    ticker,
+    provider,
+    payload
+):
+
+    path = (
+        f"{RAW_DIR}/"
+        f"{ticker}_{provider}.json"
+    )
+
+    with open(path, "w", encoding="utf-8") as f:
+
+        json.dump(
+            payload,
+            f,
+            indent=2,
+            default=str
+        )
+
+    return path
+
+
+def flatten(
+    ticker,
+    provider,
+    statement,
+    quarter,
+    obj,
+    rows
+):
+
+    if isinstance(obj, dict):
+
+        for k, v in obj.items():
+
+            next_quarter = quarter
+
+            if (
+                "202" in str(k)
+                or "Q" in str(k).upper()
+                or "FY" in str(k).upper()
+            ):
+                next_quarter = k
+
+            flatten(
+                ticker=ticker,
+                provider=provider,
+                statement=k,
+                quarter=next_quarter,
+                obj=v,
+                rows=rows
+            )
+
+    elif isinstance(obj, list):
+
+        for item in obj:
+
+            flatten(
+                ticker=ticker,
+                provider=provider,
+                statement=statement,
+                quarter=quarter,
+                obj=item,
+                rows=rows
+            )
+
+    else:
+
+        rows.append({
+            "ticker": ticker,
+            "provider": provider,
+            "statement": statement,
+            "quarter": quarter,
+            "field": statement,
+            "raw_value": obj
+        })
+
+
 # ============================================================
-# PROVIDER EXECUTION
+# REAL SCREENER FETCH
 # ============================================================
+
+def fetch_screener(ticker):
+
+    url = f"https://www.screener.in/company/{ticker}/"
+
+    response = requests.get(
+        url,
+        headers=HEADERS,
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
+
+    payload = {
+        "meta": {
+            "ticker": ticker,
+            "url": url,
+            "fetched_at": now(),
+            "status_code": response.status_code
+        },
+        "ratios": {},
+        "top_ratios": {}
+    }
+
+    # --------------------------------------------------------
+    # TOP RATIOS
+    # --------------------------------------------------------
+
+    ratios = soup.select("li.flex.flex-space-between")
+
+    for row in ratios:
+
+        try:
+
+            name = (
+                row.select_one("span.name")
+                .get_text(" ", strip=True)
+                .lower()
+                .replace(" ", "_")
+            )
+
+            value = (
+                row.select_one("span.number")
+                .get_text(" ", strip=True)
+            )
+
+            payload["top_ratios"][name] = value
+
+        except:
+            pass
+
+    # --------------------------------------------------------
+    # QUICK EXTRACTIONS
+    # --------------------------------------------------------
+
+    text = soup.get_text(" ", strip=True)
+
+    if "ROE" in text:
+        payload["ratios"]["roe_detected"] = True
+
+    if "ROCE" in text:
+        payload["ratios"]["roce_detected"] = True
+
+    if "Cash Flow" in text:
+        payload["ratios"]["cashflow_detected"] = True
+
+    return payload
+
+
+FETCHERS = {
+    "screener": fetch_screener
+}
+
 
 def fetch_provider(
     ticker,
@@ -270,31 +262,35 @@ def fetch_provider(
 
     cfg = PROVIDERS[provider]
 
-    retries = cfg["retries"]
-
-    delay = cfg["delay"]
-
-    for attempt in range(1, retries + 2):
+    for attempt in range(1, cfg["retries"] + 2):
 
         try:
 
-            sleep_time = (
-                delay
-                + random.uniform(0.5, 1.5)
+            delay = (
+                cfg["delay"]
+                + random.uniform(1, 3)
             )
-
-            time.sleep(sleep_time)
 
             log(
-                f"[FETCH][{ticker}] "
+                f"[FETCH_START] "
+                f"ticker={ticker} "
                 f"provider={provider} "
                 f"attempt={attempt} "
-                f"delay={round(sleep_time,2)}"
+                f"delay={round(delay,2)}"
             )
+
+            time.sleep(delay)
+
+            started = time.time()
 
             payload = FETCHERS[provider](ticker)
 
-            payload_path = save_payload(
+            latency = round(
+                time.time() - started,
+                2
+            )
+
+            path = save_payload(
                 ticker,
                 provider,
                 payload
@@ -302,18 +298,16 @@ def fetch_provider(
 
             rows = []
 
-            for statement, value in payload.items():
+            flatten(
+                ticker=ticker,
+                provider=provider,
+                statement="root",
+                quarter=None,
+                obj=payload,
+                rows=rows
+            )
 
-                extract_fields(
-                    ticker=ticker,
-                    provider=provider,
-                    node=value,
-                    statement=statement,
-                    quarter=None,
-                    rows=rows
-                )
-
-            append_raw_rows(rows)
+            write_csv_rows(rows)
 
             fields = sorted(
                 list(set([
@@ -323,29 +317,29 @@ def fetch_provider(
             )
 
             log(
-                f"[SUCCESS][{ticker}] "
+                f"[FETCH_SUCCESS] "
+                f"ticker={ticker} "
                 f"provider={provider} "
+                f"latency={latency}s "
                 f"fields={len(fields)} "
-                f"payload={payload_path}"
+                f"rows={len(rows)} "
+                f"path={path}"
             )
 
             log(
-                f"[FIELDS][{ticker}] "
+                f"[FIELDS] "
+                f"ticker={ticker} "
                 f"provider={provider} "
-                f"{','.join(fields)}"
+                f"{','.join(fields[:50])}"
             )
 
-            return {
-                "provider": provider,
-                "success": True,
-                "fields": fields,
-                "rows": len(rows)
-            }
+            return
 
         except Exception as e:
 
             log(
-                f"[ERROR][{ticker}] "
+                f"[FETCH_ERROR] "
+                f"ticker={ticker} "
                 f"provider={provider} "
                 f"attempt={attempt} "
                 f"error={str(e)}"
@@ -353,60 +347,45 @@ def fetch_provider(
 
             log(traceback.format_exc())
 
-    return {
-        "provider": provider,
-        "success": False
-    }
+    log(
+        f"[FETCH_FAILED] "
+        f"ticker={ticker} "
+        f"provider={provider}"
+    )
 
-# ============================================================
-# MAIN TICKER FLOW
-# ============================================================
 
 def fetch_ticker(ticker):
 
     log("=" * 80)
     log(f"[START] ticker={ticker}")
 
-    results = []
+    with ThreadPoolExecutor(max_workers=1) as executor:
 
-    with ThreadPoolExecutor(
-        max_workers=MAX_WORKERS
-    ) as executor:
-
-        futures = {
-
+        futures = [
             executor.submit(
                 fetch_provider,
                 ticker,
                 provider
-            ): provider
-
-            for provider in PROVIDERS
-        }
+            )
+            for provider in FETCHERS
+        ]
 
         for future in as_completed(futures):
-
-            results.append(
-                future.result()
-            )
+            future.result()
 
     log(f"[END] ticker={ticker}")
 
-    return results
-
-# ============================================================
-# ENTRYPOINT
-# ============================================================
 
 if __name__ == "__main__":
 
     tickers = [
         "BDL",
-        "GRSE"
+        "GRSE",
+        "HAL"
     ]
 
     for ticker in tickers:
 
         fetch_ticker(ticker)
 
-    log("RAW FETCH INGESTION COMPLETE")
+    log("RAW FETCH COMPLETE")
