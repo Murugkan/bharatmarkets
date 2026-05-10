@@ -14,11 +14,27 @@ from bs4 import BeautifulSoup
 from datetime import datetime, UTC
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-RAW_DIR = "raw_payloads"
-LOG_DIR = "logs"
+BASE_DIR = os.getcwd()
 
-RAW_CSV = "raw_fetched_data.csv"
-RUNTIME_LOG = f"{LOG_DIR}/runtime_fetch.log"
+RAW_DIR = os.path.join(
+    BASE_DIR,
+    "raw_payloads"
+)
+
+LOG_DIR = os.path.join(
+    BASE_DIR,
+    "logs"
+)
+
+RAW_CSV = os.path.join(
+    BASE_DIR,
+    "raw_fetched_data.csv"
+)
+
+RUNTIME_LOG = os.path.join(
+    LOG_DIR,
+    "runtime_fetch.log"
+)
 
 os.makedirs(RAW_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
