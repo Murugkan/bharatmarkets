@@ -4,8 +4,8 @@ import requests
 import yfinance as yf
 
 from bs4 import BeautifulSoup
-from datetime import datetime, UTC
 from pathlib import Path
+from datetime import datetime, UTC
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -46,27 +46,6 @@ def save_json(path, data):
             indent=2,
             ensure_ascii=False
         )
-
-
-def clean(value):
-
-    if value in [None, "", "-"]:
-        return None
-
-    try:
-
-        value = (
-            str(value)
-            .replace(",", "")
-            .replace("%", "")
-            .strip()
-        )
-
-        return float(value)
-
-    except Exception:
-
-        return value
 
 
 symbol_map = load_json(
@@ -137,245 +116,136 @@ def ensure_stock(store, symbol):
     return store[ticker]
 
 
-def append_observation(stock, observation):
+def add_observation(stock, provider, payload):
 
-    stock["observations"].append(
-        observation
+    stock["observations"].append({
+
+        "provider": provider,
+
+        "fetched_at": now(),
+
+        "raw": payload
+    })
+
+
+def fetch_yahoo_payload(ticker):
+
+    yahoo_symbol = resolve_yahoo_symbol(
+        ticker
     )
 
+    stock = yf.Ticker(
+        yahoo_symbol
+    )
 
-def fetch_yahoo(ticker):
-
-    observations = []
+    payload = {}
 
     try:
 
-        yahoo_symbol = resolve_yahoo_symbol(
-            ticker
-        )
-
-        stock = yf.Ticker(
-            yahoo_symbol
-        )
-
-        info = stock.info
-
-        observations.append({
-
-            "provider": "yahoo_finance",
-
-            "fetched_at": now(),
-
-            "raw": {
-
-                "symbol": yahoo_symbol,
-
-                "info": info
-            }
-        })
-
-        try:
-
-            hist = stock.history(
-                period="1y",
-                interval="1d"
-            )
-
-            if not hist.empty:
-
-                rows = []
-
-                for idx, row in hist.iterrows():
-
-                    rows.append({
-
-                        "date": str(idx.date()),
-
-                        "open": clean(
-                            row.get("Open")
-                        ),
-
-                        "high": clean(
-                            row.get("High")
-                        ),
-
-                        "low": clean(
-                            row.get("Low")
-                        ),
-
-                        "close": clean(
-                            row.get("Close")
-                        ),
-
-                        "volume": clean(
-                            row.get("Volume")
-                        )
-                    })
-
-                observations.append({
-
-                    "provider": "yahoo_finance",
-
-                    "fetched_at": now(),
-
-                    "raw": {
-
-                        "price_history": rows
-                    }
-                })
-
-        except Exception:
-            pass
+        payload["info"] = stock.info
 
     except Exception as e:
 
-        observations.append({
+        payload["info_error"] = str(e)
 
-            "provider": "yahoo_finance",
+    try:
 
-            "fetched_at": now(),
-
-            "raw": {
-
-                "error": str(e)
-            }
-        })
-
-    return observations
-
-
-def parse_table(table):
-
-    rows = table.select("tr")
-
-    if len(rows) < 2:
-        return []
-
-    columns = []
-
-    for col in rows[0].select("th,td")[1:]:
-
-        columns.append(
-            col.get_text(strip=True)
+        hist = stock.history(
+            period="1y",
+            interval="1d"
         )
 
-    parsed = []
+        if not hist.empty:
 
-    for period in columns:
+            payload["history_1y_1d"] = (
+                hist
+                .reset_index()
+                .to_dict("records")
+            )
 
-        parsed.append({
-            "period": period
-        })
+    except Exception as e:
 
-    for row in rows[1:]:
+        payload["history_error"] = str(e)
 
-        cols = row.select("th,td")
+    return payload
 
-        if len(cols) < 2:
+
+def extract_html_table(table):
+
+    rows = []
+
+    for tr in table.select("tr"):
+
+        cols = tr.select("th,td")
+
+        row = []
+
+        for col in cols:
+
+            row.append(
+                col.get_text(" ", strip=True)
+            )
+
+        if row:
+            rows.append(row)
+
+    return rows
+
+
+def fetch_screener_payload(ticker):
+
+    screener_symbol = resolve_screener_symbol(
+        ticker
+    )
+
+    url = (
+        f"https://www.screener.in/company/"
+        f"{screener_symbol}/"
+    )
+
+    response = requests.get(
+        url,
+        headers=HEADERS,
+        timeout=30
+    )
+
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
+
+    payload = {
+        "url": url,
+        "tables": []
+    }
+
+    for section in soup.select("section"):
+
+        heading = section.select_one("h2")
+
+        table = section.select_one(
+            "table"
+        )
+
+        if not table:
             continue
 
-        label = (
-            cols[0]
-            .get_text(" ", strip=True)
-            .lower()
-        )
+        payload["tables"].append({
 
-        values = cols[1:]
+            "section": (
+                heading.get_text(
+                    " ",
+                    strip=True
+                )
+                if heading else None
+            ),
 
-        for idx, value_col in enumerate(values):
-
-            if idx >= len(parsed):
-                continue
-
-            parsed[idx][label] = clean(
-                value_col.get_text(strip=True)
-            )
-
-    return parsed
-
-
-def fetch_screener(ticker):
-
-    observations = []
-
-    try:
-
-        screener_symbol = resolve_screener_symbol(
-            ticker
-        )
-
-        url = (
-            f"https://www.screener.in/company/"
-            f"{screener_symbol}/"
-        )
-
-        response = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=30
-        )
-
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
-
-        tables_dump = {}
-
-        for section in soup.select("section"):
-
-            heading = section.select_one("h2")
-
-            if not heading:
-                continue
-
-            section_name = (
-                heading
-                .get_text(" ", strip=True)
-                .lower()
-            )
-
-            table = section.select_one(
-                "table.data-table"
-            )
-
-            if not table:
-                continue
-
-            parsed = parse_table(
+            "rows": extract_html_table(
                 table
             )
-
-            if parsed:
-
-                tables_dump[
-                    section_name
-                ] = parsed
-
-        observations.append({
-
-            "provider": "screener",
-
-            "fetched_at": now(),
-
-            "raw": tables_dump
         })
 
-    except Exception as e:
-
-        observations.append({
-
-            "provider": "screener",
-
-            "fetched_at": now(),
-
-            "raw": {
-
-                "error": str(e)
-            }
-        })
-
-    return observations
+    return payload
 
 
 def main():
@@ -387,15 +257,13 @@ def main():
 
     start = time.time()
 
-    store = load_json(
-        RAW_FILE
-    )
+    store = {}
 
-    master = load_json(
+    symbols_master = load_json(
         SYMBOLS_FILE
     )
 
-    symbols = master.get(
+    symbols = symbols_master.get(
         "symbols",
         []
     )
@@ -417,26 +285,48 @@ def main():
             symbol
         )
 
-        yahoo_observations = fetch_yahoo(
-            ticker
-        )
+        try:
 
-        for observation in yahoo_observations:
-
-            append_observation(
-                stock,
-                observation
+            yahoo_payload = fetch_yahoo_payload(
+                ticker
             )
 
-        screener_observations = fetch_screener(
-            ticker
-        )
-
-        for observation in screener_observations:
-
-            append_observation(
+            add_observation(
                 stock,
-                observation
+                "yahoo_finance",
+                yahoo_payload
+            )
+
+        except Exception as e:
+
+            add_observation(
+                stock,
+                "yahoo_finance",
+                {
+                    "error": str(e)
+                }
+            )
+
+        try:
+
+            screener_payload = fetch_screener_payload(
+                ticker
+            )
+
+            add_observation(
+                stock,
+                "screener",
+                screener_payload
+            )
+
+        except Exception as e:
+
+            add_observation(
+                stock,
+                "screener",
+                {
+                    "error": str(e)
+                }
             )
 
         processed += 1
