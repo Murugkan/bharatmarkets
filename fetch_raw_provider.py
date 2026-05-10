@@ -1,3 +1,4 @@
+
 import requests
 import yfinance as yf
 
@@ -9,41 +10,29 @@ HEADERS = {
 }
 
 
-def fetch_yahoo_payload(ticker, yahoo_symbol):
+def fetch_yahoo_history(ticker):
 
-    payload = {}
+    symbol = f"{ticker}.NS"
 
-    stock = yf.Ticker(
-        yahoo_symbol
+    stock = yf.Ticker(symbol)
+
+    hist = stock.history(
+        period="1y",
+        interval="1d"
     )
 
-    try:
-
-        payload["info"] = stock.info
-
-    except Exception as e:
-
-        payload["info_error"] = str(e)
-
-    try:
-
-        hist = stock.history(
-            period="1y",
-            interval="1d"
-        )
-
-        payload["history_1y_1d"] = (
-            hist
-            .reset_index()
-            .astype(str)
-            .to_dict("records")
-        )
-
-    except Exception as e:
-
-        payload["history_error"] = str(e)
-
-    return payload
+    return {
+        "provider": "yahoo_finance",
+        "provider_symbol": symbol,
+        "raw": {
+            "info": stock.info,
+            "history_1y_1d": (
+                hist.reset_index()
+                .astype(str)
+                .to_dict("records")
+            )
+        }
+    }
 
 
 def extract_table(table):
@@ -54,13 +43,10 @@ def extract_table(table):
 
         cols = tr.select("th,td")
 
-        row = []
-
-        for col in cols:
-
-            row.append(
-                col.get_text(" ", strip=True)
-            )
+        row = [
+            col.get_text(" ", strip=True)
+            for col in cols
+        ]
 
         if row:
             rows.append(row)
@@ -68,16 +54,9 @@ def extract_table(table):
     return rows
 
 
-def fetch_screener_payload(ticker, screener_symbol):
+def fetch_screener_history(ticker):
 
-    payload = {}
-
-    url = (
-        f"https://www.screener.in/company/"
-        f"{screener_symbol}/"
-    )
-
-    payload["url"] = url
+    url = f"https://www.screener.in/company/{ticker}/"
 
     response = requests.get(
         url,
@@ -90,7 +69,7 @@ def fetch_screener_payload(ticker, screener_symbol):
         "html.parser"
     )
 
-    payload["tables"] = []
+    tables = []
 
     for section in soup.select("section"):
 
@@ -101,19 +80,19 @@ def fetch_screener_payload(ticker, screener_symbol):
 
         heading = section.select_one("h2")
 
-        payload["tables"].append({
-
+        tables.append({
             "section": (
-                heading.get_text(
-                    " ",
-                    strip=True
-                )
+                heading.get_text(" ", strip=True)
                 if heading else None
             ),
-
-            "rows": extract_table(
-                table
-            )
+            "rows": extract_table(table)
         })
 
-    return payload
+    return {
+        "provider": "screener",
+        "provider_symbol": ticker,
+        "raw": {
+            "url": url,
+            "tables": tables
+        }
+    }
