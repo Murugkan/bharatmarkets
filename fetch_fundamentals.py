@@ -5092,3 +5092,51 @@ if __name__ == "__main__":
     }
 
     export_raw_fetch_dump(sample_payloads)
+
+
+
+
+# ============================================================
+# FULL RAW STOCK PRESERVATION FIX
+# ============================================================
+
+from copy import deepcopy
+
+
+def build_canonical_stock(provider_data):
+
+    # preserve richest raw provider payload
+    stock = {}
+
+    ranked = sorted(
+        provider_data.items(),
+        key=lambda x: PROVIDER_PRIORITY.get(x[0], 999)
+    )
+
+    for provider, payload in ranked:
+
+        if isinstance(payload, dict) and payload:
+
+            stock = deepcopy(payload)
+            break
+
+    # reconcile canonical fields without destroying raw fields
+    all_fields = []
+
+    for section_fields in CANONICAL_FIELDS.values():
+
+        all_fields.extend(section_fields)
+
+    for field in all_fields:
+
+        value = reconcile_metric(
+            field,
+            provider_data
+        )
+
+        if value not in [None, "", []]:
+
+            stock[field] = value
+
+    return stock
+
