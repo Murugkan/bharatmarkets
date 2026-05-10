@@ -1,6 +1,3 @@
-# Updated fetch_raw_fundamentals.py
-# Integrated symbol_map.json resolution from existing fetch_fundamentals.py logic
-
 import json
 import time
 import requests
@@ -19,11 +16,9 @@ SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 RAW_FILE = BASE_DIR / "raw_fundamentals.json"
 LOG_FILE = BASE_DIR / "runtime.log"
 
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
-
 
 WARNINGS = 0
 ERRORS = 0
@@ -35,6 +30,10 @@ NSE_SUCCESS = 0
 
 def now():
     return datetime.now(UTC).isoformat()
+
+
+def reset_log():
+    LOG_FILE.write_text("", encoding="utf-8")
 
 
 def log(level, msg):
@@ -97,7 +96,6 @@ def ensure_stock(store, symbol):
                 "sector": symbol.get("sector"),
                 "industry": symbol.get("industry")
             },
-
             "market_data_history": [],
             "ratio_history": [],
             "ownership_history": [],
@@ -149,26 +147,21 @@ def append_if_changed(history, provider, values):
     )
 
 
-symbol_map = load_json(
-    SYMBOL_MAP_FILE
-)
+symbol_map = load_json(SYMBOL_MAP_FILE)
 
-OVERRIDES = symbol_map.get(
-    "overrides",
-    {}
-)
+OVERRIDES = symbol_map.get("overrides", {})
+SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
+DELISTED = set(symbol_map.get("delisted", []))
 
-SCREENER_OVERRIDES = symbol_map.get(
-    "screener_overrides",
-    {}
-)
 
-DELISTED = set(
-    symbol_map.get(
-        "delisted",
-        []
+def is_bond(symbol):
+
+    ticker = symbol.get("ticker", "")
+
+    return (
+        ticker.startswith("SGB")
+        or "BOND" in ticker.upper()
     )
-)
 
 
 def resolve_yahoo_symbol(ticker):
@@ -195,16 +188,9 @@ def fetch_yahoo(ticker):
 
     global YAHOO_SUCCESS
 
-    if ticker in DELISTED:
-        return {}
+    yahoo_symbol = resolve_yahoo_symbol(ticker)
 
-    yahoo_symbol = resolve_yahoo_symbol(
-        ticker
-    )
-
-    info = yf.Ticker(
-        yahoo_symbol
-    ).info
+    info = yf.Ticker(yahoo_symbol).info
 
     YAHOO_SUCCESS += 1
 
@@ -223,17 +209,11 @@ def fetch_yahoo(ticker):
 def extract_percent(text):
 
     try:
-
-        value = (
-            text
-            .replace("%", "")
-            .split()[-1]
+        return float(
+            text.replace("%", "").split()[-1]
         )
 
-        return float(value)
-
     except Exception:
-
         return None
 
 
@@ -241,9 +221,7 @@ def fetch_screener(ticker):
 
     global SCREENER_SUCCESS
 
-    screener_symbol = resolve_screener_symbol(
-        ticker
-    )
+    screener_symbol = resolve_screener_symbol(ticker)
 
     response = requests.get(
         f"https://www.screener.in/company/{screener_symbol}/",
@@ -262,10 +240,7 @@ def fetch_screener(ticker):
         "li.flex.flex-space-between"
     ):
 
-        text = li.get_text(
-            " ",
-            strip=True
-        )
+        text = li.get_text(" ", strip=True)
 
         if "ROCE" in text:
             ratios["roce"] = extract_percent(text)
@@ -281,9 +256,6 @@ def fetch_screener(ticker):
 def fetch_nse(ticker):
 
     global NSE_SUCCESS
-
-    if ticker in DELISTED:
-        return {}
 
     session = requests.Session()
 
@@ -302,15 +274,8 @@ def fetch_nse(ticker):
 
     data = response.json()
 
-    meta = data.get(
-        "metadata",
-        {}
-    )
-
-    industry = data.get(
-        "industryInfo",
-        {}
-    )
+    meta = data.get("metadata", {})
+    industry = data.get("industryInfo", {})
 
     NSE_SUCCESS += 1
 
@@ -325,16 +290,13 @@ def fetch_nse(ticker):
 
 def main():
 
+    reset_log()
+
     start = time.time()
 
-    master = load_json(
-        SYMBOLS_FILE
-    )
+    master = load_json(SYMBOLS_FILE)
 
-    symbols = master.get(
-        "symbols",
-        []
-    )
+    symbols = master.get("symbols", [])
 
     store = {}
 
@@ -354,15 +316,22 @@ def main():
 
             try:
 
-                yahoo = fetch_yahoo(
-                    ticker
-                )
+                if is_bond(symbol):
 
-                append_if_changed(
-                    stock["market_data_history"],
-                    "yahoo_finance",
-                    yahoo
-                )
+                    warn(
+                        f"ticker={ticker} "
+                        f"provider=yahoo skipped=bond"
+                    )
+
+                elif ticker not in DELISTED:
+
+                    yahoo = fetch_yahoo(ticker)
+
+                    append_if_changed(
+                        stock["market_data_history"],
+                        "yahoo_finance",
+                        yahoo
+                    )
 
             except Exception as e:
 
@@ -374,15 +343,15 @@ def main():
 
             try:
 
-                screener = fetch_screener(
-                    ticker
-                )
+                if ticker not in DELISTED:
 
-                append_if_changed(
-                    stock["ratio_history"],
-                    "screener",
-                    screener
-                )
+                    screener = fetch_screener(ticker)
+
+                    append_if_changed(
+                        stock["ratio_history"],
+                        "screener",
+                        screener
+                    )
 
             except Exception as e:
 
@@ -394,15 +363,15 @@ def main():
 
             try:
 
-                nse = fetch_nse(
-                    ticker
-                )
+                if ticker not in DELISTED:
 
-                append_if_changed(
-                    stock["ownership_history"],
-                    "nse",
-                    nse
-                )
+                    nse = fetch_nse(ticker)
+
+                    append_if_changed(
+                        stock["ownership_history"],
+                        "nse",
+                        nse
+                    )
 
             except Exception as e:
 
@@ -423,10 +392,7 @@ def main():
                 f"fatal={str(e)}"
             )
 
-    save_json(
-        RAW_FILE,
-        store
-    )
+    save_json(RAW_FILE, store)
 
     duration = round(
         time.time() - start,
