@@ -1,7 +1,9 @@
 import json
 import time
+import requests
 import yfinance as yf
 
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
 
@@ -14,6 +16,10 @@ SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 RAW_FILE = BASE_DIR / "raw_fundamentals.json"
 LOG_FILE = BASE_DIR / "runtime.log"
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
 
 def now():
     return datetime.now(UTC).isoformat()
@@ -25,14 +31,23 @@ def today():
 
 def clean_num(value, digits=2):
 
-    if value is None:
+    if value in [None, "", "-"]:
         return None
 
     try:
+
+        value = (
+            str(value)
+            .replace(",", "")
+            .replace("%", "")
+            .strip()
+        )
+
         return round(float(value), digits)
 
     except Exception:
-        return value
+
+        return None
 
 
 def load_json(path):
@@ -50,6 +65,7 @@ def load_json(path):
 def save_json(path, data):
 
     with open(path, "w", encoding="utf-8") as f:
+
         json.dump(
             data,
             f,
@@ -64,6 +80,11 @@ symbol_map = load_json(
 
 OVERRIDES = symbol_map.get(
     "overrides",
+    {}
+)
+
+SCREENER_OVERRIDES = symbol_map.get(
+    "screener_overrides",
     {}
 )
 
@@ -87,17 +108,16 @@ def resolve_yahoo_symbol(ticker):
     return f"{ticker}.NS"
 
 
-def is_bond(symbol):
+def resolve_screener_symbol(ticker):
 
-    ticker = symbol.get(
-        "ticker",
-        ""
+    mapped = SCREENER_OVERRIDES.get(
+        ticker
     )
 
-    return (
-        ticker.startswith("SGB")
-        or "BOND" in ticker.upper()
-    )
+    if mapped:
+        return mapped
+
+    return ticker
 
 
 def ensure_stock(store, symbol):
@@ -111,43 +131,11 @@ def ensure_stock(store, symbol):
             "metadata": {
 
                 "ticker": ticker,
-
                 "name": symbol.get("name"),
-
                 "isin": symbol.get("isin"),
-
                 "sector": symbol.get("sector"),
-
                 "industry": symbol.get("industry"),
-
-                "sub_industry": None,
-
-                "market_type": "EQUITY",
-
-                "listing_date": None,
-
-                "exchange": "NSE",
-
-                "instrument_type": "STOCK",
-
-                "face_value": None,
-
-                "shares_outstanding": None,
-
-                "index_membership": {
-
-                    "nifty_50": False,
-
-                    "nifty_next_50": False,
-
-                    "nifty_100": False,
-
-                    "nifty_200": False,
-
-                    "nifty_500": False,
-
-                    "sectoral": []
-                }
+                "updated_at": now()
             },
 
             "price_history": [],
@@ -162,7 +150,14 @@ def ensure_stock(store, symbol):
 
             "segment_history": [],
 
-            "capital_allocation_history": []
+            "capital_allocation_history": [],
+
+            "provider_raw": {
+
+                "yahoo_finance": {},
+                "screener": {},
+                "nse": {}
+            }
         }
 
     return store[ticker]
@@ -176,7 +171,6 @@ def append_daily(history, row):
     if history and history[-1].get("d") == row.get("d"):
 
         history[-1] = row
-
         return
 
     history.append(row)
@@ -257,12 +251,6 @@ def fetch_price_snapshot(ticker):
             "volume"
         ),
 
-        "delivery_volume": None,
-
-        "delivery_pct": None,
-
-        "vwap": None,
-
         "market_cap": info.get(
             "marketCap"
         ),
@@ -289,104 +277,158 @@ def fetch_price_snapshot(ticker):
 
         "w52_low": clean_num(
             info.get("fiftyTwoWeekLow")
-        ),
-
-        "ath": None,
-
-        "atl": None,
-
-        "distance_from_52w_high_pct": None,
-
-        "distance_from_52w_low_pct": None
+        )
     }
 
 
-def build_empty_quarter():
+def parse_table(table):
 
-    return {
+    rows = table.select("tr")
 
-        "quarter": None,
+    if len(rows) < 2:
+        return []
 
-        "income_statement": {
+    headers = []
 
-            "revenue": None,
-            "gross_profit": None,
-            "ebitda": None,
-            "ebit": None,
-            "pbt": None,
-            "net_profit": None,
-            "eps": None,
-            "interest": None,
-            "depreciation": None,
-            "tax": None
-        },
+    for th in rows[0].select("th,td")[1:]:
 
-        "margins": {
+        headers.append(
+            th.get_text(strip=True)
+        )
 
-            "gross_margin_pct": None,
-            "ebitda_margin_pct": None,
-            "ebit_margin_pct": None,
-            "net_margin_pct": None
-        },
+    parsed = []
 
-        "balance_sheet": {
+    for i in range(len(headers)):
 
-            "cash": None,
-            "debt": None,
-            "net_debt": None,
-            "equity": None,
-            "book_value": None,
-            "inventory": None,
-            "receivables": None,
-            "payables": None,
-            "current_assets": None,
-            "current_liabilities": None,
-            "total_assets": None
-        },
+        parsed.append({
+            "quarter": headers[i]
+        })
 
-        "cashflow": {
+    for row in rows[1:]:
 
-            "operating_cashflow": None,
-            "capex": None,
-            "free_cashflow": None
-        },
+        cols = row.select("th,td")
 
-        "operations": {
+        if len(cols) < 2:
+            continue
 
-            "employee_count": None,
-            "utilization_pct": None,
-            "capacity": None,
-            "capacity_expansion": None
-        },
+        label = cols[0].get_text(
+            " ",
+            strip=True
+        )
 
-        "orders": {
+        values = cols[1:]
 
-            "order_book": None,
-            "order_inflow": None,
-            "pipeline": None
-        },
+        for i, col in enumerate(values):
 
-        "segment_mix": {},
+            if i >= len(parsed):
+                continue
 
-        "geography_mix": {},
+            parsed[i][label] = clean_num(
+                col.get_text(strip=True)
+            )
 
-        "shareholding": {
+    return parsed
 
-            "promoter_pct": None,
-            "fii_pct": None,
-            "dii_pct": None,
-            "public_pct": None
-        },
 
-        "derived": {
+def fetch_screener_quarterly(ticker):
 
-            "roe_pct": None,
-            "roce_pct": None,
-            "asset_turnover": None,
-            "debt_to_equity": None,
-            "working_capital_days": None
-        }
-    }
+    screener_symbol = resolve_screener_symbol(
+        ticker
+    )
+
+    response = requests.get(
+        f"https://www.screener.in/company/{screener_symbol}/",
+        headers=HEADERS,
+        timeout=30
+    )
+
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
+
+    result = []
+
+    sections = soup.select("section")
+
+    for section in sections:
+
+        title_el = section.select_one("h2")
+
+        if not title_el:
+            continue
+
+        title = title_el.get_text(
+            " ",
+            strip=True
+        ).lower()
+
+        if "quarterly results" not in title:
+            continue
+
+        table = section.select_one(
+            "table.data-table"
+        )
+
+        if not table:
+            continue
+
+        parsed = parse_table(table)
+
+        for q in parsed:
+
+            row = {
+
+                "quarter": q.get(
+                    "quarter"
+                ),
+
+                "income_statement": {
+
+                    "revenue": q.get("Sales"),
+
+                    "ebitda": q.get(
+                        "Operating Profit"
+                    ),
+
+                    "net_profit": q.get(
+                        "Net Profit"
+                    ),
+
+                    "eps": q.get("EPS in Rs")
+                },
+
+                "margins": {
+
+                    "ebitda_margin_pct": q.get(
+                        "OPM %"
+                    ),
+
+                    "net_margin_pct": q.get(
+                        "NPM %"
+                    )
+                },
+
+                "balance_sheet": {},
+
+                "cashflow": {},
+
+                "operations": {},
+
+                "orders": {},
+
+                "segment_mix": {},
+
+                "geography_mix": {},
+
+                "shareholding": {},
+
+                "derived": {}
+            }
+
+            result.append(row)
+
+    return result
 
 
 def main():
@@ -409,11 +451,12 @@ def main():
 
     store = {}
 
-    processed = 0
-
     for symbol in symbols:
 
         ticker = symbol["ticker"]
+
+        if ticker in DELISTED:
+            continue
 
         stock = ensure_stock(
             store,
@@ -422,21 +465,39 @@ def main():
 
         try:
 
-            if (
-                ticker not in DELISTED
-                and not is_bond(symbol)
-            ):
+            price = fetch_price_snapshot(
+                ticker
+            )
 
-                snapshot = fetch_price_snapshot(
-                    ticker
+            append_daily(
+                stock["price_history"],
+                price
+            )
+
+            stock["provider_raw"][
+                "yahoo_finance"
+            ] = price
+
+        except Exception:
+            pass
+
+        try:
+
+            quarterly = fetch_screener_quarterly(
+                ticker
+            )
+
+            stock[
+                "quarterly_history"
+            ] = quarterly
+
+            stock["provider_raw"][
+                "screener"
+            ] = {
+                "quarterly_count": len(
+                    quarterly
                 )
-
-                append_daily(
-                    stock["price_history"],
-                    snapshot
-                )
-
-            processed += 1
+            }
 
         except Exception:
             pass
@@ -454,10 +515,10 @@ def main():
     summary = f"""
 
 ==================================================
-FOUNDATION FREEZE SUMMARY
+RAW FUNDAMENTALS SUMMARY
 ==================================================
 
-Stocks Processed : {processed}
+Stocks Processed : {len(symbols)}
 
 Runtime Seconds  : {runtime}
 
