@@ -1,7 +1,4 @@
-
-# ============================================================
-# REAL RAW FETCH INGESTION
-# ============================================================
+# fetch_fundamentals.py
 
 import os
 import csv
@@ -10,31 +7,18 @@ import time
 import random
 import traceback
 import requests
+
 from bs4 import BeautifulSoup
 from datetime import datetime, UTC
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BASE_DIR = os.getcwd()
 
-RAW_DIR = os.path.join(
-    BASE_DIR,
-    "raw_payloads"
-)
+RAW_DIR = os.path.join(BASE_DIR, "raw_payloads")
+LOG_DIR = os.path.join(BASE_DIR, "logs")
 
-LOG_DIR = os.path.join(
-    BASE_DIR,
-    "logs"
-)
-
-RAW_CSV = os.path.join(
-    BASE_DIR,
-    "raw_fetched_data.csv"
-)
-
-RUNTIME_LOG = os.path.join(
-    LOG_DIR,
-    "runtime_fetch.log"
-)
+RAW_CSV = os.path.join(BASE_DIR, "raw_fetched_data.csv")
+RUNTIME_LOG = os.path.join(LOG_DIR, "runtime_fetch.log")
 
 os.makedirs(RAW_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -56,11 +40,8 @@ PROVIDERS = {
     }
 }
 
-
 def now():
-
     return datetime.now(UTC).isoformat()
-
 
 def log(msg):
 
@@ -71,6 +52,32 @@ def log(msg):
     with open(RUNTIME_LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
+def verify_file(path, label):
+
+    exists = os.path.exists(path)
+
+    size = os.path.getsize(path) if exists else 0
+
+    log(
+        f"[{label}_VERIFY] "
+        f"exists={exists} "
+        f"size={size} "
+        f"path={os.path.abspath(path)}"
+    )
+
+def save_payload(ticker, provider, payload):
+
+    path = os.path.join(
+        RAW_DIR,
+        f"{ticker}_{provider}.json"
+    )
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, default=str)
+
+    verify_file(path, "PAYLOAD")
+
+    return path
 
 def write_csv_rows(rows):
 
@@ -100,38 +107,13 @@ def write_csv_rows(rows):
 
         writer.writerows(rows)
 
-    size = os.path.getsize(RAW_CSV)
+    verify_file(RAW_CSV, "CSV")
 
     log(
         f"[CSV_WRITE] "
         f"rows={len(rows)} "
-        f"file={RAW_CSV} "
-        f"size={size}"
+        f"file={RAW_CSV}"
     )
-
-
-def save_payload(
-    ticker,
-    provider,
-    payload
-):
-
-    path = (
-        f"{RAW_DIR}/"
-        f"{ticker}_{provider}.json"
-    )
-
-    with open(path, "w", encoding="utf-8") as f:
-
-        json.dump(
-            payload,
-            f,
-            indent=2,
-            default=str
-        )
-
-    return path
-
 
 def flatten(
     ticker,
@@ -188,11 +170,6 @@ def flatten(
             "raw_value": obj
         })
 
-
-# ============================================================
-# REAL SCREENER FETCH
-# ============================================================
-
 def fetch_screener(ticker):
 
     url = f"https://www.screener.in/company/{ticker}/"
@@ -211,79 +188,130 @@ def fetch_screener(ticker):
     )
 
     payload = {
-        "meta": {
-            "ticker": ticker,
-            "url": url,
-            "fetched_at": now(),
-            "status_code": response.status_code
-        },
-        "ratios": {},
-        "top_ratios": {}
+        "meta": {},
+        "top_ratios": {},
+        "quarterly": []
     }
 
-    # --------------------------------------------------------
-    # TOP RATIOS
-    # --------------------------------------------------------
+    payload["meta"] = {
+        "ticker": ticker,
+        "url": url,
+        "status_code": response.status_code,
+        "fetched_at": now()
+    }
 
-    ratios = soup.select("li.flex.flex-space-between")
+    ratio_blocks = soup.select("ul#top-ratios li")
 
-    for row in ratios:
+    for row in ratio_blocks:
 
         try:
 
-            name = (
-                row.select_one("span.name")
+            name_el = row.select_one("span.name")
+            value_el = row.select_one("span.number")
+
+            if not name_el or not value_el:
+                continue
+
+            key = (
+                name_el
                 .get_text(" ", strip=True)
                 .lower()
                 .replace(" ", "_")
+                .replace("%", "pct")
+                .replace("/", "_")
             )
 
-            value = (
-                row.select_one("span.number")
-                .get_text(" ", strip=True)
-            )
+            value = value_el.get_text(" ", strip=True)
 
-            payload["top_ratios"][name] = value
+            payload["top_ratios"][key] = value
 
-        except:
+        except Exception:
             pass
 
-    # --------------------------------------------------------
-    # QUICK EXTRACTIONS
-    # --------------------------------------------------------
+    quarterly_tables = soup.select("section#quarters table")
 
-    text = soup.get_text(" ", strip=True)
+    if quarterly_tables:
 
-    if "ROE" in text:
-        payload["ratios"]["roe_detected"] = True
+        table = quarterly_tables[0]
 
-    if "ROCE" in text:
-        payload["ratios"]["roce_detected"] = True
+        headers = []
 
-    if "Cash Flow" in text:
-        payload["ratios"]["cashflow_detected"] = True
+        header_row = table.select("tr")[0]
+
+        for th in header_row.select("th"):
+            headers.append(
+                th.get_text(" ", strip=True)
+            )
+
+        rows = table.select("tr")[1:]
+
+        quarterly_data = {}
+
+        for row in rows:
+
+            cols = row.select("td")
+
+            if len(cols) < 2:
+                continue
+
+            metric = (
+                cols[0]
+                .get_text(" ", strip=True)
+                .lower()
+                .replace(" ", "_")
+                .replace("%", "pct")
+            )
+
+            for idx in range(1, len(cols)):
+
+                if idx >= len(headers):
+                    continue
+
+                quarter = headers[idx]
+
+                value = cols[idx].get_text(
+                    " ",
+                    strip=True
+                )
+
+                quarterly_data.setdefault(
+                    quarter,
+                    {}
+                )
+
+                quarterly_data[
+                    quarter
+                ][metric] = value
+
+        for quarter, values in quarterly_data.items():
+
+            q = {
+                "quarter": quarter
+            }
+
+            q.update(values)
+
+            payload["quarterly"].append(q)
 
     return payload
-
 
 FETCHERS = {
     "screener": fetch_screener
 }
 
-
-def fetch_provider(
-    ticker,
-    provider
-):
+def fetch_provider(ticker, provider):
 
     cfg = PROVIDERS[provider]
 
-    for attempt in range(1, cfg["retries"] + 2):
+    retries = cfg["retries"]
+    delay = cfg["delay"]
+
+    for attempt in range(1, retries + 2):
 
         try:
 
-            delay = (
-                cfg["delay"]
+            sleep_time = (
+                delay
                 + random.uniform(1, 3)
             )
 
@@ -292,10 +320,10 @@ def fetch_provider(
                 f"ticker={ticker} "
                 f"provider={provider} "
                 f"attempt={attempt} "
-                f"delay={round(delay,2)}"
+                f"delay={round(sleep_time,2)}"
             )
 
-            time.sleep(delay)
+            time.sleep(sleep_time)
 
             started = time.time()
 
@@ -346,7 +374,7 @@ def fetch_provider(
                 f"[FIELDS] "
                 f"ticker={ticker} "
                 f"provider={provider} "
-                f"{','.join(fields[:50])}"
+                f"{','.join(fields[:100])}"
             )
 
             return
@@ -369,7 +397,6 @@ def fetch_provider(
         f"provider={provider}"
     )
 
-
 def fetch_ticker(ticker):
 
     log("=" * 80)
@@ -391,7 +418,6 @@ def fetch_ticker(ticker):
 
     log(f"[END] ticker={ticker}")
 
-
 if __name__ == "__main__":
 
     tickers = [
@@ -401,77 +427,6 @@ if __name__ == "__main__":
     ]
 
     for ticker in tickers:
-
         fetch_ticker(ticker)
 
     log("RAW FETCH COMPLETE")
-
-
-
-
-# ============================================================
-# FILESYSTEM PERSISTENCE VERIFICATION
-# ============================================================
-
-def verify_file(path, label):
-
-    exists = os.path.exists(path)
-
-    size = (
-        os.path.getsize(path)
-        if exists else 0
-    )
-
-    abs_path = os.path.abspath(path)
-
-    log(
-        f"[{label}_VERIFY] "
-        f"exists={exists} "
-        f"size={size} "
-        f"path={abs_path}"
-    )
-
-    return exists
-
-
-# ------------------------------------------------------------
-# PATCH CSV WRITER
-# ------------------------------------------------------------
-
-_original_write_csv_rows = write_csv_rows
-
-def write_csv_rows(rows):
-
-    _original_write_csv_rows(rows)
-
-    verify_file(
-        RAW_CSV,
-        "CSV"
-    )
-
-
-# ------------------------------------------------------------
-# PATCH PAYLOAD SAVE
-# ------------------------------------------------------------
-
-_original_save_payload = save_payload
-
-def save_payload(
-    ticker,
-    provider,
-    payload
-):
-
-    path = _original_save_payload(
-        ticker,
-        provider,
-        payload
-    )
-
-    verify_file(
-        path,
-        "PAYLOAD"
-    )
-
-    return path
-
