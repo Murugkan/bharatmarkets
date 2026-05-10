@@ -1,20 +1,7 @@
-import json
-import time
 import requests
 import yfinance as yf
 
 from bs4 import BeautifulSoup
-from pathlib import Path
-from datetime import datetime, UTC
-
-
-BASE_DIR = Path(__file__).resolve().parent
-
-RAW_FILE = BASE_DIR / "raw_fundamentals.json"
-SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
-SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
-
-# runtime.log intentionally NOT persisted to git
 
 
 HEADERS = {
@@ -22,126 +9,21 @@ HEADERS = {
 }
 
 
-def now():
-    return datetime.now(UTC).isoformat()
+def fetch_yahoo_payload(ticker, yahoo_symbol):
 
-
-def load_json(path):
-
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    except Exception:
-        return {}
-
-
-def save_json(path, data):
-
-    with open(path, "w", encoding="utf-8") as f:
-
-        json.dump(
-            data,
-            f,
-            indent=2,
-            ensure_ascii=False
-        )
-
-
-symbol_map = load_json(
-    SYMBOL_MAP_FILE
-)
-
-YAHOO_OVERRIDES = symbol_map.get(
-    "overrides",
-    {}
-)
-
-SCREENER_OVERRIDES = symbol_map.get(
-    "screener_overrides",
-    {}
-)
-
-DELISTED = set(
-    symbol_map.get(
-        "delisted",
-        []
-    )
-)
-
-
-def is_bond(ticker):
-
-    t = str(ticker).upper().strip()
-
-    return (
-        t.startswith("SGB")
-        or "BOND" in t
-        or "GS" in t
-    )
-
-
-def resolve_yahoo_symbol(ticker):
-
-    return YAHOO_OVERRIDES.get(
-        ticker,
-        f"{ticker}.NS"
-    )
-
-
-def resolve_screener_symbol(ticker):
-
-    return SCREENER_OVERRIDES.get(
-        ticker,
-        ticker
-    )
-
-
-def ensure_stock(store, symbol):
-
-    ticker = symbol["ticker"]
-
-    if ticker not in store:
-
-        store[ticker] = {
-
-            "ticker": ticker,
-
-            "name": symbol.get("name"),
-
-            "isin": symbol.get("isin"),
-
-            "observations": []
-        }
-
-    return store[ticker]
-
-
-def add_observation(stock, provider, payload):
-
-    stock["observations"].append({
-
-        "provider": provider,
-
-        "fetched_at": now(),
-
-        "raw": payload
-    })
-
-
-def fetch_yahoo_payload(ticker):
-
-    yahoo_symbol = resolve_yahoo_symbol(
-        ticker
-    )
+    payload = {}
 
     stock = yf.Ticker(
         yahoo_symbol
     )
 
-    payload = {}
+    try:
 
-    payload["info"] = stock.info
+        payload["info"] = stock.info
+
+    except Exception as e:
+
+        payload["info_error"] = str(e)
 
     try:
 
@@ -150,14 +32,12 @@ def fetch_yahoo_payload(ticker):
             interval="1d"
         )
 
-        if not hist.empty:
-
-            payload["history_1y_1d"] = (
-                hist
-                .reset_index()
-                .astype(str)
-                .to_dict("records")
-            )
+        payload["history_1y_1d"] = (
+            hist
+            .reset_index()
+            .astype(str)
+            .to_dict("records")
+        )
 
     except Exception as e:
 
@@ -166,7 +46,7 @@ def fetch_yahoo_payload(ticker):
     return payload
 
 
-def extract_html_table(table):
+def extract_table(table):
 
     rows = []
 
@@ -188,16 +68,16 @@ def extract_html_table(table):
     return rows
 
 
-def fetch_screener_payload(ticker):
+def fetch_screener_payload(ticker, screener_symbol):
 
-    screener_symbol = resolve_screener_symbol(
-        ticker
-    )
+    payload = {}
 
     url = (
         f"https://www.screener.in/company/"
         f"{screener_symbol}/"
     )
+
+    payload["url"] = url
 
     response = requests.get(
         url,
@@ -210,10 +90,7 @@ def fetch_screener_payload(ticker):
         "html.parser"
     )
 
-    payload = {
-        "url": url,
-        "tables": []
-    }
+    payload["tables"] = []
 
     for section in soup.select("section"):
 
@@ -227,127 +104,16 @@ def fetch_screener_payload(ticker):
         payload["tables"].append({
 
             "section": (
-                heading.get_text(" ", strip=True)
+                heading.get_text(
+                    " ",
+                    strip=True
+                )
                 if heading else None
             ),
 
-            "rows": extract_html_table(
+            "rows": extract_table(
                 table
             )
         })
 
     return payload
-
-
-def main():
-
-    start = time.time()
-
-    store = {}
-
-    symbols_master = load_json(
-        SYMBOLS_FILE
-    )
-
-    symbols = symbols_master.get(
-        "symbols",
-        []
-    )
-
-    processed = 0
-    skipped_bonds = 0
-
-    for symbol in symbols:
-
-        ticker = str(
-            symbol["ticker"]
-        ).strip()
-
-        if ticker in DELISTED:
-            continue
-
-        if is_bond(ticker):
-
-            skipped_bonds += 1
-            continue
-
-        stock = ensure_stock(
-            store,
-            symbol
-        )
-
-        try:
-
-            yahoo_payload = fetch_yahoo_payload(
-                ticker
-            )
-
-            add_observation(
-                stock,
-                "yahoo_finance",
-                yahoo_payload
-            )
-
-        except Exception as e:
-
-            add_observation(
-                stock,
-                "yahoo_finance",
-                {
-                    "error": str(e)
-                }
-            )
-
-        try:
-
-            screener_payload = fetch_screener_payload(
-                ticker
-            )
-
-            add_observation(
-                stock,
-                "screener",
-                screener_payload
-            )
-
-        except Exception as e:
-
-            add_observation(
-                stock,
-                "screener",
-                {
-                    "error": str(e)
-                }
-            )
-
-        processed += 1
-
-    save_json(
-        RAW_FILE,
-        store
-    )
-
-    runtime = round(
-        time.time() - start,
-        2
-    )
-
-    print(f"""
-==================================================
-RAW FUNDAMENTALS SUMMARY
-==================================================
-
-Stocks Processed : {processed}
-Bonds Skipped    : {skipped_bonds}
-
-Runtime Seconds  : {runtime}
-
-Updated At       : {now()}
-
-==================================================
-""")
-
-
-if __name__ == "__main__":
-
-    main()
