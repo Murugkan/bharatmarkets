@@ -1,284 +1,208 @@
 import json
-import traceback
+import requests
+import yfinance as yf
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
 
 BASE_DIR = Path(__file__).resolve().parent
 
-MASTER_SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
-RAW_FUNDAMENTALS_FILE = BASE_DIR / "raw_fundamentals.json"
-FUNDAMENTALS_FILE = BASE_DIR / "fundamentals.json"
-GUIDANCE_FILE = BASE_DIR / "guidance.json"
-RUNTIME_LOG_FILE = BASE_DIR / "runtime.log"
-RAW_PAYLOADS_DIR = BASE_DIR / "raw_payloads"
+SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
+RAW_FILE = BASE_DIR / "raw_fundamentals.json"
+LOG_FILE = BASE_DIR / "runtime.log"
 
-RAW_PAYLOADS_DIR.mkdir(exist_ok=True)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
 
 
 def now():
     return datetime.now(UTC).isoformat()
 
 
-def log(level, message):
+def log(level, msg):
 
-    line = f"[{now()}] [{level}] {message}"
+    line = f"[{now()}] [{level}] {msg}"
 
     print(line)
 
-    with open(
-        RUNTIME_LOG_FILE,
-        "a",
-        encoding="utf-8"
-    ) as f:
-
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
 def load_json(path):
 
     try:
-
-        with open(
-            path,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
     except Exception:
-
         return {}
 
 
 def save_json(path, data):
 
-    with open(
-        path,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            data,
-            f,
-            indent=2,
-            ensure_ascii=False
-        )
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def save_payload(
-    ticker,
-    provider,
-    payload
-):
-
-    path = (
-        RAW_PAYLOADS_DIR /
-        f"{ticker}_{provider}.json"
-    )
-
-    save_json(path, payload)
-
-    log(
-        "INFO",
-        f"PAYLOAD_SAVED "
-        f"ticker={ticker} "
-        f"provider={provider} "
-        f"path={path}"
-    )
-
-
-def ensure_stock(
-    raw_store,
-    symbol
-):
+def ensure_stock(store, symbol):
 
     ticker = symbol["ticker"]
 
-    if ticker not in raw_store:
+    if ticker not in store:
 
-        raw_store[ticker] = {
-            "metadata": {
-                "ticker": ticker,
-                "name": symbol.get("name"),
-                "isin": symbol.get("isin"),
-                "sector": symbol.get("sector"),
-                "industry": symbol.get("industry"),
-                "updated_at": now()
-            },
-
+        store[ticker] = {
+            "name": symbol.get("name"),
+            "sector": symbol.get("sector"),
             "market_data_history": [],
             "ratio_history": [],
             "ownership_history": [],
-            "quarterly_history": [],
-            "fetch_events": []
+            "quarterly_history": []
         }
 
-    return raw_store[ticker]
+    return store[ticker]
 
 
-def append_history(
-    stock,
-    section,
-    provider,
-    values,
-    timestamp=None
-):
+def append_history(section, provider, values, ts=None):
 
-    stock[section].append({
-        "timestamp": timestamp or now(),
-        "provider": provider,
-        "values": values
-    })
+    return {
+        "ts": ts or now(),
+        "p": provider,
+        "v": values
+    }
 
 
-def append_fetch_event(
-    stock,
-    provider,
-    success,
-    error=None
-):
+def fetch_yahoo(ticker):
 
-    stock["fetch_events"].append({
-        "timestamp": now(),
-        "provider": provider,
-        "success": success,
-        "error": error
-    })
+    yf_ticker = yf.Ticker(f"{ticker}.NS")
+
+    info = yf_ticker.info
+
+    return {
+        "ltp": info.get("currentPrice"),
+        "market_cap": info.get("marketCap"),
+        "pe": info.get("trailingPE"),
+        "pb": info.get("priceToBook"),
+        "roe": info.get("returnOnEquity"),
+        "beta": info.get("beta")
+    }
 
 
-def ingest_screener(
-    stock,
-    payload
-):
+def fetch_screener(ticker):
 
-    top_ratios = payload.get(
-        "top_ratios",
-        {}
+    url = f"https://www.screener.in/company/{ticker}/"
+
+    response = requests.get(
+        url,
+        headers=HEADERS,
+        timeout=20
     )
 
-    if top_ratios:
-
-        append_history(
-            stock,
-            "ratio_history",
-            "screener",
-            top_ratios
-        )
-
-    quarterly = payload.get(
-        "quarterly",
-        []
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
     )
 
-    for row in quarterly:
+    ratios = {}
 
-        append_history(
-            stock,
-            "quarterly_history",
-            "screener",
-            row,
-            row.get("quarter")
-        )
+    for li in soup.select("li.flex.flex-space-between"):
+
+        text = li.get_text(" ", strip=True)
+
+        if "ROCE" in text:
+            ratios["roce_raw"] = text
+
+        if "ROE" in text:
+            ratios["roe_raw"] = text
+
+    return {
+        "top_ratios": ratios,
+        "raw_html_size": len(response.text)
+    }
+
+
+def fetch_nse(ticker):
+
+    url = (
+        "https://www.nseindia.com/api/"
+        f"quote-equity?symbol={ticker}"
+    )
+
+    session = requests.Session()
+
+    session.get(
+        "https://www.nseindia.com",
+        headers=HEADERS,
+        timeout=20
+    )
+
+    response = session.get(
+        url,
+        headers=HEADERS,
+        timeout=20
+    )
+
+    data = response.json()
+
+    return {
+        "industry": data.get("industryInfo", {}),
+        "metadata": data.get("metadata", {})
+    }
 
 
 def main():
 
-    master = load_json(
-        MASTER_SYMBOLS_FILE
-    )
+    master = load_json(SYMBOLS_FILE)
 
-    symbols = master.get(
-        "symbols",
-        []
-    )
+    symbols = master.get("symbols", [])
 
-    raw_store = load_json(
-        RAW_FUNDAMENTALS_FILE
-    )
+    store = load_json(RAW_FILE)
 
-    success_count = 0
-    failed_count = 0
+    success = 0
+    failed = 0
 
     for symbol in symbols:
 
         ticker = symbol["ticker"]
 
-        log(
-            "INFO",
-            f"START ticker={ticker}"
-        )
+        log("INFO", f"START ticker={ticker}")
 
-        stock = ensure_stock(
-            raw_store,
-            symbol
-        )
+        stock = ensure_stock(store, symbol)
 
         try:
 
-            yahoo_payload = {
-                "ltp": None,
-                "market_cap": None
-            }
+            yahoo = fetch_yahoo(ticker)
 
-            screener_payload = {
-                "top_ratios": {},
-                "quarterly": []
-            }
-
-            nse_payload = {
-                "promoter": None
-            }
-
-            save_payload(
-                ticker,
-                "yahoo_finance",
-                yahoo_payload
+            stock["market_data_history"].append(
+                append_history(
+                    "market",
+                    "yahoo_finance",
+                    yahoo
+                )
             )
 
-            save_payload(
-                ticker,
-                "screener",
-                screener_payload
+            screener = fetch_screener(ticker)
+
+            stock["ratio_history"].append(
+                append_history(
+                    "ratio",
+                    "screener",
+                    screener
+                )
             )
 
-            save_payload(
-                ticker,
-                "nse",
-                nse_payload
+            nse = fetch_nse(ticker)
+
+            stock["ownership_history"].append(
+                append_history(
+                    "ownership",
+                    "nse",
+                    nse
+                )
             )
 
-            append_history(
-                stock,
-                "market_data_history",
-                "yahoo_finance",
-                yahoo_payload
-            )
-
-            ingest_screener(
-                stock,
-                screener_payload
-            )
-
-            append_history(
-                stock,
-                "ownership_history",
-                "nse",
-                nse_payload
-            )
-
-            append_fetch_event(
-                stock,
-                "all",
-                True
-            )
-
-            stock["metadata"][
-                "updated_at"
-            ] = now()
-
-            success_count += 1
+            success += 1
 
             log(
                 "INFO",
@@ -287,36 +211,18 @@ def main():
 
         except Exception as e:
 
-            failed_count += 1
-
-            append_fetch_event(
-                stock,
-                "all",
-                False,
-                str(e)
-            )
+            failed += 1
 
             log(
                 "ERROR",
-                f"FAILED ticker={ticker} "
-                f"error={str(e)}"
+                f"FAILED ticker={ticker} error={str(e)}"
             )
 
-            log(
-                "ERROR",
-                traceback.format_exc()
-            )
-
-    save_json(
-        RAW_FUNDAMENTALS_FILE,
-        raw_store
-    )
+    save_json(RAW_FILE, store)
 
     log(
         "INFO",
-        f"SUMMARY total={len(symbols)} "
-        f"success={success_count} "
-        f"failed={failed_count}"
+        f"SUMMARY success={success} failed={failed}"
     )
 
 
