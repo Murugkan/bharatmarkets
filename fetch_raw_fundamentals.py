@@ -1,9 +1,7 @@
 import json
 import time
-import requests
 import yfinance as yf
 
-from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
 
@@ -16,18 +14,6 @@ SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 RAW_FILE = BASE_DIR / "raw_fundamentals.json"
 LOG_FILE = BASE_DIR / "runtime.log"
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
-
-
-WARNINGS = 0
-ERRORS = 0
-
-YAHOO_SUCCESS = 0
-SCREENER_SUCCESS = 0
-NSE_SUCCESS = 0
-
 
 def now():
     return datetime.now(UTC).isoformat()
@@ -37,36 +23,16 @@ def today():
     return datetime.now(UTC).date().isoformat()
 
 
-def reset_log():
-    LOG_FILE.write_text("", encoding="utf-8")
+def clean_num(value, digits=2):
 
+    if value is None:
+        return None
 
-def log(level, msg):
+    try:
+        return round(float(value), digits)
 
-    line = f"[{level}] {msg}"
-
-    print(line)
-
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
-
-
-def warn(msg):
-
-    global WARNINGS
-
-    WARNINGS += 1
-
-    log("WARN", msg)
-
-
-def error(msg):
-
-    global ERRORS
-
-    ERRORS += 1
-
-    log("ERROR", msg)
+    except Exception:
+        return value
 
 
 def load_json(path):
@@ -101,30 +67,12 @@ OVERRIDES = symbol_map.get(
     {}
 )
 
-SCREENER_OVERRIDES = symbol_map.get(
-    "screener_overrides",
-    {}
-)
-
 DELISTED = set(
     symbol_map.get(
         "delisted",
         []
     )
 )
-
-
-def is_bond(symbol):
-
-    ticker = symbol.get(
-        "ticker",
-        ""
-    )
-
-    return (
-        ticker.startswith("SGB")
-        or "BOND" in ticker.upper()
-    )
 
 
 def resolve_yahoo_symbol(ticker):
@@ -139,16 +87,17 @@ def resolve_yahoo_symbol(ticker):
     return f"{ticker}.NS"
 
 
-def resolve_screener_symbol(ticker):
+def is_bond(symbol):
 
-    mapped = SCREENER_OVERRIDES.get(
-        ticker
+    ticker = symbol.get(
+        "ticker",
+        ""
     )
 
-    if mapped:
-        return mapped
-
-    return ticker
+    return (
+        ticker.startswith("SGB")
+        or "BOND" in ticker.upper()
+    )
 
 
 def ensure_stock(store, symbol):
@@ -169,76 +118,71 @@ def ensure_stock(store, symbol):
 
                 "sector": symbol.get("sector"),
 
-                "industry": symbol.get("industry")
+                "industry": symbol.get("industry"),
+
+                "sub_industry": None,
+
+                "market_type": "EQUITY",
+
+                "listing_date": None,
+
+                "exchange": "NSE",
+
+                "instrument_type": "STOCK",
+
+                "face_value": None,
+
+                "shares_outstanding": None,
+
+                "index_membership": {
+
+                    "nifty_50": False,
+
+                    "nifty_next_50": False,
+
+                    "nifty_100": False,
+
+                    "nifty_200": False,
+
+                    "nifty_500": False,
+
+                    "sectoral": []
+                }
             },
 
             "price_history": [],
 
             "quarterly_history": [],
 
-            "ratio_history": [],
+            "guidance_history": [],
 
-            "ownership_history": []
+            "insights_history": [],
+
+            "orderbook_history": [],
+
+            "segment_history": [],
+
+            "capital_allocation_history": []
         }
 
     return store[ticker]
 
 
-def append_history(history, row, key):
+def append_daily(history, row):
 
     if not row:
         return
 
-    if history:
+    if history and history[-1].get("d") == row.get("d"):
 
-        last_key = history[-1].get(key)
+        history[-1] = row
 
-        if last_key == row.get(key):
-
-            history[-1] = row
-
-            return
+        return
 
     history.append(row)
 
 
-def append_if_changed(history, provider, values):
-
-    if not values:
-        return
-
-    clean_values = {
-        k: v
-        for k, v in values.items()
-        if v not in [None, "", [], {}]
-    }
-
-    if not clean_values:
-        return
-
-    latest = None
-
-    for row in reversed(history):
-
-        if row.get("p") == provider:
-
-            latest = row.get("v", {})
-
-            break
-
-    if latest == clean_values:
-        return
-
-    history.append({
-        "ts": now(),
-        "p": provider,
-        "v": clean_values
-    })
-
-
 def fetch_price_snapshot(ticker):
-
-    global YAHOO_SUCCESS
 
     yahoo_symbol = resolve_yahoo_symbol(
         ticker
@@ -249,8 +193,6 @@ def fetch_price_snapshot(ticker):
     )
 
     info = stock.info
-
-    YAHOO_SUCCESS += 1
 
     current_price = info.get(
         "currentPrice"
@@ -283,164 +225,176 @@ def fetch_price_snapshot(ticker):
 
         "d": today(),
 
-        "symbol": yahoo_symbol,
+        "open": clean_num(
+            info.get("open")
+        ),
 
-        "close": current_price,
+        "high": clean_num(
+            info.get("dayHigh")
+        ),
 
-        "prev_close": previous_close,
+        "low": clean_num(
+            info.get("dayLow")
+        ),
 
-        "change": change,
+        "close": clean_num(
+            current_price
+        ),
 
-        "change_pct": change_pct,
+        "prev_close": clean_num(
+            previous_close
+        ),
 
-        "open": info.get("open"),
+        "change": clean_num(
+            change
+        ),
 
-        "high": info.get("dayHigh"),
+        "change_pct": clean_num(
+            change_pct
+        ),
 
-        "low": info.get("dayLow"),
+        "volume": info.get(
+            "volume"
+        ),
 
-        "volume": info.get("volume"),
+        "delivery_volume": None,
+
+        "delivery_pct": None,
+
+        "vwap": None,
 
         "market_cap": info.get(
             "marketCap"
         ),
 
-        "pe": info.get(
-            "trailingPE"
+        "pe": clean_num(
+            info.get("trailingPE")
         ),
 
-        "pb": info.get(
-            "priceToBook"
+        "pb": clean_num(
+            info.get("priceToBook")
         ),
 
-        "dividend_yield": info.get(
-            "dividendYield"
+        "dividend_yield": clean_num(
+            info.get("dividendYield")
         ),
 
-        "beta": info.get(
-            "beta"
-        )
+        "beta": clean_num(
+            info.get("beta")
+        ),
+
+        "w52_high": clean_num(
+            info.get("fiftyTwoWeekHigh")
+        ),
+
+        "w52_low": clean_num(
+            info.get("fiftyTwoWeekLow")
+        ),
+
+        "ath": None,
+
+        "atl": None,
+
+        "distance_from_52w_high_pct": None,
+
+        "distance_from_52w_low_pct": None
     }
 
 
-def extract_percent(text):
-
-    try:
-
-        value = (
-            text
-            .replace("%", "")
-            .split()[-1]
-        )
-
-        return float(value)
-
-    except Exception:
-
-        return None
-
-
-def fetch_screener_ratios(ticker):
-
-    global SCREENER_SUCCESS
-
-    screener_symbol = resolve_screener_symbol(
-        ticker
-    )
-
-    response = requests.get(
-        f"https://www.screener.in/company/{screener_symbol}/",
-        headers=HEADERS,
-        timeout=20
-    )
-
-    soup = BeautifulSoup(
-        response.text,
-        "html.parser"
-    )
-
-    ratios = {}
-
-    for li in soup.select(
-        "li.flex.flex-space-between"
-    ):
-
-        text = li.get_text(
-            " ",
-            strip=True
-        )
-
-        if "ROCE" in text:
-            ratios["roce"] = extract_percent(text)
-
-        elif "ROE" in text:
-            ratios["roe"] = extract_percent(text)
-
-    SCREENER_SUCCESS += 1
-
-    return ratios
-
-
-def fetch_nse_metadata(ticker):
-
-    global NSE_SUCCESS
-
-    session = requests.Session()
-
-    session.get(
-        "https://www.nseindia.com",
-        headers=HEADERS,
-        timeout=20
-    )
-
-    response = session.get(
-        "https://www.nseindia.com/api/"
-        f"quote-equity?symbol={ticker}",
-        headers=HEADERS,
-        timeout=20
-    )
-
-    data = response.json()
-
-    meta = data.get(
-        "metadata",
-        {}
-    )
-
-    industry = data.get(
-        "industryInfo",
-        {}
-    )
-
-    NSE_SUCCESS += 1
+def build_empty_quarter():
 
     return {
 
-        "symbol": meta.get(
-            "symbol"
-        ),
+        "quarter": None,
 
-        "industry": industry.get(
-            "industry"
-        ),
+        "income_statement": {
 
-        "sector": industry.get(
-            "sector"
-        ),
+            "revenue": None,
+            "gross_profit": None,
+            "ebitda": None,
+            "ebit": None,
+            "pbt": None,
+            "net_profit": None,
+            "eps": None,
+            "interest": None,
+            "depreciation": None,
+            "tax": None
+        },
 
-        "basic_industry": industry.get(
-            "basicIndustry"
-        ),
+        "margins": {
 
-        "listing_date": meta.get(
-            "listingDate"
-        )
+            "gross_margin_pct": None,
+            "ebitda_margin_pct": None,
+            "ebit_margin_pct": None,
+            "net_margin_pct": None
+        },
+
+        "balance_sheet": {
+
+            "cash": None,
+            "debt": None,
+            "net_debt": None,
+            "equity": None,
+            "book_value": None,
+            "inventory": None,
+            "receivables": None,
+            "payables": None,
+            "current_assets": None,
+            "current_liabilities": None,
+            "total_assets": None
+        },
+
+        "cashflow": {
+
+            "operating_cashflow": None,
+            "capex": None,
+            "free_cashflow": None
+        },
+
+        "operations": {
+
+            "employee_count": None,
+            "utilization_pct": None,
+            "capacity": None,
+            "capacity_expansion": None
+        },
+
+        "orders": {
+
+            "order_book": None,
+            "order_inflow": None,
+            "pipeline": None
+        },
+
+        "segment_mix": {},
+
+        "geography_mix": {},
+
+        "shareholding": {
+
+            "promoter_pct": None,
+            "fii_pct": None,
+            "dii_pct": None,
+            "public_pct": None
+        },
+
+        "derived": {
+
+            "roe_pct": None,
+            "roce_pct": None,
+            "asset_turnover": None,
+            "debt_to_equity": None,
+            "working_capital_days": None
+        }
     }
 
 
 def main():
 
-    reset_log()
+    Path(LOG_FILE).write_text(
+        "",
+        encoding="utf-8"
+    )
 
     start = time.time()
 
@@ -455,8 +409,7 @@ def main():
 
     store = {}
 
-    success = 0
-    failed = 0
+    processed = 0
 
     for symbol in symbols:
 
@@ -474,76 +427,19 @@ def main():
                 and not is_bond(symbol)
             ):
 
-                try:
+                snapshot = fetch_price_snapshot(
+                    ticker
+                )
 
-                    price_snapshot = fetch_price_snapshot(
-                        ticker
-                    )
+                append_daily(
+                    stock["price_history"],
+                    snapshot
+                )
 
-                    append_history(
-                        stock["price_history"],
-                        price_snapshot,
-                        "d"
-                    )
+            processed += 1
 
-                except Exception as e:
-
-                    warn(
-                        f"ticker={ticker} "
-                        f"provider=yahoo "
-                        f"error={str(e)}"
-                    )
-
-                try:
-
-                    ratios = fetch_screener_ratios(
-                        ticker
-                    )
-
-                    append_if_changed(
-                        stock["ratio_history"],
-                        "screener",
-                        ratios
-                    )
-
-                except Exception as e:
-
-                    warn(
-                        f"ticker={ticker} "
-                        f"provider=screener "
-                        f"error={str(e)}"
-                    )
-
-                try:
-
-                    nse = fetch_nse_metadata(
-                        ticker
-                    )
-
-                    append_if_changed(
-                        stock["ownership_history"],
-                        "nse",
-                        nse
-                    )
-
-                except Exception as e:
-
-                    warn(
-                        f"ticker={ticker} "
-                        f"provider=nse "
-                        f"error={str(e)}"
-                    )
-
-            success += 1
-
-        except Exception as e:
-
-            failed += 1
-
-            error(
-                f"ticker={ticker} "
-                f"fatal={str(e)}"
-            )
+        except Exception:
+            pass
 
     save_json(
         RAW_FILE,
@@ -558,22 +454,14 @@ def main():
     summary = f"""
 
 ==================================================
-RAW FUNDAMENTALS SUMMARY
+FOUNDATION FREEZE SUMMARY
 ==================================================
 
-Total Stocks       : {len(symbols)}
-Successful         : {success}
-Failed             : {failed}
-Warnings           : {WARNINGS}
+Stocks Processed : {processed}
 
-Yahoo Success      : {YAHOO_SUCCESS}
-Screener Success   : {SCREENER_SUCCESS}
-NSE Success        : {NSE_SUCCESS}
+Runtime Seconds  : {runtime}
 
-Runtime Seconds    : {runtime}
-
-Output File        : raw_fundamentals.json
-Updated At         : {now()}
+Updated At       : {now()}
 
 ==================================================
 """
