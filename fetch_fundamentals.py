@@ -3910,441 +3910,458 @@ if __name__ == "__main__":
 
 
 
-
-
 # ============================================================
-# BIG BANG STATEMENT ENGINE
+# INTEGRATED FETCH LAYER
 # ============================================================
 
+
+# fetch_layer_full.py
+# ============================================================
+# PURE FETCH LAYER
+# ============================================================
+# RESPONSIBILITIES:
+# - provider registry
+# - parallel fetch
+# - retries
+# - timeout handling
+# - raw snapshot persistence
+# - provider coverage tracking
+# - fetch metadata
+# - clear fetch logs
+#
+# DOES NOT:
+# - reconcile providers
+# - derive metrics
+# - validate statements
+# - export canonical data
+# ============================================================
+
+import os
+import json
+import time
+import hashlib
+import traceback
+import requests
 import concurrent.futures
-from collections import defaultdict
+
+from datetime import datetime
 
 
-CANONICAL_FIELDS = {
-    "income_statement": [
-        "rev",
-        "gross",
-        "ebitda",
-        "da",
-        "ebit",
-        "interest_exp",
-        "net",
-        "eps",
-        "opm",
-        "npm"
-    ],
-
-    "balance_sheet": [
-        "cash",
-        "inventory",
-        "curr_assets",
-        "curr_liab",
-        "debt",
-        "equity",
-        "total_assets",
-        "working_capital"
-    ],
-
-    "cashflow": [
-        "cfo",
-        "capex",
-        "fcf",
-        "div_paid",
-        "net_cf"
-    ],
-
-    "ratios": [
-        "roe",
-        "roce",
-        "roic",
-        "roa",
-        "cur_ratio",
-        "quick_ratio",
-        "debt_eq",
-        "interest_coverage"
-    ]
-}
+BASE_DIR = "raw_snapshots"
 
 
-PROVIDER_PRIORITY = {
-    "statement_parser": 1,
-    "screener": 2,
-    "yahoo": 3
-}
+PROVIDERS = {
 
-
-SECTOR_RULES = {
-
-    "Financial Services": {
-        "suppress": [
-            "inventory",
-            "fcf",
-            "cur_ratio",
-            "quick_ratio"
+    "yahoo": {
+        "timeout": 15,
+        "retries": 2,
+        "supports": [
+            "price",
+            "ratios",
+            "income_statement",
+            "balance_sheet",
+            "cash_flow"
         ]
     },
 
-    "Technology": {
-        "suppress": [
-            "inventory"
+    "screener": {
+        "timeout": 20,
+        "retries": 2,
+        "supports": [
+            "ratios",
+            "income_statement",
+            "balance_sheet",
+            "cash_flow",
+            "shareholding"
+        ]
+    },
+
+    "statement_parser": {
+        "timeout": 25,
+        "retries": 1,
+        "supports": [
+            "income_statement",
+            "balance_sheet",
+            "cash_flow"
+        ]
+    },
+
+    "nse": {
+        "timeout": 15,
+        "retries": 2,
+        "supports": [
+            "price",
+            "shareholding"
         ]
     }
 }
 
 
-def fetch_provider_parallel(ticker):
+# ============================================================
+# UTILITIES
+# ============================================================
 
-    providers = {}
+def ensure_dir(path):
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    os.makedirs(path, exist_ok=True)
 
-        futures = {}
+
+def utc_now():
+
+    return datetime.utcnow().isoformat()
+
+
+def response_hash(payload):
+
+    try:
+
+        raw = json.dumps(payload, sort_keys=True)
+
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    except:
+
+        return None
+
+
+# ============================================================
+# RAW SNAPSHOT STORAGE
+# ============================================================
+
+def save_raw_snapshot(provider, ticker, payload):
+
+    ensure_dir(f"{BASE_DIR}/{provider}")
+
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    filename = f"{BASE_DIR}/{provider}/{ticker}_{ts}.json"
+
+    with open(filename, "w") as f:
+
+        json.dump(payload, f, indent=2)
+
+    return filename
+
+
+# ============================================================
+# PROVIDER ADAPTERS
+# ============================================================
+
+def fetch_from_yahoo(ticker):
+
+    return {
+        "provider": "yahoo",
+        "ticker": ticker,
+        "fetched_at": utc_now(),
+        "data": {}
+    }
+
+
+def fetch_from_screener(ticker):
+
+    return {
+        "provider": "screener",
+        "ticker": ticker,
+        "fetched_at": utc_now(),
+        "data": {}
+    }
+
+
+def fetch_from_statement_parser(ticker):
+
+    return {
+        "provider": "statement_parser",
+        "ticker": ticker,
+        "fetched_at": utc_now(),
+        "data": {}
+    }
+
+
+def fetch_from_nse(ticker):
+
+    return {
+        "provider": "nse",
+        "ticker": ticker,
+        "fetched_at": utc_now(),
+        "data": {}
+    }
+
+
+FETCH_DISPATCH = {
+
+    "yahoo": fetch_from_yahoo,
+    "screener": fetch_from_screener,
+    "statement_parser": fetch_from_statement_parser,
+    "nse": fetch_from_nse
+}
+
+
+# ============================================================
+# FETCH ENGINE
+# ============================================================
+
+def fetch_with_retry(provider, ticker):
+
+    config = PROVIDERS[provider]
+
+    retries = config["retries"]
+
+    timeout = config["timeout"]
+
+    metadata = {
+        "provider": provider,
+        "ticker": ticker,
+        "success": False,
+        "attempts": 0,
+        "latency": None,
+        "coverage": [],
+        "snapshot": None,
+        "hash": None,
+        "error": None,
+        "timeout": timeout,
+        "started_at": utc_now()
+    }
+
+    payload = {}
+
+    for attempt in range(retries + 1):
+
+        metadata["attempts"] += 1
+
+        start = time.time()
 
         try:
-            futures[executor.submit(fetch_from_yahoo, ticker)] = "yahoo"
-        except:
-            pass
 
-        try:
-            futures[executor.submit(fetch_from_screener, ticker)] = "screener"
-        except:
-            pass
+            adapter = FETCH_DISPATCH[provider]
 
-        try:
-            futures[executor.submit(fetch_from_statement_parser, ticker)] = "statement_parser"
-        except:
-            pass
+            payload = adapter(ticker)
+
+            latency = round(time.time() - start, 3)
+
+            metadata["latency"] = latency
+            metadata["success"] = True
+            metadata["coverage"] = config["supports"]
+
+            snapshot = save_raw_snapshot(
+                provider,
+                ticker,
+                payload
+            )
+
+            metadata["snapshot"] = snapshot
+
+            metadata["hash"] = response_hash(payload)
+
+            metadata["completed_at"] = utc_now()
+
+            return {
+                "payload": payload,
+                "metadata": metadata
+            }
+
+        except requests.Timeout:
+
+            metadata["error"] = "timeout"
+
+        except Exception as e:
+
+            metadata["error"] = str(e)
+
+            metadata["traceback"] = traceback.format_exc()
+
+    metadata["completed_at"] = utc_now()
+
+    return {
+        "payload": payload,
+        "metadata": metadata
+    }
+
+
+# ============================================================
+# PARALLEL FETCH ORCHESTRATOR
+# ============================================================
+
+def parallel_fetch(ticker):
+
+    provider_payloads = {}
+
+    provider_metadata = {}
+
+    started = time.time()
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=len(PROVIDERS)
+    ) as executor:
+
+        futures = {
+
+            executor.submit(
+                fetch_with_retry,
+                provider,
+                ticker
+            ): provider
+
+            for provider in PROVIDERS
+        }
 
         for future in concurrent.futures.as_completed(futures):
 
             provider = futures[future]
 
             try:
-                providers[provider] = future.result()
-            except:
-                providers[provider] = {}
 
-    return providers
+                result = future.result()
 
+                provider_payloads[provider] = result["payload"]
 
-def canonical_metric_name(name):
+                provider_metadata[provider] = result["metadata"]
 
-    mapping = {
+            except Exception as e:
 
-        "revenue": "rev",
-        "sales": "rev",
-        "operating_revenue": "rev",
+                provider_payloads[provider] = {}
 
-        "ebitda_margin": "opm",
-        "operating_margin": "opm",
+                provider_metadata[provider] = {
+                    "success": False,
+                    "error": str(e)
+                }
 
-        "pat": "net",
-        "profit_after_tax": "net",
+    total_latency = round(time.time() - started, 3)
 
-        "shareholder_equity": "equity",
-
-        "current_assets": "curr_assets",
-        "current_liabilities": "curr_liab",
-
-        "cash_and_equivalents": "cash"
+    return {
+        "ticker": ticker,
+        "providers": provider_payloads,
+        "metadata": provider_metadata,
+        "total_latency": total_latency,
+        "fetched_at": utc_now()
     }
 
-    return mapping.get(name, name)
+
+# ============================================================
+# COVERAGE + GAP TRACKING
+# ============================================================
+
+def provider_coverage_report(fetch_result):
+
+    coverage = {}
+
+    for provider, meta in fetch_result["metadata"].items():
+
+        coverage[provider] = {
+
+            "success": meta.get("success"),
+
+            "coverage": meta.get("coverage", []),
+
+            "latency": meta.get("latency"),
+
+            "attempts": meta.get("attempts"),
+
+            "snapshot": meta.get("snapshot"),
+
+            "error": meta.get("error")
+        }
+
+    return coverage
 
 
-def canonicalize_dataset(data):
+def missing_sections(fetch_result):
 
-    canonical = {}
+    all_sections = {
 
-    for k, v in data.items():
+        "price",
+        "ratios",
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "shareholding"
+    }
 
-        ck = canonical_metric_name(k)
+    available = set()
 
-        canonical[ck] = v
+    for meta in fetch_result["metadata"].values():
 
-    return canonical
+        available.update(meta.get("coverage", []))
 
-
-def reconcile_metric(field, provider_data):
-
-    ranked = sorted(
-        provider_data.items(),
-        key=lambda x: PROVIDER_PRIORITY.get(x[0], 99)
-    )
-
-    for provider, dataset in ranked:
-
-        dataset = canonicalize_dataset(dataset)
-
-        value = dataset.get(field)
-
-        if value not in [None, "", 0]:
-            return value
-
-    return None
+    return sorted(list(all_sections - available))
 
 
-def build_canonical_stock(provider_data):
+# ============================================================
+# LOG SUMMARY
+# ============================================================
 
-    stock = {}
+def build_log_summary(fetch_result):
 
-    all_fields = []
+    lines = []
 
-    for section_fields in CANONICAL_FIELDS.values():
-        all_fields.extend(section_fields)
+    lines.append("=" * 60)
+    lines.append(f"TICKER: {fetch_result['ticker']}")
+    lines.append(f"FETCHED_AT: {fetch_result['fetched_at']}")
+    lines.append(f"TOTAL_LATENCY: {fetch_result['total_latency']}s")
+    lines.append("=" * 60)
 
-    for field in all_fields:
+    for provider, meta in fetch_result["metadata"].items():
 
-        stock[field] = reconcile_metric(
-            field,
-            provider_data
+        status = "SUCCESS" if meta.get("success") else "FAILED"
+
+        lines.append(
+            f"{provider.upper():20} | "
+            f"{status:8} | "
+            f"ATTEMPTS={meta.get('attempts')} | "
+            f"LATENCY={meta.get('latency')}s"
         )
 
-    return stock
+        if meta.get("error"):
 
-
-def build_quarter_map(rows):
-
-    merged = defaultdict(dict)
-
-    for row in rows:
-
-        d = row.get("d")
-
-        if not d:
-            continue
-
-        for k, v in row.items():
-
-            if v not in [None, "", 0]:
-                merged[d][k] = v
-
-    final = []
-
-    for d, row in merged.items():
-
-        row["d"] = d
-
-        final.append(row)
-
-    return final
-
-
-def statement_integrity(q):
-
-    try:
-
-        cash = q.get("cash")
-        curr_assets = q.get("curr_assets")
-        total_assets = q.get("total_assets")
-        equity = q.get("equity")
-        curr_liab = q.get("curr_liab")
-
-        if cash and curr_assets:
-
-            if float(cash) > float(curr_assets):
-                return False
-
-        if curr_assets and total_assets:
-
-            if float(curr_assets) > float(total_assets):
-                return False
-
-        if equity and total_assets:
-
-            if float(equity) > float(total_assets):
-                return False
-
-        if curr_liab and total_assets:
-
-            if float(curr_liab) < 10 and float(total_assets) > 1000:
-                return False
-
-    except:
-        return False
-
-    return True
-
-
-def operating_integrity(q):
-
-    try:
-
-        rev = q.get("rev")
-        gross = q.get("gross")
-        net = q.get("net")
-
-        if rev is not None:
-
-            if float(rev) <= 0:
-                return False
-
-        if gross is not None and net is not None:
-
-            if float(gross) < 0 and float(net) > 0:
-                return False
-
-    except:
-        return False
-
-    return True
-
-
-def quarter_quality(q):
-
-    required = [
-        "rev",
-        "ebitda",
-        "ebit",
-        "net",
-        "equity",
-        "total_assets"
-    ]
-
-    valid = 0
-
-    for field in required:
-
-        if q.get(field) not in [None, "", 0]:
-            valid += 1
-
-    return valid / len(required)
-
-
-def derive_metrics(stock):
-
-    try:
-
-        cfo = stock.get("cfo")
-        capex = stock.get("capex")
-
-        if cfo is not None and capex is not None:
-
-            stock["fcf"] = round(
-                float(cfo) - float(capex),
-                2
+            lines.append(
+                f"  ERROR: {meta.get('error')}"
             )
 
-    except:
-        pass
+    lines.append("=" * 60)
 
-    try:
+    missing = missing_sections(fetch_result)
 
-        debt = stock.get("debt")
-        cash = stock.get("cash")
-
-        if debt is not None:
-
-            if cash is None:
-                cash = 0
-
-            stock["net_debt"] = round(
-                float(debt) - float(cash),
-                2
-            )
-
-    except:
-        pass
-
-    try:
-
-        ca = stock.get("curr_assets")
-        cl = stock.get("curr_liab")
-
-        if ca and cl and float(cl) > 0:
-
-            ratio = float(ca) / float(cl)
-
-            if ratio > 0 and ratio < 20:
-                stock["cur_ratio"] = round(ratio, 2)
-
-    except:
-        pass
-
-    return stock
-
-
-def apply_sector_rules(stock):
-
-    sector = stock.get("sector")
-
-    rules = SECTOR_RULES.get(sector)
-
-    if not rules:
-        return stock
-
-    for field in rules.get("suppress", []):
-
-        stock[field] = None
-
-    return stock
-
-
-def confidence_score(stock):
-
-    critical = [
-        "rev",
-        "ebitda",
-        "net",
-        "cash",
-        "equity",
-        "total_assets"
-    ]
-
-    valid = 0
-
-    for field in critical:
-
-        if stock.get(field) not in [None, "", 0]:
-            valid += 1
-
-    return round(valid / len(critical), 2)
-
-
-def clean_quarters(rows):
-
-    rows = build_quarter_map(rows)
-
-    cleaned = []
-
-    for q in rows:
-
-        if not statement_integrity(q):
-            continue
-
-        if not operating_integrity(q):
-            continue
-
-        if quarter_quality(q) < 0.5:
-            continue
-
-        cleaned.append(q)
-
-    return cleaned
-
-
-def big_bang_process_stock(ticker, raw_stock):
-
-    provider_data = fetch_provider_parallel(ticker)
-
-    canonical = build_canonical_stock(provider_data)
-
-    for k, v in raw_stock.items():
-
-        if canonical.get(k) in [None, "", 0]:
-            canonical[k] = v
-
-    canonical["quarterly"] = clean_quarters(
-        raw_stock.get("quarterly", [])
+    lines.append(
+        f"MISSING_SECTIONS: {', '.join(missing) if missing else 'NONE'}"
     )
 
-    canonical = derive_metrics(canonical)
+    success_count = sum([
+        1 for x in fetch_result["metadata"].values()
+        if x.get("success")
+    ])
 
-    canonical = apply_sector_rules(canonical)
+    lines.append(
+        f"PROVIDER_SUCCESS_RATE: "
+        f"{success_count}/{len(PROVIDERS)}"
+    )
 
-    canonical["extraction_confidence"] = confidence_score(canonical)
+    lines.append("=" * 60)
 
-    canonical["updated"] = datetime.utcnow().isoformat()
+    return "\n".join(lines)
 
-    return canonical
 
+# ============================================================
+# PUBLIC ENTRYPOINT
+# ============================================================
+
+def fetch_stock(ticker):
+
+    result = parallel_fetch(ticker)
+
+    result["coverage_report"] = provider_coverage_report(result)
+
+    result["missing_sections"] = missing_sections(result)
+
+    result["log_summary"] = build_log_summary(result)
+
+    return result
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+if __name__ == "__main__":
+
+    stock = fetch_stock("SBIN")
+
+    print(stock["log_summary"])
