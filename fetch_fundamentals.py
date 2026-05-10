@@ -389,3 +389,73 @@ if __name__ == "__main__":
         fetch_ticker(ticker)
 
     log("RAW FETCH COMPLETE")
+
+
+
+
+# ============================================================
+# FILESYSTEM PERSISTENCE VERIFICATION
+# ============================================================
+
+def verify_file(path, label):
+
+    exists = os.path.exists(path)
+
+    size = (
+        os.path.getsize(path)
+        if exists else 0
+    )
+
+    abs_path = os.path.abspath(path)
+
+    log(
+        f"[{label}_VERIFY] "
+        f"exists={exists} "
+        f"size={size} "
+        f"path={abs_path}"
+    )
+
+    return exists
+
+
+# ------------------------------------------------------------
+# PATCH CSV WRITER
+# ------------------------------------------------------------
+
+_original_write_csv_rows = write_csv_rows
+
+def write_csv_rows(rows):
+
+    _original_write_csv_rows(rows)
+
+    verify_file(
+        RAW_CSV,
+        "CSV"
+    )
+
+
+# ------------------------------------------------------------
+# PATCH PAYLOAD SAVE
+# ------------------------------------------------------------
+
+_original_save_payload = save_payload
+
+def save_payload(
+    ticker,
+    provider,
+    payload
+):
+
+    path = _original_save_payload(
+        ticker,
+        provider,
+        payload
+    )
+
+    verify_file(
+        path,
+        "PAYLOAD"
+    )
+
+    return path
+
