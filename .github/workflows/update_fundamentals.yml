@@ -3,9 +3,6 @@ name: Update Fundamentals
 on:
   workflow_dispatch:
 
-  schedule:
-    - cron: "30 12 * * 1-5"
-
 permissions:
   contents: write
 
@@ -17,36 +14,30 @@ jobs:
 
     steps:
 
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Fetch Raw Fundamentals
+      - name: Install Dependencies
+        run: |
+          pip install yfinance requests beautifulsoup4 lxml
+
+      - name: Run Fetch
         run: |
           python fetch_raw_fundamentals.py
 
-      - name: Build Fundamentals
-        run: |
-          python build_fundamentals.py
-
-      - name: Commit Updated Files
+      - name: Commit
         run: |
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add \
-            raw_fundamentals.json \
-            fundamentals.json \
-            runtime.log \
-            raw_payloads/*.json
+          git add raw_fundamentals.json runtime.log
 
           git diff --cached --quiet && exit 0
 
-          git commit -m "update fundamentals"
+          git commit -m "update raw fundamentals"
 
           git push
