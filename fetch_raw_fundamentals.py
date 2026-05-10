@@ -1,4 +1,8 @@
+# Updated fetch_raw_fundamentals.py
+# Integrated symbol_map.json resolution from existing fetch_fundamentals.py logic
+
 import json
+import time
 import requests
 import yfinance as yf
 
@@ -10,6 +14,8 @@ from datetime import datetime, UTC
 BASE_DIR = Path(__file__).resolve().parent
 
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
+SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
+
 RAW_FILE = BASE_DIR / "raw_fundamentals.json"
 LOG_FILE = BASE_DIR / "runtime.log"
 
@@ -19,18 +25,44 @@ HEADERS = {
 }
 
 
+WARNINGS = 0
+ERRORS = 0
+
+YAHOO_SUCCESS = 0
+SCREENER_SUCCESS = 0
+NSE_SUCCESS = 0
+
+
 def now():
     return datetime.now(UTC).isoformat()
 
 
 def log(level, msg):
 
-    line = f"[{now()}] [{level}] {msg}"
+    line = f"[{level}] {msg}"
 
     print(line)
 
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+
+
+def warn(msg):
+
+    global WARNINGS
+
+    WARNINGS += 1
+
+    log("WARN", msg)
+
+
+def error(msg):
+
+    global ERRORS
+
+    ERRORS += 1
+
+    log("ERROR", msg)
 
 
 def load_json(path):
@@ -65,6 +97,7 @@ def ensure_stock(store, symbol):
                 "sector": symbol.get("sector"),
                 "industry": symbol.get("industry")
             },
+
             "market_data_history": [],
             "ratio_history": [],
             "ownership_history": [],
@@ -116,13 +149,67 @@ def append_if_changed(history, provider, values):
     )
 
 
+symbol_map = load_json(
+    SYMBOL_MAP_FILE
+)
+
+OVERRIDES = symbol_map.get(
+    "overrides",
+    {}
+)
+
+SCREENER_OVERRIDES = symbol_map.get(
+    "screener_overrides",
+    {}
+)
+
+DELISTED = set(
+    symbol_map.get(
+        "delisted",
+        []
+    )
+)
+
+
+def resolve_yahoo_symbol(ticker):
+
+    mapped = OVERRIDES.get(ticker)
+
+    if mapped:
+        return mapped
+
+    return f"{ticker}.NS"
+
+
+def resolve_screener_symbol(ticker):
+
+    mapped = SCREENER_OVERRIDES.get(ticker)
+
+    if mapped:
+        return mapped
+
+    return ticker
+
+
 def fetch_yahoo(ticker):
 
+    global YAHOO_SUCCESS
+
+    if ticker in DELISTED:
+        return {}
+
+    yahoo_symbol = resolve_yahoo_symbol(
+        ticker
+    )
+
     info = yf.Ticker(
-        f"{ticker}.NS"
+        yahoo_symbol
     ).info
 
+    YAHOO_SUCCESS += 1
+
     return {
+        "symbol": yahoo_symbol,
         "ltp": info.get("currentPrice"),
         "market_cap": info.get("marketCap"),
         "pe": info.get("trailingPE"),
@@ -152,12 +239,14 @@ def extract_percent(text):
 
 def fetch_screener(ticker):
 
-    url = (
-        f"https://www.screener.in/company/{ticker}/"
+    global SCREENER_SUCCESS
+
+    screener_symbol = resolve_screener_symbol(
+        ticker
     )
 
     response = requests.get(
-        url,
+        f"https://www.screener.in/company/{screener_symbol}/",
         headers=HEADERS,
         timeout=20
     )
@@ -184,10 +273,17 @@ def fetch_screener(ticker):
         elif "ROE" in text:
             ratios["roe"] = extract_percent(text)
 
+    SCREENER_SUCCESS += 1
+
     return ratios
 
 
 def fetch_nse(ticker):
+
+    global NSE_SUCCESS
+
+    if ticker in DELISTED:
+        return {}
 
     session = requests.Session()
 
@@ -216,6 +312,8 @@ def fetch_nse(ticker):
         {}
     )
 
+    NSE_SUCCESS += 1
+
     return {
         "symbol": meta.get("symbol"),
         "industry": industry.get("industry"),
@@ -225,51 +323,9 @@ def fetch_nse(ticker):
     }
 
 
-def cleanup_old_schema(store):
-
-    for ticker, stock in store.items():
-
-        for section in [
-            "market_data_history",
-            "ratio_history",
-            "ownership_history",
-            "quarterly_history"
-        ]:
-
-            cleaned = []
-
-            for row in stock.get(section, []):
-
-                if "timestamp" in row:
-                    row["ts"] = row.pop("timestamp")
-
-                if "provider" in row:
-                    row["p"] = row.pop("provider")
-
-                if "values" in row:
-                    row["v"] = row.pop("values")
-
-                values = row.get("v", {})
-
-                clean_values = {
-                    k: v
-                    for k, v in values.items()
-                    if v not in [None, "", [], {}]
-                }
-
-                if clean_values:
-                    row["v"] = clean_values
-                    cleaned.append(row)
-
-            stock[section] = cleaned
-
-        stock.pop(
-            "fetch_events",
-            None
-        )
-
-
 def main():
+
+    start = time.time()
 
     master = load_json(
         SYMBOLS_FILE
@@ -280,11 +336,7 @@ def main():
         []
     )
 
-    store = load_json(
-        RAW_FILE
-    )
-
-    cleanup_old_schema(store)
+    store = {}
 
     success = 0
     failed = 0
@@ -293,11 +345,6 @@ def main():
 
         ticker = symbol["ticker"]
 
-        log(
-            "INFO",
-            f"START ticker={ticker}"
-        )
-
         stock = ensure_stock(
             store,
             symbol
@@ -305,50 +352,75 @@ def main():
 
         try:
 
-            yahoo = fetch_yahoo(
-                ticker
-            )
+            try:
 
-            append_if_changed(
-                stock["market_data_history"],
-                "yahoo_finance",
-                yahoo
-            )
+                yahoo = fetch_yahoo(
+                    ticker
+                )
 
-            screener = fetch_screener(
-                ticker
-            )
+                append_if_changed(
+                    stock["market_data_history"],
+                    "yahoo_finance",
+                    yahoo
+                )
 
-            append_if_changed(
-                stock["ratio_history"],
-                "screener",
-                screener
-            )
+            except Exception as e:
 
-            nse = fetch_nse(
-                ticker
-            )
+                warn(
+                    f"ticker={ticker} "
+                    f"provider=yahoo "
+                    f"error={str(e)}"
+                )
 
-            append_if_changed(
-                stock["ownership_history"],
-                "nse",
-                nse
-            )
+            try:
+
+                screener = fetch_screener(
+                    ticker
+                )
+
+                append_if_changed(
+                    stock["ratio_history"],
+                    "screener",
+                    screener
+                )
+
+            except Exception as e:
+
+                warn(
+                    f"ticker={ticker} "
+                    f"provider=screener "
+                    f"error={str(e)}"
+                )
+
+            try:
+
+                nse = fetch_nse(
+                    ticker
+                )
+
+                append_if_changed(
+                    stock["ownership_history"],
+                    "nse",
+                    nse
+                )
+
+            except Exception as e:
+
+                warn(
+                    f"ticker={ticker} "
+                    f"provider=nse "
+                    f"error={str(e)}"
+                )
 
             success += 1
-
-            log(
-                "INFO",
-                f"SUCCESS ticker={ticker}"
-            )
 
         except Exception as e:
 
             failed += 1
 
-            log(
-                "ERROR",
-                f"FAILED ticker={ticker} error={str(e)}"
+            error(
+                f"ticker={ticker} "
+                f"fatal={str(e)}"
             )
 
     save_json(
@@ -356,10 +428,38 @@ def main():
         store
     )
 
-    log(
-        "INFO",
-        f"SUMMARY success={success} failed={failed}"
+    duration = round(
+        time.time() - start,
+        2
     )
+
+    summary = f"""
+
+==================================================
+RAW FUNDAMENTALS SUMMARY
+==================================================
+
+Total Stocks       : {len(symbols)}
+Successful         : {success}
+Failed             : {failed}
+Warnings           : {WARNINGS}
+
+Yahoo Success      : {YAHOO_SUCCESS}
+Screener Success   : {SCREENER_SUCCESS}
+NSE Success        : {NSE_SUCCESS}
+
+Runtime Seconds    : {duration}
+
+Output File        : raw_fundamentals.json
+Updated At         : {now()}
+
+==================================================
+"""
+
+    print(summary)
+
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(summary)
 
 
 if __name__ == "__main__":
