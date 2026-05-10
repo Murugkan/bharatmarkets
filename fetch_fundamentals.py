@@ -3913,18 +3913,72 @@ if __name__ == "__main__":
 
 
 # ============================================================
-# STRICT VALIDATION PATCH
+# STATEMENT-NATIVE EXTRACTION PATCH
 # ============================================================
 
-CORE_QUARTER_FIELDS = [
-    "rev",
-    "ebitda",
-    "ebit",
-    "net",
-    "eps"
-]
+STATEMENT_REQUIRED_FIELDS = {
+    "income": ["rev", "ebitda", "ebit", "net"],
+    "balance": ["equity", "total_assets"],
+}
 
-def validate_balance_sheet(q):
+def detect_statement_type(q):
+
+    income_fields = 0
+    balance_fields = 0
+
+    for field in STATEMENT_REQUIRED_FIELDS["income"]:
+
+        if q.get(field) not in [None, "", 0]:
+            income_fields += 1
+
+    for field in STATEMENT_REQUIRED_FIELDS["balance"]:
+
+        if q.get(field) not in [None, "", 0]:
+            balance_fields += 1
+
+    if income_fields >= 2 and balance_fields >= 1:
+        return "combined"
+
+    if income_fields >= 2:
+        return "income"
+
+    if balance_fields >= 1:
+        return "balance"
+
+    return "unknown"
+
+
+def canonicalize_quarter(q):
+
+    fields = [
+        "d",
+        "rev",
+        "gross",
+        "ebitda",
+        "da",
+        "ebit",
+        "interest_exp",
+        "net",
+        "eps",
+        "debt",
+        "equity",
+        "curr_liab",
+        "total_assets",
+        "curr_assets",
+        "inventory",
+        "cash",
+        "opm"
+    ]
+
+    canonical = {}
+
+    for field in fields:
+        canonical[field] = q.get(field)
+
+    return canonical
+
+
+def validate_statement_integrity(q):
 
     cash = q.get("cash")
     curr_assets = q.get("curr_assets")
@@ -3933,82 +3987,50 @@ def validate_balance_sheet(q):
 
     try:
 
-        if cash and curr_assets and float(cash) > float(curr_assets):
-            return None
+        if cash and curr_assets:
 
-        if curr_assets and total_assets and float(curr_assets) > float(total_assets):
-            return None
+            if float(cash) > float(curr_assets):
+                return False
 
-        if equity and total_assets and float(equity) > float(total_assets):
-            return None
+        if curr_assets and total_assets:
 
-    except:
-        return None
+            if float(curr_assets) > float(total_assets):
+                return False
 
-    return q
+        if equity and total_assets:
 
-
-def validate_curr_liab(q):
-
-    cl = q.get("curr_liab")
-    ta = q.get("total_assets")
-
-    try:
-
-        if cl and ta:
-
-            if float(cl) < 10 and float(ta) > 1000:
-                return None
+            if float(equity) > float(total_assets):
+                return False
 
     except:
-        return None
+        return False
 
-    return q
+    return True
 
 
-def validate_gross(stock, q):
+def validate_operating_structure(stock, q):
 
     gross = q.get("gross")
-    npm = stock.get("npm_pct")
+    net = q.get("net")
+    rev = q.get("rev")
 
     try:
 
         if gross is not None and float(gross) < 0:
 
-            if npm and float(npm) > 0:
-                q["gross"] = None
+            if net and float(net) > 0:
+                return False
+
+        if rev is not None and float(rev) <= 0:
+            return False
 
     except:
-        pass
+        return False
 
-    return q
-
-
-def quarter_score(q):
-
-    valid = 0
-
-    for field in CORE_QUARTER_FIELDS:
-
-        if q.get(field) not in [None, "", 0]:
-            valid += 1
-
-    return valid / len(CORE_QUARTER_FIELDS)
+    return True
 
 
-def reject_partial_quarters(quarters):
-
-    final = []
-
-    for q in quarters:
-
-        if quarter_score(q) >= 0.5:
-            final.append(q)
-
-    return final
-
-
-def merge_quarters(rows):
+def strict_merge_quarters(rows):
 
     merged = {}
 
@@ -4019,39 +4041,73 @@ def merge_quarters(rows):
         if not d:
             continue
 
+        row = canonicalize_quarter(row)
+
         if d not in merged:
             merged[d] = {}
 
-        merged[d].update(row)
+        merged[d].update({
+            k: v for k, v in row.items()
+            if v not in [None, "", 0]
+        })
 
     return list(merged.values())
 
 
-def strict_clean_stock(stock):
+def statement_quality_score(q):
 
-    quarters = stock.get("quarterly", [])
+    important = [
+        "rev",
+        "ebitda",
+        "ebit",
+        "net",
+        "equity",
+        "total_assets"
+    ]
 
-    quarters = merge_quarters(quarters)
+    valid = 0
+
+    for field in important:
+
+        if q.get(field) not in [None, "", 0]:
+            valid += 1
+
+    return valid / len(important)
+
+
+def reject_low_quality_quarters(rows):
+
+    final = []
+
+    for q in rows:
+
+        score = statement_quality_score(q)
+
+        if score >= 0.50:
+            final.append(q)
+
+    return final
+
+
+def clean_statement_stock(stock):
+
+    rows = stock.get("quarterly", [])
+
+    rows = strict_merge_quarters(rows)
 
     cleaned = []
 
-    for q in quarters:
+    for q in rows:
 
-        q = validate_balance_sheet(q)
-
-        if q is None:
+        if not validate_statement_integrity(q):
             continue
 
-        q = validate_curr_liab(q)
-
-        if q is None:
+        if not validate_operating_structure(stock, q):
             continue
-
-        q = validate_gross(stock, q)
 
         cleaned.append(q)
 
-    cleaned = reject_partial_quarters(cleaned)
+    cleaned = reject_low_quality_quarters(cleaned)
 
     stock["quarterly"] = cleaned
 
