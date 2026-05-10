@@ -4872,3 +4872,223 @@ def build_pipeline_summary():
 
     return "\n".join(lines)
 
+
+
+# ============================================================
+# RAW FETCH INGESTION DUMP
+# ============================================================
+
+
+# ============================================================
+# RAW FETCH INGESTION DUMP
+# ============================================================
+# PURPOSE:
+# Export EVERY raw fetched field from EVERY provider
+# exactly as received from providers.
+#
+# NO:
+# - normalization
+# - reconciliation
+# - validation
+# - derivation
+# - deduplication
+# - cleanup
+#
+# OUTPUT:
+# raw_fetched_data.csv
+# ============================================================
+
+import csv
+import json
+from typing import Any
+
+
+RAW_OUTPUT_FILE = "raw_fetched_data.csv"
+
+
+def flatten_raw_payload(
+    ticker,
+    provider,
+    statement,
+    quarter,
+    obj,
+    rows
+):
+
+    if isinstance(obj, dict):
+
+        for k, v in obj.items():
+
+            next_statement = statement
+            next_quarter = quarter
+
+            key_lower = str(k).lower()
+
+            # detect quarter/date keys
+            if (
+                "202" in key_lower or
+                "q1" in key_lower or
+                "q2" in key_lower or
+                "q3" in key_lower or
+                "q4" in key_lower or
+                "fy" in key_lower
+            ):
+                next_quarter = k
+
+            flatten_raw_payload(
+                ticker=ticker,
+                provider=provider,
+                statement=next_statement,
+                quarter=next_quarter,
+                obj=v,
+                rows=rows
+            )
+
+    elif isinstance(obj, list):
+
+        for item in obj:
+
+            flatten_raw_payload(
+                ticker=ticker,
+                provider=provider,
+                statement=statement,
+                quarter=quarter,
+                obj=item,
+                rows=rows
+            )
+
+    else:
+
+        rows.append({
+            "ticker": ticker,
+            "provider": provider,
+            "statement": statement,
+            "quarter": quarter,
+            "field": statement,
+            "raw_value": obj
+        })
+
+
+def extract_provider_rows(
+    ticker,
+    provider,
+    payload
+):
+
+    rows = []
+
+    if not isinstance(payload, dict):
+        return rows
+
+    for section, value in payload.items():
+
+        flatten_raw_payload(
+            ticker=ticker,
+            provider=provider,
+            statement=section,
+            quarter=None,
+            obj=value,
+            rows=rows
+        )
+
+    return rows
+
+
+def build_raw_fetch_dump(all_provider_payloads):
+
+    final_rows = []
+
+    for ticker, provider_map in all_provider_payloads.items():
+
+        for provider, payload in provider_map.items():
+
+            rows = extract_provider_rows(
+                ticker=ticker,
+                provider=provider,
+                payload=payload
+            )
+
+            final_rows.extend(rows)
+
+    return final_rows
+
+
+def export_raw_fetch_dump(
+    all_provider_payloads,
+    output_file=RAW_OUTPUT_FILE
+):
+
+    rows = build_raw_fetch_dump(
+        all_provider_payloads
+    )
+
+    headers = [
+        "ticker",
+        "provider",
+        "statement",
+        "quarter",
+        "field",
+        "raw_value"
+    ]
+
+    with open(
+        output_file,
+        "w",
+        newline="",
+        encoding="utf-8"
+    ) as f:
+
+        writer = csv.DictWriter(
+            f,
+            fieldnames=headers
+        )
+
+        writer.writeheader()
+
+        for row in rows:
+            writer.writerow(row)
+
+    print(
+        f"[RAW_FETCH_DUMP] "
+        f"rows={len(rows)} "
+        f"output={output_file}"
+    )
+
+
+# ============================================================
+# EXAMPLE
+# ============================================================
+
+if __name__ == "__main__":
+
+    sample_payloads = {
+
+        "BDL": {
+
+            "yahoo": {
+
+                "ratios": {
+                    "roe": 15.2,
+                    "roce": 19.4
+                },
+
+                "quarterly": [
+                    {
+                        "d": "2025-12-31",
+                        "rev": 3120.5,
+                        "ebitda": 644.3
+                    }
+                ]
+            },
+
+            "screener": {
+
+                "balance_sheet": {
+                    "equity": 5842.2,
+                    "cash": 812.4
+                }
+            }
+        }
+    }
+
+    export_raw_fetch_dump(sample_payloads)
