@@ -13,7 +13,9 @@ BASE_DIR = Path(__file__).resolve().parent
 RAW_FILE = BASE_DIR / "raw_fundamentals.json"
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
 SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
-LOG_FILE = BASE_DIR / "runtime.log"
+
+# runtime.log intentionally NOT persisted to git
+
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
@@ -27,12 +29,10 @@ def now():
 def load_json(path):
 
     try:
-
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
     except Exception:
-
         return {}
 
 
@@ -72,11 +72,12 @@ DELISTED = set(
 
 def is_bond(ticker):
 
-    ticker = ticker.upper()
+    t = str(ticker).upper().strip()
 
     return (
-        ticker.startswith("SGB")
-        or "BOND" in ticker
+        t.startswith("SGB")
+        or "BOND" in t
+        or "GS" in t
     )
 
 
@@ -140,13 +141,7 @@ def fetch_yahoo_payload(ticker):
 
     payload = {}
 
-    try:
-
-        payload["info"] = stock.info
-
-    except Exception as e:
-
-        payload["info_error"] = str(e)
+    payload["info"] = stock.info
 
     try:
 
@@ -160,6 +155,7 @@ def fetch_yahoo_payload(ticker):
             payload["history_1y_1d"] = (
                 hist
                 .reset_index()
+                .astype(str)
                 .to_dict("records")
             )
 
@@ -221,22 +217,17 @@ def fetch_screener_payload(ticker):
 
     for section in soup.select("section"):
 
-        heading = section.select_one("h2")
-
-        table = section.select_one(
-            "table"
-        )
+        table = section.select_one("table")
 
         if not table:
             continue
 
+        heading = section.select_one("h2")
+
         payload["tables"].append({
 
             "section": (
-                heading.get_text(
-                    " ",
-                    strip=True
-                )
+                heading.get_text(" ", strip=True)
                 if heading else None
             ),
 
@@ -249,11 +240,6 @@ def fetch_screener_payload(ticker):
 
 
 def main():
-
-    Path(LOG_FILE).write_text(
-        "",
-        encoding="utf-8"
-    )
 
     start = time.time()
 
@@ -269,15 +255,20 @@ def main():
     )
 
     processed = 0
+    skipped_bonds = 0
 
     for symbol in symbols:
 
-        ticker = symbol["ticker"]
+        ticker = str(
+            symbol["ticker"]
+        ).strip()
 
         if ticker in DELISTED:
             continue
 
         if is_bond(ticker):
+
+            skipped_bonds += 1
             continue
 
         stock = ensure_stock(
@@ -341,25 +332,20 @@ def main():
         2
     )
 
-    summary = f"""
+    print(f"""
 ==================================================
 RAW FUNDAMENTALS SUMMARY
 ==================================================
 
 Stocks Processed : {processed}
+Bonds Skipped    : {skipped_bonds}
 
 Runtime Seconds  : {runtime}
 
 Updated At       : {now()}
 
 ==================================================
-"""
-
-    print(summary)
-
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-
-        f.write(summary)
+""")
 
 
 if __name__ == "__main__":
