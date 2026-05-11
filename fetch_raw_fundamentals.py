@@ -8,10 +8,16 @@ from pathlib import Path
 from datetime import datetime, UTC
 
 
-BASE_DIR = Path(__file__).resolve().parent
+import subprocess
 
-RAW_DIR = BASE_DIR / "raw"
-LOG_DIR = BASE_DIR / "logs"
+REPO_ROOT = Path(
+    subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"]
+    ).decode().strip()
+)
+
+RAW_DIR = REPO_ROOT / "raw"
+LOG_DIR = REPO_ROOT / "logs"
 
 YAHOO_HISTORY_FILE = RAW_DIR / "yahoo_finance" / "history.json"
 YAHOO_DELTA_FILE = RAW_DIR / "yahoo_finance" / "delta.json"
@@ -52,6 +58,8 @@ def load_json(path):
 def save_json(path, data):
 
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"[SAVE] {path.resolve()}")
 
     with open(path, "w", encoding="utf-8") as f:
 
@@ -291,6 +299,9 @@ def append_runtime(path, payload):
 def main():
 
     start = time.time()
+
+    print(f"[CWD] {Path.cwd()}")
+    print(f"[REPO_ROOT] {REPO_ROOT}")
 
     previous_yahoo_store = load_json(
         YAHOO_HISTORY_FILE
