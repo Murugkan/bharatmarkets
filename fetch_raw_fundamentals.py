@@ -8,350 +8,345 @@ from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
 
-BASE_DIR = Path(**file**).resolve().parent
 
-RAW_YAHOO_FILE = BASE_DIR / “raw_yahoo_fundamentals.json”
-RAW_SCREENER_FILE = BASE_DIR / “raw_screener_fundamentals.json”
-LOG_FILE = BASE_DIR / “fetch_runtime.log”
+BASE_DIR = Path(__file__).resolve().parent
 
-SYMBOLS_FILE = BASE_DIR / “unified-symbols.json”
-SYMBOL_MAP_FILE = BASE_DIR / “symbol_map.json”
+RAW_YAHOO_FILE = BASE_DIR / "raw_yahoo_fundamentals.json"
+RAW_SCREENER_FILE = BASE_DIR / "raw_screener_fundamentals.json"
+LOG_FILE = BASE_DIR / "fetch_runtime.log"
+
+SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
+SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
 # Configure logging
-
 logging.basicConfig(
-level=logging.INFO,
-format=’%(asctime)s - %(levelname)s - %(message)s’,
-handlers=[
-logging.FileHandler(LOG_FILE),
-logging.StreamHandler()
-]
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
 )
-logger = logging.getLogger(**name**)
+logger = logging.getLogger(__name__)
 
 HEADERS = {
-“User-Agent”: “Mozilla/5.0”
+    "User-Agent": "Mozilla/5.0"
 }
 
+
 def now():
-return datetime.now(UTC).isoformat()
+    return datetime.now(UTC).isoformat()
+
 
 def load_json(path):
-try:
-with open(path, “r”, encoding=“utf-8”) as f:
-return json.load(f)
-except Exception:
-return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
 
 def save_json(path, data):
-with open(path, “w”, encoding=“utf-8”) as f:
-json.dump(
-data,
-f,
-indent=2,
-ensure_ascii=False
-)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(
+            data,
+            f,
+            indent=2,
+            ensure_ascii=False
+        )
+
 
 symbol_map = load_json(SYMBOL_MAP_FILE)
 
-YAHOO_OVERRIDES = symbol_map.get(“overrides”, {})
-SCREENER_OVERRIDES = symbol_map.get(“screener_overrides”, {})
-DELISTED = set(symbol_map.get(“delisted”, []))
+YAHOO_OVERRIDES = symbol_map.get("overrides", {})
+SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
+DELISTED = set(symbol_map.get("delisted", []))
+
 
 def is_bond(ticker):
-t = str(ticker).upper().strip()
-return t.startswith(“SGB”) or “BOND” in t
+    t = str(ticker).upper().strip()
+    return t.startswith("SGB") or "BOND" in t
+
 
 def resolve_yahoo_symbol(ticker):
-return YAHOO_OVERRIDES.get(ticker, f”{ticker}.NS”)
+    return YAHOO_OVERRIDES.get(ticker, f"{ticker}.NS")
+
 
 def resolve_screener_symbol(ticker):
-return SCREENER_OVERRIDES.get(ticker, ticker)
+    return SCREENER_OVERRIDES.get(ticker, ticker)
+
 
 # ============================================================================
-
 # YAHOO FINANCE FUNCTIONS
-
 # ============================================================================
 
 def fetch_yahoo_info(ticker, yahoo_symbol):
-“”“Fetch Yahoo Finance info and history”””
+    """Fetch Yahoo Finance info and history"""
+    
+    payload = {}
+    stock = yf.Ticker(yahoo_symbol)
+    
+    # Fetch info
+    try:
+        payload["info"] = stock.info
+    except Exception as e:
+        payload["info_error"] = str(e)
+        logger.warning(f"Yahoo info error for {ticker}: {str(e)}")
+    
+    # Fetch 1-year daily history
+    try:
+        hist = stock.history(period="1y", interval="1d")
+        payload["history_1y_1d"] = (
+            hist
+            .reset_index()
+            .astype(str)
+            .to_dict("records")
+        )
+    except Exception as e:
+        payload["history_error"] = str(e)
+        logger.warning(f"Yahoo history error for {ticker}: {str(e)}")
+    
+    return payload
 
-```
-payload = {}
-stock = yf.Ticker(yahoo_symbol)
-
-# Fetch info
-try:
-    payload["info"] = stock.info
-except Exception as e:
-    payload["info_error"] = str(e)
-    logger.warning(f"Yahoo info error for {ticker}: {str(e)}")
-
-# Fetch 1-year daily history
-try:
-    hist = stock.history(period="1y", interval="1d")
-    payload["history_1y_1d"] = (
-        hist
-        .reset_index()
-        .astype(str)
-        .to_dict("records")
-    )
-except Exception as e:
-    payload["history_error"] = str(e)
-    logger.warning(f"Yahoo history error for {ticker}: {str(e)}")
-
-return payload
-```
 
 # ============================================================================
-
 # SCREENER.IN FUNCTIONS
-
 # ============================================================================
 
 def extract_table(table):
-“”“Extract rows from HTML table”””
-rows = []
-
-```
-for tr in table.select("tr"):
-    cols = tr.select("th,td")
-    row = []
+    """Extract rows from HTML table"""
+    rows = []
     
-    for col in cols:
-        row.append(col.get_text(" ", strip=True))
+    for tr in table.select("tr"):
+        cols = tr.select("th,td")
+        row = []
+        
+        for col in cols:
+            row.append(col.get_text(" ", strip=True))
+        
+        if row:
+            rows.append(row)
     
-    if row:
-        rows.append(row)
+    return rows
 
-return rows
-```
 
 def fetch_screener_data(ticker, screener_symbol):
-“”“Fetch Screener.in company data and tables”””
-
-```
-payload = {}
-
-url = f"https://www.screener.in/company/{screener_symbol}/"
-payload["url"] = url
-
-try:
-    response = requests.get(
-        url,
-        headers=HEADERS,
-        timeout=30
-    )
+    """Fetch Screener.in company data and tables"""
     
-    soup = BeautifulSoup(response.text, "html.parser")
-    payload["tables"] = []
+    payload = {}
     
-    for section in soup.select("section"):
-        table = section.select_one("table")
-        
-        if not table:
-            continue
-        
-        heading = section.select_one("h2")
-        
-        payload["tables"].append({
-            "section": (
-                heading.get_text(" ", strip=True)
-                if heading else None
-            ),
-            "rows": extract_table(table)
-        })
+    url = f"https://www.screener.in/company/{screener_symbol}/"
+    payload["url"] = url
     
-except Exception as e:
-    payload["error"] = str(e)
-    logger.warning(f"Screener fetch error for {ticker}: {str(e)}")
+    try:
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=30
+        )
+        
+        soup = BeautifulSoup(response.text, "html.parser")
+        payload["tables"] = []
+        
+        for section in soup.select("section"):
+            table = section.select_one("table")
+            
+            if not table:
+                continue
+            
+            heading = section.select_one("h2")
+            
+            payload["tables"].append({
+                "section": (
+                    heading.get_text(" ", strip=True)
+                    if heading else None
+                ),
+                "rows": extract_table(table)
+            })
+        
+    except Exception as e:
+        payload["error"] = str(e)
+        logger.warning(f"Screener fetch error for {ticker}: {str(e)}")
+    
+    return payload
 
-return payload
-```
 
 # ============================================================================
-
 # MAIN FETCH LOGIC
-
 # ============================================================================
 
 def main():
-
-```
-start = time.time()
-
-logger.info("=" * 60)
-logger.info("STARTING UNIFIED FUNDAMENTALS & PROVIDER DATA FETCH")
-logger.info("=" * 60)
-
-# Initialize separate stores for each provider
-yahoo_store = {}
-screener_store = {}
-
-symbols_master = load_json(SYMBOLS_FILE)
-symbols = symbols_master.get("symbols", [])
-
-processed = 0
-skipped = 0
-yahoo_success = 0
-yahoo_errors = 0
-screener_success = 0
-screener_errors = 0
-
-logger.info(f"Total symbols to process: {len(symbols)}")
-logger.info("")
-
-for idx, symbol in enumerate(symbols, 1):
     
-    ticker = str(symbol["ticker"]).strip()
+    start = time.time()
     
-    # Skip delisted stocks
-    if ticker in DELISTED:
-        logger.debug(f"[{idx}/{len(symbols)}] Skipping delisted: {ticker}")
-        continue
+    logger.info("=" * 60)
+    logger.info("STARTING UNIFIED FUNDAMENTALS & PROVIDER DATA FETCH")
+    logger.info("=" * 60)
     
-    # Skip bonds
-    if is_bond(ticker):
-        logger.debug(f"[{idx}/{len(symbols)}] Skipping bond: {ticker}")
-        skipped += 1
-        continue
+    # Initialize separate stores for each provider
+    yahoo_store = {}
+    screener_store = {}
     
-    logger.info(f"[{idx}/{len(symbols)}] Processing {ticker}")
+    symbols_master = load_json(SYMBOLS_FILE)
+    symbols = symbols_master.get("symbols", [])
     
-    # ====== YAHOO FINANCE FETCH ======
-    try:
-        yahoo_symbol = resolve_yahoo_symbol(ticker)
-        logger.debug(f"  → Yahoo symbol: {yahoo_symbol}")
-        
-        yahoo_payload = fetch_yahoo_info(ticker, yahoo_symbol)
-        
-        if ticker not in yahoo_store:
-            yahoo_store[ticker] = {
-                "ticker": ticker,
-                "name": symbol.get("name"),
-                "isin": symbol.get("isin"),
-                "observations": []
-            }
-        
-        yahoo_store[ticker]["observations"].append({
-            "fetched_at": now(),
-            "raw": yahoo_payload
-        })
-        
-        yahoo_success += 1
-        logger.debug(f"  ✓ Yahoo data fetched")
+    processed = 0
+    skipped = 0
+    yahoo_success = 0
+    yahoo_errors = 0
+    screener_success = 0
+    screener_errors = 0
     
-    except Exception as e:
-        yahoo_errors += 1
-        logger.error(f"  ✗ Yahoo error: {str(e)}")
-        
-        if ticker not in yahoo_store:
-            yahoo_store[ticker] = {
-                "ticker": ticker,
-                "name": symbol.get("name"),
-                "isin": symbol.get("isin"),
-                "observations": []
-            }
-        
-        yahoo_store[ticker]["observations"].append({
-            "fetched_at": now(),
-            "raw": {"error": str(e)}
-        })
-    
-    # ====== SCREENER.IN FETCH ======
-    try:
-        screener_symbol = resolve_screener_symbol(ticker)
-        logger.debug(f"  → Screener symbol: {screener_symbol}")
-        
-        screener_payload = fetch_screener_data(ticker, screener_symbol)
-        
-        if ticker not in screener_store:
-            screener_store[ticker] = {
-                "ticker": ticker,
-                "name": symbol.get("name"),
-                "isin": symbol.get("isin"),
-                "observations": []
-            }
-        
-        screener_store[ticker]["observations"].append({
-            "fetched_at": now(),
-            "raw": screener_payload
-        })
-        
-        screener_success += 1
-        logger.debug(f"  ✓ Screener data fetched")
-    
-    except Exception as e:
-        screener_errors += 1
-        logger.error(f"  ✗ Screener error: {str(e)}")
-        
-        if ticker not in screener_store:
-            screener_store[ticker] = {
-                "ticker": ticker,
-                "name": symbol.get("name"),
-                "isin": symbol.get("isin"),
-                "observations": []
-            }
-        
-        screener_store[ticker]["observations"].append({
-            "fetched_at": now(),
-            "raw": {"error": str(e)}
-        })
-    
-    processed += 1
+    logger.info(f"Total symbols to process: {len(symbols)}")
     logger.info("")
-
-# Save separate provider files
-logger.info("=" * 60)
-logger.info("SAVING DATA FILES")
-logger.info("=" * 60)
-
-logger.info(f"Saving Yahoo Finance data ({len(yahoo_store)} tickers)")
-save_json(RAW_YAHOO_FILE, yahoo_store)
-logger.info(f"✓ Saved to {RAW_YAHOO_FILE}")
-
-logger.info(f"Saving Screener.in data ({len(screener_store)} tickers)")
-save_json(RAW_SCREENER_FILE, screener_store)
-logger.info(f"✓ Saved to {RAW_SCREENER_FILE}")
-
-runtime = round(time.time() - start, 2)
-
-# Summary report
-summary = f"""
-```
-
-{”=” * 60}
+    
+    for idx, symbol in enumerate(symbols, 1):
+        
+        ticker = str(symbol["ticker"]).strip()
+        
+        # Skip delisted stocks
+        if ticker in DELISTED:
+            logger.debug(f"[{idx}/{len(symbols)}] Skipping delisted: {ticker}")
+            continue
+        
+        # Skip bonds
+        if is_bond(ticker):
+            logger.debug(f"[{idx}/{len(symbols)}] Skipping bond: {ticker}")
+            skipped += 1
+            continue
+        
+        logger.info(f"[{idx}/{len(symbols)}] Processing {ticker}")
+        
+        # ====== YAHOO FINANCE FETCH ======
+        try:
+            yahoo_symbol = resolve_yahoo_symbol(ticker)
+            logger.debug(f"  -> Yahoo symbol: {yahoo_symbol}")
+            
+            yahoo_payload = fetch_yahoo_info(ticker, yahoo_symbol)
+            
+            if ticker not in yahoo_store:
+                yahoo_store[ticker] = {
+                    "ticker": ticker,
+                    "name": symbol.get("name"),
+                    "isin": symbol.get("isin"),
+                    "observations": []
+                }
+            
+            yahoo_store[ticker]["observations"].append({
+                "fetched_at": now(),
+                "raw": yahoo_payload
+            })
+            
+            yahoo_success += 1
+            logger.debug(f"  OK Yahoo data fetched")
+        
+        except Exception as e:
+            yahoo_errors += 1
+            logger.error(f"  FAIL Yahoo error: {str(e)}")
+            
+            if ticker not in yahoo_store:
+                yahoo_store[ticker] = {
+                    "ticker": ticker,
+                    "name": symbol.get("name"),
+                    "isin": symbol.get("isin"),
+                    "observations": []
+                }
+            
+            yahoo_store[ticker]["observations"].append({
+                "fetched_at": now(),
+                "raw": {"error": str(e)}
+            })
+        
+        # ====== SCREENER.IN FETCH ======
+        try:
+            screener_symbol = resolve_screener_symbol(ticker)
+            logger.debug(f"  -> Screener symbol: {screener_symbol}")
+            
+            screener_payload = fetch_screener_data(ticker, screener_symbol)
+            
+            if ticker not in screener_store:
+                screener_store[ticker] = {
+                    "ticker": ticker,
+                    "name": symbol.get("name"),
+                    "isin": symbol.get("isin"),
+                    "observations": []
+                }
+            
+            screener_store[ticker]["observations"].append({
+                "fetched_at": now(),
+                "raw": screener_payload
+            })
+            
+            screener_success += 1
+            logger.debug(f"  OK Screener data fetched")
+        
+        except Exception as e:
+            screener_errors += 1
+            logger.error(f"  FAIL Screener error: {str(e)}")
+            
+            if ticker not in screener_store:
+                screener_store[ticker] = {
+                    "ticker": ticker,
+                    "name": symbol.get("name"),
+                    "isin": symbol.get("isin"),
+                    "observations": []
+                }
+            
+            screener_store[ticker]["observations"].append({
+                "fetched_at": now(),
+                "raw": {"error": str(e)}
+            })
+        
+        processed += 1
+        logger.info("")
+    
+    # Save separate provider files
+    logger.info("=" * 60)
+    logger.info("SAVING DATA FILES")
+    logger.info("=" * 60)
+    
+    logger.info(f"Saving Yahoo Finance data ({len(yahoo_store)} tickers)")
+    save_json(RAW_YAHOO_FILE, yahoo_store)
+    logger.info(f"OK Saved to {RAW_YAHOO_FILE}")
+    
+    logger.info(f"Saving Screener.in data ({len(screener_store)} tickers)")
+    save_json(RAW_SCREENER_FILE, screener_store)
+    logger.info(f"OK Saved to {RAW_SCREENER_FILE}")
+    
+    runtime = round(time.time() - start, 2)
+    
+    # Summary report
+    summary = f"""
+{'=' * 60}
 UNIFIED FETCH SUMMARY
-{”=” * 60}
+{'=' * 60}
 
 PROCESSING STATISTICS:
-Total Symbols        : {len(symbols)}
-Processed            : {processed}
-Skipped (Bonds)      : {skipped}
+  Total Symbols        : {len(symbols)}
+  Processed            : {processed}
+  Skipped (Bonds)      : {skipped}
 
 YAHOO FINANCE:
-✓ Success            : {yahoo_success}
-✗ Errors             : {yahoo_errors}
-Output File          : {RAW_YAHOO_FILE}
+  OK Success           : {yahoo_success}
+  FAIL Errors          : {yahoo_errors}
+  Output File          : {RAW_YAHOO_FILE}
 
 SCREENER.IN:
-✓ Success            : {screener_success}
-✗ Errors             : {screener_errors}
-Output File          : {RAW_SCREENER_FILE}
+  OK Success           : {screener_success}
+  FAIL Errors          : {screener_errors}
+  Output File          : {RAW_SCREENER_FILE}
 
 RUNTIME INFORMATION:
-Duration             : {runtime} seconds
-Completed At         : {now()}
-Log File             : {LOG_FILE}
+  Duration             : {runtime} seconds
+  Completed At         : {now()}
+  Log File             : {LOG_FILE}
 
-{”=” * 60}
-“””
+{'=' * 60}
+"""
+    
+    logger.info(summary)
+    print(summary)
 
-```
-logger.info(summary)
-print(summary)
-```
 
-if **name** == “**main**”:
-main()
+if __name__ == "__main__":
+    main()
