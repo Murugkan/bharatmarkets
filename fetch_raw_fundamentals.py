@@ -31,8 +31,8 @@ YAHOO_RUNTIME_DELTA = LOG_DIR / "yahoo_runtime_delta.json"
 SCREENER_RUNTIME_HISTORY = LOG_DIR / "screener_runtime_history.json"
 SCREENER_RUNTIME_DELTA = LOG_DIR / "screener_runtime_delta.json"
 
-SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
-SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
+SYMBOLS_FILE = REPO_ROOT / "unified-symbols.json"
+SYMBOL_MAP_FILE = REPO_ROOT / "symbol_map.json"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
