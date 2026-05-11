@@ -1,4 +1,3 @@
-
 import requests
 import yfinance as yf
 
@@ -10,11 +9,14 @@ HEADERS = {
 }
 
 
-def fetch_yahoo_history(ticker):
+def fetch_yahoo_payload(
+    ticker,
+    yahoo_symbol
+):
 
-    symbol = f"{ticker}.NS"
-
-    stock = yf.Ticker(symbol)
+    stock = yf.Ticker(
+        yahoo_symbol
+    )
 
     hist = stock.history(
         period="1y",
@@ -23,7 +25,7 @@ def fetch_yahoo_history(ticker):
 
     return {
         "provider": "yahoo_finance",
-        "provider_symbol": symbol,
+        "provider_symbol": yahoo_symbol,
         "raw": {
             "info": stock.info,
             "history_1y_1d": (
@@ -54,9 +56,15 @@ def extract_table(table):
     return rows
 
 
-def fetch_screener_history(ticker):
+def fetch_screener_payload(
+    ticker,
+    screener_symbol
+):
 
-    url = f"https://www.screener.in/company/{ticker}/"
+    url = (
+        f"https://www.screener.in/company/"
+        f"{screener_symbol}/"
+    )
 
     response = requests.get(
         url,
@@ -82,7 +90,10 @@ def fetch_screener_history(ticker):
 
         tables.append({
             "section": (
-                heading.get_text(" ", strip=True)
+                heading.get_text(
+                    " ",
+                    strip=True
+                )
                 if heading else None
             ),
             "rows": extract_table(table)
@@ -90,7 +101,7 @@ def fetch_screener_history(ticker):
 
     return {
         "provider": "screener",
-        "provider_symbol": ticker,
+        "provider_symbol": screener_symbol,
         "raw": {
             "url": url,
             "tables": tables
