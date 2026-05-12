@@ -1,0 +1,45 @@
+name: daily
+
+on:
+  schedule:
+    # Once daily after market close (16:00 IST = 10:30 UTC)
+    - cron: "30 10 * * 1-5"
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install yfinance
+
+      - name: Fetch daily data
+        run: python fetch_daily.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git add data/daily_yahoo_*.json data/meta_daily_yahoo_*.json data/daily_yahoo_*.log
+          git rm --cached data/intraday_yahoo_*.json data/meta_intraday_yahoo_*.json 2>/dev/null || true
+          
+          git diff --cached --quiet && exit 0
+          
+          git commit -m "daily: sync all [$(date -u +'%Y-%m-%dT%H:%M:%SZ')]"
+          git pull --rebase origin main
+          git push origin HEAD:main
