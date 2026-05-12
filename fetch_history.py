@@ -5,16 +5,49 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
+import logging
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-YAHOO_FILE = DATA_DIR / "history_yahoo.json"
-SCREENER_FILE = DATA_DIR / "history_screener.json"
+YAHOO_HISTORY = DATA_DIR / "history_yahoo.json"
+SCREENER_HISTORY = DATA_DIR / "history_screener.json"
+
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
 SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+TIME_BOUND_FIELDS = {
+    "price", "volume", "open", "high", "low", "close",
+    "pe_ratio", "dividend_yield"
+}
+
+NON_TIME_BOUND_FIELDS = {
+    "sector", "industry", "company_name", "exchange", 
+    "currency", "isin", "website"
+}
+
+def setup_logging(trading_date):
+    """Setup WARNING+ logging (capture issues)"""
+    log_dir = DATA_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    log_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"history_{log_timestamp}.log"
+    
+    logger = logging.getLogger("history_fetch")
+    logger.setLevel(logging.WARNING)
+    
+    # File handler (warnings & errors)
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.WARNING)
+    file_format = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(file_format)
+    
+    logger.addHandler(file_handler)
+    return logger, log_file
 
 def now():
     return datetime.now(UTC).isoformat()
@@ -23,7 +56,7 @@ def load_json(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except:
         return {}
 
 def save_json(path, data):
@@ -31,158 +64,243 @@ def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-symbol_map = load_json(SYMBOL_MAP_FILE)
-YAHOO_OVERRIDES = symbol_map.get("overrides", {})
-SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
-DELISTED = set(symbol_map.get("delisted", []))
-
-def is_bond(ticker):
-    t = str(ticker).upper().strip()
-    return t.startswith("SGB") or "BOND" in t
-
-def resolve_yahoo_symbol(ticker):
-    return YAHOO_OVERRIDES.get(ticker, f"{ticker}.NS")
-
-def resolve_screener_symbol(ticker):
-    return SCREENER_OVERRIDES.get(ticker, ticker)
-
-def fetch_yahoo_payload(ticker):
-    payload = {}
-    yahoo_symbol = resolve_yahoo_symbol(ticker)
-    stock = yf.Ticker(yahoo_symbol)
-    
+def find_last_trading_day(logger, sample_ticker="RELIANCE"):
+    """Find the most recent trading day with volume"""
     try:
-        payload["info"] = stock.info
+        symbol_map = load_json(SYMBOL_MAP_FILE)
+        yahoo_overrides = symbol_map.get("overrides", {})
+        yahoo_symbol = yahoo_overrides.get(sample_ticker, f"{sample_ticker}.NS")
+        stock = yf.Ticker(yahoo_symbol)
+        hist = stock.history(period="15d", interval="1d")
+        trading_days = hist[hist["Volume"] > 0].sort_index(ascending=False)
+        return trading_days.index[0].strftime("%Y-%m-%d") if not trading_days.empty else None
     except Exception as e:
-        payload["info_error"] = str(e)
-    
-    try:
-        hist = stock.history(period="1y", interval="1d")
-        payload["history_1y_1d"] = hist.reset_index().astype(str).to_dict("records")
-    except Exception as e:
-        payload["history_error"] = str(e)
-    
-    return payload
+        logger.error(f"Failed to find trading day: {str(e)}")
+        return None
 
-def extract_table(table):
-    rows = []
-    for tr in table.select("tr"):
-        cols = tr.select("th,td")
-        row = []
-        for col in cols:
-            row.append(col.get_text(" ", strip=True))
-        if row:
-            rows.append(row)
-    return rows
-
-def fetch_screener_payload(ticker):
+def fetch_yahoo_5year(logger, ticker, yahoo_overrides):
+    """Fetch 5 years of data from Yahoo Finance"""
     payload = {}
-    screener_symbol = resolve_screener_symbol(ticker)
-    url = f"https://www.screener.in/company/{screener_symbol}/"
-    payload["url"] = url
-    
     try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        soup = BeautifulSoup(response.text, "html.parser")
-        payload["tables"] = []
+        yahoo_symbol = yahoo_overrides.get(ticker, f"{ticker}.NS")
+        stock = yf.Ticker(yahoo_symbol)
+        info = stock.info
+        hist = stock.history(period="5y", interval="1d")
         
-        for section in soup.select("section"):
-            table = section.select_one("table")
-            if not table:
-                continue
-            heading = section.select_one("h2")
-            payload["tables"].append({
-                "section": heading.get_text(" ", strip=True) if heading else None,
-                "rows": extract_table(table)
-            })
+        if hist.empty:
+            logger.warning(f"{ticker}: Yahoo - No 5-year history")
+            return payload
+        
+        payload["metadata"] = {"company_name": info.get("longName"), "sector": info.get("sector"), "industry": info.get("industry"), "exchange": info.get("exchange"), "currency": info.get("currency")}
+        
+        payload["fields"] = {}
+        
+        # Build time-series for each field
+        for date_idx, row in hist.iterrows():
+            date_str = date_idx.strftime("%Y-%m-%d")
+            
+            if "price" not in payload["fields"]:
+                payload["fields"]["price"] = []
+            payload["fields"]["price"].append({"date": date_str, "value": float(row["Close"])})
+            
+            if "volume" not in payload["fields"]:
+                payload["fields"]["volume"] = []
+            payload["fields"]["volume"].append({"date": date_str, "value": int(row["Volume"])})
+            
+            if "open" not in payload["fields"]:
+                payload["fields"]["open"] = []
+            payload["fields"]["open"].append({"date": date_str, "value": float(row["Open"])})
+            
+            if "high" not in payload["fields"]:
+                payload["fields"]["high"] = []
+            payload["fields"]["high"].append({"date": date_str, "value": float(row["High"])})
+            
+            if "low" not in payload["fields"]:
+                payload["fields"]["low"] = []
+            payload["fields"]["low"].append({"date": date_str, "value": float(row["Low"])})
+        
+        # Add latest PE ratio
+        if "pe_ratio" not in payload["fields"]:
+            payload["fields"]["pe_ratio"] = []
+        payload["fields"]["pe_ratio"].append({"date": hist.index[-1].strftime("%Y-%m-%d"), "value": info.get("trailingPE")})
+        
+    except requests.exceptions.Timeout:
+        logger.warning(f"{ticker}: Yahoo - Connection timeout")
+        payload["error"] = "timeout"
+    except requests.exceptions.ConnectionError:
+        logger.warning(f"{ticker}: Yahoo - Connection error")
+        payload["error"] = "connection_error"
     except Exception as e:
+        logger.warning(f"{ticker}: Yahoo - {type(e).__name__}: {str(e)[:80]}")
         payload["error"] = str(e)
     
     return payload
 
-def ensure_stock(store, symbol):
-    ticker = symbol["ticker"]
-    if ticker not in store:
-        store[ticker] = {
-            "ticker": ticker,
-            "name": symbol.get("name"),
-            "isin": symbol.get("isin"),
-            "observations": []
-        }
-    return store[ticker]
-
-def add_observation(stock, payload):
-    stock["observations"].append({
-        "fetched_at": now(),
-        "raw": payload
-    })
+def fetch_screener_5year(logger, ticker, screener_overrides):
+    """Fetch latest fundamentals from Screener"""
+    payload = {}
+    try:
+        screener_symbol = screener_overrides.get(ticker, ticker)
+        url = f"https://www.screener.in/company/{screener_symbol}/"
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        
+        if response.status_code == 404:
+            logger.warning(f"{ticker}: Screener - Not found (404)")
+            return payload
+        
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        payload["metadata"] = {"sector": soup.select_one("[data-field='sector']").text if soup.select_one("[data-field='sector']") else None}
+        payload["fields"] = {}
+        
+        # Extract financial tables
+        for section in soup.select("section"):
+            table = section.select_one("table")
+            if table:
+                heading = section.select_one("h2")
+                section_name = heading.text.strip() if heading else "unknown"
+                
+                for tr in table.select("tr"):
+                    cols = tr.select("td")
+                    if len(cols) >= 2:
+                        field_name = cols[0].text.strip()
+                        field_value = cols[1].text.strip()
+                        field_key = f"{section_name}_{field_name}"
+                        
+                        if field_key not in payload["fields"]:
+                            payload["fields"][field_key] = []
+                        payload["fields"][field_key].append({"date": datetime.now(UTC).strftime("%Y-%m-%d"), "value": field_value})
+        
+    except requests.exceptions.Timeout:
+        logger.warning(f"{ticker}: Screener - Connection timeout")
+        payload["error"] = "timeout"
+    except requests.exceptions.ConnectionError:
+        logger.warning(f"{ticker}: Screener - Connection error")
+        payload["error"] = "connection_error"
+    except Exception as e:
+        logger.warning(f"{ticker}: Screener - {type(e).__name__}: {str(e)[:80]}")
+        payload["error"] = str(e)
+    
+    return payload
 
 def main():
-    start = time.time()
-    symbols_master = load_json(SYMBOLS_FILE)
-    symbols = symbols_master.get("symbols", [])
+    script_start = time.time()
     
-    yahoo_store = {}
-    screener_store = {}
+    # Find trading date
+    logger_temp = logging.getLogger("temp")
+    logger_temp.disabled = True
+    trading_date = find_last_trading_day(logger_temp)
     
-    processed = 0
-    skipped = 0
+    if not trading_date:
+        print("ERROR: Could not determine last trading day")
+        return
+    
+    logger, log_file = setup_logging(trading_date)
+    
+    print("=" * 80)
+    print("WEEKLY HISTORY RESET - 5-Year Baseline")
+    print("=" * 80)
+    print(f"Trading day: {trading_date}")
+    print(f"Log file: {log_file}")
+    print()
+    
+    try:
+        symbols_master = load_json(SYMBOLS_FILE)
+        symbol_map = load_json(SYMBOL_MAP_FILE)
+        symbols = symbols_master.get("symbols", [])
+        yahoo_overrides = symbol_map.get("overrides", {})
+        screener_overrides = symbol_map.get("screener_overrides", {})
+        delisted = set(symbol_map.get("delisted", []))
+        print(f"Loaded: {len(symbols)} symbols")
+    except Exception as e:
+        logger.error(f"Config load error: {str(e)}")
+        print(f"ERROR: {str(e)}")
+        return
+    
+    stats = {"processed": 0, "skipped": 0, "delisted_skipped": 0, "bond_skipped": 0, "yahoo_success": 0, "yahoo_errors": 0, "screener_success": 0, "screener_errors": 0, "save_errors": 0}
+    
+    print()
+    print("Fetching 5-year baseline...")
+    
+    fetch_start = time.time()
+    history_yahoo = {}
+    history_screener = {}
     
     for symbol in symbols:
         ticker = str(symbol["ticker"]).strip()
         
-        if ticker in DELISTED:
+        # Check skip conditions
+        if ticker in delisted:
+            logger.warning(f"{ticker}: SKIPPED - Delisted")
+            stats["delisted_skipped"] += 1
+            stats["skipped"] += 1
             continue
-        if is_bond(ticker):
-            skipped += 1
+        
+        if ticker.upper().startswith("SGB") or "BOND" in ticker.upper():
+            logger.warning(f"{ticker}: SKIPPED - Bond/Instrument")
+            stats["bond_skipped"] += 1
+            stats["skipped"] += 1
             continue
         
-        # Yahoo
-        try:
-            yahoo_stock = ensure_stock(yahoo_store, symbol)
-            yahoo_payload = fetch_yahoo_payload(ticker)
-            add_observation(yahoo_stock, yahoo_payload)
-        except Exception as e:
-            yahoo_stock = ensure_stock(yahoo_store, symbol)
-            add_observation(yahoo_stock, {"error": str(e)})
+        # Initialize
+        history_yahoo[ticker] = {"ticker": ticker, "metadata": {}, "fields": {}}
+        history_screener[ticker] = {"ticker": ticker, "metadata": {}, "fields": {}}
         
-        # Screener
-        try:
-            screener_stock = ensure_stock(screener_store, symbol)
-            screener_payload = fetch_screener_payload(ticker)
-            add_observation(screener_stock, screener_payload)
-        except Exception as e:
-            screener_stock = ensure_stock(screener_store, symbol)
-            add_observation(screener_stock, {"error": str(e)})
+        # Fetch Yahoo 5-year
+        yahoo_payload = fetch_yahoo_5year(logger, ticker, yahoo_overrides)
+        history_yahoo[ticker].update(yahoo_payload)
+        if "error" not in yahoo_payload:
+            stats["yahoo_success"] += 1
+        else:
+            stats["yahoo_errors"] += 1
         
-        processed += 1
-    
-    save_json(YAHOO_FILE, yahoo_store)
-    save_json(SCREENER_FILE, screener_store)
-    
-    runtime = round(time.time() - start, 2)
-    
-    # Metadata & logs
-    for provider, data_file in [("yahoo", YAHOO_FILE), ("screener", SCREENER_FILE)]:
-        meta_file = DATA_DIR / f"meta_history_{provider}.json"
-        metadata = {
-            "timestamp": now(),
-            "type": "history",
-            "provider": provider,
-            "processed": processed,
-            "skipped": skipped,
-            "runtime_seconds": runtime,
-            "data_file": data_file.name,
-            "operation": "manual_reset"
-        }
-        save_json(meta_file, metadata)
+        # Fetch Screener
+        screener_payload = fetch_screener_5year(logger, ticker, screener_overrides)
+        history_screener[ticker].update(screener_payload)
+        if "error" not in screener_payload:
+            stats["screener_success"] += 1
+        else:
+            stats["screener_errors"] += 1
         
-        log_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        log_file = DATA_DIR / f"history_{provider}_{log_timestamp}.log"
-        with open(log_file, "w") as f:
-            f.write(f"History {provider}\nTimestamp: {now()}\nOperation: Manual Reset\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\n")
+        stats["processed"] += 1
     
-    print(f"History: {processed} processed, {skipped} skipped, {runtime}s, reset complete")
+    fetch_duration = round(time.time() - fetch_start, 2)
+    print(f"Fetch: {stats['processed']} stocks in {fetch_duration}s")
+    print(f"  Yahoo: {stats['yahoo_success']} success, {stats['yahoo_errors']} errors")
+    print(f"  Screener: {stats['screener_success']} success, {stats['screener_errors']} errors")
+    print(f"  Skipped: {stats['delisted_skipped']} delisted, {stats['bond_skipped']} bonds")
+    
+    print()
+    print("Saving history files...")
+    
+    try:
+        save_json(YAHOO_HISTORY, history_yahoo)
+        print(f"✓ {YAHOO_HISTORY.name}")
+    except Exception as e:
+        logger.error(f"Yahoo save error: {str(e)}")
+        stats["save_errors"] += 1
+    
+    try:
+        save_json(SCREENER_HISTORY, history_screener)
+        print(f"✓ {SCREENER_HISTORY.name}")
+    except Exception as e:
+        logger.error(f"Screener save error: {str(e)}")
+        stats["save_errors"] += 1
+    
+    total_duration = round(time.time() - script_start, 2)
+    print()
+    print("=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    print(f"Total runtime: {total_duration}s")
+    print(f"Processed: {stats['processed']} | Skipped: {stats['skipped']} (delisted={stats['delisted_skipped']}, bonds={stats['bond_skipped']})")
+    print(f"Yahoo: {stats['yahoo_success']}/{stats['processed']} | Screener: {stats['screener_success']}/{stats['processed']}")
+    if stats["yahoo_errors"] + stats["screener_errors"] + stats["save_errors"] > 0:
+        print(f"Total Errors: {stats['yahoo_errors']} + {stats['screener_errors']} + {stats['save_errors']} (check log)")
+    print(f"Data: 5-year baseline (~1260 trading days per stock)")
+    print(f"Log: {log_file.name}")
+    print("=" * 80)
 
 if __name__ == "__main__":
     main()
