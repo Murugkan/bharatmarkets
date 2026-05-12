@@ -1,187 +1,175 @@
-#!/usr/bin/env python3
-"""
-DAILY Fetch
-- Schedule: Once daily after market close (16:00 IST = 10:30 UTC)
-- Data: Prices (1Y history) + All fundamentals
-- Files: daily_yahoo_prices.json, daily_yahoo_fundamentals.json (permanent)
-- Log: daily_yahoo_YYYYMMDD_HHMMSS.log
-- Also: Purges intraday_yahoo_*.json files
-"""
-
 import json
-import logging
+import time
+import requests
+import yfinance as yf
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
-import yfinance as yf
-import sys
 import glob
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-TYPE = "daily"
-PROVIDER = "yahoo"
+PRICES_FILE = DATA_DIR / "daily_yahoo_prices.json"
+FUNDAMENTALS_FILE = DATA_DIR / "daily_yahoo_fundamentals.json"
+SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
+SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
-PRICES_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_prices.json"
-FUNDAMENTALS_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_fundamentals.json"
-META_PRICES = DATA_DIR / f"meta_{TYPE}_{PROVIDER}_prices.json"
-META_FUNDAMENTALS = DATA_DIR / f"meta_{TYPE}_{PROVIDER}_fundamentals.json"
-LOG_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log"
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
-)
-logger = logging.getLogger()
+def now():
+    return datetime.now(UTC).isoformat()
 
-with open(BASE_DIR / "symbol_list.json") as f:
-    SYMBOLS = json.load(f).get("symbols", [])
-
-def load_json(filepath):
-    if filepath.exists():
-        with open(filepath) as f:
+def load_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {}
+    except Exception:
+        return {}
 
-def save_json(filepath, data):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(filepath, 'w') as f:
-        json.dump(data, f, indent=2)
+def save_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
-def purge_intraday():
-    """Delete temporary intraday files"""
-    logger.info("\nCleaning up intraday files...")
+symbol_map = load_json(SYMBOL_MAP_FILE)
+YAHOO_OVERRIDES = symbol_map.get("overrides", {})
+SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
+DELISTED = set(symbol_map.get("delisted", []))
+
+def is_bond(ticker):
+    t = str(ticker).upper().strip()
+    return t.startswith("SGB") or "BOND" in t
+
+def resolve_yahoo_symbol(ticker):
+    return YAHOO_OVERRIDES.get(ticker, f"{ticker}.NS")
+
+def resolve_screener_symbol(ticker):
+    return SCREENER_OVERRIDES.get(ticker, ticker)
+
+def fetch_yahoo_payload(ticker):
+    payload = {}
+    yahoo_symbol = resolve_yahoo_symbol(ticker)
+    stock = yf.Ticker(yahoo_symbol)
     
-    files = glob.glob(str(DATA_DIR / f"intraday_{PROVIDER}_*.json"))
-    files += glob.glob(str(DATA_DIR / f"meta_intraday_{PROVIDER}_*.json"))
+    try:
+        payload["info"] = stock.info
+    except Exception as e:
+        payload["info_error"] = str(e)
     
-    deleted = 0
-    for file in files:
-        try:
-            Path(file).unlink()
-            logger.info(f"  Purged: {Path(file).name}")
-            deleted += 1
-        except Exception as e:
-            logger.warning(f"  Could not delete {Path(file).name}: {e}")
+    try:
+        hist = stock.history(period="1y", interval="1d")
+        payload["history_1y_1d"] = hist.reset_index().astype(str).to_dict("records")
+    except Exception as e:
+        payload["history_error"] = str(e)
     
-    if deleted > 0:
-        logger.info(f"✓ Purged {deleted} intraday files")
+    return payload
+
+def extract_table(table):
+    rows = []
+    for tr in table.select("tr"):
+        cols = tr.select("th,td")
+        row = []
+        for col in cols:
+            row.append(col.get_text(" ", strip=True))
+        if row:
+            rows.append(row)
+    return rows
+
+def fetch_screener_payload(ticker):
+    payload = {}
+    screener_symbol = resolve_screener_symbol(ticker)
+    url = f"https://www.screener.in/company/{screener_symbol}/"
+    payload["url"] = url
+    
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        soup = BeautifulSoup(response.text, "html.parser")
+        payload["tables"] = []
+        
+        for section in soup.select("section"):
+            table = section.select_one("table")
+            if not table:
+                continue
+            heading = section.select_one("h2")
+            payload["tables"].append({
+                "section": heading.get_text(" ", strip=True) if heading else None,
+                "rows": extract_table(table)
+            })
+    except Exception as e:
+        payload["error"] = str(e)
+    
+    return payload
+
+def ensure_stock(store, symbol):
+    ticker = symbol["ticker"]
+    if ticker not in store:
+        store[ticker] = {
+            "ticker": ticker,
+            "name": symbol.get("name"),
+            "isin": symbol.get("isin"),
+            "observations": []
+        }
+    return store[ticker]
+
+def add_observation(stock, provider, payload):
+    stock["observations"].append({
+        "provider": provider,
+        "fetched_at": now(),
+        "raw": payload
+    })
 
 def main():
-    logger.info(f"\n{'='*60}")
-    logger.info(f"{TYPE.upper()} - Comprehensive Sync (After market close)")
-    logger.info(f"Schedule: 16:00 IST (10:30 UTC)")
-    logger.info(f"{'='*60}\n")
+    start = time.time()
+    prices_store = load_json(PRICES_FILE)
+    fundamentals_store = load_json(FUNDAMENTALS_FILE)
     
-    # PRICES
-    logger.info("1. Syncing prices (1-year history)...")
-    prices_data = load_json(PRICES_FILE)
-    prices_ok = 0
-    prices_failed = 0
+    symbols_master = load_json(SYMBOLS_FILE)
+    symbols = symbols_master.get("symbols", [])
     
-    for ticker in SYMBOLS:
+    processed = 0
+    skipped = 0
+    
+    for symbol in symbols:
+        ticker = str(symbol["ticker"]).strip()
+        
+        if ticker in DELISTED:
+            continue
+        if is_bond(ticker):
+            skipped += 1
+            continue
+        
+        stock_prices = ensure_stock(prices_store, symbol)
+        stock_fundamentals = ensure_stock(fundamentals_store, symbol)
+        
         try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="1y")
-            
-            if not hist.empty:
-                if ticker not in prices_data:
-                    prices_data[ticker] = {"observations": []}
-                
-                prices_data[ticker]["observations"].append({
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "data": {
-                        "history": hist[["Open", "High", "Low", "Close", "Volume"]].to_dict(orient="records"),
-                        "current_price": stock.info.get("currentPrice"),
-                    }
-                })
-                prices_ok += 1
-            else:
-                prices_failed += 1
-                
+            yahoo_payload = fetch_yahoo_payload(ticker)
+            add_observation(stock_prices, "yahoo_finance", yahoo_payload)
+            add_observation(stock_fundamentals, "yahoo_finance", yahoo_payload)
+            processed += 1
         except Exception as e:
-            logger.debug(f"  {ticker}: {e}")
-            prices_failed += 1
-    
-    save_json(PRICES_FILE, prices_data)
-    save_json(META_PRICES, {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "type": TYPE,
-        "provider": PROVIDER,
-        "scope": "prices",
-        "schedule": "Daily after market close",
-        "processed": prices_ok,
-        "failed": prices_failed,
-    })
-    logger.info(f"✓ Prices: {prices_ok} synced")
-    
-    # FUNDAMENTALS
-    logger.info("\n2. Syncing fundamentals (all fields)...")
-    fundamentals_data = load_json(FUNDAMENTALS_FILE)
-    fundamentals_ok = 0
-    fundamentals_failed = 0
-    
-    for ticker in SYMBOLS:
+            add_observation(stock_prices, "yahoo_finance", {"error": str(e)})
+            add_observation(stock_fundamentals, "yahoo_finance", {"error": str(e)})
+        
         try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            
-            if ticker not in fundamentals_data:
-                fundamentals_data[ticker] = {"observations": []}
-            
-            fundamentals_data[ticker]["observations"].append({
-                "timestamp": datetime.now(UTC).isoformat(),
-                "data": {
-                    "revenue": info.get("totalRevenue"),
-                    "eps": info.get("trailingEps"),
-                    "pe": info.get("forwardPE"),
-                    "pb": info.get("priceToBook"),
-                    "ps": info.get("priceToSalesTrailing12Months"),
-                    "roe": info.get("returnOnEquity"),
-                    "roa": info.get("returnOnAssets"),
-                    "debt_equity": info.get("debtToEquity"),
-                    "profit_margin": info.get("profitMargins"),
-                    "operating_margin": info.get("operatingMargins"),
-                    "gross_margin": info.get("grossMargins"),
-                    "market_cap": info.get("marketCap"),
-                    "enterprise_value": info.get("enterpriseValue"),
-                    "current_ratio": info.get("currentRatio"),
-                    "quick_ratio": info.get("quickRatio"),
-                    "total_debt": info.get("totalDebt"),
-                    "total_cash": info.get("totalCash"),
-                    "free_cash_flow": info.get("freeCashflow"),
-                }
-            })
-            fundamentals_ok += 1
-            
+            screener_payload = fetch_screener_payload(ticker)
+            add_observation(stock_fundamentals, "screener", screener_payload)
         except Exception as e:
-            logger.debug(f"  {ticker}: {e}")
-            fundamentals_failed += 1
+            add_observation(stock_fundamentals, "screener", {"error": str(e)})
     
-    save_json(FUNDAMENTALS_FILE, fundamentals_data)
-    save_json(META_FUNDAMENTALS, {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "type": TYPE,
-        "provider": PROVIDER,
-        "scope": "fundamentals",
-        "schedule": "Daily after market close",
-        "processed": fundamentals_ok,
-        "failed": fundamentals_failed,
-    })
-    logger.info(f"✓ Fundamentals: {fundamentals_ok} synced")
+    save_json(PRICES_FILE, prices_store)
+    save_json(FUNDAMENTALS_FILE, fundamentals_store)
     
-    # PURGE INTRADAY
-    purge_intraday()
+    # Purge intraday files
+    for pattern in ["intraday_yahoo_*.json", "meta_intraday_yahoo_*.json"]:
+        for file in glob.glob(str(DATA_DIR / pattern)):
+            try:
+                Path(file).unlink()
+            except:
+                pass
     
-    logger.info(f"\n{'='*60}")
-    logger.info(f"✓ {TYPE.upper()} SYNC COMPLETE")
-    logger.info(f"  Prices: {prices_ok} observations")
-    logger.info(f"  Fundamentals: {fundamentals_ok} observations")
-    logger.info(f"  Cleaned: Intraday files purged")
-    logger.info(f"{'='*60}\n")
-    
-    return 0
+    runtime = round(time.time() - start, 2)
+    print(f"\n{'='*50}\nDAILY SYNC\n{'='*50}\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\nIntraday purged\n{'='*50}\n")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

@@ -1,105 +1,115 @@
-#!/usr/bin/env python3
-"""
-INTRADAY Fetch
-- Schedule: Every 1 hour during trading (09:15-16:30 IST)
-- Data: Prices only (lightweight)
-- File: intraday_yahoo_YYYY-MM-DD.json (temporary, purged daily)
-- Log: intraday_yahoo_YYYYMMDD_HHMMSS.log
-- Lifecycle: Temporary (recreated each day, purged after daily.py)
-"""
-
 import json
-import logging
+import time
+import requests
+import yfinance as yf
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
-import yfinance as yf
-import sys
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-
-TYPE = "intraday"
-PROVIDER = "yahoo"
 TODAY = datetime.now(UTC).strftime("%Y-%m-%d")
 
-DATA_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_{TODAY}.json"
-META_FILE = DATA_DIR / f"meta_{TYPE}_{PROVIDER}_{TODAY}.json"
-LOG_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log"
+DATA_FILE = DATA_DIR / f"intraday_yahoo_{TODAY}.json"
+SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
+SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
-)
-logger = logging.getLogger()
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-with open(BASE_DIR / "symbol_list.json") as f:
-    SYMBOLS = json.load(f).get("symbols", [])
+def now():
+    return datetime.now(UTC).isoformat()
 
-def load_json(filepath):
-    if filepath.exists():
-        with open(filepath) as f:
+def load_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {}
+    except Exception:
+        return {}
 
-def save_json(filepath, data):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(filepath, 'w') as f:
-        json.dump(data, f, indent=2)
+def save_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+symbol_map = load_json(SYMBOL_MAP_FILE)
+YAHOO_OVERRIDES = symbol_map.get("overrides", {})
+DELISTED = set(symbol_map.get("delisted", []))
+
+def is_bond(ticker):
+    t = str(ticker).upper().strip()
+    return t.startswith("SGB") or "BOND" in t
+
+def resolve_yahoo_symbol(ticker):
+    return YAHOO_OVERRIDES.get(ticker, f"{ticker}.NS")
+
+def fetch_yahoo_payload(ticker):
+    payload = {}
+    yahoo_symbol = resolve_yahoo_symbol(ticker)
+    stock = yf.Ticker(yahoo_symbol)
+    
+    try:
+        payload["info"] = stock.info
+    except Exception as e:
+        payload["info_error"] = str(e)
+    
+    try:
+        hist = stock.history(period="1y", interval="1d")
+        payload["history_1y_1d"] = hist.reset_index().astype(str).to_dict("records")
+    except Exception as e:
+        payload["history_error"] = str(e)
+    
+    return payload
+
+def ensure_stock(store, symbol):
+    ticker = symbol["ticker"]
+    if ticker not in store:
+        store[ticker] = {
+            "ticker": ticker,
+            "name": symbol.get("name"),
+            "isin": symbol.get("isin"),
+            "observations": []
+        }
+    return store[ticker]
+
+def add_observation(stock, provider, payload):
+    stock["observations"].append({
+        "provider": provider,
+        "fetched_at": now(),
+        "raw": payload
+    })
 
 def main():
-    logger.info(f"\n{'='*60}")
-    logger.info(f"{TYPE.upper()} - Prices (1-hour schedule)")
-    logger.info(f"File: {DATA_FILE.name}")
-    logger.info(f"Lifecycle: Temporary (purged after daily)")
-    logger.info(f"{'='*60}\n")
+    start = time.time()
+    store = load_json(DATA_FILE)
     
-    data = load_json(DATA_FILE)
+    symbols_master = load_json(SYMBOLS_FILE)
+    symbols = symbols_master.get("symbols", [])
+    
     processed = 0
-    failed = 0
+    skipped = 0
     
-    for ticker in SYMBOLS:
+    for symbol in symbols:
+        ticker = str(symbol["ticker"]).strip()
+        
+        if ticker in DELISTED:
+            continue
+        if is_bond(ticker):
+            skipped += 1
+            continue
+        
+        stock = ensure_stock(store, symbol)
+        
         try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            
-            if ticker not in data:
-                data[ticker] = {"hourly_snapshots": []}
-            
-            data[ticker]["hourly_snapshots"].append({
-                "timestamp": datetime.now(UTC).isoformat(),
-                "price": info.get("currentPrice"),
-                "volume": info.get("volume"),
-                "change": info.get("regularMarketChangePercent"),
-                "bid": info.get("bid"),
-                "ask": info.get("ask"),
-            })
+            yahoo_payload = fetch_yahoo_payload(ticker)
+            add_observation(stock, "yahoo_finance", yahoo_payload)
             processed += 1
-            
         except Exception as e:
-            logger.debug(f"  {ticker}: {e}")
-            failed += 1
+            add_observation(stock, "yahoo_finance", {"error": str(e)})
     
-    save_json(DATA_FILE, data)
+    save_json(DATA_FILE, store)
     
-    meta = {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "type": TYPE,
-        "provider": PROVIDER,
-        "file": str(DATA_FILE),
-        "lifecycle": "temporary (purged daily)",
-        "processed": processed,
-        "failed": failed,
-        "total_snapshots": sum(len(t.get("hourly_snapshots", [])) for t in data.values()) if data else 0,
-    }
-    save_json(META_FILE, meta)
-    
-    logger.info(f"✓ {processed}/{len(SYMBOLS)} processed")
-    logger.info(f"  File: {DATA_FILE.name}")
-    logger.info(f"  Snapshots: {meta['total_snapshots']}")
-    logger.info(f"  ℹ️  Purged after daily syncs\n")
-    
-    return 0
+    runtime = round(time.time() - start, 2)
+    print(f"\n{'='*50}\nINTRADAY\n{'='*50}\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\n{'='*50}\n")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

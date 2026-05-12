@@ -1,156 +1,166 @@
-#!/usr/bin/env python3
-"""
-HISTORY Fetch (Manual Full Load)
-- Schedule: Manual trigger only (workflow_dispatch)
-- Data: Prices (1Y history) + All fundamentals
-- Files: history_yahoo_prices.json, history_yahoo_fundamentals.json (reset on each run)
-- Log: history_yahoo_YYYYMMDD_HHMMSS.log
-- Purpose: Complete data refresh / backup
-"""
-
 import json
-import logging
+import time
+import requests
+import yfinance as yf
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
-import yfinance as yf
-import sys
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-TYPE = "history"
-PROVIDER = "yahoo"
+PRICES_FILE = DATA_DIR / "history_yahoo_prices.json"
+FUNDAMENTALS_FILE = DATA_DIR / "history_yahoo_fundamentals.json"
+SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
+SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
-PRICES_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_prices.json"
-FUNDAMENTALS_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_fundamentals.json"
-META_PRICES = DATA_DIR / f"meta_{TYPE}_{PROVIDER}_prices.json"
-META_FUNDAMENTALS = DATA_DIR / f"meta_{TYPE}_{PROVIDER}_fundamentals.json"
-LOG_FILE = DATA_DIR / f"{TYPE}_{PROVIDER}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log"
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
-)
-logger = logging.getLogger()
+def now():
+    return datetime.now(UTC).isoformat()
 
-with open(BASE_DIR / "symbol_list.json") as f:
-    SYMBOLS = json.load(f).get("symbols", [])
+def load_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
-def save_json(filepath, data):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(filepath, 'w') as f:
-        json.dump(data, f, indent=2)
+def save_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+symbol_map = load_json(SYMBOL_MAP_FILE)
+YAHOO_OVERRIDES = symbol_map.get("overrides", {})
+SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
+DELISTED = set(symbol_map.get("delisted", []))
+
+def is_bond(ticker):
+    t = str(ticker).upper().strip()
+    return t.startswith("SGB") or "BOND" in t
+
+def resolve_yahoo_symbol(ticker):
+    return YAHOO_OVERRIDES.get(ticker, f"{ticker}.NS")
+
+def resolve_screener_symbol(ticker):
+    return SCREENER_OVERRIDES.get(ticker, ticker)
+
+def fetch_yahoo_payload(ticker):
+    payload = {}
+    yahoo_symbol = resolve_yahoo_symbol(ticker)
+    stock = yf.Ticker(yahoo_symbol)
+    
+    try:
+        payload["info"] = stock.info
+    except Exception as e:
+        payload["info_error"] = str(e)
+    
+    try:
+        hist = stock.history(period="1y", interval="1d")
+        payload["history_1y_1d"] = hist.reset_index().astype(str).to_dict("records")
+    except Exception as e:
+        payload["history_error"] = str(e)
+    
+    return payload
+
+def extract_table(table):
+    rows = []
+    for tr in table.select("tr"):
+        cols = tr.select("th,td")
+        row = []
+        for col in cols:
+            row.append(col.get_text(" ", strip=True))
+        if row:
+            rows.append(row)
+    return rows
+
+def fetch_screener_payload(ticker):
+    payload = {}
+    screener_symbol = resolve_screener_symbol(ticker)
+    url = f"https://www.screener.in/company/{screener_symbol}/"
+    payload["url"] = url
+    
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        soup = BeautifulSoup(response.text, "html.parser")
+        payload["tables"] = []
+        
+        for section in soup.select("section"):
+            table = section.select_one("table")
+            if not table:
+                continue
+            heading = section.select_one("h2")
+            payload["tables"].append({
+                "section": heading.get_text(" ", strip=True) if heading else None,
+                "rows": extract_table(table)
+            })
+    except Exception as e:
+        payload["error"] = str(e)
+    
+    return payload
+
+def ensure_stock(store, symbol):
+    ticker = symbol["ticker"]
+    if ticker not in store:
+        store[ticker] = {
+            "ticker": ticker,
+            "name": symbol.get("name"),
+            "isin": symbol.get("isin"),
+            "observations": []
+        }
+    return store[ticker]
+
+def add_observation(stock, provider, payload):
+    stock["observations"].append({
+        "provider": provider,
+        "fetched_at": now(),
+        "raw": payload
+    })
 
 def main():
-    logger.info(f"\n{'='*60}")
-    logger.info(f"{TYPE.upper()} - Full Load (Manual)")
-    logger.info(f"Files: RESET on each run")
-    logger.info(f"{'='*60}\n")
+    start = time.time()
+    prices_store = {}
+    fundamentals_store = {}
     
-    # PRICES
-    logger.info("1. Loading prices (1-year history)...")
-    prices_data = {}
-    prices_ok = 0
-    prices_failed = 0
+    symbols_master = load_json(SYMBOLS_FILE)
+    symbols = symbols_master.get("symbols", [])
     
-    for i, ticker in enumerate(SYMBOLS, 1):
+    processed = 0
+    skipped = 0
+    
+    for symbol in symbols:
+        ticker = str(symbol["ticker"]).strip()
+        
+        if ticker in DELISTED:
+            continue
+        if is_bond(ticker):
+            skipped += 1
+            continue
+        
+        stock_prices = ensure_stock(prices_store, symbol)
+        stock_fundamentals = ensure_stock(fundamentals_store, symbol)
+        
         try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="1y")
-            
-            if not hist.empty:
-                prices_data[ticker] = {
-                    "observations": [{
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "data": {
-                            "history": hist[["Open", "High", "Low", "Close", "Volume"]].to_dict(orient="records"),
-                            "current_price": stock.info.get("currentPrice"),
-                        }
-                    }]
-                }
-                prices_ok += 1
-            else:
-                prices_failed += 1
-                
+            yahoo_payload = fetch_yahoo_payload(ticker)
+            add_observation(stock_prices, "yahoo_finance", yahoo_payload)
+            add_observation(stock_fundamentals, "yahoo_finance", yahoo_payload)
+            processed += 1
         except Exception as e:
-            logger.debug(f"  {ticker}: {e}")
-            prices_failed += 1
-    
-    save_json(PRICES_FILE, prices_data)
-    save_json(META_PRICES, {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "type": TYPE,
-        "provider": PROVIDER,
-        "scope": "prices",
-        "operation": "manual_full_load",
-        "processed": prices_ok,
-        "failed": prices_failed,
-    })
-    logger.info(f"✓ Prices: {prices_ok} loaded (fresh)")
-    
-    # FUNDAMENTALS
-    logger.info("\n2. Loading fundamentals (all fields)...")
-    fundamentals_data = {}
-    fundamentals_ok = 0
-    fundamentals_failed = 0
-    
-    for ticker in SYMBOLS:
+            add_observation(stock_prices, "yahoo_finance", {"error": str(e)})
+            add_observation(stock_fundamentals, "yahoo_finance", {"error": str(e)})
+        
         try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            
-            fundamentals_data[ticker] = {
-                "observations": [{
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "data": {
-                        "revenue": info.get("totalRevenue"),
-                        "eps": info.get("trailingEps"),
-                        "pe": info.get("forwardPE"),
-                        "pb": info.get("priceToBook"),
-                        "ps": info.get("priceToSalesTrailing12Months"),
-                        "roe": info.get("returnOnEquity"),
-                        "roa": info.get("returnOnAssets"),
-                        "debt_equity": info.get("debtToEquity"),
-                        "profit_margin": info.get("profitMargins"),
-                        "operating_margin": info.get("operatingMargins"),
-                        "gross_margin": info.get("grossMargins"),
-                        "market_cap": info.get("marketCap"),
-                        "enterprise_value": info.get("enterpriseValue"),
-                        "current_ratio": info.get("currentRatio"),
-                        "quick_ratio": info.get("quickRatio"),
-                        "total_debt": info.get("totalDebt"),
-                        "total_cash": info.get("totalCash"),
-                        "free_cash_flow": info.get("freeCashflow"),
-                    }
-                }]
-            }
-            fundamentals_ok += 1
-            
+            screener_payload = fetch_screener_payload(ticker)
+            add_observation(stock_fundamentals, "screener", screener_payload)
         except Exception as e:
-            logger.debug(f"  {ticker}: {e}")
-            fundamentals_failed += 1
+            add_observation(stock_fundamentals, "screener", {"error": str(e)})
     
-    save_json(FUNDAMENTALS_FILE, fundamentals_data)
-    save_json(META_FUNDAMENTALS, {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "type": TYPE,
-        "provider": PROVIDER,
-        "scope": "fundamentals",
-        "operation": "manual_full_load",
-        "processed": fundamentals_ok,
-        "failed": fundamentals_failed,
-    })
-    logger.info(f"✓ Fundamentals: {fundamentals_ok} loaded (fresh)")
+    save_json(PRICES_FILE, prices_store)
+    save_json(FUNDAMENTALS_FILE, fundamentals_store)
     
-    logger.info(f"\n{'='*60}")
-    logger.info(f"✓ {TYPE.upper()} FULL LOAD COMPLETE")
-    logger.info(f"  All files RESET to fresh state")
-    logger.info(f"  Prices: {prices_ok} observations")
-    logger.info(f"  Fundamentals: {fundamentals_ok} observations")
-    logger.info(f"{'='*60}\n")
-    
-    return 0
+    runtime = round(time.time() - start, 2)
+    print(f"\n{'='*50}\nHISTORY LOAD\n{'='*50}\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\nFiles reset\n{'='*50}\n")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
