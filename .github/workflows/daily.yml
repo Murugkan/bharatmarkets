@@ -1,4 +1,4 @@
-name: daily
+name: "[DAILY] Comprehensive Sync After Market Close"
 
 on:
   schedule:
@@ -12,25 +12,28 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  daily:
+  daily-sync:
+    name: "Daily - Sync All Data (fetch_daily.py)"
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
         run: pip install yfinance
 
-      - name: Fetch daily data
+      - name: "[DAILY] Fetch prices & fundamentals from Yahoo Finance"
         run: python fetch_daily.py
 
-      - name: Commit and push
+      - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
