@@ -19,18 +19,8 @@ SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-TIME_BOUND_FIELDS = {
-    "price", "volume", "open", "high", "low", "close",
-    "pe_ratio", "dividend_yield"
-}
-
-NON_TIME_BOUND_FIELDS = {
-    "sector", "industry", "company_name", "exchange", 
-    "currency", "isin", "website"
-}
-
 def setup_logging(trading_date):
-    """Setup WARNING+ logging (capture issues)"""
+    """Setup WARNING+ logging"""
     log_dir = DATA_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     
@@ -40,7 +30,6 @@ def setup_logging(trading_date):
     logger = logging.getLogger("history_fetch")
     logger.setLevel(logging.WARNING)
     
-    # File handler (warnings & errors)
     file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
     file_handler.setLevel(logging.WARNING)
     file_format = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -79,7 +68,7 @@ def find_last_trading_day(logger, sample_ticker="RELIANCE"):
         return None
 
 def fetch_yahoo_5year(logger, ticker, yahoo_overrides):
-    """Fetch 5 years of data from Yahoo Finance"""
+    """Fetch 5 years of Yahoo data - Returns arrays directly (no merge needed)"""
     payload = {}
     try:
         yahoo_symbol = yahoo_overrides.get(ticker, f"{ticker}.NS")
@@ -91,38 +80,60 @@ def fetch_yahoo_5year(logger, ticker, yahoo_overrides):
             logger.warning(f"{ticker}: Yahoo - No 5-year history")
             return payload
         
-        payload["metadata"] = {"company_name": info.get("longName"), "sector": info.get("sector"), "industry": info.get("industry"), "exchange": info.get("exchange"), "currency": info.get("currency")}
+        # Extract metadata (non-time-bound)
+        payload["metadata"] = {
+            "company_name": info.get("longName"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "exchange": info.get("exchange"),
+            "currency": info.get("currency"),
+            "isin": info.get("isin"),
+            "website": info.get("website")
+        }
         
-        payload["fields"] = {}
+        # Build time-series arrays directly
+        payload["fields"] = {
+            "price": [],
+            "volume": [],
+            "open": [],
+            "high": [],
+            "low": [],
+            "pe_ratio": []
+        }
         
-        # Build time-series for each field
+        # Populate arrays with all historical data
         for date_idx, row in hist.iterrows():
             date_str = date_idx.strftime("%Y-%m-%d")
             
-            if "price" not in payload["fields"]:
-                payload["fields"]["price"] = []
-            payload["fields"]["price"].append({"date": date_str, "value": float(row["Close"])})
-            
-            if "volume" not in payload["fields"]:
-                payload["fields"]["volume"] = []
-            payload["fields"]["volume"].append({"date": date_str, "value": int(row["Volume"])})
-            
-            if "open" not in payload["fields"]:
-                payload["fields"]["open"] = []
-            payload["fields"]["open"].append({"date": date_str, "value": float(row["Open"])})
-            
-            if "high" not in payload["fields"]:
-                payload["fields"]["high"] = []
-            payload["fields"]["high"].append({"date": date_str, "value": float(row["High"])})
-            
-            if "low" not in payload["fields"]:
-                payload["fields"]["low"] = []
-            payload["fields"]["low"].append({"date": date_str, "value": float(row["Low"])})
+            payload["fields"]["price"].append({
+                "date": date_str,
+                "value": float(row["Close"])
+            })
+            payload["fields"]["volume"].append({
+                "date": date_str,
+                "value": int(row["Volume"])
+            })
+            payload["fields"]["open"].append({
+                "date": date_str,
+                "value": float(row["Open"])
+            })
+            payload["fields"]["high"].append({
+                "date": date_str,
+                "value": float(row["High"])
+            })
+            payload["fields"]["low"].append({
+                "date": date_str,
+                "value": float(row["Low"])
+            })
         
-        # Add latest PE ratio
-        if "pe_ratio" not in payload["fields"]:
-            payload["fields"]["pe_ratio"] = []
-        payload["fields"]["pe_ratio"].append({"date": hist.index[-1].strftime("%Y-%m-%d"), "value": info.get("trailingPE")})
+        # Add latest PE ratio (only latest date)
+        latest_date = hist.index[-1].strftime("%Y-%m-%d")
+        pe = info.get("trailingPE")
+        if pe:
+            payload["fields"]["pe_ratio"].append({
+                "date": latest_date,
+                "value": pe
+            })
         
     except requests.exceptions.Timeout:
         logger.warning(f"{ticker}: Yahoo - Connection timeout")
@@ -136,8 +147,8 @@ def fetch_yahoo_5year(logger, ticker, yahoo_overrides):
     
     return payload
 
-def fetch_screener_5year(logger, ticker, screener_overrides):
-    """Fetch latest fundamentals from Screener"""
+def fetch_screener_latest(logger, ticker, screener_overrides):
+    """Fetch latest Screener data - Returns arrays with today's date"""
     payload = {}
     try:
         screener_symbol = screener_overrides.get(ticker, ticker)
@@ -151,10 +162,16 @@ def fetch_screener_5year(logger, ticker, screener_overrides):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         
-        payload["metadata"] = {"sector": soup.select_one("[data-field='sector']").text if soup.select_one("[data-field='sector']") else None}
-        payload["fields"] = {}
+        # Extract sector (metadata)
+        sector_elem = soup.select_one("[data-field='sector']")
+        payload["metadata"] = {
+            "sector": sector_elem.text.strip() if sector_elem else None
+        }
         
-        # Extract financial tables
+        # Extract financial tables as time-series with today's date
+        payload["fields"] = {}
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        
         for section in soup.select("section"):
             table = section.select_one("table")
             if table:
@@ -168,9 +185,15 @@ def fetch_screener_5year(logger, ticker, screener_overrides):
                         field_value = cols[1].text.strip()
                         field_key = f"{section_name}_{field_name}"
                         
+                        # Initialize field array if needed
                         if field_key not in payload["fields"]:
                             payload["fields"][field_key] = []
-                        payload["fields"][field_key].append({"date": datetime.now(UTC).strftime("%Y-%m-%d"), "value": field_value})
+                        
+                        # Append as time-series entry
+                        payload["fields"][field_key].append({
+                            "date": today,
+                            "value": field_value
+                        })
         
     except requests.exceptions.Timeout:
         logger.warning(f"{ticker}: Screener - Connection timeout")
@@ -243,20 +266,18 @@ def main():
             stats["skipped"] += 1
             continue
         
-        # Initialize
-        history_yahoo[ticker] = {"ticker": ticker, "metadata": {}, "fields": {}}
-        history_screener[ticker] = {"ticker": ticker, "metadata": {}, "fields": {}}
-        
         # Fetch Yahoo 5-year
         yahoo_payload = fetch_yahoo_5year(logger, ticker, yahoo_overrides)
+        history_yahoo[ticker] = {"ticker": ticker}
         history_yahoo[ticker].update(yahoo_payload)
         if "error" not in yahoo_payload:
             stats["yahoo_success"] += 1
         else:
             stats["yahoo_errors"] += 1
         
-        # Fetch Screener
-        screener_payload = fetch_screener_5year(logger, ticker, screener_overrides)
+        # Fetch Screener latest
+        screener_payload = fetch_screener_latest(logger, ticker, screener_overrides)
+        history_screener[ticker] = {"ticker": ticker}
         history_screener[ticker].update(screener_payload)
         if "error" not in screener_payload:
             stats["screener_success"] += 1

@@ -30,7 +30,7 @@ NON_TIME_BOUND_FIELDS = {
 }
 
 def setup_logging(trading_date):
-    """Setup WARNING+ logging (skip verbose INFO, capture issues)"""
+    """Setup WARNING+ logging (capture issues)"""
     log_dir = DATA_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     
@@ -40,7 +40,6 @@ def setup_logging(trading_date):
     logger = logging.getLogger("daily_fetch")
     logger.setLevel(logging.WARNING)
     
-    # File handler (warnings & errors)
     file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
     file_handler.setLevel(logging.WARNING)
     file_format = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -85,7 +84,7 @@ def field_exists_for_date(data_array, target_date):
     return any(entry.get("date") == target_date for entry in data_array)
 
 def merge_field_level(logger, existing_data, new_data, trading_date_str, stats):
-    """Merge with field-level logic"""
+    """Merge new data with field-level logic - Converts single values to arrays"""
     for ticker, new_ticker_data in new_data.items():
         try:
             if ticker not in existing_data:
@@ -97,20 +96,25 @@ def merge_field_level(logger, existing_data, new_data, trading_date_str, stats):
             if "fields" not in existing_ticker:
                 existing_ticker["fields"] = {}
             
-            # Merge metadata
+            # Merge metadata (non-time-bound) - stored once
             for field, value in new_ticker_data.get("metadata", {}).items():
                 if field in NON_TIME_BOUND_FIELDS and value:
                     existing_ticker["metadata"][field] = value
             
-            # Merge fields
+            # Merge time-bound fields - convert single values to arrays with date
             fields_appended = 0
             for field, value in new_ticker_data.get("fields", {}).items():
                 if field in TIME_BOUND_FIELDS and value is not None:
+                    # Initialize field array if needed
                     if field not in existing_ticker["fields"]:
                         existing_ticker["fields"][field] = []
                     
+                    # Check idempotency - don't add if date already exists
                     if not field_exists_for_date(existing_ticker["fields"][field], trading_date_str):
-                        existing_ticker["fields"][field].append({"date": trading_date_str, "value": value})
+                        existing_ticker["fields"][field].append({
+                            "date": trading_date_str,
+                            "value": value
+                        })
                         fields_appended += 1
             
             stats["fields_appended"] += fields_appended
@@ -139,7 +143,7 @@ def trim_to_5_days(logger, data, trading_date_str, stats):
         logger.error(f"Trim error: {str(e)}")
 
 def fetch_yahoo_data(logger, ticker, yahoo_overrides):
-    """Fetch Yahoo Finance"""
+    """Fetch Yahoo Finance - Return single values (not arrays)"""
     payload = {}
     try:
         yahoo_symbol = yahoo_overrides.get(ticker, f"{ticker}.NS")
@@ -151,9 +155,28 @@ def fetch_yahoo_data(logger, ticker, yahoo_overrides):
             logger.warning(f"{ticker}: Yahoo - No history data")
             return payload
         
+        # Extract metadata (non-time-bound)
+        payload["metadata"] = {
+            "company_name": info.get("longName"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "exchange": info.get("exchange"),
+            "currency": info.get("currency"),
+            "isin": info.get("isin"),
+            "website": info.get("website")
+        }
+        
+        # Extract latest data point - single values (merge will convert to arrays)
         latest = hist.iloc[-1]
-        payload["metadata"] = {"company_name": info.get("longName"), "sector": info.get("sector"), "industry": info.get("industry"), "exchange": info.get("exchange"), "currency": info.get("currency")}
-        payload["fields"] = {"price": float(latest["Close"]), "volume": int(latest["Volume"]), "open": float(latest["Open"]), "high": float(latest["High"]), "low": float(latest["Low"]), "pe_ratio": info.get("trailingPE"), "dividend_yield": info.get("dividendYield")}
+        payload["fields"] = {
+            "price": float(latest["Close"]) if latest["Close"] else None,
+            "volume": int(latest["Volume"]) if latest["Volume"] else None,
+            "open": float(latest["Open"]) if latest["Open"] else None,
+            "high": float(latest["High"]) if latest["High"] else None,
+            "low": float(latest["Low"]) if latest["Low"] else None,
+            "pe_ratio": info.get("trailingPE"),
+            "dividend_yield": info.get("dividendYield")
+        }
         
     except requests.exceptions.Timeout:
         logger.warning(f"{ticker}: Yahoo - Connection timeout")
@@ -168,7 +191,7 @@ def fetch_yahoo_data(logger, ticker, yahoo_overrides):
     return payload
 
 def fetch_screener_data(logger, ticker, screener_overrides):
-    """Fetch Screener.in"""
+    """Fetch Screener.in - Return values for merging"""
     payload = {}
     try:
         screener_symbol = screener_overrides.get(ticker, ticker)
@@ -182,7 +205,13 @@ def fetch_screener_data(logger, ticker, screener_overrides):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         
-        payload["metadata"] = {"sector": soup.select_one("[data-field='sector']").text if soup.select_one("[data-field='sector']") else None}
+        # Extract sector (metadata)
+        sector_elem = soup.select_one("[data-field='sector']")
+        payload["metadata"] = {
+            "sector": sector_elem.text.strip() if sector_elem else None
+        }
+        
+        # Extract financial data from tables
         payload["fields"] = {}
         
         for section in soup.select("section"):
@@ -190,12 +219,14 @@ def fetch_screener_data(logger, ticker, screener_overrides):
             if table:
                 heading = section.select_one("h2")
                 section_name = heading.text.strip() if heading else "unknown"
+                
                 for tr in table.select("tr"):
                     cols = tr.select("td")
                     if len(cols) >= 2:
                         field_name = cols[0].text.strip()
                         field_value = cols[1].text.strip()
-                        payload["fields"][f"{section_name}_{field_name}"] = field_value
+                        field_key = f"{section_name}_{field_name}"
+                        payload["fields"][field_key] = field_value
         
     except requests.exceptions.Timeout:
         logger.warning(f"{ticker}: Screener - Connection timeout")
@@ -276,11 +307,9 @@ def main():
             stats["skipped"] += 1
             continue
         
-        new_yahoo_data[ticker] = {"ticker": ticker, "metadata": {}, "fields": {}}
-        new_screener_data[ticker] = {"ticker": ticker, "metadata": {}, "fields": {}}
-        
         # Fetch Yahoo
         yahoo_payload = fetch_yahoo_data(logger, ticker, yahoo_overrides)
+        new_yahoo_data[ticker] = {"ticker": ticker}
         new_yahoo_data[ticker].update(yahoo_payload)
         if "error" not in yahoo_payload:
             stats["yahoo_success"] += 1
@@ -289,6 +318,7 @@ def main():
         
         # Fetch Screener
         screener_payload = fetch_screener_data(logger, ticker, screener_overrides)
+        new_screener_data[ticker] = {"ticker": ticker}
         new_screener_data[ticker].update(screener_payload)
         if "error" not in screener_payload:
             stats["screener_success"] += 1
