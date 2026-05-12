@@ -12,24 +12,46 @@ from datetime import datetime, UTC
 
 
 BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 
-RAW_YAHOO_FILE = BASE_DIR / "raw_yahoo_fundamentals.json"
-RAW_SCREENER_FILE = BASE_DIR / "raw_screener_fundamentals.json"
-LOG_FILE = BASE_DIR / "fetch_runtime.log"
+# Create data folder if it doesn't exist
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+RAW_YAHOO_FILE = DATA_DIR / "raw_yahoo_fundamentals.json"
+RAW_SCREENER_FILE = DATA_DIR / "raw_screener_fundamentals.json"
+
+LOG_FILE = DATA_DIR / "fetch_runtime.log"
+YAHOO_LOG_FILE = DATA_DIR / "yahoo_fetch.log"
+SCREENER_LOG_FILE = DATA_DIR / "screener_fetch.log"
 
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
 SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
-# Configure logging
+# Configure main logger (only WARNING and above)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(LOG_FILE),
-        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Configure Yahoo logger (only WARNING and above)
+yahoo_logger = logging.getLogger("yahoo_finance")
+yahoo_handler = logging.FileHandler(YAHOO_LOG_FILE)
+yahoo_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+yahoo_handler.setLevel(logging.WARNING)
+yahoo_logger.addHandler(yahoo_handler)
+yahoo_logger.setLevel(logging.WARNING)
+
+# Configure Screener logger (only WARNING and above)
+screener_logger = logging.getLogger("screener")
+screener_handler = logging.FileHandler(SCREENER_LOG_FILE)
+screener_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+screener_handler.setLevel(logging.WARNING)
+screener_logger.addHandler(screener_handler)
+screener_logger.setLevel(logging.WARNING)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
@@ -93,7 +115,7 @@ def fetch_yahoo_info(ticker, yahoo_symbol):
         payload["info"] = stock.info
     except Exception as e:
         payload["info_error"] = str(e)
-        logger.warning(f"Yahoo info error for {ticker}: {str(e)}")
+        yahoo_logger.warning(f"Yahoo info error for {ticker}: {str(e)}")
     
     # Fetch 1-year daily history
     try:
@@ -106,7 +128,7 @@ def fetch_yahoo_info(ticker, yahoo_symbol):
         )
     except Exception as e:
         payload["history_error"] = str(e)
-        logger.warning(f"Yahoo history error for {ticker}: {str(e)}")
+        yahoo_logger.warning(f"Yahoo history error for {ticker}: {str(e)}")
     
     return payload
 
@@ -168,7 +190,7 @@ def fetch_screener_data(ticker, screener_symbol):
         
     except Exception as e:
         payload["error"] = str(e)
-        logger.warning(f"Screener fetch error for {ticker}: {str(e)}")
+        screener_logger.warning(f"Screener fetch error for {ticker}: {str(e)}")
     
     return payload
 
@@ -276,13 +298,18 @@ def main():
     
     start = time.time()
     
-    logger.info("=" * 60)
-    logger.info("STARTING UNIFIED FUNDAMENTALS & PROVIDER DATA FETCH")
-    logger.info("=" * 60)
+    print("=" * 70)
+    print("STARTING UNIFIED FUNDAMENTALS & PROVIDER DATA FETCH")
+    print("=" * 70)
+    print()
     
     # Initialize separate stores for each provider
     yahoo_store = {}
     screener_store = {}
+    
+    # Track failures for detailed summary
+    yahoo_failures = {}
+    screener_failures = {}
     
     symbols_master = load_json(SYMBOLS_FILE)
     symbols = symbols_master.get("symbols", [])
@@ -294,8 +321,8 @@ def main():
     screener_success = 0
     screener_errors = 0
     
-    logger.info(f"Total symbols to process: {len(symbols)}")
-    logger.info("")
+    print(f"Processing {len(symbols)} symbols...")
+    print()
     
     for idx, symbol in enumerate(symbols, 1):
         
@@ -303,22 +330,20 @@ def main():
         
         # Skip delisted stocks
         if ticker in DELISTED:
-            logger.debug(f"[{idx}/{len(symbols)}] Skipping delisted: {ticker}")
             continue
         
         # Skip bonds
         if is_bond(ticker):
-            logger.debug(f"[{idx}/{len(symbols)}] Skipping bond: {ticker}")
             skipped += 1
             continue
         
-        logger.info(f"[{idx}/{len(symbols)}] Processing {ticker}")
+        # Progress indicator (every 10 stocks)
+        if idx % 10 == 0:
+            print(f"  [{idx}/{len(symbols)}] Processing...")
         
         # ====== YAHOO FINANCE FETCH ======
         try:
             yahoo_symbol = resolve_yahoo_symbol(ticker)
-            logger.debug(f"  -> Yahoo symbol: {yahoo_symbol}")
-            
             yahoo_payload = fetch_yahoo_info(ticker, yahoo_symbol)
             
             if ticker not in yahoo_store:
@@ -335,11 +360,12 @@ def main():
             })
             
             yahoo_success += 1
-            logger.debug(f"  OK Yahoo data fetched")
         
         except Exception as e:
             yahoo_errors += 1
-            logger.error(f"  FAIL Yahoo error: {str(e)}")
+            error_msg = str(e)
+            yahoo_failures[ticker] = error_msg
+            yahoo_logger.error(f"{ticker}: {error_msg}")
             
             if ticker not in yahoo_store:
                 yahoo_store[ticker] = {
@@ -351,14 +377,12 @@ def main():
             
             yahoo_store[ticker]["observations"].append({
                 "fetched_at": now(),
-                "raw": {"error": str(e)}
+                "raw": {"error": error_msg}
             })
         
         # ====== SCREENER.IN FETCH ======
         try:
             screener_symbol = resolve_screener_symbol(ticker)
-            logger.debug(f"  -> Screener symbol: {screener_symbol}")
-            
             screener_payload = fetch_screener_data(ticker, screener_symbol)
             
             if ticker not in screener_store:
@@ -375,11 +399,12 @@ def main():
             })
             
             screener_success += 1
-            logger.debug(f"  OK Screener data fetched")
         
         except Exception as e:
             screener_errors += 1
-            logger.error(f"  FAIL Screener error: {str(e)}")
+            error_msg = str(e)
+            screener_failures[ticker] = error_msg
+            screener_logger.error(f"{ticker}: {error_msg}")
             
             if ticker not in screener_store:
                 screener_store[ticker] = {
@@ -391,64 +416,92 @@ def main():
             
             screener_store[ticker]["observations"].append({
                 "fetched_at": now(),
-                "raw": {"error": str(e)}
+                "raw": {"error": error_msg}
             })
         
         processed += 1
-        logger.info("")
     
     # Save separate provider files
-    logger.info("=" * 60)
-    logger.info("SAVING DATA FILES")
-    logger.info("=" * 60)
+    print()
+    print("=" * 70)
+    print("SAVING DATA FILES")
+    print("=" * 70)
     
-    logger.info(f"Saving Yahoo Finance data ({len(yahoo_store)} tickers)")
     save_json(RAW_YAHOO_FILE, yahoo_store)
-    logger.info(f"OK Saved to {RAW_YAHOO_FILE}")
+    print(f"✓ Yahoo Finance data: {RAW_YAHOO_FILE}")
     
-    logger.info(f"Saving Screener.in data ({len(screener_store)} tickers)")
     save_json(RAW_SCREENER_FILE, screener_store)
-    logger.info(f"OK Saved to {RAW_SCREENER_FILE}")
+    print(f"✓ Screener.in data: {RAW_SCREENER_FILE}")
     
     runtime = round(time.time() - start, 2)
     
-    # Summary report
-    summary = f"""
-{'=' * 60}
-UNIFIED FETCH SUMMARY
-{'=' * 60}
-
-PROCESSING STATISTICS:
-  Total Symbols        : {len(symbols)}
-  Processed            : {processed}
-  Skipped (Bonds)      : {skipped}
-
-YAHOO FINANCE:
-  OK Success           : {yahoo_success}
-  FAIL Errors          : {yahoo_errors}
-  Output File          : {RAW_YAHOO_FILE}
-
-SCREENER.IN:
-  OK Success           : {screener_success}
-  FAIL Errors          : {screener_errors}
-  Output File          : {RAW_SCREENER_FILE}
-
-RUNTIME INFORMATION:
-  Duration             : {runtime} seconds
-  Completed At         : {now()}
-  Log File             : {LOG_FILE}
-
-{'=' * 60}
-"""
+    # Create detailed summary
+    summary_lines = []
+    summary_lines.append("")
+    summary_lines.append("=" * 70)
+    summary_lines.append("DETAILED FETCH SUMMARY")
+    summary_lines.append("=" * 70)
+    summary_lines.append("")
     
-    logger.info(summary)
-    print(summary)
+    summary_lines.append("PROCESSING OVERVIEW:")
+    summary_lines.append(f"  Total Symbols          : {len(symbols)}")
+    summary_lines.append(f"  Successfully Processed : {processed}")
+    summary_lines.append(f"  Skipped (Bonds)        : {skipped}")
+    summary_lines.append("")
+    
+    summary_lines.append("YAHOO FINANCE RESULTS:")
+    summary_lines.append(f"  Success Rate           : {yahoo_success}/{processed} ({round(yahoo_success/processed*100, 1)}%)")
+    summary_lines.append(f"  Errors                 : {yahoo_errors}")
+    summary_lines.append(f"  Output File            : {RAW_YAHOO_FILE}")
+    
+    if yahoo_failures:
+        summary_lines.append(f"")
+        summary_lines.append(f"  Failed Tickers ({len(yahoo_failures)}):")
+        for ticker, error in sorted(yahoo_failures.items()):
+            summary_lines.append(f"    - {ticker}: {error[:60]}")
+    
+    summary_lines.append("")
+    
+    summary_lines.append("SCREENER.IN RESULTS:")
+    summary_lines.append(f"  Success Rate           : {screener_success}/{processed} ({round(screener_success/processed*100, 1)}%)")
+    summary_lines.append(f"  Errors                 : {screener_errors}")
+    summary_lines.append(f"  Output File            : {RAW_SCREENER_FILE}")
+    
+    if screener_failures:
+        summary_lines.append(f"")
+        summary_lines.append(f"  Failed Tickers ({len(screener_failures)}):")
+        for ticker, error in sorted(screener_failures.items()):
+            summary_lines.append(f"    - {ticker}: {error[:60]}")
+    
+    summary_lines.append("")
+    
+    summary_lines.append("LOG FILES:")
+    summary_lines.append(f"  Main Log               : {LOG_FILE}")
+    summary_lines.append(f"  Yahoo Log              : {YAHOO_LOG_FILE}")
+    summary_lines.append(f"  Screener Log           : {SCREENER_LOG_FILE}")
+    summary_lines.append("")
+    
+    summary_lines.append("RUNTIME INFORMATION:")
+    summary_lines.append(f"  Duration               : {runtime} seconds")
+    summary_lines.append(f"  Completed At           : {now()}")
+    summary_lines.append("")
+    summary_lines.append("=" * 70)
+    
+    # Print summary
+    summary_text = "\n".join(summary_lines)
+    print(summary_text)
+    
+    # Save summary to log file
+    with open(LOG_FILE, "w", encoding="utf-8") as f:
+        f.write(summary_text)
     
     # Commit and push to GitHub
     files_to_commit = [
-        str(RAW_YAHOO_FILE),
-        str(RAW_SCREENER_FILE),
-        str(LOG_FILE)
+        "data/raw_yahoo_fundamentals.json",
+        "data/raw_screener_fundamentals.json",
+        "data/fetch_runtime.log",
+        "data/yahoo_fetch.log",
+        "data/screener_fetch.log"
     ]
     
     git_commit_and_push(files_to_commit)
