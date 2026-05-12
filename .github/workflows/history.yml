@@ -1,0 +1,42 @@
+name: history
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install yfinance
+
+      - name: Fetch history data
+        run: python fetch_history.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git add data/history_yahoo_*.json data/meta_history_yahoo_*.json data/history_yahoo_*.log
+          
+          git diff --cached --quiet && exit 0
+          
+          git commit -m "history: manual load [$(date -u +'%Y-%m-%dT%H:%M:%SZ')]"
+          git pull --rebase origin main
+          git push origin HEAD:main
