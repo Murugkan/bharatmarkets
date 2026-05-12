@@ -3,6 +3,8 @@ import time
 import logging
 import requests
 import yfinance as yf
+import subprocess
+import os
 
 from bs4 import BeautifulSoup
 from pathlib import Path
@@ -172,8 +174,103 @@ def fetch_screener_data(ticker, screener_symbol):
 
 
 # ============================================================================
-# MAIN FETCH LOGIC
+# GIT OPERATIONS - AUTO COMMIT & PUSH
 # ============================================================================
+
+def git_commit_and_push(files_to_commit):
+    """Commit and push files to GitHub repository"""
+    
+    try:
+        logger.info("=" * 60)
+        logger.info("GIT OPERATIONS - COMMITTING & PUSHING")
+        logger.info("=" * 60)
+        
+        # Check if we're in a git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0:
+            logger.warning("Not a git repository - skipping commit")
+            return False
+        
+        logger.info("✓ Git repository detected")
+        
+        # Configure git user (for GitHub Actions)
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            capture_output=True,
+            timeout=10
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"],
+            capture_output=True,
+            timeout=10
+        )
+        logger.info("✓ Git user configured")
+        
+        # Add files
+        for file in files_to_commit:
+            if os.path.exists(file):
+                subprocess.run(
+                    ["git", "add", file],
+                    capture_output=True,
+                    timeout=10
+                )
+                logger.info(f"  Added: {file}")
+        
+        # Check if there are changes
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if not result.stdout.strip():
+            logger.info("No changes to commit")
+            return True
+        
+        # Commit
+        timestamp = datetime.now(UTC).isoformat()
+        commit_msg = f"chore: update fundamentals data [{timestamp}]"
+        
+        result = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"✓ Committed: {commit_msg}")
+        else:
+            logger.warning(f"Commit warning: {result.stderr}")
+        
+        # Push
+        result = subprocess.run(
+            ["git", "push"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            logger.info("✓ Pushed to repository")
+            logger.info("=" * 60)
+            return True
+        else:
+            logger.error(f"Push failed: {result.stderr}")
+            logger.info("=" * 60)
+            return False
+    
+    except Exception as e:
+        logger.error(f"Git operation failed: {str(e)}")
+        return False
+
 
 def main():
     
@@ -346,6 +443,15 @@ RUNTIME INFORMATION:
     
     logger.info(summary)
     print(summary)
+    
+    # Commit and push to GitHub
+    files_to_commit = [
+        str(RAW_YAHOO_FILE),
+        str(RAW_SCREENER_FILE),
+        str(LOG_FILE)
+    ]
+    
+    git_commit_and_push(files_to_commit)
 
 
 if __name__ == "__main__":
