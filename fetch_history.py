@@ -9,8 +9,8 @@ from datetime import datetime, UTC
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-PRICES_FILE = DATA_DIR / "history_yahoo_prices.json"
-FUNDAMENTALS_FILE = DATA_DIR / "history_yahoo_fundamentals.json"
+YAHOO_FILE = DATA_DIR / "history_yahoo.json"
+SCREENER_FILE = DATA_DIR / "history_screener.json"
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
 SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
@@ -111,20 +111,19 @@ def ensure_stock(store, symbol):
         }
     return store[ticker]
 
-def add_observation(stock, provider, payload):
+def add_observation(stock, payload):
     stock["observations"].append({
-        "provider": provider,
         "fetched_at": now(),
         "raw": payload
     })
 
 def main():
     start = time.time()
-    prices_store = {}
-    fundamentals_store = {}
-    
     symbols_master = load_json(SYMBOLS_FILE)
     symbols = symbols_master.get("symbols", [])
+    
+    yahoo_store = {}
+    screener_store = {}
     
     processed = 0
     skipped = 0
@@ -138,29 +137,52 @@ def main():
             skipped += 1
             continue
         
-        stock_prices = ensure_stock(prices_store, symbol)
-        stock_fundamentals = ensure_stock(fundamentals_store, symbol)
-        
+        # Yahoo
         try:
+            yahoo_stock = ensure_stock(yahoo_store, symbol)
             yahoo_payload = fetch_yahoo_payload(ticker)
-            add_observation(stock_prices, "yahoo_finance", yahoo_payload)
-            add_observation(stock_fundamentals, "yahoo_finance", yahoo_payload)
-            processed += 1
+            add_observation(yahoo_stock, yahoo_payload)
         except Exception as e:
-            add_observation(stock_prices, "yahoo_finance", {"error": str(e)})
-            add_observation(stock_fundamentals, "yahoo_finance", {"error": str(e)})
+            yahoo_stock = ensure_stock(yahoo_store, symbol)
+            add_observation(yahoo_stock, {"error": str(e)})
         
+        # Screener
         try:
+            screener_stock = ensure_stock(screener_store, symbol)
             screener_payload = fetch_screener_payload(ticker)
-            add_observation(stock_fundamentals, "screener", screener_payload)
+            add_observation(screener_stock, screener_payload)
         except Exception as e:
-            add_observation(stock_fundamentals, "screener", {"error": str(e)})
+            screener_stock = ensure_stock(screener_store, symbol)
+            add_observation(screener_stock, {"error": str(e)})
+        
+        processed += 1
     
-    save_json(PRICES_FILE, prices_store)
-    save_json(FUNDAMENTALS_FILE, fundamentals_store)
+    save_json(YAHOO_FILE, yahoo_store)
+    save_json(SCREENER_FILE, screener_store)
     
     runtime = round(time.time() - start, 2)
-    print(f"\n{'='*50}\nHISTORY LOAD\n{'='*50}\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\nFiles reset\n{'='*50}\n")
+    
+    # Metadata & logs
+    for provider, data_file in [("yahoo", YAHOO_FILE), ("screener", SCREENER_FILE)]:
+        meta_file = DATA_DIR / f"meta_history_{provider}.json"
+        metadata = {
+            "timestamp": now(),
+            "type": "history",
+            "provider": provider,
+            "processed": processed,
+            "skipped": skipped,
+            "runtime_seconds": runtime,
+            "data_file": data_file.name,
+            "operation": "manual_reset"
+        }
+        save_json(meta_file, metadata)
+        
+        log_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        log_file = DATA_DIR / f"history_{provider}_{log_timestamp}.log"
+        with open(log_file, "w") as f:
+            f.write(f"History {provider}\nTimestamp: {now()}\nOperation: Manual Reset\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\n")
+    
+    print(f"History: {processed} processed, {skipped} skipped, {runtime}s, reset complete")
 
 if __name__ == "__main__":
     main()

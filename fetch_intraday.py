@@ -10,7 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 TODAY = datetime.now(UTC).strftime("%Y-%m-%d")
 
-DATA_FILE = DATA_DIR / f"intraday_yahoo_{TODAY}.json"
+YAHOO_FILE = DATA_DIR / f"intraday_yahoo_{TODAY}.json"
+SCREENER_FILE = DATA_DIR / f"intraday_screener_{TODAY}.json"
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
 SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
@@ -33,6 +34,7 @@ def save_json(path, data):
 
 symbol_map = load_json(SYMBOL_MAP_FILE)
 YAHOO_OVERRIDES = symbol_map.get("overrides", {})
+SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
 DELISTED = set(symbol_map.get("delisted", []))
 
 def is_bond(ticker):
@@ -41,6 +43,9 @@ def is_bond(ticker):
 
 def resolve_yahoo_symbol(ticker):
     return YAHOO_OVERRIDES.get(ticker, f"{ticker}.NS")
+
+def resolve_screener_symbol(ticker):
+    return SCREENER_OVERRIDES.get(ticker, ticker)
 
 def fetch_yahoo_payload(ticker):
     payload = {}
@@ -60,6 +65,42 @@ def fetch_yahoo_payload(ticker):
     
     return payload
 
+def extract_table(table):
+    rows = []
+    for tr in table.select("tr"):
+        cols = tr.select("th,td")
+        row = []
+        for col in cols:
+            row.append(col.get_text(" ", strip=True))
+        if row:
+            rows.append(row)
+    return rows
+
+def fetch_screener_payload(ticker):
+    payload = {}
+    screener_symbol = resolve_screener_symbol(ticker)
+    url = f"https://www.screener.in/company/{screener_symbol}/"
+    payload["url"] = url
+    
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        soup = BeautifulSoup(response.text, "html.parser")
+        payload["tables"] = []
+        
+        for section in soup.select("section"):
+            table = section.select_one("table")
+            if not table:
+                continue
+            heading = section.select_one("h2")
+            payload["tables"].append({
+                "section": heading.get_text(" ", strip=True) if heading else None,
+                "rows": extract_table(table)
+            })
+    except Exception as e:
+        payload["error"] = str(e)
+    
+    return payload
+
 def ensure_stock(store, symbol):
     ticker = symbol["ticker"]
     if ticker not in store:
@@ -71,19 +112,19 @@ def ensure_stock(store, symbol):
         }
     return store[ticker]
 
-def add_observation(stock, provider, payload):
+def add_observation(stock, payload):
     stock["observations"].append({
-        "provider": provider,
         "fetched_at": now(),
         "raw": payload
     })
 
 def main():
     start = time.time()
-    store = load_json(DATA_FILE)
-    
     symbols_master = load_json(SYMBOLS_FILE)
     symbols = symbols_master.get("symbols", [])
+    
+    yahoo_store = load_json(YAHOO_FILE)
+    screener_store = load_json(SCREENER_FILE)
     
     processed = 0
     skipped = 0
@@ -97,19 +138,51 @@ def main():
             skipped += 1
             continue
         
-        stock = ensure_stock(store, symbol)
-        
+        # Yahoo
         try:
+            yahoo_stock = ensure_stock(yahoo_store, symbol)
             yahoo_payload = fetch_yahoo_payload(ticker)
-            add_observation(stock, "yahoo_finance", yahoo_payload)
-            processed += 1
+            add_observation(yahoo_stock, yahoo_payload)
         except Exception as e:
-            add_observation(stock, "yahoo_finance", {"error": str(e)})
+            yahoo_stock = ensure_stock(yahoo_store, symbol)
+            add_observation(yahoo_stock, {"error": str(e)})
+        
+        # Screener
+        try:
+            screener_stock = ensure_stock(screener_store, symbol)
+            screener_payload = fetch_screener_payload(ticker)
+            add_observation(screener_stock, screener_payload)
+        except Exception as e:
+            screener_stock = ensure_stock(screener_store, symbol)
+            add_observation(screener_stock, {"error": str(e)})
+        
+        processed += 1
     
-    save_json(DATA_FILE, store)
+    save_json(YAHOO_FILE, yahoo_store)
+    save_json(SCREENER_FILE, screener_store)
     
     runtime = round(time.time() - start, 2)
-    print(f"\n{'='*50}\nINTRADAY\n{'='*50}\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\n{'='*50}\n")
+    
+    # Metadata & logs
+    for provider, data_file in [("yahoo", YAHOO_FILE), ("screener", SCREENER_FILE)]:
+        meta_file = DATA_DIR / f"meta_intraday_{provider}_{TODAY}.json"
+        metadata = {
+            "timestamp": now(),
+            "type": "intraday",
+            "provider": provider,
+            "processed": processed,
+            "skipped": skipped,
+            "runtime_seconds": runtime,
+            "data_file": data_file.name
+        }
+        save_json(meta_file, metadata)
+        
+        log_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        log_file = DATA_DIR / f"intraday_{provider}_{log_timestamp}.log"
+        with open(log_file, "w") as f:
+            f.write(f"Intraday {provider}\nTimestamp: {now()}\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\n")
+    
+    print(f"Intraday: {processed} processed, {skipped} skipped, {runtime}s")
 
 if __name__ == "__main__":
     main()
