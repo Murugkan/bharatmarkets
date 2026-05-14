@@ -120,6 +120,11 @@ def add_observation(stock, payload):
 
 def main():
     start = time.time()
+    
+    # Auto-create data directories
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / "chart").mkdir(parents=True, exist_ok=True)
+    
     symbols_master = load_json(SYMBOLS_FILE)
     symbols = symbols_master.get("symbols", [])
     
