@@ -41,21 +41,20 @@ import re
 class Config:
     """Configuration constants"""
     
-    # File paths
-    INPUT_DIR = Path('/mnt/user-data/uploads')
-    OUTPUT_DIR = Path('/mnt/user-data/outputs')
-    CHART_DIR = OUTPUT_DIR / 'charts'
+    # File paths (relative to repository root)
+    DATA_DIR = Path('data')
+    CHART_DIR = DATA_DIR / 'chart'
     
-    # Input files
-    YAHOO_HISTORY = INPUT_DIR / 'daily_yahoo_2026-05-12.json'
-    SCREENER_HISTORY = INPUT_DIR / 'daily_screener_2026-05-12.json'
-    GUIDANCE_DATA = INPUT_DIR / 'guidance.json'
+    # Input files (in data/ directory)
+    YAHOO_HISTORY = DATA_DIR / 'daily_yahoo.json'
+    SCREENER_HISTORY = DATA_DIR / 'daily_screener.json'
+    GUIDANCE_DATA = DATA_DIR / 'guidance.json'
     
-    # Output files
-    UNIFIED_DATA = OUTPUT_DIR / 'unified-data.json'
-    UNIFIED_META = OUTPUT_DIR / 'unified-data-meta.json'
-    VALIDATION_REPORT = OUTPUT_DIR / 'validation-report.json'
-    CONFLICTS_LOG = OUTPUT_DIR / 'conflicts-log.json'
+    # Output files (in data/ directory)
+    UNIFIED_DATA = DATA_DIR / 'unified-data.json'
+    UNIFIED_META = DATA_DIR / 'unified-data-meta.json'
+    VALIDATION_REPORT = DATA_DIR / 'validation-report.json'
+    CONFLICTS_LOG = DATA_DIR / 'conflicts-log.json'
     PRICE_HISTORY = CHART_DIR / 'price-history.json'
     FUNDAMENTAL_HISTORY = CHART_DIR / 'fundamental-history.json'
     
@@ -94,7 +93,7 @@ def setup_logging() -> logging.Logger:
     logger.addHandler(console_handler)
     
     # File handler
-    log_file = Config.OUTPUT_DIR / 'merge_script.log'
+    log_file = Config.DATA_DIR / 'merge_script.log'
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
     file_format = logging.Formatter(
@@ -953,8 +952,9 @@ class MergeScript:
         self.logger.info('SAVING OUTPUT FILES')
         self.logger.info('='*70)
         
-        # Create output directory
-        Config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        # Create data directories
+        Config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        Config.CHART_DIR.mkdir(parents=True, exist_ok=True)
         
         # Save unified data
         with open(Config.UNIFIED_DATA, 'w') as f:
