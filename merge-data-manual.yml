@@ -50,18 +50,18 @@ jobs:
         id: merge
         run: |
           echo "Starting merge process..."
-          python scripts/merge_script.py
+          python merge_script.py
           echo "merge_status=success" >> $GITHUB_OUTPUT
       
       # Step 5: Check if outputs exist
       - name: ✓ Verify output files
         run: |
           echo "Checking output files..."
-          ls -lh data/outputs/
+          ls -lh data/
           
-          if [ -f data/outputs/unified-data.json ]; then
+          if [ -f data/unified-data.json ]; then
             echo "✓ unified-data.json found"
-            SIZE=$(wc -c < data/outputs/unified-data.json)
+            SIZE=$(wc -c < data/unified-data.json)
             echo "  Size: $(( SIZE / 1048576 )) MB"
           else
             echo "✗ unified-data.json NOT found"
@@ -73,10 +73,10 @@ jobs:
         if: always()
         run: |
           echo "=== VALIDATION REPORT ==="
-          if [ -f data/outputs/validation-report.json ]; then
+          if [ -f data/validation-report.json ]; then
             python << 'EOF'
           import json
-          with open('data/outputs/validation-report.json') as f:
+          with open('data/validation-report.json') as f:
               report = json.load(f)
           
           summary = report['summary']
@@ -103,7 +103,7 @@ jobs:
         with:
           name: merge-outputs
           path: |
-            data/outputs/
+            data/
           retention-days: 30
       
       # Step 8: Create summary
@@ -117,11 +117,11 @@ jobs:
           echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ -f data/outputs/validation-report.json ]; then
+          if [ -f data/validation-report.json ]; then
             echo "### ✅ Validation Report" >> $GITHUB_STEP_SUMMARY
             python << 'EOF'
           import json
-          with open('data/outputs/validation-report.json') as f:
+          with open('data/validation-report.json') as f:
               report = json.load(f)
           
           summary = report['summary']
@@ -144,7 +144,7 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "github-actions[bot]"
           
-          git add data/outputs/ 2>/dev/null || true
+          git add data/ 2>/dev/null || true
           
           if git diff --cached --quiet; then
               echo "No changes to commit"
