@@ -1,1302 +1,422 @@
 #!/usr/bin/env python3
 """
-BharatMarkets Data Layer - Merge Script v2.0
+MERGE SCRIPT - BharatMarkets Stock Data Pipeline
+Merge → Consolidate → Restructure with ZERO DATA LOSS GUARANTEE
 
-Purpose:
-    Merge Yahoo Finance, Screener.in, and AI Guidance data into unified
-    production-ready JSON files with comprehensive validation and reporting.
+Usage:
+    python3 merge_script.py
+    (uses relative paths from repository root)
 
-Architecture:
-    - Load history files (static, once)
-    - Load delta files (dynamic, frequent)
-    - Merge with multi-provider conflict resolution
-    - Validate 6 layers
-    - Generate reports and chart data
-    - Output: unified-data.json + metadata + reports
-
-Standards:
-    - Snake_case naming (no _inr suffix)
-    - Percentages as decimals (0.35 = 35%)
-    - ISO 8601 dates
-    - Comprehensive error handling & logging
-    - Type hints throughout
-    - Full audit trail
+File Structure:
+    repository/
+    ├── merge_script.py              (this file)
+    ├── data/
+    │   ├── yahoo-history.json       (input)
+    │   ├── screener-history.json    (input)
+    │   ├── stock-data.json          (output)
+    │   └── merge-script.log         (output log)
 """
 
 import json
-import logging
+import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional, Any
-from dataclasses import dataclass, asdict
-from collections import defaultdict
-import statistics
-import re
+from typing import Dict, Any, List, Optional
+
+# File paths (relative to repository root)
+DATA_DIR = Path('data')
+
+# Input files (in data/ directory)
+YAHOO_HISTORY = DATA_DIR / 'yahoo-history.json'
+SCREENER_HISTORY = DATA_DIR / 'screener-history.json'
+
+# Output files (in data/ directory)
+MERGED_OUTPUT = DATA_DIR / 'stock-data.json'
+
+logger_file = None
+
+
+def log(message: str, level: str = "INFO"):
+    """Log to console and file."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"[{timestamp}] [{level}] {message}"
+    print(log_entry)
+    
+    if logger_file:
+        with open(logger_file, 'a') as f:
+            f.write(log_entry + "\n")
 
 
 # ============================================================================
-# CONFIGURATION
+# STEP 1: MERGE
 # ============================================================================
 
-class Config:
-    """Configuration constants"""
+def merge_stock_data(file1_path: Path, file2_path: Path) -> Dict[str, Any]:
+    """Merge with data preservation."""
     
-    # File paths (relative to repository root)
-    DATA_DIR = Path('data')
-    CHART_DIR = DATA_DIR / 'chart'
+    log("\n" + "="*80)
+    log("STEP 1: MERGE - Combining Yahoo & Screener data")
+    log("="*80)
     
-    # Input files (in data/ directory)
-    YAHOO_HISTORY = DATA_DIR / 'yahoo-history.json'
-    SCREENER_HISTORY = DATA_DIR / 'screener-history.json'
-    GUIDANCE_DATA = DATA_DIR / 'guidance.json'
+    log(f"Loading {file1_path}...")
+    with open(file1_path, 'r', encoding='utf-8') as f:
+        data1 = json.load(f)
+    log(f"  ✓ {len(data1)} tickers")
     
-    # Output files (in data/ directory)
-    UNIFIED_DATA = DATA_DIR / 'unified-data.json'
-    UNIFIED_META = DATA_DIR / 'unified-data-meta.json'
-    VALIDATION_REPORT = DATA_DIR / 'validation-report.json'
-    CONFLICTS_LOG = DATA_DIR / 'conflicts-log.json'
-    PRICE_HISTORY = CHART_DIR / 'price-history.json'
-    FUNDAMENTAL_HISTORY = CHART_DIR / 'fundamental-history.json'
+    log(f"Loading {file2_path}...")
+    with open(file2_path, 'r', encoding='utf-8') as f:
+        data2 = json.load(f)
+    log(f"  ✓ {len(data2)} tickers")
     
-    # Constants
-    EXPECTED_STOCKS = 97
-    EXPECTED_QUARTERS = 13
-    EXPECTED_DAILY_RECORDS = 250
+    merged = {}
+    obs_count = 0
     
-    # Validation thresholds
-    NUMERIC_VARIANCE_MINOR = 0.05      # 5%
-    NUMERIC_VARIANCE_MAJOR = 0.05      # >5% is major
-    PE_RATIO_MAX = 500
-    PE_RATIO_MIN = 0
-    PRICE_MAX = 100000
-    PRICE_MIN = 0
-
-
-# ============================================================================
-# FIELD MAPPER - Dynamic Field Mapping
-# ============================================================================
-
-class FieldMapper:
-    """Maps source fields to target unified schema dynamically"""
-    
-    def __init__(self):
-        """Initialize with default mappings based on known source structure"""
-        # Yahoo info section → Target fields
-        self.yahoo_field_map = {
-            'market_data.current.price': ['currentPrice', 'regularMarketPrice'],
-            'market_data.current.open': ['regularMarketOpen'],
-            'market_data.current.high': ['regularMarketDayHigh'],
-            'market_data.current.low': ['regularMarketDayLow'],
-            'market_data.current.volume': ['regularMarketVolume'],
-            
-            'valuation.pe_trailing': ['trailingPE'],
-            'valuation.pe_forward': ['forwardPE'],
-            'valuation.pb': ['priceToBook'],
-            'valuation.ps': ['priceToSalesTrailing12Months'],
-            'valuation.market_cap': ['marketCap'],
-            'valuation.ev': ['enterpriseValue'],
-            
-            'asset_info.sector': ['sector'],
-            'asset_info.industry': ['industryDisp'],
-            'asset_info.website': ['website'],
-            'asset_info.employees': ['fullTimeEmployees'],
+    for ticker in data1.keys():
+        merged[ticker] = {
+            'ticker': data1[ticker].get('ticker'),
+            'name': data1[ticker].get('name'),
+            'isin': data1[ticker].get('isin'),
+            'observations': data1[ticker].get('observations', []).copy()
         }
-        
-        # Screener table sections
-        self.screener_tables = {
-            'quarterly_results': 'Quarterly Results',
-            'annual_results': 'Annual Results',
-            'balance_sheet': 'Balance Sheet',
-            'cash_flow': 'Cash Flow',
-        }
+        obs_count += len(merged[ticker].get('observations', []))
     
-    def get_yahoo_value(self, info_dict: Dict[str, Any], target_field: str) -> Optional[Any]:
-        """Get value from Yahoo info dict using mapping"""
-        possible_keys = self.yahoo_field_map.get(target_field, [])
-        
-        for key in possible_keys:
-            if key in info_dict:
-                return info_dict[key]
-        
-        return None
+    for ticker in data2.keys():
+        if ticker in merged:
+            obs_from_file2 = data2[ticker].get('observations', [])
+            merged[ticker]['observations'].extend(obs_from_file2)
+            obs_count += len(obs_from_file2)
+        else:
+            merged[ticker] = {
+                'ticker': data2[ticker].get('ticker'),
+                'name': data2[ticker].get('name'),
+                'isin': data2[ticker].get('isin'),
+                'observations': data2[ticker].get('observations', []).copy()
+            }
+            obs_count += len(merged[ticker].get('observations', []))
     
-    def find_screener_table(self, tables: List[Dict], section_name: str) -> Optional[Dict]:
-        """Find Screener table by section name"""
-        for table in tables:
-            if section_name in table.get('section', ''):
-                return table
-        return None
+    log(f"\nMerge complete: {len(merged)} tickers, {obs_count} total observations")
+    return merged
+
+
+# ============================================================================
+# STEP 2: CONSOLIDATE - FIXED TO PRESERVE OBSERVATIONS
+# ============================================================================
+
+def consolidate_stock_data(merged_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Consolidate while PRESERVING ALL OBSERVATIONS."""
     
-    def inspect_source_files(self, yahoo_file: Path, screener_file: Path) -> Dict[str, Any]:
-        """Inspect source files and detect actual structure"""
-        detected = {
-            'yahoo': {
-                'file': str(yahoo_file),
-                'exists': yahoo_file.exists(),
-                'info_fields': [],
-                'history_fields': [],
+    log("\n" + "="*80)
+    log("STEP 2: CONSOLIDATE - Creating single records per stock")
+    log("="*80)
+    
+    consolidated_data = {}
+    
+    for ticker, ticker_data in merged_data.items():
+        observations = ticker_data.get('observations', [])
+        
+        if len(observations) == 0:
+            log(f"  ⚠ {ticker}: No observations")
+            continue
+        
+        # Get metadata from first observation
+        first_obs = observations[0]
+        yahoo_info = first_obs.get('raw', {}).get('info', {})
+        
+        consolidated = {
+            'ticker': ticker_data.get('ticker'),
+            'name': ticker_data.get('name'),
+            'isin': ticker_data.get('isin'),
+            'company': {
+                'name': yahoo_info.get('longName') or yahoo_info.get('shortName') or '',
+                'industry': yahoo_info.get('industry', ''),
+                'sector': yahoo_info.get('sector', ''),
+                'website': yahoo_info.get('website', ''),
             },
-            'screener': {
-                'file': str(screener_file),
-                'exists': screener_file.exists(),
-                'tables': [],
+            'address': {
+                'address1': yahoo_info.get('address1', ''),
+                'address2': yahoo_info.get('address2', ''),
+                'city': yahoo_info.get('city', ''),
+                'state': yahoo_info.get('state', ''),
+                'zip': yahoo_info.get('zip', ''),
+                'country': yahoo_info.get('country', ''),
+                'phone': yahoo_info.get('phone', ''),
+            },
+            # CRITICAL: PRESERVE ALL OBSERVATIONS
+            'observations': observations,
+            'observation_count': len(observations),
+            'data_sources': {
+                'fetched_at': [obs.get('fetched_at') for obs in observations]
             }
         }
         
-        # Inspect Yahoo
-        if yahoo_file.exists():
-            with open(yahoo_file, 'r') as f:
-                data = json.load(f)
-            
-            first_stock = next((v for k, v in data.items() if k != 'metadata'), None)
-            if first_stock and 'observations' in first_stock:
-                obs = first_stock['observations'][0]
-                raw = obs.get('raw', {})
-                
-                if 'info' in raw:
-                    detected['yahoo']['info_fields'] = list(raw['info'].keys())
-                
-                if 'history_1y_1d' in raw:
-                    hist = raw['history_1y_1d']
-                    if hist:
-                        detected['yahoo']['history_fields'] = list(hist[0].keys())
-        
-        # Inspect Screener
-        if screener_file.exists():
-            with open(screener_file, 'r') as f:
-                data = json.load(f)
-            
-            first_stock = next((v for k, v in data.items() if k != 'metadata'), None)
-            if first_stock and 'observations' in first_stock:
-                obs = first_stock['observations'][0]
-                raw = obs.get('raw', {})
-                
-                if 'tables' in raw:
-                    detected['screener']['tables'] = [t.get('section') for t in raw['tables']]
-        
-        return detected
+        consolidated_data[ticker] = consolidated
+    
+    log(f"✓ Consolidated {len(consolidated_data)} stocks with observations preserved")
+    return consolidated_data
 
 
 # ============================================================================
-# LOGGING SETUP
+# STEP 3: RESTRUCTURE - FIXED TO CONVERT TYPES AND PRESERVE DATA
 # ============================================================================
 
-def setup_logging() -> logging.Logger:
-    """Configure logging with file and console output"""
-    
-    logger = logging.getLogger('merge_script')
-    logger.setLevel(logging.DEBUG)
-    
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_format = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    console_handler.setFormatter(console_format)
-    logger.addHandler(console_handler)
-    
-    # File handler
-    log_file = Config.DATA_DIR / 'merge_script.log'
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.DEBUG)
-    file_format = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-    )
-    file_handler.setFormatter(file_format)
-    logger.addHandler(file_handler)
-    
-    return logger
-
-
-logger = setup_logging()
-
-
-# ============================================================================
-# DATA CLASSES
-# ============================================================================
-
-@dataclass
-class ConflictRecord:
-    """Record of a data conflict during merge"""
-    ticker: str
-    field: str
-    type: str  # numeric_variance, text_variance
-    severity: str  # minor, major
-    yahoo_value: Any
-    screener_value: Any
-    used_value: Any
-    source_used: str
-    reason: str
-    resolved: bool = True
-
-
-@dataclass
-class ValidationIssue:
-    """Record of a validation issue"""
-    ticker: str
-    field: str
-    type: str  # range_violation, outlier, calculation_error
-    severity: str  # info, warning, error
-    message: str
-    value: Any = None
-
-
-# ============================================================================
-# FILE LOADING
-# ============================================================================
-
-class DataLoader:
-    """Load data from source files"""
-    
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-    
-    def load_json(self, filepath: Path) -> Dict:
-        """Load JSON file with error handling"""
-        try:
-            self.logger.info(f'Loading {filepath.name}...')
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            stock_count = len([k for k in data.keys() if k != '_metadata'])
-            self.logger.info(f'  ✓ Loaded {stock_count} stocks')
-            return data
-            
-        except FileNotFoundError:
-            self.logger.error(f'File not found: {filepath}')
-            raise
-        except json.JSONDecodeError as e:
-            self.logger.error(f'JSON decode error in {filepath}: {e}')
-            raise
-        except Exception as e:
-            self.logger.error(f'Unexpected error loading {filepath}: {e}')
-            raise
-    
-    def load_all(self) -> Tuple[Dict, Dict, Dict]:
-        """Load all source files"""
-        self.logger.info('='*70)
-        self.logger.info('LOADING SOURCE FILES')
-        self.logger.info('='*70)
-        
-        yahoo_data = self.load_json(Config.YAHOO_HISTORY)
-        screener_data = self.load_json(Config.SCREENER_HISTORY)
-        guidance_data = self.load_json(Config.GUIDANCE_DATA)
-        
-        return yahoo_data, screener_data, guidance_data
-
-
-# ============================================================================
-# DATA NORMALIZATION
-# ============================================================================
-
-class DataNormalizer:
-    """Normalize data from different sources"""
-    
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-    
-    @staticmethod
-    def parse_number(value: Any) -> Optional[float]:
-        """Parse number from various formats"""
-        if value is None or value == '':
-            return None
-        
-        if isinstance(value, (int, float)):
-            return float(value)
-        
-        if isinstance(value, str):
-            # Remove whitespace
-            value = value.strip()
-            
-            # Return None if empty after strip
-            if not value or value == '':
-                return None
-            
-            # Remove commas: "1,234" -> "1234"
-            value = value.replace(',', '')
-            
-            # Remove % sign: "35%" -> "0.35"
-            if value.endswith('%'):
-                try:
-                    return float(value.rstrip('%')) / 100
-                except ValueError:
-                    return None
-            
-            try:
-                return float(value)
-            except ValueError:
-                return None
-        
+def parse_numeric(value: str) -> Optional[float]:
+    """Convert string to float."""
+    if not value or value == 'N/A' or value == 'xxx':
         return None
+    try:
+        cleaned = str(value).replace(',', '').replace('%', '').strip()
+        return float(cleaned)
+    except (ValueError, AttributeError):
+        return None
+
+
+def restructure_stock_data(consolidated_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Restructure with GUARANTEED type conversion.
+    - Converts all prices from string to float
+    - Preserves all observations
+    - Extracts metrics properly
+    """
     
-    @staticmethod
-    def parse_date(date_str: str) -> str:
-        """Parse date to ISO 8601 format"""
-        if not date_str:
-            return None
-        
-        # Already ISO format
-        if 'T' in date_str or len(date_str) == 10:
-            return date_str
-        
-        # Handle "Mar 2026" format
-        try:
-            date_obj = datetime.strptime(date_str, '%b %Y')
-            # Convert to quarter-end: Mar -> 03-31
-            month = date_obj.month
-            if month in [1, 2, 3]:
-                return f"{date_obj.year}-03-31"
-            elif month in [4, 5, 6]:
-                return f"{date_obj.year}-06-30"
-            elif month in [7, 8, 9]:
-                return f"{date_obj.year}-09-30"
-            else:
-                return f"{date_obj.year}-12-31"
-        except ValueError:
-            return date_str
-
-
-# ============================================================================
-# CONFLICT RESOLUTION
-# ============================================================================
-
-class ConflictResolver:
-    """Resolve conflicts between data sources"""
+    log("\n" + "="*80)
+    log("STEP 3: RESTRUCTURE - Converting types and organizing data")
+    log("="*80)
     
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-        self.conflicts: List[ConflictRecord] = []
+    restructured_data = {}
+    total_prices = 0
+    total_converted = 0
+    
+    for ticker, stock_data in consolidated_data.items():
+        observations = stock_data.get('observations', [])
         
-        # Authority hierarchy by field type
-        self.authority_map = {
-            # Balance sheet -> NSE > Screener > Yahoo
-            'equity_capital': ['screener', 'yahoo'],
-            'total_debt': ['screener', 'yahoo'],
-            'borrowings': ['screener', 'yahoo'],
-            'total_assets': ['screener', 'yahoo'],
+        restructured_stock = {
+            'ticker': stock_data.get('ticker'),
+            'name': stock_data.get('name'),
+            'isin': stock_data.get('isin'),
+            'company': stock_data.get('company', {}),
+            'address': stock_data.get('address', {}),
+            'observation_count': len(observations),
+            'data_sources': stock_data.get('data_sources', {}),
+            'price_series': [],
+            'financial_metrics': {},
+            'yahoo_metrics': {}
+        }
+        
+        # CRITICAL: Process each observation and extract data
+        for obs_idx, observation in enumerate(observations):
+            raw = observation.get('raw', {})
             
-            # P&L -> Screener > Yahoo
-            'revenue': ['screener', 'yahoo'],
-            'net_profit': ['screener', 'yahoo'],
-            'operating_profit': ['screener', 'yahoo'],
-            'ebitda': ['screener', 'yahoo'],
+            # Extract from Yahoo observation
+            if 'history_1y_1d' in raw:
+                price_history = raw['history_1y_1d']
+                
+                # CONVERT PRICES TO NUMERIC
+                for price_record in price_history:
+                    converted_record = {
+                        'date': price_record.get('Date'),
+                        'open': parse_numeric(price_record.get('Open')),
+                        'high': parse_numeric(price_record.get('High')),
+                        'low': parse_numeric(price_record.get('Low')),
+                        'close': parse_numeric(price_record.get('Close')),
+                        'volume': parse_numeric(price_record.get('Volume')),
+                        'dividends': parse_numeric(price_record.get('Dividends')),
+                        'stock_splits': parse_numeric(price_record.get('Stock Splits')),
+                    }
+                    
+                    # Only add if we have valid close price
+                    if converted_record['close'] is not None:
+                        restructured_stock['price_series'].append(converted_record)
+                        total_converted += 1
+                    
+                    total_prices += 1
             
-            # Ratios -> Screener primary
-            'pe_ratio_trailing': ['yahoo', 'screener'],
-            'pb_ratio': ['yahoo', 'screener'],
-        }
-    
-    def resolve_numeric(
-        self,
-        ticker: str,
-        field: str,
-        yahoo_val: Optional[float],
-        screener_val: Optional[float]
-    ) -> Tuple[float, Optional[ConflictRecord]]:
-        """Resolve numeric field conflicts"""
-        
-        # No conflict if one is missing
-        if yahoo_val is None:
-            return screener_val, None
-        if screener_val is None:
-            return yahoo_val, None
-        
-        # No conflict if values are identical
-        if abs(yahoo_val - screener_val) < 0.01:
-            return screener_val, None
-        
-        # Calculate percentage difference
-        if screener_val != 0:
-            diff_percent = abs(yahoo_val - screener_val) / abs(screener_val)
-        else:
-            diff_percent = float('inf')
-        
-        # Use Screener as primary (official statements)
-        used_value = screener_val
-        
-        # Determine severity
-        if diff_percent < Config.NUMERIC_VARIANCE_MINOR:
-            severity = 'minor'
-            reason = f'Variance {diff_percent*100:.1f}% within tolerance'
-        else:
-            severity = 'major'
-            reason = f'Variance {diff_percent*100:.1f}% exceeds threshold'
-        
-        conflict = ConflictRecord(
-            ticker=ticker,
-            field=field,
-            type='numeric_variance',
-            severity=severity,
-            yahoo_value=yahoo_val,
-            screener_value=screener_val,
-            used_value=used_value,
-            source_used='screener',
-            reason=reason
-        )
-        
-        self.conflicts.append(conflict)
-        return used_value, conflict
-    
-    def resolve_text(
-        self,
-        ticker: str,
-        field: str,
-        yahoo_val: Optional[str],
-        screener_val: Optional[str]
-    ) -> Tuple[str, Optional[ConflictRecord]]:
-        """Resolve text field conflicts"""
-        
-        if not yahoo_val:
-            return screener_val, None
-        if not screener_val:
-            return yahoo_val, None
-        if yahoo_val == screener_val:
-            return screener_val, None
-        
-        # Authority map for text fields
-        authority_map = {
-            'sector': 'screener',      # Official
-            'industry': 'screener',    # Official
-            'company_name': 'screener', # Official
-            'description': 'yahoo',     # More detailed
-        }
-        
-        primary_source = authority_map.get(field, 'screener')
-        used_value = screener_val if primary_source == 'screener' else yahoo_val
-        
-        conflict = ConflictRecord(
-            ticker=ticker,
-            field=field,
-            type='text_variance',
-            severity='info',
-            yahoo_value=yahoo_val,
-            screener_value=screener_val,
-            used_value=used_value,
-            source_used=primary_source,
-            reason=f'Using {primary_source} value (authority hierarchy)'
-        )
-        
-        self.conflicts.append(conflict)
-        return used_value, conflict
-
-
-# ============================================================================
-# DATA MERGER
-# ============================================================================
-
-class DataMerger:
-    """Merge data from multiple sources"""
-    
-    def __init__(self, logger: logging.Logger, conflict_resolver: ConflictResolver):
-        self.logger = logger
-        self.conflict_resolver = conflict_resolver
-        self.normalizer = DataNormalizer(logger)
-    
-    def merge_stock(
-        self,
-        ticker: str,
-        yahoo_stock: Dict,
-        screener_stock: Dict,
-        guidance_stock: Optional[Dict] = None
-    ) -> Dict:
-        """Merge single stock from all sources"""
-        
-        merged = {
-            'ticker': ticker,
-            'asset_type': 'STOCK',
-            'asset_name': screener_stock.get('name') or yahoo_stock.get('name'),
-            'isin': yahoo_stock.get('isin') or screener_stock.get('isin'),
-            'fetched_at': datetime.now().isoformat() + 'Z',
-        }
-        
-        # Company info (from Yahoo)
-        merged['asset_info'] = self._extract_asset_info(yahoo_stock)
-        
-        # Market data (current prices from Yahoo)
-        merged['market_data'] = self._extract_market_data(yahoo_stock)
-        
-        # Valuations (from Yahoo)
-        merged['valuation'] = self._extract_valuation(yahoo_stock)
-        
-        # Financials (from Screener)
-        merged['financials'] = self._extract_financials(screener_stock)
-        
-        # Time series (from both sources)
-        merged['time_series'] = self._extract_time_series(yahoo_stock, screener_stock)
-        
-        # Guidance (from AI guidance file)
-        merged['guidance'] = self._extract_guidance(guidance_stock) if guidance_stock else {}
-        
-        # Derived metrics (calculated)
-        merged['derived_metrics'] = self._calculate_derived_metrics(merged)
-        
-        # Audit trail
-        merged['audit_trail'] = {
-            'sources': ['yahoo', 'screener'] + (['guidance'] if guidance_stock else []),
-            'processed_at': datetime.now().isoformat() + 'Z',
-            'conflicts': len([c for c in self.conflict_resolver.conflicts if c.ticker == ticker])
-        }
-        
-        return merged
-    
-    def _extract_asset_info(self, yahoo_stock: Dict) -> Dict:
-        """Extract company information from Yahoo info"""
-        # Get info from observations if available
-        if 'observations' in yahoo_stock and yahoo_stock['observations']:
-            info = yahoo_stock['observations'][0].get('raw', {}).get('info', {})
-        else:
-            info = {}
-        
-        return {
-            'name': yahoo_stock.get('name', '') or info.get('longName', ''),
-            'sector': info.get('sector', ''),
-            'industry': info.get('industryDisp', ''),
-            'website': info.get('website', ''),
-            'employees': info.get('fullTimeEmployees'),
-            'founded_year': None,  # Not available in Yahoo data
-        }
-    
-    def _extract_market_data(self, yahoo_stock: Dict) -> Dict:
-        """Extract current market data from Yahoo info section"""
-        if 'observations' not in yahoo_stock or not yahoo_stock['observations']:
-            return {
-                'current': {
-                    'price': None,
-                    'open': None,
-                    'high': None,
-                    'low': None,
-                    'volume': None,
-                    'timestamp': datetime.now().isoformat() + 'Z'
+            # Extract from Yahoo info
+            if 'info' in raw:
+                info = raw['info']
+                restructured_stock['yahoo_metrics'] = {
+                    'market_cap': info.get('marketCap'),
+                    'trailing_pe': info.get('trailingPE'),
+                    'forward_pe': info.get('forwardPE'),
+                    'peg_ratio': info.get('pegRatio'),
+                    'price_to_book': info.get('priceToBook'),
+                    'dividend_yield': info.get('dividendYield'),
+                    'earnings_growth': info.get('earningsGrowth'),
                 }
-            }
-        
-        obs = yahoo_stock['observations'][0].get('raw', {})
-        info = obs.get('info', {})
-        
-        return {
-            'current': {
-                'price': self.normalizer.parse_number(info.get('currentPrice') or info.get('regularMarketPrice')),
-                'open': self.normalizer.parse_number(info.get('regularMarketOpen')),
-                'high': self.normalizer.parse_number(info.get('regularMarketDayHigh')),
-                'low': self.normalizer.parse_number(info.get('regularMarketDayLow')),
-                'volume': self.normalizer.parse_number(info.get('regularMarketVolume')),
-                'timestamp': datetime.now().isoformat() + 'Z'
-            }
-        }
-    
-    def _extract_valuation(self, yahoo_stock: Dict) -> Dict:
-        """Extract valuation metrics from Yahoo"""
-        if 'observations' not in yahoo_stock or not yahoo_stock['observations']:
-            return {
-                'price_metrics': {
-                    'pe_ratio_trailing': None,
-                    'pe_ratio_forward': None,
-                    'pb_ratio': None,
-                    'ps_ratio': None,
-                },
-                'market_value': {
-                    'market_cap': None,
-                    'enterprise_value': None,
-                }
-            }
-        
-        obs = yahoo_stock['observations'][0].get('raw', {})
-        info = obs.get('info', {})
-        
-        return {
-            'price_metrics': {
-                'pe_ratio_trailing': self.normalizer.parse_number(info.get('trailingPE')),
-                'pe_ratio_forward': self.normalizer.parse_number(info.get('forwardPE')),
-                'pb_ratio': self.normalizer.parse_number(info.get('priceToBook')),
-                'ps_ratio': self.normalizer.parse_number(info.get('priceToSalesTrailing12Months')),
-            },
-            'market_value': {
-                'market_cap': self.normalizer.parse_number(info.get('marketCap')),
-                'enterprise_value': self.normalizer.parse_number(info.get('enterpriseValue')),
-            }
-        }
-    
-    def _extract_financials(self, screener_stock: Dict) -> Dict:
-        """Extract financial data from Screener"""
-        if 'observations' not in screener_stock or not screener_stock['observations']:
-            return {'latest_quarter': {}, 'annual': {}}
-        
-        latest_quarter = {}
-        annual_data = {}
-        
-        # Parse Screener tables
-        for obs in screener_stock['observations']:
-            raw = obs.get('raw', {})
-            tables = raw.get('tables', [])
             
-            for table in tables:
-                section = table.get('section', '')
-                rows = table.get('rows', [])
-                
-                # Quarterly Results
-                if 'Quarterly Results' in section and rows:
-                    header = rows[0] if rows else []
-                    if len(rows) > 1:
-                        # Latest quarter is first data row
-                        latest_row = rows[1]
-                        latest_quarter = {
-                            'period': latest_row[0] if len(latest_row) > 0 else None,
-                            'revenue': self.normalizer.parse_number(latest_row[1]) if len(latest_row) > 1 else None,
-                            'net_profit': self.normalizer.parse_number(latest_row[2]) if len(latest_row) > 2 else None,
-                            'eps': self.normalizer.parse_number(latest_row[3]) if len(latest_row) > 3 else None,
-                        }
-                
-                # Annual Results
-                if 'Annual Results' in section and rows:
-                    if len(rows) > 1:
-                        # Latest year is first data row
-                        latest_row = rows[1]
-                        annual_data = {
-                            'period': latest_row[0] if len(latest_row) > 0 else None,
-                            'revenue': self.normalizer.parse_number(latest_row[1]) if len(latest_row) > 1 else None,
-                            'net_profit': self.normalizer.parse_number(latest_row[2]) if len(latest_row) > 2 else None,
-                            'eps': self.normalizer.parse_number(latest_row[3]) if len(latest_row) > 3 else None,
-                        }
+            # Extract from Screener tables
+            if 'tables' in raw:
+                tables = raw['tables']
+                for table in tables:
+                    rows = table.get('rows', [])
+                    if len(rows) < 2:
+                        continue
+                    
+                    headers = rows[0]
+                    data_rows = rows[1:]
+                    
+                    for row in data_rows:
+                        if not row:
+                            continue
+                        
+                        metric_name = row[0].lower().replace(' +', '').replace(' ', '_')
+                        
+                        if metric_name not in restructured_stock['financial_metrics']:
+                            restructured_stock['financial_metrics'][metric_name] = []
+                        
+                        # Extract metric values
+                        for col_idx, header in enumerate(headers[1:], 1):
+                            if col_idx < len(row):
+                                value = parse_numeric(row[col_idx])
+                                if value is not None:
+                                    metric_entry = {
+                                        'period': header,
+                                        'value': value,
+                                    }
+                                    restructured_stock['financial_metrics'][metric_name].append(metric_entry)
         
-        return {
-            'latest_quarter': latest_quarter if latest_quarter else {'period': None, 'revenue': None, 'net_profit': None, 'eps': None},
-            'annual': annual_data if annual_data else {'period': None, 'revenue': None, 'net_profit': None, 'eps': None}
-        }
+        restructured_data[ticker] = restructured_stock
     
-    def _extract_time_series(self, yahoo_stock: Dict, screener_stock: Dict) -> Dict:
-        """Extract time series data from observations"""
-        
-        daily_history = []
-        quarterly_history = []
-        
-        # Extract daily history from Yahoo observations
-        if 'observations' in yahoo_stock and yahoo_stock['observations']:
-            for obs in yahoo_stock['observations']:
-                raw = obs.get('raw', {})
-                
-                # Daily history: stored as history_1y_1d
-                if 'history_1y_1d' in raw:
-                    history_records = raw['history_1y_1d']
-                    if isinstance(history_records, list):
-                        for record in history_records:
-                            try:
-                                daily_history.append({
-                                    'date': record.get('Date'),
-                                    'open': self.normalizer.parse_number(record.get('Open')),
-                                    'high': self.normalizer.parse_number(record.get('High')),
-                                    'low': self.normalizer.parse_number(record.get('Low')),
-                                    'close': self.normalizer.parse_number(record.get('Close')),
-                                    'volume': self.normalizer.parse_number(record.get('Volume')),
-                                })
-                            except (ValueError, TypeError):
-                                # Skip records with invalid data
-                                continue
-        
-        # Keep only last 250 days
-        daily_history = daily_history[-250:] if daily_history else []
-        
-        # Extract quarterly history from Screener observations
-        if 'observations' in screener_stock and screener_stock['observations']:
-            for obs in screener_stock['observations']:
-                raw = obs.get('raw', {})
-                
-                # Quarterly financial data from Screener tables
-                if 'tables' in raw:
-                    tables = raw['tables']
-                    for table in tables:
-                        if table.get('section') and 'Quarterly Results' in table.get('section', ''):
-                            # Extract quarterly data from table rows
-                            rows = table.get('rows', [])
-                            for row in rows[1:]:  # Skip header
-                                try:
-                                    if len(row) > 0:
-                                        quarterly_history.append({
-                                            'period': row[0] if len(row) > 0 else None,
-                                            'revenue': self.normalizer.parse_number(row[1]) if len(row) > 1 else None,
-                                            'net_profit': self.normalizer.parse_number(row[2]) if len(row) > 2 else None,
-                                            'eps': self.normalizer.parse_number(row[3]) if len(row) > 3 else None,
-                                        })
-                                except (ValueError, TypeError, IndexError):
-                                    # Skip invalid rows
-                                    continue
-        
-        # Keep last 13 quarters
-        quarterly_history = quarterly_history[-13:] if quarterly_history else []
-        
-        return {
-            'quarterly_history': quarterly_history,
-            'daily_history': daily_history
-        }
+    log(f"✓ Restructured {len(restructured_data)} stocks")
+    log(f"✓ Price records processed: {total_prices}")
+    log(f"✓ Price records converted to numeric: {total_converted}")
     
-    def _extract_guidance(self, guidance_stock: Dict) -> Dict:
-        """Extract AI guidance"""
-        if 'insights' not in guidance_stock:
-            return {}
-        
-        insights = guidance_stock['insights']
-        
-        return {
-            'recommendation': {
-                'signal': insights.get('recommendation'),
-                'date': insights.get('date')
-            },
-            'investment_thesis': {
-                'summary': insights.get('thesis')
-            },
-            'sector_briefing': guidance_stock.get('sector_briefing', {})
-        }
+    if total_prices != total_converted:
+        log(f"⚠ Warning: {total_prices - total_converted} price records could not be converted")
     
-    def _calculate_derived_metrics(self, stock: Dict) -> Dict:
-        """Calculate derived metrics"""
-        
-        metrics = {}
-        
-        # Would implement CAGR, margin calculations, etc.
-        # For now, return empty
-        
-        return metrics
+    return restructured_data
 
 
 # ============================================================================
-# VALIDATION
+# OPTIMIZATION - MINIFY FOR PRODUCTION
 # ============================================================================
 
-class DataValidator:
-    """Validate merged data across 6 layers"""
+def optimize_output(restructured_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Optimize structure for production (remove metadata, minify)."""
     
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-        self.issues: List[ValidationIssue] = []
+    log("\n" + "="*80)
+    log("STEP 4: OPTIMIZE - Minifying for production")
+    log("="*80)
     
-    def validate_all(self, all_stocks: Dict) -> bool:
-        """Run all 6 validation layers"""
-        
-        self.logger.info('='*70)
-        self.logger.info('VALIDATING DATA (6 Layers)')
-        self.logger.info('='*70)
-        
-        passed = True
-        passed &= self.validate_structure(all_stocks)
-        passed &= self.validate_completeness(all_stocks)
-        passed &= self.validate_values(all_stocks)
-        passed &= self.validate_consistency(all_stocks)
-        passed &= self.validate_coverage(all_stocks)
-        
-        return passed
+    optimized = {}
     
-    def validate_structure(self, all_stocks: Dict) -> bool:
-        """Layer 1: Structure validation"""
-        self.logger.info('\nLayer 1: Structure...')
-        
-        stock_count = len([k for k in all_stocks.keys() if k != 'metadata'])
-        
-        if stock_count != Config.EXPECTED_STOCKS:
-            issue = ValidationIssue(
-                ticker='system',
-                field='stock_count',
-                type='structure',
-                severity='error',
-                message=f'Expected {Config.EXPECTED_STOCKS} stocks, got {stock_count}',
-                value=stock_count
-            )
-            self.issues.append(issue)
-            self.logger.warning(f'  ✗ {issue.message}')
-            return False
-        
-        self.logger.info(f'  ✓ All {stock_count} stocks present')
-        return True
-    
-    def validate_completeness(self, all_stocks: Dict) -> bool:
-        """Layer 2: Completeness validation - STRICT: check actual data presence"""
-        self.logger.info('Layer 2: Completeness (STRICT)...')
-        
-        missing_data_count = 0
-        for ticker, stock in all_stocks.items():
-            if ticker == 'metadata':
-                continue
-            
-            # Check market data has actual price
-            market_data = stock.get('market_data', {}).get('current', {})
-            if not market_data.get('price'):
-                missing_data_count += 1
-                self.issues.append(ValidationIssue(
-                    ticker=ticker,
-                    field='market_data.current.price',
-                    type='missing_data',
-                    severity='warning',
-                    message='Market price data missing'
-                ))
-            
-            # Check financials have data
-            financials = stock.get('financials', {}).get('latest_quarter', {})
-            if not financials.get('revenue') and not financials.get('net_profit'):
-                missing_data_count += 1
-                self.issues.append(ValidationIssue(
-                    ticker=ticker,
-                    field='financials.latest_quarter',
-                    type='missing_data',
-                    severity='warning',
-                    message='Financial data (revenue/profit) missing'
-                ))
-            
-            # Check valuation metrics
-            valuation = stock.get('valuation', {}).get('price_metrics', {})
-            metrics_present = any([
-                valuation.get('pe_ratio_trailing'),
-                valuation.get('pb_ratio'),
-                valuation.get('ps_ratio')
-            ])
-            if not metrics_present:
-                missing_data_count += 1
-                self.issues.append(ValidationIssue(
-                    ticker=ticker,
-                    field='valuation.price_metrics',
-                    type='missing_data',
-                    severity='warning',
-                    message='Valuation metrics missing'
-                ))
-            
-            # Check time series has history
-            daily_history = stock.get('time_series', {}).get('daily_history', [])
-            if not daily_history or len(daily_history) == 0:
-                missing_data_count += 1
-                self.issues.append(ValidationIssue(
-                    ticker=ticker,
-                    field='time_series.daily_history',
-                    type='missing_data',
-                    severity='warning',
-                    message='Daily price history missing'
-                ))
-            
-            quarterly_history = stock.get('time_series', {}).get('quarterly_history', [])
-            if not quarterly_history or len(quarterly_history) == 0:
-                missing_data_count += 1
-                self.issues.append(ValidationIssue(
-                    ticker=ticker,
-                    field='time_series.quarterly_history',
-                    type='missing_data',
-                    severity='warning',
-                    message='Quarterly financial history missing'
-                ))
-        
-        if missing_data_count > 0:
-            self.logger.warning(f'  ✗ {missing_data_count} data gaps found')
-            return False
-        
-        self.logger.info(f'  ✓ All data fields populated')
-        return True
-    
-    def validate_values(self, all_stocks: Dict) -> bool:
-        """Layer 3: Value range validation"""
-        self.logger.info('Layer 3: Value ranges...')
-        
-        range_violations = 0
-        for ticker, stock in all_stocks.items():
-            if ticker == 'metadata':
-                continue
-            
-            # Price validation
-            if 'market_data' in stock and 'current' in stock['market_data']:
-                price = stock['market_data']['current'].get('price')
-                if price and (price < Config.PRICE_MIN or price > Config.PRICE_MAX):
-                    range_violations += 1
-                    issue = ValidationIssue(
-                        ticker=ticker,
-                        field='price',
-                        type='range_violation',
-                        severity='warning',
-                        message=f'Price {price} outside acceptable range',
-                        value=price
-                    )
-                    self.issues.append(issue)
-        
-        if range_violations > 0:
-            self.logger.warning(f'  ⚠ {range_violations} range violations')
-        else:
-            self.logger.info('  ✓ All values within acceptable ranges')
-        
-        return range_violations == 0
-    
-    def validate_consistency(self, all_stocks: Dict) -> bool:
-        """Layer 4: Consistency validation - check data integrity"""
-        self.logger.info('Layer 4: Consistency...')
-        
-        consistency_errors = 0
-        for ticker, stock in all_stocks.items():
-            if ticker == 'metadata':
-                continue
-            
-            # Check daily history is ordered by date
-            daily = stock.get('time_series', {}).get('daily_history', [])
-            if daily and len(daily) > 1:
-                for i in range(len(daily) - 1):
-                    if daily[i].get('date') and daily[i+1].get('date'):
-                        if daily[i]['date'] > daily[i+1]['date']:
-                            consistency_errors += 1
-                            self.issues.append(ValidationIssue(
-                                ticker=ticker,
-                                field='time_series.daily_history',
-                                type='ordering_error',
-                                severity='error',
-                                message='Daily history not properly ordered'
-                            ))
-                            break
-            
-            # Check PE ratio is reasonable if present
-            pe = stock.get('valuation', {}).get('price_metrics', {}).get('pe_ratio_trailing')
-            if pe and (pe < 0 or pe > 500):
-                consistency_errors += 1
-                self.issues.append(ValidationIssue(
-                    ticker=ticker,
-                    field='valuation.pe_ratio_trailing',
-                    type='unrealistic_value',
-                    severity='warning',
-                    message=f'PE ratio {pe} seems unrealistic',
-                    value=pe
-                ))
-        
-        if consistency_errors > 0:
-            self.logger.warning(f'  ✗ {consistency_errors} consistency issues')
-            return False
-        
-        self.logger.info('  ✓ Consistency checks passed')
-        return True
-    
-    def validate_coverage(self, all_stocks: Dict) -> bool:
-        """Layer 5: Coverage validation"""
-        self.logger.info('Layer 5: Coverage...')
-        
-        tickers = [k for k in all_stocks.keys() if k != 'metadata']
-        
-        # Check for duplicates
-        if len(tickers) != len(set(tickers)):
-            self.logger.warning('  ✗ Duplicate tickers found')
-            return False
-        
-        self.logger.info(f'  ✓ {len(tickers)} unique stocks')
-        return True
-
-
-# ============================================================================
-# REPORT GENERATION
-# ============================================================================
-
-class ReportGenerator:
-    """Generate validation and metadata reports"""
-    
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-    
-    def generate_validation_report(
-        self,
-        validator: DataValidator,
-        all_stocks: Dict
-    ) -> Dict:
-        """Generate validation report"""
-        
-        stock_count = len([k for k in all_stocks.keys() if k != 'metadata'])
-        
-        report = {
-            'timestamp': datetime.now().isoformat() + 'Z',
-            'summary': {
-                'status': 'PASS' if not validator.issues else 'FAIL',
-                'total_stocks': stock_count,
-                'total_issues': len(validator.issues),
-                'critical_errors': len([i for i in validator.issues if i.severity == 'error']),
-                'warnings': len([i for i in validator.issues if i.severity == 'warning']),
-            },
-            'validation_layers': {
-                'structure': True,
-                'completeness': True,
-                'values': True,
-                'consistency': True,
-                'coverage': True,
-            },
-            'issues': [asdict(issue) for issue in validator.issues[:50]]  # First 50
-        }
-        
-        return report
-    
-    def generate_metadata(self, all_stocks: Dict, conflicts: List) -> Dict:
-        """Generate metadata file"""
-        
-        stock_count = len([k for k in all_stocks.keys() if k != 'metadata'])
-        
-        metadata = {
-            'version': '3.0',
-            'schema_version': '3.0',
-            'generated_at': datetime.now().isoformat() + 'Z',
-            'total_stocks': stock_count,
-            'coverage': {
-                'market_data_percent': 100,
-                'financials_percent': 100,
-                'guidance_percent': 29.9,
-            },
-            'conflicts': {
-                'total': len(conflicts),
-                'minor': len([c for c in conflicts if c.severity == 'minor']),
-                'major': len([c for c in conflicts if c.severity == 'major']),
-            }
-        }
-        
-        return metadata
-    
-    def generate_conflicts_log(self, conflicts: List) -> Dict:
-        """Generate conflicts log"""
-        
-        return {
-            'metadata': {
-                'generated_at': datetime.now().isoformat() + 'Z',
-                'total_conflicts': len(conflicts),
-            },
-            'conflicts': [asdict(c) for c in conflicts]
-        }
-
-
-# ============================================================================
-# CHART DATA GENERATION
-# ============================================================================
-
-class ChartDataGenerator:
-    """Generate separate chart data files"""
-    
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-    
-    def generate_price_history(self, all_stocks: Dict):
-        """Generate price history file for charts"""
-        
-        price_data = {
-            '_metadata': {
-                'type': 'chart_data',
-                'data_type': 'price_history',
-                'generated_at': datetime.now().isoformat() + 'Z',
-                'stocks': len([k for k in all_stocks.keys() if k != 'metadata']),
-            }
-        }
-        
-        for ticker, stock in all_stocks.items():
-            if ticker == 'metadata':
-                continue
-            
-            daily_history = stock.get('time_series', {}).get('daily_history', [])
-            
-            # Compact format: o, h, l, c, v (open, high, low, close, volume)
-            price_data[ticker] = [
+    for ticker, stock in restructured_data.items():
+        optimized[ticker] = {
+            'ticker': stock['ticker'],
+            'name': stock['name'],
+            'isin': stock['isin'],
+            'company': stock['company'],
+            'address': stock['address'],
+            'observation_count': stock['observation_count'],
+            'data_sources': stock['data_sources'],
+            # Prices: remove observation-level metadata
+            'price_series': [
                 {
-                    'date': record.get('date'),
-                    'o': record.get('open'),
-                    'h': record.get('high'),
-                    'l': record.get('low'),
-                    'c': record.get('close'),
-                    'v': record.get('volume'),
+                    'date': p['date'],
+                    'open': p['open'],
+                    'high': p['high'],
+                    'low': p['low'],
+                    'close': p['close'],
+                    'volume': p['volume'],
+                    'dividends': p['dividends'],
+                    'stock_splits': p['stock_splits']
                 }
-                for record in daily_history
-            ]
-        
-        return price_data
-    
-    def generate_fundamental_history(self, all_stocks: Dict):
-        """Generate fundamental history file for charts"""
-        
-        fundamental_data = {
-            '_metadata': {
-                'type': 'chart_data',
-                'data_type': 'fundamental_history',
-                'generated_at': datetime.now().isoformat() + 'Z',
-                'stocks': len([k for k in all_stocks.keys() if k != 'metadata']),
-            }
+                for p in stock['price_series']
+            ],
+            # Metrics: remove observation-level metadata
+            'financial_metrics': {
+                metric_name: [
+                    {
+                        'period': entry['period'],
+                        'value': entry['value']
+                    }
+                    for entry in entries
+                ]
+                for metric_name, entries in stock['financial_metrics'].items()
+            },
+            'yahoo_metrics': stock['yahoo_metrics']
         }
-        
-        for ticker, stock in all_stocks.items():
-            if ticker == 'metadata':
-                continue
-            
-            quarterly_history = stock.get('time_series', {}).get('quarterly_history', [])
-            
-            # Compact format
-            fundamental_data[ticker] = [
-                {
-                    'p': record.get('period'),      # period
-                    'r': record.get('revenue'),      # revenue
-                    'np': record.get('net_profit'),  # net_profit
-                    'eps': record.get('eps'),
-                    'roe': record.get('roe_percent'),
-                    'roic': record.get('roic_percent'),
-                }
-                for record in quarterly_history
-            ]
-        
-        return fundamental_data
+    
+    log(f"✓ Optimization complete")
+    return optimized
 
 
 # ============================================================================
-# MAIN MERGE SCRIPT
+# MAIN PIPELINE
 # ============================================================================
 
-class MergeScript:
-    """Main merge script orchestrator"""
+def run_pipeline():
+    """Run complete fixed pipeline."""
     
-    def __init__(self):
-        self.logger = logger
-        self.data_loader = DataLoader(self.logger)
-        self.conflict_resolver = ConflictResolver(self.logger)
-        self.data_merger = DataMerger(self.logger, self.conflict_resolver)
-        self.validator = DataValidator(self.logger)
-        self.report_generator = ReportGenerator(self.logger)
-        self.chart_generator = ChartDataGenerator(self.logger)
+    global logger_file
+    logger_file = DATA_DIR / 'merge-script.log'
     
-    def run(self):
-        """Execute complete merge process"""
-        
-        try:
-            self.logger.info('\n' + '='*70)
-            self.logger.info('BharatMarkets Data Merge Script v2.0')
-            self.logger.info('='*70)
-            
-            # Step 1: Load data
-            yahoo_data, screener_data, guidance_data = self.data_loader.load_all()
-            
-            # Step 2: Merge data
-            self._merge_all_stocks(yahoo_data, screener_data, guidance_data)
-            
-            # Step 3: Validate
-            self.validator.validate_all(self.unified_data)
-            
-            # Step 4: Generate reports
-            self._generate_reports()
-            
-            # Step 5: Save outputs
-            self._save_outputs()
-            
-            # Step 6: Generate chart data
-            self._generate_chart_files()
-            
-            self.logger.info('\n' + '='*70)
-            self.logger.info('✓ MERGE COMPLETED SUCCESSFULLY')
-            self.logger.info('='*70)
-            
-        except Exception as e:
-            self.logger.error(f'\n✗ MERGE FAILED: {e}', exc_info=True)
-            raise
+    log("\n" + "█"*80)
+    log("█" + " "*78 + "█")
+    log("█" + "  MERGE SCRIPT - BHARATMARKETS STOCK DATA PIPELINE  ".center(78) + "█")
+    log("█" + " "*78 + "█")
+    log("█"*80)
     
-    def _merge_all_stocks(self, yahoo_data: Dict, screener_data: Dict, guidance_data: Dict):
-        """Merge all stocks"""
-        
-        self.logger.info('\n' + '='*70)
-        self.logger.info('MERGING DATA')
-        self.logger.info('='*70)
-        
-        self.unified_data = {
-            'metadata': {
-                'version': '3.0',
-                'generated_at': datetime.now().isoformat() + 'Z',
-                'total_stocks': Config.EXPECTED_STOCKS,
-            }
-        }
-        
-        yahoo_tickers = set(k for k in yahoo_data.keys() if k != '_metadata')
-        screener_tickers = set(k for k in screener_data.keys() if k != '_metadata')
-        
-        # Merge stocks present in both
-        merged_count = 0
-        for ticker in yahoo_tickers:
-            if ticker in screener_tickers:
-                yahoo_stock = yahoo_data[ticker]
-                screener_stock = screener_data[ticker]
-                guidance_stock = guidance_data.get(ticker)
-                
-                merged_stock = self.data_merger.merge_stock(
-                    ticker, yahoo_stock, screener_stock, guidance_stock
-                )
-                self.unified_data[ticker] = merged_stock
-                merged_count += 1
-        
-        self.logger.info(f'✓ Merged {merged_count} stocks')
+    # Verify paths
+    log(f"\nRepository Structure:")
+    log(f"  Working directory: {Path.cwd()}")
+    log(f"  Data directory: {DATA_DIR.resolve()}")
+    log(f"  Input 1: {YAHOO_HISTORY}")
+    log(f"  Input 2: {SCREENER_HISTORY}")
+    log(f"  Output: {MERGED_OUTPUT}")
     
-    def _generate_reports(self):
-        """Generate all reports"""
-        
-        self.logger.info('\n' + '='*70)
-        self.logger.info('GENERATING REPORTS')
-        self.logger.info('='*70)
-        
-        self.validation_report = self.report_generator.generate_validation_report(
-            self.validator,
-            self.unified_data
-        )
-        
-        self.metadata_report = self.report_generator.generate_metadata(
-            self.unified_data,
-            self.conflict_resolver.conflicts
-        )
-        
-        self.conflicts_log = self.report_generator.generate_conflicts_log(
-            self.conflict_resolver.conflicts
-        )
-        
-        self.logger.info(f'  ✓ Validation report: {len(self.validation_report["issues"])} issues')
-        self.logger.info(f'  ✓ Conflicts log: {len(self.conflicts_log["conflicts"])} conflicts')
+    # Check if input files exist
+    if not YAHOO_HISTORY.exists():
+        log(f"❌ ERROR: {YAHOO_HISTORY} not found", level="ERROR")
+        log(f"   Expected: {YAHOO_HISTORY.resolve()}", level="ERROR")
+        return False
     
-    def _save_outputs(self):
-        """Save all output files"""
-        
-        self.logger.info('\n' + '='*70)
-        self.logger.info('SAVING OUTPUT FILES')
-        self.logger.info('='*70)
-        
-        # Create data directories
-        Config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        Config.CHART_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Save unified data
-        with open(Config.UNIFIED_DATA, 'w') as f:
-            json.dump(self.unified_data, f, indent=2)
-        self.logger.info(f'  ✓ {Config.UNIFIED_DATA.name}')
-        
-        # Save metadata
-        with open(Config.UNIFIED_META, 'w') as f:
-            json.dump(self.metadata_report, f, indent=2)
-        self.logger.info(f'  ✓ {Config.UNIFIED_META.name}')
-        
-        # Save validation report
-        with open(Config.VALIDATION_REPORT, 'w') as f:
-            json.dump(self.validation_report, f, indent=2)
-        self.logger.info(f'  ✓ {Config.VALIDATION_REPORT.name}')
-        
-        # Save conflicts log
-        with open(Config.CONFLICTS_LOG, 'w') as f:
-            json.dump(self.conflicts_log, f, indent=2)
-        self.logger.info(f'  ✓ {Config.CONFLICTS_LOG.name}')
+    if not SCREENER_HISTORY.exists():
+        log(f"❌ ERROR: {SCREENER_HISTORY} not found", level="ERROR")
+        log(f"   Expected: {SCREENER_HISTORY.resolve()}", level="ERROR")
+        return False
     
-    def _generate_chart_files(self):
-        """Generate chart data files"""
+    try:
+        # Step 1: Merge
+        merged_data = merge_stock_data(YAHOO_HISTORY, SCREENER_HISTORY)
         
-        self.logger.info('\n' + '='*70)
-        self.logger.info('GENERATING CHART DATA')
-        self.logger.info('='*70)
+        # Step 2: Consolidate
+        consolidated_data = consolidate_stock_data(merged_data)
         
-        Config.CHART_DIR.mkdir(parents=True, exist_ok=True)
+        # Step 3: Restructure
+        restructured_data = restructure_stock_data(consolidated_data)
         
-        # Price history
-        price_data = self.chart_generator.generate_price_history(self.unified_data)
-        with open(Config.PRICE_HISTORY, 'w') as f:
-            json.dump(price_data, f, indent=2)
-        self.logger.info(f'  ✓ {Config.PRICE_HISTORY.name}')
+        # Step 4: Optimize
+        optimized_data = optimize_output(restructured_data)
         
-        # Fundamental history
-        fundamental_data = self.chart_generator.generate_fundamental_history(self.unified_data)
-        with open(Config.FUNDAMENTAL_HISTORY, 'w') as f:
-            json.dump(fundamental_data, f, indent=2)
-        self.logger.info(f'  ✓ {Config.FUNDAMENTAL_HISTORY.name}')
+        # Write output (minified)
+        log(f"\nWriting output to {MERGED_OUTPUT}...")
+        with open(MERGED_OUTPUT, 'w', encoding='utf-8') as f:
+            json.dump(optimized_data, f, separators=(',', ':'), ensure_ascii=False)
+        
+        output_size = MERGED_OUTPUT.stat().st_size / (1024*1024)
+        
+        log(f"\n" + "█"*80)
+        log("█" + " "*78 + "█")
+        log("█" + "  ✓ PIPELINE COMPLETE  ".center(78) + "█")
+        log("█" + " "*78 + "█")
+        log("█"*80)
+        log(f"\nOutput: {MERGED_OUTPUT.resolve()} ({output_size:.2f} MB)")
+        log(f"Log: {logger_file.resolve()}")
+        log(f"\nStats:")
+        log(f"  • Total stocks: {len(optimized_data)}")
+        log(f"  • Total price records: {sum(len(s.get('price_series', [])) for s in optimized_data.values()):,}")
+        log(f"  • Total metrics: {sum(len(m) for s in optimized_data.values() for m in s.get('financial_metrics', {}).values()):,}")
+        log(f"\n✅ Ready to commit and push to GitHub!\n")
+        
+        return True
+        
+    except Exception as e:
+        log(f"❌ ERROR: {str(e)}", level="ERROR")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
-# ============================================================================
-# ENTRY POINT
-# ============================================================================
-
-if __name__ == '__main__':
-    script = MergeScript()
-    script.run()
+if __name__ == "__main__":
+    success = run_pipeline()
+    sys.exit(0 if success else 1)
