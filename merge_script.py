@@ -73,6 +73,111 @@ class Config:
 
 
 # ============================================================================
+# FIELD MAPPER - Dynamic Field Mapping
+# ============================================================================
+
+class FieldMapper:
+    """Maps source fields to target unified schema dynamically"""
+    
+    def __init__(self):
+        """Initialize with default mappings based on known source structure"""
+        # Yahoo info section → Target fields
+        self.yahoo_field_map = {
+            'market_data.current.price': ['currentPrice', 'regularMarketPrice'],
+            'market_data.current.open': ['regularMarketOpen'],
+            'market_data.current.high': ['regularMarketDayHigh'],
+            'market_data.current.low': ['regularMarketDayLow'],
+            'market_data.current.volume': ['regularMarketVolume'],
+            
+            'valuation.pe_trailing': ['trailingPE'],
+            'valuation.pe_forward': ['forwardPE'],
+            'valuation.pb': ['priceToBook'],
+            'valuation.ps': ['priceToSalesTrailing12Months'],
+            'valuation.market_cap': ['marketCap'],
+            'valuation.ev': ['enterpriseValue'],
+            
+            'asset_info.sector': ['sector'],
+            'asset_info.industry': ['industryDisp'],
+            'asset_info.website': ['website'],
+            'asset_info.employees': ['fullTimeEmployees'],
+        }
+        
+        # Screener table sections
+        self.screener_tables = {
+            'quarterly_results': 'Quarterly Results',
+            'annual_results': 'Annual Results',
+            'balance_sheet': 'Balance Sheet',
+            'cash_flow': 'Cash Flow',
+        }
+    
+    def get_yahoo_value(self, info_dict: Dict[str, Any], target_field: str) -> Optional[Any]:
+        """Get value from Yahoo info dict using mapping"""
+        possible_keys = self.yahoo_field_map.get(target_field, [])
+        
+        for key in possible_keys:
+            if key in info_dict:
+                return info_dict[key]
+        
+        return None
+    
+    def find_screener_table(self, tables: List[Dict], section_name: str) -> Optional[Dict]:
+        """Find Screener table by section name"""
+        for table in tables:
+            if section_name in table.get('section', ''):
+                return table
+        return None
+    
+    def inspect_source_files(self, yahoo_file: Path, screener_file: Path) -> Dict[str, Any]:
+        """Inspect source files and detect actual structure"""
+        detected = {
+            'yahoo': {
+                'file': str(yahoo_file),
+                'exists': yahoo_file.exists(),
+                'info_fields': [],
+                'history_fields': [],
+            },
+            'screener': {
+                'file': str(screener_file),
+                'exists': screener_file.exists(),
+                'tables': [],
+            }
+        }
+        
+        # Inspect Yahoo
+        if yahoo_file.exists():
+            with open(yahoo_file, 'r') as f:
+                data = json.load(f)
+            
+            first_stock = next((v for k, v in data.items() if k != 'metadata'), None)
+            if first_stock and 'observations' in first_stock:
+                obs = first_stock['observations'][0]
+                raw = obs.get('raw', {})
+                
+                if 'info' in raw:
+                    detected['yahoo']['info_fields'] = list(raw['info'].keys())
+                
+                if 'history_1y_1d' in raw:
+                    hist = raw['history_1y_1d']
+                    if hist:
+                        detected['yahoo']['history_fields'] = list(hist[0].keys())
+        
+        # Inspect Screener
+        if screener_file.exists():
+            with open(screener_file, 'r') as f:
+                data = json.load(f)
+            
+            first_stock = next((v for k, v in data.items() if k != 'metadata'), None)
+            if first_stock and 'observations' in first_stock:
+                obs = first_stock['observations'][0]
+                raw = obs.get('raw', {})
+                
+                if 'tables' in raw:
+                    detected['screener']['tables'] = [t.get('section') for t in raw['tables']]
+        
+        return detected
+
+
+# ============================================================================
 # LOGGING SETUP
 # ============================================================================
 
@@ -437,18 +542,24 @@ class DataMerger:
         return merged
     
     def _extract_asset_info(self, yahoo_stock: Dict) -> Dict:
-        """Extract company information"""
+        """Extract company information from Yahoo info"""
+        # Get info from observations if available
+        if 'observations' in yahoo_stock and yahoo_stock['observations']:
+            info = yahoo_stock['observations'][0].get('raw', {}).get('info', {})
+        else:
+            info = {}
+        
         return {
-            'name': yahoo_stock.get('name', ''),
-            'sector': yahoo_stock.get('sector', ''),
-            'industry': yahoo_stock.get('industry', ''),
-            'website': yahoo_stock.get('website', ''),
-            'employees': yahoo_stock.get('employees'),
-            'founded_year': yahoo_stock.get('founded_year'),
+            'name': yahoo_stock.get('name', '') or info.get('longName', ''),
+            'sector': info.get('sector', ''),
+            'industry': info.get('industryDisp', ''),
+            'website': info.get('website', ''),
+            'employees': info.get('fullTimeEmployees'),
+            'founded_year': None,  # Not available in Yahoo data
         }
     
     def _extract_market_data(self, yahoo_stock: Dict) -> Dict:
-        """Extract current market data from Yahoo"""
+        """Extract current market data from Yahoo info section"""
         if 'observations' not in yahoo_stock or not yahoo_stock['observations']:
             return {
                 'current': {
@@ -462,14 +573,15 @@ class DataMerger:
             }
         
         obs = yahoo_stock['observations'][0].get('raw', {})
+        info = obs.get('info', {})
         
         return {
             'current': {
-                'price': self.normalizer.parse_number(obs.get('currentPrice')),
-                'open': self.normalizer.parse_number(obs.get('open')),
-                'high': self.normalizer.parse_number(obs.get('dayHigh')),
-                'low': self.normalizer.parse_number(obs.get('dayLow')),
-                'volume': self.normalizer.parse_number(obs.get('volume')),
+                'price': self.normalizer.parse_number(info.get('currentPrice') or info.get('regularMarketPrice')),
+                'open': self.normalizer.parse_number(info.get('regularMarketOpen')),
+                'high': self.normalizer.parse_number(info.get('regularMarketDayHigh')),
+                'low': self.normalizer.parse_number(info.get('regularMarketDayLow')),
+                'volume': self.normalizer.parse_number(info.get('regularMarketVolume')),
                 'timestamp': datetime.now().isoformat() + 'Z'
             }
         }
@@ -491,17 +603,18 @@ class DataMerger:
             }
         
         obs = yahoo_stock['observations'][0].get('raw', {})
+        info = obs.get('info', {})
         
         return {
             'price_metrics': {
-                'pe_ratio_trailing': self.normalizer.parse_number(obs.get('trailingPE')),
-                'pe_ratio_forward': self.normalizer.parse_number(obs.get('forwardPE')),
-                'pb_ratio': self.normalizer.parse_number(obs.get('priceToBook')),
-                'ps_ratio': self.normalizer.parse_number(obs.get('priceToSalesTrailing12Months')),
+                'pe_ratio_trailing': self.normalizer.parse_number(info.get('trailingPE')),
+                'pe_ratio_forward': self.normalizer.parse_number(info.get('forwardPE')),
+                'pb_ratio': self.normalizer.parse_number(info.get('priceToBook')),
+                'ps_ratio': self.normalizer.parse_number(info.get('priceToSalesTrailing12Months')),
             },
             'market_value': {
-                'market_cap': self.normalizer.parse_number(obs.get('marketCap')),
-                'enterprise_value': self.normalizer.parse_number(obs.get('enterpriseValue')),
+                'market_cap': self.normalizer.parse_number(info.get('marketCap')),
+                'enterprise_value': self.normalizer.parse_number(info.get('enterpriseValue')),
             }
         }
     
