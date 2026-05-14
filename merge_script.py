@@ -195,19 +195,34 @@ class DataNormalizer:
     @staticmethod
     def parse_number(value: Any) -> Optional[float]:
         """Parse number from various formats"""
-        if value is None:
+        if value is None or value == '':
             return None
         
         if isinstance(value, (int, float)):
             return float(value)
         
         if isinstance(value, str):
+            # Remove whitespace
+            value = value.strip()
+            
+            # Return None if empty after strip
+            if not value or value == '':
+                return None
+            
             # Remove commas: "1,234" -> "1234"
             value = value.replace(',', '')
+            
             # Remove % sign: "35%" -> "0.35"
             if value.endswith('%'):
-                return float(value.rstrip('%')) / 100
-            return float(value)
+                try:
+                    return float(value.rstrip('%')) / 100
+                except ValueError:
+                    return None
+            
+            try:
+                return float(value)
+            except ValueError:
+                return None
         
         return None
     
@@ -552,17 +567,19 @@ class DataMerger:
                 if 'history_1y_1d' in raw:
                     history_records = raw['history_1y_1d']
                     if isinstance(history_records, list):
-                        daily_history.extend([
-                            {
-                                'date': record.get('Date'),
-                                'open': self.normalizer.parse_number(record.get('Open')),
-                                'high': self.normalizer.parse_number(record.get('High')),
-                                'low': self.normalizer.parse_number(record.get('Low')),
-                                'close': self.normalizer.parse_number(record.get('Close')),
-                                'volume': self.normalizer.parse_number(record.get('Volume')),
-                            }
-                            for record in history_records
-                        ])
+                        for record in history_records:
+                            try:
+                                daily_history.append({
+                                    'date': record.get('Date'),
+                                    'open': self.normalizer.parse_number(record.get('Open')),
+                                    'high': self.normalizer.parse_number(record.get('High')),
+                                    'low': self.normalizer.parse_number(record.get('Low')),
+                                    'close': self.normalizer.parse_number(record.get('Close')),
+                                    'volume': self.normalizer.parse_number(record.get('Volume')),
+                                })
+                            except (ValueError, TypeError):
+                                # Skip records with invalid data
+                                continue
         
         # Keep only last 250 days
         daily_history = daily_history[-250:] if daily_history else []
@@ -580,13 +597,17 @@ class DataMerger:
                             # Extract quarterly data from table rows
                             rows = table.get('rows', [])
                             for row in rows[1:]:  # Skip header
-                                if len(row) > 0:
-                                    quarterly_history.append({
-                                        'period': row[0] if len(row) > 0 else None,
-                                        'revenue': self.normalizer.parse_number(row[1]) if len(row) > 1 else None,
-                                        'net_profit': self.normalizer.parse_number(row[2]) if len(row) > 2 else None,
-                                        'eps': self.normalizer.parse_number(row[3]) if len(row) > 3 else None,
-                                    })
+                                try:
+                                    if len(row) > 0:
+                                        quarterly_history.append({
+                                            'period': row[0] if len(row) > 0 else None,
+                                            'revenue': self.normalizer.parse_number(row[1]) if len(row) > 1 else None,
+                                            'net_profit': self.normalizer.parse_number(row[2]) if len(row) > 2 else None,
+                                            'eps': self.normalizer.parse_number(row[3]) if len(row) > 3 else None,
+                                        })
+                                except (ValueError, TypeError, IndexError):
+                                    # Skip invalid rows
+                                    continue
         
         # Keep last 13 quarters
         quarterly_history = quarterly_history[-13:] if quarterly_history else []
