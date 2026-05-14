@@ -433,84 +433,163 @@ class DataMerger:
         }
     
     def _extract_market_data(self, yahoo_stock: Dict) -> Dict:
-        """Extract current market data"""
+        """Extract current market data from Yahoo"""
         if 'observations' not in yahoo_stock or not yahoo_stock['observations']:
-            return {}
+            return {
+                'current': {
+                    'price': None,
+                    'open': None,
+                    'high': None,
+                    'low': None,
+                    'volume': None,
+                    'timestamp': datetime.now().isoformat() + 'Z'
+                }
+            }
         
-        obs = yahoo_stock['observations'][0]['raw']
+        obs = yahoo_stock['observations'][0].get('raw', {})
         
         return {
             'current': {
-                'price': obs.get('currentPrice'),
-                'open': obs.get('open'),
-                'high': obs.get('dayHigh'),
-                'low': obs.get('dayLow'),
-                'volume': obs.get('volume'),
+                'price': self.normalizer.parse_number(obs.get('currentPrice')),
+                'open': self.normalizer.parse_number(obs.get('open')),
+                'high': self.normalizer.parse_number(obs.get('dayHigh')),
+                'low': self.normalizer.parse_number(obs.get('dayLow')),
+                'volume': self.normalizer.parse_number(obs.get('volume')),
                 'timestamp': datetime.now().isoformat() + 'Z'
             }
         }
     
     def _extract_valuation(self, yahoo_stock: Dict) -> Dict:
-        """Extract valuation metrics"""
+        """Extract valuation metrics from Yahoo"""
         if 'observations' not in yahoo_stock or not yahoo_stock['observations']:
-            return {}
+            return {
+                'price_metrics': {
+                    'pe_ratio_trailing': None,
+                    'pe_ratio_forward': None,
+                    'pb_ratio': None,
+                    'ps_ratio': None,
+                },
+                'market_value': {
+                    'market_cap': None,
+                    'enterprise_value': None,
+                }
+            }
         
-        obs = yahoo_stock['observations'][0]['raw']
+        obs = yahoo_stock['observations'][0].get('raw', {})
         
         return {
             'price_metrics': {
-                'pe_ratio_trailing': obs.get('trailingPE'),
-                'pe_ratio_forward': obs.get('forwardPE'),
-                'pb_ratio': obs.get('priceToBook'),
-                'ps_ratio': obs.get('priceToSalesTrailing12Months'),
+                'pe_ratio_trailing': self.normalizer.parse_number(obs.get('trailingPE')),
+                'pe_ratio_forward': self.normalizer.parse_number(obs.get('forwardPE')),
+                'pb_ratio': self.normalizer.parse_number(obs.get('priceToBook')),
+                'ps_ratio': self.normalizer.parse_number(obs.get('priceToSalesTrailing12Months')),
             },
             'market_value': {
-                'market_cap': obs.get('marketCap'),
-                'enterprise_value': obs.get('enterpriseValue'),
+                'market_cap': self.normalizer.parse_number(obs.get('marketCap')),
+                'enterprise_value': self.normalizer.parse_number(obs.get('enterpriseValue')),
             }
         }
     
     def _extract_financials(self, screener_stock: Dict) -> Dict:
-        """Extract financial data"""
+        """Extract financial data from Screener"""
         if 'observations' not in screener_stock or not screener_stock['observations']:
-            return {}
+            return {'latest_quarter': {}, 'annual': {}}
         
-        obs = screener_stock['observations'][0]
-        if 'raw' not in obs:
-            return {}
+        latest_quarter = {}
+        annual_data = {}
         
-        # For now, return basic structure
-        # Full extraction would parse Screener tables
+        # Parse Screener tables
+        for obs in screener_stock['observations']:
+            raw = obs.get('raw', {})
+            tables = raw.get('tables', [])
+            
+            for table in tables:
+                section = table.get('section', '')
+                rows = table.get('rows', [])
+                
+                # Quarterly Results
+                if 'Quarterly Results' in section and rows:
+                    header = rows[0] if rows else []
+                    if len(rows) > 1:
+                        # Latest quarter is first data row
+                        latest_row = rows[1]
+                        latest_quarter = {
+                            'period': latest_row[0] if len(latest_row) > 0 else None,
+                            'revenue': self.normalizer.parse_number(latest_row[1]) if len(latest_row) > 1 else None,
+                            'net_profit': self.normalizer.parse_number(latest_row[2]) if len(latest_row) > 2 else None,
+                            'eps': self.normalizer.parse_number(latest_row[3]) if len(latest_row) > 3 else None,
+                        }
+                
+                # Annual Results
+                if 'Annual Results' in section and rows:
+                    if len(rows) > 1:
+                        # Latest year is first data row
+                        latest_row = rows[1]
+                        annual_data = {
+                            'period': latest_row[0] if len(latest_row) > 0 else None,
+                            'revenue': self.normalizer.parse_number(latest_row[1]) if len(latest_row) > 1 else None,
+                            'net_profit': self.normalizer.parse_number(latest_row[2]) if len(latest_row) > 2 else None,
+                            'eps': self.normalizer.parse_number(latest_row[3]) if len(latest_row) > 3 else None,
+                        }
+        
         return {
-            'latest_quarter': {
-                'period': None,  # Would be extracted from tables
-                'revenue': None,
-                'net_profit': None,
-                'eps': None,
-            }
+            'latest_quarter': latest_quarter if latest_quarter else {'period': None, 'revenue': None, 'net_profit': None, 'eps': None},
+            'annual': annual_data if annual_data else {'period': None, 'revenue': None, 'net_profit': None, 'eps': None}
         }
     
     def _extract_time_series(self, yahoo_stock: Dict, screener_stock: Dict) -> Dict:
-        """Extract time series data"""
+        """Extract time series data from observations"""
         
         daily_history = []
-        if 'observations' in yahoo_stock and yahoo_stock['observations']:
-            obs = yahoo_stock['observations'][0]['raw']
-            if 'history' in obs:
-                history = obs['history']
-                daily_history = [
-                    {
-                        'date': record.get('date'),
-                        'open': record.get('open'),
-                        'high': record.get('high'),
-                        'low': record.get('low'),
-                        'close': record.get('close'),
-                        'volume': record.get('volume'),
-                    }
-                    for record in history[:250]  # Last 250 days
-                ]
+        quarterly_history = []
         
-        quarterly_history = []  # Would be extracted from Screener
+        # Extract daily history from Yahoo observations
+        if 'observations' in yahoo_stock and yahoo_stock['observations']:
+            for obs in yahoo_stock['observations']:
+                raw = obs.get('raw', {})
+                
+                # Daily history: stored as history_1y_1d
+                if 'history_1y_1d' in raw:
+                    history_records = raw['history_1y_1d']
+                    if isinstance(history_records, list):
+                        daily_history.extend([
+                            {
+                                'date': record.get('Date'),
+                                'open': self.normalizer.parse_number(record.get('Open')),
+                                'high': self.normalizer.parse_number(record.get('High')),
+                                'low': self.normalizer.parse_number(record.get('Low')),
+                                'close': self.normalizer.parse_number(record.get('Close')),
+                                'volume': self.normalizer.parse_number(record.get('Volume')),
+                            }
+                            for record in history_records
+                        ])
+        
+        # Keep only last 250 days
+        daily_history = daily_history[-250:] if daily_history else []
+        
+        # Extract quarterly history from Screener observations
+        if 'observations' in screener_stock and screener_stock['observations']:
+            for obs in screener_stock['observations']:
+                raw = obs.get('raw', {})
+                
+                # Quarterly financial data from Screener tables
+                if 'tables' in raw:
+                    tables = raw['tables']
+                    for table in tables:
+                        if table.get('section') and 'Quarterly Results' in table.get('section', ''):
+                            # Extract quarterly data from table rows
+                            rows = table.get('rows', [])
+                            for row in rows[1:]:  # Skip header
+                                if len(row) > 0:
+                                    quarterly_history.append({
+                                        'period': row[0] if len(row) > 0 else None,
+                                        'revenue': self.normalizer.parse_number(row[1]) if len(row) > 1 else None,
+                                        'net_profit': self.normalizer.parse_number(row[2]) if len(row) > 2 else None,
+                                        'eps': self.normalizer.parse_number(row[3]) if len(row) > 3 else None,
+                                    })
+        
+        # Keep last 13 quarters
+        quarterly_history = quarterly_history[-13:] if quarterly_history else []
         
         return {
             'quarterly_history': quarterly_history,
@@ -596,36 +675,83 @@ class DataValidator:
         return True
     
     def validate_completeness(self, all_stocks: Dict) -> bool:
-        """Layer 2: Completeness validation"""
-        self.logger.info('Layer 2: Completeness...')
+        """Layer 2: Completeness validation - STRICT: check actual data presence"""
+        self.logger.info('Layer 2: Completeness (STRICT)...')
         
-        required_fields = [
-            'ticker', 'asset_type', 'asset_name', 'isin',
-            'asset_info', 'market_data', 'valuation'
-        ]
-        
-        missing_count = 0
+        missing_data_count = 0
         for ticker, stock in all_stocks.items():
             if ticker == 'metadata':
                 continue
             
-            for field in required_fields:
-                if field not in stock:
-                    missing_count += 1
-                    issue = ValidationIssue(
-                        ticker=ticker,
-                        field=field,
-                        type='missing_field',
-                        severity='error',
-                        message=f'Required field missing: {field}'
-                    )
-                    self.issues.append(issue)
+            # Check market data has actual price
+            market_data = stock.get('market_data', {}).get('current', {})
+            if not market_data.get('price'):
+                missing_data_count += 1
+                self.issues.append(ValidationIssue(
+                    ticker=ticker,
+                    field='market_data.current.price',
+                    type='missing_data',
+                    severity='warning',
+                    message='Market price data missing'
+                ))
+            
+            # Check financials have data
+            financials = stock.get('financials', {}).get('latest_quarter', {})
+            if not financials.get('revenue') and not financials.get('net_profit'):
+                missing_data_count += 1
+                self.issues.append(ValidationIssue(
+                    ticker=ticker,
+                    field='financials.latest_quarter',
+                    type='missing_data',
+                    severity='warning',
+                    message='Financial data (revenue/profit) missing'
+                ))
+            
+            # Check valuation metrics
+            valuation = stock.get('valuation', {}).get('price_metrics', {})
+            metrics_present = any([
+                valuation.get('pe_ratio_trailing'),
+                valuation.get('pb_ratio'),
+                valuation.get('ps_ratio')
+            ])
+            if not metrics_present:
+                missing_data_count += 1
+                self.issues.append(ValidationIssue(
+                    ticker=ticker,
+                    field='valuation.price_metrics',
+                    type='missing_data',
+                    severity='warning',
+                    message='Valuation metrics missing'
+                ))
+            
+            # Check time series has history
+            daily_history = stock.get('time_series', {}).get('daily_history', [])
+            if not daily_history or len(daily_history) == 0:
+                missing_data_count += 1
+                self.issues.append(ValidationIssue(
+                    ticker=ticker,
+                    field='time_series.daily_history',
+                    type='missing_data',
+                    severity='warning',
+                    message='Daily price history missing'
+                ))
+            
+            quarterly_history = stock.get('time_series', {}).get('quarterly_history', [])
+            if not quarterly_history or len(quarterly_history) == 0:
+                missing_data_count += 1
+                self.issues.append(ValidationIssue(
+                    ticker=ticker,
+                    field='time_series.quarterly_history',
+                    type='missing_data',
+                    severity='warning',
+                    message='Quarterly financial history missing'
+                ))
         
-        if missing_count > 0:
-            self.logger.warning(f'  ✗ {missing_count} required fields missing')
+        if missing_data_count > 0:
+            self.logger.warning(f'  ✗ {missing_data_count} data gaps found')
             return False
         
-        self.logger.info(f'  ✓ All required fields present')
+        self.logger.info(f'  ✓ All data fields populated')
         return True
     
     def validate_values(self, all_stocks: Dict) -> bool:
@@ -660,11 +786,46 @@ class DataValidator:
         return range_violations == 0
     
     def validate_consistency(self, all_stocks: Dict) -> bool:
-        """Layer 4: Consistency validation"""
+        """Layer 4: Consistency validation - check data integrity"""
         self.logger.info('Layer 4: Consistency...')
         
         consistency_errors = 0
-        # Would implement balance sheet checks, time series ordering, etc.
+        for ticker, stock in all_stocks.items():
+            if ticker == 'metadata':
+                continue
+            
+            # Check daily history is ordered by date
+            daily = stock.get('time_series', {}).get('daily_history', [])
+            if daily and len(daily) > 1:
+                for i in range(len(daily) - 1):
+                    if daily[i].get('date') and daily[i+1].get('date'):
+                        if daily[i]['date'] > daily[i+1]['date']:
+                            consistency_errors += 1
+                            self.issues.append(ValidationIssue(
+                                ticker=ticker,
+                                field='time_series.daily_history',
+                                type='ordering_error',
+                                severity='error',
+                                message='Daily history not properly ordered'
+                            ))
+                            break
+            
+            # Check PE ratio is reasonable if present
+            pe = stock.get('valuation', {}).get('price_metrics', {}).get('pe_ratio_trailing')
+            if pe and (pe < 0 or pe > 500):
+                consistency_errors += 1
+                self.issues.append(ValidationIssue(
+                    ticker=ticker,
+                    field='valuation.pe_ratio_trailing',
+                    type='unrealistic_value',
+                    severity='warning',
+                    message=f'PE ratio {pe} seems unrealistic',
+                    value=pe
+                ))
+        
+        if consistency_errors > 0:
+            self.logger.warning(f'  ✗ {consistency_errors} consistency issues')
+            return False
         
         self.logger.info('  ✓ Consistency checks passed')
         return True
