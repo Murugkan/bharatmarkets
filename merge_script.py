@@ -13,7 +13,7 @@ File Structure:
     ├── data/
     │   ├── yahoo-history.json       (input)
     │   ├── screener-history.json    (input)
-    │   ├── stock-data.json          (output)
+    │   ├── unified-data.json        (output)
     │   └── merge-script.log         (output log)
 """
 
@@ -31,7 +31,7 @@ YAHOO_HISTORY = DATA_DIR / 'yahoo-history.json'
 SCREENER_HISTORY = DATA_DIR / 'screener-history.json'
 
 # Output files (in data/ directory)
-MERGED_OUTPUT = DATA_DIR / 'stock-data.json'
+MERGED_OUTPUT = DATA_DIR / 'unified-data.json'
 
 logger_file = None
 
