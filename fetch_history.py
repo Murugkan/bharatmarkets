@@ -9,9 +9,9 @@ from datetime import datetime, UTC
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-# Changed to match merge_script.py expectations
-YAHOO_FILE = DATA_DIR / "daily_yahoo.json"
-SCREENER_FILE = DATA_DIR / "daily_screener.json"
+# Correct filenames - history files (not daily)
+YAHOO_FILE = DATA_DIR / "yahoo-history.json"
+SCREENER_FILE = DATA_DIR / "screener-history.json"
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
 SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
@@ -169,25 +169,43 @@ def main():
     
     runtime = round(time.time() - start, 2)
     
-    # Metadata & logs
-    for provider, data_file in [("yahoo", YAHOO_FILE), ("screener", SCREENER_FILE)]:
-        meta_file = DATA_DIR / f"meta_{provider}.json"
-        metadata = {
-            "timestamp": now(),
-            "type": "history",
-            "provider": provider,
-            "processed": processed,
-            "skipped": skipped,
-            "runtime_seconds": runtime,
-            "data_file": data_file.name,
-            "operation": "fetch"
-        }
-        save_json(meta_file, metadata)
-        
-        log_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        log_file = DATA_DIR / f"fetch_{provider}_{log_timestamp}.log"
+    # Error & issues logs only
+    errors_log = {
+        "yahoo": [],
+        "screener": []
+    }
+    
+    # Collect errors from observations
+    for provider_name, store in [("yahoo", yahoo_store), ("screener", screener_store)]:
+        for ticker, stock in store.items():
+            for obs in stock.get("observations", []):
+                raw = obs.get("raw", {})
+                if "error" in raw or "info_error" in raw or "history_error" in raw:
+                    error = raw.get("error") or raw.get("info_error") or raw.get("history_error")
+                    errors_log[provider_name].append({
+                        "ticker": ticker,
+                        "error": error
+                    })
+    
+    # Write error logs
+    for provider in ["yahoo", "screener"]:
+        log_file = DATA_DIR / f"{provider}-history.log"
         with open(log_file, "w") as f:
-            f.write(f"Fetch {provider}\nTimestamp: {now()}\nData File: {data_file.name}\nProcessed: {processed}\nSkipped: {skipped}\nRuntime: {runtime}s\n")
+            f.write(f"=== {provider.upper()} HISTORY - ERRORS & ISSUES ===\n")
+            f.write(f"Timestamp: {now()}\n")
+            f.write(f"Processed: {processed}, Skipped: {skipped}\n\n")
+            
+            if skipped > 0:
+                f.write(f"SKIPPED: {skipped} stocks (bonds/delisted)\n\n")
+            
+            if errors_log[provider]:
+                f.write(f"ERRORS: {len(errors_log[provider])} connection/fetch issues\n")
+                for error_item in errors_log[provider]:
+                    f.write(f"  - {error_item['ticker']}: {error_item['error']}\n")
+            else:
+                f.write(f"ERRORS: None\n")
+            
+            f.write(f"\nRuntime: {runtime}s\n")
     
     print(f"✓ Fetched: {processed} processed, {skipped} skipped, {runtime}s")
     print(f"✓ Output files ready for merge_script.py:")

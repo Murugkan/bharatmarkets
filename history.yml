@@ -31,15 +31,18 @@ jobs:
       - name: Fetch data - Yahoo & Screener
         run: python fetch_history.py
 
+      - name: Merge data with validation
+        run: python merge_script.py
+
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          git add data/daily_yahoo.json data/daily_screener.json data/meta_yahoo.json data/meta_screener.json 2>/dev/null || true
+          git add data/yahoo-history.json data/screener-history.json data/yahoo-history.log data/screener-history.log data/unified-data.json data/validation-report.json data/conflicts-log.json data/chart/ 2>/dev/null || true
           
           git diff --cached --quiet && exit 0
           
-          git commit -m "data: fetch history [$(date -u +'%Y-%m-%dT%H:%M:%SZ')]"
+          git commit -m "data: fetch & merge [$(date -u +'%Y-%m-%dT%H:%M:%SZ')]"
           git pull --rebase origin main
           git push origin HEAD:main

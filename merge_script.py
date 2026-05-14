@@ -46,8 +46,8 @@ class Config:
     CHART_DIR = DATA_DIR / 'chart'
     
     # Input files (in data/ directory)
-    YAHOO_HISTORY = DATA_DIR / 'daily_yahoo.json'
-    SCREENER_HISTORY = DATA_DIR / 'daily_screener.json'
+    YAHOO_HISTORY = DATA_DIR / 'yahoo-history.json'
+    SCREENER_HISTORY = DATA_DIR / 'screener-history.json'
     GUIDANCE_DATA = DATA_DIR / 'guidance.json'
     
     # Output files (in data/ directory)
