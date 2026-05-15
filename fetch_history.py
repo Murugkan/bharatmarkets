@@ -374,7 +374,98 @@ def fetch_finnhub_payload(ticker):
 # MAIN
 # ============================================================================
 
+def commit_to_git(log_file):
+    """Commit fetch results to Git"""
+    logger.info("\n" + "="*80)
+    logger.info("COMMITTING TO GIT")
+    logger.info("="*80)
+    
+    try:
+        # Configure git
+        subprocess.run(
+            ["git", "config", "user.email", "pipeline@bharatmarkets.dev"],
+            capture_output=True,
+            check=False
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "BharatMarkets Pipeline"],
+            capture_output=True,
+            check=False
+        )
+        
+        # Add files
+        files = [
+            "data/yahoo-history.json",
+            "data/screener-history.json",
+            "data/finnhub-history.json"
+        ]
+        
+        if log_file and log_file.exists():
+            files.append(str(log_file))
+        
+        files_added = 0
+        for file in files:
+            filepath = Path(file)
+            if filepath.exists():
+                result = subprocess.run(
+                    ["git", "add", file],
+                    capture_output=True,
+                    text=True,
+                    check=False
+                )
+                if result.returncode == 0:
+                    logger.info(f"  ✓ Added {file}")
+                    files_added += 1
+                else:
+                    logger.warning(f"  ⚠️  Failed to add {file}")
+            else:
+                logger.warning(f"  ⚠️  File not found: {file}")
+        
+        if files_added == 0:
+            logger.warning("  No files to commit")
+            return True
+        
+        # Commit
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = f"[Step 1] Fetch: Yahoo+Screener+Finnhub ({timestamp})"
+        
+        result = subprocess.run(
+            ["git", "commit", "-m", msg],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"  ✓ Committed: {msg}")
+            return True
+        elif "nothing to commit" in result.stderr.lower():
+            logger.info(f"  ⊘ Nothing to commit")
+            return True
+        else:
+            logger.warning(f"  ⚠️  Commit may have failed: {result.stderr.strip()}")
+            return True
+    
+    except Exception as e:
+        logger.error(f"  ✗ Git error: {str(e)}")
+        return True
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
 def main():
+    # Create log file handler
+    log_file = Path('data/fetch-history.log')
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s | %(name)-10s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    ))
+    logger.addHandler(file_handler)
+    
     logger.info("\n" + "="*80)
     logger.info("STEP 1: FETCH DATA MODULE")
     logger.info("="*80)
@@ -471,6 +562,9 @@ def main():
     # Test
     tester = Step1Tester(yahoo_store, screener_store, finnhub_store)
     tester.run_all_tests()
+    
+    # Commit
+    commit_to_git(log_file)
     
     # Summary
     logger.info("\n" + "="*80)

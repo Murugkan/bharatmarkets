@@ -246,72 +246,31 @@ class Step2Tester:
         
         return True
 
+
 # ============================================================================
 # GIT COMMIT
 # ============================================================================
 
-def commit_to_git():
+def commit_to_git(log_file):
     """Commit merged data to Git"""
     logger.info("\n" + "="*80)
     logger.info("COMMITTING TO GIT")
     logger.info("="*80)
     
     try:
-        cwd = Path.cwd()
-        logger.info(f"Working directory: {cwd}")
-        
-        # Check if in git repo
-        logger.info("\n1. Checking if in git repository...")
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
-            capture_output=True,
-            text=True,
-            check=False
-        )
-        
-        if result.returncode != 0:
-            logger.warning("  ⚠️  Not in a git repository")
-            logger.info(f"  stdout: {result.stdout}")
-            logger.info(f"  stderr: {result.stderr}")
-            return True
-        
-        git_dir = result.stdout.strip()
-        logger.info(f"  ✓ Git repo found: {git_dir}")
-        
         # Configure git
-        logger.info("\n2. Configuring git...")
-        result1 = subprocess.run(
+        subprocess.run(
             ["git", "config", "user.email", "pipeline@bharatmarkets.dev"],
             capture_output=True,
-            text=True,
             check=False
         )
-        logger.info(f"  ✓ Set email (return code: {result1.returncode})")
-        
-        result2 = subprocess.run(
+        subprocess.run(
             ["git", "config", "user.name", "BharatMarkets Pipeline"],
             capture_output=True,
-            text=True,
             check=False
         )
-        logger.info(f"  ✓ Set name (return code: {result2.returncode})")
-        
-        # Check git status
-        logger.info("\n3. Checking git status...")
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=False
-        )
-        
-        if status_result.stdout.strip():
-            logger.info(f"  Changes found:\n{status_result.stdout}")
-        else:
-            logger.info(f"  No changes detected")
         
         # Add files
-        logger.info("\n4. Adding files to git...")
         files = [
             "merged_fundamentals.json",
             "data/yahoo-history.json",
@@ -319,13 +278,13 @@ def commit_to_git():
             "data/finnhub-history.json"
         ]
         
+        if log_file and log_file.exists():
+            files.append(str(log_file))
+        
         files_added = 0
         for file in files:
             filepath = Path(file)
-            exists = filepath.exists()
-            logger.info(f"  Checking {file}: {'EXISTS' if exists else 'MISSING'}")
-            
-            if exists:
+            if filepath.exists():
                 result = subprocess.run(
                     ["git", "add", file],
                     capture_output=True,
@@ -333,19 +292,18 @@ def commit_to_git():
                     check=False
                 )
                 if result.returncode == 0:
-                    logger.info(f"    ✓ Added")
+                    logger.info(f"  ✓ Added {file}")
                     files_added += 1
                 else:
-                    logger.warning(f"    ✗ Failed: {result.stderr.strip()}")
-        
-        logger.info(f"\n  Total files added: {files_added}")
+                    logger.warning(f"  ⚠️  Failed to add {file}")
+            else:
+                logger.warning(f"  ⚠️  File not found: {file}")
         
         if files_added == 0:
-            logger.warning("  ⚠️  No files were added to git")
+            logger.warning("  No files to commit")
             return True
         
         # Commit
-        logger.info("\n5. Creating commit...")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = f"[Step 2] Consolidate: Yahoo+Screener+Finnhub ({timestamp})"
         
@@ -356,27 +314,18 @@ def commit_to_git():
             check=False
         )
         
-        logger.info(f"  Return code: {result.returncode}")
-        if result.stdout.strip():
-            logger.info(f"  stdout: {result.stdout.strip()}")
-        if result.stderr.strip():
-            logger.info(f"  stderr: {result.stderr.strip()}")
-        
         if result.returncode == 0:
-            logger.info(f"\n  ✓ Committed successfully")
-            logger.info(f"    {msg}")
+            logger.info(f"  ✓ Committed: {msg}")
             return True
-        elif "nothing to commit" in result.stderr.lower() or "nothing to commit" in result.stdout.lower():
-            logger.info(f"\n  ⊘ Nothing to commit")
+        elif "nothing to commit" in result.stderr.lower():
+            logger.info(f"  ⊘ Nothing to commit")
             return True
         else:
-            logger.warning(f"\n  ⚠️  Commit may have failed")
+            logger.warning(f"  ⚠️  Commit may have failed: {result.stderr.strip()}")
             return True
     
     except Exception as e:
-        logger.error(f"  ✗ Exception: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"  ✗ Git error: {str(e)}")
         return True
 
 # ============================================================================
@@ -384,6 +333,17 @@ def commit_to_git():
 # ============================================================================
 
 def main():
+    # Create log file handler
+    log_file = Path('data/merge-script.log')
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s | %(name)-10s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    ))
+    logger.addHandler(file_handler)
+    
     logger.info("\n" + "="*80)
     logger.info("STEP 2: MERGE & CONSOLIDATE MODULE")
     logger.info("="*80)
@@ -443,7 +403,7 @@ def main():
     tester.run_all_tests()
     
     # Commit
-    commit_to_git()
+    commit_to_git(log_file)
     
     # Summary
     logger.info("\n" + "="*80)
