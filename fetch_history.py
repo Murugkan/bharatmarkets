@@ -52,7 +52,7 @@ def resolve_screener_symbol(ticker):
 
 def resolve_finnhub_symbol(ticker):
     """Finnhub format: SYMBOL.NS for NSE"""
-    return f"{ticker}.NS"
+    return ticker
 
 def fetch_yahoo_payload(ticker):
     payload = {}
