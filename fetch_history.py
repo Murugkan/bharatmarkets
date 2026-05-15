@@ -12,10 +12,13 @@ DATA_DIR = BASE_DIR / "data"
 # Correct filenames - history files (not daily)
 YAHOO_FILE = DATA_DIR / "yahoo-history.json"
 SCREENER_FILE = DATA_DIR / "screener-history.json"
+FINNHUB_FILE = DATA_DIR / "finnhub-history.json"
 SYMBOLS_FILE = BASE_DIR / "unified-symbols.json"
 SYMBOL_MAP_FILE = BASE_DIR / "symbol_map.json"
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+FINNHUB_API_KEY = "d7u9sj1r01qnv95mqqu0d7u9sj1r01qnv95mqqug"
+FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
 def now():
     return datetime.now(UTC).isoformat()
@@ -46,6 +49,10 @@ def resolve_yahoo_symbol(ticker):
 
 def resolve_screener_symbol(ticker):
     return SCREENER_OVERRIDES.get(ticker, ticker)
+
+def resolve_finnhub_symbol(ticker):
+    """Finnhub format: SYMBOL.NS for NSE"""
+    return f"{ticker}.NS"
 
 def fetch_yahoo_payload(ticker):
     payload = {}
@@ -101,6 +108,60 @@ def fetch_screener_payload(ticker):
     
     return payload
 
+def fetch_finnhub_payload(ticker):
+    """Fetch financial statements from Finnhub API"""
+    payload = {}
+    finnhub_symbol = resolve_finnhub_symbol(ticker)
+    
+    # Fetch Balance Sheet
+    try:
+        url = f"{FINNHUB_BASE_URL}/stock/financials"
+        params = {
+            "symbol": finnhub_symbol,
+            "statement": "bs",
+            "freq": "annual",
+            "token": FINNHUB_API_KEY
+        }
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            payload["balance_sheet"] = response.json()
+    except Exception as e:
+        payload["balance_sheet_error"] = str(e)
+    
+    # Fetch Income Statement
+    try:
+        params["statement"] = "ic"
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            payload["income_statement"] = response.json()
+    except Exception as e:
+        payload["income_statement_error"] = str(e)
+    
+    # Fetch Cash Flow
+    try:
+        params["statement"] = "cf"
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            payload["cash_flow"] = response.json()
+    except Exception as e:
+        payload["cash_flow_error"] = str(e)
+    
+    # Fetch Key Metrics
+    try:
+        url = f"{FINNHUB_BASE_URL}/stock/metric"
+        params = {
+            "symbol": finnhub_symbol,
+            "metric": "all",
+            "token": FINNHUB_API_KEY
+        }
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            payload["metrics"] = response.json()
+    except Exception as e:
+        payload["metrics_error"] = str(e)
+    
+    return payload
+
 def ensure_stock(store, symbol):
     ticker = symbol["ticker"]
     if ticker not in store:
@@ -130,6 +191,7 @@ def main():
     
     yahoo_store = {}
     screener_store = {}
+    finnhub_store = {}
     
     processed = 0
     skipped = 0
@@ -161,34 +223,47 @@ def main():
             screener_stock = ensure_stock(screener_store, symbol)
             add_observation(screener_stock, {"error": str(e)})
         
+        # Finnhub
+        try:
+            finnhub_stock = ensure_stock(finnhub_store, symbol)
+            finnhub_payload = fetch_finnhub_payload(ticker)
+            add_observation(finnhub_stock, finnhub_payload)
+            time.sleep(0.1)  # Rate limiting: ~10 calls/second
+        except Exception as e:
+            finnhub_stock = ensure_stock(finnhub_store, symbol)
+            add_observation(finnhub_stock, {"error": str(e)})
+        
         processed += 1
     
     # Save with correct filenames for merge_script.py
     save_json(YAHOO_FILE, yahoo_store)
     save_json(SCREENER_FILE, screener_store)
+    save_json(FINNHUB_FILE, finnhub_store)
     
     runtime = round(time.time() - start, 2)
     
     # Error & issues logs only
     errors_log = {
         "yahoo": [],
-        "screener": []
+        "screener": [],
+        "finnhub": []
     }
     
     # Collect errors from observations
-    for provider_name, store in [("yahoo", yahoo_store), ("screener", screener_store)]:
+    for provider_name, store in [("yahoo", yahoo_store), ("screener", screener_store), ("finnhub", finnhub_store)]:
         for ticker, stock in store.items():
             for obs in stock.get("observations", []):
                 raw = obs.get("raw", {})
-                if "error" in raw or "info_error" in raw or "history_error" in raw:
-                    error = raw.get("error") or raw.get("info_error") or raw.get("history_error")
+                error_keys = [k for k in raw.keys() if "error" in k.lower()]
+                if error_keys:
+                    error = raw.get(error_keys[0])
                     errors_log[provider_name].append({
                         "ticker": ticker,
                         "error": error
                     })
     
     # Write error logs
-    for provider in ["yahoo", "screener"]:
+    for provider in ["yahoo", "screener", "finnhub"]:
         log_file = DATA_DIR / f"{provider}-history.log"
         with open(log_file, "w") as f:
             f.write(f"=== {provider.upper()} HISTORY - ERRORS & ISSUES ===\n")
@@ -211,6 +286,7 @@ def main():
     print(f"✓ Output files ready for merge_script.py:")
     print(f"  - {YAHOO_FILE.name}")
     print(f"  - {SCREENER_FILE.name}")
+    print(f"  - {FINNHUB_FILE.name}")
 
 if __name__ == "__main__":
     main()
