@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """
-Step 1: Data Consolidation Module - WITH TESTING FRAMEWORK
-==========================================================
+Step 1: Data Consolidation Module - WITH TESTING FRAMEWORK + FINNHUB
+====================================================================
 Includes stock-by-stock & cell-by-cell comparison testing
-
-Key Addition: StockByStockTester class that compares:
-  - Yahoo vs Merged
-  - Screener vs Merged
-  - All three-way comparisons
-  - Records all mismatches
+Now supports Yahoo, Screener, AND Finnhub data sources
 """
 
 import json
@@ -26,12 +21,13 @@ import sys
 class StockByStockTester:
     """
     Comprehensive testing framework for stock-by-stock and cell-by-cell
-    comparison between Yahoo, Screener, and Merged data files.
+    comparison between Yahoo, Screener, Finnhub, and Merged data files.
     """
     
-    def __init__(self, yahoo_data: Dict, screener_data: Dict, merged_data: Dict, logger):
+    def __init__(self, yahoo_data: Dict, screener_data: Dict, finnhub_data: Dict, merged_data: Dict, logger):
         self.yahoo_data = yahoo_data
         self.screener_data = screener_data
+        self.finnhub_data = finnhub_data
         self.merged_data = merged_data
         self.log = logger
         
@@ -58,6 +54,7 @@ class StockByStockTester:
         all_passed &= self.test_stock_observation_counts()
         all_passed &= self.test_yahoo_vs_merged_cells()
         all_passed &= self.test_screener_vs_merged_cells()
+        all_passed &= self.test_finnhub_vs_merged_cells()
         all_passed &= self.test_data_types_cell_level()
         all_passed &= self.test_field_by_field()
         
@@ -71,9 +68,10 @@ class StockByStockTester:
         
         yahoo_tickers = set(self.yahoo_data.keys())
         screener_tickers = set(self.screener_data.keys())
+        finnhub_tickers = set(self.finnhub_data.keys())
         merged_tickers = set(self.merged_data.keys())
         
-        expected_tickers = yahoo_tickers | screener_tickers
+        expected_tickers = yahoo_tickers | screener_tickers | finnhub_tickers
         missing = expected_tickers - merged_tickers
         extra = merged_tickers - expected_tickers
         
@@ -101,11 +99,14 @@ class StockByStockTester:
         self.log.info("-" * 80)
         
         issues = 0
-        for ticker in sorted(self.yahoo_data.keys() & self.screener_data.keys()):
-            yahoo_count = len(self.yahoo_data[ticker].get('observations', []))
-            screener_count = len(self.screener_data[ticker].get('observations', []))
-            merged_count = len(self.merged_data[ticker].get('observations', []))
-            expected = yahoo_count + screener_count
+        all_tickers = set(self.yahoo_data.keys()) | set(self.screener_data.keys()) | set(self.finnhub_data.keys())
+        
+        for ticker in sorted(all_tickers):
+            yahoo_count = len(self.yahoo_data.get(ticker, {}).get('observations', []))
+            screener_count = len(self.screener_data.get(ticker, {}).get('observations', []))
+            finnhub_count = len(self.finnhub_data.get(ticker, {}).get('observations', []))
+            merged_count = len(self.merged_data.get(ticker, {}).get('observations', []))
+            expected = yahoo_count + screener_count + finnhub_count
             
             if merged_count != expected:
                 issues += 1
@@ -115,7 +116,7 @@ class StockByStockTester:
                     self.log.warning(f"  {msg}")
         
         if issues == 0:
-            self.log.info(f"  ✓ All 97 stocks have correct observation counts")
+            self.log.info(f"  ✓ All {len(all_tickers)} stocks have correct observation counts")
             self.test_results.append(("Stock Observation Counts", True))
             return True
         else:
@@ -131,7 +132,7 @@ class StockByStockTester:
         issues = 0
         for ticker in sorted(self.yahoo_data.keys()):
             yahoo_entry = self.yahoo_data[ticker]
-            merged_entry = self.merged_data[ticker]
+            merged_entry = self.merged_data.get(ticker, {})
             
             # Check metadata
             for field in ['ticker', 'name', 'isin']:
@@ -176,7 +177,7 @@ class StockByStockTester:
         issues = 0
         for ticker in sorted(self.screener_data.keys()):
             screener_entry = self.screener_data[ticker]
-            merged_entry = self.merged_data[ticker]
+            merged_entry = self.merged_data.get(ticker, {})
             
             screener_obs = screener_entry.get('observations', [])
             merged_obs = merged_entry.get('observations', [])
@@ -203,9 +204,49 @@ class StockByStockTester:
             self.test_results.append(("Screener vs Merged", False))
             return False
     
-    # TEST 5: Data Types (Cell Level)
+    # TEST 5: Finnhub vs Merged (Cell-by-Cell)
+    def test_finnhub_vs_merged_cells(self) -> bool:
+        self.log.info("\n[TEST 5] CELL-BY-CELL: FINNHUB vs MERGED")
+        self.log.info("-" * 80)
+        
+        if not self.finnhub_data:
+            self.log.info("  ⊘ Finnhub data not available (skipped)")
+            self.test_results.append(("Finnhub vs Merged", True))
+            return True
+        
+        issues = 0
+        for ticker in sorted(self.finnhub_data.keys()):
+            finnhub_entry = self.finnhub_data[ticker]
+            merged_entry = self.merged_data.get(ticker, {})
+            
+            finnhub_obs = finnhub_entry.get('observations', [])
+            merged_obs = merged_entry.get('observations', [])
+            
+            for i, obs in enumerate(finnhub_obs):
+                obs_json = json.dumps(obs, sort_keys=True, default=str)
+                found = any(
+                    obs_json == json.dumps(m, sort_keys=True, default=str)
+                    for m in merged_obs
+                )
+                if not found:
+                    issues += 1
+                    msg = f"{ticker}: Finnhub obs[{i}] missing in merged"
+                    self.mismatches['data_loss'].append(msg)
+                    if issues <= 3:
+                        self.log.error(f"  {msg}")
+        
+        if issues == 0:
+            self.log.info("  ✓ All Finnhub data perfectly preserved")
+            self.test_results.append(("Finnhub vs Merged", True))
+            return True
+        else:
+            self.log.error(f"  {issues} cell mismatches found")
+            self.test_results.append(("Finnhub vs Merged", False))
+            return False
+    
+    # TEST 6: Data Types (Cell Level)
     def test_data_types_cell_level(self) -> bool:
-        self.log.info("\n[TEST 5] DATA TYPE VALIDATION (Cell Level)")
+        self.log.info("\n[TEST 6] DATA TYPE VALIDATION (Cell Level)")
         self.log.info("-" * 80)
         
         errors = 0
@@ -232,10 +273,15 @@ class StockByStockTester:
             self.test_results.append(("Data Types", False))
             return False
     
-    # TEST 6: Field-by-Field Analysis
+    # TEST 7: Field-by-Field Analysis
     def test_field_by_field(self) -> bool:
-        self.log.info("\n[TEST 6] FIELD-BY-FIELD ANALYSIS")
+        self.log.info("\n[TEST 7] FIELD-BY-FIELD ANALYSIS")
         self.log.info("-" * 80)
+        
+        if not self.merged_data:
+            self.log.warning("  No merged data to analyze")
+            self.test_results.append(("Field Analysis", False))
+            return False
         
         sample_ticker = list(self.merged_data.keys())[0]
         entry = self.merged_data[sample_ticker]
@@ -283,7 +329,7 @@ class StockByStockTester:
 
 
 # ============================================================================
-# MAIN CONSOLIDATION CLASS (Simplified - uses testing framework)
+# MAIN CONSOLIDATION CLASS (GitHub paths)
 # ============================================================================
 
 def quick_consolidation_with_testing():
@@ -301,21 +347,45 @@ def quick_consolidation_with_testing():
     logger.info("STEP 1: DATA CONSOLIDATION WITH TESTING FRAMEWORK")
     logger.info("="*80)
     
-    # Load files
-    logger.info("\nLoading files...")
-    with open('/mnt/user-data/uploads/raw_yahoo_fundamentals.json') as f:
+    # GitHub paths (relative to script location)
+    BASE_DIR = Path(__file__).resolve().parent
+    DATA_DIR = BASE_DIR / "data"
+    
+    logger.info("\nLoading files from data directory...")
+    
+    yaml_file = DATA_DIR / "yahoo-history.json"
+    screener_file = DATA_DIR / "screener-history.json"
+    finnhub_file = DATA_DIR / "finnhub-history.json"
+    merged_file = BASE_DIR / "merged_fundamentals.json"
+    
+    # Load Yahoo
+    with open(yaml_file) as f:
         yahoo_data = json.load(f)
-    with open('/mnt/user-data/uploads/raw_screener_fundamentals.json') as f:
+    
+    # Load Screener
+    with open(screener_file) as f:
         screener_data = json.load(f)
-    with open('/mnt/user-data/outputs/merged_fundamentals.json') as f:
-        merged_data = json.load(f)
+    
+    # Load Finnhub (if exists)
+    finnhub_data = {}
+    if finnhub_file.exists():
+        with open(finnhub_file) as f:
+            finnhub_data = json.load(f)
+    
+    # Load or create merged
+    if merged_file.exists():
+        with open(merged_file) as f:
+            merged_data = json.load(f)
+    else:
+        merged_data = {}
     
     logger.info(f"✓ Yahoo: {len(yahoo_data)} tickers")
     logger.info(f"✓ Screener: {len(screener_data)} tickers")
+    logger.info(f"✓ Finnhub: {len(finnhub_data)} tickers")
     logger.info(f"✓ Merged: {len(merged_data)} tickers")
     
     # Run testing framework
-    tester = StockByStockTester(yahoo_data, screener_data, merged_data, logger)
+    tester = StockByStockTester(yahoo_data, screener_data, finnhub_data, merged_data, logger)
     passed = tester.run_all_tests()
     
     # Summary
