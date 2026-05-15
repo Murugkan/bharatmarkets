@@ -22,6 +22,7 @@ import time
 import requests
 import yfinance as yf
 import logging
+import subprocess
 from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
