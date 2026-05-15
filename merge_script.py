@@ -271,6 +271,19 @@ def commit_to_git():
     logger.info("="*80)
     
     try:
+        # Check if in git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=SCRIPT_DIR,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode != 0:
+            logger.warning("  ⚠️  Not in a git repository - skipping commit")
+            return True
+        
         # Configure git
         subprocess.run(
             ["git", "config", "user.email", "pipeline@bharatmarkets.dev"],
@@ -293,16 +306,28 @@ def commit_to_git():
             "data/finnhub-history.json"
         ]
         
+        files_added = 0
         for file in files:
             filepath = SCRIPT_DIR / file
             if filepath.exists():
-                subprocess.run(
+                result = subprocess.run(
                     ["git", "add", file],
                     cwd=SCRIPT_DIR,
                     capture_output=True,
+                    text=True,
                     check=False
                 )
-                logger.info(f"  ✓ Added {file}")
+                if result.returncode == 0:
+                    logger.info(f"  ✓ Added {file}")
+                    files_added += 1
+                else:
+                    logger.warning(f"  ⚠️  Failed to add {file}: {result.stderr.strip()}")
+            else:
+                logger.warning(f"  ⚠️  File not found: {file}")
+        
+        if files_added == 0:
+            logger.warning("  ⚠️  No files were added to git")
+            return True
         
         # Commit
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -318,17 +343,22 @@ def commit_to_git():
         
         if result.returncode == 0:
             logger.info(f"  ✓ Committed")
+            logger.info(f"    {msg}")
             return True
         else:
-            if "nothing to commit" in result.stderr.lower():
+            if "nothing to commit" in result.stderr.lower() or "nothing to commit" in result.stdout.lower():
                 logger.info(f"  ⊘ Nothing new to commit")
                 return True
             else:
-                logger.warning(f"  ⚠️  {result.stderr[:80]}")
+                logger.warning(f"  ⚠️  Commit failed:")
+                if result.stderr.strip():
+                    logger.warning(f"    Error: {result.stderr.strip()}")
+                if result.stdout.strip():
+                    logger.warning(f"    Output: {result.stdout.strip()}")
                 return True
     
     except Exception as e:
-        logger.error(f"  ✗ Git error: {str(e)[:100]}")
+        logger.error(f"  ✗ Git error: {str(e)}")
         return True
 
 # ============================================================================
