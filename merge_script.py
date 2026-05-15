@@ -25,11 +25,11 @@ from datetime import datetime
 import sys
 
 # ============================================================================
-# PATHS - All relative to script location (GitHub compatible)
+# PATHS - All relative to repository root (where script runs)
 # ============================================================================
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
+# Working from repository root directory
+DATA_DIR = Path('data')
 
 # Input files (from Step 1 output)
 YAHOO_FILE = DATA_DIR / "yahoo-history.json"
@@ -37,21 +37,26 @@ SCREENER_FILE = DATA_DIR / "screener-history.json"
 FINNHUB_FILE = DATA_DIR / "finnhub-history.json"
 
 # Output file
-MERGED_FILE = SCRIPT_DIR / "merged_fundamentals.json"
+MERGED_FILE = Path("merged_fundamentals.json")
 
 # Verify paths exist (fail fast)
 def verify_paths():
     """Verify all required input files exist"""
     missing = []
+    
     if not YAHOO_FILE.exists():
-        missing.append(f"{YAHOO_FILE.relative_to(SCRIPT_DIR)}")
+        missing.append(f"YAHOO_FILE: {YAHOO_FILE.resolve()}")
     if not SCREENER_FILE.exists():
-        missing.append(f"{SCREENER_FILE.relative_to(SCRIPT_DIR)}")
+        missing.append(f"SCREENER_FILE: {SCREENER_FILE.resolve()}")
     if not FINNHUB_FILE.exists():
-        missing.append(f"{FINNHUB_FILE.relative_to(SCRIPT_DIR)}")
+        missing.append(f"FINNHUB_FILE: {FINNHUB_FILE.resolve()}")
     
     if missing:
-        raise FileNotFoundError(f"Missing Step 1 output files:\n  " + "\n  ".join(missing))
+        error_msg = "Missing Step 1 output files:\n  " + "\n  ".join(missing)
+        logger.error(error_msg)
+        logger.error(f"Working directory: {Path.cwd()}")
+        logger.error(f"Expected data location: {DATA_DIR.resolve()}")
+        raise FileNotFoundError(error_msg)
 
 # ============================================================================
 # LOGGING
@@ -269,12 +274,12 @@ def commit_to_git():
     logger.info("\n" + "="*80)
     logger.info("COMMITTING TO GIT")
     logger.info("="*80)
+    logger.info(f"Working directory: {Path.cwd()}")
     
     try:
         # Check if in git repo
         result = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            cwd=SCRIPT_DIR,
             capture_output=True,
             text=True,
             check=False
@@ -284,21 +289,21 @@ def commit_to_git():
             logger.warning("  ⚠️  Not in a git repository - skipping commit")
             return True
         
+        logger.info(f"  ✓ Git repo found: {result.stdout.strip()}")
+        
         # Configure git
         subprocess.run(
             ["git", "config", "user.email", "pipeline@bharatmarkets.dev"],
-            cwd=SCRIPT_DIR,
             capture_output=True,
             check=False
         )
         subprocess.run(
             ["git", "config", "user.name", "BharatMarkets Pipeline"],
-            cwd=SCRIPT_DIR,
             capture_output=True,
             check=False
         )
         
-        # Add files (relative paths)
+        # Add files (relative paths from repo root)
         files = [
             "merged_fundamentals.json",
             "data/yahoo-history.json",
@@ -308,11 +313,10 @@ def commit_to_git():
         
         files_added = 0
         for file in files:
-            filepath = SCRIPT_DIR / file
+            filepath = Path(file)
             if filepath.exists():
                 result = subprocess.run(
                     ["git", "add", file],
-                    cwd=SCRIPT_DIR,
                     capture_output=True,
                     text=True,
                     check=False
@@ -323,7 +327,7 @@ def commit_to_git():
                 else:
                     logger.warning(f"  ⚠️  Failed to add {file}: {result.stderr.strip()}")
             else:
-                logger.warning(f"  ⚠️  File not found: {file}")
+                logger.warning(f"  ⚠️  File not found: {filepath.resolve()}")
         
         if files_added == 0:
             logger.warning("  ⚠️  No files were added to git")
@@ -335,7 +339,6 @@ def commit_to_git():
         
         result = subprocess.run(
             ["git", "commit", "-m", msg],
-            cwd=SCRIPT_DIR,
             capture_output=True,
             text=True,
             check=False
@@ -372,13 +375,13 @@ def main():
     
     # Verify paths
     logger.info("\nVerifying paths...")
+    logger.info(f"  Working directory: {Path.cwd()}")
     try:
         verify_paths()
-        logger.info(f"  ✓ SCRIPT_DIR:      {SCRIPT_DIR}")
         logger.info(f"  ✓ DATA_DIR:        {DATA_DIR}")
-        logger.info(f"  ✓ YAHOO_FILE:      {YAHOO_FILE.relative_to(SCRIPT_DIR)}")
-        logger.info(f"  ✓ SCREENER_FILE:   {SCREENER_FILE.relative_to(SCRIPT_DIR)}")
-        logger.info(f"  ✓ FINNHUB_FILE:    {FINNHUB_FILE.relative_to(SCRIPT_DIR)}")
+        logger.info(f"  ✓ YAHOO_FILE:      {YAHOO_FILE.resolve()}")
+        logger.info(f"  ✓ SCREENER_FILE:   {SCREENER_FILE.resolve()}")
+        logger.info(f"  ✓ FINNHUB_FILE:    {FINNHUB_FILE.resolve()}")
     except FileNotFoundError as e:
         logger.error(f"  ✗ {e}")
         logger.error("  Make sure Step 1 has completed successfully")
@@ -400,7 +403,7 @@ def main():
     # Save
     logger.info("\nSaving merged file...")
     save_json(MERGED_FILE, merged)
-    logger.info(f"  ✓ {MERGED_FILE.relative_to(SCRIPT_DIR)}")
+    logger.info(f"  ✓ {MERGED_FILE}")
     
     # Test
     tester = Step2Tester(yahoo, screener, finnhub, merged)
@@ -413,11 +416,13 @@ def main():
     logger.info("\n" + "="*80)
     logger.info("STEP 2 EXECUTION SUMMARY")
     logger.info("="*80)
-    logger.info(f"Sources:         Yahoo + Screener + Finnhub")
-    logger.info(f"Tickers:         {len(merged)}")
-    logger.info(f"Observations:    {sum(len(e.get('observations', [])) for e in merged.values())}")
-    logger.info(f"Output:          {MERGED_FILE.relative_to(SCRIPT_DIR)}")
-    logger.info(f"Consolidation:   ✅ COMPLETE")
+    logger.info(f"Working directory: {Path.cwd()}")
+    logger.info(f"Sources:           Yahoo + Screener + Finnhub")
+    logger.info(f"Tickers:           {len(merged)}")
+    logger.info(f"Observations:      {sum(len(e.get('observations', [])) for e in merged.values())}")
+    logger.info(f"Output (rel):      merged_fundamentals.json")
+    logger.info(f"Output (abs):      {MERGED_FILE.resolve()}")
+    logger.info(f"Consolidation:     ✅ COMPLETE")
     logger.info("="*80)
     
     return 0

@@ -27,7 +27,7 @@ from pathlib import Path
 from datetime import datetime, UTC
 
 # ============================================================================
-# PATHS - All relative to script location (GitHub compatible)
+# PATHS - All relative to repository root (where script runs)
 # ============================================================================
 
 SCRIPT_DIR = Path(__file__).resolve().parent
