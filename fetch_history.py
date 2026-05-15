@@ -439,6 +439,27 @@ def commit_to_git(log_file):
         
         if result.returncode == 0:
             logger.info(f"  ✓ Committed: {msg}")
+            
+            # Push to GitHub
+            logger.info("\n  Pushing to GitHub...")
+            push_result = subprocess.run(
+                ["git", "push", "origin", "HEAD:main"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            logger.info(f"  Push return code: {push_result.returncode}")
+            if push_result.stdout:
+                logger.info(f"  stdout: {push_result.stdout}")
+            if push_result.stderr:
+                logger.info(f"  stderr: {push_result.stderr}")
+            
+            if push_result.returncode == 0:
+                logger.info(f"  ✓ Pushed to GitHub")
+            else:
+                logger.warning(f"  ⚠️  Push failed (code: {push_result.returncode})")
+            
             return True
         elif "nothing to commit" in result.stderr.lower():
             logger.info(f"  ⊘ Nothing to commit")
