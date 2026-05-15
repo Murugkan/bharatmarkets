@@ -10,7 +10,7 @@ DATA_DIR = BASE_DIR / "data"
 YAHOO_FILE = DATA_DIR / "yahoo-history.json"
 SCREENER_FILE = DATA_DIR / "screener-history.json"
 FINNHUB_FILE = DATA_DIR / "finnhub-history.json"
-MERGED_FILE = BASE_DIR / "merged_fundamentals.json"
+MERGED_FILE = DATA_DIR / "merged_fundamentals.json"
 
 def setup_logging():
     """Setup logging to file"""
@@ -20,10 +20,12 @@ def setup_logging():
     log_file = log_dir / "merge-script.log"
     
     logger = logging.getLogger("STEP2-MERGE")
+    logger.handlers.clear()  # Clear any existing handlers
     logger.setLevel(logging.INFO)
+    logger.propagate = False
     
     # File handler
-    fh = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    fh = logging.FileHandler(log_file, mode='w', encoding='utf-8', delay=False)
     fh.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s | %(name)s | %(levelname)-8s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     fh.setFormatter(formatter)
@@ -35,7 +37,7 @@ def setup_logging():
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     
-    return logger
+    return logger, log_file
 
 def load_json(path):
     try:
@@ -50,7 +52,7 @@ def save_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 def main():
-    logger = setup_logging()
+    logger, log_file = setup_logging()
     
     logger.info("")
     logger.info("=" * 80)
@@ -62,14 +64,32 @@ def main():
     logger.info(f"  Working directory: {BASE_DIR}")
     logger.info(f"  DATA_DIR: {DATA_DIR}")
     
+    logger.info(f"  Checking YAHOO_FILE: {YAHOO_FILE}")
+    logger.info(f"    Exists: {YAHOO_FILE.exists()}")
+    
+    logger.info(f"  Checking SCREENER_FILE: {SCREENER_FILE}")
+    logger.info(f"    Exists: {SCREENER_FILE.exists()}")
+    
+    logger.info(f"  Checking FINNHUB_FILE: {FINNHUB_FILE}")
+    logger.info(f"    Exists: {FINNHUB_FILE.exists()}")
+    
+    # List what's actually in data directory
+    if DATA_DIR.exists():
+        logger.info(f"  Files in {DATA_DIR}:")
+        for f in DATA_DIR.iterdir():
+            logger.info(f"    - {f.name}")
+    else:
+        logger.error(f"  DATA_DIR does not exist: {DATA_DIR}")
+        return
+    
     if not YAHOO_FILE.exists():
-        logger.error(f"Yahoo file not found: {YAHOO_FILE}")
+        logger.error(f"ERROR: Yahoo file not found: {YAHOO_FILE}")
         return
     if not SCREENER_FILE.exists():
-        logger.error(f"Screener file not found: {SCREENER_FILE}")
+        logger.error(f"ERROR: Screener file not found: {SCREENER_FILE}")
         return
     if not FINNHUB_FILE.exists():
-        logger.error(f"Finnhub file not found: {FINNHUB_FILE}")
+        logger.error(f"ERROR: Finnhub file not found: {FINNHUB_FILE}")
         return
     
     logger.info(f"  ✓ YAHOO_FILE: {YAHOO_FILE}")
@@ -93,21 +113,30 @@ def main():
     # Merge all tickers
     merged = {}
     
-    for ticker in set(list(yahoo_data.keys()) + list(screener_data.keys()) + list(finnhub_data.keys())):
-        merged[ticker] = {
-            "ticker": ticker,
-            "yahoo": yahoo_data.get(ticker, {}),
-            "screener": screener_data.get(ticker, {}),
-            "finnhub": finnhub_data.get(ticker, {})
-        }
+    try:
+        for ticker in set(list(yahoo_data.keys()) + list(screener_data.keys()) + list(finnhub_data.keys())):
+            merged[ticker] = {
+                "ticker": ticker,
+                "yahoo": yahoo_data.get(ticker, {}),
+                "screener": screener_data.get(ticker, {}),
+                "finnhub": finnhub_data.get(ticker, {})
+            }
+        
+        logger.info(f"  ✓ Consolidated {len(merged)} tickers")
+    except Exception as e:
+        logger.error(f"ERROR during consolidation: {str(e)}")
+        return
     
-    logger.info(f"  ✓ Consolidated {len(merged)} tickers")
     logger.info("")
     
     logger.info("Saving merged file...")
-    save_json(MERGED_FILE, merged)
-    logger.info(f"  ✓ {MERGED_FILE.name}")
-    logger.info("")
+    try:
+        save_json(MERGED_FILE, merged)
+        logger.info(f"  ✓ Saved: {MERGED_FILE}")
+        logger.info(f"    File size: {MERGED_FILE.stat().st_size} bytes")
+    except Exception as e:
+        logger.error(f"ERROR saving merged file: {str(e)}")
+        return
     
     logger.info("=" * 80)
     logger.info("STEP 2 SUMMARY")
