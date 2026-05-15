@@ -27,15 +27,13 @@ from pathlib import Path
 from datetime import datetime, UTC
 
 # ============================================================================
-# PATHS - All relative to repository root (where script runs)
+# PATHS - All relative to current working directory (repository root)
 # ============================================================================
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
-
-# Input files
-SYMBOLS_FILE = SCRIPT_DIR / "unified-symbols.json"
-SYMBOL_MAP_FILE = SCRIPT_DIR / "symbol_map.json"
+# Relative paths - works from repo root
+DATA_DIR = Path('data')
+SYMBOLS_FILE = Path('unified-symbols.json')
+SYMBOL_MAP_FILE = Path('symbol_map.json')
 
 # Output files
 YAHOO_FILE = DATA_DIR / "yahoo-history.json"
@@ -385,10 +383,10 @@ def main():
     logger.info("\nVerifying paths...")
     try:
         verify_paths()
-        logger.info(f"  ✓ SCRIPT_DIR:    {SCRIPT_DIR}")
-        logger.info(f"  ✓ DATA_DIR:      {DATA_DIR}")
-        logger.info(f"  ✓ SYMBOLS_FILE:  {SYMBOLS_FILE.name}")
-        logger.info(f"  ✓ SYMBOL_MAP:    {SYMBOL_MAP_FILE.name}")
+        logger.info(f"  ✓ Working dir:   {Path.cwd()}")
+        logger.info(f"  ✓ DATA_DIR:      {DATA_DIR.resolve()}")
+        logger.info(f"  ✓ SYMBOLS_FILE:  {SYMBOLS_FILE.resolve()}")
+        logger.info(f"  ✓ SYMBOL_MAP:    {SYMBOL_MAP_FILE.resolve()}")
     except FileNotFoundError as e:
         logger.error(f"  ✗ {e}")
         return 1
@@ -462,12 +460,13 @@ def main():
     
     # Save
     logger.info(f"\nSaving files...")
+    logger.info(f"  Current directory: {Path.cwd()}")
     save_json(YAHOO_FILE, yahoo_store)
-    logger.info(f"  ✓ {YAHOO_FILE.relative_to(SCRIPT_DIR)}")
+    logger.info(f"  ✓ Saved: {YAHOO_FILE.resolve()}")
     save_json(SCREENER_FILE, screener_store)
-    logger.info(f"  ✓ {SCREENER_FILE.relative_to(SCRIPT_DIR)}")
+    logger.info(f"  ✓ Saved: {SCREENER_FILE.resolve()}")
     save_json(FINNHUB_FILE, finnhub_store)
-    logger.info(f"  ✓ {FINNHUB_FILE.relative_to(SCRIPT_DIR)}")
+    logger.info(f"  ✓ Saved: {FINNHUB_FILE.resolve()}")
     
     # Test
     tester = Step1Tester(yahoo_store, screener_store, finnhub_store)
@@ -480,7 +479,7 @@ def main():
     logger.info(f"Processed:  {processed} companies")
     logger.info(f"Skipped:    {skipped} (bonds/delisted)")
     logger.info(f"Runtime:    {runtime}s")
-    logger.info(f"Output:     {DATA_DIR.relative_to(SCRIPT_DIR)}/")
+    logger.info(f"Output:     {DATA_DIR.resolve()}/")
     logger.info("="*80)
     
     return 0

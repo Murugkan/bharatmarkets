@@ -39,25 +39,6 @@ FINNHUB_FILE = DATA_DIR / "finnhub-history.json"
 # Output file
 MERGED_FILE = Path("merged_fundamentals.json")
 
-# Verify paths exist (fail fast)
-def verify_paths():
-    """Verify all required input files exist"""
-    missing = []
-    
-    if not YAHOO_FILE.exists():
-        missing.append(f"YAHOO_FILE: {YAHOO_FILE.resolve()}")
-    if not SCREENER_FILE.exists():
-        missing.append(f"SCREENER_FILE: {SCREENER_FILE.resolve()}")
-    if not FINNHUB_FILE.exists():
-        missing.append(f"FINNHUB_FILE: {FINNHUB_FILE.resolve()}")
-    
-    if missing:
-        error_msg = "Missing Step 1 output files:\n  " + "\n  ".join(missing)
-        logger.error(error_msg)
-        logger.error(f"Working directory: {Path.cwd()}")
-        logger.error(f"Expected data location: {DATA_DIR.resolve()}")
-        raise FileNotFoundError(error_msg)
-
 # ============================================================================
 # LOGGING
 # ============================================================================
@@ -274,10 +255,13 @@ def commit_to_git():
     logger.info("\n" + "="*80)
     logger.info("COMMITTING TO GIT")
     logger.info("="*80)
-    logger.info(f"Working directory: {Path.cwd()}")
     
     try:
+        cwd = Path.cwd()
+        logger.info(f"Working directory: {cwd}")
+        
         # Check if in git repo
+        logger.info("\n1. Checking if in git repository...")
         result = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
             capture_output=True,
@@ -286,24 +270,48 @@ def commit_to_git():
         )
         
         if result.returncode != 0:
-            logger.warning("  ⚠️  Not in a git repository - skipping commit")
+            logger.warning("  ⚠️  Not in a git repository")
+            logger.info(f"  stdout: {result.stdout}")
+            logger.info(f"  stderr: {result.stderr}")
             return True
         
-        logger.info(f"  ✓ Git repo found: {result.stdout.strip()}")
+        git_dir = result.stdout.strip()
+        logger.info(f"  ✓ Git repo found: {git_dir}")
         
         # Configure git
-        subprocess.run(
+        logger.info("\n2. Configuring git...")
+        result1 = subprocess.run(
             ["git", "config", "user.email", "pipeline@bharatmarkets.dev"],
             capture_output=True,
+            text=True,
             check=False
         )
-        subprocess.run(
+        logger.info(f"  ✓ Set email (return code: {result1.returncode})")
+        
+        result2 = subprocess.run(
             ["git", "config", "user.name", "BharatMarkets Pipeline"],
             capture_output=True,
+            text=True,
+            check=False
+        )
+        logger.info(f"  ✓ Set name (return code: {result2.returncode})")
+        
+        # Check git status
+        logger.info("\n3. Checking git status...")
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
             check=False
         )
         
-        # Add files (relative paths from repo root)
+        if status_result.stdout.strip():
+            logger.info(f"  Changes found:\n{status_result.stdout}")
+        else:
+            logger.info(f"  No changes detected")
+        
+        # Add files
+        logger.info("\n4. Adding files to git...")
         files = [
             "merged_fundamentals.json",
             "data/yahoo-history.json",
@@ -314,7 +322,10 @@ def commit_to_git():
         files_added = 0
         for file in files:
             filepath = Path(file)
-            if filepath.exists():
+            exists = filepath.exists()
+            logger.info(f"  Checking {file}: {'EXISTS' if exists else 'MISSING'}")
+            
+            if exists:
                 result = subprocess.run(
                     ["git", "add", file],
                     capture_output=True,
@@ -322,18 +333,19 @@ def commit_to_git():
                     check=False
                 )
                 if result.returncode == 0:
-                    logger.info(f"  ✓ Added {file}")
+                    logger.info(f"    ✓ Added")
                     files_added += 1
                 else:
-                    logger.warning(f"  ⚠️  Failed to add {file}: {result.stderr.strip()}")
-            else:
-                logger.warning(f"  ⚠️  File not found: {filepath.resolve()}")
+                    logger.warning(f"    ✗ Failed: {result.stderr.strip()}")
+        
+        logger.info(f"\n  Total files added: {files_added}")
         
         if files_added == 0:
             logger.warning("  ⚠️  No files were added to git")
             return True
         
         # Commit
+        logger.info("\n5. Creating commit...")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = f"[Step 2] Consolidate: Yahoo+Screener+Finnhub ({timestamp})"
         
@@ -344,24 +356,27 @@ def commit_to_git():
             check=False
         )
         
+        logger.info(f"  Return code: {result.returncode}")
+        if result.stdout.strip():
+            logger.info(f"  stdout: {result.stdout.strip()}")
+        if result.stderr.strip():
+            logger.info(f"  stderr: {result.stderr.strip()}")
+        
         if result.returncode == 0:
-            logger.info(f"  ✓ Committed")
+            logger.info(f"\n  ✓ Committed successfully")
             logger.info(f"    {msg}")
             return True
+        elif "nothing to commit" in result.stderr.lower() or "nothing to commit" in result.stdout.lower():
+            logger.info(f"\n  ⊘ Nothing to commit")
+            return True
         else:
-            if "nothing to commit" in result.stderr.lower() or "nothing to commit" in result.stdout.lower():
-                logger.info(f"  ⊘ Nothing new to commit")
-                return True
-            else:
-                logger.warning(f"  ⚠️  Commit failed:")
-                if result.stderr.strip():
-                    logger.warning(f"    Error: {result.stderr.strip()}")
-                if result.stdout.strip():
-                    logger.warning(f"    Output: {result.stdout.strip()}")
-                return True
+            logger.warning(f"\n  ⚠️  Commit may have failed")
+            return True
     
     except Exception as e:
-        logger.error(f"  ✗ Git error: {str(e)}")
+        logger.error(f"  ✗ Exception: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return True
 
 # ============================================================================
@@ -376,15 +391,33 @@ def main():
     # Verify paths
     logger.info("\nVerifying paths...")
     logger.info(f"  Working directory: {Path.cwd()}")
-    try:
-        verify_paths()
-        logger.info(f"  ✓ DATA_DIR:        {DATA_DIR}")
-        logger.info(f"  ✓ YAHOO_FILE:      {YAHOO_FILE.resolve()}")
-        logger.info(f"  ✓ SCREENER_FILE:   {SCREENER_FILE.resolve()}")
-        logger.info(f"  ✓ FINNHUB_FILE:    {FINNHUB_FILE.resolve()}")
-    except FileNotFoundError as e:
-        logger.error(f"  ✗ {e}")
-        logger.error("  Make sure Step 1 has completed successfully")
+    logger.info(f"  DATA_DIR (abs):    {DATA_DIR.resolve()}")
+    
+    # Check if data directory exists
+    if not DATA_DIR.exists():
+        logger.error(f"  ✗ DATA_DIR does not exist: {DATA_DIR.resolve()}")
+        return 1
+    logger.info(f"  ✓ DATA_DIR exists")
+    
+    # Check each input file
+    files_to_check = [
+        ("YAHOO_FILE", YAHOO_FILE),
+        ("SCREENER_FILE", SCREENER_FILE),
+        ("FINNHUB_FILE", FINNHUB_FILE),
+    ]
+    
+    missing_files = []
+    for name, filepath in files_to_check:
+        if filepath.exists():
+            size_mb = filepath.stat().st_size / (1024 * 1024)
+            logger.info(f"  ✓ {name}: {filepath.resolve()} ({size_mb:.2f} MB)")
+        else:
+            logger.error(f"  ✗ {name} NOT FOUND: {filepath.resolve()}")
+            missing_files.append(name)
+    
+    if missing_files:
+        logger.error(f"\n  Missing files: {', '.join(missing_files)}")
+        logger.error(f"  Run Step 1 (fetch_history.py) first!")
         return 1
     
     # Load sources
