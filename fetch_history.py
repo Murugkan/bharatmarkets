@@ -664,6 +664,8 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
                     }
                     capex_found = True
         except Exception as e:
+            if not payload["capex"]:
+                payload["capex"] = {}
             payload["capex"]["error"] = str(e)
         
         # FALLBACK: If yfinance CapEx is empty, try Screener.in
@@ -675,6 +677,9 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
                     "source": "screener",
                     "historical_periods": screener_capex.get("historical_periods", [])[:4]
                 }
+            # If both fail, leave as empty dict (consistent with original behavior)
+            elif not payload["capex"]:
+                payload["capex"] = {}
         
         # ========== DEBT (4 quarters) ==========
         try:
