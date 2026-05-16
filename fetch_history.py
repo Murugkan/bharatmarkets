@@ -282,10 +282,11 @@ SECTOR_HANDLERS = {
 class Step1Tester:
     """Test Step 1 output"""
     
-    def __init__(self, yahoo_data, screener_data, finnhub_data):
+    def __init__(self, yahoo_data, screener_data, finnhub_data, financial_data=None):
         self.yahoo = yahoo_data
         self.screener = screener_data
         self.finnhub = finnhub_data
+        self.financial = financial_data or {}
         self.results = {}
     
     def run_all_tests(self):
@@ -311,6 +312,7 @@ class Step1Tester:
             ("Yahoo", YAHOO_FILE, self.yahoo),
             ("Screener", SCREENER_FILE, self.screener),
             ("Finnhub", FINNHUB_FILE, self.finnhub),
+            ("Financial", FINANCIAL_FILE, self.financial),
         ]
         
         passed = 0
@@ -335,11 +337,13 @@ class Step1Tester:
         y_tickers = set(self.yahoo.keys())
         s_tickers = set(self.screener.keys())
         f_tickers = set(self.finnhub.keys())
-        all_tickers = y_tickers | s_tickers | f_tickers
+        fin_tickers = set(self.financial.keys())
+        all_tickers = y_tickers | s_tickers | f_tickers | fin_tickers
         
         logger.info(f"  Yahoo:     {len(y_tickers):2d} tickers")
         logger.info(f"  Screener:  {len(s_tickers):2d} tickers")
         logger.info(f"  Finnhub:   {len(f_tickers):2d} tickers")
+        logger.info(f"  Financial: {len(fin_tickers):2d} tickers")
         logger.info(f"  Combined:  {len(all_tickers):2d} tickers")
         
         if len(all_tickers) >= 97:
@@ -357,10 +361,12 @@ class Step1Tester:
         y_obs = sum(len(e.get('observations', [])) for e in self.yahoo.values())
         s_obs = sum(len(e.get('observations', [])) for e in self.screener.values())
         f_obs = sum(len(e.get('observations', [])) for e in self.finnhub.values())
+        fin_obs = sum(len(e.get('observations', [])) for e in self.financial.values())
         
         logger.info(f"  Yahoo:     {y_obs:3d} observations")
         logger.info(f"  Screener:  {s_obs:3d} observations")
         logger.info(f"  Finnhub:   {f_obs:3d} observations")
+        logger.info(f"  Financial: {fin_obs:3d} observations")
         
         passed = 0
         if y_obs > 0:
@@ -372,8 +378,11 @@ class Step1Tester:
         if f_obs > 0:
             logger.info(f"  ✓ Finnhub has data")
             passed += 1
+        if fin_obs > 0:
+            logger.info(f"  ✓ Financial has data")
+            passed += 1
         
-        self.results["Observation Counts"] = (passed, 3)
+        self.results["Observation Counts"] = (passed, 4)
     
     def test_data_structure(self):
         """Test 4: Data has correct structure"""
@@ -618,7 +627,8 @@ def commit_to_git(log_file):
         files = [
             "data/yahoo-history.json",
             "data/screener-history.json",
-            "data/finnhub-history.json"
+            "data/finnhub-history.json",
+            "data/financial-metrics.json"
         ]
         
         if log_file and log_file.exists():
@@ -648,7 +658,7 @@ def commit_to_git(log_file):
         
         # Commit
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"[Step 1] Fetch: Yahoo+Screener+Finnhub ({timestamp})"
+        msg = f"[Step 1] Fetch: Yahoo+Screener+Finnhub+Financial ({timestamp})"
         
         result = subprocess.run(
             ["git", "commit", "-m", msg],
@@ -853,7 +863,7 @@ def main():
         logger.info(f"  ✓ Saved: {FINANCIAL_FILE.resolve()}")
     
     # Test
-    tester = Step1Tester(yahoo_store, screener_store, finnhub_store)
+    tester = Step1Tester(yahoo_store, screener_store, finnhub_store, financial_store)
     tester.run_all_tests()
     
     # Commit
