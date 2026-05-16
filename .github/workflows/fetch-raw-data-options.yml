@@ -10,17 +10,10 @@ on:
         type: choice
         options:
           - 'all (Yahoo + Screener + Finnhub + Financial)'
-          - 'all_no_financial (Yahoo + Screener + Finnhub)'
-          - 'yahoo_screener (Yahoo + Screener)'
-          - 'yahoo_finnhub (Yahoo + Finnhub)'
-          - 'screener_finnhub (Screener + Finnhub)'
-          - 'yahoo_only (Yahoo Finance only)'
-          - 'screener_only (Screener.in only)'
-          - 'finnhub_only (Finnhub API only)'
-          - 'financial_only (Financial Metrics only)'
-          - 'financial_with_yahoo (Yahoo + Financial Metrics)'
-          - 'financial_with_screener (Screener + Financial Metrics)'
-          - 'financial_with_finnhub (Finnhub + Financial Metrics)'
+          - 'yahoo (Yahoo Finance only)'
+          - 'screener (Screener.in only)'
+          - 'finnhub (Finnhub API only)'
+          - 'financial (Financial Metrics only)'
 
 permissions:
   contents: write
@@ -51,6 +44,64 @@ jobs:
         run: mkdir -p data/logs
 
       - name: Display Loading Configuration
+        run: |
+          echo "════════════════════════════════════════════════════════════"
+          echo "  📊 RAW DATA FETCH - LOADING CONFIGURATION"
+          echo "════════════════════════════════════════════════════════════"
+          echo ""
+          echo "  Selection: ${{ github.event.inputs.providers }}"
+          echo ""
+          
+          if [[ "${{ github.event.inputs.providers }}" == *"all"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED"
+            echo "  ✓ Screener.in:        ENABLED"
+            echo "  ✓ Finnhub API:        ENABLED"
+            echo "  ✓ Financial Metrics:  ENABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+            echo "    - data/screener-history.json"
+            echo "    - data/finnhub-history.json"
+            echo "    - data/financial-metrics.json"
+          elif [[ "${{ github.event.inputs.providers }}" == *"yahoo"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+          elif [[ "${{ github.event.inputs.providers }}" == *"screener"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✓ Screener.in:        ENABLED"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/screener-history.json"
+          elif [[ "${{ github.event.inputs.providers }}" == *"finnhub"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✓ Finnhub API:        ENABLED"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/finnhub-history.json"
+          elif [[ "${{ github.event.inputs.providers }}" == *"financial"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✓ Financial Metrics:  ENABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/financial-metrics.json"
+          fi
+          
+          echo ""
+          echo "  Tickers: 97 companies"
+          echo "  Runtime: ~2-3 minutes"
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
         run: |
           echo "════════════════════════════════════════════════════════════"
           echo "  📊 RAW DATA FETCH - LOADING CONFIGURATION"
@@ -187,11 +238,11 @@ jobs:
           echo ""
           echo "════════════════════════════════════════════════════════════"
 
-      - name: Run step1_fetch.py
+      - name: Run fetch_history.py
         env:
           FETCH_PROVIDERS: ${{ github.event.inputs.providers }}
         run: |
-          # Set environment variable for step1_fetch.py to read
+          # Set environment variable for fetch_history.py to read
           python3 << 'PYTHON_EOF'
           import os
           import json
@@ -206,34 +257,28 @@ jobs:
             'financial': False
           }
           
-          # Yahoo
-          if any(x in providers for x in ['all', 'yahoo_screener', 'yahoo_finnhub', 'yahoo_only', 'financial_with_yahoo']):
+          if 'all' in providers:
             config['yahoo'] = True
-          
-          # Screener
-          if any(x in providers for x in ['all', 'yahoo_screener', 'screener_finnhub', 'screener_only', 'financial_with_screener']):
             config['screener'] = True
-          
-          # Finnhub
-          if any(x in providers for x in ['all', 'yahoo_finnhub', 'screener_finnhub', 'finnhub_only', 'financial_with_finnhub']):
             config['finnhub'] = True
-          
-          # Financial (NEW)
-          if any(x in providers for x in ['all', 'financial_only', 'financial_with_yahoo', 'financial_with_screener', 'financial_with_finnhub']):
+            config['financial'] = True
+          elif 'yahoo' in providers:
+            config['yahoo'] = True
+          elif 'screener' in providers:
+            config['screener'] = True
+          elif 'finnhub' in providers:
+            config['finnhub'] = True
+          elif 'financial' in providers:
             config['financial'] = True
           
-          # Exclude if explicitly set to no_financial
-          if 'no_financial' in providers:
-            config['financial'] = False
-          
-          # Save to file for step1_fetch.py to read
+          # Save to file for fetch_history.py to read
           with open('.fetch_config.json', 'w') as f:
             json.dump(config, f)
           
           print(f"Fetch config: {json.dumps(config, indent=2)}")
           PYTHON_EOF
           
-          python step1_fetch.py
+          python fetch_history.py
 
       - name: Configure Git
         run: |
