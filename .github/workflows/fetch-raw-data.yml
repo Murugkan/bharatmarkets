@@ -1,4 +1,4 @@
-name: "[HISTORY] Fetch & Merge Data"
+name: "[FETCH] Raw Data"
 
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  history-load:
-    name: "Fetch & Merge Stock Data"
+  fetch-raw:
+    name: "Fetch Raw Data"
     runs-on: ubuntu-latest
     
     steps:
@@ -29,13 +29,10 @@ jobs:
         run: pip install yfinance requests beautifulsoup4
 
       - name: Create data directories
-        run: mkdir -p data logs
+        run: mkdir -p data/logs
 
       - name: Run fetch_history.py
         run: python fetch_history.py
-
-      - name: Run merge_script.py
-        run: python merge_script.py
 
       - name: Configure Git
         run: |
@@ -44,6 +41,6 @@ jobs:
 
       - name: Commit and Push
         run: |
-          git add -A
-          git commit -m "Auto: Fetch & Merge $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
-          git push origin HEAD:main || echo "Push failed - check permissions"
+          git add data/
+          git commit -m "Auto: Fetch Raw Data $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
+          git push origin HEAD:main
