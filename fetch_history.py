@@ -576,26 +576,170 @@ def fetch_finnhub_payload(ticker, finnhub_overrides):
     return payload
 
 def fetch_financial_payload(ticker, sector, symbol_overrides):
-    """Fetch financial metrics for sector-specific analysis"""
+    """Fetch financial metrics - RAW DATA ONLY with HISTORICAL DATA (4 quarters)"""
     resolved_ticker = resolve_symbol(ticker, symbol_overrides)
+    
+    payload = {
+        "status": "not_available",
+        "capex": {},
+        "debt_details": {},
+        "working_capital": {},
+        "exceptional_items": {}
+    }
     
     try:
         stock = yf.Ticker(resolved_ticker)
-        bs = stock.balance_sheet
         
-        if bs.empty:
-            return {"error": "No data"}
+        # ========== CAPEX (4 quarters) ==========
+        try:
+            cf = stock.quarterly_cashflow
+            if not cf.empty and 'Capital Expenditure' in cf.index:
+                capex_data = cf.loc['Capital Expenditure'].head(4)
+                history = []
+                
+                for date, val in capex_data.items():
+                    if pd.notna(val) and val != 0:
+                        history.append({
+                            'period': date.strftime('%Y-%m-%d'),
+                            'value_raw': float(val)
+                        })
+                
+                if history:
+                    payload["capex"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history[:4]
+                    }
+        except Exception as e:
+            payload["capex"]["error"] = str(e)
         
-        latest_year = bs.columns[0]
-        handler = get_sector_handler(sector)  # Use intelligent mapping
+        # ========== DEBT (4 quarters) ==========
+        try:
+            bs = stock.quarterly_balance_sheet
+            if not bs.empty and len(bs.columns) > 0:
+                history = []
+                
+                for col_idx in range(min(4, len(bs.columns))):
+                    period = bs.iloc[:, col_idx]
+                    period_date = bs.columns[col_idx]
+                    
+                    st_debt = None
+                    lt_debt = None
+                    
+                    for key in period.index:
+                        k_lower = str(key).lower()
+                        if 'short' in k_lower and ('debt' in k_lower or 'borrowing' in k_lower):
+                            val = period[key]
+                            if pd.notna(val) and val > 0:
+                                st_debt = float(val)
+                        if 'long term' in k_lower and 'debt' in k_lower:
+                            val = period[key]
+                            if pd.notna(val) and val > 0:
+                                lt_debt = float(val)
+                    
+                    if st_debt is not None or lt_debt is not None:
+                        period_data = {'period': period_date.strftime('%Y-%m-%d')}
+                        if st_debt is not None:
+                            period_data['short_term_debt_raw'] = st_debt
+                        if lt_debt is not None:
+                            period_data['long_term_debt_raw'] = lt_debt
+                        history.append(period_data)
+                
+                if history:
+                    payload["debt_details"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history
+                    }
+        except Exception as e:
+            payload["debt_details"]["error"] = str(e)
         
-        metrics = handler.extract_metrics(stock, latest_year)
+        # ========== WORKING CAPITAL (4 quarters) ==========
+        try:
+            bs = stock.quarterly_balance_sheet
+            if not bs.empty and len(bs.columns) > 0:
+                history = []
+                
+                for col_idx in range(min(4, len(bs.columns))):
+                    period = bs.iloc[:, col_idx]
+                    period_date = bs.columns[col_idx]
+                    
+                    ar = None
+                    ap = None
+                    inv = None
+                    
+                    for key in period.index:
+                        k_lower = str(key).lower()
+                        if 'accounts receivable' in k_lower:
+                            val = period[key]
+                            if pd.notna(val):
+                                ar = float(val)
+                        if 'accounts payable' in k_lower:
+                            val = period[key]
+                            if pd.notna(val):
+                                ap = float(val)
+                        if 'inventory' in k_lower:
+                            val = period[key]
+                            if pd.notna(val):
+                                inv = float(val)
+                    
+                    if ar is not None or ap is not None or inv is not None:
+                        period_data = {'period': period_date.strftime('%Y-%m-%d')}
+                        if ar is not None:
+                            period_data['accounts_receivable_raw'] = ar
+                        if ap is not None:
+                            period_data['accounts_payable_raw'] = ap
+                        if inv is not None:
+                            period_data['inventory_raw'] = inv
+                        history.append(period_data)
+                
+                if history:
+                    payload["working_capital"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history
+                    }
+        except Exception as e:
+            payload["working_capital"]["error"] = str(e)
+        
+        # ========== EXCEPTIONAL ITEMS (4 periods) ==========
+        try:
+            is_stmt = stock.quarterly_income_stmt
+            if not is_stmt.empty and len(is_stmt.columns) > 0:
+                history = []
+                
+                for col_idx in range(min(4, len(is_stmt.columns))):
+                    period = is_stmt.iloc[:, col_idx]
+                    period_date = is_stmt.columns[col_idx]
+                    
+                    for key in period.index:
+                        k_lower = str(key).lower()
+                        if 'exceptional' in k_lower or 'extraordinary' in k_lower:
+                            val = period[key]
+                            if pd.notna(val) and val != 0:
+                                history.append({
+                                    'period': period_date.strftime('%Y-%m-%d'),
+                                    'value_raw': float(val)
+                                })
+                                break
+                
+                if history:
+                    payload["exceptional_items"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history
+                    }
+        except Exception as e:
+            payload["exceptional_items"]["error"] = str(e)
+        
+        # Determine overall status
+        if any(payload[key].get("status") == "success" for key in ["capex", "debt_details", "working_capital", "exceptional_items"]):
+            payload["status"] = "success"
         
         return {
             "resolved_ticker": resolved_ticker,
             "sector": sector,
-            "as_of_date": latest_year.strftime("%Y-%m-%d"),
-            "metrics": metrics
+            "metrics": payload
         }
     except Exception as e:
         return {"error": str(e)}
