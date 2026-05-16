@@ -229,12 +229,50 @@ class InfrastructureHandler(SectorHandler):
         except:
             return {}
 
+class DefaultHandler(SectorHandler):
+    """Generic handler for unmapped sectors"""
+    def extract_metrics(self, ticker_obj, latest_year):
+        try:
+            bs = ticker_obj.balance_sheet
+            is_stmt = ticker_obj.income_stmt
+            cf = ticker_obj.cashflow
+            if bs.empty or is_stmt.empty:
+                return {}
+            return {
+                "revenue": self.extract_field(is_stmt, ["Total Revenue", "Operating Revenue"], latest_year),
+                "net_profit": self.extract_field(is_stmt, ["Net Income", "Net Profit"], latest_year),
+                "total_assets": self.extract_field(bs, ["Total Assets"], latest_year),
+                "cash": self.extract_field(bs, ["Cash And Cash Equivalents"], latest_year),
+                "debt": self.extract_field(bs, ["Total Debt"], latest_year)
+            }
+        except:
+            return {}
+
+# Sector mapping: Maps real sector names to handler instances
+def get_sector_handler(sector_name):
+    """Get handler for any sector - use intelligent fallback"""
+    sector_lower = sector_name.lower()
+    
+    # Check keywords in sector name (order matters!)
+    if any(x in sector_lower for x in ["bank", "financial"]):
+        return SECTOR_HANDLERS["Banking"]
+    if any(x in sector_lower for x in ["manufactur", "industrial", "metal"]):
+        return SECTOR_HANDLERS["Manufacturing"]
+    if any(x in sector_lower for x in ["energy", "infrastructure", "utilit", "power"]):
+        return SECTOR_HANDLERS["Infrastructure"]
+    if any(x in sector_lower for x in ["information technology", "software", "tech", "telecom"]):
+        return SECTOR_HANDLERS["IT Services"]
+    
+    # Default handler for all other sectors (Healthcare, Consumer, Materials, Defence, etc.)
+    return SECTOR_HANDLERS["Default"]
+
 SECTOR_HANDLERS = {
     "Banking": BankingHandler(),
     "Manufacturing": ManufacturingHandler(),
     "IT Services": ITServicesHandler(),
     "Technology": TechnologyHandler(),
-    "Infrastructure": InfrastructureHandler()
+    "Infrastructure": InfrastructureHandler(),
+    "Default": DefaultHandler()
 }
 
 # ============================================================================
@@ -540,10 +578,7 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
             return {"error": "No data"}
         
         latest_year = bs.columns[0]
-        handler = SECTOR_HANDLERS.get(sector)
-        
-        if not handler:
-            return {"error": f"Unknown sector"}
+        handler = get_sector_handler(sector)  # Use intelligent mapping
         
         metrics = handler.extract_metrics(stock, latest_year)
         
