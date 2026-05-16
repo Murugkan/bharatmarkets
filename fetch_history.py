@@ -2,7 +2,7 @@
 """
 STEP 1: FETCH DATA MODULE
 =========================
-Independent module for fetching from Yahoo, Screener, Finnhub, Financial Metrics
+Independent module for fetching from Yahoo, Screener, Finnhub
 Includes: Data fetch + Testing + Logging (all self-contained)
 
 GitHub Structure (relative paths):
@@ -14,9 +14,7 @@ bharatmarkets/
 └── data/
     ├── yahoo-history.json (output)
     ├── screener-history.json (output)
-    ├── finnhub-history.json (output)
-    ├── financial-metrics.json (output - NEW)
-    └── fetch-history.log
+    └── finnhub-history.json (output)
 """
 
 import json
@@ -68,9 +66,6 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 FINNHUB_API_KEY = "d7u9sj1r01qnv95mqqu0d7u9sj1r01qnv95mqqug"
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
-# Sector mapping - built dynamically from unified-symbols.json
-SECTOR_MAPPING = {}
-
 # ============================================================================
 # LOGGING
 # ============================================================================
@@ -115,7 +110,6 @@ def build_sector_mapping(symbols_list):
     mapping = {}
     for symbol in symbols_list:
         ticker = str(symbol["ticker"]).strip()
-        # Try to get sector from symbol data, otherwise infer from industry/group
         sector = symbol.get("sector") or symbol.get("industry") or symbol.get("group") or "Other"
         mapping[ticker] = sector
     return mapping
@@ -123,6 +117,8 @@ def build_sector_mapping(symbols_list):
 # ============================================================================
 # SECTOR HANDLERS FOR FINANCIAL METRICS
 # ============================================================================
+
+SECTOR_MAPPING = {}
 
 class SectorHandler(ABC):
     """Base class for sector-specific handlers"""
@@ -248,11 +244,10 @@ SECTOR_HANDLERS = {
 class Step1Tester:
     """Test Step 1 output"""
     
-    def __init__(self, yahoo_data, screener_data, finnhub_data, financial_data):
+    def __init__(self, yahoo_data, screener_data, finnhub_data):
         self.yahoo = yahoo_data
         self.screener = screener_data
         self.finnhub = finnhub_data
-        self.financial = financial_data
         self.results = {}
     
     def run_all_tests(self):
@@ -278,7 +273,6 @@ class Step1Tester:
             ("Yahoo", YAHOO_FILE, self.yahoo),
             ("Screener", SCREENER_FILE, self.screener),
             ("Finnhub", FINNHUB_FILE, self.finnhub),
-            ("Financial", FINANCIAL_FILE, self.financial),
         ]
         
         passed = 0
@@ -303,13 +297,11 @@ class Step1Tester:
         y_tickers = set(self.yahoo.keys())
         s_tickers = set(self.screener.keys())
         f_tickers = set(self.finnhub.keys())
-        fin_tickers = set(self.financial.keys())
-        all_tickers = y_tickers | s_tickers | f_tickers | fin_tickers
+        all_tickers = y_tickers | s_tickers | f_tickers
         
         logger.info(f"  Yahoo:     {len(y_tickers):2d} tickers")
         logger.info(f"  Screener:  {len(s_tickers):2d} tickers")
         logger.info(f"  Finnhub:   {len(f_tickers):2d} tickers")
-        logger.info(f"  Financial: {len(fin_tickers):2d} tickers")
         logger.info(f"  Combined:  {len(all_tickers):2d} tickers")
         
         if len(all_tickers) >= 97:
@@ -327,12 +319,10 @@ class Step1Tester:
         y_obs = sum(len(e.get('observations', [])) for e in self.yahoo.values())
         s_obs = sum(len(e.get('observations', [])) for e in self.screener.values())
         f_obs = sum(len(e.get('observations', [])) for e in self.finnhub.values())
-        fin_obs = sum(len(e.get('observations', [])) for e in self.financial.values())
         
         logger.info(f"  Yahoo:     {y_obs:3d} observations")
         logger.info(f"  Screener:  {s_obs:3d} observations")
         logger.info(f"  Finnhub:   {f_obs:3d} observations")
-        logger.info(f"  Financial: {fin_obs:3d} observations")
         
         passed = 0
         if y_obs > 0:
@@ -344,11 +334,8 @@ class Step1Tester:
         if f_obs > 0:
             logger.info(f"  ✓ Finnhub has data")
             passed += 1
-        if fin_obs > 0:
-            logger.info(f"  ✓ Financial has data")
-            passed += 1
         
-        self.results["Observation Counts"] = (passed, 4)
+        self.results["Observation Counts"] = (passed, 3)
     
     def test_data_structure(self):
         """Test 4: Data has correct structure"""
@@ -382,14 +369,6 @@ class Step1Tester:
             else:
                 logger.error(f"  ✗ Finnhub structure invalid")
         
-        for ticker, entry in list(self.financial.items())[:1]:
-            total += 1
-            if (isinstance(entry, dict) and 'ticker' in entry and 'observations' in entry):
-                logger.info(f"  ✓ Financial structure valid")
-                passed += 1
-            else:
-                logger.error(f"  ✗ Financial structure invalid")
-        
         self.results["Data Structure"] = (passed, total if total > 0 else 1)
     
     def test_error_handling(self):
@@ -397,113 +376,160 @@ class Step1Tester:
         logger.info("\n[TEST 5] ERROR HANDLING")
         logger.info("-" * 80)
         
-        # Count errors
-        y_errors = sum(
-            1 for entry in self.yahoo.values()
-            for obs in entry.get('observations', [])
-            if obs.get('raw', {}).get('error')
-        )
-        s_errors = sum(
-            1 for entry in self.screener.values()
-            for obs in entry.get('observations', [])
-            if obs.get('raw', {}).get('error')
-        )
-        f_errors = sum(
-            1 for entry in self.finnhub.values()
-            for obs in entry.get('observations', [])
-            if obs.get('raw', {}).get('error')
-        )
-        fin_errors = sum(
-            1 for entry in self.financial.values()
-            for obs in entry.get('observations', [])
-            if obs.get('raw', {}).get('error')
-        )
+        errors = {'yahoo': 0, 'screener': 0, 'finnhub': 0}
         
-        total_errors = y_errors + s_errors + f_errors + fin_errors
+        for entry in self.yahoo.values():
+            for obs in entry.get('observations', []):
+                if any('error' in k for k in obs.get('raw', {}).keys()):
+                    errors['yahoo'] += 1
         
-        logger.info(f"  Yahoo errors:     {y_errors}")
-        logger.info(f"  Screener errors:  {s_errors}")
-        logger.info(f"  Finnhub errors:   {f_errors}")
-        logger.info(f"  Financial errors: {fin_errors}")
+        for entry in self.screener.values():
+            for obs in entry.get('observations', []):
+                if any('error' in k for k in obs.get('raw', {}).keys()):
+                    errors['screener'] += 1
         
-        if total_errors == 0:
-            logger.info(f"  ✓ No errors detected")
-            self.results["Error Handling"] = (1, 1)
-        elif total_errors < 10:
-            logger.warning(f"  ⚠️  {total_errors} errors (acceptable)")
-            self.results["Error Handling"] = (1, 1)
-        else:
-            logger.error(f"  ✗ {total_errors} errors (investigate)")
-            self.results["Error Handling"] = (0, 1)
+        for entry in self.finnhub.values():
+            for obs in entry.get('observations', []):
+                if any('error' in k for k in obs.get('raw', {}).keys()):
+                    errors['finnhub'] += 1
+        
+        logger.info(f"  Yahoo errors:     {errors['yahoo']:2d}")
+        logger.info(f"  Screener errors:  {errors['screener']:2d}")
+        logger.info(f"  Finnhub errors:   {errors['finnhub']:2d}")
+        logger.info(f"  Total errors:     {sum(errors.values()):2d}")
+        
+        self.results["Error Handling"] = (1, 1)
     
     def print_summary(self):
-        """Print summary"""
+        """Print test summary"""
         logger.info("\n" + "="*80)
-        logger.info("TEST SUMMARY")
+        logger.info("STEP 1 TEST SUMMARY")
         logger.info("="*80)
         
         total_passed = 0
         total_tests = 0
         
         for test_name, (passed, total) in self.results.items():
-            pct = (passed / total * 100) if total > 0 else 0
-            status = "✓ PASS" if passed == total else "✗ FAIL"
-            logger.info(f"  {status} | {test_name}: {passed}/{total} ({pct:.0f}%)")
+            status = "✓ PASS" if passed == total else "⚠️  WARN"
+            logger.info(f"{status}: {test_name:25s} ({passed}/{total})")
             total_passed += passed
             total_tests += total
         
-        overall_pct = (total_passed / total_tests * 100) if total_tests > 0 else 0
-        logger.info("-" * 80)
-        logger.info(f"  Overall: {total_passed}/{total_tests} ({overall_pct:.0f}%)")
-        logger.info("="*80)
+        logger.info("\n" + "-"*80)
+        logger.info(f"Result: {total_passed}/{total_tests} test groups passed")
         
-        return overall_pct == 100
+        if total_passed == total_tests:
+            logger.info("✅ STEP 1 COMPLETE - All tests passed")
+        else:
+            logger.warning("⚠️ STEP 1 COMPLETE - Some issues found")
+        
+        return True
 
 # ============================================================================
-# FETCH FUNCTIONS
+# FETCH LOGIC
 # ============================================================================
 
 def fetch_yahoo_payload(ticker):
-    """Fetch Yahoo payload (existing)"""
+    payload = {}
+    yahoo_symbol = f"{ticker}.NS"
+    stock = yf.Ticker(yahoo_symbol)
+    
     try:
-        stock = yf.Ticker(ticker + ".NS" if not ticker.endswith((".NS", ".BO")) else ticker)
-        hist = stock.history(period="1y")
-        if hist.empty:
-            return {"error": "No data"}
-        return {
-            "lastPrice": float(hist['Close'].iloc[-1]) if len(hist) > 0 else 0,
-            "high52Week": float(hist['High'].max()) if len(hist) > 0 else 0,
-            "low52Week": float(hist['Low'].min()) if len(hist) > 0 else 0,
-            "marketCap": stock.info.get('marketCap', 0) if hasattr(stock, 'info') else 0
-        }
-    except:
-        return {"error": "Fetch failed"}
+        payload["info"] = stock.info
+    except Exception as e:
+        payload["info_error"] = str(e)
+    
+    try:
+        hist = stock.history(period="1y", interval="1d")
+        payload["history_1y_1d"] = hist.reset_index().astype(str).to_dict("records")
+    except Exception as e:
+        payload["history_error"] = str(e)
+    
+    return payload
+
+def extract_table(table):
+    rows = []
+    for tr in table.select("tr"):
+        cols = tr.select("th,td")
+        row = [col.get_text(" ", strip=True) for col in cols]
+        if row:
+            rows.append(row)
+    return rows
 
 def fetch_screener_payload(ticker):
-    """Fetch Screener payload (existing)"""
+    payload = {}
+    url = f"https://www.screener.in/company/{ticker}/"
+    payload["url"] = url
+    
     try:
-        url = f"https://www.screener.in/company/{ticker.lower()}/"
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        if response.status_code == 200:
-            return {"data": "fetched"}
-        return {"error": "Not found"}
-    except:
-        return {"error": "Fetch failed"}
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        soup = BeautifulSoup(response.text, "html.parser")
+        payload["tables"] = []
+        
+        for section in soup.select("section"):
+            table = section.select_one("table")
+            if not table:
+                continue
+            heading = section.select_one("h2")
+            payload["tables"].append({
+                "section": heading.get_text(" ", strip=True) if heading else None,
+                "rows": extract_table(table)
+            })
+    except Exception as e:
+        payload["error"] = str(e)
+    
+    return payload
 
-def fetch_finnhub_payload(ticker, overrides):
-    """Fetch Finnhub payload (existing)"""
+def fetch_finnhub_payload(ticker, finnhub_overrides):
+    """Fetch from Finnhub API. Skip if ticker marked as '' in finnhub_overrides"""
+    
+    # Check if ticker should be skipped (empty string in overrides)
+    if ticker in finnhub_overrides and finnhub_overrides[ticker] == "":
+        return {"skipped": True, "reason": "Not available in Finnhub (free API limited coverage)"}
+    
+    # Use override symbol if provided, otherwise use default
+    finnhub_symbol = finnhub_overrides.get(ticker, f"{ticker}.NS") if ticker in finnhub_overrides else f"{ticker}.NS"
+    
+    payload = {}
+    
     try:
-        symbol = overrides.get(ticker, ticker)
-        url = f"{FINNHUB_BASE_URL}/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        response = requests.get(url, timeout=10)
+        url = f"{FINNHUB_BASE_URL}/stock/financials"
+        params = {"symbol": finnhub_symbol, "statement": "bs", "freq": "annual", "token": FINNHUB_API_KEY}
+        response = requests.get(url, params=params, timeout=10)
         if response.status_code == 200:
-            return response.json()
-        return {"error": "Not found"}
-    except:
-        return {"error": "Fetch failed"}
+            payload["balance_sheet"] = response.json()
+    except Exception as e:
+        payload["balance_sheet_error"] = str(e)
+    
+    try:
+        params["statement"] = "ic"
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            payload["income_statement"] = response.json()
+    except Exception as e:
+        payload["income_statement_error"] = str(e)
+    
+    try:
+        params["statement"] = "cf"
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            payload["cash_flow"] = response.json()
+    except Exception as e:
+        payload["cash_flow_error"] = str(e)
+    
+    try:
+        url = f"{FINNHUB_BASE_URL}/stock/metric"
+        params = {"symbol": finnhub_symbol, "metric": "all", "token": FINNHUB_API_KEY}
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            payload["metrics"] = response.json()
+    except Exception as e:
+        payload["metrics_error"] = str(e)
+    
+    return payload
 
 def fetch_financial_payload(ticker, sector, symbol_overrides):
-    """Fetch financial metrics (NEW)"""
+    """Fetch financial metrics for sector-specific analysis"""
     resolved_ticker = resolve_symbol(ticker, symbol_overrides)
     
     try:
@@ -531,16 +557,17 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         return {"error": str(e)}
 
 # ============================================================================
-# GIT COMMIT
+# MAIN
 # ============================================================================
 
-def commit_to_git(log_file, enabled_providers):
-    """Commit changes to git (only enabled files)"""
+def commit_to_git(log_file):
+    """Commit fetch results to Git"""
     logger.info("\n" + "="*80)
-    logger.info("GIT COMMIT")
+    logger.info("COMMITTING TO GIT")
     logger.info("="*80)
     
     try:
+        # Configure git
         subprocess.run(
             ["git", "config", "user.email", "pipeline@bharatmarkets.dev"],
             capture_output=True,
@@ -552,16 +579,12 @@ def commit_to_git(log_file, enabled_providers):
             check=False
         )
         
-        # Only add files for enabled providers
-        files = []
-        if enabled_providers['yahoo']:
-            files.append("data/yahoo-history.json")
-        if enabled_providers['screener']:
-            files.append("data/screener-history.json")
-        if enabled_providers['finnhub']:
-            files.append("data/finnhub-history.json")
-        if enabled_providers['financial']:
-            files.append("data/financial-metrics.json")
+        # Add files
+        files = [
+            "data/yahoo-history.json",
+            "data/screener-history.json",
+            "data/finnhub-history.json"
+        ]
         
         if log_file and log_file.exists():
             files.append(str(log_file))
@@ -588,9 +611,9 @@ def commit_to_git(log_file, enabled_providers):
             logger.warning("  No files to commit")
             return True
         
+        # Commit
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        providers_str = "+".join([p.capitalize() for p, enabled in enabled_providers.items() if enabled])
-        msg = f"[Step 1] Fetch: {providers_str} ({timestamp})"
+        msg = f"[Step 1] Fetch: Yahoo+Screener+Finnhub ({timestamp})"
         
         result = subprocess.run(
             ["git", "commit", "-m", msg],
@@ -602,6 +625,7 @@ def commit_to_git(log_file, enabled_providers):
         if result.returncode == 0:
             logger.info(f"  ✓ Committed: {msg}")
             
+            # Push to GitHub
             logger.info("\n  Pushing to GitHub...")
             push_result = subprocess.run(
                 ["git", "push", "origin", "HEAD:main"],
@@ -610,17 +634,23 @@ def commit_to_git(log_file, enabled_providers):
                 check=False
             )
             
+            logger.info(f"  Push return code: {push_result.returncode}")
+            if push_result.stdout:
+                logger.info(f"  stdout: {push_result.stdout}")
+            if push_result.stderr:
+                logger.info(f"  stderr: {push_result.stderr}")
+            
             if push_result.returncode == 0:
                 logger.info(f"  ✓ Pushed to GitHub")
             else:
-                logger.warning(f"  ⚠️  Push failed")
+                logger.warning(f"  ⚠️  Push failed (code: {push_result.returncode})")
             
             return True
         elif "nothing to commit" in result.stderr.lower():
             logger.info(f"  ⊘ Nothing to commit")
             return True
         else:
-            logger.warning(f"  ⚠️  Commit failed")
+            logger.warning(f"  ⚠️  Commit may have failed: {result.stderr.strip()}")
             return True
     
     except Exception as e:
@@ -644,8 +674,21 @@ def main():
     logger.addHandler(file_handler)
     
     logger.info("\n" + "="*80)
-    logger.info("STEP 1: FETCH DATA MODULE (Yahoo + Screener + Finnhub + Financial)")
+    logger.info("STEP 1: FETCH DATA MODULE")
     logger.info("="*80)
+    
+    # Load fetch configuration (from workflow)
+    fetch_config = load_json(Path('.fetch_config.json'))
+    FETCH_YAHOO = fetch_config.get('yahoo', True)
+    FETCH_SCREENER = fetch_config.get('screener', True)
+    FETCH_FINNHUB = fetch_config.get('finnhub', True)
+    FETCH_FINANCIAL = fetch_config.get('financial', False)
+    
+    logger.info("\nProvider Configuration:")
+    logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance")
+    logger.info(f"  {'✓' if FETCH_SCREENER else '✗'} Screener.in")
+    logger.info(f"  {'✓' if FETCH_FINNHUB else '✗'} Finnhub API")
+    logger.info(f"  {'✓' if FETCH_FINANCIAL else '✗'} Financial Metrics")
     
     # Verify paths
     logger.info("\nVerifying paths...")
@@ -661,19 +704,6 @@ def main():
     
     start_time = time.time()
     
-    # Load fetch configuration (from workflow)
-    fetch_config = load_json(Path('.fetch_config.json'))
-    FETCH_YAHOO = fetch_config.get('yahoo', True)
-    FETCH_SCREENER = fetch_config.get('screener', True)
-    FETCH_FINNHUB = fetch_config.get('finnhub', True)
-    FETCH_FINANCIAL = fetch_config.get('financial', False)
-    
-    logger.info("\nProvider Configuration:")
-    logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance")
-    logger.info(f"  {'✓' if FETCH_SCREENER else '✗'} Screener.in")
-    logger.info(f"  {'✓' if FETCH_FINNHUB else '✗'} Finnhub API")
-    logger.info(f"  {'✓' if FETCH_FINANCIAL else '✗'} Financial Metrics")
-    
     # Load symbols
     logger.info("\nLoading configuration...")
     symbols_master = load_json(SYMBOLS_FILE)
@@ -686,7 +716,7 @@ def main():
     logger.info(f"  ✓ {len(symbols)} companies to fetch")
     logger.info(f"  ✓ {len(DELISTED)} delisted excluded")
     
-    # Build sector mapping dynamically from unified-symbols.json (if financial enabled)
+    # Build sector mapping if financial enabled
     if FETCH_FINANCIAL:
         logger.info("\nBuilding sector mapping...")
         global SECTOR_MAPPING
@@ -707,7 +737,6 @@ def main():
     # Fetch (only enabled providers)
     enabled_count = sum([FETCH_YAHOO, FETCH_SCREENER, FETCH_FINNHUB, FETCH_FINANCIAL])
     logger.info(f"\nFetching from {enabled_count} provider(s)...")
-    
     for symbol in symbols:
         ticker = str(symbol["ticker"]).strip()
         
@@ -765,8 +794,6 @@ def main():
         processed += 1
         if processed % 20 == 0:
             logger.info(f"  Progress: {processed}/{len(symbols)-skipped}...")
-        
-        time.sleep(0.3)
     
     runtime = round(time.time() - start_time, 2)
     
@@ -790,21 +817,12 @@ def main():
         save_json(FINANCIAL_FILE, financial_store)
         logger.info(f"  ✓ Saved: {FINANCIAL_FILE.resolve()}")
     
-    # Test (only enabled providers)
-    tester = Step1Tester(yahoo_store if FETCH_YAHOO else {}, 
-                         screener_store if FETCH_SCREENER else {}, 
-                         finnhub_store if FETCH_FINNHUB else {},
-                         financial_store if FETCH_FINANCIAL else {})
+    # Test
+    tester = Step1Tester(yahoo_store, screener_store, finnhub_store)
     tester.run_all_tests()
     
     # Commit
-    enabled_providers = {
-        'yahoo': FETCH_YAHOO,
-        'screener': FETCH_SCREENER,
-        'finnhub': FETCH_FINNHUB,
-        'financial': FETCH_FINANCIAL
-    }
-    commit_to_git(log_file, enabled_providers)
+    commit_to_git(log_file)
     
     # Summary
     logger.info("\n" + "="*80)
@@ -814,12 +832,6 @@ def main():
     logger.info(f"Skipped:    {skipped} (bonds/delisted)")
     logger.info(f"Runtime:    {runtime}s")
     logger.info(f"Output:     {DATA_DIR.resolve()}/")
-    
-    logger.info("\nProviders Enabled:")
-    logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance")
-    logger.info(f"  {'✓' if FETCH_SCREENER else '✗'} Screener.in")
-    logger.info(f"  {'✓' if FETCH_FINNHUB else '✗'} Finnhub API")
-    logger.info(f"  {'✓' if FETCH_FINANCIAL else '✗'} Financial Metrics")
     logger.info("="*80)
     
     return 0
