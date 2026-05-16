@@ -6,16 +6,19 @@ from pathlib import Path
 from datetime import datetime
 
 BASE_HEADERS = {
-    "user-agent": (
+    "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "accept": "application/json,text/plain,*/*",
-    "accept-language": "en-US,en;q=0.9",
-    "referer": "https://www.nseindia.com/",
-    "origin": "https://www.nseindia.com",
-    "connection": "keep-alive",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Referer": "https://www.nseindia.com/",
+    "Origin": "https://www.nseindia.com",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
 
 RAW_DIR = Path("raw")
@@ -42,17 +45,41 @@ def log_message(message):
 
 def init_nse():
 
-    url = "https://www.nseindia.com/"
+    warmup_urls = [
+        "https://www.nseindia.com/api/marketStatus",
+        "https://www.nseindia.com/api/allIndices"
+    ]
 
-    response = session.get(
-        url,
-        headers=BASE_HEADERS,
-        timeout=30,
-    )
+    for url in warmup_urls:
 
-    response.raise_for_status()
+        try:
 
-    log_message("NSE session initialized")
+            response = session.get(
+                url,
+                headers=BASE_HEADERS,
+                timeout=30,
+            )
+
+            if response.status_code == 200:
+
+                log_message(f"WARMUP SUCCESS: {url}")
+
+                return
+
+            else:
+
+                log_message(
+                    f"WARMUP NON-200: {url} | "
+                    f"{response.status_code}"
+                )
+
+        except Exception as e:
+
+            log_message(
+                f"WARMUP FAILED: {url} | {e}"
+            )
+
+    log_message("Proceeding without NSE homepage init")
 
 
 def fetch_json(url, retries=5):
@@ -67,14 +94,32 @@ def fetch_json(url, retries=5):
                 timeout=30,
             )
 
-            content_type = response.headers.get("content-type", "")
+            if response.status_code != 200:
 
-            if "application/json" not in content_type:
-                raise Exception(
-                    f"Unexpected content type: {content_type}"
+                log_message(
+                    f"NON-200 RESPONSE: "
+                    f"{response.status_code} | {url}"
                 )
 
-            response.raise_for_status()
+                time.sleep(random.uniform(3, 8))
+
+                continue
+
+            content_type = response.headers.get(
+                "content-type",
+                ""
+            )
+
+            if "application/json" not in content_type:
+
+                log_message(
+                    f"INVALID CONTENT TYPE: "
+                    f"{content_type} | {url}"
+                )
+
+                time.sleep(random.uniform(3, 8))
+
+                continue
 
             log_message(f"SUCCESS: {url}")
 
@@ -82,16 +127,18 @@ def fetch_json(url, retries=5):
 
         except Exception as e:
 
-            log_message(f"FAILED Attempt {attempt}: {url} | {e}")
+            log_message(
+                f"FAILED Attempt {attempt}: "
+                f"{url} | {e}"
+            )
 
-            if attempt == retries:
-                raise
-
-            sleep_time = random.uniform(3, 8)
-
-            time.sleep(sleep_time)
+            time.sleep(random.uniform(3, 8))
 
             init_nse()
+
+    log_message(f"ALL RETRIES FAILED: {url}")
+
+    return {}
 
 
 def fetch_financial_results(symbol):
@@ -129,6 +176,15 @@ def fetch_annual_reports(symbol):
 
 def save_raw(symbol, data_type, data):
 
+    if not data:
+
+        log_message(
+            f"EMPTY DATA SKIPPED: "
+            f"{symbol} | {data_type}"
+        )
+
+        return
+
     file_path = RAW_DIR / f"{symbol}_{data_type}.json"
 
     with open(file_path, "w", encoding="utf-8") as f:
@@ -147,41 +203,35 @@ def process_symbol(symbol):
 
     log_message(f"STARTED: {symbol}")
 
-    try:
+    financials = fetch_financial_results(symbol)
 
-        financials = fetch_financial_results(symbol)
+    save_raw(
+        symbol,
+        "financial_results",
+        financials
+    )
 
-        save_raw(
-            symbol,
-            "financial_results",
-            financials
-        )
+    time.sleep(random.uniform(2, 5))
 
-        time.sleep(random.uniform(2, 5))
+    announcements = fetch_announcements(symbol)
 
-        announcements = fetch_announcements(symbol)
+    save_raw(
+        symbol,
+        "announcements",
+        announcements
+    )
 
-        save_raw(
-            symbol,
-            "announcements",
-            announcements
-        )
+    time.sleep(random.uniform(2, 5))
 
-        time.sleep(random.uniform(2, 5))
+    annual_reports = fetch_annual_reports(symbol)
 
-        annual_reports = fetch_annual_reports(symbol)
+    save_raw(
+        symbol,
+        "annual_reports",
+        annual_reports
+    )
 
-        save_raw(
-            symbol,
-            "annual_reports",
-            annual_reports
-        )
-
-        log_message(f"COMPLETED: {symbol}")
-
-    except Exception as e:
-
-        log_message(f"ERROR: {symbol} | {e}")
+    log_message(f"COMPLETED: {symbol}")
 
 
 if __name__ == "__main__":
