@@ -1,0 +1,264 @@
+name: "[FETCH] Raw Data - Select Providers"
+
+on:
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: 'Select which data providers to fetch'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - 'all (Yahoo + Screener + Finnhub + Financial)'
+          - 'all_no_financial (Yahoo + Screener + Finnhub)'
+          - 'yahoo_screener (Yahoo + Screener)'
+          - 'yahoo_finnhub (Yahoo + Finnhub)'
+          - 'screener_finnhub (Screener + Finnhub)'
+          - 'yahoo_only (Yahoo Finance only)'
+          - 'screener_only (Screener.in only)'
+          - 'finnhub_only (Finnhub API only)'
+          - 'financial_only (Financial Metrics only)'
+          - 'financial_with_yahoo (Yahoo + Financial Metrics)'
+          - 'financial_with_screener (Screener + Financial Metrics)'
+          - 'financial_with_finnhub (Finnhub + Financial Metrics)'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  fetch-raw-data:
+    name: "Fetch Raw Data"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install yfinance requests beautifulsoup4 pandas
+
+      - name: Create data directories
+        run: mkdir -p data/logs
+
+      - name: Display Loading Configuration
+        run: |
+          echo "════════════════════════════════════════════════════════════"
+          echo "  📊 RAW DATA FETCH - LOADING CONFIGURATION"
+          echo "════════════════════════════════════════════════════════════"
+          echo ""
+          echo "  Selection: ${{ github.event.inputs.providers }}"
+          echo ""
+          
+          if [[ "${{ github.event.inputs.providers }}" == *"all"* ]] && [[ "${{ github.event.inputs.providers }}" != *"no_financial"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (daily prices, fundamentals)"
+            echo "  ✓ Screener.in:        ENABLED (technical ratios, valuation)"
+            echo "  ✓ Finnhub API:        ENABLED (financial statements, metrics)"
+            echo "  ✓ Financial Metrics:  ENABLED (sector-specific metrics)"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+            echo "    - data/screener-history.json"
+            echo "    - data/finnhub-history.json"
+            echo "    - data/financial-metrics.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"all_no_financial"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (daily prices, fundamentals)"
+            echo "  ✓ Screener.in:        ENABLED (technical ratios, valuation)"
+            echo "  ✓ Finnhub API:        ENABLED (financial statements, metrics)"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+            echo "    - data/screener-history.json"
+            echo "    - data/finnhub-history.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"yahoo_screener"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (daily prices, fundamentals)"
+            echo "  ✓ Screener.in:        ENABLED (technical ratios, valuation)"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+            echo "    - data/screener-history.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"yahoo_finnhub"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (daily prices, fundamentals)"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✓ Finnhub API:        ENABLED (financial statements, metrics)"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+            echo "    - data/finnhub-history.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"screener_finnhub"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✓ Screener.in:        ENABLED (technical ratios, valuation)"
+            echo "  ✓ Finnhub API:        ENABLED (financial statements, metrics)"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/screener-history.json"
+            echo "    - data/finnhub-history.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"yahoo_only"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (daily prices, fundamentals)"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"screener_only"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✓ Screener.in:        ENABLED (technical ratios, valuation)"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/screener-history.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"finnhub_only"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✓ Finnhub API:        ENABLED (financial statements, metrics)"
+            echo "  ✗ Financial Metrics:  DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/finnhub-history.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"financial_only"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✓ Financial Metrics:  ENABLED (sector-specific metrics)"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/financial-metrics.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"financial_with_yahoo"* ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (daily prices, fundamentals)"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✓ Financial Metrics:  ENABLED (sector-specific metrics)"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoo-history.json"
+            echo "    - data/financial-metrics.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"financial_with_screener"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✓ Screener.in:        ENABLED (technical ratios, valuation)"
+            echo "  ✗ Finnhub API:        DISABLED"
+            echo "  ✓ Financial Metrics:  ENABLED (sector-specific metrics)"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/screener-history.json"
+            echo "    - data/financial-metrics.json"
+            echo "    - data/logs/fetch-history.log"
+          elif [[ "${{ github.event.inputs.providers }}" == *"financial_with_finnhub"* ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo "  ✓ Finnhub API:        ENABLED (financial statements, metrics)"
+            echo "  ✓ Financial Metrics:  ENABLED (sector-specific metrics)"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/finnhub-history.json"
+            echo "    - data/financial-metrics.json"
+            echo "    - data/logs/fetch-history.log"
+          fi
+          
+          echo ""
+          echo "  Tickers: 97 companies (from unified-symbols.json)"
+          echo "  Sectors: Dynamic mapping from symbol data"
+          echo "  Runtime: ~3-5 minutes (depends on selection)"
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
+
+      - name: Run step1_fetch.py
+        env:
+          FETCH_PROVIDERS: ${{ github.event.inputs.providers }}
+        run: |
+          # Set environment variable for step1_fetch.py to read
+          python3 << 'PYTHON_EOF'
+          import os
+          import json
+          
+          providers = os.getenv('FETCH_PROVIDERS', 'all')
+          
+          # Map selection to provider flags
+          config = {
+            'yahoo': False,
+            'screener': False,
+            'finnhub': False,
+            'financial': False
+          }
+          
+          # Yahoo
+          if any(x in providers for x in ['all', 'yahoo_screener', 'yahoo_finnhub', 'yahoo_only', 'financial_with_yahoo']):
+            config['yahoo'] = True
+          
+          # Screener
+          if any(x in providers for x in ['all', 'yahoo_screener', 'screener_finnhub', 'screener_only', 'financial_with_screener']):
+            config['screener'] = True
+          
+          # Finnhub
+          if any(x in providers for x in ['all', 'yahoo_finnhub', 'screener_finnhub', 'finnhub_only', 'financial_with_finnhub']):
+            config['finnhub'] = True
+          
+          # Financial (NEW)
+          if any(x in providers for x in ['all', 'financial_only', 'financial_with_yahoo', 'financial_with_screener', 'financial_with_finnhub']):
+            config['financial'] = True
+          
+          # Exclude if explicitly set to no_financial
+          if 'no_financial' in providers:
+            config['financial'] = False
+          
+          # Save to file for step1_fetch.py to read
+          with open('.fetch_config.json', 'w') as f:
+            json.dump(config, f)
+          
+          print(f"Fetch config: {json.dumps(config, indent=2)}")
+          PYTHON_EOF
+          
+          python step1_fetch.py
+
+      - name: Configure Git
+        run: |
+          git config user.email "pipeline@bharatmarkets.dev"
+          git config user.name "BharatMarkets Pipeline"
+
+      - name: Commit and Push
+        run: |
+          git add data/
+          git commit -m "Auto: Fetch Raw Data [${{ github.event.inputs.providers }}] $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
+          git push origin HEAD:main
+
+      - name: Summary
+        if: always()
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
+          echo "  ✅ Fetch Complete"
+          echo "════════════════════════════════════════════════════════════"
+          echo ""
+          echo "  Selection: ${{ github.event.inputs.providers }}"
+          echo "  Timestamp: $(date +'%Y-%m-%d %H:%M:%S')"
+          echo "  Data Location: data/"
+          echo "  Log Location: data/logs/"
+          echo ""
+          echo "  Next Step: Run [MERGE] Raw Data workflow to consolidate"
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
