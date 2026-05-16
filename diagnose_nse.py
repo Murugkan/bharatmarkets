@@ -4,6 +4,18 @@ Indian Stock Financial Data Fetcher
 Fetches comprehensive financial metrics from Indian stocks
 """
 
+import subprocess
+import sys
+
+# Auto-install missing dependencies
+dependencies = ['requests', 'pandas', 'python-dateutil', 'lxml', 'beautifulsoup4', 'aiohttp', 'yfinance', 'nsepy']
+for package in dependencies:
+    try:
+        __import__(package)
+    except ImportError:
+        print(f"Installing {package}...")
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
+
 import json
 import requests
 import pandas as pd
