@@ -67,6 +67,17 @@ FINNHUB_API_KEY = "d7u9sj1r01qnv95mqqu0d7u9sj1r01qnv95mqqug"
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
 # ============================================================================
+# SCREENER.IN COMPANY ID MAPPING - UPDATE WITH YOUR COMPANIES
+# ============================================================================
+
+SCREENER_COMPANY_IDS = {
+    "INFY": 3,
+    "TCS": 1,
+    "WIPRO": 12,
+    # ADD YOUR COMPANY IDS
+}
+
+# ============================================================================
 # LOGGING
 # ============================================================================
 
@@ -575,6 +586,46 @@ def fetch_finnhub_payload(ticker, finnhub_overrides):
     
     return payload
 
+# ============================================================================
+# SCREENER.IN CAPEX FALLBACK - RAW DATA ONLY
+# ============================================================================
+
+def fetch_capex_screener(ticker):
+    """Fetch RAW CapEx data from Screener.in API (4 periods history)"""
+    company_id = SCREENER_COMPANY_IDS.get(ticker.upper())
+    if not company_id:
+        return {"status": "not_found", "historical_periods": [], "source": "screener"}
+    
+    try:
+        url = f"https://www.screener.in/api/v2/financials/{company_id}/cash-flow/"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        periods = data.get("data", {}).get("cash_flow", {}).get("periods", [])
+        
+        if not periods:
+            return {"status": "not_found", "historical_periods": [], "source": "screener"}
+        
+        history = []
+        for period_data in periods[:4]:
+            capex = period_data.get("capex")
+            period = period_data.get("period")
+            if period and capex is not None:
+                try:
+                    history.append({"period": str(period), "value_raw": float(capex)})
+                except (ValueError, TypeError):
+                    continue
+        
+        if history:
+            return {"status": "success", "historical_periods": history, "source": "screener"}
+        else:
+            return {"status": "not_found", "historical_periods": [], "source": "screener"}
+    
+    except Exception as e:
+        return {"status": "error", "historical_periods": [], "source": "screener", "error": str(e)}
+
 def fetch_financial_payload(ticker, sector, symbol_overrides):
     """Fetch financial metrics - RAW DATA ONLY with HISTORICAL DATA (4 quarters)"""
     resolved_ticker = resolve_symbol(ticker, symbol_overrides)
@@ -591,6 +642,7 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         stock = yf.Ticker(resolved_ticker)
         
         # ========== CAPEX (4 quarters) ==========
+        capex_found = False
         try:
             cf = stock.quarterly_cashflow
             if not cf.empty and 'Capital Expenditure' in cf.index:
@@ -610,8 +662,19 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
                         "source": "yfinance",
                         "historical_periods": history[:4]
                     }
+                    capex_found = True
         except Exception as e:
             payload["capex"]["error"] = str(e)
+        
+        # FALLBACK: If yfinance CapEx is empty, try Screener.in
+        if not capex_found and not payload["capex"].get("historical_periods"):
+            screener_capex = fetch_capex_screener(ticker)
+            if screener_capex.get("status") == "success" and screener_capex.get("historical_periods"):
+                payload["capex"] = {
+                    "status": "success",
+                    "source": "screener",
+                    "historical_periods": screener_capex.get("historical_periods", [])[:4]
+                }
         
         # ========== DEBT (4 quarters) ==========
         try:
