@@ -1,477 +1,258 @@
 #!/usr/bin/env python3
 """
-SCREENER.IN FINANCIAL DATA EXTRACTION TEST
-Tests real data extraction from Screener.in for INFY
-- Fetches actual HTML
-- Extracts Balance Sheet
-- Extracts Income Statement (P&L)
-- Extracts Cash Flow
-- Extracts Quarterly Results
-- Extracts Ratios
+SCREENER.IN DEBUG - Inspect actual HTML structure
+Shows what tables exist and their content
+Helps determine if data is in HTML or JavaScript
 """
 
 import sys
-import time
 import json
 from datetime import datetime
 from pathlib import Path
 
 print("\n" + "="*80)
-print("SCREENER.IN FINANCIAL DATA - EXTRACTION TEST")
+print("SCREENER.IN HTML DEBUG - Inspect Page Structure")
 print("="*80)
 
 # ============================================================================
-# STEP 1: INSTALL & IMPORT DEPENDENCIES
+# INSTALL & IMPORT
 # ============================================================================
-print("\n📦 STEP 1: Installing dependencies...")
-print("-" * 80)
+print("\n📦 Installing dependencies...")
 
 import subprocess
-
-packages = {
-    "requests": "requests",
-    "beautifulsoup4": "bs4",
-    "pandas": "pandas",
-    "lxml": "lxml"
-}
-
-for pip_pkg, import_name in packages.items():
+for pkg in ["requests", "beautifulsoup4", "lxml"]:
     try:
-        __import__(import_name)
-        print(f"✅ {pip_pkg} ready")
+        if pkg == "beautifulsoup4":
+            __import__("bs4")
+        else:
+            __import__(pkg)
     except ImportError:
-        print(f"📥 Installing {pip_pkg}...")
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", pip_pkg, "-q"],
+            [sys.executable, "-m", "pip", "install", pkg, "-q"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        print(f"✅ {pip_pkg} installed")
 
-print("\n📋 Importing libraries...")
-try:
-    import requests
-    from bs4 import BeautifulSoup
-    import pandas as pd
-    print("✅ All imports successful")
-except Exception as e:
-    print(f"❌ Import failed: {e}")
-    sys.exit(1)
+import requests
+from bs4 import BeautifulSoup
 
 # ============================================================================
-# STEP 2: FETCH SCREENER.IN PAGE
+# FETCH PAGE
 # ============================================================================
-print("\n🌐 STEP 2: Fetching Screener.in page...")
-print("-" * 80)
+print("🌐 Fetching Screener.in page...")
 
-test_stock = "INFY"
-url = f"https://www.screener.in/company/{test_stock}/consolidated/"
+url = "https://www.screener.in/company/INFY/consolidated/"
+headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-print(f"   URL: {url}")
+response = requests.get(url, headers=headers, timeout=15)
+soup = BeautifulSoup(response.content, 'lxml')
 
-try:
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-    response = requests.get(url, headers=headers, timeout=15)
-    
-    if response.status_code == 200:
-        print(f"✅ Page fetched successfully")
-        print(f"   Status: {response.status_code}")
-        print(f"   Content length: {len(response.text)} bytes")
-    else:
-        print(f"❌ Failed to fetch page")
-        print(f"   Status: {response.status_code}")
-        sys.exit(1)
-        
-except Exception as e:
-    print(f"❌ Connection error: {e}")
-    sys.exit(1)
+print(f"✅ Page fetched: {response.status_code}")
 
 # ============================================================================
-# STEP 3: PARSE HTML & FIND TABLES
-# ============================================================================
-print("\n🔍 STEP 3: Parsing HTML...")
-print("-" * 80)
-
-try:
-    soup = BeautifulSoup(response.content, 'lxml')
-    tables = soup.find_all('table')
-    print(f"✅ Found {len(tables)} tables on page")
-    
-    # Show table headings to identify them
-    print("\n   Table identification:")
-    for i, table in enumerate(tables[:8]):  # Show first 8 tables
-        # Get the table content
-        text_preview = table.get_text()[:100].replace('\n', ' ').strip()
-        print(f"   Table {i}: {text_preview}...")
-        
-except Exception as e:
-    print(f"❌ Parsing error: {e}")
-    sys.exit(1)
-
-# ============================================================================
-# STEP 4: EXTRACT QUARTERLY RESULTS
-# ============================================================================
-print("\n📊 STEP 4: Extracting Quarterly Results...")
-print("-" * 80)
-
-quarterly_results = {}
-
-try:
-    # Look for quarterly data - usually one of the first few tables
-    for i, table in enumerate(tables[:5]):
-        table_text = table.get_text()
-        
-        # Check if this looks like quarterly data
-        if 'Sales' in table_text and 'Mar' in table_text and 'Jun' in table_text:
-            print(f"   ✅ Found Quarterly Results in table #{i}")
-            
-            try:
-                df = pd.read_html(str(table))[0]
-                print(f"      Rows: {len(df)}")
-                print(f"      Columns: {len(df.columns)}")
-                
-                # Show sample
-                if len(df) > 0:
-                    print(f"\n   Sample Quarterly Data:")
-                    print(f"      Columns: {list(df.columns[:5])}")
-                    
-                    # Get first data row
-                    for col in df.columns[:3]:
-                        val = df.iloc[0][col]
-                        print(f"      {col}: {val}")
-                
-                quarterly_results = {
-                    'status': 'FOUND',
-                    'rows': len(df),
-                    'columns': len(df.columns),
-                    'first_columns': list(df.columns[:10]),
-                    'sample_row': df.iloc[0].to_dict() if len(df) > 0 else None
-                }
-                break
-                
-            except Exception as e:
-                continue
-    
-    if not quarterly_results:
-        quarterly_results = {'status': 'NOT_FOUND'}
-        print(f"   ⚠️  Quarterly results not found in expected format")
-        
-except Exception as e:
-    print(f"   ❌ Error: {str(e)[:100]}")
-    quarterly_results = {'status': 'ERROR', 'error': str(e)}
-
-time.sleep(1)
-
-# ============================================================================
-# STEP 5: EXTRACT PROFIT & LOSS (ANNUAL)
-# ============================================================================
-print("\n📈 STEP 5: Extracting Profit & Loss (Annual)...")
-print("-" * 80)
-
-profit_loss_results = {}
-
-try:
-    # P&L is usually after quarterly
-    for i, table in enumerate(tables[4:12]):  # Check tables 4-12
-        table_text = table.get_text()
-        
-        # Check if this looks like P&L data
-        if ('Sales' in table_text and 'Mar' in table_text and 
-            ('Operating Profit' in table_text or 'Net Profit' in table_text or 'Expenses' in table_text)):
-            
-            print(f"   ✅ Found P&L in table #{i+4}")
-            
-            try:
-                df = pd.read_html(str(table))[0]
-                print(f"      Rows: {len(df)}")
-                print(f"      Columns: {len(df.columns)}")
-                
-                # Show sample
-                if len(df) > 0:
-                    print(f"\n   Sample P&L Data:")
-                    print(f"      Columns: {list(df.columns[:5])}")
-                    for col in df.columns[:3]:
-                        val = df.iloc[0][col]
-                        print(f"      {col}: {val}")
-                
-                profit_loss_results = {
-                    'status': 'FOUND',
-                    'rows': len(df),
-                    'columns': len(df.columns),
-                    'first_columns': list(df.columns[:10]),
-                    'sample_row': df.iloc[0].to_dict() if len(df) > 0 else None
-                }
-                break
-                
-            except Exception as e:
-                continue
-    
-    if not profit_loss_results:
-        profit_loss_results = {'status': 'NOT_FOUND'}
-        print(f"   ⚠️  P&L data not found in expected format")
-        
-except Exception as e:
-    print(f"   ❌ Error: {str(e)[:100]}")
-    profit_loss_results = {'status': 'ERROR', 'error': str(e)}
-
-time.sleep(1)
-
-# ============================================================================
-# STEP 6: EXTRACT BALANCE SHEET
-# ============================================================================
-print("\n📊 STEP 6: Extracting Balance Sheet...")
-print("-" * 80)
-
-balance_sheet_results = {}
-
-try:
-    # Balance sheet is usually later in the page
-    for i, table in enumerate(tables[10:20]):  # Check tables 10-20
-        table_text = table.get_text()
-        
-        # Check if this looks like Balance Sheet
-        if ('Assets' in table_text or 'Liabilities' in table_text or 'Equity' in table_text):
-            
-            print(f"   ✅ Found Balance Sheet in table #{i+10}")
-            
-            try:
-                df = pd.read_html(str(table))[0]
-                print(f"      Rows: {len(df)}")
-                print(f"      Columns: {len(df.columns)}")
-                
-                # Show sample
-                if len(df) > 0:
-                    print(f"\n   Sample Balance Sheet Data:")
-                    print(f"      Columns: {list(df.columns[:5])}")
-                    for col in df.columns[:3]:
-                        val = df.iloc[0][col]
-                        print(f"      {col}: {val}")
-                
-                balance_sheet_results = {
-                    'status': 'FOUND',
-                    'rows': len(df),
-                    'columns': len(df.columns),
-                    'first_columns': list(df.columns[:10]),
-                    'sample_row': df.iloc[0].to_dict() if len(df) > 0 else None
-                }
-                break
-                
-            except Exception as e:
-                continue
-    
-    if not balance_sheet_results:
-        balance_sheet_results = {'status': 'NOT_FOUND'}
-        print(f"   ⚠️  Balance Sheet not found in expected format")
-        
-except Exception as e:
-    print(f"   ❌ Error: {str(e)[:100]}")
-    balance_sheet_results = {'status': 'ERROR', 'error': str(e)}
-
-time.sleep(1)
-
-# ============================================================================
-# STEP 7: EXTRACT CASH FLOW
-# ============================================================================
-print("\n💰 STEP 7: Extracting Cash Flow...")
-print("-" * 80)
-
-cash_flow_results = {}
-
-try:
-    # Cash Flow is usually near the end
-    for i, table in enumerate(tables[18:30]):  # Check tables 18-30
-        table_text = table.get_text()
-        
-        # Check if this looks like Cash Flow
-        if ('Cash Flow' in table_text or 'Operating Activities' in table_text or 
-            'Investing' in table_text or 'Financing' in table_text):
-            
-            print(f"   ✅ Found Cash Flow in table #{i+18}")
-            
-            try:
-                df = pd.read_html(str(table))[0]
-                print(f"      Rows: {len(df)}")
-                print(f"      Columns: {len(df.columns)}")
-                
-                # Show sample
-                if len(df) > 0:
-                    print(f"\n   Sample Cash Flow Data:")
-                    print(f"      Columns: {list(df.columns[:5])}")
-                    for col in df.columns[:3]:
-                        val = df.iloc[0][col]
-                        print(f"      {col}: {val}")
-                
-                cash_flow_results = {
-                    'status': 'FOUND',
-                    'rows': len(df),
-                    'columns': len(df.columns),
-                    'first_columns': list(df.columns[:10]),
-                    'sample_row': df.iloc[0].to_dict() if len(df) > 0 else None
-                }
-                break
-                
-            except Exception as e:
-                continue
-    
-    if not cash_flow_results:
-        cash_flow_results = {'status': 'NOT_FOUND'}
-        print(f"   ⚠️  Cash Flow not found in expected format")
-        
-except Exception as e:
-    print(f"   ❌ Error: {str(e)[:100]}")
-    cash_flow_results = {'status': 'ERROR', 'error': str(e)}
-
-# ============================================================================
-# STEP 8: EXTRACT KEY METRICS/RATIOS
-# ============================================================================
-print("\n📐 STEP 8: Extracting Key Metrics...")
-print("-" * 80)
-
-metrics_results = {}
-
-try:
-    # Look for key metrics in the page
-    soup_text = soup.get_text()
-    
-    metrics_found = {}
-    metric_keywords = ['P/E', 'PE', 'ROE', 'ROA', 'ROCE', 'Book Value', 'Dividend']
-    
-    for keyword in metric_keywords:
-        if keyword in soup_text:
-            metrics_found[keyword] = True
-            print(f"   ✅ Found '{keyword}' metric on page")
-    
-    metrics_results = {
-        'status': 'SUCCESS' if metrics_found else 'PARTIAL',
-        'metrics_found': metrics_found
-    }
-    
-except Exception as e:
-    print(f"   ❌ Error: {str(e)[:100]}")
-    metrics_results = {'status': 'ERROR', 'error': str(e)}
-
-# ============================================================================
-# STEP 9: COMPILE RESULTS
+# ANALYZE TABLES
 # ============================================================================
 print("\n" + "="*80)
-print("EXTRACTION TEST RESULTS")
+print("TABLE ANALYSIS")
 print("="*80)
 
-test_report = {
-    "timestamp": datetime.now().isoformat(),
-    "stock": test_stock,
-    "url": url,
-    "page_status": "✅ SUCCESS",
-    "extraction_results": {
-        "quarterly_results": quarterly_results,
-        "profit_loss": profit_loss_results,
-        "balance_sheet": balance_sheet_results,
-        "cash_flow": cash_flow_results,
-        "metrics": metrics_results
-    },
-    "total_tables_found": len(tables)
-}
+tables = soup.find_all('table')
+print(f"\nTotal tables found: {len(tables)}\n")
 
-print(f"\n✅ Connectivity: Page accessible")
-print(f"✅ Total tables: {len(tables)}")
-print(f"\n📊 Quarterly Results: {quarterly_results.get('status', 'UNKNOWN')}")
-print(f"📈 Profit & Loss: {profit_loss_results.get('status', 'UNKNOWN')}")
-print(f"📊 Balance Sheet: {balance_sheet_results.get('status', 'UNKNOWN')}")
-print(f"💰 Cash Flow: {cash_flow_results.get('status', 'UNKNOWN')}")
-print(f"📐 Metrics: {metrics_results.get('status', 'UNKNOWN')}")
+for idx, table in enumerate(tables):
+    print(f"\n{'='*80}")
+    print(f"TABLE #{idx}")
+    print(f"{'='*80}")
+    
+    # Get table attributes
+    table_id = table.get('id', 'No ID')
+    table_class = table.get('class', 'No class')
+    rows = table.find_all('tr')
+    
+    print(f"ID: {table_id}")
+    print(f"Class: {table_class}")
+    print(f"Rows: {len(rows)}")
+    
+    if len(rows) > 0:
+        # Show first row
+        first_row = rows[0]
+        headers = [th.get_text(strip=True) for th in first_row.find_all(['th', 'td'])]
+        print(f"First row headers/cells: {headers[:5]}...")
+        
+        # Show first 3 rows content
+        print(f"\nFirst 3 rows:")
+        for r_idx, row in enumerate(rows[:3]):
+            cells = [td.get_text(strip=True) for td in row.find_all(['th', 'td'])]
+            print(f"  Row {r_idx}: {cells[:5]}...")
+    
+    # Get preview of table text
+    table_text = table.get_text(strip=True)[:200]
+    print(f"\nText preview: {table_text}...")
 
 # ============================================================================
-# STEP 10: SAVE RESULTS
+# SEARCH FOR KEYWORDS IN PAGE
 # ============================================================================
-print("\n💾 Saving test results...")
-print("-" * 80)
+print("\n\n" + "="*80)
+print("KEYWORD SEARCH IN PAGE")
+print("="*80)
 
-output_dir = Path("screener_test_results")
+keywords = [
+    'Sales', 'Revenue', 'Expenses', 'Operating Profit', 'Net Profit',
+    'Assets', 'Liabilities', 'Equity', 'Current Assets', 'Fixed Assets',
+    'Cash Flow', 'Operating Activities', 'Investing', 'Financing',
+    'Balance Sheet', 'Income Statement', 'P&L', 'Profit & Loss'
+]
+
+page_text = soup.get_text()
+
+print("\nKeywords found in page:")
+found_keywords = {}
+for keyword in keywords:
+    if keyword.lower() in page_text.lower():
+        count = page_text.lower().count(keyword.lower())
+        found_keywords[keyword] = count
+        print(f"  ✅ '{keyword}': {count} times")
+
+# ============================================================================
+# CHECK FOR JAVASCRIPT DATA
+# ============================================================================
+print("\n\n" + "="*80)
+print("JAVASCRIPT & DATA DETECTION")
+print("="*80)
+
+# Look for script tags
+scripts = soup.find_all('script')
+print(f"\nTotal script tags: {len(scripts)}")
+
+# Look for JSON data in scripts
+json_data_found = False
+for idx, script in enumerate(scripts):
+    script_text = script.get_text()
+    
+    # Check if contains JSON-like data
+    if '{' in script_text and ':' in script_text:
+        # Sample of the script
+        sample = script_text[:300]
+        if 'window' in sample or 'data' in sample or 'var' in sample:
+            print(f"\n✅ Script #{idx} contains potential data:")
+            print(f"   Sample: {sample}...")
+            json_data_found = True
+            break
+
+if json_data_found:
+    print("\n⚠️  Data appears to be loaded via JavaScript!")
+    print("    Will need Selenium or API approach")
+else:
+    print("\n✅ No JavaScript data detected")
+
+# ============================================================================
+# LOOK FOR DATA IN HTML ATTRIBUTES
+# ============================================================================
+print("\n\n" + "="*80)
+print("DATA ATTRIBUTES & HIDDEN ELEMENTS")
+print("="*80)
+
+# Look for data attributes
+all_tags = soup.find_all(True)
+data_attrs_found = 0
+
+for tag in all_tags:
+    for attr in tag.attrs:
+        if 'data-' in attr:
+            data_attrs_found += 1
+            if data_attrs_found <= 5:
+                print(f"✅ Found data attribute: {attr}")
+
+print(f"\nTotal data attributes: {data_attrs_found}")
+
+# Look for hidden divs with data
+hidden_elements = soup.find_all(['div', 'span'], style=lambda x: x and 'display:none' in x)
+print(f"Hidden elements with display:none: {len(hidden_elements)}")
+
+# ============================================================================
+# SAVE DEBUG INFO
+# ============================================================================
+print("\n\n" + "="*80)
+print("SAVING DEBUG INFORMATION")
+print("="*80)
+
+output_dir = Path("screener_debug")
 output_dir.mkdir(exist_ok=True)
 
-report_file = output_dir / f"screener_extraction_{test_stock}.json"
-with open(report_file, "w") as f:
-    json.dump(test_report, f, indent=2, default=str)
+debug_info = {
+    "timestamp": datetime.now().isoformat(),
+    "url": url,
+    "status_code": response.status_code,
+    "content_length": len(response.text),
+    "tables_found": len(tables),
+    "keywords_found": found_keywords,
+    "scripts_detected": len(scripts),
+    "javascript_data_detected": json_data_found,
+    "data_attributes": data_attrs_found,
+    "recommendations": []
+}
 
-print(f"✅ Results saved to: {report_file}")
+# Add recommendations
+if json_data_found:
+    debug_info["recommendations"].append("Use Selenium for JavaScript rendering")
+    debug_info["recommendations"].append("Look for API endpoints")
+    debug_info["recommendations"].append("Check Network tab in browser")
+else:
+    debug_info["recommendations"].append("Data might be in table attributes")
+    debug_info["recommendations"].append("Try different parsing approach")
+    debug_info["recommendations"].append("Inspect individual table structures")
+
+# Save full HTML for inspection
+html_file = output_dir / "page_source.html"
+with open(html_file, "w", encoding='utf-8') as f:
+    f.write(response.text)
+print(f"✅ Full HTML saved to: {html_file}")
+
+# Save debug info
+debug_file = output_dir / "debug_info.json"
+with open(debug_file, "w") as f:
+    json.dump(debug_info, f, indent=2)
+print(f"✅ Debug info saved to: {debug_file}")
 
 # ============================================================================
-# RECOMMENDATIONS
+# RECOMMENDATION
 # ============================================================================
-print("\n" + "="*80)
-print("ANALYSIS & RECOMMENDATIONS")
+print("\n\n" + "="*80)
+print("NEXT STEPS")
 print("="*80)
 
-success_count = sum(1 for r in test_report["extraction_results"].values() 
-                   if r.get('status') == 'FOUND')
+print("""
+To understand the data loading mechanism:
 
-if success_count >= 3:
-    print(f"""
-✅ EXTRACTION SUCCESSFUL! ({success_count}/4 statements found)
+1. OPEN IN BROWSER:
+   Open: https://www.screener.in/company/INFY/consolidated/
+   
+2. RIGHT-CLICK → INSPECT (or F12):
+   - Go to Network tab
+   - Reload page
+   - Look for API calls (XHR/Fetch)
+   - Check what endpoints are called for financial data
+   
+3. CHECK CONSOLE:
+   - Look for JavaScript errors
+   - See what data is available in window object
+   
+4. LOOK FOR:
+   - API endpoints returning JSON
+   - Alternative data sources
+   - React/Vue data stores
 
-Web scraping approach is VIABLE!
+DEBUG FILES SAVED:
+- screener_debug/page_source.html (full HTML)
+- screener_debug/debug_info.json (analysis results)
 
-NEXT STEPS:
-1. ✅ Screener.in pages are scrapeable
-2. ✅ Tables are in standard HTML format
-3. ✅ pandas.read_html() works perfectly
-4. ✅ Data structure is consistent
+POSSIBLE SOLUTIONS:
+✅ Option 1: Find and use API endpoints (fastest)
+✅ Option 2: Use Selenium to render JavaScript
+✅ Option 3: Parse HTML attributes/data differently
+❌ Option 4: Manual export via Screener UI (too slow)
+""")
 
-READY FOR PRODUCTION:
-- Create full scraper for all 97 stocks
-- Extract Balance Sheet, Income Statement, Cash Flow
-- Store 10 years of historical data
-- Calculate ratios
-- Export to JSON
-
-APPROACH:
-✅ Use requests to fetch page
-✅ Use BeautifulSoup to parse HTML
-✅ Use pandas.read_html() to extract tables
-✅ Clean and structure data
-✅ Save to JSON
-
-Start implementation now! 🚀
-    """)
-    
-elif success_count >= 1:
-    print(f"""
-⚠️  PARTIAL SUCCESS ({success_count}/4 statements found)
-
-Some tables found, but not all expected statements.
-
-POTENTIAL ISSUES:
-1. Table structure might vary by stock
-2. May need to refine table identification logic
-3. Some metrics might be on different pages
-
-ACTION:
-- Refine table detection algorithm
-- Test with more stocks
-- Handle missing data gracefully
-
-STATUS: Can proceed with caution, but needs refinement
-    """)
-else:
-    print(f"""
-❌ EXTRACTION FAILED - No statements found
-
-ISSUES:
-1. Table detection logic needs adjustment
-2. Page structure might be different
-3. Possible JavaScript rendering needed
-
-SOLUTIONS:
-1. Check if page uses JavaScript (try Selenium)
-2. Inspect page directly in browser
-3. Test with curl/wget first
-4. Review Screener.in page manually
-
-ACTION: Debug by manually opening in browser and inspecting source
-    """)
-
-print("\n" + "="*80)
-print(f"Test completed for {test_stock}")
+print("="*80)
+print("Debug complete - Check browser DevTools for next clues!")
 print("="*80 + "\n")
