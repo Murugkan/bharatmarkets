@@ -67,17 +67,6 @@ FINNHUB_API_KEY = "d7u9sj1r01qnv95mqqu0d7u9sj1r01qnv95mqqug"
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
 # ============================================================================
-# SCREENER.IN COMPANY ID MAPPING - UPDATE WITH YOUR COMPANIES
-# ============================================================================
-
-SCREENER_COMPANY_IDS = {
-    "INFY": 3,
-    "TCS": 1,
-    "WIPRO": 12,
-    # ADD YOUR COMPANY IDS
-}
-
-# ============================================================================
 # LOGGING
 # ============================================================================
 
@@ -587,27 +576,47 @@ def fetch_finnhub_payload(ticker, finnhub_overrides):
     return payload
 
 # ============================================================================
-# SCREENER.IN CAPEX FALLBACK - RAW DATA ONLY
+# SCREENER.IN CAPEX FALLBACK - AUTO-RESOLVES COMPANY ID
 # ============================================================================
 
-def fetch_capex_screener(ticker):
-    """Fetch RAW CapEx data from Screener.in API (4 periods history)"""
-    company_id = SCREENER_COMPANY_IDS.get(ticker.upper())
-    if not company_id:
-        return {"status": "not_found", "historical_periods": [], "source": "screener"}
+def fetch_capex_screener(ticker, screener_overrides):
+    """Fetch RAW CapEx data from Screener.in API (4 periods history)
+    
+    Auto-resolves company ID by following Screener redirect.
+    Uses screener_overrides mapping for companies with different slugs.
+    """
+    # Get screener slug from overrides, fallback to lowercase ticker
+    screener_slug = screener_overrides.get(ticker, ticker.lower())
     
     try:
-        url = f"https://www.screener.in/api/v2/financials/{company_id}/cash-flow/"
+        # Step 1: Get company ID by following redirect
+        url = f"https://www.screener.in/company/{screener_slug}/"
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
         response.raise_for_status()
         
-        data = response.json()
+        # Extract company ID from final URL
+        # Format: https://www.screener.in/company/{ID}/...
+        final_path = response.url.strip('/').split('/')
+        if len(final_path) < 4:
+            return {"status": "not_found", "historical_periods": [], "source": "screener"}
+        
+        company_id = final_path[3]  # Get ID from path
+        if not company_id or not company_id.isdigit():
+            return {"status": "not_found", "historical_periods": [], "source": "screener"}
+        
+        # Step 2: Fetch CapEx data from API using resolved ID
+        api_url = f"https://www.screener.in/api/v2/financials/{company_id}/cash-flow/"
+        api_response = requests.get(api_url, headers=headers, timeout=10)
+        api_response.raise_for_status()
+        
+        data = api_response.json()
         periods = data.get("data", {}).get("cash_flow", {}).get("periods", [])
         
         if not periods:
             return {"status": "not_found", "historical_periods": [], "source": "screener"}
         
+        # Extract CapEx values (last 4 periods)
         history = []
         for period_data in periods[:4]:
             capex = period_data.get("capex")
@@ -626,7 +635,7 @@ def fetch_capex_screener(ticker):
     except Exception as e:
         return {"status": "error", "historical_periods": [], "source": "screener", "error": str(e)}
 
-def fetch_financial_payload(ticker, sector, symbol_overrides):
+def fetch_financial_payload(ticker, sector, symbol_overrides, screener_overrides):
     """Fetch financial metrics - RAW DATA ONLY with HISTORICAL DATA (4 quarters)"""
     resolved_ticker = resolve_symbol(ticker, symbol_overrides)
     
@@ -670,7 +679,7 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         
         # FALLBACK: If yfinance CapEx is empty, try Screener.in
         if not capex_found and not payload["capex"].get("historical_periods"):
-            screener_capex = fetch_capex_screener(ticker)
+            screener_capex = fetch_capex_screener(ticker, screener_overrides)
             if screener_capex.get("status") == "success" and screener_capex.get("historical_periods"):
                 payload["capex"] = {
                     "status": "success",
@@ -973,6 +982,9 @@ def main():
     logger.info(f"  ✓ {len(symbols)} companies to fetch")
     logger.info(f"  ✓ {len(DELISTED)} delisted excluded")
     
+    # Load Screener overrides
+    SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
+    
     # Build sector mapping if financial enabled
     if FETCH_FINANCIAL:
         logger.info("\nBuilding sector mapping...")
@@ -1043,7 +1055,7 @@ def main():
             if ticker not in financial_store:
                 financial_store[ticker] = {"ticker": ticker, "name": symbol.get("name"), "isin": symbol.get("isin"), "sector": sector, "observations": []}
             try:
-                payload = fetch_financial_payload(ticker, sector, SYMBOL_OVERRIDES)
+                payload = fetch_financial_payload(ticker, sector, SYMBOL_OVERRIDES, SCREENER_OVERRIDES)
                 financial_store[ticker]["observations"].append({"fetched_at": now(), "raw": payload})
             except Exception as e:
                 financial_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
