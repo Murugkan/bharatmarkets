@@ -23,9 +23,11 @@ BASE_HEADERS = {
 
 RAW_DIR = Path("raw")
 LOG_DIR = Path("logs")
+DEBUG_DIR = Path("debug")
 
 RAW_DIR.mkdir(exist_ok=True)
 LOG_DIR.mkdir(exist_ok=True)
+DEBUG_DIR.mkdir(exist_ok=True)
 
 session = requests.Session()
 
@@ -41,6 +43,16 @@ def log_message(message):
             "timestamp": timestamp,
             "message": message
         }) + "\\n")
+
+
+def save_debug_response(symbol, endpoint, content):
+
+    filename = f"{symbol}_{endpoint}.txt"
+
+    file_path = DEBUG_DIR / filename
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(content)
 
 
 def init_nse():
@@ -82,7 +94,7 @@ def init_nse():
     log_message("Proceeding without NSE homepage init")
 
 
-def fetch_json(url, retries=5):
+def fetch_json(url, symbol, endpoint, retries=5):
 
     for attempt in range(1, retries + 1):
 
@@ -105,25 +117,42 @@ def fetch_json(url, retries=5):
 
                 continue
 
-            content_type = response.headers.get(
-                "content-type",
-                ""
-            )
+            content = response.text.strip()
 
-            if "application/json" not in content_type:
+            if not content:
 
                 log_message(
-                    f"INVALID CONTENT TYPE: "
-                    f"{content_type} | {url}"
+                    f"EMPTY RESPONSE BODY: {url}"
                 )
 
                 time.sleep(random.uniform(3, 8))
 
                 continue
 
-            log_message(f"SUCCESS: {url}")
+            save_debug_response(
+                symbol,
+                endpoint,
+                content
+            )
 
-            return response.json()
+            try:
+
+                data = json.loads(content)
+
+                log_message(f"SUCCESS: {url}")
+
+                return data
+
+            except Exception as json_error:
+
+                log_message(
+                    f"JSON PARSE FAILED: {url} | "
+                    f"{json_error}"
+                )
+
+                time.sleep(random.uniform(3, 8))
+
+                continue
 
         except Exception as e:
 
@@ -149,7 +178,11 @@ def fetch_financial_results(symbol):
         f"index=equities&symbol={symbol}"
     )
 
-    return fetch_json(url)
+    return fetch_json(
+        url,
+        symbol,
+        "financial_results"
+    )
 
 
 def fetch_announcements(symbol):
@@ -160,7 +193,11 @@ def fetch_announcements(symbol):
         f"index=equities&symbol={symbol}"
     )
 
-    return fetch_json(url)
+    return fetch_json(
+        url,
+        symbol,
+        "announcements"
+    )
 
 
 def fetch_annual_reports(symbol):
@@ -171,7 +208,11 @@ def fetch_annual_reports(symbol):
         f"index=equities&symbol={symbol}"
     )
 
-    return fetch_json(url)
+    return fetch_json(
+        url,
+        symbol,
+        "annual_reports"
+    )
 
 
 def save_raw(symbol, data_type, data):
