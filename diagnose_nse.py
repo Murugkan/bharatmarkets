@@ -1,6 +1,11 @@
 import requests
+import time
+import random
+import json
 import gzip
+import brotli  # ✅ NEW: Import brotli for br compression
 from pathlib import Path
+from datetime import datetime
 
 BASE_HEADERS = {
     "User-Agent": (
@@ -13,74 +18,309 @@ BASE_HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
     "Connection": "keep-alive",
     "Referer": "https://www.nseindia.com/",
+    "Origin": "https://www.nseindia.com",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
 
-DEBUG_DIR = Path("diagnostic")
+RAW_DIR = Path("raw")
+LOG_DIR = Path("logs")
+DEBUG_DIR = Path("debug")
+
+RAW_DIR.mkdir(exist_ok=True)
+LOG_DIR.mkdir(exist_ok=True)
 DEBUG_DIR.mkdir(exist_ok=True)
 
 session = requests.Session()
 
-# Initialize with NSE
-print("Initializing NSE session...")
-session.get("https://www.nseindia.com/api/marketStatus", headers=BASE_HEADERS, timeout=30)
 
-test_urls = [
-    ("https://www.nseindia.com/api/quote-equity?symbol=INFY", "INFY_quote"),
-    ("https://www.nseindia.com/api/corporates-financial-results?index=equities&symbol=INFY", "INFY_financial"),
-    ("https://www.nseindia.com/api/corporate-announcements?index=equities&symbol=INFY", "INFY_announce"),
-]
+def log_message(message):
 
-for url, label in test_urls:
-    print(f"\n{'='*80}")
-    print(f"Testing: {label}")
-    print(f"URL: {url}")
-    print('='*80)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    print(f"[{timestamp}] {message}")
+
+    with open(LOG_DIR / "runtime_history.json", "a", encoding="utf-8") as f:
+        f.write(json.dumps({
+            "timestamp": timestamp,
+            "message": message
+        }) + "\n")
+
+
+def save_debug_response(symbol, endpoint, content):
+
+    filename = f"{symbol}_{endpoint}.txt"
+
+    file_path = DEBUG_DIR / filename
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def decompress_response(response):
+    """Handle gzip/deflate/brotli decompression"""
+    
+    content_encoding = response.headers.get('content-encoding', '').lower()
     
     try:
-        response = session.get(url, headers=BASE_HEADERS, timeout=30)
-        
-        print(f"\n✓ Status: {response.status_code}")
-        print(f"✓ Content-Encoding: {response.headers.get('content-encoding', 'none')}")
-        print(f"✓ Content-Type: {response.headers.get('content-type', 'unknown')}")
-        print(f"✓ Content-Length: {len(response.content)} bytes")
-        
-        # Try to decompress
-        if response.headers.get('content-encoding') == 'gzip':
-            print("\n⚙️  Decompressing gzip...")
-            try:
-                decompressed = gzip.decompress(response.content).decode('utf-8')
-                print(f"✓ Decompressed size: {len(decompressed)} bytes")
-            except Exception as e:
-                print(f"✗ Decompression failed: {e}")
-                decompressed = response.text
+        if 'br' in content_encoding:
+            # ✅ NEW: Handle Brotli compression
+            return brotli.decompress(response.content).decode('utf-8')
+        elif 'gzip' in content_encoding:
+            return gzip.decompress(response.content).decode('utf-8')
+        elif 'deflate' in content_encoding:
+            return gzip.decompress(response.content).decode('utf-8')
         else:
-            decompressed = response.text
-        
-        # Save to file
-        output_file = DEBUG_DIR / f"{label}_raw.txt"
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(decompressed)
-        print(f"\n✓ Saved to: {output_file}")
-        
-        # Show first 500 chars
-        print(f"\nFirst 500 characters:")
-        print("-" * 80)
-        print(decompressed[:500])
-        print("-" * 80)
-        
-        # Check what it looks like
-        if not decompressed.strip():
-            print("⚠️  EMPTY RESPONSE")
-        elif decompressed.strip().startswith('<'):
-            print("⚠️  HTML RESPONSE (not JSON)")
-        elif decompressed.strip().startswith('{'):
-            print("✓ Looks like JSON object")
-        elif decompressed.strip().startswith('['):
-            print("✓ Looks like JSON array")
-        else:
-            print(f"⚠️  UNKNOWN FORMAT")
-            
+            return response.text
     except Exception as e:
-        print(f"✗ Error: {e}")
+        log_message(f"DECOMPRESSION ERROR: {e}")
+        return response.text
 
-print(f"\n\nDiagnostic files saved to: {DEBUG_DIR}/")
+
+def init_nse():
+
+    warmup_urls = [
+        "https://www.nseindia.com/api/marketStatus",
+        "https://www.nseindia.com/api/allIndices"
+    ]
+
+    for url in warmup_urls:
+
+        try:
+
+            response = session.get(
+                url,
+                headers=BASE_HEADERS,
+                timeout=30,
+            )
+
+            if response.status_code == 200:
+
+                log_message(f"WARMUP SUCCESS: {url}")
+
+                return
+
+            else:
+
+                log_message(
+                    f"WARMUP NON-200: {url} | "
+                    f"{response.status_code}"
+                )
+
+        except Exception as e:
+
+            log_message(
+                f"WARMUP FAILED: {url} | {e}"
+            )
+
+    log_message("Proceeding without NSE homepage init")
+
+
+def fetch_json(url, symbol, endpoint, retries=5):
+
+    for attempt in range(1, retries + 1):
+
+        try:
+
+            response = session.get(
+                url,
+                headers=BASE_HEADERS,
+                timeout=30,
+            )
+
+            if response.status_code != 200:
+
+                log_message(
+                    f"NON-200 RESPONSE: "
+                    f"{response.status_code} | {url}"
+                )
+
+                time.sleep(random.uniform(3, 8))
+
+                continue
+
+            # ✅ DECOMPRESS (now includes Brotli)
+            content = decompress_response(response)
+            content = content.strip()
+
+            if not content:
+
+                log_message(
+                    f"EMPTY RESPONSE BODY: {url}"
+                )
+
+                time.sleep(random.uniform(3, 8))
+
+                continue
+
+            save_debug_response(
+                symbol,
+                endpoint,
+                content
+            )
+
+            try:
+
+                data = json.loads(content)
+
+                log_message(f"SUCCESS: {url}")
+
+                return data
+
+            except Exception as json_error:
+
+                log_message(
+                    f"JSON PARSE FAILED: {url} | "
+                    f"{json_error}"
+                )
+
+                time.sleep(random.uniform(3, 8))
+
+                continue
+
+        except Exception as e:
+
+            log_message(
+                f"FAILED Attempt {attempt}: "
+                f"{url} | {e}"
+            )
+
+            time.sleep(random.uniform(3, 8))
+
+            init_nse()
+
+    log_message(f"ALL RETRIES FAILED: {url}")
+
+    return {}
+
+
+def fetch_quote_equity(symbol):
+    """Fetch quote/equity data"""
+
+    url = (
+        "https://www.nseindia.com/api/"
+        f"quote-equity?symbol={symbol}"
+    )
+
+    return fetch_json(
+        url,
+        symbol,
+        "quote_equity"
+    )
+
+
+def fetch_financial_results(symbol):
+
+    url = (
+        "https://www.nseindia.com/api/"
+        f"corporates-financial-results?"
+        f"index=equities&symbol={symbol}"
+    )
+
+    return fetch_json(
+        url,
+        symbol,
+        "financial_results"
+    )
+
+
+def fetch_announcements(symbol):
+
+    url = (
+        "https://www.nseindia.com/api/"
+        f"corporate-announcements?"
+        f"index=equities&symbol={symbol}"
+    )
+
+    return fetch_json(
+        url,
+        symbol,
+        "announcements"
+    )
+
+
+def fetch_annual_reports(symbol):
+
+    url = (
+        "https://www.nseindia.com/api/"
+        f"annual-reports?"
+        f"index=equities&symbol={symbol}"
+    )
+
+    return fetch_json(
+        url,
+        symbol,
+        "annual_reports"
+    )
+
+
+def save_raw(symbol, data_type, data):
+
+    if not data:
+
+        log_message(
+            f"EMPTY DATA SKIPPED: "
+            f"{symbol} | {data_type}"
+        )
+
+        return
+
+    file_path = RAW_DIR / f"{symbol}_{data_type}.json"
+
+    with open(file_path, "w", encoding="utf-8") as f:
+
+        json.dump(
+            data,
+            f,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    log_message(f"SAVED: {file_path}")
+
+
+def process_symbol(symbol):
+
+    log_message(f"STARTED: {symbol}")
+
+    # Fetch quote/equity data
+    quote = fetch_quote_equity(symbol)
+    save_raw(symbol, "quote_equity", quote)
+    time.sleep(random.uniform(2, 5))
+
+    # Fetch financial results
+    financials = fetch_financial_results(symbol)
+    save_raw(symbol, "financial_results", financials)
+    time.sleep(random.uniform(2, 5))
+
+    # Fetch announcements
+    announcements = fetch_announcements(symbol)
+    save_raw(symbol, "announcements", announcements)
+    time.sleep(random.uniform(2, 5))
+
+    # Fetch annual reports
+    annual_reports = fetch_annual_reports(symbol)
+    save_raw(symbol, "annual_reports", annual_reports)
+
+    log_message(f"COMPLETED: {symbol}")
+
+
+if __name__ == "__main__":
+
+    symbols = [
+        "BLACKBUCK",
+        "RELIANCE",
+        "INFY",
+        "TCS",
+        "WIPRO"
+    ]
+
+    init_nse()
+
+    for symbol in symbols:
+
+        process_symbol(symbol)
+
+        time.sleep(random.uniform(3, 7))
+
+    log_message("ALL DONE")
