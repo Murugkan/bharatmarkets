@@ -582,38 +582,27 @@ def fetch_finnhub_payload(ticker, finnhub_overrides):
 def fetch_capex_screener(ticker, screener_overrides):
     """Fetch RAW CapEx data from Screener.in API (4 periods history)
     
-    Auto-resolves company ID by following Screener redirect.
     Uses screener_overrides mapping for companies with different slugs.
+    Simplified: queries API directly using slug, no redirect following.
     """
     # Get screener slug from overrides, fallback to lowercase ticker
     screener_slug = screener_overrides.get(ticker, ticker.lower())
     
     try:
-        # Step 1: Get company ID by following redirect
-        url = f"https://www.screener.in/company/{screener_slug}/"
+        # Direct API call using slug
+        # Screener API format: /api/v2/companies/{slug}/financials/cash-flow/
+        api_url = f"https://www.screener.in/api/v2/companies/{screener_slug}/financials/cash-flow/"
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        
+        logger.debug(f"  [CapEx Screener] {ticker}: trying {api_url}")
+        response = requests.get(api_url, headers=headers, timeout=10)
         response.raise_for_status()
         
-        # Extract company ID from final URL
-        # Format: https://www.screener.in/company/{ID}/...
-        final_path = response.url.strip('/').split('/')
-        if len(final_path) < 4:
-            return {"status": "not_found", "historical_periods": [], "source": "screener"}
-        
-        company_id = final_path[3]  # Get ID from path
-        if not company_id or not company_id.isdigit():
-            return {"status": "not_found", "historical_periods": [], "source": "screener"}
-        
-        # Step 2: Fetch CapEx data from API using resolved ID
-        api_url = f"https://www.screener.in/api/v2/financials/{company_id}/cash-flow/"
-        api_response = requests.get(api_url, headers=headers, timeout=10)
-        api_response.raise_for_status()
-        
-        data = api_response.json()
+        data = response.json()
         periods = data.get("data", {}).get("cash_flow", {}).get("periods", [])
         
         if not periods:
+            logger.debug(f"  [CapEx Screener] {ticker}: no periods found")
             return {"status": "not_found", "historical_periods": [], "source": "screener"}
         
         # Extract CapEx values (last 4 periods)
@@ -628,12 +617,18 @@ def fetch_capex_screener(ticker, screener_overrides):
                     continue
         
         if history:
+            logger.debug(f"  [CapEx Screener] {ticker}: SUCCESS - {len(history)} periods")
             return {"status": "success", "historical_periods": history, "source": "screener"}
         else:
+            logger.debug(f"  [CapEx Screener] {ticker}: no valid CapEx values")
             return {"status": "not_found", "historical_periods": [], "source": "screener"}
     
+    except requests.exceptions.RequestException as e:
+        logger.debug(f"  [CapEx Screener] {ticker}: request failed - {str(e)[:60]}")
+        return {"status": "error", "historical_periods": [], "source": "screener"}
     except Exception as e:
-        return {"status": "error", "historical_periods": [], "source": "screener", "error": str(e)}
+        logger.debug(f"  [CapEx Screener] {ticker}: error - {str(e)[:60]}")
+        return {"status": "error", "historical_periods": [], "source": "screener"}
 
 def fetch_financial_payload(ticker, sector, symbol_overrides, screener_overrides):
     """Fetch financial metrics - RAW DATA ONLY with HISTORICAL DATA (4 quarters)"""
