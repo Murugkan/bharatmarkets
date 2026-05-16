@@ -2,6 +2,7 @@ import requests
 import time
 import random
 import json
+import gzip
 from pathlib import Path
 from datetime import datetime
 
@@ -42,7 +43,7 @@ def log_message(message):
         f.write(json.dumps({
             "timestamp": timestamp,
             "message": message
-        }) + "\\n")
+        }) + "\n")
 
 
 def save_debug_response(symbol, endpoint, content):
@@ -53,6 +54,23 @@ def save_debug_response(symbol, endpoint, content):
 
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
+
+
+def decompress_response(response):
+    """Handle gzip/deflate decompression"""
+    
+    content_encoding = response.headers.get('content-encoding', '').lower()
+    
+    try:
+        if 'gzip' in content_encoding:
+            return gzip.decompress(response.content).decode('utf-8')
+        elif 'deflate' in content_encoding:
+            return gzip.decompress(response.content).decode('utf-8')
+        else:
+            return response.text
+    except Exception as e:
+        log_message(f"DECOMPRESSION ERROR: {e}")
+        return response.text
 
 
 def init_nse():
@@ -117,7 +135,9 @@ def fetch_json(url, symbol, endpoint, retries=5):
 
                 continue
 
-            content = response.text.strip()
+            # ✅ DECOMPRESS GZIP/DEFLATE
+            content = decompress_response(response)
+            content = content.strip()
 
             if not content:
 
@@ -215,6 +235,21 @@ def fetch_annual_reports(symbol):
     )
 
 
+def fetch_quote_equity(symbol):
+    """Fetch quote/equity data"""
+
+    url = (
+        "https://www.nseindia.com/api/"
+        f"quote-equity?symbol={symbol}"
+    )
+
+    return fetch_json(
+        url,
+        symbol,
+        "quote_equity"
+    )
+
+
 def save_raw(symbol, data_type, data):
 
     if not data:
@@ -244,33 +279,24 @@ def process_symbol(symbol):
 
     log_message(f"STARTED: {symbol}")
 
+    # Fetch quote/equity data
+    quote = fetch_quote_equity(symbol)
+    save_raw(symbol, "quote_equity", quote)
+    time.sleep(random.uniform(2, 5))
+
+    # Fetch financial results
     financials = fetch_financial_results(symbol)
-
-    save_raw(
-        symbol,
-        "financial_results",
-        financials
-    )
-
+    save_raw(symbol, "financial_results", financials)
     time.sleep(random.uniform(2, 5))
 
+    # Fetch announcements
     announcements = fetch_announcements(symbol)
-
-    save_raw(
-        symbol,
-        "announcements",
-        announcements
-    )
-
+    save_raw(symbol, "announcements", announcements)
     time.sleep(random.uniform(2, 5))
 
+    # Fetch annual reports
     annual_reports = fetch_annual_reports(symbol)
-
-    save_raw(
-        symbol,
-        "annual_reports",
-        annual_reports
-    )
+    save_raw(symbol, "annual_reports", annual_reports)
 
     log_message(f"COMPLETED: {symbol}")
 
@@ -280,7 +306,9 @@ if __name__ == "__main__":
     symbols = [
         "BLACKBUCK",
         "RELIANCE",
-        "INFY"
+        "INFY",
+        "TCS",
+        "WIPRO"
     ]
 
     init_nse()
