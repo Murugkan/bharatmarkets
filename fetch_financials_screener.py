@@ -167,35 +167,51 @@ class ScreenerFinancialsScraper:
         try:
             if not Config.SYMBOLS_FILE.exists():
                 logger.error(f"Symbol file not found: {Config.SYMBOLS_FILE}")
-                logger.info("Expected format:")
-                logger.info('  [{"symbol": "INFY"}, {"symbol": "TCS"}, ...]')
-                logger.info("  or")
-                logger.info('  {"symbols": ["INFY", "TCS", ...]}')
                 return []
             
             with open(Config.SYMBOLS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Handle different JSON structures
             symbols = []
+            
+            # Handle list format: [{"symbol": "INFY"}, ...] or ["INFY", ...]
             if isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict):
                         sym = item.get('symbol') or item.get('Symbol') or item.get('NSE')
-                    else:
-                        sym = str(item).strip()
-                    if sym:
-                        symbols.append(sym)
+                        if sym:
+                            symbols.append(str(sym).strip())
+                    elif isinstance(item, str):
+                        if item.strip():
+                            symbols.append(item.strip())
+            
+            # Handle dict format: {"symbols": ["INFY", ...]} or {"symbols": [{"symbol": "INFY"}, ...]}
             elif isinstance(data, dict):
-                symbols = data.get('symbols', [])
+                symbols_data = data.get('symbols', [])
+                if isinstance(symbols_data, list):
+                    for item in symbols_data:
+                        if isinstance(item, dict):
+                            sym = item.get('symbol') or item.get('Symbol') or item.get('NSE')
+                            if sym:
+                                symbols.append(str(sym).strip())
+                        elif isinstance(item, str):
+                            if item.strip():
+                                symbols.append(item.strip())
             
             # Clean and deduplicate
-            symbols = [s.strip().upper() for s in symbols if s]
+            symbols = [s.upper() for s in symbols if s]
             symbols = sorted(list(set(symbols)))
             
-            logger.info(f"✓ Loaded {len(symbols)} symbols from {Config.SYMBOLS_FILE}")
+            if not symbols:
+                logger.error("No valid symbols found in file")
+                return []
+            
+            logger.info(f"✓ Loaded {len(symbols)} symbols")
             return symbols
         
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON: {e}")
+            return []
         except Exception as e:
             logger.error(f"Error loading symbols: {e}")
             return []
