@@ -40,6 +40,14 @@ jobs:
           fi
           python fetch_financials_screener.py $ARGS
       
+      - name: Commit results to repo
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add data/ logs/
+          git commit -m "Update screener data - $(date)" || echo "No changes to commit"
+          git push
+      
       - uses: actions/upload-artifact@v4
         if: always()
         with:
