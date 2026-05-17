@@ -43,44 +43,56 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
       
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver
-          echo "Chromium version:"
-          chromium-browser --version
-          echo "ChromeDriver version:"
-          chromedriver --version
-      
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install selenium beautifulsoup4 requests lxml
+          pip install selenium beautifulsoup4 requests lxml webdriver-manager
           echo "Installed packages:"
-          pip list | grep -E "selenium|beautifulsoup4|requests|lxml"
+          pip list | grep -E "selenium|beautifulsoup4|requests|lxml|webdriver"
       
       - name: Create data directory
         run: mkdir -p data logs
       
-      - name: Check unified-symbols.json
+      - name: Create unified-symbols.json if missing
         run: |
           if [ ! -f "unified-symbols.json" ]; then
-            echo "❌ unified-symbols.json not found!"
-            echo "Creating example file..."
+            echo "⚠️  unified-symbols.json not found. Creating sample..."
             cat > unified-symbols.json << 'EOF'
-          [
-            {"symbol": "INFY"},
-            {"symbol": "TCS"},
-            {"symbol": "WIPRO"},
-            {"symbol": "HBLPOWER"},
-            {"symbol": "BAJAJFINSV"},
-            {"symbol": "RELIANCE"}
-          ]
-          EOF
-            echo "Created example with 6 symbols. Add your symbols to the file."
+[
+  {"symbol": "INFY"},
+  {"symbol": "TCS"},
+  {"symbol": "WIPRO"},
+  {"symbol": "HBLPOWER"},
+  {"symbol": "BAJAJFINSV"},
+  {"symbol": "RELIANCE"},
+  {"symbol": "SBIN"},
+  {"symbol": "HDFC"},
+  {"symbol": "ITC"},
+  {"symbol": "MARUTI"},
+  {"symbol": "AXISBANK"},
+  {"symbol": "ICICIBANK"},
+  {"symbol": "LT"},
+  {"symbol": "ASIANPAINT"},
+  {"symbol": "SUNPHARMA"}
+]
+EOF
+            echo "✓ Created unified-symbols.json with 15 sample stocks"
+          else
+            echo "✓ Found existing unified-symbols.json"
           fi
-          echo "Symbols count:"
-          python3 -c "import json; data=json.load(open('unified-symbols.json')); print(f'  Total: {len(data) if isinstance(data, list) else len(data.get(\"symbols\", []))} symbols')"
+          
+          echo "Validating JSON..."
+          python3 -c "
+import json
+try:
+    with open('unified-symbols.json') as f:
+        data = json.load(f)
+    count = len(data) if isinstance(data, list) else len(data.get('symbols', []))
+    print(f'✓ Valid JSON with {count} symbols')
+except Exception as e:
+    print(f'✗ Error: {e}')
+    exit(1)
+"
       
       - name: Display configuration
         run: |
