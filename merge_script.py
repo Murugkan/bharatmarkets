@@ -9,7 +9,7 @@ DATA_DIR = BASE_DIR / "data"
 
 YAHOO_FILE = DATA_DIR / "yahoo-history.json"
 SCREENER_FILE = DATA_DIR / "screener-history.json"
-FINNHUB_FILE = DATA_DIR / "finnhub-history.json"
+SCREENER_FINANCIAL_FILE = DATA_DIR / "screener-financial.json"
 MERGED_FILE = DATA_DIR / "merged_fundamentals.json"
 
 def setup_logging():
@@ -59,14 +59,14 @@ def main():
     if not SCREENER_FILE.exists():
         logger.error(f"Screener file not found: {SCREENER_FILE}")
         return
-    if not FINNHUB_FILE.exists():
-        logger.error(f"Finnhub file not found: {FINNHUB_FILE}")
+    if not SCREENER_FINANCIAL_FILE.exists():
+        logger.error(f"Screener Financial file not found: {SCREENER_FINANCIAL_FILE}")
         return
     
     # Load source files
     yahoo_data = load_json(YAHOO_FILE)
     screener_data = load_json(SCREENER_FILE)
-    finnhub_data = load_json(FINNHUB_FILE)
+    screener_financial_data = load_json(SCREENER_FINANCIAL_FILE)
     
     # Merge all tickers with timestamp
     merged = {
@@ -74,12 +74,12 @@ def main():
     }
     
     try:
-        for ticker in set(list(yahoo_data.keys()) + list(screener_data.keys()) + list(finnhub_data.keys())):
+        for ticker in set(list(yahoo_data.keys()) + list(screener_data.keys()) + list(screener_financial_data.keys())):
             merged[ticker] = {
                 "ticker": ticker,
                 "yahoo": yahoo_data.get(ticker, {}),
                 "screener": screener_data.get(ticker, {}),
-                "finnhub": finnhub_data.get(ticker, {})
+                "screener_financial": screener_financial_data.get(ticker, {})
             }
     except Exception as e:
         logger.error(f"ERROR during consolidation: {str(e)}")
@@ -96,6 +96,7 @@ def main():
     print(f"✓ Merge complete: {len(merged) - 1} tickers consolidated")
     print(f"✓ Updated at: {merged['updated_at']}")
     print(f"✓ Output: {MERGED_FILE.name}")
+    print(f"✓ Data sources: Yahoo + Screener + Screener Financial (replaced Finnhub)")
 
 if __name__ == "__main__":
     main()
