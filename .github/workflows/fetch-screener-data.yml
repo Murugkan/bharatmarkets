@@ -59,13 +59,13 @@ jobs:
             echo "ERROR: unified-symbols.json not found in repo"
             exit 1
           fi
-          python3 -c "
+          python3 << 'PYEOF'
 import json
 with open('unified-symbols.json') as f:
     data = json.load(f)
 count = len(data.get('symbols', []))
 print(f'✓ Valid - {count} symbols')
-"
+PYEOF
       
       - name: Display configuration
         run: |
@@ -126,18 +126,18 @@ print(f'✓ Valid - {count} symbols')
             
             # Extract stats from JSON
             python3 << 'PYTHON_EOF' >> $GITHUB_STEP_SUMMARY
-          import json
-          try:
-            with open('data/screener-history.json', 'r') as f:
-              data = json.load(f)
-            meta = data.get('metadata', {})
-            print(f"- **Total Scraped**: {meta.get('total_scraped', 'N/A')}")
-            print(f"- **Total Failed**: {meta.get('total_failed', 'N/A')}")
-            print(f"- **Success Rate**: {meta.get('success_rate', 'N/A')}")
-            print(f"- **Duration**: {meta.get('duration_seconds', 'N/A')} seconds")
-          except:
-            print("- Error reading results file")
-          PYTHON_EOF
+import json
+try:
+    with open('data/screener-history.json', 'r') as f:
+        data = json.load(f)
+    meta = data.get('metadata', {})
+    print(f"- **Total Scraped**: {meta.get('total_scraped', 'N/A')}")
+    print(f"- **Total Failed**: {meta.get('total_failed', 'N/A')}")
+    print(f"- **Success Rate**: {meta.get('success_rate', 'N/A')}")
+    print(f"- **Duration**: {meta.get('duration_seconds', 'N/A')} seconds")
+except:
+    print("- Error reading results file")
+PYTHON_EOF
           else
             echo "### ❌ No results" >> $GITHUB_STEP_SUMMARY
             echo "Check the logs for errors." >> $GITHUB_STEP_SUMMARY
@@ -197,18 +197,18 @@ print(f'✓ Valid - {count} symbols')
         run: |
           echo "=== Data Summary ==="
           python3 << 'EOF'
-          import json
-          try:
-            with open('screener-history.json', 'r') as f:
-              data = json.load(f)
-            meta = data.get('metadata', {})
-            print(f"Timestamp: {meta.get('timestamp', 'N/A')}")
-            print(f"Total scraped: {meta.get('total_scraped', 'N/A')}")
-            print(f"Success rate: {meta.get('success_rate', 'N/A')}")
-            print(f"Duration: {meta.get('duration_seconds', 'N/A')}s")
-          except Exception as e:
-            print(f"Error: {e}")
-          EOF
+import json
+try:
+    with open('screener-history.json', 'r') as f:
+        data = json.load(f)
+    meta = data.get('metadata', {})
+    print(f"Timestamp: {meta.get('timestamp', 'N/A')}")
+    print(f"Total scraped: {meta.get('total_scraped', 'N/A')}")
+    print(f"Success rate: {meta.get('success_rate', 'N/A')}")
+    print(f"Duration: {meta.get('duration_seconds', 'N/A')}s")
+except Exception as e:
+    print(f"Error: {e}")
+EOF
       
       # Add your own storage steps here
       # Example: Upload to S3, GitHub releases, etc.
