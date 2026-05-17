@@ -68,21 +68,30 @@ def safe_float(val):
     except:
         return ""
 
-def find_field(dataframe, aliases):
-    """Find field value using case-insensitive matching"""
-    if dataframe.empty:
+def find_field(series_data, aliases):
+    """Find field value from pandas Series using case-insensitive matching"""
+    if series_data.empty or series_data.index is None:
         return ""
     
-    # Create lowercase index for comparison
-    index_lower = {str(idx).lower(): idx for idx in dataframe.index}
+    # Create lowercase index mapping
+    index_map = {}
+    for idx in series_data.index:
+        idx_str = str(idx).lower().strip()
+        index_map[idx_str] = idx
     
+    # Try each alias
     for alias in aliases:
-        alias_lower = alias.lower()
-        if alias_lower in index_lower:
-            actual_idx = index_lower[alias_lower]
-            val = dataframe[actual_idx]
-            if pd.notna(val):
-                return safe_float(val)
+        alias_lower = alias.lower().strip()
+        if alias_lower in index_map:
+            try:
+                actual_idx = index_map[alias_lower]
+                val = series_data[actual_idx]
+                if pd.notna(val) and val != 0:
+                    return safe_float(val)
+                elif pd.notna(val):
+                    return safe_float(val)
+            except Exception as e:
+                pass
     
     return ""
 
@@ -204,10 +213,21 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         
         result = {"latest": {}, "historical_periods": []}
         
+        # DEBUG
+        logger.debug(f"{ticker}: IS={is_stmt.shape if not is_stmt.empty else 'EMPTY'}, BS={bs.shape if not bs.empty else 'EMPTY'}, CF={cf.shape if not cf.empty else 'EMPTY'}")
+        
         # Process each quarter (up to 4)
-        max_periods = min(4, len(is_stmt.columns), len(bs.columns), len(cf.columns))
+        max_periods = min(4, len(is_stmt.columns) if not is_stmt.empty else 0, 
+                         len(bs.columns) if not bs.empty else 0,
+                         len(cf.columns) if not cf.empty else 0)
+        
+        # If no periods with all 3 dataframes, try with just IS+BS
+        if max_periods == 0:
+            max_periods = min(4, len(is_stmt.columns) if not is_stmt.empty else 0,
+                             len(bs.columns) if not bs.empty else 0)
+        
         for col_idx in range(max_periods):
-            period_date = is_stmt.columns[col_idx]
+            period_date = is_stmt.columns[col_idx] if not is_stmt.empty else bs.columns[col_idx]
             period_str = period_date.strftime('%Y-%m-%d')
             period_data = {"period": period_str}
             
@@ -247,6 +267,7 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
             "historical_periods": result["historical_periods"]
         }
     except Exception as e:
+        logger.error(f"Error fetching {ticker}: {e}")
         return {"error": str(e)}
 
 def main():
