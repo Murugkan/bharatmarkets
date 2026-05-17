@@ -9,7 +9,7 @@ DATA_DIR = BASE_DIR / "data"
 
 YAHOO_FILE = DATA_DIR / "yahoo-history.json"
 SCREENER_FILE = DATA_DIR / "screener-history.json"
-SCREENER_FINANCIAL_FILE = DATA_DIR / "screener-financial.json"
+SCREENER_FINANCIAL_FILE = DATA_DIR / "screener_financials_1.json"
 MERGED_FILE = DATA_DIR / "merged_fundamentals.json"
 
 def setup_logging():
