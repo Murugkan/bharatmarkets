@@ -73,7 +73,7 @@ jobs:
 
       - name: "📊 Verify output files"
         run: |
-          echo "=== Checking Output Files ==="
+          echo "=== Checking YahooF Output Files ==="
           if [ -f data/yahoof_financials_1.json ]; then
             echo "✓ yahoof_financials_1.json exists"
             ls -lh data/yahoof_financials_1.json
@@ -85,6 +85,18 @@ jobs:
           fi
           
           echo ""
+          echo "=== Checking Screener Output Files ==="
+          if [ -f data/screener_financials_1.json ]; then
+            echo "✓ screener_financials_1.json exists"
+            ls -lh data/screener_financials_1.json
+            echo "  Size: $(wc -c < data/screener_financials_1.json) bytes"
+            echo "  First 100 chars:"
+            head -c 100 data/screener_financials_1.json
+          else
+            echo "✗ screener_financials_1.json NOT FOUND"
+          fi
+          
+          echo ""
           echo "=== Checking Log Files ==="
           if [ -f data/logs/yahoof_financials_1.log ]; then
             echo "✓ yahoof_financials_1.log exists"
@@ -93,6 +105,15 @@ jobs:
             tail -5 data/logs/yahoof_financials_1.log
           else
             echo "✗ yahoof_financials_1.log NOT FOUND"
+          fi
+          
+          if [ -f data/logs/screener_financials_1.log ]; then
+            echo "✓ screener_financials_1.log exists"
+            ls -lh data/logs/screener_financials_1.log
+            echo "  Size: $(wc -c < data/logs/screener_financials_1.log) bytes"
+            tail -5 data/logs/screener_financials_1.log
+          else
+            echo "✗ screener_financials_1.log NOT FOUND"
           fi
           
           echo ""
@@ -116,26 +137,28 @@ jobs:
           echo "=== Current git status ==="
           git status
 
-      - name: "✅ Commit & Push changes"
+      - name: "✅ Force-commit & Push"
         run: |
-          echo "Checking git status..."
+          echo "Force-adding files (overriding .gitignore)..."
+          git add -f fetch_yahoof_financials_1.py fetch_screener_financials.py
+          
+          [ -f data/yahoof_financials_1.json ] && git add -f data/yahoof_financials_1.json || echo "⚠ yahoof_financials_1.json not found"
+          [ -f data/logs/yahoof_financials_1.log ] && git add -f data/logs/yahoof_financials_1.log || echo "⚠ yahoof_financials_1.log not found"
+          
+          [ -f data/screener_financials_1.json ] && git add -f data/screener_financials_1.json || echo "⚠ screener_financials_1.json not found"
+          [ -f data/logs/screener_financials_1.log ] && git add -f data/logs/screener_financials_1.log || echo "⚠ screener_financials_1.log not found"
+          
+          echo ""
+          echo "Git status after add..."
           git status
           
           echo ""
-          echo "Adding files..."
-          git add -A data/yahoof_financials_1.json data/logs/yahoof_financials_1.log 2>&1 || true
-          
-          echo ""
-          echo "Git diff..."
-          git diff --cached --stat
-          
-          echo ""
           echo "Committing..."
-          git commit -m "chore: [FETCH] YahooF Financial Metrics - $(date +'%Y-%m-%d %H:%M:%S')" -m "Success: 94, Errors: 3" 2>&1 || echo "Nothing to commit"
+          git commit -m "chore: [FETCH] Financial Metrics - $(date +'%Y-%m-%d %H:%M:%S')" 2>&1 || echo "Nothing new to commit"
           
           echo ""
-          echo "Pushing to main..."
-          git push -u origin main 2>&1 || echo "Push completed or no changes"
+          echo "Pushing..."
+          git push origin HEAD:main 2>&1 || echo "Push failed"
 
       - name: "📝 Summary"
         if: always()
