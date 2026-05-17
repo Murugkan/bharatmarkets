@@ -86,19 +86,41 @@ def find_field(series_data, aliases):
             try:
                 actual_idx = index_map[alias_lower]
                 val = series_data[actual_idx]
-                if pd.notna(val) and val != 0:
-                    return safe_float(val)
-                elif pd.notna(val):
+                # If value exists (even if 0), return it
+                if pd.notna(val):
                     return safe_float(val)
             except Exception as e:
                 pass
     
+    # Field not found
     return ""
 
 def get_sector_metrics(sector_lower):
     """Return sector-specific field aliases - using actual yfinance field names"""
+    common_debt = {
+        "total_debt": ["Total Debt"],
+        "net_debt": ["Net Debt"],
+        "short_term_debt": ["Short Term Debt", "Short Long Term Debt"],
+        "long_term_debt": ["Long Term Debt"]
+    }
+    
+    common_additional = {
+        "diluted_eps": ["Diluted EPS"],
+        "basic_eps": ["Basic EPS"],
+        "diluted_shares": ["Diluted Average Shares"],
+        "basic_shares": ["Basic Average Shares"],
+        "shares_outstanding": ["Ordinary Shares Number", "Share Issued"],
+        "normalized_income": ["Normalized Income"],
+        "operating_income": ["Total Operating Income As Reported"],
+        "tax_rate": ["Tax Rate For Calcs"],
+        "total_capitalization": ["Total Capitalization"],
+        "minority_interest": ["Minority Interest"],
+        "capital_lease_obligations": ["Capital Lease Obligations"],
+        "unusual_items": ["Total Unusual Items"]
+    }
+    
     if "bank" in sector_lower or "financial" in sector_lower:
-        return {
+        metrics = {
             "net_profit": ["Net Income", "Net Income Common Stockholders"],
             "interest_income": ["Net Interest Income", "Interest Income"],
             "interest_expense": ["Interest Expense"],
@@ -115,15 +137,19 @@ def get_sector_metrics(sector_lower):
             "ebit": ["EBIT"],
             "depreciation": ["Reconciled Depreciation"]
         }
+        metrics.update(common_debt)
+        metrics.update(common_additional)
+        return metrics
+        
     elif "manufactur" in sector_lower:
-        return {
+        metrics = {
             "revenue": ["Total Revenue"],
             "cost_of_revenue": ["Reconciled Cost Of Revenue", "Cost Of Revenue"],
             "gross_profit": ["Gross Profit"],
             "ebitda": ["EBITDA"],
             "ebit": ["EBIT"],
             "net_profit": ["Net Income"],
-            "capex": ["Capital Expenditure"],
+            "capex": ["Capital Expenditure", "Capital Expenditures", "Capex"],
             "operating_cash_flow": ["Operating Cash Flow"],
             "depreciation": ["Reconciled Depreciation"],
             "working_capital": ["Working Capital"],
@@ -137,15 +163,17 @@ def get_sector_metrics(sector_lower):
             "invested_capital": ["Invested Capital"],
             "tangible_book_value": ["Tangible Book Value"]
         }
+        metrics.update(common_debt)
+        metrics.update(common_additional)
+        return metrics
+        
     elif "energy" in sector_lower or "utilit" in sector_lower:
-        return {
+        metrics = {
             "revenue": ["Total Revenue"],
             "ebitda": ["EBITDA", "Normalized EBITDA"],
             "ebit": ["EBIT"],
             "operating_cash_flow": ["Operating Cash Flow"],
-            "capex": ["Capital Expenditure"],
-            "total_debt": ["Total Debt"],
-            "net_debt": ["Net Debt"],
+            "capex": ["Capital Expenditure", "Capital Expenditures", "Capex"],
             "total_liabilities": ["Total Liabilities Net Minority Interest"],
             "fixed_assets": ["Property Plant Equipment"],
             "accounts_receivable": ["Accounts Receivable"],
@@ -157,8 +185,12 @@ def get_sector_metrics(sector_lower):
             "invested_capital": ["Invested Capital"],
             "working_capital": ["Working Capital"]
         }
+        metrics.update(common_debt)
+        metrics.update(common_additional)
+        return metrics
+        
     elif "technolog" in sector_lower or "it " in sector_lower:
-        return {
+        metrics = {
             "revenue": ["Total Revenue"],
             "cost_of_revenue": ["Reconciled Cost Of Revenue"],
             "gross_profit": ["Gross Profit"],
@@ -168,36 +200,41 @@ def get_sector_metrics(sector_lower):
             "net_profit": ["Net Income"],
             "operating_cash_flow": ["Operating Cash Flow"],
             "free_cash_flow": ["Free Cash Flow"],
-            "capex": ["Capital Expenditure"],
+            "capex": ["Capital Expenditure", "Capital Expenditures", "Capex"],
             "accounts_receivable": ["Accounts Receivable"],
             "cash_and_equivalents": ["Cash And Cash Equivalents"],
-            "total_debt": ["Total Debt"],
             "interest_expense": ["Interest Expense"],
             "depreciation": ["Reconciled Depreciation"],
             "invested_capital": ["Invested Capital"],
             "working_capital": ["Working Capital"],
             "net_tangible_assets": ["Net Tangible Assets"]
         }
+        metrics.update(common_debt)
+        metrics.update(common_additional)
+        return metrics
+        
     else:
-        return {
+        metrics = {
             "revenue": ["Total Revenue"],
             "ebitda": ["EBITDA", "Normalized EBITDA"],
             "ebit": ["EBIT"],
             "operating_cash_flow": ["Operating Cash Flow"],
             "net_profit": ["Net Income"],
             "gross_profit": ["Gross Profit"],
-            "total_debt": ["Total Debt"],
             "total_liabilities": ["Total Liabilities Net Minority Interest"],
             "accounts_receivable": ["Accounts Receivable"],
             "cash_and_equivalents": ["Cash And Cash Equivalents"],
             "interest_expense": ["Interest Expense"],
-            "capex": ["Capital Expenditure"],
+            "capex": ["Capital Expenditure", "Capital Expenditures", "Capex"],
             "free_cash_flow": ["Free Cash Flow"],
             "depreciation": ["Reconciled Depreciation"],
             "working_capital": ["Working Capital"],
             "invested_capital": ["Invested Capital"],
             "net_tangible_assets": ["Net Tangible Assets"]
         }
+        metrics.update(common_debt)
+        metrics.update(common_additional)
+        return metrics
 
 def fetch_financial_payload(ticker, sector, symbol_overrides):
     """Fetch financial metrics from yfinance"""
