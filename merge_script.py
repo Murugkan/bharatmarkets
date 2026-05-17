@@ -40,6 +40,23 @@ def load_json(path):
     except:
         return {}
 
+def extract_screener_financial_tickers(data):
+    """Extract ticker data from nested screener financial structure.
+    
+    The screener-financial.json has structure:
+    {
+        "metadata": {...},
+        "failed_symbols": [...],
+        "data": {
+            "TICKER": {...},
+            ...
+        }
+    }
+    """
+    if isinstance(data, dict) and "data" in data:
+        return data["data"]
+    return data
+
 def save_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -66,7 +83,10 @@ def main():
     # Load source files
     yahoo_data = load_json(YAHOO_FILE)
     screener_data = load_json(SCREENER_FILE)
-    screener_financial_data = load_json(SCREENER_FINANCIAL_FILE)
+    screener_financial_raw = load_json(SCREENER_FINANCIAL_FILE)
+    
+    # Extract ticker data from nested screener financial structure
+    screener_financial_data = extract_screener_financial_tickers(screener_financial_raw)
     
     # Merge all tickers with timestamp
     merged = {
