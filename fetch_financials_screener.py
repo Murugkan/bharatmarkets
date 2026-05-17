@@ -241,8 +241,11 @@ class ScreenerFinancialsScraper:
             logger.debug(f"Could not save checkpoint: {e}")
     
     def setup_browser(self):
-        """Setup Selenium WebDriver"""
+        """Setup Selenium WebDriver with webdriver-manager"""
         try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            from selenium.webdriver.chrome.service import Service
+            
             options = webdriver.ChromeOptions()
             if Config.HEADLESS_MODE:
                 options.add_argument('--headless')
@@ -253,7 +256,8 @@ class ScreenerFinancialsScraper:
             options.add_argument('--disable-extensions')
             options.add_argument('--disable-plugins')
             
-            driver = webdriver.Chrome(options=options)
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
             return driver
         except Exception as e:
             logger.error(f"Failed to setup browser: {e}")
