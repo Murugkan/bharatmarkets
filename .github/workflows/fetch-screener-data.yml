@@ -53,45 +53,18 @@ jobs:
       - name: Create data directory
         run: mkdir -p data logs
       
-      - name: Create unified-symbols.json if missing
+      - name: Validate unified-symbols.json
         run: |
           if [ ! -f "unified-symbols.json" ]; then
-            echo "⚠️  unified-symbols.json not found. Creating sample..."
-            cat > unified-symbols.json << 'EOF'
-[
-  {"symbol": "INFY"},
-  {"symbol": "TCS"},
-  {"symbol": "WIPRO"},
-  {"symbol": "HBLPOWER"},
-  {"symbol": "BAJAJFINSV"},
-  {"symbol": "RELIANCE"},
-  {"symbol": "SBIN"},
-  {"symbol": "HDFC"},
-  {"symbol": "ITC"},
-  {"symbol": "MARUTI"},
-  {"symbol": "AXISBANK"},
-  {"symbol": "ICICIBANK"},
-  {"symbol": "LT"},
-  {"symbol": "ASIANPAINT"},
-  {"symbol": "SUNPHARMA"}
-]
-EOF
-            echo "✓ Created unified-symbols.json with 15 sample stocks"
-          else
-            echo "✓ Found existing unified-symbols.json"
+            echo "ERROR: unified-symbols.json not found in repo"
+            exit 1
           fi
-          
-          echo "Validating JSON..."
           python3 -c "
 import json
-try:
-    with open('unified-symbols.json') as f:
-        data = json.load(f)
-    count = len(data) if isinstance(data, list) else len(data.get('symbols', []))
-    print(f'✓ Valid JSON with {count} symbols')
-except Exception as e:
-    print(f'✗ Error: {e}')
-    exit(1)
+with open('unified-symbols.json') as f:
+    data = json.load(f)
+count = len(data.get('symbols', []))
+print(f'✓ Valid - {count} symbols')
 "
       
       - name: Display configuration
@@ -133,7 +106,7 @@ except Exception as e:
           ls -lh data/ || echo "No data directory"
           echo ""
           echo "=== Log File ==="
-          tail -20 logs/screener_scraper.log 2>/dev/null || echo "No log file"
+          tail -20 logs/fetch_financials_screener.log 2>/dev/null || echo "No log file"
       
       - name: Generate summary
         if: always()
@@ -177,7 +150,7 @@ except Exception as e:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
       
       - name: Upload results as artifacts
-        if: ${{ inputs.upload_artifacts == 'true' && always() }}
+        if: inputs.upload_artifacts == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: screener-results
@@ -207,7 +180,7 @@ except Exception as e:
   store-results:
     needs: fetch-screener-data
     runs-on: ubuntu-latest
-    if: always() && success()
+    if: success()
     
     steps:
       - name: Download artifacts
