@@ -140,7 +140,8 @@ jobs:
       - name: "✅ Force-commit & Push"
         run: |
           echo "Force-adding files (overriding .gitignore)..."
-          git add -f fetch_yahoof_financials_1.py fetch_screener_financials.py
+          [ -f fetch_yahoof_financials_1.py ] && git add -f fetch_yahoof_financials_1.py || echo "⚠ yahoof script not found"
+          [ -f fetch_screener_financials.py ] && git add -f fetch_screener_financials.py || echo "⚠ screener script not found"
           
           [ -f data/yahoof_financials_1.json ] && git add -f data/yahoof_financials_1.json || echo "⚠ yahoof_financials_1.json not found"
           [ -f data/logs/yahoof_financials_1.log ] && git add -f data/logs/yahoof_financials_1.log || echo "⚠ yahoof_financials_1.log not found"
