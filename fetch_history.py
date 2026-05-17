@@ -576,16 +576,12 @@ def fetch_finnhub_payload(ticker, finnhub_overrides):
     return payload
 
 def fetch_financial_payload(ticker, sector, symbol_overrides):
-    """Fetch financial metrics - SECTOR-AWARE CapEx (Option 2)"""
+    """Fetch financial metrics - RAW DATA ONLY with HISTORICAL DATA (4 quarters)"""
     resolved_ticker = resolve_symbol(ticker, symbol_overrides)
-    
-    # Sector check: Skip CapEx for Banking/Financials
-    SKIP_CAPEX = ["Banking", "Financial Services", "Insurance", "NBFC", "Finance"]
-    skip_capex = any(s.lower() in sector.lower() for s in SKIP_CAPEX)
     
     payload = {
         "status": "not_available",
-        "capex": {} if not skip_capex else {"status": "not_applicable", "reason": f"{sector} sector"},
+        "capex": {},
         "debt_details": {},
         "working_capital": {},
         "exceptional_items": {}
@@ -594,31 +590,28 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
     try:
         stock = yf.Ticker(resolved_ticker)
         
-        # ========== CAPEX (4 quarters) - SKIP for Banking ==========
-        if not skip_capex:
-            try:
-                cf = stock.quarterly_cashflow
-                if not cf.empty and 'Capital Expenditure' in cf.index:
-                    capex_data = cf.loc['Capital Expenditure'].head(4)
-                    history = []
-                    
-                    for date, val in capex_data.items():
-                        if pd.notna(val) and val != 0:
-                            history.append({
-                                'period': date.strftime('%Y-%m-%d'),
-                                'value_raw': float(val)
-                            })
-                    
-                    if history:
-                        payload["capex"] = {
-                            "status": "success",
-                            "source": "yfinance",
-                            "historical_periods": history[:4]
-                        }
-            except Exception as e:
-                payload["capex"]["error"] = str(e)
-        else:
-            logger.info(f"{ticker} ({sector}): CapEx skipped (Banking/Financial sector)")
+        # ========== CAPEX (4 quarters) ==========
+        try:
+            cf = stock.quarterly_cashflow
+            if not cf.empty and 'Capital Expenditure' in cf.index:
+                capex_data = cf.loc['Capital Expenditure'].head(4)
+                history = []
+                
+                for date, val in capex_data.items():
+                    if pd.notna(val) and val != 0:
+                        history.append({
+                            'period': date.strftime('%Y-%m-%d'),
+                            'value_raw': float(val)
+                        })
+                
+                if history:
+                    payload["capex"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history[:4]
+                    }
+        except Exception as e:
+            payload["capex"]["error"] = str(e)
         
         # ========== DEBT (4 quarters) ==========
         try:
