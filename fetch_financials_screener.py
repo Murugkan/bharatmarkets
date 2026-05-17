@@ -27,6 +27,35 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 
 # ============================================================================
+# SYMBOL MAPPING LOADER
+# ============================================================================
+
+def load_symbol_map() -> Dict[str, Any]:
+    """Load symbol mapping file for ticker remapping"""
+    try:
+        symbol_map_file = Path('symbol_map.json')
+        if symbol_map_file.exists():
+            with open(symbol_map_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {
+            'indices': {},
+            'overrides': {},
+            'screener_overrides': {},
+            'delisted': [],
+            'isin_map': {}
+        }
+    except Exception as e:
+        logger_early = logging.getLogger(__name__)
+        logger_early.warning(f"Could not load symbol_map.json: {e}")
+        return {
+            'indices': {},
+            'overrides': {},
+            'screener_overrides': {},
+            'delisted': [],
+            'isin_map': {}
+        }
+
+# ============================================================================
 # DEPENDENCY CHECK
 # ============================================================================
 
@@ -152,11 +181,13 @@ class ScreenerFinancialsScraper:
         self.scraped_data: Dict[str, Any] = {}
         self.failed_symbols: List[str] = []
         self.skipped_symbols: List[str] = []
+        self.symbol_map = load_symbol_map()  # Load mapping
         self.stats = {
             'total': 0,
             'success': 0,
             'failed': 0,
             'skipped': 0,
+            'retried': 0,
             'start_time': None,
             'end_time': None
         }
@@ -203,6 +234,13 @@ class ScreenerFinancialsScraper:
             # Clean and deduplicate
             symbols = [s.upper() for s in symbols if s]
             symbols = sorted(list(set(symbols)))
+            
+            # Filter out delisted symbols
+            delisted = self.symbol_map.get('delisted', [])
+            symbols = [s for s in symbols if s not in delisted]
+            skipped_count = len([s for s in set(symbols) if s in delisted])
+            if skipped_count > 0:
+                logger.warning(f"DELISTED: Skipped {skipped_count} delisted symbols from unified-symbols.json")
             
             if not symbols:
                 logger.error(
@@ -289,8 +327,10 @@ class ScreenerFinancialsScraper:
             return None
     
     def fetch_page(self, symbol: str) -> Optional[str]:
-        """Fetch page HTML with retry logic"""
-        url = f"{Config.BASE_URL}/{symbol}/consolidated/"
+        """Fetch page HTML with retry logic and screener overrides"""
+        # Use screener override if available
+        screener_symbol = self.symbol_map.get('screener_overrides', {}).get(symbol, symbol.lower())
+        url = f"{Config.BASE_URL}/{screener_symbol}/consolidated/"
         
         for attempt in range(Config.RETRY_ATTEMPTS):
             try:
@@ -412,8 +452,18 @@ class ScreenerFinancialsScraper:
             return None
     
     def scrape_symbol(self, symbol: str) -> bool:
-        """Scrape single symbol"""
+        """Scrape single symbol with retry using overrides"""
         html = self.fetch_page(symbol)
+        if not html:
+            # Try with override mapping if available
+            override_symbol = self.symbol_map.get('overrides', {}).get(symbol)
+            if override_symbol and override_symbol != symbol:
+                logger.info(f"  RETRY: {symbol} → {override_symbol}")
+                self.stats['retried'] += 1
+                # Extract just the ticker part (remove .NS/.BO suffix)
+                ticker = override_symbol.split('.')[0] if '.' in override_symbol else override_symbol
+                html = self.fetch_page(ticker)
+        
         if not html:
             logger.warning(f"✗ {symbol:12} | FETCH FAILED")
             self.failed_symbols.append(symbol)
@@ -541,6 +591,7 @@ class ScreenerFinancialsScraper:
         print(f"Total Requested:      {self.stats['total']}")
         print(f"Successfully Scraped: {self.stats['success']} ✓")
         print(f"Failed:               {self.stats['failed']} ✗")
+        print(f"Retried (w/ mapping): {self.stats['retried']}")
         print(f"Skipped:              {self.stats['skipped']}")
         
         if self.stats['end_time'] and self.stats['start_time']:
@@ -552,6 +603,13 @@ class ScreenerFinancialsScraper:
         print(f"\nOutput Files:")
         print(f"  JSON: {Config.OUTPUT_JSON}")
         print(f"  Log:  {Config.LOG_FILE}")
+        
+        if self.symbol_map.get('overrides') or self.symbol_map.get('screener_overrides'):
+            print(f"\nSymbol Mapping:")
+            print(f"  Overrides loaded: {len(self.symbol_map.get('overrides', {}))}")
+            print(f"  Screener overrides: {len(self.symbol_map.get('screener_overrides', {}))}")
+            print(f"  Delisted (filtered): {len(self.symbol_map.get('delisted', []))}")
+        
         print("=" * 80)
 
 
