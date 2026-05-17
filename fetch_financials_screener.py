@@ -174,29 +174,27 @@ class ScreenerFinancialsScraper:
             
             symbols = []
             
-            # Handle list format: [{"symbol": "INFY"}, ...] or ["INFY", ...]
-            if isinstance(data, list):
+            # Handle dict format: {"symbols": [{"ticker": "INFY"}, ...]}
+            if isinstance(data, dict):
+                symbols_data = data.get('symbols', [])
+                if isinstance(symbols_data, list):
+                    for item in symbols_data:
+                        if isinstance(item, dict):
+                            # Try ticker first, then symbol, then NSE
+                            sym = item.get('ticker') or item.get('symbol') or item.get('Symbol') or item.get('NSE')
+                            if sym:
+                                symbols.append(str(sym).strip())
+            
+            # Handle list format: [{"ticker": "INFY"}, ...] or ["INFY", ...]
+            elif isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict):
-                        sym = item.get('symbol') or item.get('Symbol') or item.get('NSE')
+                        sym = item.get('ticker') or item.get('symbol') or item.get('Symbol') or item.get('NSE')
                         if sym:
                             symbols.append(str(sym).strip())
                     elif isinstance(item, str):
                         if item.strip():
                             symbols.append(item.strip())
-            
-            # Handle dict format: {"symbols": ["INFY", ...]} or {"symbols": [{"symbol": "INFY"}, ...]}
-            elif isinstance(data, dict):
-                symbols_data = data.get('symbols', [])
-                if isinstance(symbols_data, list):
-                    for item in symbols_data:
-                        if isinstance(item, dict):
-                            sym = item.get('symbol') or item.get('Symbol') or item.get('NSE')
-                            if sym:
-                                symbols.append(str(sym).strip())
-                        elif isinstance(item, str):
-                            if item.strip():
-                                symbols.append(item.strip())
             
             # Clean and deduplicate
             symbols = [s.upper() for s in symbols if s]
