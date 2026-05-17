@@ -579,58 +579,8 @@ def fetch_finnhub_payload(ticker, finnhub_overrides):
 # SCREENER.IN CAPEX FALLBACK - AUTO-RESOLVES COMPANY ID
 # ============================================================================
 
-def fetch_capex_screener(ticker, screener_overrides):
-    """Fetch RAW CapEx data from Screener.in API (4 periods history)
-    
-    Uses screener_overrides mapping for companies with different slugs.
-    Simplified: queries API directly using slug, no redirect following.
-    """
-    # Get screener slug from overrides, fallback to lowercase ticker
-    screener_slug = screener_overrides.get(ticker, ticker.lower())
-    
-    try:
-        # Direct API call using slug
-        # Screener API format: /api/v2/companies/{slug}/financials/cash-flow/
-        api_url = f"https://www.screener.in/api/v2/companies/{screener_slug}/financials/cash-flow/"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        
-        logger.info(f"  [CapEx Screener] {ticker}: trying {api_url}")
-        response = requests.get(api_url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json()
-        periods = data.get("data", {}).get("cash_flow", {}).get("periods", [])
-        
-        if not periods:
-            logger.info(f"  [CapEx Screener] {ticker}: no periods found")
-            return {"status": "not_found", "historical_periods": [], "source": "screener"}
-        
-        # Extract CapEx values (last 4 periods)
-        history = []
-        for period_data in periods[:4]:
-            capex = period_data.get("capex")
-            period = period_data.get("period")
-            if period and capex is not None:
-                try:
-                    history.append({"period": str(period), "value_raw": float(capex)})
-                except (ValueError, TypeError):
-                    continue
-        
-        if history:
-            logger.info(f"  [CapEx Screener] {ticker}: SUCCESS - {len(history)} periods")
-            return {"status": "success", "historical_periods": history, "source": "screener"}
-        else:
-            logger.info(f"  [CapEx Screener] {ticker}: no valid CapEx values")
-            return {"status": "not_found", "historical_periods": [], "source": "screener"}
-    
-    except requests.exceptions.RequestException as e:
-        logger.info(f"  [CapEx Screener] {ticker}: request failed - {str(e)[:60]}")
-        return {"status": "error", "historical_periods": [], "source": "screener"}
-    except Exception as e:
-        logger.info(f"  [CapEx Screener] {ticker}: error - {str(e)[:60]}")
-        return {"status": "error", "historical_periods": [], "source": "screener"}
 
-def fetch_financial_payload(ticker, sector, symbol_overrides, screener_overrides):
+def fetch_financial_payload(ticker, sector, symbol_overrides):
     """Fetch financial metrics - RAW DATA ONLY with HISTORICAL DATA (4 quarters)"""
     resolved_ticker = resolve_symbol(ticker, symbol_overrides)
     
@@ -647,42 +597,53 @@ def fetch_financial_payload(ticker, sector, symbol_overrides, screener_overrides
         
         # ========== CAPEX (4 quarters) ==========
         capex_found = False
+        CAPEX_FIELDS = [
+            "Capital Expenditure",
+            "CapitalExpenditure",
+            "Purchase Of PPE",
+            "PurchaseOfPPE",
+            "Purchase Of Property Plant Equipment",
+            "Property Plant Equipment",
+            "Purchase Of Fixed Assets",
+            "Additions To Fixed Assets",
+        ]
         try:
             cf = stock.quarterly_cashflow
-            if not cf.empty and 'Capital Expenditure' in cf.index:
-                capex_data = cf.loc['Capital Expenditure'].head(4)
-                history = []
+            if not cf.empty:
+                # Search for CapEx using multiple possible field names
+                capex_field = None
+                for field in CAPEX_FIELDS:
+                    if field in cf.index:
+                        capex_field = field
+                        break
                 
-                for date, val in capex_data.items():
-                    if pd.notna(val) and val != 0:
-                        history.append({
-                            'period': date.strftime('%Y-%m-%d'),
-                            'value_raw': float(val)
-                        })
-                
-                if history:
-                    payload["capex"] = {
-                        "status": "success",
-                        "source": "yfinance",
-                        "historical_periods": history[:4]
-                    }
-                    capex_found = True
+                if capex_field:
+                    capex_data = cf.loc[capex_field].head(4)
+                    history = []
+                    
+                    for date, val in capex_data.items():
+                        if pd.notna(val) and val != 0:
+                            history.append({
+                                'period': date.strftime('%Y-%m-%d'),
+                                'value_raw': float(val)
+                            })
+                    
+                    if history:
+                        payload["capex"] = {
+                            "status": "success",
+                            "source": "yfinance",
+                            "field_used": capex_field,
+                            "historical_periods": history[:4]
+                        }
+                        capex_found = True
         except Exception as e:
             if not payload["capex"]:
                 payload["capex"] = {}
             payload["capex"]["error"] = str(e)
         
-        # FALLBACK: If yfinance CapEx is empty, try Screener.in
+        # If both fail, leave as empty dict (consistent with original behavior)
         if not capex_found and not payload["capex"].get("historical_periods"):
-            screener_capex = fetch_capex_screener(ticker, screener_overrides)
-            if screener_capex.get("status") == "success" and screener_capex.get("historical_periods"):
-                payload["capex"] = {
-                    "status": "success",
-                    "source": "screener",
-                    "historical_periods": screener_capex.get("historical_periods", [])[:4]
-                }
-            # If both fail, leave as empty dict (consistent with original behavior)
-            elif not payload["capex"]:
+            if not payload["capex"]:
                 payload["capex"] = {}
         
         # ========== DEBT (4 quarters) ==========
@@ -977,9 +938,6 @@ def main():
     logger.info(f"  ✓ {len(symbols)} companies to fetch")
     logger.info(f"  ✓ {len(DELISTED)} delisted excluded")
     
-    # Load Screener overrides
-    SCREENER_OVERRIDES = symbol_map.get("screener_overrides", {})
-    
     # Build sector mapping if financial enabled
     if FETCH_FINANCIAL:
         logger.info("\nBuilding sector mapping...")
@@ -1050,7 +1008,7 @@ def main():
             if ticker not in financial_store:
                 financial_store[ticker] = {"ticker": ticker, "name": symbol.get("name"), "isin": symbol.get("isin"), "sector": sector, "observations": []}
             try:
-                payload = fetch_financial_payload(ticker, sector, SYMBOL_OVERRIDES, SCREENER_OVERRIDES)
+                payload = fetch_financial_payload(ticker, sector, SYMBOL_OVERRIDES)
                 financial_store[ticker]["observations"].append({"fetched_at": now(), "raw": payload})
             except Exception as e:
                 financial_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
