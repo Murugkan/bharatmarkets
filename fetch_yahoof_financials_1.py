@@ -1,23 +1,90 @@
 #!/usr/bin/env python3
 """
-FINAL REFACTORED fetch_financial_payload()
-===========================================
-✅ Sector from unified-symbols.json (no hardcoding)
-✅ Extract ALL yfinance fields (no losses)
-✅ 4-quarter history for all metrics
-✅ Organized: Sector → Ticker
-✅ Common metrics + Sector-specific metrics
-✅ Granular raw data preservation
+YahooF Financial Metrics Extractor
+===================================
+Matches fetch_history.py engine structure EXACTLY
+- Uses "ticker" field from unified-symbols.json
+- Flat storage with ticker keys
+- Observations array pattern
+- 4-quarter raw historical data
 """
 
+import json
+import time
+import logging
 import pandas as pd
 import yfinance as yf
+from pathlib import Path
 from datetime import datetime, UTC
+
+# ============================================================================
+# PATHS - All relative to current working directory (repository root)
+# ============================================================================
+
+DATA_DIR = Path('data')
+SYMBOLS_FILE = Path('unified-symbols.json')
+SYMBOL_MAP_FILE = Path('symbol_map.json')
+
+# Output files
+YAHOOF_FILE = DATA_DIR / "yahoof_financials_1.json"
+LOG_FILE = DATA_DIR / "logs/yahoof_financials_1.log"
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(name)-10s | %(levelname)-8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("YAHOOF-FIN")
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 
 def now():
     return datetime.now(UTC).isoformat()
 
+def load_json(path):
+    """Load JSON file safely"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Cannot load {path.name}: {e}")
+        return {}
+
+def save_json(path, data):
+    """Save JSON file with pretty formatting"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def resolve_symbol(ticker, overrides):
+    """Resolve symbol using override mapping"""
+    if ticker in overrides:
+        return overrides[ticker]
+    if not any(ticker.endswith(ext) for ext in [".NS", ".BO"]):
+        return f"{ticker}.NS"
+    return ticker
+
+def build_sector_mapping(symbols_list):
+    """Build sector mapping dynamically from unified-symbols.json"""
+    mapping = {}
+    for symbol in symbols_list:
+        ticker = str(symbol["ticker"]).strip()
+        sector = symbol.get("sector") or symbol.get("industry") or symbol.get("group") or "Other"
+        mapping[ticker] = sector
+    return mapping
+
+# ============================================================================
+# FINANCIAL METRICS EXTRACTION
+# ============================================================================
+
 def safe_float(val):
+    """Safe float conversion"""
     try:
         if pd.isna(val):
             return 0
@@ -25,459 +92,322 @@ def safe_float(val):
     except:
         return 0
 
-def extract_all_fields_4periods(dataframe, field_aliases_dict, periods=4):
-    """
-    Extract field with all aliases for 4 periods from quarterly dataframe
-    Returns: {latest_value, historical_periods: [{period, value}, ...]}
-    """
-    if dataframe.empty or len(dataframe.columns) < 1:
-        return {"latest_value": 0, "historical_periods": []}
-    
-    history = []
-    latest_value = 0
-    
-    for col_idx in range(min(periods, len(dataframe.columns))):
-        period_date = dataframe.columns[col_idx]
-        period_str = period_date.strftime('%Y-%m-%d')
-        col_data = dataframe.iloc[:, col_idx]
-        
-        val = 0
-        for alias in field_aliases_dict:
-            if alias in col_data.index:
-                try:
-                    v = col_data[alias]
-                    if isinstance(v, pd.Series):
-                        v = v.iloc[0]
-                    if pd.notna(v):
-                        val = safe_float(v)
-                        break
-                except:
-                    pass
-        
-        history.append({"period": period_str, "value": val})
-        
-        if col_idx == 0:
-            latest_value = val
-    
-    return {
-        "latest_value": latest_value,
-        "historical_periods": history
-    }
-
-def extract_all_metrics_4periods(dataframe, metrics_dict, periods=4):
-    """
-    Extract multiple metrics for 4 periods
-    metrics_dict = {"field_name": ["alias1", "alias2", ...], ...}
-    Returns: {latest: {field: value, ...}, historical_periods: [{period, field: value, ...}]}
-    """
-    if dataframe.empty or len(dataframe.columns) < 1:
-        return {"latest": {}, "historical_periods": []}
-    
-    result = {"latest": {}, "historical_periods": []}
-    
-    for col_idx in range(min(periods, len(dataframe.columns))):
-        period_date = dataframe.columns[col_idx]
-        period_str = period_date.strftime('%Y-%m-%d')
-        col_data = dataframe.iloc[:, col_idx]
-        
-        period_data = {"period": period_str}
-        
-        # Extract each metric
-        for field_name, aliases in metrics_dict.items():
-            val = 0
-            for alias in aliases:
-                if alias in col_data.index:
-                    try:
-                        v = col_data[alias]
-                        if isinstance(v, pd.Series):
-                            v = v.iloc[0]
-                        if pd.notna(v):
-                            val = safe_float(v)
-                            break
-                    except:
-                        pass
-            
-            period_data[field_name] = val
-        
-        result["historical_periods"].append(period_data)
-        
-        # Latest is first period
-        if col_idx == 0:
-            result["latest"] = {k: v for k, v in period_data.items() if k != "period"}
-    
-    return result
-
 def fetch_financial_payload(ticker, sector, symbol_overrides):
     """
-    Fetch financial metrics - COMPREHENSIVE
-    Sector from unified-symbols.json, all yfinance fields, 4-quarter history
-    Output: Organized Sector → Ticker with complete data
+    Fetch financial metrics from yfinance
+    Returns: {"resolved_ticker", "sector", "metrics": {...}}
+    Matches fetch_history.py structure EXACTLY
     """
-    
-    def resolve_symbol(symbol, overrides):
-        if symbol in overrides:
-            return overrides[symbol]
-        if not any(symbol.endswith(ext) for ext in [".NS", ".BO"]):
-            return f"{symbol}.NS"
-        return symbol
-    
     resolved_ticker = resolve_symbol(ticker, symbol_overrides)
+    
+    payload = {
+        "status": "not_available",
+        "capex": {},
+        "debt_details": {},
+        "working_capital": {},
+        "exceptional_items": {}
+    }
     
     try:
         stock = yf.Ticker(resolved_ticker)
         
-        # ========== COMMON METRICS (All Sectors) ==========
-        
-        # CAPEX (from cash flow)
-        capex_data = extract_all_fields_4periods(
-            stock.quarterly_cashflow,
-            ["Capital Expenditure", "CapitalExpenditures", "InvestmentsInPropertyPlantAndEquipment", "Capital Expenditures"],
-            periods=4
-        )
-        capex_result = {
-            "metric": "CapEx",
-            "status": "success" if capex_data["latest_value"] != 0 or capex_data["historical_periods"] else "not_available",
-            "source": "yfinance",
-            "unit": "INR",
-            "latest_value": capex_data["latest_value"],
-            "historical_periods": capex_data["historical_periods"]
-        }
-        
-        # DEBT DETAILS (from balance sheet + cash flow)
-        bs = stock.quarterly_balance_sheet
-        cf = stock.quarterly_cashflow
-        debt_history = []
-        debt_latest = {}
-        
-        if not bs.empty and len(bs.columns) > 0:
-            for col_idx in range(min(4, len(bs.columns))):
-                period_date = bs.columns[col_idx]
-                period_str = period_date.strftime('%Y-%m-%d')
-                col_data = bs.iloc[:, col_idx]
+        # ========== CAPEX (4 quarters) ==========
+        try:
+            cf = stock.quarterly_cashflow
+            if not cf.empty and 'Capital Expenditure' in cf.index:
+                capex_data = cf.loc['Capital Expenditure'].head(4)
+                history = []
                 
-                period_data = {"period": period_str}
+                for date, val in capex_data.items():
+                    if pd.notna(val) and val != 0:
+                        history.append({
+                            'period': date.strftime('%Y-%m-%d'),
+                            'value_raw': float(val)
+                        })
                 
-                # Extract debt fields
-                for alias in ["Total Debt", "TotalDebt"]:
-                    if alias in col_data.index:
-                        period_data["total_debt"] = safe_float(col_data[alias])
-                        break
+                if history:
+                    payload["capex"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history[:4]
+                    }
+        except Exception as e:
+            payload["capex"]["error"] = str(e)
+        
+        # ========== DEBT DETAILS (4 quarters) ==========
+        try:
+            bs = stock.quarterly_balance_sheet
+            if not bs.empty and len(bs.columns) > 0:
+                history = []
                 
-                for alias in ["Short Term Debt", "ShortTermBorrowings", "CurrentPortionOfLongTermDebt"]:
-                    if alias in col_data.index:
-                        period_data["short_term_debt"] = safe_float(col_data[alias])
-                        break
+                for col_idx in range(min(4, len(bs.columns))):
+                    period = bs.iloc[:, col_idx]
+                    period_date = bs.columns[col_idx]
+                    
+                    st_debt = None
+                    lt_debt = None
+                    
+                    for key in period.index:
+                        k_lower = str(key).lower()
+                        if 'short' in k_lower and ('debt' in k_lower or 'borrowing' in k_lower):
+                            val = period[key]
+                            if pd.notna(val) and val > 0:
+                                st_debt = float(val)
+                        if 'long term' in k_lower and 'debt' in k_lower:
+                            val = period[key]
+                            if pd.notna(val) and val > 0:
+                                lt_debt = float(val)
+                    
+                    if st_debt is not None or lt_debt is not None:
+                        period_data = {'period': period_date.strftime('%Y-%m-%d')}
+                        if st_debt is not None:
+                            period_data['short_term_debt_raw'] = st_debt
+                        if lt_debt is not None:
+                            period_data['long_term_debt_raw'] = lt_debt
+                        history.append(period_data)
                 
-                for alias in ["Long Term Debt", "LongTermDebt", "LongTermBorrowings"]:
-                    if alias in col_data.index:
-                        period_data["long_term_debt"] = safe_float(col_data[alias])
-                        break
+                if history:
+                    payload["debt_details"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history
+                    }
+        except Exception as e:
+            payload["debt_details"]["error"] = str(e)
+        
+        # ========== WORKING CAPITAL (4 quarters) ==========
+        try:
+            bs = stock.quarterly_balance_sheet
+            if not bs.empty and len(bs.columns) > 0:
+                history = []
                 
-                for alias in ["Total Assets", "TotalAssets"]:
-                    if alias in col_data.index:
-                        period_data["total_assets"] = safe_float(col_data[alias])
-                        break
+                for col_idx in range(min(4, len(bs.columns))):
+                    period = bs.iloc[:, col_idx]
+                    period_date = bs.columns[col_idx]
+                    
+                    ar = None
+                    ap = None
+                    inv = None
+                    
+                    for key in period.index:
+                        k_lower = str(key).lower()
+                        if 'accounts receivable' in k_lower:
+                            val = period[key]
+                            if pd.notna(val):
+                                ar = float(val)
+                        if 'accounts payable' in k_lower:
+                            val = period[key]
+                            if pd.notna(val):
+                                ap = float(val)
+                        if 'inventory' in k_lower:
+                            val = period[key]
+                            if pd.notna(val):
+                                inv = float(val)
+                    
+                    if ar is not None or ap is not None or inv is not None:
+                        period_data = {'period': period_date.strftime('%Y-%m-%d')}
+                        if ar is not None:
+                            period_data['accounts_receivable_raw'] = ar
+                        if ap is not None:
+                            period_data['accounts_payable_raw'] = ap
+                        if inv is not None:
+                            period_data['inventory_raw'] = inv
+                        history.append(period_data)
                 
-                for alias in ["Total Equity", "StockholdersEquity", "Equity"]:
-                    if alias in col_data.index:
-                        period_data["total_equity"] = safe_float(col_data[alias])
-                        break
+                if history:
+                    payload["working_capital"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history
+                    }
+        except Exception as e:
+            payload["working_capital"]["error"] = str(e)
+        
+        # ========== EXCEPTIONAL ITEMS (4 quarters) ==========
+        try:
+            is_stmt = stock.quarterly_income_stmt
+            if not is_stmt.empty and len(is_stmt.columns) > 0:
+                history = []
                 
-                debt_history.append(period_data)
-                if col_idx == 0:
-                    debt_latest = {k: v for k, v in period_data.items() if k != "period"}
-        
-        # Interest expense from income statement
-        if not stock.quarterly_income_stmt.empty and len(stock.quarterly_income_stmt.columns) > 0:
-            col_data = stock.quarterly_income_stmt.iloc[:, 0]
-            for alias in ["Interest Expense", "InterestExpense"]:
-                if alias in col_data.index:
-                    interest_exp = safe_float(col_data[alias])
-                    if debt_latest:
-                        debt_latest["interest_expense"] = interest_exp
-                    if debt_history:
-                        debt_history[0]["interest_expense"] = interest_exp
-                    break
-        
-        debt_result = {
-            "metric": "Debt Details",
-            "status": "success" if debt_history else "not_available",
-            "source": "yfinance",
-            "unit": "INR",
-            "latest": debt_latest,
-            "historical_periods": debt_history
-        }
-        
-        # WORKING CAPITAL (from balance sheet)
-        wc_history = []
-        wc_latest = {}
-        
-        if not bs.empty and len(bs.columns) > 0:
-            for col_idx in range(min(4, len(bs.columns))):
-                period_date = bs.columns[col_idx]
-                period_str = period_date.strftime('%Y-%m-%d')
-                col_data = bs.iloc[:, col_idx]
+                for col_idx in range(min(4, len(is_stmt.columns))):
+                    period = is_stmt.iloc[:, col_idx]
+                    period_date = is_stmt.columns[col_idx]
+                    
+                    for key in period.index:
+                        k_lower = str(key).lower()
+                        if 'exceptional' in k_lower or 'extraordinary' in k_lower:
+                            val = period[key]
+                            if pd.notna(val) and val != 0:
+                                history.append({
+                                    'period': period_date.strftime('%Y-%m-%d'),
+                                    'value_raw': float(val)
+                                })
+                                break
                 
-                period_data = {"period": period_str}
-                
-                # Extract WC fields with ALL aliases
-                for field_name, aliases in {
-                    "accounts_receivable": ["Accounts Receivable", "AccountsReceivable"],
-                    "accounts_payable": ["Accounts Payable", "AccountsPayable"],
-                    "inventory": ["Inventory", "Inventories", "InventoriesNet"],
-                    "cash_and_equivalents": ["Cash And Cash Equivalents", "CashAndCashEquivalents", "Cash"],
-                    "current_assets": ["Current Assets", "TotalCurrentAssets"],
-                    "current_liabilities": ["Current Liabilities", "TotalCurrentLiabilities"],
-                    "prepaid_expenses": ["Prepaid Expenses", "PrepaidExpenses"]
-                }.items():
-                    val = 0
-                    for alias in aliases:
-                        if alias in col_data.index:
-                            val = safe_float(col_data[alias])
-                            break
-                    period_data[field_name] = val
-                
-                # Calculate net working capital
-                if "current_assets" in period_data and "current_liabilities" in period_data:
-                    period_data["net_working_capital"] = period_data["current_assets"] - period_data["current_liabilities"]
-                
-                wc_history.append(period_data)
-                if col_idx == 0:
-                    wc_latest = {k: v for k, v in period_data.items() if k != "period"}
+                if history:
+                    payload["exceptional_items"] = {
+                        "status": "success",
+                        "source": "yfinance",
+                        "historical_periods": history
+                    }
+        except Exception as e:
+            payload["exceptional_items"]["error"] = str(e)
         
-        wc_result = {
-            "metric": "Working Capital",
-            "status": "success" if wc_history else "not_available",
-            "source": "yfinance",
-            "unit": "INR",
-            "latest": wc_latest,
-            "historical_periods": wc_history
-        }
-        
-        # EXCEPTIONAL ITEMS (from income statement)
-        is_stmt = stock.quarterly_income_stmt
-        except_history = []
-        except_latest = 0
-        
-        if not is_stmt.empty and len(is_stmt.columns) > 0:
-            for col_idx in range(min(4, len(is_stmt.columns))):
-                period_date = is_stmt.columns[col_idx]
-                period_str = period_date.strftime('%Y-%m-%d')
-                col_data = is_stmt.iloc[:, col_idx]
-                
-                val = 0
-                for key in col_data.index:
-                    k_lower = str(key).lower()
-                    if any(kw in k_lower for kw in ['exceptional', 'extraordinary', 'other income', 'other expense']):
-                        val = safe_float(col_data[key])
-                        break
-                
-                except_history.append({"period": period_str, "value": val})
-                if col_idx == 0:
-                    except_latest = val
-        
-        except_result = {
-            "metric": "Exceptional Items",
-            "status": "success" if except_history else "not_available",
-            "source": "yfinance",
-            "unit": "INR",
-            "latest_value": except_latest,
-            "historical_periods": except_history
-        }
-        
-        # ========== SECTOR-SPECIFIC METRICS (Different per sector) ==========
-        
-        sector_metrics_result = extract_sector_metrics(stock, sector, periods=4)
-        
-        # ========== SEGMENTS DATA ==========
-        
-        segments_result = {
-            "metric": "Segments",
-            "status": "not_available",
-            "source": "yfinance",
-            "business_segments": {"latest": [], "historical_periods": []},
-            "geographic_segments": {"latest": [], "historical_periods": []}
-        }
-        
-        # ========== RETURN STRUCTURE ==========
+        # Determine overall status
+        if any(payload[key].get("status") == "success" for key in ["capex", "debt_details", "working_capital", "exceptional_items"]):
+            payload["status"] = "success"
         
         return {
-            "symbol": ticker,
-            "ticker": resolved_ticker,
+            "resolved_ticker": resolved_ticker,
             "sector": sector,
-            "fetch_timestamp": now(),
-            "data_source": "yfinance",
-            "AsOfDate": is_stmt.columns[0].strftime('%Y-%m-%d') if not is_stmt.empty else "",
-            "_common_metrics": {
-                "capex": capex_result,
-                "debt_details": debt_result,
-                "working_capital": wc_result,
-                "exceptional_items": except_result
-            },
-            "_sector_specific_metrics": sector_metrics_result,
-            "_segments_data": segments_result
+            "metrics": payload
         }
-    
     except Exception as e:
-        return {
-            "symbol": ticker,
-            "sector": sector,
-            "error": str(e)
-        }
+        return {"error": str(e)}
 
-def extract_sector_metrics(stock, sector, periods=4):
-    """
-    Extract sector-specific metrics based on sector type
-    Different fields extracted for each sector
-    """
-    sector_lower = sector.lower()
+# ============================================================================
+# MAIN
+# ============================================================================
+
+def main():
+    # Setup logging file
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(LOG_FILE, mode='w', encoding='utf-8')
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s | %(name)-10s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    ))
+    logger.addHandler(file_handler)
     
-    is_stmt = stock.quarterly_income_stmt
-    bs = stock.quarterly_balance_sheet
-    cf = stock.quarterly_cashflow
+    logger.info("\n" + "="*80)
+    logger.info("YAHOOF FINANCIAL METRICS EXTRACTOR")
+    logger.info("="*80)
     
-    # Define metrics to extract per sector
-    if "bank" in sector_lower or "financial" in sector_lower:
-        metrics_dict = {
-            "net_profit": ["Net Income", "Net Profit", "NetIncome"],
-            "interest_expense": ["Interest Expense", "InterestExpense"],
-            "operating_expenses": ["Operating Expenses", "Total Operating Expenses"],
-            "total_assets": ["Total Assets", "TotalAssets"],
-            "total_equity": ["Total Equity", "StockholdersEquity"],
-            "deposits": ["Total Deposits", "CustomerDeposits", "Deposits"],
-            "advances": ["Advances", "NetAdvances", "Loans"]
-        }
+    # Load fetch configuration
+    fetch_config = load_json(Path('.fetch_config.json'))
+    FETCH_YAHOOF = fetch_config.get('yahoof', True)
     
-    elif "manufactur" in sector_lower:
-        metrics_dict = {
-            "revenue": ["Total Revenue", "Operating Revenue", "Revenue"],
-            "cost_of_goods_sold": ["Cost Of Revenue", "Cost of Goods Sold", "CostOfRevenue"],
-            "gross_profit": ["Gross Profit", "GrossProfit"],
-            "operating_expenses": ["Operating Expenses"],
-            "ebitda": ["EBITDA", "Ebitda"],
-            "ebit": ["Operating Income", "EBIT"],
-            "interest_expense": ["Interest Expense"],
-            "net_profit": ["Net Income", "Net Profit", "NetIncome"],
-            "capex": ["Capital Expenditure", "CapitalExpenditures"],
-            "inventory": ["Inventory", "Inventories"],
-            "fixed_assets": ["Property Plant And Equipment", "PPE"],
-            "raw_materials": ["Raw Materials"],
-            "work_in_progress": ["Work In Progress", "WIP"],
-            "finished_goods": ["Finished Goods"],
-            "cash_and_equivalents": ["Cash And Cash Equivalents"]
-        }
+    logger.info(f"\nProvider Configuration:")
+    logger.info(f"  {'✓' if FETCH_YAHOOF else '✗'} YahooF Financial Metrics")
     
-    elif "infrastructure" in sector_lower or "energy" in sector_lower or "power" in sector_lower:
-        metrics_dict = {
-            "revenue": ["Total Revenue", "Operating Revenue", "Revenue"],
-            "cost_of_goods_sold": ["Cost Of Revenue"],
-            "ebitda": ["EBITDA"],
-            "operating_cash_flow": ["Operating Cash Flow"],
-            "capex": ["Capital Expenditure", "CapitalExpenditures"],
-            "total_debt": ["Total Debt"],
-            "fixed_assets": ["Property Plant And Equipment"],
-            "work_in_progress": ["Work In Progress"],
-            "accounts_receivable": ["Accounts Receivable"],
-            "cash_and_equivalents": ["Cash And Cash Equivalents"],
-            "net_profit": ["Net Income", "Net Profit"]
-        }
+    # Verify paths
+    logger.info("\nVerifying paths...")
+    try:
+        if not SYMBOLS_FILE.exists():
+            raise FileNotFoundError(f"Missing: {SYMBOLS_FILE}")
+        if not SYMBOL_MAP_FILE.exists():
+            raise FileNotFoundError(f"Missing: {SYMBOL_MAP_FILE}")
+        
+        logger.info(f"  ✓ Working dir:   {Path.cwd()}")
+        logger.info(f"  ✓ DATA_DIR:      {DATA_DIR.resolve()}")
+        logger.info(f"  ✓ SYMBOLS_FILE:  {SYMBOLS_FILE.resolve()}")
+        logger.info(f"  ✓ SYMBOL_MAP:    {SYMBOL_MAP_FILE.resolve()}")
+    except FileNotFoundError as e:
+        logger.error(f"  ✗ {e}")
+        return 1
     
-    elif "technology" in sector_lower or "tech" in sector_lower:
-        metrics_dict = {
-            "revenue": ["Total Revenue", "Operating Revenue", "Revenue"],
-            "cost_of_goods_sold": ["Cost Of Revenue"],
-            "gross_profit": ["Gross Profit"],
-            "operating_expenses": ["Operating Expenses"],
-            "ebitda": ["EBITDA"],
-            "rd_expense": ["Research And Development", "R&D"],
-            "net_profit": ["Net Income", "Net Profit"],
-            "operating_cash_flow": ["Operating Cash Flow"],
-            "free_cash_flow": ["Free Cash Flow"],
-            "capex": ["Capital Expenditure"],
-            "inventory": ["Inventory"],
-            "total_debt": ["Total Debt"],
-            "cash_and_equivalents": ["Cash And Cash Equivalents"]
-        }
+    start_time = time.time()
     
-    else:  # IT Services or Default
-        metrics_dict = {
-            "revenue": ["Total Revenue", "Operating Revenue", "Revenue"],
-            "cost_of_goods_sold": ["Cost Of Revenue"],
-            "gross_profit": ["Gross Profit"],
-            "operating_expenses": ["Operating Expenses"],
-            "ebitda": ["EBITDA", "Ebitda"],
-            "ebit": ["Operating Income", "EBIT"],
-            "interest_expense": ["Interest Expense"],
-            "net_profit": ["Net Income", "Net Profit", "NetIncome"],
-            "operating_cash_flow": ["Operating Cash Flow"],
-            "free_cash_flow": ["Free Cash Flow"],
-            "accounts_receivable": ["Accounts Receivable"],
-            "cash_and_equivalents": ["Cash And Cash Equivalents"],
-            "employee_benefits": ["Employee Benefits"],
-            "software_assets": ["Software", "Intangible Assets"]
-        }
+    # Load symbols and mappings
+    logger.info("\nLoading configuration...")
+    symbols_master = load_json(SYMBOLS_FILE)
+    symbols = symbols_master.get("symbols", [])
+    symbol_map = load_json(SYMBOL_MAP_FILE)
     
-    # Extract metrics from income statement
-    is_result = extract_all_metrics_4periods(is_stmt, metrics_dict, periods)
+    DELISTED = set(symbol_map.get("delisted", []))
+    SYMBOL_OVERRIDES = symbol_map.get("overrides", {})
     
-    # Extract from balance sheet (overwrite/add)
-    bs_metrics = {}
-    if not bs.empty:
-        for col_idx in range(min(periods, len(bs.columns))):
-            period_date = bs.columns[col_idx]
-            period_str = period_date.strftime('%Y-%m-%d')
-            col_data = bs.iloc[:, col_idx]
+    logger.info(f"  ✓ {len(symbols)} companies to fetch")
+    logger.info(f"  ✓ {len(DELISTED)} delisted excluded")
+    
+    # Build sector mapping
+    logger.info("\nBuilding sector mapping...")
+    SECTOR_MAPPING = build_sector_mapping(symbols)
+    logger.info(f"  ✓ Sector mapping built: {len(SECTOR_MAPPING)} stocks")
+    unique_sectors = set(SECTOR_MAPPING.values())
+    logger.info(f"  ✓ Unique sectors: {', '.join(sorted(unique_sectors))}")
+    
+    # Initialize store
+    yahoof_store = {}
+    
+    processed = 0
+    skipped = 0
+    success_count = 0
+    error_count = 0
+    
+    # Fetch financial data
+    logger.info(f"\nFetching financial metrics...")
+    for symbol in symbols:
+        ticker = str(symbol["ticker"]).strip()
+        
+        # Skip delisted and bonds
+        if ticker in DELISTED:
+            skipped += 1
+            continue
+        
+        if str(ticker).upper().startswith("SGB") or "BOND" in str(ticker).upper():
+            skipped += 1
+            continue
+        
+        # Initialize ticker store
+        sector = SECTOR_MAPPING.get(ticker, "Other")
+        if ticker not in yahoof_store:
+            yahoof_store[ticker] = {
+                "ticker": ticker,
+                "name": symbol.get("name"),
+                "isin": symbol.get("isin"),
+                "sector": sector,
+                "observations": []
+            }
+        
+        # Fetch financial payload
+        try:
+            payload = fetch_financial_payload(ticker, sector, SYMBOL_OVERRIDES)
+            yahoof_store[ticker]["observations"].append({
+                "fetched_at": now(),
+                "raw": payload
+            })
             
-            if col_idx >= len(is_result["historical_periods"]):
-                is_result["historical_periods"].append({"period": period_str})
+            if payload.get("metrics", {}).get("status") == "success":
+                success_count += 1
+            else:
+                error_count += 1
             
-            # Add BS fields
-            for field_name, aliases in metrics_dict.items():
-                if field_name in ["fixed_assets", "work_in_progress", "raw_materials", "finished_goods", 
-                                 "inventory", "accounts_receivable", "cash_and_equivalents", 
-                                 "total_debt", "total_assets", "total_equity", "deposits", "advances"]:
-                    val = 0
-                    for alias in aliases:
-                        if alias in col_data.index:
-                            val = safe_float(col_data[alias])
-                            break
-                    
-                    if col_idx == 0 and field_name not in is_result["latest"]:
-                        is_result["latest"][field_name] = val
-                    
-                    is_result["historical_periods"][col_idx][field_name] = val
+        except Exception as e:
+            error_count += 1
+            yahoof_store[ticker]["observations"].append({
+                "fetched_at": now(),
+                "raw": {"error": str(e)}
+            })
+        
+        processed += 1
+        if processed % 20 == 0:
+            logger.info(f"  Progress: {processed}/{len(symbols)-skipped}...")
     
-    # Extract from cash flow (overwrite/add)
-    if not cf.empty:
-        for col_idx in range(min(periods, len(cf.columns))):
-            period_date = cf.columns[col_idx]
-            period_str = period_date.strftime('%Y-%m-%d')
-            col_data = cf.iloc[:, col_idx]
-            
-            for field_name, aliases in metrics_dict.items():
-                if field_name in ["operating_cash_flow", "free_cash_flow", "capex"]:
-                    val = 0
-                    for alias in aliases:
-                        if alias in col_data.index:
-                            val = safe_float(col_data[alias])
-                            break
-                    
-                    if col_idx == 0 and field_name not in is_result["latest"]:
-                        is_result["latest"][field_name] = val
-                    
-                    if col_idx < len(is_result["historical_periods"]):
-                        is_result["historical_periods"][col_idx][field_name] = val
+    runtime = round(time.time() - start_time, 2)
     
-    return {
-        "metric": f"Sector Specific Metrics - {sector}",
-        "status": "success" if is_result["latest"] else "not_available",
-        "source": "yfinance",
-        "unit": "INR",
-        "latest": is_result["latest"],
-        "historical_periods": is_result["historical_periods"]
-    }
+    # Save output
+    logger.info(f"\nSaving files...")
+    logger.info(f"  Current directory: {Path.cwd()}")
+    
+    save_json(YAHOOF_FILE, yahoof_store)
+    logger.info(f"  ✓ Saved: {YAHOOF_FILE.resolve()}")
+    
+    # Summary
+    logger.info("\n" + "="*80)
+    logger.info("YAHOOF EXECUTION SUMMARY")
+    logger.info("="*80)
+    logger.info(f"Processed:  {processed} companies")
+    logger.info(f"Skipped:    {skipped} (bonds/delisted)")
+    logger.info(f"Success:    {success_count}")
+    logger.info(f"Errors:     {error_count}")
+    logger.info(f"Runtime:    {runtime}s")
+    logger.info(f"Output:     {YAHOOF_FILE.resolve()}")
+    logger.info(f"Log:        {LOG_FILE.resolve()}")
+    logger.info("="*80)
+    
+    return 0
 
 if __name__ == "__main__":
-    print("✓ fetch_yahoof_financials_1.py ready")
-    print("Output: data/yahoof_financials_1.json")
-    print("Log: data/logs/yahoof_financials_1.log")
+    import sys
+    sys.exit(main())
