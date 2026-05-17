@@ -36,11 +36,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -168,13 +166,13 @@ jobs:
       
       - name: Upload results as artifacts
         if: ${{ inputs.upload_artifacts == 'true' && always() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: screener-results
           path: |
             data/screener-history.json
             data/screener-raw.csv
-            logs/screener_scraper.log
+            logs/fetch_financials_screener.log
           retention-days: 30
           if-no-files-found: warn
       
@@ -201,7 +199,7 @@ jobs:
     
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: screener-results
       
