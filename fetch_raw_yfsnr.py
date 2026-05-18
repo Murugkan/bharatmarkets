@@ -296,7 +296,12 @@ class Step1Tester:
 # FETCH LOGIC
 # ============================================================================
 
-def fetch_yahoo_payload(ticker, symbol_overrides, history_period="5y"):
+def fetch_yahoo_payload(ticker, symbol_overrides, history_period="5y", history_intervals=None):
+    """Fetch Yahoo Finance info and price history for multiple intervals"""
+    
+    if history_intervals is None:
+        history_intervals = ["1d"]
+    
     payload = {}
     yahoo_symbol = resolve_symbol(ticker, symbol_overrides)
     stock = yf.Ticker(yahoo_symbol)
@@ -306,11 +311,13 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="5y"):
     except Exception as e:
         payload["info_error"] = str(e)
     
-    try:
-        hist = stock.history(period=history_period, interval="1d")
-        payload[f"history_{history_period}_1d"] = hist.reset_index().astype(str).to_dict("records")
-    except Exception as e:
-        payload["history_error"] = str(e)
+    # Fetch history for each interval
+    for interval in history_intervals:
+        try:
+            hist = stock.history(period=history_period, interval=interval)
+            payload[f"history_{history_period}_{interval}"] = hist.reset_index().astype(str).to_dict("records")
+        except Exception as e:
+            payload[f"history_{interval}_error"] = str(e)
     
     return payload
 
@@ -323,30 +330,43 @@ def extract_table(table):
             rows.append(row)
     return rows
 
-def fetch_screener_payload(ticker, screener_overrides):
+def fetch_screener_payload(ticker, screener_overrides, timeout=30, retries=2, delay=1.0):
     payload = {}
     # Use screener override if available, otherwise use lowercase ticker
     screener_slug = screener_overrides.get(ticker, ticker.lower())
     url = f"https://www.screener.in/company/{screener_slug}/"
     payload["url"] = url
     
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        soup = BeautifulSoup(response.text, "html.parser")
-        payload["tables"] = []
-        
-        for section in soup.select("section"):
-            table = section.select_one("table")
-            if not table:
-                continue
-            heading = section.select_one("h2")
-            payload["tables"].append({
-                "section": heading.get_text(" ", strip=True) if heading else None,
-                "rows": extract_table(table)
-            })
-    except Exception as e:
-        payload["error"] = str(e)
+    last_error = None
     
+    # Retry logic with delay
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=timeout)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, "html.parser")
+            payload["tables"] = []
+            
+            for section in soup.select("section"):
+                table = section.select_one("table")
+                if not table:
+                    continue
+                heading = section.select_one("h2")
+                payload["tables"].append({
+                    "section": heading.get_text(" ", strip=True) if heading else None,
+                    "rows": extract_table(table)
+                })
+            
+            return payload
+        
+        except Exception as e:
+            last_error = str(e)
+            if attempt < retries - 1:
+                time.sleep(delay)
+    
+    # All retries exhausted
+    payload["error"] = last_error
     return payload
 
 
@@ -460,6 +480,10 @@ def main():
     FETCH_YAHOO = fetch_config.get('yahoo', True)
     FETCH_SCREENER = fetch_config.get('screener', True)
     HISTORY_PERIOD = fetch_config.get('history_period', '5y')
+    HISTORY_INTERVALS = fetch_config.get('history_intervals', ['1d'])
+    SCREENER_TIMEOUT = fetch_config.get('screener_timeout', 30)
+    SCREENER_RETRIES = fetch_config.get('screener_retries', 2)
+    SCREENER_DELAY = fetch_config.get('screener_delay', 1.0)
     
     # Create log file handler - WARNING level only (no INFO spam)
     log_file = Path('data/logs/fetch_raw_yfsnr.log')
@@ -481,8 +505,8 @@ def main():
     logger.info("STEP 1: FETCH DATA MODULE - SUMMARY")
     logger.info("="*80)
     logger.info("\nProvider Configuration:")
-    logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance (period: {HISTORY_PERIOD})")
-    logger.info(f"  {'✓' if FETCH_SCREENER else '✗'} Screener.in")
+    logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance (period: {HISTORY_PERIOD}, intervals: {', '.join(HISTORY_INTERVALS)})")
+    logger.info(f"  {'✓' if FETCH_SCREENER else '✗'} Screener.in (timeout: {SCREENER_TIMEOUT}s, retries: {SCREENER_RETRIES}, delay: {SCREENER_DELAY}s)")
     logger.info(f"  Output: {Path('data').resolve()}/")
     logger.info("="*80)
     
@@ -538,7 +562,7 @@ def main():
             if ticker not in yahoo_store:
                 yahoo_store[ticker] = {"ticker": ticker, "name": symbol.get("name"), "isin": symbol.get("isin"), "observations": []}
             try:
-                payload = fetch_yahoo_payload(ticker, SYMBOL_OVERRIDES, HISTORY_PERIOD)
+                payload = fetch_yahoo_payload(ticker, SYMBOL_OVERRIDES, HISTORY_PERIOD, HISTORY_INTERVALS)
                 yahoo_store[ticker]["observations"].append({"fetched_at": now(), "raw": payload})
             except Exception as e:
                 yahoo_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
@@ -548,7 +572,7 @@ def main():
             if ticker not in screener_store:
                 screener_store[ticker] = {"ticker": ticker, "name": symbol.get("name"), "isin": symbol.get("isin"), "observations": []}
             try:
-                payload = fetch_screener_payload(ticker, SCREENER_OVERRIDES)
+                payload = fetch_screener_payload(ticker, SCREENER_OVERRIDES, SCREENER_TIMEOUT, SCREENER_RETRIES, SCREENER_DELAY)
                 screener_store[ticker]["observations"].append({"fetched_at": now(), "raw": payload})
             except Exception as e:
                 screener_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
