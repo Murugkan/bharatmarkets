@@ -107,7 +107,7 @@ class Config:
     SYMBOLS_FILE = Path('unified-symbols.json')
     
     # Output files
-    OUTPUT_JSON = DATA_DIR / "screener_financials_1.json"
+    OUTPUT_JSON = DATA_DIR / "screener_financials.json"
     OUTPUT_CSV = DATA_DIR / "screener_raw.csv"
     CHECKPOINT_FILE = DATA_DIR / "checkpoint.json"
     LOG_FILE = LOGS_DIR / "fetch_financials_screener.log"
