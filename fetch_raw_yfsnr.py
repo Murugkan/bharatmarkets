@@ -77,6 +77,14 @@ def verify_paths():
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+# Interval-to-period mapping: defines what period to use for each interval
+# This ensures: 1d gets 6 months (recent daily data), 1wk/1mo get full configured period
+INTERVAL_PERIOD_MAP = {
+    "1d": "6mo",   # Always 6 months for daily granularity
+    "1wk": None,   # Use configured history_period
+    "1mo": None,   # Use configured history_period
+}
+
 # ============================================================================
 # LOGGING
 # ============================================================================
@@ -297,10 +305,23 @@ class Step1Tester:
 # ============================================================================
 
 def fetch_yahoo_payload(ticker, symbol_overrides, history_period="5y", history_intervals=None):
-    """Fetch Yahoo Finance info and price history for multiple intervals"""
+    """
+    Fetch Yahoo Finance info and price history for multiple intervals.
+    
+    Intervals use INTERVAL_PERIOD_MAP to determine their period:
+    - 1d:  Fixed at 6 months (recent daily data)
+    - 1wk: Uses configured history_period
+    - 1mo: Uses configured history_period
+    
+    Args:
+        ticker: Stock ticker
+        symbol_overrides: Symbol mapping dict
+        history_period: Main history period (2y, 5y, 10y, etc.)
+        history_intervals: List of intervals to fetch (1d, 1wk, 1mo)
+    """
     
     if history_intervals is None:
-        history_intervals = ["1d"]
+        history_intervals = ["1d", "1wk", "1mo"]
     
     payload = {}
     yahoo_symbol = resolve_symbol(ticker, symbol_overrides)
@@ -314,8 +335,13 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="5y", history_i
     # Fetch history for each interval
     for interval in history_intervals:
         try:
-            hist = stock.history(period=history_period, interval=interval)
-            payload[f"history_{history_period}_{interval}"] = hist.reset_index().astype(str).to_dict("records")
+            # Determine period: use map if defined, otherwise use configured period
+            period = INTERVAL_PERIOD_MAP.get(interval, history_period)
+            if period is None:
+                period = history_period
+            
+            hist = stock.history(period=period, interval=interval)
+            payload[f"history_{period}_{interval}"] = hist.reset_index().astype(str).to_dict("records")
         except Exception as e:
             payload[f"history_{interval}_error"] = str(e)
     
@@ -480,7 +506,7 @@ def main():
     FETCH_YAHOO = fetch_config.get('yahoo', True)
     FETCH_SCREENER = fetch_config.get('screener', True)
     HISTORY_PERIOD = fetch_config.get('history_period', '5y')
-    HISTORY_INTERVALS = fetch_config.get('history_intervals', ['1d'])
+    HISTORY_INTERVALS = fetch_config.get('history_intervals', ['1d', '1wk', '1mo'])
     SCREENER_TIMEOUT = fetch_config.get('screener_timeout', 30)
     SCREENER_RETRIES = fetch_config.get('screener_retries', 2)
     SCREENER_DELAY = fetch_config.get('screener_delay', 1.0)
