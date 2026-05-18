@@ -2,19 +2,36 @@
 """
 STEP 1: FETCH DATA MODULE
 =========================
-Independent module for fetching from Yahoo, Screener, Financial Metrics
+Fetches price history (Yahoo Finance) and company fundamentals (Screener.in)
 Includes: Data fetch + Testing + Logging (all self-contained)
+
+SCOPE:
+  - Yahoo Finance: Historical price data (OHLCV) + company info
+  - Screener.in:   Company fundamentals via web scraping
+
+EXCLUDED:
+  - Financial metrics (handled by fetch_yahoof_financials_1.py)
+  - Bonds/SGB securities (filtered out)
+  - Delisted companies (filtered out)
+
+OUTPUT:
+  - data/yahoo-history.json
+  - data/screener-history.json
+  - data/logs/fetch-history.log (warnings/errors only)
 
 GitHub Structure (relative paths):
 bharatmarkets/
-├── step1_fetch.py (THIS FILE)
+├── fetch_history.py (THIS FILE)
 ├── step2_merge.py
+├── fetch_yahoof_financials_1.py
+├── fetch_screener_financials.py
 ├── unified-symbols.json
 ├── symbol_map.json
 └── data/
     ├── yahoo-history.json (output)
     ├── screener-history.json (output)
-    └── financial-metrics.json (output)
+    └── logs/
+        └── fetch-history.log
 """
 
 import json
@@ -26,14 +43,12 @@ import subprocess
 from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC
-from abc import ABC, abstractmethod
 
-# Ensure pandas available for financial metrics
+# Optional: pandas (not used - included if needed for yfinance internals)
 try:
     import pandas as pd
 except ImportError:
-    subprocess.check_call([__import__('sys').executable, "-m", "pip", "install", "pandas", "-q"])
-    import pandas as pd
+    pass  # Optional dependency
 
 # ============================================================================
 # PATHS - All relative to current working directory (repository root)
@@ -47,7 +62,6 @@ SYMBOL_MAP_FILE = Path('symbol_map.json')
 # Output files
 YAHOO_FILE = DATA_DIR / "yahoo-history.json"
 SCREENER_FILE = DATA_DIR / "screener-history.json"
-FINANCIAL_FILE = DATA_DIR / "financial-metrics.json"
 
 # Verify paths exist (fail fast)
 def verify_paths():
@@ -66,6 +80,8 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 # ============================================================================
 # LOGGING
 # ============================================================================
+# Console: INFO level (shows execution progress)
+# File:    WARNING level (only errors, no spam)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,181 +128,19 @@ def build_sector_mapping(symbols_list):
     return mapping
 
 # ============================================================================
-# SECTOR HANDLERS FOR FINANCIAL METRICS
-# ============================================================================
-
-SECTOR_MAPPING = {}
-
-class SectorHandler(ABC):
-    """Base class for sector-specific handlers"""
-    
-    @abstractmethod
-    def extract_metrics(self, ticker_obj, latest_year):
-        pass
-    
-    def extract_field(self, df, match_keys, date_col):
-        """Safe field extraction"""
-        for key in match_keys:
-            if key in df.index:
-                val = df.loc[key, date_col]
-                if isinstance(val, pd.Series):
-                    val = val.iloc[0]
-                return float(val) if pd.notna(val) else 0
-        return 0
-
-class BankingHandler(SectorHandler):
-    def extract_metrics(self, ticker_obj, latest_year):
-        try:
-            bs = ticker_obj.balance_sheet
-            is_stmt = ticker_obj.income_stmt
-            if bs.empty or is_stmt.empty:
-                return {}
-            return {
-                "deposits": self.extract_field(bs, ["Total Deposits", "CustomerDeposits", "Deposits"], latest_year),
-                "advances": self.extract_field(bs, ["Advances", "NetAdvances", "Loans"], latest_year),
-                "npl_gross": self.extract_field(bs, ["Gross NPA", "NonPerformingAssets", "GrossNPA"], latest_year),
-                "net_profit": self.extract_field(is_stmt, ["Net Income", "Net Profit", "NetIncome"], latest_year),
-                "total_assets": self.extract_field(bs, ["Total Assets", "TotalAssets"], latest_year),
-                "capital": self.extract_field(bs, ["Total Equity", "ShareholdersEquity", "Equity"], latest_year)
-            }
-        except:
-            return {}
-
-class ManufacturingHandler(SectorHandler):
-    def extract_metrics(self, ticker_obj, latest_year):
-        try:
-            bs = ticker_obj.balance_sheet
-            cf = ticker_obj.cashflow
-            is_stmt = ticker_obj.income_stmt
-            if bs.empty or cf.empty or is_stmt.empty:
-                return {}
-            return {
-                "capex": self.extract_field(cf, ["Capital Expenditure", "InvestmentsInPropertyPlantAndEquipment", "CapitalExpenditures", "Capital Expenditures"], latest_year),
-                "inventory": self.extract_field(bs, ["Inventory", "Inventories", "InventoriesNet"], latest_year),
-                "ppe_gross": self.extract_field(bs, ["Property Plant Equipment", "Property, Plant and Equipment"], latest_year),
-                "revenue": self.extract_field(is_stmt, ["Total Revenue", "Operating Revenue", "Revenue"], latest_year),
-                "cogs": self.extract_field(is_stmt, ["Cost Of Revenue", "Cost of Goods Sold", "CostOfRevenue"], latest_year)
-            }
-        except:
-            return {}
-
-class ITServicesHandler(SectorHandler):
-    def extract_metrics(self, ticker_obj, latest_year):
-        try:
-            bs = ticker_obj.balance_sheet
-            is_stmt = ticker_obj.income_stmt
-            cf = ticker_obj.cashflow
-            if bs.empty or is_stmt.empty or cf.empty:
-                return {}
-            return {
-                "revenue": self.extract_field(is_stmt, ["Total Revenue", "Operating Revenue", "Revenue"], latest_year),
-                "ebitda": self.extract_field(is_stmt, ["EBITDA", "Ebitda"], latest_year),
-                "net_profit": self.extract_field(is_stmt, ["Net Income", "Net Profit", "NetIncome"], latest_year),
-                "operating_cash_flow": self.extract_field(cf, ["Operating Cash Flow", "OperatingCashFlow"], latest_year),
-                "accounts_receivable": self.extract_field(bs, ["Accounts Receivable", "AccountsReceivable"], latest_year),
-                "cash": self.extract_field(bs, ["Cash And Cash Equivalents", "CashAndCashEquivalents", "Cash"], latest_year)
-            }
-        except:
-            return {}
-
-class TechnologyHandler(SectorHandler):
-    def extract_metrics(self, ticker_obj, latest_year):
-        try:
-            bs = ticker_obj.balance_sheet
-            is_stmt = ticker_obj.income_stmt
-            cf = ticker_obj.cashflow
-            if bs.empty or is_stmt.empty or cf.empty:
-                return {}
-            return {
-                "revenue": self.extract_field(is_stmt, ["Total Revenue", "Operating Revenue", "Revenue"], latest_year),
-                "gross_profit": self.extract_field(is_stmt, ["Gross Profit", "GrossProfit"], latest_year),
-                "rd_expense": self.extract_field(is_stmt, ["Research And Development", "ResearchAndDevelopment", "R&D"], latest_year),
-                "net_profit": self.extract_field(is_stmt, ["Net Income", "Net Profit", "NetIncome"], latest_year),
-                "inventory": self.extract_field(bs, ["Inventory", "Inventories", "InventoriesNet"], latest_year),
-                "debt": self.extract_field(bs, ["Total Debt", "Long Term Debt", "LongTermDebt"], latest_year)
-            }
-        except:
-            return {}
-
-class InfrastructureHandler(SectorHandler):
-    def extract_metrics(self, ticker_obj, latest_year):
-        try:
-            bs = ticker_obj.balance_sheet
-            is_stmt = ticker_obj.income_stmt
-            cf = ticker_obj.cashflow
-            if bs.empty or is_stmt.empty or cf.empty:
-                return {}
-            return {
-                "revenue": self.extract_field(is_stmt, ["Total Revenue", "Operating Revenue", "Revenue"], latest_year),
-                "capex": self.extract_field(cf, ["Capital Expenditure", "CapitalExpenditures", "InvestmentsInPropertyPlantAndEquipment"], latest_year),
-                "debt": self.extract_field(bs, ["Total Debt", "Long Term Debt", "LongTermDebt"], latest_year),
-                "operating_cash_flow": self.extract_field(cf, ["Operating Cash Flow", "OperatingCashFlow"], latest_year),
-                "accounts_receivable": self.extract_field(bs, ["Accounts Receivable", "AccountsReceivable"], latest_year)
-            }
-        except:
-            return {}
-
-class DefaultHandler(SectorHandler):
-    """Generic handler for unmapped sectors"""
-    def extract_metrics(self, ticker_obj, latest_year):
-        try:
-            bs = ticker_obj.balance_sheet
-            is_stmt = ticker_obj.income_stmt
-            cf = ticker_obj.cashflow
-            if bs.empty or is_stmt.empty:
-                return {}
-            return {
-                "revenue": self.extract_field(is_stmt, ["Total Revenue", "Operating Revenue", "Revenue"], latest_year),
-                "net_profit": self.extract_field(is_stmt, ["Net Income", "Net Profit", "NetIncome"], latest_year),
-                "total_assets": self.extract_field(bs, ["Total Assets", "TotalAssets"], latest_year),
-                "cash": self.extract_field(bs, ["Cash And Cash Equivalents", "CashAndCashEquivalents", "Cash"], latest_year),
-                "debt": self.extract_field(bs, ["Total Debt", "Long Term Debt", "LongTermDebt"], latest_year)
-            }
-        except:
-            return {}
-
-# Sector mapping: Maps real sector names to handler instances
-def get_sector_handler(sector_name):
-    """Get handler for any sector - use intelligent fallback"""
-    sector_lower = sector_name.lower()
-    
-    # Check keywords in sector name (order matters!)
-    if any(x in sector_lower for x in ["bank", "financial"]):
-        return SECTOR_HANDLERS["Banking"]
-    if any(x in sector_lower for x in ["manufactur", "industrial", "metal"]):
-        return SECTOR_HANDLERS["Manufacturing"]
-    if any(x in sector_lower for x in ["energy", "infrastructure", "utilit", "power"]):
-        return SECTOR_HANDLERS["Infrastructure"]
-    if any(x in sector_lower for x in ["information technology", "software", "tech", "telecom"]):
-        return SECTOR_HANDLERS["IT Services"]
-    
-    # Default handler for all other sectors (Healthcare, Consumer, Materials, Defence, etc.)
-    return SECTOR_HANDLERS["Default"]
-
-SECTOR_HANDLERS = {
-    "Banking": BankingHandler(),
-    "Manufacturing": ManufacturingHandler(),
-    "IT Services": ITServicesHandler(),
-    "Technology": TechnologyHandler(),
-    "Infrastructure": InfrastructureHandler(),
-    "Default": DefaultHandler()
-}
-
-# ============================================================================
 # TESTING CLASS
 # ============================================================================
 
 class Step1Tester:
     """Test Step 1 output"""
     
-    def __init__(self, yahoo_data, screener_data, financial_data=None):
+    def __init__(self, yahoo_data, screener_data):
         self.yahoo = yahoo_data
         self.screener = screener_data
-        self.financial = financial_data or {}
         self.results = {}
     
     def run_all_tests(self):
-        """Run all Step 1 tests"""
+        """Run all Step 1 tests (Yahoo + Screener providers)"""
         logger.info("\n" + "="*80)
         logger.info("STEP 1: TESTING FETCH RESULTS")
         logger.info("="*80)
@@ -300,14 +154,13 @@ class Step1Tester:
         return self.print_summary()
     
     def test_files_created(self):
-        """Test 1: Output files exist and have valid JSON"""
+        """Test 1: Yahoo + Screener output files exist and have valid JSON"""
         logger.info("\n[TEST 1] FILES CREATED & VALID JSON")
         logger.info("-" * 80)
         
         tests = [
             ("Yahoo", YAHOO_FILE, self.yahoo),
             ("Screener", SCREENER_FILE, self.screener),
-            ("Financial", FINANCIAL_FILE, self.financial),
         ]
         
         passed = 0
@@ -325,18 +178,16 @@ class Step1Tester:
         self.results["Files Created"] = (passed, len(tests))
     
     def test_ticker_coverage(self):
-        """Test 2: All 97 companies fetched"""
+        """Test 2: All companies fetched from both providers"""
         logger.info("\n[TEST 2] TICKER COVERAGE")
         logger.info("-" * 80)
         
         y_tickers = set(self.yahoo.keys())
         s_tickers = set(self.screener.keys())
-        fin_tickers = set(self.financial.keys())
-        all_tickers = y_tickers | s_tickers | fin_tickers
+        all_tickers = y_tickers | s_tickers
         
         logger.info(f"  Yahoo:     {len(y_tickers):2d} tickers")
         logger.info(f"  Screener:  {len(s_tickers):2d} tickers")
-        logger.info(f"  Financial: {len(fin_tickers):2d} tickers")
         logger.info(f"  Combined:  {len(all_tickers):2d} tickers")
         
         if len(all_tickers) >= 97:
@@ -353,11 +204,9 @@ class Step1Tester:
         
         y_obs = sum(len(e.get('observations', [])) for e in self.yahoo.values())
         s_obs = sum(len(e.get('observations', [])) for e in self.screener.values())
-        fin_obs = sum(len(e.get('observations', [])) for e in self.financial.values())
         
         logger.info(f"  Yahoo:     {y_obs:3d} observations")
         logger.info(f"  Screener:  {s_obs:3d} observations")
-        logger.info(f"  Financial: {fin_obs:3d} observations")
         
         passed = 0
         if y_obs > 0:
@@ -366,11 +215,8 @@ class Step1Tester:
         if s_obs > 0:
             logger.info(f"  ✓ Screener has data")
             passed += 1
-        if fin_obs > 0:
-            logger.info(f"  ✓ Financial has data")
-            passed += 1
         
-        self.results["Observation Counts"] = (passed, 3)
+        self.results["Observation Counts"] = (passed, 2)
     
     def test_data_structure(self):
         """Test 4: Data has correct structure"""
@@ -399,7 +245,7 @@ class Step1Tester:
         self.results["Data Structure"] = (passed, total if total > 0 else 1)
     
     def test_error_handling(self):
-        """Test 5: Check for errors in fetch"""
+        """Test 5: Check for errors in Yahoo+Screener fetch"""
         logger.info("\n[TEST 5] ERROR HANDLING")
         logger.info("-" * 80)
         
@@ -503,174 +349,6 @@ def fetch_screener_payload(ticker, screener_overrides):
     
     return payload
 
-def fetch_financial_payload(ticker, sector, symbol_overrides):
-    """Fetch financial metrics - RAW DATA ONLY with HISTORICAL DATA (4 quarters)"""
-    resolved_ticker = resolve_symbol(ticker, symbol_overrides)
-    
-    payload = {
-        "status": "not_available",
-        "capex": {},
-        "debt_details": {},
-        "working_capital": {},
-        "exceptional_items": {}
-    }
-    
-    try:
-        stock = yf.Ticker(resolved_ticker)
-        
-        # ========== CAPEX (4 quarters) ==========
-        try:
-            cf = stock.quarterly_cashflow
-            if not cf.empty and 'Capital Expenditure' in cf.index:
-                capex_data = cf.loc['Capital Expenditure'].head(4)
-                history = []
-                
-                for date, val in capex_data.items():
-                    if pd.notna(val) and val != 0:
-                        history.append({
-                            'period': date.strftime('%Y-%m-%d'),
-                            'value_raw': float(val)
-                        })
-                
-                if history:
-                    payload["capex"] = {
-                        "status": "success",
-                        "source": "yfinance",
-                        "historical_periods": history[:4]
-                    }
-        except Exception as e:
-            payload["capex"]["error"] = str(e)
-        
-        # ========== DEBT (4 quarters) ==========
-        try:
-            bs = stock.quarterly_balance_sheet
-            if not bs.empty and len(bs.columns) > 0:
-                history = []
-                
-                for col_idx in range(min(4, len(bs.columns))):
-                    period = bs.iloc[:, col_idx]
-                    period_date = bs.columns[col_idx]
-                    
-                    st_debt = None
-                    lt_debt = None
-                    
-                    for key in period.index:
-                        k_lower = str(key).lower()
-                        if 'short' in k_lower and ('debt' in k_lower or 'borrowing' in k_lower):
-                            val = period[key]
-                            if pd.notna(val) and val > 0:
-                                st_debt = float(val)
-                        if 'long term' in k_lower and 'debt' in k_lower:
-                            val = period[key]
-                            if pd.notna(val) and val > 0:
-                                lt_debt = float(val)
-                    
-                    if st_debt is not None or lt_debt is not None:
-                        period_data = {'period': period_date.strftime('%Y-%m-%d')}
-                        if st_debt is not None:
-                            period_data['short_term_debt_raw'] = st_debt
-                        if lt_debt is not None:
-                            period_data['long_term_debt_raw'] = lt_debt
-                        history.append(period_data)
-                
-                if history:
-                    payload["debt_details"] = {
-                        "status": "success",
-                        "source": "yfinance",
-                        "historical_periods": history
-                    }
-        except Exception as e:
-            payload["debt_details"]["error"] = str(e)
-        
-        # ========== WORKING CAPITAL (4 quarters) ==========
-        try:
-            bs = stock.quarterly_balance_sheet
-            if not bs.empty and len(bs.columns) > 0:
-                history = []
-                
-                for col_idx in range(min(4, len(bs.columns))):
-                    period = bs.iloc[:, col_idx]
-                    period_date = bs.columns[col_idx]
-                    
-                    ar = None
-                    ap = None
-                    inv = None
-                    
-                    for key in period.index:
-                        k_lower = str(key).lower()
-                        if 'accounts receivable' in k_lower:
-                            val = period[key]
-                            if pd.notna(val):
-                                ar = float(val)
-                        if 'accounts payable' in k_lower:
-                            val = period[key]
-                            if pd.notna(val):
-                                ap = float(val)
-                        if 'inventory' in k_lower:
-                            val = period[key]
-                            if pd.notna(val):
-                                inv = float(val)
-                    
-                    if ar is not None or ap is not None or inv is not None:
-                        period_data = {'period': period_date.strftime('%Y-%m-%d')}
-                        if ar is not None:
-                            period_data['accounts_receivable_raw'] = ar
-                        if ap is not None:
-                            period_data['accounts_payable_raw'] = ap
-                        if inv is not None:
-                            period_data['inventory_raw'] = inv
-                        history.append(period_data)
-                
-                if history:
-                    payload["working_capital"] = {
-                        "status": "success",
-                        "source": "yfinance",
-                        "historical_periods": history
-                    }
-        except Exception as e:
-            payload["working_capital"]["error"] = str(e)
-        
-        # ========== EXCEPTIONAL ITEMS (4 periods) ==========
-        try:
-            is_stmt = stock.quarterly_income_stmt
-            if not is_stmt.empty and len(is_stmt.columns) > 0:
-                history = []
-                
-                for col_idx in range(min(4, len(is_stmt.columns))):
-                    period = is_stmt.iloc[:, col_idx]
-                    period_date = is_stmt.columns[col_idx]
-                    
-                    for key in period.index:
-                        k_lower = str(key).lower()
-                        if 'exceptional' in k_lower or 'extraordinary' in k_lower:
-                            val = period[key]
-                            if pd.notna(val) and val != 0:
-                                history.append({
-                                    'period': period_date.strftime('%Y-%m-%d'),
-                                    'value_raw': float(val)
-                                })
-                                break
-                
-                if history:
-                    payload["exceptional_items"] = {
-                        "status": "success",
-                        "source": "yfinance",
-                        "historical_periods": history
-                    }
-        except Exception as e:
-            payload["exceptional_items"]["error"] = str(e)
-        
-        # Determine overall status
-        if any(payload[key].get("status") == "success" for key in ["capex", "debt_details", "working_capital", "exceptional_items"]):
-            payload["status"] = "success"
-        
-        return {
-            "resolved_ticker": resolved_ticker,
-            "sector": sector,
-            "metrics": payload
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 # ============================================================================
 # MAIN
@@ -698,8 +376,7 @@ def commit_to_git(log_file):
         # Add files
         files = [
             "data/yahoo-history.json",
-            "data/screener-history.json",
-            "data/financial-metrics.json"
+            "data/screener-history.json"
         ]
         
         if log_file and log_file.exists():
@@ -729,7 +406,7 @@ def commit_to_git(log_file):
         
         # Commit
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"[Step 1] Fetch: Yahoo+Screener+Financial ({timestamp})"
+        msg = f"[Step 1] Fetch: Yahoo+Screener ({timestamp})"
         
         result = subprocess.run(
             ["git", "commit", "-m", msg],
@@ -782,34 +459,32 @@ def main():
     fetch_config = load_json(Path('.fetch_config.json'))
     FETCH_YAHOO = fetch_config.get('yahoo', True)
     FETCH_SCREENER = fetch_config.get('screener', True)
-    FETCH_FINANCIAL = fetch_config.get('financial', True)
     HISTORY_PERIOD = fetch_config.get('history_period', '5y')
-    LOG_LEVEL = fetch_config.get('log_level', 'WARNING').upper()
     
-    # Create log file handler with configured level
+    # Create log file handler - WARNING level only (no INFO spam)
     log_file = Path('data/logs/fetch-history.log')
     log_file.parent.mkdir(parents=True, exist_ok=True)
     
     file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
-    file_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+    file_handler.setLevel(logging.WARNING)  # Only warnings/errors to file
     file_handler.setFormatter(logging.Formatter(
         '%(asctime)s | %(name)-10s | %(levelname)-8s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     ))
     logger.addHandler(file_handler)
     
-    # Set logger level
-    logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+    # Set logger level to INFO (for console output)
+    logger.setLevel(logging.INFO)
     
+    # Print summary FIRST
     logger.info("\n" + "="*80)
-    logger.info("STEP 1: FETCH DATA MODULE")
+    logger.info("STEP 1: FETCH DATA MODULE - SUMMARY")
     logger.info("="*80)
-    
     logger.info("\nProvider Configuration:")
     logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance (period: {HISTORY_PERIOD})")
     logger.info(f"  {'✓' if FETCH_SCREENER else '✗'} Screener.in")
-    logger.info(f"  {'✓' if FETCH_FINANCIAL else '✗'} Financial Metrics")
-    logger.info(f"  Log Level: {LOG_LEVEL}")
+    logger.info(f"  Output: {Path('data').resolve()}/")
+    logger.info("="*80)
     
     # Verify paths
     logger.info("\nVerifying paths...")
@@ -837,25 +512,15 @@ def main():
     logger.info(f"  ✓ {len(symbols)} companies to fetch")
     logger.info(f"  ✓ {len(DELISTED)} delisted excluded")
     
-    # Build sector mapping if financial enabled
-    if FETCH_FINANCIAL:
-        logger.info("\nBuilding sector mapping...")
-        global SECTOR_MAPPING
-        SECTOR_MAPPING = build_sector_mapping(symbols)
-        logger.info(f"  ✓ Sector mapping built: {len(SECTOR_MAPPING)} stocks")
-        unique_sectors = set(SECTOR_MAPPING.values())
-        logger.info(f"  ✓ Unique sectors: {', '.join(sorted(unique_sectors))}")
-    
     # Initialize stores
     yahoo_store = {}
     screener_store = {}
-    financial_store = {}
     
     processed = 0
     skipped = 0
     
     # Fetch (only enabled providers)
-    enabled_count = sum([FETCH_YAHOO, FETCH_SCREENER, FETCH_FINANCIAL])
+    enabled_count = sum([FETCH_YAHOO, FETCH_SCREENER])
     logger.info(f"\nFetching from {enabled_count} provider(s)...")
     for symbol in symbols:
         ticker = str(symbol["ticker"]).strip()
@@ -888,17 +553,6 @@ def main():
             except Exception as e:
                 screener_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
         
-        # Financial Metrics (if enabled)
-        if FETCH_FINANCIAL:
-            sector = SECTOR_MAPPING.get(ticker, "Other")
-            if ticker not in financial_store:
-                financial_store[ticker] = {"ticker": ticker, "name": symbol.get("name"), "isin": symbol.get("isin"), "sector": sector, "observations": []}
-            try:
-                payload = fetch_financial_payload(ticker, sector, SYMBOL_OVERRIDES)
-                financial_store[ticker]["observations"].append({"fetched_at": now(), "raw": payload})
-            except Exception as e:
-                financial_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
-        
         processed += 1
         if processed % 20 == 0:
             logger.info(f"  Progress: {processed}/{len(symbols)-skipped}...")
@@ -917,26 +571,16 @@ def main():
         save_json(SCREENER_FILE, screener_store)
         logger.info(f"  ✓ Saved: {SCREENER_FILE.resolve()}")
     
-    if FETCH_FINANCIAL:
-        save_json(FINANCIAL_FILE, financial_store)
-        logger.info(f"  ✓ Saved: {FINANCIAL_FILE.resolve()}")
-    
     # Test
-    tester = Step1Tester(yahoo_store, screener_store, financial_store)
+    tester = Step1Tester(yahoo_store, screener_store)
     tester.run_all_tests()
     
     # Commit
     commit_to_git(log_file)
     
-    # Summary
-    logger.info("\n" + "="*80)
-    logger.info("STEP 1 EXECUTION SUMMARY")
-    logger.info("="*80)
-    logger.info(f"Processed:  {processed} companies")
-    logger.info(f"Skipped:    {skipped} (bonds/delisted)")
-    logger.info(f"Runtime:    {runtime}s")
-    logger.info(f"Output:     {DATA_DIR.resolve()}/")
-    logger.info("="*80)
+    # Brief completion message
+    logger.info("\n✅ STEP 1 COMPLETE")
+    logger.info(f"Processed: {processed} | Skipped: {skipped} | Runtime: {runtime}s")
     
     return 0
 
