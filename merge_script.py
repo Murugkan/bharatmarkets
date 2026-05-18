@@ -51,6 +51,16 @@ def save_json(filepath, data):
         return False
 
 
+def load_json(filepath):
+    """Load JSON file safely"""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ Error loading {filepath}: {str(e)}")
+        return None
+
+
 def get_all_tickers(ds1, ds2, ds3, ds4):
     """Get union of all tickers from all 4 datasets"""
     tickers = set()
