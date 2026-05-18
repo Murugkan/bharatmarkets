@@ -60,23 +60,19 @@ jobs:
           echo "  History Period: ${{ github.event.inputs.history_period }}"
           echo ""
           
-          # Determine interval based on period
-          PERIOD="${{ github.event.inputs.history_period }}"
-          if [[ "$PERIOD" == "1y" ]]; then
-            INTERVALS="1d"
-          else
-            INTERVALS="1wk, 1mo"
-          fi
-          
           if [[ "${{ github.event.inputs.providers }}" == "all" ]]; then
-            echo "  ✓ Yahoo Finance:      ENABLED (period: $PERIOD, intervals: $INTERVALS)"
+            echo "  ✓ Yahoo Finance:      ENABLED"
+            echo "    • Last 6 months:     1d interval (daily)"
+            echo "    • Last ${{ github.event.inputs.history_period }}:       1wk + 1mo intervals"
             echo "  ✓ Screener.in:        ENABLED"
             echo ""
             echo "  Output files:"
             echo "    - data/yahoofin_raw_data.json"
             echo "    - data/screener_raw_data.json"
           elif [[ "${{ github.event.inputs.providers }}" == "yahoofin" ]]; then
-            echo "  ✓ Yahoo Finance:      ENABLED (period: $PERIOD, intervals: $INTERVALS)"
+            echo "  ✓ Yahoo Finance:      ENABLED"
+            echo "    • Last 6 months:     1d interval (daily)"
+            echo "    • Last ${{ github.event.inputs.history_period }}:       1wk + 1mo intervals"
             echo "  ✗ Screener.in:        DISABLED"
             echo ""
             echo "  Output files:"
@@ -101,7 +97,7 @@ jobs:
           HISTORY_PERIOD: ${{ github.event.inputs.history_period }}
           LOG_LEVEL: ${{ github.event.inputs.log_level }}
         run: |
-          # Create fetch configuration with smart interval logic
+          # Create fetch configuration
           python3 << 'PYTHON_EOF'
           import os
           import json
@@ -110,11 +106,11 @@ jobs:
           history_period = os.getenv('HISTORY_PERIOD', '5y')
           log_level = os.getenv('LOG_LEVEL', 'WARNING')
           
-          # Smart interval logic: 1y=1d, >1y=1wk,1mo
-          if history_period == '1y':
-            history_intervals = ['1d']
-          else:
-            history_intervals = ['1wk', '1mo']
+          # Intervals: script uses INTERVAL_PERIOD_MAP to determine periods
+          # - 1d: 6 months (fixed, recent daily data)
+          # - 1wk: full history_period
+          # - 1mo: full history_period
+          history_intervals = ['1d', '1wk', '1mo']
           
           # Map selection to provider flags
           config = {
