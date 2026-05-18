@@ -48,7 +48,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -r fetch_history_requirements.txt -q
+        run: pip install yfinance requests beautifulsoup4 lxml -q
 
       - name: Display Loading Configuration
         run: |
@@ -60,15 +60,23 @@ jobs:
           echo "  History Period: ${{ github.event.inputs.history_period }}"
           echo ""
           
+          # Determine interval based on period
+          PERIOD="${{ github.event.inputs.history_period }}"
+          if [[ "$PERIOD" == "1y" ]]; then
+            INTERVALS="1d"
+          else
+            INTERVALS="1wk, 1mo"
+          fi
+          
           if [[ "${{ github.event.inputs.providers }}" == "all" ]]; then
-            echo "  ✓ Yahoo Finance:      ENABLED (period: ${{ github.event.inputs.history_period }})"
+            echo "  ✓ Yahoo Finance:      ENABLED (period: $PERIOD, intervals: $INTERVALS)"
             echo "  ✓ Screener.in:        ENABLED"
             echo ""
             echo "  Output files:"
             echo "    - data/yahoofin_raw_data.json"
             echo "    - data/screener_raw_data.json"
           elif [[ "${{ github.event.inputs.providers }}" == "yahoofin" ]]; then
-            echo "  ✓ Yahoo Finance:      ENABLED (period: ${{ github.event.inputs.history_period }})"
+            echo "  ✓ Yahoo Finance:      ENABLED (period: $PERIOD, intervals: $INTERVALS)"
             echo "  ✗ Screener.in:        DISABLED"
             echo ""
             echo "  Output files:"
@@ -93,7 +101,7 @@ jobs:
           HISTORY_PERIOD: ${{ github.event.inputs.history_period }}
           LOG_LEVEL: ${{ github.event.inputs.log_level }}
         run: |
-          # Set environment variable for fetch_history.py to read
+          # Create fetch configuration with smart interval logic
           python3 << 'PYTHON_EOF'
           import os
           import json
@@ -102,11 +110,18 @@ jobs:
           history_period = os.getenv('HISTORY_PERIOD', '5y')
           log_level = os.getenv('LOG_LEVEL', 'WARNING')
           
+          # Smart interval logic: 1y=1d, >1y=1wk,1mo
+          if history_period == '1y':
+            history_intervals = ['1d']
+          else:
+            history_intervals = ['1wk', '1mo']
+          
           # Map selection to provider flags
           config = {
             'yahoo': False,
             'screener': False,
             'history_period': history_period,
+            'history_intervals': history_intervals,
             'log_level': log_level
           }
           
@@ -118,26 +133,36 @@ jobs:
           elif 'screener' in providers:
             config['screener'] = True
           
-          # Save to file for fetch_history.py to read
+          # Save to file for fetch_raw_yfsnr.py to read
           with open('.fetch_config.json', 'w') as f:
-            json.dump(config, f)
+            json.dump(config, f, indent=2)
           
           print(f"Fetch config: {json.dumps(config, indent=2)}")
           PYTHON_EOF
           
           python fetch_raw_yfsnr.py
 
+      - name: Verify output files
+        run: |
+          echo "=== Checking output files ==="
+          [ -f data/yahoofin_raw_data.json ] && echo "✓ yahoofin_raw_data.json" || echo "✗ yahoofin_raw_data.json not found"
+          [ -f data/screener_raw_data.json ] && echo "✓ screener_raw_data.json" || echo "✗ screener_raw_data.json not found"
+          [ -f data/logs/fetch_raw_yfsnr.log ] && echo "✓ fetch_raw_yfsnr.log" || echo "✗ fetch_raw_yfsnr.log not found"
+
       - name: Commit & Push
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
           
+          # Add files
+          git add data/yahoofin_raw_data.json data/screener_raw_data.json data/logs/fetch_raw_yfsnr.log 2>/dev/null || true
+          
           # Check if there are changes
-          if git diff --quiet; then
+          if git diff --quiet --cached; then
             echo "No changes to commit"
             exit 0
           fi
           
-          git add data/
-          git commit -m "[Step 1] Fetch: $(date +'%Y-%m-%d %H:%M:%S')"
+          git commit -m "[Step 1] Fetch Raw Data: $(date +'%Y-%m-%d %H:%M:%S')"
           git push origin main
+
