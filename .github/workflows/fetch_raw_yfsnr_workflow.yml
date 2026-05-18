@@ -1,0 +1,143 @@
+name: 'Fetch Raw Data - yahoofin + screener'
+
+on:
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: 'Select which data providers to fetch'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'yahoofin'
+          - 'screener'
+      history_period:
+        description: 'Yahoo history period'
+        required: false
+        default: '5y'
+        type: choice
+        options:
+          - '1y'
+          - '2y'
+          - '5y'
+          - '10y'
+      log_level:
+        description: 'Log level (DEBUG=verbose, INFO=normal, WARNING=errors only)'
+        required: false
+        default: 'WARNING'
+        type: choice
+        options:
+          - 'DEBUG'
+          - 'INFO'
+          - 'WARNING'
+          - 'ERROR'
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r fetch_history_requirements.txt -q
+
+      - name: Display Loading Configuration
+        run: |
+          echo "════════════════════════════════════════════════════════════"
+          echo "  📊 RAW DATA FETCH - LOADING CONFIGURATION"
+          echo "════════════════════════════════════════════════════════════"
+          echo ""
+          echo "  Selection: ${{ github.event.inputs.providers }}"
+          echo "  History Period: ${{ github.event.inputs.history_period }}"
+          echo ""
+          
+          if [[ "${{ github.event.inputs.providers }}" == "all" ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (period: ${{ github.event.inputs.history_period }})"
+            echo "  ✓ Screener.in:        ENABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoofin_raw_data.json"
+            echo "    - data/screener_raw_data.json"
+          elif [[ "${{ github.event.inputs.providers }}" == "yahoofin" ]]; then
+            echo "  ✓ Yahoo Finance:      ENABLED (period: ${{ github.event.inputs.history_period }})"
+            echo "  ✗ Screener.in:        DISABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/yahoofin_raw_data.json"
+          elif [[ "${{ github.event.inputs.providers }}" == "screener" ]]; then
+            echo "  ✗ Yahoo Finance:      DISABLED"
+            echo "  ✓ Screener.in:        ENABLED"
+            echo ""
+            echo "  Output files:"
+            echo "    - data/screener_raw_data.json"
+          fi
+          
+          echo ""
+          echo "  Tickers: 97 companies"
+          echo "  Runtime: ~2-3 minutes"
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
+
+      - name: Run fetch_raw_yfsnr.py
+        env:
+          FETCH_PROVIDERS: ${{ github.event.inputs.providers }}
+          HISTORY_PERIOD: ${{ github.event.inputs.history_period }}
+          LOG_LEVEL: ${{ github.event.inputs.log_level }}
+        run: |
+          # Set environment variable for fetch_history.py to read
+          python3 << 'PYTHON_EOF'
+          import os
+          import json
+          
+          providers = os.getenv('FETCH_PROVIDERS', 'all')
+          history_period = os.getenv('HISTORY_PERIOD', '5y')
+          log_level = os.getenv('LOG_LEVEL', 'WARNING')
+          
+          # Map selection to provider flags
+          config = {
+            'yahoo': False,
+            'screener': False,
+            'history_period': history_period,
+            'log_level': log_level
+          }
+          
+          if 'all' in providers:
+            config['yahoo'] = True
+            config['screener'] = True
+          elif 'yahoofin' in providers:
+            config['yahoo'] = True
+          elif 'screener' in providers:
+            config['screener'] = True
+          
+          # Save to file for fetch_history.py to read
+          with open('.fetch_config.json', 'w') as f:
+            json.dump(config, f)
+          
+          print(f"Fetch config: {json.dumps(config, indent=2)}")
+          PYTHON_EOF
+          
+          python fetch_raw_yfsnr.py
+
+      - name: Commit & Push
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          
+          # Check if there are changes
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git add data/
+          git commit -m "[Step 1] Fetch: $(date +'%Y-%m-%d %H:%M:%S')"
+          git push origin main
