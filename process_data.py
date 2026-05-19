@@ -181,37 +181,113 @@ def safe_divide(num, denom, decimals=4):
 # ============================================================================
 
 def extract_and_normalize_data(company):
-    """Extract financial data from all sources"""
-    data = {'bs': {}, 'is': {}}
+    """
+    Extract financial data from all sources with proper nesting handling
     
-    if 'yahoofin_raw' in company and isinstance(company['yahoofin_raw'], dict):
-        raw = company['yahoofin_raw']
-        data['bs'].update({k: raw.get(k) for k in ['total_assets', 'total_liabilities', 'equity', 'current_assets', 'current_liabilities', 'sector']})
+    Sources:
+    - yahoofin_financials: observations[0].raw.latest (NUMERIC, current)
+    - screener_financials: tables.*.data (TEXT historical, latest year)
+    - yahoofin_raw: observations[0].raw (price/market data)
+    - screener_raw: observations[0].raw.tables (ratios/metrics)
+    """
     
-    if 'yahoofin_financials' in company and isinstance(company['yahoofin_financials'], dict):
-        fin = company['yahoofin_financials']
-        for k in ['total_assets', 'total_liabilities', 'equity', 'current_assets', 'current_liabilities']:
-            if k not in data['bs'] or data['bs'][k] is None:
-                data['bs'][k] = fin.get(k)
-        data['bs'].update({k: fin.get(k) for k in ['inventory', 'cash', 'total_debt']})
-        data['is'].update({k: fin.get(k) for k in ['revenue', 'net_profit', 'ebit', 'interest_expense', 'tax_expense']})
+    data = {
+        'bs': {},      # balance sheet
+        'is': {},      # income statement
+        'sector': None
+    }
     
-    if 'screener_financials' in company and isinstance(company['screener_financials'], dict):
-        scr = company['screener_financials']
-        if 'tables' in scr:
-            tables = scr['tables']
-            if 'profit_loss' in tables and isinstance(tables['profit_loss'], dict):
-                pl = tables['profit_loss']
-                for k in ['revenue', 'ebit', 'interest_expense', 'net_profit']:
-                    if k not in data['is'] or data['is'][k] is None:
-                        data['is'][k] = pl.get(k)
-                data['is'].update({k: pl.get(k) for k in ['cogs', 'gross_profit']})
+    # ====== SOURCE 1: yahoofin_financials (PRIMARY) ======
+    if 'yahoofin_financials' in company:
+        try:
+            yf = company['yahoofin_financials']
+            latest = yf.get('observations', [{}])[0].get('raw', {}).get('latest', {})
             
-            if 'balance_sheet' in tables and isinstance(tables['balance_sheet'], dict):
-                bs = tables['balance_sheet']
-                for k in ['total_assets', 'current_assets', 'total_liabilities', 'current_liabilities', 'equity']:
-                    if k not in data['bs'] or data['bs'][k] is None:
-                        data['bs'][k] = bs.get(k)
+            # Balance Sheet
+            for key in ['total_assets', 'total_liabilities', 'total_equity', 'invested_capital']:
+                val = latest.get(key)
+                if val is not None:
+                    data['bs'][key] = int(val)
+            
+            # Income Statement
+            for key in ['net_profit', 'ebit', 'interest_expense', 'revenue']:
+                val = latest.get(key)
+                if val is not None:
+                    data['is'][key] = int(val)
+            
+            # Sector
+            if yf.get('sector'):
+                data['sector'] = yf['sector']
+                
+        except (IndexError, TypeError, AttributeError, ValueError):
+            pass
+    
+    # ====== SOURCE 2: screener_financials (SUPPLEMENTARY) ======
+    if 'screener_financials' in company:
+        try:
+            sf = company['screener_financials']
+            tables = sf.get('tables', {})
+            
+            # Balance Sheet & Profit/Loss tables
+            for table_name in ['balance_sheet', 'profit_loss']:
+                if table_name not in tables:
+                    continue
+                    
+                table = tables[table_name].get('data', {})
+                for field_name, year_dict in table.items():
+                    if not isinstance(year_dict, dict) or not year_dict:
+                        continue
+                    
+                    # Get latest year (last value in dict)
+                    latest_val = list(year_dict.values())[-1]
+                    
+                    try:
+                        # Parse string like "1,234" → float → int (in crores, so *1M)
+                        num = float(str(latest_val).replace(',', ''))
+                        num = int(num * 1000000)
+                        
+                        field_lower = field_name.lower().strip()
+                        
+                        # Map to standard keys
+                        if 'revenue' in field_lower or 'sales' in field_lower:
+                            if 'revenue' not in data['is'] or data['is'].get('revenue') is None:
+                                data['is']['revenue'] = num
+                        elif 'net profit' in field_lower:
+                            if 'net_profit' not in data['is'] or data['is'].get('net_profit') is None:
+                                data['is']['net_profit'] = num
+                        elif 'profit before tax' in field_lower or 'pbt' in field_lower:
+                            if 'ebit' not in data['is'] or data['is'].get('ebit') is None:
+                                data['is']['ebit'] = num
+                                
+                    except (ValueError, TypeError):
+                        pass
+                        
+        except (KeyError, AttributeError, TypeError):
+            pass
+    
+    # ====== SOURCE 3 & 4: Other sources (if needed) ======
+    # yahoofin_raw: price/market data (not used currently)
+    # screener_raw: ratios (can be added later)
+    
+    # ====== NORMALIZATION ======
+    
+    # Add sector to bs (for compress_company to find it)
+    data['bs']['sector'] = data.get('sector')
+    
+    # Derive missing equity
+    if ('total_equity' not in data['bs'] or data['bs'].get('total_equity') is None) and \
+       data['bs'].get('total_assets') and data['bs'].get('total_liabilities'):
+        data['bs']['total_equity'] = data['bs']['total_assets'] - data['bs']['total_liabilities']
+    
+    # Ensure all keys exist (may be None)
+    for key in ['total_assets', 'total_liabilities', 'total_equity', 'current_assets', 
+                'current_liabilities', 'total_debt', 'cash', 'inventory', 'invested_capital']:
+        if key not in data['bs']:
+            data['bs'][key] = None
+    
+    for key in ['revenue', 'net_profit', 'ebit', 'interest_expense', 'tax_expense']:
+        if key not in data['is']:
+            data['is'][key] = None
     
     return data
 
@@ -396,7 +472,7 @@ def compress_company(idx, ticker, company, profile, ratios, health_score, valida
             'bs': {
                 'ta': bs.get('total_assets'),
                 'tl': bs.get('total_liabilities'),
-                'eq': bs.get('equity'),
+                'eq': bs.get('total_equity'),
                 'ca': bs.get('current_assets'),
                 'cl': bs.get('current_liabilities'),
                 'td': bs.get('total_debt'),
