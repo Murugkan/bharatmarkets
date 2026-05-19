@@ -17,9 +17,9 @@ from collections import defaultdict
 
 
 def setup_logging(repo_root=None, log_dir="data/logs", log_file="raw_market_data.log"):
-    """Setup logging to file"""
+    """Setup logging to file - uses current working directory for GitHub Actions compatibility"""
     if repo_root is None:
-        repo_root = Path(__file__).parent.parent
+        repo_root = Path.cwd()  # Use current working directory (repo root in GitHub Actions)
     
     log_path = Path(repo_root) / log_dir
     log_path.mkdir(parents=True, exist_ok=True)
@@ -245,16 +245,10 @@ def merge_datasets(ds1, ds2, ds3, ds4, output_file="data/raw_market_data.json", 
 
 
 def main():
-    """Main execution"""
+    """Main execution - GitHub Actions compatible with root-relative paths"""
     
-    # Get repository root (assuming script is in repo root or subdirectory)
-    repo_root = Path(__file__).parent
-    if (repo_root / "data").exists():
-        # Script is in repo root
-        pass
-    else:
-        # Script might be in a subdirectory, go up
-        repo_root = repo_root.parent
+    # Get repository root - use current working directory for GitHub Actions
+    repo_root = Path.cwd()  # This will be repo root in GitHub Actions
     
     # Setup logging
     logger, log_file = setup_logging(repo_root=repo_root)
@@ -262,6 +256,7 @@ def main():
     logger.info("4-DATASET MERGER - START")
     logger.info("=" * 90)
     logger.info(f"Repository root: {repo_root}")
+    logger.info(f"Current working directory: {Path.cwd()}")
     
     # File paths (relative to repository root)
     data_dir = repo_root / "data"

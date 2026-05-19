@@ -534,12 +534,43 @@ def main():
         return False
     
     raw_data = load_json(str(input_file))
-    if not raw_data or 'data' not in raw_data:
-        print(f"❌ Failed to load data")
-        logger.error("Failed to load data")
+    
+    # Debug output
+    if not raw_data:
+        print(f"❌ Failed to load JSON - file is empty or invalid")
+        logger.error("Failed to load JSON - file is empty or invalid")
         return False
     
-    companies_raw = raw_data['data']
+    print(f"✓ JSON loaded successfully")
+    print(f"  Keys in file: {list(raw_data.keys())}")
+    logger.info(f"File keys: {list(raw_data.keys())}")
+    
+    # Try different possible structures
+    if 'data' in raw_data:
+        companies_raw = raw_data['data']
+    elif 'companies' in raw_data:
+        companies_raw = raw_data['companies']
+    elif isinstance(raw_data, dict) and len(raw_data) > 0:
+        # Try first key
+        first_key = list(raw_data.keys())[0]
+        if isinstance(raw_data[first_key], dict):
+            companies_raw = {first_key: raw_data[first_key]}
+        else:
+            companies_raw = raw_data
+    else:
+        print(f"❌ Cannot find companies data in file")
+        print(f"❌ File structure: {type(raw_data)}")
+        if isinstance(raw_data, dict):
+            print(f"❌ Keys: {list(raw_data.keys())}")
+        logger.error(f"Cannot find companies data - structure unknown")
+        return False
+    
+    if not isinstance(companies_raw, dict) or len(companies_raw) == 0:
+        print(f"❌ No companies found in data")
+        print(f"❌ Type: {type(companies_raw)}, Length: {len(companies_raw) if hasattr(companies_raw, '__len__') else 'unknown'}")
+        logger.error("No companies found in data")
+        return False
+    
     print(f"✓ Loaded {len(companies_raw)} companies")
     logger.info(f"Loaded {len(companies_raw)} companies")
     
@@ -584,6 +615,13 @@ def main():
     print(f"✓ Processed {len(companies)} companies")
     logger.info(f"Processed {len(companies)} companies")
     
+    # Safety check
+    if len(companies) == 0:
+        print(f"❌ No companies processed!")
+        print(f"❌ Check that data/raw_market_data.json exists and has 'data' key")
+        logger.error("No companies processed - raw_market_data.json may be invalid")
+        return False
+    
     # Compute analytics
     print(f"\n📊 Computing analytics...")
     analytics = compute_analytics(companies)
@@ -625,16 +663,24 @@ def main():
     print(f"{'='*100}")
     
     print(f"\n📊 COVERAGE:")
-    print(f"  Total: {analytics['overall']['total']}")
-    print(f"  Compliant: {analytics['overall']['compliant']} ({analytics['overall']['compliant']/analytics['overall']['total']*100:.1f}%)")
-    print(f"  Avg Health: {analytics['overall']['avg_health']:.1f}/100")
-    print(f"  Avg Signal: {analytics['overall']['avg_signal']:.1f}/100")
+    total = analytics['overall']['total']
+    if total > 0:
+        compliant = analytics['overall']['compliant']
+        print(f"  Total: {total}")
+        print(f"  Compliant: {compliant} ({compliant/total*100:.1f}%)")
+        print(f"  Avg Health: {analytics['overall']['avg_health']:.1f}/100")
+        print(f"  Avg Signal: {analytics['overall']['avg_signal']:.1f}/100")
+    else:
+        print(f"  ❌ No data to process")
     
     print(f"\n🔔 SIGNAL DISTRIBUTION:")
     signal_names = ['STRONG BUY', 'BUY', 'HOLD', 'SELL', 'STRONG SELL']
-    for i, count in enumerate(analytics['overall']['signals']):
-        pct = count / analytics['overall']['total'] * 100
-        print(f"  {signal_names[i]:12s}: {count:3d} ({pct:5.1f}%)")
+    if total > 0:
+        for i, count in enumerate(analytics['overall']['signals']):
+            pct = count / total * 100
+            print(f"  {signal_names[i]:12s}: {count:3d} ({pct:5.1f}%)")
+    else:
+        print(f"  ❌ No signals to display")
     
     print(f"\n✅ CANONICAL JSON READY!")
     
