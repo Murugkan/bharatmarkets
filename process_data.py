@@ -394,18 +394,18 @@ def compress_company(idx, ticker, company, profile, ratios, health_score, valida
         's': normalize_sector(bs.get('sector', 'Unknown')),
         'f': {
             'bs': {
-                'ta': int(bs.get('total_assets', 0)),
-                'tl': int(bs.get('total_liabilities', 0)),
-                'eq': int(bs.get('equity', 0)),
-                'ca': int(bs.get('current_assets', 0)),
-                'cl': int(bs.get('current_liabilities', 0)),
-                'td': int(bs.get('total_debt', 0)),
+                'ta': bs.get('total_assets'),
+                'tl': bs.get('total_liabilities'),
+                'eq': bs.get('equity'),
+                'ca': bs.get('current_assets'),
+                'cl': bs.get('current_liabilities'),
+                'td': bs.get('total_debt'),
             },
             'is': {
-                'rev': int(is_stmt.get('revenue', 0)),
-                'np': int(is_stmt.get('net_profit', 0)),
-                'ebit': int(is_stmt.get('ebit', 0)),
-                'ie': int(is_stmt.get('interest_expense', 0)),
+                'rev': is_stmt.get('revenue'),
+                'np': is_stmt.get('net_profit'),
+                'ebit': is_stmt.get('ebit'),
+                'ie': is_stmt.get('interest_expense'),
             }
         },
         'r': {k: round(v, 2) for k, v in ratios.items() if v is not None},
@@ -596,11 +596,14 @@ def main():
         logger.error(f"Cannot iterate companies_raw: {str(e)}")
         return False
     
-    for idx, (ticker, company) in enumerate(items_list):
+    skipped = 0
+    for item_idx, (ticker, company) in enumerate(items_list):
         try:
             profile = extract_and_normalize_data(company)
             bs = profile['bs']
             is_stmt = profile['is']
+            
+            idx = len(companies)  # Use actual processed count
             
             sector = normalize_sector(bs.get('sector', 'Unknown'))
             sector_profile = SECTOR_PROFILES.get(sector, SECTOR_PROFILES['Unknown'])
