@@ -585,7 +585,18 @@ def main():
         'signal': defaultdict(list)
     }
     
-    for idx, (ticker, company) in enumerate(companies_raw.items()):
+    print(f"  Type of companies_raw: {type(companies_raw)}")
+    print(f"  Has .items()? {hasattr(companies_raw, 'items')}")
+    
+    try:
+        items_list = list(companies_raw.items())
+        print(f"  Items created: {len(items_list)}")
+    except Exception as e:
+        print(f"❌ Cannot iterate companies_raw: {str(e)}")
+        logger.error(f"Cannot iterate companies_raw: {str(e)}")
+        return False
+    
+    for idx, (ticker, company) in enumerate(items_list):
         try:
             profile = extract_and_normalize_data(company)
             bs = profile['bs']
@@ -607,9 +618,10 @@ def main():
             indexes['signal'][signal['type']].append(idx)
             
             if (idx + 1) % 20 == 0:
-                print(f"  Progress: {idx + 1}/{len(companies_raw)}")
+                print(f"  Progress: {idx + 1}/{len(items_list)}")
         
         except Exception as e:
+            print(f"  ⚠️ Error processing {ticker}: {str(e)}")
             logger.warning(f"Error processing {ticker}: {str(e)}")
     
     print(f"✓ Processed {len(companies)} companies")
