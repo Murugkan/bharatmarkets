@@ -1996,3 +1996,98 @@ function closeImportModal() {
     }
     document.body.classList.remove('modal-open');
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// LOAD MARKET DATA JSON - INCLUDES INDEXDB MAPPING
+// Handles market_data.json from Python pipeline
+// Maps fields to IndexDB schema automatically
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function loadMarketDataJSON(file) {
+    if (!file) return;
+    
+    var reader = new FileReader();
+    
+    reader.onload = function(e) {
+        try {
+            var json = JSON.parse(e.target.result);
+            
+            if (!json.stocks || !Array.isArray(json.stocks)) {
+                alert('❌ Invalid market_data.json format');
+                return;
+            }
+            
+            console.log('Processing', json.stocks.length, 'stocks from market_data.json');
+            
+            var request = indexedDB.open(CONFIG.DATABASE_NAME, CONFIG.DATABASE_VERSION);
+            
+            request.onerror = function() {
+                alert('❌ Database error');
+            };
+            
+            request.onsuccess = function(ev) {
+                var db = ev.target.result;
+                var tx = db.transaction(CONFIG.STORE_NAME, 'readwrite');
+                var store = tx.objectStore(CONFIG.STORE_NAME);
+                
+                var savedCount = 0;
+                var skippedCount = 0;
+                var skipped = [];
+                
+                json.stocks.forEach(function(stock) {
+                    // Validate ticker
+                    var ticker = stock.ticker || stock.symbol;
+                    if (!ticker || ticker === '' || ticker === '?') {
+                        skipped.push(stock.name || 'unnamed');
+                        skippedCount++;
+                        return;
+                    }
+                    
+                    // Map to IndexDB schema (add required fields if missing)
+                    var record = stock; // Start with all existing fields
+                    
+                    // Ensure core IndexDB fields exist
+                    if (!record.type) record.type = 'watchlist';
+                    if (!record.qty) record.qty = 0;
+                    if (!record.avg) record.avg = 0;
+                    if (!record.source) record.source = 'market_data_pipeline';
+                    if (!record.userDataUpdatedAt) {
+                        record.userDataUpdatedAt = new Date().toISOString();
+                    }
+                    
+                    // Store complete record (all 158 fields)
+                    store.put(record);
+                    savedCount++;
+                });
+                
+                tx.oncomplete = function() {
+                    var msg = '✅ Successfully loaded ' + savedCount + ' stocks to database';
+                    if (skippedCount > 0) {
+                        msg += '\n⚠️ Skipped ' + skippedCount + ' invalid records';
+                    }
+                    alert(msg);
+                    console.log('Market data loaded:', {
+                        saved: savedCount,
+                        skipped: skippedCount,
+                        fields_per_stock: Object.keys(json.stocks[0] || {}).length
+                    });
+                    
+                    // Reload page to show new data
+                    if (savedCount > 0) {
+                        location.reload();
+                    }
+                };
+                
+                tx.onerror = function() {
+                    alert('❌ Transaction error');
+                };
+            };
+            
+        } catch(err) {
+            alert('❌ Error: ' + err.message);
+            console.error('Load error:', err);
+        }
+    };
+    
+    reader.readAsText(file);
+}
