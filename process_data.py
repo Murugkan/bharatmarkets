@@ -1301,12 +1301,30 @@ def load_raw_data(filepath: str) -> Tuple[Optional[Dict], Optional[str]]:
 
 
 def save_json(data: Dict, filepath: str) -> Tuple[bool, Optional[str]]:
-    """Save JSON file."""
+    """Save JSON file with NaN handling."""
     try:
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         
+        # Convert NaN/Infinity to None (null in JSON)
+        import math
+        
+        def clean_value(obj):
+            """Recursively clean NaN and Infinity values."""
+            if isinstance(obj, float):
+                if math.isnan(obj) or math.isinf(obj):
+                    return None
+                return obj
+            elif isinstance(obj, dict):
+                return {k: clean_value(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [clean_value(item) for item in obj]
+            else:
+                return obj
+        
+        cleaned_data = clean_value(data)
+        
         with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
+            json.dump(cleaned_data, f, indent=2, allow_nan=False)
         
         return True, None
     except Exception as e:
