@@ -7,6 +7,7 @@ Implements the comprehensive field mapping specification.
 import json
 import re
 import sys
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
@@ -391,6 +392,424 @@ class YahooInfoMapper:
         return result
 
 
+
+
+# ============================================================================
+# ACCOUNTING PRINCIPLES & DERIVED METRICS MODULE
+# ============================================================================
+
+class AccountingPrinciplesEngine:
+    """
+    Calculate derived financial metrics based on accounting principles.
+    Adds calculated fields for financial analysis.
+    """
+    
+    def __init__(self):
+        self.logger = logging.getLogger('AccountingEngine')
+        self.calculations_performed = 0
+        self.calculation_errors = 0
+    
+    def calculate_all_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate all derived metrics for a stock."""
+        
+        self.logger.info(f"Calculating accounting metrics for {ticker}")
+        
+        metrics = {}
+        
+        try:
+            # Valuation Metrics
+            valuation = self._calculate_valuation_metrics(stock_data, ticker)
+            if valuation:
+                metrics['valuation_metrics'] = valuation
+            
+            # Profitability Metrics
+            profitability = self._calculate_profitability_metrics(stock_data, ticker)
+            if profitability:
+                metrics['profitability_metrics'] = profitability
+            
+            # Liquidity Metrics
+            liquidity = self._calculate_liquidity_metrics(stock_data, ticker)
+            if liquidity:
+                metrics['liquidity_metrics'] = liquidity
+            
+            # Leverage Metrics
+            leverage = self._calculate_leverage_metrics(stock_data, ticker)
+            if leverage:
+                metrics['leverage_metrics'] = leverage
+            
+            # Efficiency Metrics
+            efficiency = self._calculate_efficiency_metrics(stock_data, ticker)
+            if efficiency:
+                metrics['efficiency_metrics'] = efficiency
+            
+            # Growth Metrics
+            growth = self._calculate_growth_metrics(stock_data, ticker)
+            if growth:
+                metrics['growth_metrics'] = growth
+            
+            # Cash Flow Metrics
+            cashflow = self._calculate_cashflow_metrics(stock_data, ticker)
+            if cashflow:
+                metrics['cashflow_metrics'] = cashflow
+            
+            # Per Share Metrics
+            per_share = self._calculate_per_share_metrics(stock_data, ticker)
+            if per_share:
+                metrics['per_share_metrics'] = per_share
+            
+            self.logger.info(f"Calculated {len(metrics)} metric categories for {ticker}")
+            
+        except Exception as e:
+            self.calculation_errors += 1
+            self.logger.error(f"Error calculating metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _safe_divide(self, numerator: float, denominator: float) -> Optional[float]:
+        """Safely divide two numbers, return None if division by zero."""
+        try:
+            if denominator == 0 or denominator is None:
+                return None
+            return numerator / denominator
+        except:
+            return None
+    
+    def _calculate_valuation_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate valuation metrics."""
+        metrics = {}
+        
+        try:
+            price = stock_data.get('price')
+            market_cap = stock_data.get('market_cap')
+            trailing_pe = stock_data.get('trailing_pe')
+            forward_pe = stock_data.get('forward_pe')
+            price_to_book = stock_data.get('price_to_book')
+            enterprise_value = stock_data.get('enterprise_value')
+            total_revenue = stock_data.get('total_revenue')
+            
+            # EV/Sales
+            if enterprise_value and total_revenue:
+                metrics['ev_to_sales'] = self._safe_divide(enterprise_value, total_revenue)
+            
+            # P/E Relative (Forward PE / Trailing PE)
+            if forward_pe and trailing_pe:
+                metrics['pe_relative'] = self._safe_divide(forward_pe, trailing_pe)
+            
+            # Market Cap to Sales
+            if market_cap and total_revenue:
+                metrics['market_cap_to_sales'] = self._safe_divide(market_cap, total_revenue)
+            
+            # PEG Ratio (PE / Earnings Growth Rate)
+            earnings_growth = stock_data.get('earnings_growth')
+            if trailing_pe and earnings_growth:
+                metrics['peg_ratio'] = self._safe_divide(trailing_pe, earnings_growth * 100)
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in valuation metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _calculate_profitability_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate profitability metrics."""
+        metrics = {}
+        
+        try:
+            # ROE (Return on Equity)
+            roe = stock_data.get('return_on_equity')
+            if roe:
+                metrics['roe'] = roe
+            
+            # ROA (Return on Assets)
+            roa = stock_data.get('return_on_assets')
+            if roa:
+                metrics['roa'] = roa
+            
+            # Profit Margins
+            profit_margins = stock_data.get('profit_margins')
+            if profit_margins:
+                metrics['net_profit_margin'] = profit_margins
+            
+            operating_margins = stock_data.get('operating_margins')
+            if operating_margins:
+                metrics['operating_margin'] = operating_margins
+            
+            gross_margins = stock_data.get('gross_margins')
+            if gross_margins:
+                metrics['gross_margin'] = gross_margins
+            
+            # DuPont Analysis Components
+            # ROE = Net Profit Margin × Asset Turnover × Equity Multiplier
+            if profit_margins and roa and roe:
+                # Asset Turnover = ROA / Net Profit Margin
+                asset_turnover = self._safe_divide(roa, profit_margins)
+                if asset_turnover:
+                    metrics['asset_turnover_ratio'] = asset_turnover
+                
+                # Equity Multiplier = ROE / ROA
+                equity_multiplier = self._safe_divide(roe, roa)
+                if equity_multiplier:
+                    metrics['equity_multiplier'] = equity_multiplier
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in profitability metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _calculate_liquidity_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate liquidity metrics."""
+        metrics = {}
+        
+        try:
+            current_ratio = stock_data.get('current_ratio')
+            if current_ratio:
+                metrics['current_ratio'] = current_ratio
+            
+            quick_ratio = stock_data.get('quick_ratio')
+            if quick_ratio:
+                metrics['quick_ratio'] = quick_ratio
+            
+            # Working Capital Ratio
+            total_cash = stock_data.get('total_cash')
+            total_debt = stock_data.get('total_debt')
+            
+            if total_cash and total_debt:
+                # Cash to Debt Ratio
+                metrics['cash_to_debt_ratio'] = self._safe_divide(total_cash, total_debt)
+            
+            # Operating Cash Flow Ratio
+            operating_cashflow = stock_data.get('operating_cashflow')
+            if operating_cashflow and total_debt:
+                metrics['ocf_to_debt_ratio'] = self._safe_divide(operating_cashflow, total_debt)
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in liquidity metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _calculate_leverage_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate leverage/solvency metrics."""
+        metrics = {}
+        
+        try:
+            debt_to_equity = stock_data.get('debt_to_equity')
+            if debt_to_equity:
+                metrics['debt_to_equity'] = debt_to_equity
+            
+            total_debt = stock_data.get('total_debt')
+            market_cap = stock_data.get('market_cap')
+            total_revenue = stock_data.get('total_revenue')
+            
+            # Debt to Market Cap
+            if total_debt and market_cap:
+                metrics['debt_to_market_cap'] = self._safe_divide(total_debt, market_cap)
+            
+            # Debt to Revenue
+            if total_debt and total_revenue:
+                metrics['debt_to_revenue'] = self._safe_divide(total_debt, total_revenue)
+            
+            # Interest Coverage Ratio (from financials if available)
+            if 'financials' in stock_data and 'quarterly' in stock_data['financials']:
+                latest = stock_data['financials']['quarterly'][0] if stock_data['financials']['quarterly'] else {}
+                
+                # EBIT / Interest Expense
+                ebit = latest.get('profit_before_tax')
+                interest = latest.get('interest_income')  # Note: might need interest_expense
+                
+                if ebit and interest and interest != 0:
+                    metrics['interest_coverage_ratio'] = self._safe_divide(ebit, interest)
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in leverage metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _calculate_efficiency_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate efficiency/activity metrics."""
+        metrics = {}
+        
+        try:
+            # Asset Turnover
+            total_revenue = stock_data.get('total_revenue')
+            
+            # From financials
+            if 'financials' in stock_data and 'statements' in stock_data['financials']:
+                statements = stock_data['financials']['statements']
+                if statements:
+                    latest = statements[0]
+                    total_assets = latest.get('total_assets')
+                    
+                    if total_revenue and total_assets:
+                        metrics['asset_turnover'] = self._safe_divide(total_revenue, total_assets)
+            
+            # Revenue per Share
+            revenue_per_share = stock_data.get('revenue_per_share')
+            if revenue_per_share:
+                metrics['revenue_per_share'] = revenue_per_share
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in efficiency metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _calculate_growth_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate growth metrics."""
+        metrics = {}
+        
+        try:
+            # From existing fields
+            revenue_growth = stock_data.get('revenue_growth')
+            if revenue_growth:
+                metrics['revenue_growth_rate'] = revenue_growth
+            
+            earnings_growth = stock_data.get('earnings_growth')
+            if earnings_growth:
+                metrics['earnings_growth_rate'] = earnings_growth
+            
+            earnings_quarterly_growth = stock_data.get('earnings_quarterly_growth')
+            if earnings_quarterly_growth:
+                metrics['earnings_quarterly_growth_rate'] = earnings_quarterly_growth
+            
+            # Calculate YoY growth from financials if available
+            if 'financials' in stock_data and 'quarterly' in stock_data['financials']:
+                quarters = stock_data['financials']['quarterly']
+                
+                if len(quarters) >= 5:  # Need at least 5 quarters for YoY
+                    # Current quarter vs same quarter last year (4 quarters ago)
+                    current_revenue = quarters[0].get('revenue')
+                    yoy_revenue = quarters[4].get('revenue')
+                    
+                    if current_revenue and yoy_revenue and yoy_revenue != 0:
+                        yoy_growth = ((current_revenue - yoy_revenue) / yoy_revenue)
+                        metrics['revenue_yoy_growth'] = yoy_growth
+                    
+                    # Same for profit
+                    current_profit = quarters[0].get('net_profit')
+                    yoy_profit = quarters[4].get('net_profit')
+                    
+                    if current_profit and yoy_profit and yoy_profit != 0:
+                        yoy_profit_growth = ((current_profit - yoy_profit) / yoy_profit)
+                        metrics['profit_yoy_growth'] = yoy_profit_growth
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in growth metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _calculate_cashflow_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate cash flow metrics."""
+        metrics = {}
+        
+        try:
+            operating_cashflow = stock_data.get('operating_cashflow')
+            market_cap = stock_data.get('market_cap')
+            total_revenue = stock_data.get('total_revenue')
+            
+            # Operating Cash Flow to Market Cap
+            if operating_cashflow and market_cap:
+                metrics['ocf_to_market_cap'] = self._safe_divide(operating_cashflow, market_cap)
+            
+            # Operating Cash Flow to Revenue
+            if operating_cashflow and total_revenue:
+                metrics['ocf_to_revenue'] = self._safe_divide(operating_cashflow, total_revenue)
+            
+            # Free Cash Flow Yield
+            # FCF Yield = Free Cash Flow / Market Cap
+            if 'financials' in stock_data and 'statements' in stock_data['financials']:
+                statements = stock_data['financials']['statements']
+                if statements:
+                    latest = statements[0]
+                    free_cash_flow = latest.get('free_cash_flow')
+                    
+                    if free_cash_flow and market_cap:
+                        metrics['free_cashflow_yield'] = self._safe_divide(free_cash_flow, market_cap)
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in cashflow metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def _calculate_per_share_metrics(self, stock_data: Dict, ticker: str) -> Dict:
+        """Calculate per-share metrics."""
+        metrics = {}
+        
+        try:
+            shares_outstanding = stock_data.get('shares_outstanding')
+            
+            if not shares_outstanding or shares_outstanding == 0:
+                return metrics
+            
+            # Book Value per Share
+            book_value = stock_data.get('book_value')
+            if book_value:
+                metrics['book_value_per_share'] = book_value
+            
+            # Cash per Share
+            total_cash_per_share = stock_data.get('total_cash_per_share')
+            if total_cash_per_share:
+                metrics['cash_per_share'] = total_cash_per_share
+            
+            # EPS metrics
+            trailing_eps = stock_data.get('trailing_eps')
+            if trailing_eps:
+                metrics['eps_trailing'] = trailing_eps
+            
+            forward_eps = stock_data.get('forward_eps')
+            if forward_eps:
+                metrics['eps_forward'] = forward_eps
+            
+            # Revenue per Share
+            revenue_per_share = stock_data.get('revenue_per_share')
+            if revenue_per_share:
+                metrics['revenue_per_share'] = revenue_per_share
+            
+            # Operating Cash Flow per Share
+            operating_cashflow = stock_data.get('operating_cashflow')
+            if operating_cashflow:
+                metrics['operating_cashflow_per_share'] = self._safe_divide(
+                    operating_cashflow, shares_outstanding
+                )
+            
+            self.calculations_performed += len(metrics)
+            
+        except Exception as e:
+            self.logger.debug(f"Error in per-share metrics for {ticker}: {str(e)}")
+        
+        return metrics
+    
+    def get_summary(self) -> Dict:
+        """Get calculation summary statistics."""
+        summary = {
+            'total_calculations_performed': self.calculations_performed,
+            'calculation_errors': self.calculation_errors,
+            'success_rate': self._safe_divide(
+                self.calculations_performed - self.calculation_errors,
+                self.calculations_performed
+            ) if self.calculations_performed > 0 else 0
+        }
+        
+        self.logger.info("="*80)
+        self.logger.info("ACCOUNTING METRICS SUMMARY")
+        self.logger.info("="*80)
+        self.logger.info(f"Calculations Performed: {summary['total_calculations_performed']}")
+        self.logger.info(f"Calculation Errors: {summary['calculation_errors']}")
+        self.logger.info(f"Success Rate: {summary['success_rate']*100:.2f}%")
+        
+        return summary
+
 # ============================================================================
 # MAIN PROCESSOR
 # ============================================================================
@@ -402,6 +821,7 @@ class DataProcessor:
         self.rejection_tracker = RejectionTracker()
         self.parser = AdvancedParser(self.rejection_tracker)
         self.yahoo_mapper = YahooInfoMapper(self.parser)
+        self.accounting_engine = AccountingPrinciplesEngine()
         self.stats = {
             'stocks_processed': 0,
             'stocks_failed': 0,
@@ -777,6 +1197,11 @@ class DataProcessor:
                     result['financials'] = {}
                 result['financials']['statements'] = yahoo_fin['statements']
             
+            # Calculate derived accounting metrics
+            accounting_metrics = self.accounting_engine.calculate_all_metrics(result, ticker)
+            if accounting_metrics:
+                result['derived_metrics'] = accounting_metrics
+            
             self.stats['stocks_processed'] += 1
             
             return result
@@ -905,35 +1330,48 @@ def main():
     print(f"  Data points: {processor.stats['data_points_processed']:,}")
     print()
     
-    # Save
-    print("Saving outputs...")
+    # Get accounting metrics summary
+    accounting_summary = processor.accounting_engine.get_summary()
+    print()
     
-    # Main output
+    # Save - SINGLE CONSOLIDATED OUTPUT
+    print("Saving output...")
+    
+    rejection_summary = processor.rejection_tracker.get_summary()
+    
+    # Single comprehensive output file
     output = {
+        'metadata': {
+            'version': '1.0.0',
+            'processed_at': datetime.utcnow().isoformat(),
+            'total_stocks': len(processed_stocks),
+            'processing_stats': {
+                'stocks_processed': processor.stats['stocks_processed'],
+                'stocks_failed': processor.stats['stocks_failed'],
+                'fields_mapped': processor.stats['fields_mapped'],
+                'data_points_processed': processor.stats['data_points_processed']
+            },
+            'rejection_stats': {
+                'total_rejections': rejection_summary['total_rejections'],
+                'resolved': rejection_summary['resolved_after_retry'],
+                'unresolved': rejection_summary['unresolved'],
+                'by_severity': rejection_summary['by_severity']
+            },
+            'accounting_stats': accounting_summary,
+            'parser_stats': dict(processor.parser.stats)
+        },
+        'rejections': rejection_summary['rejections'],
         'stocks': processed_stocks
     }
     
     success, error = save_json(output, 'data/market_data.json')
     if success:
         print("✓ data/market_data.json")
+        print(f"  Stocks: {len(processed_stocks)}")
+        print(f"  Rejections: {rejection_summary['total_rejections']}")
+        print(f"  Accounting calculations: {accounting_summary['total_calculations_performed']}")
     else:
         print(f"✗ {error}")
-    
-    # Rejections
-    rejection_summary = processor.rejection_tracker.get_summary()
-    success, error = save_json(rejection_summary, 'data/rejections.json')
-    if success:
-        print(f"✓ data/rejections.json")
-        print(f"  Total rejections: {rejection_summary['total_rejections']}")
-        print(f"  Resolved: {rejection_summary['resolved_after_retry']}")
-        print(f"  Unresolved: {rejection_summary['unresolved']}")
-    else:
-        print(f"✗ {error}")
-    
-    # Parser stats
-    success, error = save_json(dict(processor.parser.stats), 'data/parser_stats.json')
-    if success:
-        print(f"✓ data/parser_stats.json")
     
     print()
     print("="*80)
@@ -943,3 +1381,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
