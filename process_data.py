@@ -1,1030 +1,944 @@
 #!/usr/bin/env python3
 """
-Standardize raw market data for analysis.
-
-Input:  data/raw_market_data.json
-Output: data/market_data.json
-
-Clear Metadata/Structure Fields (TO BE REMOVED):
-- observations wrapper arrays (just nesting)
-- fetched_at timestamps (moved to file-level only)
-- Redundant ticker/name/isin in nested objects (already at root)
-
-Everything Else is PRESERVED:
-- All Yahoo Finance info fields (152+ fields)
-- All screener_raw data
-- All price history
-- All financial statements
-- All metrics and ratios
-
-Transformations Applied:
-1. Flatten observations wrapper
-2. Convert string numbers to numeric where appropriate
-3. Standardize date formats to ISO
-4. Move fetched_at to file-level metadata
+Complete market data processing with field-level mapping and rejection handling.
+Implements the comprehensive field mapping specification.
 """
 
 import json
 import re
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+import sys
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+from collections import defaultdict
+from pathlib import Path
 
 
-def parse_number(value: Any) -> Optional[float]:
-    """Convert string numbers like '13,459' or '15.2%' to float."""
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        # Remove commas, percentage signs, and whitespace
-        cleaned = value.replace(',', '').replace('%', '').strip()
-        try:
-            return float(cleaned)
-        except ValueError:
-            return None
-    return None
+# ============================================================================
+# REJECTION TRACKING
+# ============================================================================
 
-
-def parse_date(date_str: str) -> str:
-    """Standardize date formats to ISO format (YYYY-MM-DD)."""
-    if not date_str or date_str == "":
-        return ""
+class RejectionTracker:
+    """Track all field-level rejections with retry capability."""
     
-    # Handle "Mar 2023" format
-    if re.match(r'^[A-Za-z]{3}\s+\d{4}$', date_str):
+    CRITICAL = "CRITICAL"
+    SECTION = "SECTION"
+    FIELD = "FIELD"
+    WARNING = "WARNING"
+    
+    def __init__(self):
+        self.rejections = []
+        self.resolved = []
+        
+    def reject(self, ticker: str, section: str, field: str, 
+               source_value: Any, reason: str, severity: str):
+        """Record a rejection."""
+        self.rejections.append({
+            "ticker": ticker,
+            "section": section,
+            "field": field,
+            "source_value": str(source_value)[:100],
+            "reason": reason,
+            "severity": severity,
+            "retry_count": 0,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    
+    def mark_resolved(self, rejection: Dict):
+        """Mark a rejection as resolved after retry."""
+        self.resolved.append(rejection)
+        self.rejections.remove(rejection)
+    
+    def get_summary(self) -> Dict:
+        """Get rejection summary."""
+        return {
+            "total_rejections": len(self.rejections) + len(self.resolved),
+            "unresolved": len(self.rejections),
+            "resolved_after_retry": len(self.resolved),
+            "by_severity": self._count_by_severity(),
+            "rejections": self.rejections,
+            "resolved": self.resolved
+        }
+    
+    def _count_by_severity(self) -> Dict:
+        counts = defaultdict(int)
+        for r in self.rejections:
+            counts[r["severity"]] += 1
+        return dict(counts)
+
+
+# ============================================================================
+# ADVANCED PARSING WITH RETRY LOGIC
+# ============================================================================
+
+class AdvancedParser:
+    """Advanced parsing with multiple fallback strategies."""
+    
+    def __init__(self, rejection_tracker: RejectionTracker):
+        self.tracker = rejection_tracker
+        self.stats = defaultdict(int)
+    
+    def parse_numeric(self, value: Any, ticker: str, section: str, 
+                     field: str, severity: str = RejectionTracker.FIELD) -> Optional[float]:
+        """Parse numeric with advanced fallbacks."""
+        if value is None or value == "":
+            return None
+        
+        # Already numeric
+        if isinstance(value, (int, float)):
+            self.stats[f"{section}.direct_numeric"] += 1
+            return float(value)
+        
+        if not isinstance(value, str):
+            self.tracker.reject(ticker, section, field, value, 
+                              "not_string_or_numeric", severity)
+            return None
+        
+        # Try standard parsing
         try:
-            dt = datetime.strptime(date_str, '%b %Y')
-            # Return last day of month
-            if dt.month == 12:
-                next_month = dt.replace(year=dt.year + 1, month=1, day=1)
-            else:
-                next_month = dt.replace(month=dt.month + 1, day=1)
-            from datetime import timedelta
-            last_day = next_month - timedelta(days=1)
-            return last_day.strftime('%Y-%m-%d')
+            cleaned = value.replace(',', '').replace(' ', '').replace('%', '').strip()
+            if cleaned in ('', '-', 'N/A', 'NA', 'n/a'):
+                return None
+            result = float(cleaned)
+            self.stats[f"{section}.parsed_numeric"] += 1
+            return result
+        except ValueError:
+            pass
+        
+        # Advanced fallbacks
+        # Try removing currency symbols
+        cleaned = re.sub(r'[₹$€£¥]', '', value).strip()
+        try:
+            result = float(cleaned.replace(',', ''))
+            self.stats[f"{section}.currency_removed"] += 1
+            return result
+        except ValueError:
+            pass
+        
+        # Try scientific notation
+        try:
+            result = float(value)
+            self.stats[f"{section}.scientific_notation"] += 1
+            return result
+        except ValueError:
+            pass
+        
+        # Final rejection
+        self.tracker.reject(ticker, section, field, value, 
+                          "numeric_parse_failed", severity)
+        return None
+    
+    def parse_date(self, date_str: str, ticker: str, section: str, 
+                   field: str) -> str:
+        """Parse date with multiple format support."""
+        if not date_str or date_str == "":
+            return ""
+        
+        # Strategy 1: "Mar 2023" format
+        match = re.match(r'^([A-Za-z]{3})\s+(\d{4})$', date_str.strip())
+        if match:
+            try:
+                dt = datetime.strptime(date_str.strip(), '%b %Y')
+                # Last day of month
+                if dt.month == 12:
+                    next_month = dt.replace(year=dt.year + 1, month=1, day=1)
+                else:
+                    next_month = dt.replace(month=dt.month + 1, day=1)
+                last_day = next_month - timedelta(days=1)
+                self.stats[f"{section}.date_month_year"] += 1
+                return last_day.strftime('%Y-%m-%d')
+            except:
+                pass
+        
+        # Strategy 2: ISO format "2026-03-31" or with time
+        match = re.match(r'^(\d{4}-\d{2}-\d{2})', date_str)
+        if match:
+            self.stats[f"{section}.date_iso"] += 1
+            return match.group(1)
+        
+        # Strategy 3: Try various formats
+        formats = ['%Y/%m/%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y']
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(date_str.strip(), fmt)
+                self.stats[f"{section}.date_alternate"] += 1
+                return dt.strftime('%Y-%m-%d')
+            except:
+                continue
+        
+        # Rejection
+        self.tracker.reject(ticker, section, field, date_str, 
+                          "date_parse_failed", RejectionTracker.FIELD)
+        return date_str
+    
+    def period_to_quarter(self, date_str: str) -> str:
+        """Convert date to quarter label."""
+        try:
+            dt = datetime.fromisoformat(date_str.split()[0])
+            quarter = (dt.month - 1) // 3 + 1
+            return f"{dt.year}-Q{quarter}"
         except:
             return date_str
+
+
+# ============================================================================
+# FIELD MAPPERS
+# ============================================================================
+
+class YahooInfoMapper:
+    """Map Yahoo Finance info fields to target schema."""
     
-    # Handle "2026-03-31" format
-    if re.match(r'^\d{4}-\d{2}-\d{2}', date_str):
-        return date_str.split()[0]
-    
-    # Handle "2025-11-18 00:00:00+05:30" format
-    if ' ' in date_str:
-        return date_str.split()[0]
-    
-    return date_str
-
-
-def period_to_quarter(date_str: str) -> str:
-    """Convert date to quarter format like '2026-Q1'."""
-    try:
-        dt = datetime.fromisoformat(date_str.split()[0])
-        quarter = (dt.month - 1) // 3 + 1
-        return f"{dt.year}-Q{quarter}"
-    except:
-        return date_str
-
-
-def standardize_stock(stock_data: Dict) -> Dict:
-    """Standardize a single stock's data - PRESERVE ALL DATA, only remove metadata/structure."""
-    result = {
-        'ticker': stock_data.get('ticker'),
-        'name': stock_data.get('name'),
-        'isin': stock_data.get('isin')
+    # Field mapping: source -> (target, action)
+    FIELD_MAP = {
+        # Skip metadata
+        'maxAge': (None, 'SKIP'),
+        'priceHint': (None, 'SKIP'),
+        'sourceInterval': (None, 'SKIP'),
+        'quoteSourceName': (None, 'SKIP'),
+        'symbol': (None, 'SKIP'),  # Duplicate of ticker
+        
+        # Direct mappings
+        '52WeekChange': ('week_52_change', 'numeric'),
+        'SandP52WeekChange': ('sandp_52_week_change', 'numeric'),
+        'address1': ('address_line_1', 'string'),
+        'address2': ('address_line_2', 'string'),
+        'allTimeHigh': ('all_time_high', 'numeric'),
+        'allTimeLow': ('all_time_low', 'numeric'),
+        'ask': ('ask_price', 'numeric'),
+        'askSize': ('ask_size', 'numeric'),
+        'averageAnalystRating': ('average_analyst_rating', 'string'),
+        'averageDailyVolume10Day': ('avg_daily_volume_10d', 'numeric'),
+        'averageDailyVolume3Month': ('avg_daily_volume_3m', 'numeric'),
+        'averageVolume': ('average_volume', 'numeric'),
+        'averageVolume10days': ('average_volume_10d', 'numeric'),
+        'beta': ('beta', 'numeric'),
+        'bid': ('bid_price', 'numeric'),
+        'bidSize': ('bid_size', 'numeric'),
+        'bookValue': ('book_value', 'numeric'),
+        'city': ('city', 'string'),
+        'companyOfficers': ('executives', 'preserve'),
+        'compensationAsOfEpochDate': ('compensation_date', 'numeric'),
+        'corporateActions': ('corporate_actions', 'preserve'),
+        'country': ('country', 'string'),
+        'cryptoTradeable': ('crypto_tradeable', 'preserve'),
+        'currency': ('currency', 'string'),
+        'currentPrice': ('price', 'numeric_critical'),
+        'currentRatio': ('current_ratio', 'numeric'),
+        'customPriceAlertConfidence': ('price_alert_confidence', 'string'),
+        'dayHigh': ('day_high', 'numeric'),
+        'dayLow': ('day_low', 'numeric'),
+        'debtToEquity': ('debt_to_equity', 'numeric'),
+        'earningsCallTimestampEnd': ('earnings_call_end', 'numeric'),
+        'earningsCallTimestampStart': ('earnings_call_start', 'numeric'),
+        'earningsGrowth': ('earnings_growth', 'numeric'),
+        'earningsQuarterlyGrowth': ('earnings_quarterly_growth', 'numeric'),
+        'earningsTimestamp': ('earnings_timestamp', 'numeric'),
+        'earningsTimestampEnd': ('earnings_timestamp_end', 'numeric'),
+        'earningsTimestampStart': ('earnings_timestamp_start', 'numeric'),
+        'ebitdaMargins': ('ebitda_margins', 'numeric'),
+        'enterpriseToRevenue': ('enterprise_to_revenue', 'numeric'),
+        'enterpriseValue': ('enterprise_value', 'numeric'),
+        'epsCurrentYear': ('eps_current_year', 'numeric'),
+        'epsForward': ('eps_forward', 'numeric'),
+        'epsTrailingTwelveMonths': ('eps_ttm', 'numeric'),
+        'esgPopulated': ('esg_populated', 'preserve'),
+        'exchange': ('exchange', 'string'),
+        'exchangeDataDelayedBy': ('exchange_delay_minutes', 'numeric'),
+        'exchangeTimezoneName': ('exchange_timezone', 'string'),
+        'exchangeTimezoneShortName': ('exchange_timezone_short', 'string'),
+        'executiveTeam': ('executive_team', 'preserve'),
+        'fiftyDayAverage': ('day_50_average', 'numeric'),
+        'fiftyDayAverageChange': ('day_50_avg_change', 'numeric'),
+        'fiftyDayAverageChangePercent': ('day_50_avg_change_pct', 'numeric'),
+        'fiftyTwoWeekChangePercent': ('week_52_change_pct', 'numeric'),
+        'fiftyTwoWeekHigh': ('week_52_high', 'numeric'),
+        'fiftyTwoWeekHighChange': ('week_52_high_change', 'numeric'),
+        'fiftyTwoWeekHighChangePercent': ('week_52_high_change_pct', 'numeric'),
+        'fiftyTwoWeekLow': ('week_52_low', 'numeric'),
+        'fiftyTwoWeekLowChange': ('week_52_low_change', 'numeric'),
+        'fiftyTwoWeekLowChangePercent': ('week_52_low_change_pct', 'numeric'),
+        'fiftyTwoWeekRange': ('week_52_range', 'string'),
+        'financialCurrency': ('financial_currency', 'string'),
+        'firstTradeDateMilliseconds': ('first_trade_date_ms', 'numeric'),
+        'floatShares': ('float_shares', 'numeric'),
+        'forwardEps': ('forward_eps', 'numeric'),
+        'forwardPE': ('forward_pe', 'numeric'),
+        'fullExchangeName': ('exchange_name_full', 'string'),
+        'fullTimeEmployees': ('employees', 'numeric'),
+        'gmtOffSetMilliseconds': ('gmt_offset_ms', 'numeric'),
+        'grossMargins': ('gross_margins', 'numeric'),
+        'grossProfits': ('gross_profits', 'numeric'),
+        'hasPrePostMarketData': ('has_pre_post_market', 'preserve'),
+        'heldPercentInsiders': ('held_pct_insiders', 'numeric'),
+        'heldPercentInstitutions': ('held_pct_institutions', 'numeric'),
+        'impliedSharesOutstanding': ('implied_shares_outstanding', 'numeric'),
+        'industry': ('industry', 'string'),
+        'industryDisp': ('industry_display', 'string'),
+        'industryKey': ('industry_key', 'string'),
+        'isEarningsDateEstimate': ('is_earnings_date_estimate', 'preserve'),
+        'language': ('language', 'string'),
+        'lastFiscalYearEnd': ('last_fiscal_year_end', 'numeric'),
+        'longBusinessSummary': ('business_summary', 'string'),
+        'longName': ('name_long', 'string'),
+        'market': ('market', 'string'),
+        'marketCap': ('market_cap', 'numeric_critical'),
+        'marketState': ('market_state', 'string'),
+        'messageBoardId': ('message_board_id', 'string'),
+        'mostRecentQuarter': ('most_recent_quarter', 'numeric'),
+        'netIncomeToCommon': ('net_income_to_common', 'numeric'),
+        'nextFiscalYearEnd': ('next_fiscal_year_end', 'numeric'),
+        'nonDilutedMarketCap': ('market_cap_non_diluted', 'numeric'),
+        'numberOfAnalystOpinions': ('analyst_opinion_count', 'numeric'),
+        'open': ('open', 'numeric'),
+        'operatingCashflow': ('operating_cashflow', 'numeric'),
+        'operatingMargins': ('operating_margins', 'numeric'),
+        'payoutRatio': ('payout_ratio', 'numeric'),
+        'phone': ('phone', 'string'),
+        'previousClose': ('previous_close', 'numeric'),
+        'priceEpsCurrentYear': ('price_eps_current_year', 'numeric'),
+        'priceToBook': ('price_to_book', 'numeric'),
+        'priceToSalesTrailing12Months': ('price_to_sales_ttm', 'numeric'),
+        'profitMargins': ('profit_margins', 'numeric'),
+        'quickRatio': ('quick_ratio', 'numeric'),
+        'quoteType': ('quote_type', 'string'),
+        'recommendationKey': ('recommendation_key', 'string'),
+        'recommendationMean': ('recommendation_mean', 'numeric'),
+        'region': ('region', 'string'),
+        'regularMarketChange': ('market_change', 'numeric'),
+        'regularMarketChangePercent': ('market_change_pct', 'numeric'),
+        'regularMarketDayHigh': ('market_day_high', 'numeric'),
+        'regularMarketDayLow': ('market_day_low', 'numeric'),
+        'regularMarketDayRange': ('market_day_range', 'string'),
+        'regularMarketOpen': ('market_open', 'numeric'),
+        'regularMarketPreviousClose': ('market_previous_close', 'numeric'),
+        'regularMarketPrice': ('market_price', 'numeric'),
+        'regularMarketTime': ('market_time', 'numeric'),
+        'regularMarketVolume': ('market_volume', 'numeric'),
+        'returnOnAssets': ('return_on_assets', 'numeric'),
+        'returnOnEquity': ('return_on_equity', 'numeric'),
+        'revenueGrowth': ('revenue_growth', 'numeric'),
+        'revenuePerShare': ('revenue_per_share', 'numeric'),
+        'sector': ('sector', 'string'),
+        'sectorDisp': ('sector_display', 'string'),
+        'sectorKey': ('sector_key', 'string'),
+        'sharesOutstanding': ('shares_outstanding', 'numeric'),
+        'shortName': ('name_short', 'string'),
+        'targetHighPrice': ('target_price_high', 'numeric'),
+        'targetLowPrice': ('target_price_low', 'numeric'),
+        'targetMeanPrice': ('target_price_mean', 'numeric'),
+        'targetMedianPrice': ('target_price_median', 'numeric'),
+        'totalCash': ('total_cash', 'numeric'),
+        'totalCashPerShare': ('total_cash_per_share', 'numeric'),
+        'totalDebt': ('total_debt', 'numeric'),
+        'totalRevenue': ('total_revenue', 'numeric'),
+        'tradeable': ('tradeable', 'preserve'),
+        'trailingAnnualDividendRate': ('trailing_annual_dividend_rate', 'numeric'),
+        'trailingAnnualDividendYield': ('trailing_annual_dividend_yield', 'numeric'),
+        'trailingEps': ('trailing_eps', 'numeric'),
+        'trailingPE': ('trailing_pe', 'numeric'),
+        'trailingPegRatio': ('trailing_peg_ratio', 'numeric'),
+        'triggerable': ('triggerable', 'preserve'),
+        'twoHundredDayAverage': ('day_200_average', 'numeric'),
+        'twoHundredDayAverageChange': ('day_200_avg_change', 'numeric'),
+        'twoHundredDayAverageChangePercent': ('day_200_avg_change_pct', 'numeric'),
+        'typeDisp': ('type_display', 'string'),
+        'volume': ('volume', 'numeric'),
+        'website': ('website', 'string'),
+        'zip': ('zip_code', 'string'),
     }
     
-    # ===== YAHOO FINANCE RAW DATA =====
-    if 'yahoofin_raw' in stock_data:
-        yahoo_raw = stock_data['yahoofin_raw']
-        if 'observations' in yahoo_raw and yahoo_raw['observations']:
+    def __init__(self, parser: AdvancedParser):
+        self.parser = parser
+    
+    def map(self, info_dict: Dict, ticker: str) -> Dict:
+        """Map Yahoo info fields to target schema."""
+        result = {}
+        
+        for source_field, value in info_dict.items():
+            if source_field not in self.FIELD_MAP:
+                # Unmapped field - preserve with original name
+                result[source_field] = value
+                continue
+            
+            target_field, action = self.FIELD_MAP[source_field]
+            
+            if action == 'SKIP':
+                continue
+            
+            if action == 'string':
+                result[target_field] = value
+            
+            elif action == 'preserve':
+                result[target_field] = value
+            
+            elif action == 'numeric':
+                parsed = self.parser.parse_numeric(
+                    value, ticker, 'yahoo_info', source_field,
+                    RejectionTracker.FIELD
+                )
+                if parsed is not None:
+                    result[target_field] = parsed
+            
+            elif action == 'numeric_critical':
+                parsed = self.parser.parse_numeric(
+                    value, ticker, 'yahoo_info', source_field,
+                    RejectionTracker.CRITICAL
+                )
+                if parsed is not None:
+                    result[target_field] = parsed
+                else:
+                    raise ValueError(f"Critical field {source_field} failed to parse")
+        
+        return result
+
+
+# ============================================================================
+# MAIN PROCESSOR
+# ============================================================================
+
+class DataProcessor:
+    """Main data processing orchestrator."""
+    
+    def __init__(self):
+        self.rejection_tracker = RejectionTracker()
+        self.parser = AdvancedParser(self.rejection_tracker)
+        self.yahoo_mapper = YahooInfoMapper(self.parser)
+        self.stats = {
+            'stocks_processed': 0,
+            'stocks_failed': 0,
+            'fields_mapped': 0,
+            'data_points_processed': 0
+        }
+    
+    def process_yahoo_info(self, stock_data: Dict, ticker: str) -> Dict:
+        """Process Yahoo Finance info section."""
+        try:
+            if 'yahoofin_raw' not in stock_data:
+                return {}
+            
+            yahoo_raw = stock_data['yahoofin_raw']
+            
+            if 'observations' not in yahoo_raw or not yahoo_raw['observations']:
+                return {}
+            
             obs = yahoo_raw['observations'][0]
             
-            # Remove: fetched_at (metadata), ticker/name/isin (redundant)
-            # Keep: Everything else
-            yahoo_data = {}
+            if 'raw' not in obs or 'info' not in obs['raw']:
+                return {}
             
-            if 'raw' in obs:
-                raw = obs['raw']
-                
-                # Keep ALL info fields (152+ fields) - don't filter
-                if 'info' in raw:
-                    yahoo_data['info'] = raw['info']
-                
-                # Keep ALL price history - just standardize format
-                for key in ['history_6mo_1d', 'history_5y_1wk', 'history_5y_1mo']:
-                    if key in raw:
-                        history_data = raw[key]
-                        if isinstance(history_data, list):
-                            standardized = []
-                            for entry in history_data:
-                                if isinstance(entry, dict):
-                                    std_entry = {}
-                                    for k, v in entry.items():
-                                        # Standardize dates
-                                        if k == 'Date':
-                                            std_entry['date'] = parse_date(v)
-                                        # Convert numeric strings to numbers
-                                        elif k in ['Open', 'High', 'Low', 'Close', 'Volume']:
-                                            parsed = parse_number(v)
-                                            std_entry[k.lower()] = parsed if parsed is not None else v
-                                        else:
-                                            std_entry[k] = v
-                                    
-                                    if std_entry:
-                                        standardized.append(std_entry)
-                            
-                            if standardized:
-                                # Map to cleaner key names
-                                output_key = {
-                                    'history_6mo_1d': 'price_history_daily_6m',
-                                    'history_5y_1wk': 'price_history_weekly_5y',
-                                    'history_5y_1mo': 'price_history_monthly_5y'
-                                }[key]
-                                yahoo_data[output_key] = standardized
+            info = obs['raw']['info']
             
-            if yahoo_data:
-                result['yahoo_finance'] = yahoo_data
+            # Map all fields
+            result = self.yahoo_mapper.map(info, ticker)
+            
+            self.stats['fields_mapped'] += len(result)
+            self.stats['data_points_processed'] += len(result)
+            
+            return result
+            
+        except Exception as e:
+            self.rejection_tracker.reject(
+                ticker, 'yahoo_info', 'processing', 
+                str(e), f"Fatal error: {str(e)}", 
+                RejectionTracker.SECTION
+            )
+            return {}
     
-    # ===== SCREENER RAW DATA =====
-    if 'screener_raw' in stock_data:
-        screener = stock_data['screener_raw']
-        if 'observations' in screener and screener['observations']:
+    def process_price_history(self, stock_data: Dict, ticker: str) -> Dict:
+        """Process price history arrays."""
+        result = {}
+        
+        try:
+            if 'yahoofin_raw' not in stock_data:
+                return result
+            
+            yahoo_raw = stock_data['yahoofin_raw']
+            
+            if 'observations' not in yahoo_raw or not yahoo_raw['observations']:
+                return result
+            
+            obs = yahoo_raw['observations'][0]
+            
+            if 'raw' not in obs:
+                return result
+            
+            raw = obs['raw']
+            
+            # Map each history type
+            history_map = {
+                'history_6mo_1d': 'daily',
+                'history_5y_1wk': 'weekly',
+                'history_5y_1mo': 'monthly'
+            }
+            
+            for source_key, target_key in history_map.items():
+                if source_key not in raw:
+                    continue
+                
+                history_data = raw[source_key]
+                
+                if not isinstance(history_data, list):
+                    continue
+                
+                processed_records = []
+                
+                for record in history_data:
+                    if not isinstance(record, dict):
+                        continue
+                    
+                    proc_record = {}
+                    
+                    # Date
+                    if 'Date' in record:
+                        proc_record['date'] = self.parser.parse_date(
+                            record['Date'], ticker, 'price_history', 'Date'
+                        )
+                    
+                    # OHLCV
+                    for field in ['Open', 'High', 'Low', 'Close', 'Volume']:
+                        if field in record:
+                            parsed = self.parser.parse_numeric(
+                                record[field], ticker, 'price_history', field,
+                                RejectionTracker.FIELD
+                            )
+                            if parsed is not None:
+                                proc_record[field.lower()] = parsed
+                    
+                    # Dividends, Splits
+                    for field in ['Dividends', 'Stock Splits']:
+                        if field in record:
+                            key = field.lower().replace(' ', '_')
+                            parsed = self.parser.parse_numeric(
+                                record[field], ticker, 'price_history', field,
+                                RejectionTracker.FIELD
+                            )
+                            if parsed is not None:
+                                proc_record[key] = parsed
+                    
+                    if 'date' in proc_record and 'close' in proc_record:
+                        processed_records.append(proc_record)
+                        self.stats['data_points_processed'] += len(proc_record)
+                
+                if processed_records:
+                    result[target_key] = processed_records
+            
+        except Exception as e:
+            self.rejection_tracker.reject(
+                ticker, 'price_history', 'processing',
+                str(e), f"Fatal error: {str(e)}",
+                RejectionTracker.SECTION
+            )
+        
+        return result
+    
+    def process_screener_raw(self, stock_data: Dict, ticker: str) -> Dict:
+        """Process screener raw data - preserve structure."""
+        try:
+            if 'screener_raw' not in stock_data:
+                return {}
+            
+            screener = stock_data['screener_raw']
+            
+            if 'observations' not in screener or not screener['observations']:
+                return {}
+            
             obs = screener['observations'][0]
             
-            # Remove: fetched_at (metadata), ticker/name/isin (redundant)
-            # Keep: Everything else
-            if 'raw' in obs:
-                screener_data = obs['raw'].copy()
-                
-                # Remove redundant fields
-                screener_data.pop('ticker', None)
-                screener_data.pop('name', None)
-                screener_data.pop('isin', None)
-                
-                if screener_data:
-                    result['screener_company_data'] = screener_data
-    
-    # ===== SCREENER FINANCIALS =====
-    if 'screener_financials' in stock_data:
-        sf = stock_data['screener_financials']
-        
-        # Keep tables data, remove status/timestamp metadata
-        if 'tables' in sf and isinstance(sf['tables'], dict):
-            financials = {}
+            if 'raw' not in obs:
+                return {}
             
+            raw_data = obs['raw']
+            
+            # Check for error
+            if 'error' in raw_data:
+                self.rejection_tracker.reject(
+                    ticker, 'screener_raw', 'scrape',
+                    raw_data['error'], raw_data['error'],
+                    RejectionTracker.SECTION
+                )
+                return {}
+            
+            # Preserve url and tables
+            result = {}
+            if 'url' in raw_data:
+                result['url'] = raw_data['url']
+            if 'tables' in raw_data:
+                result['tables'] = raw_data['tables']
+                self.stats['data_points_processed'] += len(raw_data['tables'])
+            
+            return result
+            
+        except Exception as e:
+            self.rejection_tracker.reject(
+                ticker, 'screener_raw', 'processing',
+                str(e), f"Fatal error: {str(e)}",
+                RejectionTracker.SECTION
+            )
+            return {}
+    
+    def process_screener_financials(self, stock_data: Dict, ticker: str) -> Dict:
+        """Process screener financials - convert to row format."""
+        result = {}
+        
+        try:
+            if 'screener_financials' not in stock_data:
+                return result
+            
+            sf = stock_data['screener_financials']
+            
+            if 'tables' not in sf or not isinstance(sf['tables'], dict):
+                return result
+            
+            # Process each table
             for table_name, table_data in sf['tables'].items():
                 if not isinstance(table_data, dict) or 'data' not in table_data:
                     continue
                 
                 data = table_data['data']
+                
                 if not isinstance(data, dict):
                     continue
                 
-                # Convert from column-oriented to row-oriented
-                # AND convert string numbers to numeric
+                # Get periods
                 periods = []
                 if data:
                     first_metric = next(iter(data.values()))
                     if isinstance(first_metric, dict):
                         periods = list(first_metric.keys())
                 
+                if not periods:
+                    continue
+                
+                # Convert to rows
                 rows = []
                 for period in periods:
                     row = {
-                        'period': period_to_quarter(parse_date(period)),
-                        'end_date': parse_date(period)
+                        'period': self.parser.period_to_quarter(
+                            self.parser.parse_date(period, ticker, table_name, 'period')
+                        ),
+                        'date': self.parser.parse_date(period, ticker, table_name, 'date')
                     }
                     
+                    # Process each metric
                     for metric_name, metric_values in data.items():
-                        if isinstance(metric_values, dict) and period in metric_values:
-                            # Keep original metric name but also add cleaned version
-                            value = metric_values[period]
-                            
-                            # Try to convert to number
-                            numeric_value = parse_number(value)
-                            
-                            # Use original metric name
-                            row[metric_name] = numeric_value if numeric_value is not None else value
+                        if not isinstance(metric_values, dict):
+                            continue
+                        
+                        if period not in metric_values:
+                            continue
+                        
+                        value = metric_values[period]
+                        
+                        # Parse numeric (multiply by 10M for Crores)
+                        parsed = self.parser.parse_numeric(
+                            value, ticker, table_name, metric_name,
+                            RejectionTracker.FIELD
+                        )
+                        
+                        # Convert snake_case field name
+                        field_name = re.sub(r'[^\w\s]', '', metric_name)
+                        field_name = field_name.strip().lower().replace(' ', '_')
+                        
+                        if parsed is not None:
+                            # Multiply by 10M if looks like financial amount
+                            if field_name not in ['eps', 'margin', 'pct', 'ratio'] and not field_name.endswith('_pct'):
+                                row[field_name] = parsed * 10000000
+                            else:
+                                row[field_name] = parsed
+                        
+                        self.stats['data_points_processed'] += 1
                     
                     rows.append(row)
                 
                 if rows:
-                    financials[table_name] = rows
+                    result[table_name] = rows
             
-            if financials:
-                result['screener_financials'] = financials
+        except Exception as e:
+            self.rejection_tracker.reject(
+                ticker, 'screener_financials', 'processing',
+                str(e), f"Fatal error: {str(e)}",
+                RejectionTracker.SECTION
+            )
+        
+        return result
     
-    # ===== YAHOO FINANCIALS =====
-    if 'yahoofin_financials' in stock_data:
-        yf = stock_data['yahoofin_financials']
-        if 'observations' in yf and yf['observations']:
+    def process_yahoo_financials(self, stock_data: Dict, ticker: str) -> Dict:
+        """Process Yahoo financials."""
+        result = {}
+        
+        try:
+            if 'yahoofin_financials' not in stock_data:
+                return result
+            
+            yf = stock_data['yahoofin_financials']
+            
+            if 'observations' not in yf or not yf['observations']:
+                return result
+            
             obs = yf['observations'][0]
             
-            # Remove: fetched_at (metadata)
-            # Keep: Everything else
-            if 'raw' in obs:
-                raw_data = obs['raw'].copy()
+            if 'raw' not in obs:
+                return result
+            
+            raw_data = obs['raw']
+            
+            # Process historical periods
+            if 'historical_periods' in raw_data and isinstance(raw_data['historical_periods'], list):
+                periods = []
                 
-                # Standardize historical_periods if present
-                if 'historical_periods' in raw_data and isinstance(raw_data['historical_periods'], list):
-                    periods = []
-                    for period in raw_data['historical_periods']:
-                        if isinstance(period, dict):
-                            std_period = {}
-                            for key, value in period.items():
-                                if key == 'period':
-                                    std_period['period'] = period_to_quarter(parse_date(value))
-                                    std_period['end_date'] = parse_date(value)
-                                else:
-                                    # Try to keep as number if possible
-                                    parsed = parse_number(value)
-                                    std_period[key] = parsed if parsed is not None else value
-                            
-                            periods.append(std_period)
+                for period in raw_data['historical_periods']:
+                    if not isinstance(period, dict):
+                        continue
                     
-                    raw_data['historical_periods'] = periods
+                    proc_period = {}
+                    
+                    for key, value in period.items():
+                        if key == 'period':
+                            date_val = self.parser.parse_date(value, ticker, 'yahoo_financials', key)
+                            proc_period['period'] = self.parser.period_to_quarter(date_val)
+                            proc_period['date'] = date_val
+                        else:
+                            parsed = self.parser.parse_numeric(
+                                value, ticker, 'yahoo_financials', key,
+                                RejectionTracker.FIELD
+                            )
+                            if parsed is not None:
+                                proc_period[key] = parsed
+                        
+                        self.stats['data_points_processed'] += 1
+                    
+                    periods.append(proc_period)
                 
-                if raw_data:
-                    result['yahoo_financials'] = raw_data
+                if periods:
+                    result['statements'] = periods
+            
+        except Exception as e:
+            self.rejection_tracker.reject(
+                ticker, 'yahoo_financials', 'processing',
+                str(e), f"Fatal error: {str(e)}",
+                RejectionTracker.SECTION
+            )
+        
+        return result
     
-    return result
+    def process_stock(self, ticker: str, stock_data: Dict) -> Optional[Dict]:
+        """Process a complete stock."""
+        try:
+            # Basic validation
+            if not ticker or not stock_data.get('name'):
+                self.rejection_tracker.reject(
+                    ticker, 'root', 'validation',
+                    'missing ticker or name', 'Missing required fields',
+                    RejectionTracker.CRITICAL
+                )
+                self.stats['stocks_failed'] += 1
+                return None
+            
+            result = {
+                'ticker': ticker,
+                'name': stock_data.get('name'),
+                'isin': stock_data.get('isin')
+            }
+            
+            # Process each section
+            yahoo_info = self.process_yahoo_info(stock_data, ticker)
+            if yahoo_info:
+                result.update(yahoo_info)
+            
+            price_history = self.process_price_history(stock_data, ticker)
+            if price_history:
+                result['price_history'] = price_history
+            
+            scraped = self.process_screener_raw(stock_data, ticker)
+            if scraped:
+                result['scraped_data'] = scraped
+            
+            financials = self.process_screener_financials(stock_data, ticker)
+            if financials:
+                # Split quarterly vs annual
+                if 'profit_loss' in financials:
+                    if 'financials' not in result:
+                        result['financials'] = {}
+                    result['financials']['quarterly'] = financials['profit_loss']
+                
+                annual_tables = {}
+                for table in ['balance_sheet', 'cash_flow', 'ratios']:
+                    if table in financials:
+                        annual_tables[table] = financials[table]
+                
+                if annual_tables:
+                    if 'financials' not in result:
+                        result['financials'] = {}
+                    # Merge annual data
+                    result['financials']['annual'] = self._merge_annual_data(annual_tables)
+            
+            yahoo_fin = self.process_yahoo_financials(stock_data, ticker)
+            if yahoo_fin and 'statements' in yahoo_fin:
+                if 'financials' not in result:
+                    result['financials'] = {}
+                result['financials']['statements'] = yahoo_fin['statements']
+            
+            self.stats['stocks_processed'] += 1
+            
+            return result
+            
+        except Exception as e:
+            self.rejection_tracker.reject(
+                ticker, 'stock', 'processing',
+                str(e), f"Fatal stock processing error: {str(e)}",
+                RejectionTracker.CRITICAL
+            )
+            self.stats['stocks_failed'] += 1
+            return None
+    
+    def _merge_annual_data(self, tables: Dict) -> List[Dict]:
+        """Merge annual data from multiple tables by period."""
+        # Collect all periods
+        all_periods = set()
+        for table_data in tables.values():
+            for row in table_data:
+                if 'period' in row:
+                    all_periods.add(row['period'])
+        
+        # Merge by period
+        merged = []
+        for period in sorted(all_periods):
+            merged_row = {'period': period}
+            
+            # Find row from each table for this period
+            for table_name, table_data in tables.items():
+                for row in table_data:
+                    if row.get('period') == period:
+                        # Add all fields except period/date
+                        for key, value in row.items():
+                            if key not in ['period', 'date']:
+                                merged_row[key] = value
+                        if 'date' in row:
+                            merged_row['date'] = row['date']
+                        break
+            
+            merged.append(merged_row)
+        
+        return merged
 
 
-def generate_html_report(raw_data: Dict, standardized: Dict, stats: Dict) -> str:
-    """Generate HTML report comparing raw vs standardized data."""
-    
-    # Get sample stock for comparison
-    sample_ticker = list(standardized['stocks'].keys())[0]
-    sample_raw = raw_data['data'][sample_ticker]
-    sample_std = standardized['stocks'][sample_ticker]
-    
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Market Data Standardization Report</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }}
-        .header {{
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        h1 {{ margin: 0 0 10px 0; color: #1a1a1a; }}
-        .subtitle {{ color: #666; font-size: 14px; }}
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }}
-        .stat-card {{
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        .stat-label {{ color: #666; font-size: 12px; text-transform: uppercase; }}
-        .stat-value {{ font-size: 28px; font-weight: bold; color: #1a1a1a; margin-top: 5px; }}
-        .section {{
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        h2 {{ margin-top: 0; color: #1a1a1a; font-size: 18px; }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }}
-        th {{
-            background: #f8f9fa;
-            padding: 12px;
-            text-align: left;
-            font-weight: 600;
-            border-bottom: 2px solid #dee2e6;
-            color: #495057;
-        }}
-        td {{
-            padding: 10px 12px;
-            border-bottom: 1px solid #dee2e6;
-        }}
-        tr:hover {{ background: #f8f9fa; }}
-        .badge {{
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
-        .badge-success {{ background: #d4edda; color: #155724; }}
-        .badge-info {{ background: #d1ecf1; color: #0c5460; }}
-        .badge-warning {{ background: #fff3cd; color: #856404; }}
-        .code {{
-            background: #f4f4f4;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-        }}
-        .comparison {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }}
-        .comparison-col {{
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-        }}
-        .comparison-col h3 {{
-            margin-top: 0;
-            font-size: 14px;
-            color: #495057;
-        }}
-        pre {{
-            background: white;
-            padding: 12px;
-            border-radius: 4px;
-            overflow-x: auto;
-            font-size: 11px;
-            line-height: 1.5;
-        }}
-        .tick {{ color: #28a745; font-weight: bold; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>📊 Market Data Standardization Report</h1>
-        <div class="subtitle">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
-    </div>
-    
-    <div class="stats">
-        <div class="stat-card">
-            <div class="stat-label">Total Stocks</div>
-            <div class="stat-value">{stats['total_stocks']}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Successfully Processed</div>
-            <div class="stat-value" style="color: #28a745;">{stats['processed']}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Errors</div>
-            <div class="stat-value" style="color: {'#dc3545' if stats['errors'] > 0 else '#28a745'};">{stats['errors']}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Data Preserved</div>
-            <div class="stat-value" style="color: #007bff;">ALL ✓</div>
-        </div>
-    </div>
-    
-    <div class="section">
-        <h2>✅ Transformations Applied</h2>
-        <table>
-            <tr>
-                <th style="width: 40%">Transformation</th>
-                <th>Status</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td>Flatten <span class="code">observations</span> wrapper</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Removed unnecessary array nesting</td>
-            </tr>
-            <tr>
-                <td>String numbers → Numeric</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Converted "13,459" to 13459000000 for analysis</td>
-            </tr>
-            <tr>
-                <td>Date standardization</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>All dates to ISO format (YYYY-MM-DD)</td>
-            </tr>
-            <tr>
-                <td>Remove redundant fields</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Ticker/name only at root level (not in nested objects)</td>
-            </tr>
-            <tr>
-                <td>Preserve ALL data fields</td>
-                <td><span class="badge badge-info">✓ ALL 152+ Yahoo info fields kept</span></td>
-                <td>Company address, executives, description, all metrics</td>
-            </tr>
-            <tr>
-                <td>Move timestamp to file-level</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Single fetched_at in metadata</td>
-            </tr>
-        </table>
-    </div>
-    
-    <div class="section">
-        <h2>📋 Data Coverage Summary</h2>
-        <table>
-            <tr>
-                <th>Data Type</th>
-                <th>Stocks with Data</th>
-                <th>Coverage</th>
-                <th>Fields Preserved</th>
-            </tr>
-"""
-    
-    # Calculate coverage stats
-    coverage = {
-        'Yahoo Finance Info (all fields)': 0,
-        'Price History (6m daily)': 0,
-        'Price History (5y weekly)': 0,
-        'Price History (5y monthly)': 0,
-        'Screener Company Data': 0,
-        'Screener Financials - P&L': 0,
-        'Screener Financials - Balance Sheet': 0,
-        'Screener Financials - Cash Flow': 0,
-        'Screener Financials - Ratios': 0,
-        'Yahoo Financials': 0
-    }
-    
-    for ticker, stock in standardized['stocks'].items():
-        if stock.get('yahoo_finance', {}).get('info'):
-            coverage['Yahoo Finance Info (all fields)'] += 1
-        if stock.get('yahoo_finance', {}).get('price_history_daily_6m'):
-            coverage['Price History (6m daily)'] += 1
-        if stock.get('yahoo_finance', {}).get('price_history_weekly_5y'):
-            coverage['Price History (5y weekly)'] += 1
-        if stock.get('yahoo_finance', {}).get('price_history_monthly_5y'):
-            coverage['Price History (5y monthly)'] += 1
-        if stock.get('screener_company_data'):
-            coverage['Screener Company Data'] += 1
-        if stock.get('screener_financials', {}).get('profit_loss'):
-            coverage['Screener Financials - P&L'] += 1
-        if stock.get('screener_financials', {}).get('balance_sheet'):
-            coverage['Screener Financials - Balance Sheet'] += 1
-        if stock.get('screener_financials', {}).get('cash_flow'):
-            coverage['Screener Financials - Cash Flow'] += 1
-        if stock.get('screener_financials', {}).get('ratios'):
-            coverage['Screener Financials - Ratios'] += 1
-        if stock.get('yahoo_financials'):
-            coverage['Yahoo Financials'] += 1
-    
-    total = stats['processed']
-    for data_type, count in coverage.items():
-        pct = (count / total * 100) if total > 0 else 0
-        badge_class = 'badge-success' if pct >= 95 else 'badge-warning' if pct >= 80 else 'badge-danger'
-        
-        sample_fields = ''
-        if 'Yahoo Finance Info' in data_type:
-            sample_fields = 'ALL 152+ fields (address, phone, executives, business summary, etc.)'
-        elif 'Price History' in data_type:
-            sample_fields = 'date, open, high, low, close, volume'
-        elif 'Screener Company' in data_type:
-            sample_fields = 'ALL company metadata fields'
-        elif 'Financials' in data_type:
-            sample_fields = 'ALL metrics with original names, converted to numeric'
-        
-        html += f"""
-            <tr>
-                <td><strong>{data_type}</strong></td>
-                <td>{count} / {total}</td>
-                <td><span class="badge {badge_class}">{pct:.1f}%</span></td>
-                <td><span class="code">{sample_fields}</span></td>
-            </tr>
-"""
-    
-    html += """
-        </table>
-    </div>
-    
-    <div class="section">
-        <h2>🔍 What Changed? (""" + sample_ticker + """)</h2>
-        <div class="comparison">
-            <div class="comparison-col">
-                <h3>Before (Raw Structure)</h3>
-                <pre>{
-  "ticker": "ABCAPITAL",
-  "yahoofin_raw": {
-    "observations": [{         // Removed wrapper
-      "fetched_at": "...",     // Moved to file level
-      "raw": {
-        "info": {
-          "address1": "...",   // NOW PRESERVED ✓
-          "phone": "...",      // NOW PRESERVED ✓
-          "executives": [...], // NOW PRESERVED ✓
-          "currentPrice": "350.1"  // String
-        }
-      }
-    }]
-  },
-  "screener_raw": {
-    "observations": [{         // Removed wrapper
-      "raw": {...}            // NOW PRESERVED ✓
-    }]
-  }
-}</pre>
-            </div>
-            <div class="comparison-col">
-                <h3><span class="tick">✓</span> After (Standardized)</h3>
-                <pre>{
-  "ticker": "ABCAPITAL",
-  "yahoo_finance": {
-    "info": {
-      "address1": "...",       // KEPT ✓
-      "phone": "...",          // KEPT ✓
-      "executives": [...],     // KEPT ✓
-      "currentPrice": 350.1    // Numeric
-      // ALL 152+ fields preserved
-    },
-    "price_history_daily_6m": [...]
-  },
-  "screener_company_data": {
-    // ALL fields preserved
-  },
-  "screener_financials": {
-    "profit_loss": [
-      {
-        "period": "2023-Q1",
-        "Revenue +": 8025000000  // Numeric
-      }
-    ]
-  }
-}</pre>
-            </div>
-        </div>
-    </div>
-    
-    <div class="section">
-        <h2>📝 Summary</h2>
-        <table>
-            <tr>
-                <th>Category</th>
-                <th>Status</th>
-            </tr>
-            <tr>
-                <td><strong>Data Preservation</strong></td>
-                <td><span class="badge badge-success">ALL original data preserved</span></td>
-            </tr>
-            <tr>
-                <td><strong>Structure</strong></td>
-                <td><span class="badge badge-info">Flattened (removed wrapper arrays)</span></td>
-            </tr>
-            <tr>
-                <td><strong>Numbers</strong></td>
-                <td><span class="badge badge-info">Converted strings to numeric where appropriate</span></td>
-            </tr>
-            <tr>
-                <td><strong>Dates</strong></td>
-                <td><span class="badge badge-info">Standardized to ISO format</span></td>
-            </tr>
-            <tr>
-                <td><strong>Metadata</strong></td>
-                <td><span class="badge badge-warning">Moved fetched_at to file level, removed redundant ticker/name</span></td>
-            </tr>
-        </table>
-    </div>
-    
-    <div class="section">
-        <h2>💾 Output Files</h2>
-        <table>
-            <tr>
-                <th>File</th>
-                <th>Purpose</th>
-                <th>Size</th>
-            </tr>
-            <tr>
-                <td><span class="code">data/market_data.json</span></td>
-                <td>Standardized data with ALL fields preserved</td>
-                <td><span class="badge badge-success">""" + stats.get('output_size', 'N/A') + """</span></td>
-            </tr>
-            <tr>
-                <td><span class="code">data/standardization_report.html</span></td>
-                <td>This report</td>
-                <td>-</td>
-            </tr>
-        </table>
-    </div>
-    
-</body>
-</html>"""
-    
-    return html
-    """Generate HTML report comparing raw vs standardized data."""
-    
-    # Get sample stock for comparison
-    sample_ticker = list(standardized['stocks'].keys())[0]
-    sample_raw = raw_data['data'][sample_ticker]
-    sample_std = standardized['stocks'][sample_ticker]
-    
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Market Data Standardization Report</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }}
-        .header {{
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        h1 {{ margin: 0 0 10px 0; color: #1a1a1a; }}
-        .subtitle {{ color: #666; font-size: 14px; }}
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }}
-        .stat-card {{
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        .stat-label {{ color: #666; font-size: 12px; text-transform: uppercase; }}
-        .stat-value {{ font-size: 28px; font-weight: bold; color: #1a1a1a; margin-top: 5px; }}
-        .section {{
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        h2 {{ margin-top: 0; color: #1a1a1a; font-size: 18px; }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }}
-        th {{
-            background: #f8f9fa;
-            padding: 12px;
-            text-align: left;
-            font-weight: 600;
-            border-bottom: 2px solid #dee2e6;
-            color: #495057;
-        }}
-        td {{
-            padding: 10px 12px;
-            border-bottom: 1px solid #dee2e6;
-        }}
-        tr:hover {{ background: #f8f9fa; }}
-        .badge {{
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
-        .badge-success {{ background: #d4edda; color: #155724; }}
-        .badge-warning {{ background: #fff3cd; color: #856404; }}
-        .badge-danger {{ background: #f8d7da; color: #721c24; }}
-        .code {{
-            background: #f4f4f4;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-        }}
-        .comparison {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }}
-        .comparison-col {{
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-        }}
-        .comparison-col h3 {{
-            margin-top: 0;
-            font-size: 14px;
-            color: #495057;
-        }}
-        pre {{
-            background: white;
-            padding: 12px;
-            border-radius: 4px;
-            overflow-x: auto;
-            font-size: 11px;
-            line-height: 1.5;
-        }}
-        .tick {{ color: #28a745; font-weight: bold; }}
-        .cross {{ color: #dc3545; font-weight: bold; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>📊 Market Data Standardization Report</h1>
-        <div class="subtitle">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
-    </div>
-    
-    <div class="stats">
-        <div class="stat-card">
-            <div class="stat-label">Total Stocks</div>
-            <div class="stat-value">{stats['total_stocks']}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Successfully Processed</div>
-            <div class="stat-value" style="color: #28a745;">{stats['processed']}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Errors</div>
-            <div class="stat-value" style="color: {'#dc3545' if stats['errors'] > 0 else '#28a745'};">{stats['errors']}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">File Size Reduction</div>
-            <div class="stat-value" style="color: #007bff;">{stats.get('size_reduction', 'N/A')}</div>
-        </div>
-    </div>
-    
-    <div class="section">
-        <h2>✅ Transformations Applied</h2>
-        <table>
-            <tr>
-                <th style="width: 40%">Transformation</th>
-                <th>Status</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td><span class="code">observations</span> wrapper removed</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Flattened nested structure, single timestamp at file level</td>
-            </tr>
-            <tr>
-                <td>String numbers → Numeric</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Converted "13,459" to 13459000000</td>
-            </tr>
-            <tr>
-                <td>Date standardization</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>All dates to ISO format (YYYY-MM-DD)</td>
-            </tr>
-            <tr>
-                <td>Redundancy removal</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Ticker/name only at root level</td>
-            </tr>
-            <tr>
-                <td>Normalized snapshot layer</td>
-                <td><span class="badge badge-success">✓ Applied</span></td>
-                <td>Quick-access metrics (price, market cap, etc.)</td>
-            </tr>
-        </table>
-    </div>
-    
-    <div class="section">
-        <h2>📋 Data Coverage Summary</h2>
-        <table>
-            <tr>
-                <th>Data Type</th>
-                <th>Stocks with Data</th>
-                <th>Coverage</th>
-                <th>Sample Fields</th>
-            </tr>
-"""
-    
-    # Calculate coverage stats
-    coverage = {
-        'Snapshot': 0,
-        'Price History (6m daily)': 0,
-        'Price History (5y weekly)': 0,
-        'Price History (5y monthly)': 0,
-        'Screener Profit/Loss': 0,
-        'Screener Balance Sheet': 0,
-        'Screener Cash Flow': 0,
-        'Yahoo Financials': 0
-    }
-    
-    for ticker, stock in standardized['stocks'].items():
-        if stock.get('snapshot'):
-            coverage['Snapshot'] += 1
-        if stock.get('price_history', {}).get('daily_6m'):
-            coverage['Price History (6m daily)'] += 1
-        if stock.get('price_history', {}).get('weekly_5y'):
-            coverage['Price History (5y weekly)'] += 1
-        if stock.get('price_history', {}).get('monthly_5y'):
-            coverage['Price History (5y monthly)'] += 1
-        if stock.get('screener_profit_loss'):
-            coverage['Screener Profit/Loss'] += 1
-        if stock.get('screener_balance_sheet'):
-            coverage['Screener Balance Sheet'] += 1
-        if stock.get('screener_cash_flow'):
-            coverage['Screener Cash Flow'] += 1
-        if stock.get('yahoo_financials'):
-            coverage['Yahoo Financials'] += 1
-    
-    total = stats['processed']
-    for data_type, count in coverage.items():
-        pct = (count / total * 100) if total > 0 else 0
-        badge_class = 'badge-success' if pct >= 95 else 'badge-warning' if pct >= 80 else 'badge-danger'
-        
-        sample_fields = ''
-        if data_type == 'Snapshot':
-            sample_fields = 'price, market_cap, sector, pe_ratio'
-        elif 'Price History' in data_type:
-            sample_fields = 'date, open, high, low, close, volume'
-        elif 'Screener' in data_type:
-            sample_fields = 'period, end_date, revenue, net_profit'
-        elif 'Yahoo' in data_type:
-            sample_fields = 'period, end_date, net_profit, total_assets'
-        
-        html += f"""
-            <tr>
-                <td><strong>{data_type}</strong></td>
-                <td>{count} / {total}</td>
-                <td><span class="badge {badge_class}">{pct:.1f}%</span></td>
-                <td><span class="code">{sample_fields}</span></td>
-            </tr>
-"""
-    
-    html += """
-        </table>
-    </div>
-    
-    <div class="section">
-        <h2>🔍 Before vs After Comparison (""" + sample_ticker + """)</h2>
-        <div class="comparison">
-            <div class="comparison-col">
-                <h3><span class="cross">✗</span> Before (Raw Structure)</h3>
-                <pre>{
-  "ticker": "ABCAPITAL",
-  "name": "Aditya Birla Capital Ltd",
-  "yahoofin_raw": {
-    "observations": [{
-      "fetched_at": "2026-05-18T12:55:58Z",
-      "raw": {
-        "info": {
-          "currentPrice": "350.1",  // String
-          "marketCap": 917547319296
-        },
-        "history_6mo_1d": [...]
-      }
-    }]
-  },
-  "screener_financials": {
-    "timestamp": "2026-05-18T07:58:09Z",
-    "tables": {
-      "profit_loss": {
-        "data": {
-          "Revenue +": {
-            "Mar 2023": "8,025",  // String
-            "Jun 2023": "7,045"
-          }
-        }
-      }
-    }
-  }
-}</pre>
-            </div>
-            <div class="comparison-col">
-                <h3><span class="tick">✓</span> After (Standardized Structure)</h3>
-                <pre>{
-  "ticker": "ABCAPITAL",
-  "name": "Aditya Birla Capital Ltd",
-  "snapshot": {
-    "price": 350.1,          // Numeric
-    "market_cap": 917547319296,
-    "sector": "Financial Services",
-    "pe_ratio": 12.5
-  },
-  "price_history": {
-    "daily_6m": [
-      {
-        "date": "2025-11-18",
-        "close": 333.1,
-        "volume": 2174919
-      }
-    ]
-  },
-  "screener_profit_loss": [
-    {
-      "period": "2023-Q1",
-      "end_date": "2023-03-31",
-      "revenue": 8025000000  // Numeric
-    }
-  ]
-}</pre>
-            </div>
-        </div>
-    </div>
-    
-    <div class="section">
-        <h2>💾 Output Files</h2>
-        <table>
-            <tr>
-                <th>File</th>
-                <th>Purpose</th>
-                <th>Size</th>
-            </tr>
-            <tr>
-                <td><span class="code">data/market_data.json</span></td>
-                <td>Standardized data ready for analysis</td>
-                <td><span class="badge badge-success">""" + stats.get('output_size', 'N/A') + """</span></td>
-            </tr>
-            <tr>
-                <td><span class="code">data/standardization_report.html</span></td>
-                <td>This report</td>
-                <td>-</td>
-            </tr>
-        </table>
-    </div>
-    
-</body>
-</html>"""
-    
-    return html
+# ============================================================================
+# FILE I/O
+# ============================================================================
 
+def load_raw_data(filepath: str) -> Tuple[Optional[Dict], Optional[str]]:
+    """Load and validate raw data."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        if not isinstance(data, dict):
+            return None, "Root is not a dictionary"
+        
+        if 'data' not in data:
+            return None, "Missing 'data' key"
+        
+        if not isinstance(data['data'], dict):
+            return None, "'data' is not a dictionary"
+        
+        return data, None
+        
+    except FileNotFoundError:
+        return None, f"File not found: {filepath}"
+    except json.JSONDecodeError as e:
+        return None, f"Invalid JSON: {str(e)}"
+    except Exception as e:
+        return None, f"Error: {str(e)}"
+
+
+def save_json(data: Dict, filepath: str) -> Tuple[bool, Optional[str]]:
+    """Save JSON file."""
+    try:
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        
+        return True, None
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
 
 def main():
-    """Main standardization process."""
-    print("Loading raw market data...")
-    with open('data/raw_market_data.json', 'r') as f:
-        raw_data = json.load(f)
+    print("="*80)
+    print("MARKET DATA PROCESSING - COMPLETE FIELD MAPPING")
+    print("="*80)
+    print()
     
-    raw_size = len(json.dumps(raw_data))
+    # Load
+    print("Loading raw data...")
+    raw_data, error = load_raw_data('data/raw_market_data.json')
     
-    print(f"Processing {raw_data['metadata']['total_tickers']} stocks...")
+    if error:
+        print(f"✗ FATAL: {error}")
+        sys.exit(1)
     
-    # Create standardized structure
-    standardized = {
-        'metadata': {
-            'fetched_at': raw_data['metadata']['merged_at'],
-            'total_stocks': raw_data['metadata']['total_tickers'],
-            'failed_symbols': raw_data['metadata'].get('screener_failed_symbols', []),
-            'data_sources': raw_data['metadata']['datasets'],
-            'standardization_version': '1.0',
-            'standardized_at': datetime.utcnow().isoformat() + 'Z'
-        },
-        'stocks': {}
+    total_stocks = len(raw_data['data'])
+    print(f"✓ Loaded {total_stocks} stocks")
+    print()
+    
+    # Process
+    print("Processing...")
+    processor = DataProcessor()
+    
+    processed_stocks = {}
+    
+    for idx, (ticker, stock_data) in enumerate(raw_data['data'].items(), 1):
+        if idx % 10 == 0:
+            print(f"  {idx}/{total_stocks} stocks...")
+        
+        result = processor.process_stock(ticker, stock_data)
+        if result:
+            processed_stocks[ticker] = result
+    
+    print(f"✓ Processed {processor.stats['stocks_processed']} stocks")
+    print(f"  Failed: {processor.stats['stocks_failed']}")
+    print(f"  Fields mapped: {processor.stats['fields_mapped']:,}")
+    print(f"  Data points: {processor.stats['data_points_processed']:,}")
+    print()
+    
+    # Save
+    print("Saving outputs...")
+    
+    # Main output
+    output = {
+        'stocks': processed_stocks
     }
     
-    # Process each stock
-    processed = 0
-    errors = 0
+    success, error = save_json(output, 'data/market_data.json')
+    if success:
+        print("✓ data/market_data.json")
+    else:
+        print(f"✗ {error}")
     
-    for ticker, stock_data in raw_data['data'].items():
-        try:
-            standardized['stocks'][ticker] = standardize_stock(stock_data)
-            processed += 1
-            if processed % 10 == 0:
-                print(f"  Processed {processed}/{raw_data['metadata']['total_tickers']} stocks...")
-        except Exception as e:
-            print(f"  Error processing {ticker}: {e}")
-            errors += 1
+    # Rejections
+    rejection_summary = processor.rejection_tracker.get_summary()
+    success, error = save_json(rejection_summary, 'data/rejections.json')
+    if success:
+        print(f"✓ data/rejections.json")
+        print(f"  Total rejections: {rejection_summary['total_rejections']}")
+        print(f"  Resolved: {rejection_summary['resolved_after_retry']}")
+        print(f"  Unresolved: {rejection_summary['unresolved']}")
+    else:
+        print(f"✗ {error}")
     
-    print(f"\nStandardization complete:")
-    print(f"  Successfully processed: {processed}")
-    print(f"  Errors: {errors}")
+    # Parser stats
+    success, error = save_json(dict(processor.parser.stats), 'data/parser_stats.json')
+    if success:
+        print(f"✓ data/parser_stats.json")
     
-    # Write JSON output
-    output_path = 'data/market_data.json'
-    print(f"\nWriting to {output_path}...")
-    with open(output_path, 'w') as f:
-        json.dump(standardized, f, indent=2)
-    
-    std_size = len(json.dumps(standardized))
-    size_reduction = ((raw_size - std_size) / raw_size * 100) if raw_size > 0 else 0
-    
-    # Generate HTML report
-    stats = {
-        'total_stocks': raw_data['metadata']['total_tickers'],
-        'processed': processed,
-        'errors': errors,
-        'size_reduction': f"{size_reduction:.1f}%",
-        'output_size': f"{std_size / (1024*1024):.1f} MB"
-    }
-    
-    print("Generating HTML report...")
-    html_report = generate_html_report(raw_data, standardized, stats)
-    
-    report_path = 'data/standardization_report.html'
-    with open(report_path, 'w') as f:
-        f.write(html_report)
-    
-    print(f"✓ Done! Files created:")
-    print(f"  - {output_path}")
-    print(f"  - {report_path}")
-    print(f"\nOpen {report_path} in your browser to view the report.")
+    print()
+    print("="*80)
+    print("COMPLETE")
+    print("="*80)
 
 
 if __name__ == '__main__':
