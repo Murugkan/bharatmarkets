@@ -15,6 +15,31 @@ from pathlib import Path
 
 
 # ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+def normalize_decimals(value: Any, decimals: int = 4) -> Any:
+    """
+    Normalize decimal places for numeric values recursively.
+    
+    Args:
+        value: Input value (can be dict, list, or primitive)
+        decimals: Number of decimal places to keep (default: 4)
+    
+    Returns:
+        Value with normalized decimals
+    """
+    if isinstance(value, float):
+        return round(value, decimals)
+    elif isinstance(value, dict):
+        return {k: normalize_decimals(v, decimals) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [normalize_decimals(item, decimals) for item in value]
+    else:
+        return value
+
+
+# ============================================================================
 # REJECTION TRACKING
 # ============================================================================
 
@@ -1298,6 +1323,9 @@ def main():
     print("="*80)
     print()
     
+    # Get logger
+    logger = logging.getLogger('Main')
+    
     # Load
     print("Loading raw data...")
     raw_data, error = load_raw_data('data/raw_market_data.json')
@@ -1339,12 +1367,19 @@ def main():
     
     rejection_summary = processor.rejection_tracker.get_summary()
     
-    # Single comprehensive output file
+    # Save rejections to log file only
+    rejections_log_path = f"data/logs/rejections_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    success, error = save_json(rejection_summary, rejections_log_path)
+    
+    # Normalize all decimal places in stock data
+    normalized_stocks = normalize_decimals(processed_stocks, decimals=4)
+    
+    # Single comprehensive output file (WITHOUT rejections)
     output = {
         'metadata': {
             'version': '1.0.0',
-            'processed_at': datetime.utcnow().isoformat(),
-            'total_stocks': len(processed_stocks),
+            'processed_at': datetime.now().isoformat(),
+            'total_stocks': len(normalized_stocks),
             'processing_stats': {
                 'stocks_processed': processor.stats['stocks_processed'],
                 'stocks_failed': processor.stats['stocks_failed'],
@@ -1355,21 +1390,21 @@ def main():
                 'total_rejections': rejection_summary['total_rejections'],
                 'resolved': rejection_summary['resolved_after_retry'],
                 'unresolved': rejection_summary['unresolved'],
-                'by_severity': rejection_summary['by_severity']
+                'by_severity': rejection_summary['by_severity'],
+                'log_file': rejections_log_path
             },
             'accounting_stats': accounting_summary,
-            'parser_stats': dict(processor.parser.stats)
+            'decimal_precision': 4
         },
-        'rejections': rejection_summary['rejections'],
-        'stocks': processed_stocks
+        'stocks': normalized_stocks
     }
     
     success, error = save_json(output, 'data/market_data.json')
     if success:
         print("✓ data/market_data.json")
-        print(f"  Stocks: {len(processed_stocks)}")
-        print(f"  Rejections: {rejection_summary['total_rejections']}")
-        print(f"  Accounting calculations: {accounting_summary['total_calculations_performed']}")
+        print(f"  Stocks: {len(normalized_stocks)}")
+        print(f"  Decimal precision: 4 places")
+        print(f"  Rejections logged to: {rejections_log_path}")
     else:
         print(f"✗ {error}")
     
