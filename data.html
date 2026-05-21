@@ -2101,7 +2101,26 @@ CRITICAL RULES:
     }
 
     async function loadAllData() {
-        log('🚀 LOAD JSON initiated - clearing all caches...');
+        log('🚀 LOAD JSON initiated');
+        
+        // Check if market_data.json exists locally first
+        try {
+            const response = await fetch('data/market_data.json');
+            if (response.ok) {
+                log('📁 Found local market_data.json - loading...');
+                updateStatusButton('⏳ Loading local file');
+                const blob = await response.blob();
+                const file = new File([blob], 'market_data.json', {type: 'application/json'});
+                loadMarketDataJSON(file);
+                return;
+            }
+        } catch(e) {
+            // File not found locally, continue with GitHub fetch
+            log('📡 market_data.json not found locally, trying GitHub...');
+        }
+        
+        // Original GitHub loading flow
+        log('📡 Loading from GitHub - clearing all caches...');
         updateStatusButton('⏳ Clearing cache');
         showToast('Clearing cache and loading fresh data...');
         
@@ -2460,6 +2479,109 @@ CRITICAL RULES:
             document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;"><h2>Initialization Error</h2><pre>' + err.message + '</pre><p>' + err.stack + '</p></div>';
         }
     })();
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // LOAD MARKET DATA JSON - AUTO INDEXDB MAPPING
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function loadMarketDataJSON(file) {
+        if (!file) return;
+        
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                
+                if (!json.stocks || !Array.isArray(json.stocks)) {
+                    log('❌ Invalid market_data.json format - missing stocks array');
+                    showToast('Invalid JSON format', 'error');
+                    updateStatusButton('❌ Error');
+                    return;
+                }
+                
+                log('📦 Processing ' + json.stocks.length + ' stocks from market_data.json');
+                updateStatusButton('⏳ Saving to DB');
+                
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
+                request.onerror = function() {
+                    log('❌ Database error - cannot open IndexedDB');
+                    showToast('Database error', 'error');
+                    updateStatusButton('❌ DB Error');
+                };
+                
+                request.onsuccess = function(ev) {
+                    const db = ev.target.result;
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(STORE_NAME);
+                    
+                    let savedCount = 0;
+                    let skippedCount = 0;
+                    
+                    json.stocks.forEach(function(stock) {
+                        const ticker = stock.ticker || stock.symbol;
+                        if (!ticker || ticker === '' || ticker === '?') {
+                            skippedCount++;
+                            return;
+                        }
+                        
+                        // Auto-add IndexDB required fields if missing
+                        const record = stock;
+                        if (!record.type) record.type = 'watchlist';
+                        if (!record.qty) record.qty = 0;
+                        if (!record.avg) record.avg = 0;
+                        if (!record.source) record.source = 'market_data_pipeline';
+                        if (!record.userDataUpdatedAt) {
+                            record.userDataUpdatedAt = new Date().toISOString();
+                        }
+                        
+                        store.put(record);
+                        savedCount++;
+                    });
+                    
+                    tx.oncomplete = function() {
+                        log('✅ Loaded ' + savedCount + ' stocks to IndexedDB');
+                        if (skippedCount > 0) {
+                            log('⚠️ Skipped ' + skippedCount + ' invalid records');
+                        }
+                        
+                        // Update master data
+                        masterData = json.stocks;
+                        
+                        updateStatusButton('✅ Loaded (' + savedCount + ')');
+                        showToast('Successfully loaded ' + savedCount + ' stocks!');
+                        
+                        // Reload page to display data
+                        log('🔄 Reloading page to display data...');
+                        setTimeout(function() {
+                            location.reload();
+                        }, 1000);
+                    };
+                    
+                    tx.onerror = function(err) {
+                        log('❌ Transaction error: ' + (err.message || 'Unknown error'));
+                        showToast('Error saving to database', 'error');
+                        updateStatusButton('❌ Save Error');
+                    };
+                };
+                
+            } catch(err) {
+                log('❌ Parse error: ' + err.message);
+                showToast('Error parsing JSON: ' + err.message, 'error');
+                updateStatusButton('❌ Parse Error');
+            }
+        };
+        
+        reader.onerror = function() {
+            log('❌ File read error');
+            showToast('Error reading file', 'error');
+            updateStatusButton('❌ Read Error');
+        };
+        
+        reader.readAsText(file);
+    }
+    
 </script>
 
 </body>
