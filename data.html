@@ -2104,104 +2104,52 @@ CRITICAL RULES:
     async function loadAllData() {
         log('🚀 LOAD JSON initiated');
         
-        // Check if market_data.json exists locally first
+        // Only check for local market_data.json - no GitHub loading
         try {
             const response = await fetch('data/market_data.json');
-            if (response.ok) {
-                log('📁 Found local market_data.json - loading...');
-                updateStatusButton('⏳ Loading local file');
-                const blob = await response.blob();
-                const file = new File([blob], 'market_data.json', {type: 'application/json'});
-                loadMarketDataJSON(file);
+            if (!response.ok) {
+                log('❌ market_data.json not found at data/market_data.json');
+                log('   Please run process_data.py first to generate it');
+                updateStatusButton('❌ File not found');
+                showToast('market_data.json not found!', 'error');
                 return;
             }
+            
+            log('📁 Found local market_data.json - loading...');
+            updateStatusButton('⏳ Loading local file');
+            const blob = await response.blob();
+            const file = new File([blob], 'market_data.json', {type: 'application/json'});
+            loadMarketDataJSON(file);
+            
         } catch(e) {
-            // File not found locally, continue with GitHub fetch
-            log('📡 market_data.json not found locally, trying GitHub...');
+            log('❌ Error loading market_data.json: ' + e.message);
+            updateStatusButton('❌ Error');
+            showToast('Failed to load market_data.json', 'error');
         }
-        
-        // Original GitHub loading flow
-        log('📡 Loading from GitHub - clearing all caches...');
-        updateStatusButton('⏳ Clearing cache');
-        showToast('Clearing cache and loading fresh data...');
-        
-        // Clear localStorage - all cache keys
-        const cacheKeys = ['dataUpdatedTimes', 'guidanceData', 'concallTimestamps', 'insightsTimestamps', 'etl_logs'];
-        Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('hash_') || key.startsWith('prev_hash_')) cacheKeys.push(key);
-        });
-        cacheKeys.forEach(key => localStorage.removeItem(key));
-        dataUpdatedTimes = {};
-        guidanceData = {};
-        concallTimestamps = {};
-        insightsTimestamps = {};
-        log('✅ localStorage cleared');
-        
-        // Clear IndexedDB
-        return new Promise((resolve) => {
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onerror = () => {
-                log('⚠️ Could not open IndexedDB, loading fresh data anyway');
-                masterData = [];
-                loadFreshData().then(resolve);
-            };
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                if (db.objectStoreNames.contains(STORE_NAME)) {
-                    var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                    var clearStore = clearTx.objectStore(STORE_NAME);
-                    clearStore.clear();
-                    clearTx.oncomplete = () => {
-                        log('✅ IndexedDB cleared');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
-                    clearTx.onerror = () => {
-                        log('⚠️ Error clearing IndexedDB, loading fresh data anyway');
-                        masterData = [];
-                        loadFreshData().then(resolve).catch((err) => {
-                            log(`❌ Error loading fresh data: ${err.message}`);
-                            resolve();
-                        });
-                    };
-                } else {
-                    log('⚠️ STORE_NAME not in IndexedDB, loading fresh data');
-                    masterData = [];
-                    loadFreshData().then(resolve).catch((err) => {
-                        log(`❌ Error loading fresh data: ${err.message}`);
-                        resolve();
-                    });
-                }
-            };
-        });
     }
     
+    /* ========================================================================
+       OLD GITHUB LOADING FLOW - NO LONGER USED
+       market_data.json now contains everything (prices, fundamentals, guidance)
+       ======================================================================== */
+    
+    /*
     async function loadFreshData() {
-        log('📡 Fetching fresh data from GitHub (sequential)...');
-        updateStatusButton('⏳ Loading');
-        
-        // Clear guidance data to ensure fresh data
-        guidanceData = {};
-        
-        const results = [];
-        for (let i = 0; i < DATA_SOURCES.length; i++) {
-            const source = DATA_SOURCES[i];
-            const filename = source.path.split('/').pop();
-            const data = await fetchGitHubData(source.path);
-            results.push(data);
-            
-            log(`✅ File: ${filename} (${i + 1}/${DATA_SOURCES.length})`);
-        }
-        
-        log('✅ All files loaded from GitHub');
-        
-        // Fetch guidance.json separately (not in DATA_SOURCES display)
-        let guidanceFileData = {};
+        // This function is deprecated - market_data.json has everything now
+    }
+    
+    async function fetchGitHubData(filePath) {
+        // This function is deprecated - no longer fetching from GitHub
+    }
+    */
+    
+    // LOAD MARKET DATA JSON - AUTO INDEXDB MAPPING
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    // Fetch prices.json and merge with IndexedDB stocks
+    async function fetchAndMergePrices(db) {
         try {
-            const guidanceResponse = await fetchGitHubData('guidance.json');
+            const response = await fetch('prices.json');
             if (guidanceResponse) {
                 guidanceFileData = guidanceResponse;
                 log('✅ Fetched guidance.json');
@@ -2485,6 +2433,91 @@ CRITICAL RULES:
     // LOAD MARKET DATA JSON - AUTO INDEXDB MAPPING
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     
+    // Fetch prices.json and merge with IndexedDB stocks
+    async function fetchAndMergePrices(db) {
+        try {
+            const response = await fetch('prices.json');
+            if (!response.ok) {
+                log('⚠️ prices.json not found - skipping price update');
+                finishLoading();
+                return;
+            }
+            
+            const pricesData = await response.json();
+            if (!pricesData.quotes || typeof pricesData.quotes !== 'object') {
+                log('❌ Invalid prices.json format');
+                finishLoading();
+                return;
+            }
+            
+            log('📦 Processing ' + Object.keys(pricesData.quotes).length + ' price quotes');
+            
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            
+            let updatedCount = 0;
+            let notFoundCount = 0;
+            
+            // Get all stocks from IndexDB first
+            const getAllReq = store.getAll();
+            
+            getAllReq.onsuccess = function() {
+                const stocks = getAllReq.result;
+                
+                stocks.forEach(function(stock) {
+                    const ticker = stock.ticker;
+                    const priceQuote = pricesData.quotes[ticker];
+                    
+                    if (priceQuote) {
+                        // Merge price data - overwrite with real-time values
+                        stock.price = priceQuote.ltp;  // Map ltp → price
+                        stock.ltp = priceQuote.ltp;    // Keep both for compatibility
+                        stock.market_change = priceQuote.change;
+                        stock.market_change_pct = priceQuote.changePct;
+                        stock.market_open = priceQuote.open;
+                        stock.market_day_high = priceQuote.high;
+                        stock.market_day_low = priceQuote.low;
+                        stock.prev_close = priceQuote.prev;
+                        stock.volume = priceQuote.vol;
+                        stock.week_52_high = priceQuote.w52h;
+                        stock.week_52_low = priceQuote.w52l;
+                        stock.beta = priceQuote.beta;
+                        
+                        // Save updated stock
+                        store.put(stock);
+                        updatedCount++;
+                    } else {
+                        notFoundCount++;
+                    }
+                });
+                
+                log('✅ Updated ' + updatedCount + ' stocks with real-time prices');
+                if (notFoundCount > 0) {
+                    log('⚠️ ' + notFoundCount + ' stocks not found in prices.json');
+                }
+                
+                finishLoading();
+            };
+            
+            getAllReq.onerror = function() {
+                log('❌ Error reading stocks from IndexDB');
+                finishLoading();
+            };
+            
+        } catch (err) {
+            log('❌ Error fetching prices.json: ' + err.message);
+            finishLoading();
+        }
+    }
+    
+    function finishLoading() {
+        showToast('Successfully loaded with real-time prices!');
+        log('🔄 Reloading page to display data...');
+        setTimeout(function() {
+            location.reload();
+        }, 1000);
+    }
+    
     function loadMarketDataJSON(file) {
         if (!file) return;
         
@@ -2567,13 +2600,10 @@ CRITICAL RULES:
                         masterData = json.stocks;
                         
                         updateStatusButton('✅ Loaded (' + savedCount + ')');
-                        showToast('Successfully loaded ' + savedCount + ' stocks!');
                         
-                        // Reload page to display data
-                        log('🔄 Reloading page to display data...');
-                        setTimeout(function() {
-                            location.reload();
-                        }, 1000);
+                        // Now fetch and merge prices.json
+                        log('📡 Fetching prices.json for real-time data...');
+                        fetchAndMergePrices(db);
                     };
                     
                     tx.onerror = function(err) {
