@@ -331,6 +331,7 @@
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
+            <button onclick="runDebugCheck()" style="background:linear-gradient(135deg, #ffb347 0%, #ff9933 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🐛</span>DEBUG</button>
             <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
         </div>
 
@@ -2596,6 +2597,128 @@ CRITICAL RULES:
         };
         
         reader.readAsText(file);
+    }
+    
+    // ========================================================================
+    // DEBUG FUNCTION - Uses existing log window
+    // ========================================================================
+    
+    function runDebugCheck() {
+        log('🐛 ========================================');
+        log('🐛 DEBUG CHECK STARTED');
+        log('🐛 ========================================');
+        
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        
+        req.onerror = () => {
+            log('❌ Cannot open IndexDB');
+        };
+        
+        req.onsuccess = (e) => {
+            const db = e.target.result;
+            log('✅ IndexDB opened');
+            
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const getAllReq = store.getAll();
+            
+            getAllReq.onsuccess = () => {
+                const stocks = getAllReq.result;
+                log(`✅ Stocks in DB: ${stocks.length}`);
+                
+                if (stocks.length === 0) {
+                    log('⚠️  No stocks loaded! Click LOAD JSON first.');
+                    return;
+                }
+                
+                const sample = stocks[0];
+                log('');
+                log('📦 SAMPLE STOCK (First):');
+                log(`   Ticker: ${sample.ticker || 'N/A'}`);
+                log(`   Name: ${sample.name || 'N/A'}`);
+                log(`   Type: ${sample.type || 'N/A'}`);
+                log(`   Qty: ${sample.qty !== undefined ? sample.qty : 'N/A'}`);
+                log(`   Avg: ${sample.avg !== undefined ? sample.avg : 'N/A'}`);
+                log('');
+                
+                // Check critical fields
+                log('⚠️  CRITICAL FIELDS CHECK:');
+                const checks = [
+                    {name: 'LTP (price)', keys: ['price', 'ltp', 'LTP']},
+                    {name: 'PE (trailing_pe)', keys: ['trailing_pe', 'pe', 'PE']},
+                    {name: 'ROE% (return_on_equity)', keys: ['return_on_equity', 'roe', 'ROE%']},
+                    {name: 'PB (price_to_book)', keys: ['price_to_book', 'pb', 'PB']},
+                    {name: 'MCAP (market_cap)', keys: ['market_cap', 'mcap', 'MCAP']},
+                ];
+                
+                checks.forEach(check => {
+                    let found = false;
+                    let foundKey = '';
+                    let foundValue = '';
+                    
+                    for (let key of check.keys) {
+                        if (sample[key] !== undefined && sample[key] !== null) {
+                            found = true;
+                            foundKey = key;
+                            foundValue = sample[key];
+                            break;
+                        }
+                    }
+                    
+                    if (found) {
+                        log(`   ✅ ${check.name}: ${foundKey} = ${foundValue}`);
+                    } else {
+                        log(`   ❌ ${check.name}: NOT FOUND`);
+                        log(`      Looking for: ${check.keys.join(', ')}`);
+                    }
+                });
+                
+                log('');
+                log('📋 GUIDANCE & INSIGHTS CHECK:');
+                
+                if (sample.guidance && typeof sample.guidance === 'object') {
+                    log(`   ✅ Guidance: Present`);
+                    log(`      Quarter: ${sample.guidance.quarter || 'N/A'}`);
+                    if (sample.guidance.management) {
+                        log(`      Tone: ${sample.guidance.management.tone || 'N/A'}`);
+                    }
+                } else {
+                    log(`   ❌ Guidance: Not found in ${sample.ticker}`);
+                }
+                
+                if (sample.insights && typeof sample.insights === 'object') {
+                    log(`   ✅ Insights: Present`);
+                    log(`      Recommendation: ${sample.insights.recommendation || 'N/A'}`);
+                    if (sample.insights.thesis) {
+                        const thesis = sample.insights.thesis.substring(0, 50) + '...';
+                        log(`      Thesis: ${thesis}`);
+                    }
+                } else {
+                    log(`   ❌ Insights: Not found in ${sample.ticker}`);
+                }
+                
+                log('');
+                log('🔑 TOTAL FIELDS:');
+                const fieldCount = Object.keys(sample).length;
+                log(`   ${fieldCount} fields in stock object`);
+                
+                // Count stocks with guidance
+                let guidanceCount = 0;
+                stocks.forEach(s => {
+                    if (s.guidance || s.insights) guidanceCount++;
+                });
+                log(`   ${guidanceCount} stocks have guidance/insights`);
+                
+                log('');
+                log('🐛 ========================================');
+                log('🐛 DEBUG CHECK COMPLETE');
+                log('🐛 ========================================');
+            };
+            
+            getAllReq.onerror = () => {
+                log('❌ Error reading stocks from IndexDB');
+            };
+        };
     }
     
 </script>
