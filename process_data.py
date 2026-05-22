@@ -39,6 +39,32 @@ def normalize_decimals(value: Any, decimals: int = 4) -> Any:
         return value
 
 
+def parse_number(value: str) -> float:
+    """
+    Parse number from string, handling Indian number format with commas.
+    Examples: "1,672" -> 1672.0, "12.5" -> 12.5
+    """
+    if not value or not isinstance(value, str):
+        return 0.0
+    try:
+        # Remove commas and whitespace
+        cleaned = value.replace(',', '').strip()
+        return float(cleaned)
+    except:
+        return 0.0
+
+
+def parse_quarter_date(quarter_str: str) -> datetime:
+    """
+    Parse quarter string to datetime for sorting.
+    Examples: "Mar 2023" -> datetime(2023, 3, 1), "Dec 2024" -> datetime(2024, 12, 1)
+    """
+    try:
+        return datetime.strptime(quarter_str, "%b %Y")
+    except:
+        return datetime(2000, 1, 1)  # Default for unparseable dates
+
+
 # ============================================================================
 # REJECTION TRACKING
 # ============================================================================
@@ -1390,6 +1416,15 @@ def main():
     success, error = save_json(rejection_summary, rejections_log_path)
     
     # Normalize all decimal places in stock data
+    # BUT FIRST: Copy financials from raw data for quarterly transformation
+    for ticker, processed_stock in processed_stocks.items():
+        if ticker in raw_data['data']:
+            raw_stock = raw_data['data'][ticker]
+            if 'screener_financials' in raw_stock:
+                processed_stock['screener_financials'] = raw_stock['screener_financials']
+            if 'yahoofin_financials' in raw_stock:
+                processed_stock['yahoofin_financials'] = raw_stock['yahoofin_financials']
+    
     normalized_stocks = normalize_decimals(processed_stocks, decimals=4)
     
     # Convert stocks dictionary to array for JavaScript compatibility
@@ -1566,6 +1601,255 @@ def main():
     else:
         print(f"⚠️  No guidance file found at: {guidance_path}")
         print()
+    
+    # ========================================================================
+    # TRANSFORM QUARTERLY FINANCIALS
+    # ========================================================================
+    
+    print("="*80)
+    print("TRANSFORMING QUARTERLY & HISTORICAL FINANCIALS")
+    print("="*80)
+    print()
+    
+    quarterly_count = 0
+    for stock in stocks_array:
+        ticker = stock.get('ticker', '').upper()
+        
+        # Get data from both Screener and Yahoo Finance
+        has_screener = 'screener_financials' in stock
+        has_yahoo = 'yahoofin_financials' in stock
+        
+        if not has_screener and not has_yahoo:
+            continue
+        
+        # === EXTRACT FROM SCREENER FINANCIALS (Quarterly) ===
+        quarterly_by_period = {}
+        
+        if has_screener:
+            sf = stock.get('screener_financials', {})
+            if isinstance(sf, dict) and 'tables' in sf:
+                tables = sf['tables']
+                if isinstance(tables, dict):
+                    pl_data = tables.get('profit_loss', {}).get('data', {})
+                    bs_data = tables.get('balance_sheet', {}).get('data', {})
+                    cf_data = tables.get('cash_flow', {}).get('data', {})
+                    ratios_data = tables.get('ratios', {}).get('data', {})
+                    
+                    # Get all unique quarters
+                    all_quarters = set()
+                    for table_data in [pl_data, bs_data, cf_data, ratios_data]:
+                        if isinstance(table_data, dict):
+                            for metric_data in table_data.values():
+                                if isinstance(metric_data, dict):
+                                    all_quarters.update(metric_data.keys())
+                    
+                    # Extract metrics for each quarter
+                    for quarter_str in all_quarters:
+                        q = {'quarter': quarter_str, 'd': quarter_str, 'source': 'screener'}
+                        
+                        # P&L metrics
+                        if isinstance(pl_data, dict):
+                            sales = pl_data.get('Sales +', {}).get(quarter_str) or pl_data.get('Sales\xa0+', {}).get(quarter_str)
+                            if sales: q['rev'] = parse_number(sales)
+                            
+                            expenses = pl_data.get('Expenses +', {}).get(quarter_str) or pl_data.get('Expenses\xa0+', {}).get(quarter_str)
+                            if expenses: q['expenses'] = parse_number(expenses)
+                            
+                            op = pl_data.get('Operating Profit', {}).get(quarter_str)
+                            if op: q['operating_profit'] = parse_number(op)
+                            
+                            opm_pct = pl_data.get('OPM %', {}).get(quarter_str)
+                            if opm_pct: q['opm'] = parse_number(opm_pct)
+                            if 'opm' not in q and 'rev' in q and 'operating_profit' in q and q['rev'] > 0:
+                                q['opm'] = (q['operating_profit'] / q['rev']) * 100
+                            
+                            other_income = pl_data.get('Other Income +', {}).get(quarter_str) or pl_data.get('Other Income\xa0+', {}).get(quarter_str)
+                            if other_income: q['other_income'] = parse_number(other_income)
+                            
+                            interest = pl_data.get('Interest', {}).get(quarter_str)
+                            if interest: q['interest'] = parse_number(interest)
+                            
+                            depreciation = pl_data.get('Depreciation', {}).get(quarter_str)
+                            if depreciation: q['depreciation'] = parse_number(depreciation)
+                            
+                            if 'operating_profit' in q and 'depreciation' in q:
+                                q['ebitda'] = q['operating_profit'] + q['depreciation']
+                            
+                            pbt = pl_data.get('Profit before tax', {}).get(quarter_str)
+                            if pbt: q['pbt'] = parse_number(pbt)
+                            
+                            tax_pct = pl_data.get('Tax %', {}).get(quarter_str)
+                            if tax_pct: q['tax_pct'] = parse_number(tax_pct)
+                            
+                            net = pl_data.get('Net Profit +', {}).get(quarter_str) or pl_data.get('Net Profit\xa0+', {}).get(quarter_str)
+                            if net: q['net'] = parse_number(net)
+                            
+                            eps = pl_data.get('EPS in Rs', {}).get(quarter_str)
+                            if eps: q['eps'] = parse_number(eps)
+                        
+                        # Balance sheet metrics
+                        if isinstance(cf_data, dict):
+                            equity = cf_data.get('Equity Capital', {}).get(quarter_str)
+                            if equity: q['equity_capital'] = parse_number(equity)
+                            
+                            reserves = cf_data.get('Reserves', {}).get(quarter_str)
+                            if reserves: q['reserves'] = parse_number(reserves)
+                            
+                            borrowings = cf_data.get('Borrowings +', {}).get(quarter_str) or cf_data.get('Borrowings\xa0+', {}).get(quarter_str)
+                            if borrowings: q['debt'] = parse_number(borrowings)
+                            
+                            other_liab = cf_data.get('Other Liabilities +', {}).get(quarter_str) or cf_data.get('Other Liabilities\xa0+', {}).get(quarter_str)
+                            if other_liab: q['other_liabilities'] = parse_number(other_liab)
+                            
+                            total_liab = cf_data.get('Total Liabilities', {}).get(quarter_str)
+                            if total_liab: q['total_liabilities'] = parse_number(total_liab)
+                            
+                            fixed_assets = cf_data.get('Fixed Assets +', {}).get(quarter_str) or cf_data.get('Fixed Assets\xa0+', {}).get(quarter_str)
+                            if fixed_assets: q['fixed_assets'] = parse_number(fixed_assets)
+                            
+                            cwip = cf_data.get('CWIP', {}).get(quarter_str)
+                            if cwip: q['cwip'] = parse_number(cwip)
+                            
+                            investments = cf_data.get('Investments', {}).get(quarter_str)
+                            if investments: q['investments'] = parse_number(investments)
+                            
+                            other_assets = cf_data.get('Other Assets +', {}).get(quarter_str) or cf_data.get('Other Assets\xa0+', {}).get(quarter_str)
+                            if other_assets: q['other_assets'] = parse_number(other_assets)
+                            
+                            total_assets = cf_data.get('Total Assets', {}).get(quarter_str)
+                            if total_assets: q['total_assets'] = parse_number(total_assets)
+                        
+                        # Cash flow metrics (annual)
+                        if isinstance(ratios_data, dict):
+                            cfo = ratios_data.get('Cash from Operating Activity +', {}).get(quarter_str) or ratios_data.get('Cash from Operating Activity\xa0+', {}).get(quarter_str)
+                            if cfo: q['cfo'] = parse_number(cfo)
+                            
+                            cfi = ratios_data.get('Cash from Investing Activity +', {}).get(quarter_str) or ratios_data.get('Cash from Investing Activity\xa0+', {}).get(quarter_str)
+                            if cfi: q['cfi'] = parse_number(cfi)
+                            
+                            cff = ratios_data.get('Cash from Financing Activity +', {}).get(quarter_str) or ratios_data.get('Cash from Financing Activity\xa0+', {}).get(quarter_str)
+                            if cff: q['cff'] = parse_number(cff)
+                            
+                            net_cf = ratios_data.get('Net Cash Flow', {}).get(quarter_str)
+                            if net_cf: q['net_cash_flow'] = parse_number(net_cf)
+                            
+                            fcf = ratios_data.get('Free Cash Flow', {}).get(quarter_str)
+                            if fcf: q['fcf'] = parse_number(fcf)
+                            
+                            cfo_op = ratios_data.get('CFO/OP', {}).get(quarter_str)
+                            if cfo_op: q['cfo_op_ratio'] = parse_number(cfo_op)
+                        
+                        quarterly_by_period[quarter_str] = q
+        
+        # === EXTRACT FROM YAHOO FINANCE (Annual) ===
+        if has_yahoo:
+            yf = stock.get('yahoofin_financials', {})
+            if isinstance(yf, dict) and 'observations' in yf and yf['observations']:
+                raw = yf['observations'][0].get('raw', {})
+                historical = raw.get('historical_periods', [])
+                
+                for period_data in historical:
+                    period_str = period_data.get('period', '')
+                    if not period_str:
+                        continue
+                    
+                    # Use existing quarter or create new entry
+                    q = quarterly_by_period.get(period_str, {
+                        'quarter': period_str,
+                        'd': period_str,
+                        'source': 'yahoo'
+                    })
+                    
+                    # Revenue (prefer Screener if exists, otherwise Yahoo)
+                    if 'rev' not in q and period_data.get('revenue'):
+                        q['rev'] = period_data['revenue'] / 10000000  # Convert to Crores
+                    
+                    # Cost of Revenue
+                    if period_data.get('cost_of_revenue'):
+                        q['cost_of_revenue'] = period_data['cost_of_revenue'] / 10000000
+                    
+                    # Gross Profit
+                    if period_data.get('gross_profit'):
+                        q['gross_profit'] = period_data['gross_profit'] / 10000000
+                    
+                    # EBITDA (prefer Screener calc, otherwise Yahoo)
+                    if 'ebitda' not in q and period_data.get('ebitda'):
+                        q['ebitda'] = period_data['ebitda'] / 10000000
+                    
+                    # EBIT
+                    if period_data.get('ebit'):
+                        q['ebit'] = period_data['ebit'] / 10000000
+                    
+                    # Net Profit (prefer Screener)
+                    if 'net' not in q and period_data.get('net_profit'):
+                        q['net'] = period_data['net_profit'] / 10000000
+                    
+                    # EPS (prefer Screener)
+                    if 'eps' not in q:
+                        if period_data.get('diluted_eps'):
+                            q['eps'] = period_data['diluted_eps']
+                        elif period_data.get('basic_eps'):
+                            q['eps'] = period_data['basic_eps']
+                    
+                    # Depreciation (prefer Screener)
+                    if 'depreciation' not in q and period_data.get('depreciation'):
+                        q['depreciation'] = period_data['depreciation'] / 10000000
+                    
+                    # Interest Expense (prefer Screener)
+                    if 'interest' not in q and period_data.get('interest_expense'):
+                        q['interest'] = period_data['interest_expense'] / 10000000
+                    
+                    # Debt metrics
+                    if period_data.get('total_debt'):
+                        q['total_debt'] = period_data['total_debt'] / 10000000
+                    if period_data.get('long_term_debt'):
+                        q['long_term_debt'] = period_data['long_term_debt'] / 10000000
+                    if period_data.get('short_term_debt') and period_data['short_term_debt']:
+                        q['short_term_debt'] = period_data['short_term_debt'] / 10000000
+                    if period_data.get('net_debt'):
+                        q['net_debt'] = period_data['net_debt'] / 10000000
+                    
+                    # Working Capital
+                    if period_data.get('working_capital'):
+                        q['working_capital'] = period_data['working_capital'] / 10000000
+                    
+                    # Cash & Equivalents
+                    if period_data.get('cash_and_equivalents'):
+                        q['cash'] = period_data['cash_and_equivalents'] / 10000000
+                    
+                    # Accounts Receivable
+                    if period_data.get('accounts_receivable'):
+                        q['accounts_receivable'] = period_data['accounts_receivable'] / 10000000
+                    
+                    # Shares Outstanding
+                    if period_data.get('shares_outstanding'):
+                        q['shares_outstanding'] = period_data['shares_outstanding']
+                    if period_data.get('diluted_shares'):
+                        q['diluted_shares'] = period_data['diluted_shares']
+                    
+                    # Capital
+                    if period_data.get('invested_capital'):
+                        q['invested_capital'] = period_data['invested_capital'] / 10000000
+                    if period_data.get('total_capitalization'):
+                        q['total_capitalization'] = period_data['total_capitalization'] / 10000000
+                    
+                    # Tax Rate
+                    if period_data.get('tax_rate'):
+                        q['tax_rate'] = period_data['tax_rate'] * 100  # Convert to percentage
+                    
+                    quarterly_by_period[period_str] = q
+        
+        # Convert to sorted array
+        if quarterly_by_period:
+            quarterly = sorted(quarterly_by_period.values(), key=lambda x: parse_quarter_date(x['quarter']))
+            stock['quarterly'] = quarterly
+            quarterly_count += 1
+            metrics_count = len(quarterly[0].keys()) - 3 if quarterly else 0  # Exclude quarter, d, source
+            print(f"  ✓ {ticker:12} {len(quarterly)} periods, {metrics_count} metrics/period")
+    
+    print()
+    print(f"Stocks with quarterly/historical data: {quarterly_count}/{len(stocks_array)}")
+    print()
     
     # ========================================================================
     # SAVE FINAL OUTPUT
