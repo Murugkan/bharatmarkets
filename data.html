@@ -2491,7 +2491,13 @@ CRITICAL RULES:
         
         reader.onload = function(e) {
             try {
-                const json = JSON.parse(e.target.result);
+                // Safety fix: Replace NaN/Infinity with null before parsing
+                let text = e.target.result;
+                text = text.replace(/:\s*NaN/g, ': null');
+                text = text.replace(/:\s*Infinity/g, ': null');
+                text = text.replace(/:\s*-Infinity/g, ': null');
+                
+                const json = JSON.parse(text);
                 
                 if (!json.stocks || !Array.isArray(json.stocks)) {
                     log('❌ Invalid market_data.json format - missing stocks array');
