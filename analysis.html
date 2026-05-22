@@ -3035,10 +3035,11 @@ function drawCandlestick(s){
         if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d});
       });
       // Always add current PE at far right
-      if(s.pe > 0 && candles.length > 0){
+      const currentPE = s.trailing_pe || s.pe;
+      if(currentPE > 0 && candles.length > 0){
         const rightX = PAD.l + cW;
         if(!pts.length || pts[pts.length-1].x < rightX - 10)
-          pts.push({x: rightX, v: s.pe, d: 'now'});
+          pts.push({x: rightX, v: currentPE, d: 'now'});
       }
     } else {
       quarterly.forEach(q=>{
@@ -3046,7 +3047,11 @@ function drawCandlestick(s){
         if(v != null) pts.push({x: xForDate(q.d), v, d: q.d});
       });
       // Add current value as rightmost anchor if available
-      const curVal = k==='cfo'?s.cfo : k==='rev'?s.sales : k==='net'?s.npm_pct : k==='opm'?s.opm_pct : k==='debt'?s.debt_eq : null;
+      const curVal = k==='cfo'?(s.operating_cash_flow||s.cfo) : 
+                     k==='rev'?(s.total_revenue||s.sales) : 
+                     k==='net'?(s.profit_margins||s.npm_pct) : 
+                     k==='opm'?(s.operating_margins||s.opm_pct) : 
+                     k==='debt'?(s.debt_to_equity||s.debt_eq) : null;
       if(curVal != null && pts.length){
         pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
       }
@@ -3371,7 +3376,7 @@ function setupChartInteraction() {
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
   let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 16;  // ✅ Throttle to ~60fps for smooth motion
+  const REDRAW_THROTTLE_MS = 33;  // ~30fps for smooth panning on mobile
   
   // Debounced redraw: only redraw if 16ms has passed (prevents excessive redraws)
   const throttledRedraw = (stock) => {
@@ -3398,9 +3403,8 @@ function setupChartInteraction() {
     newPan = Math.max(-400, Math.min(400, newPan));
     
     if (S.chartPan !== newPan) {
-      console.log('📊 Panning... pan=' + newPan.toFixed(0));
       S.chartPan = newPan;
-      scheduleTACharts(currentStock);
+      throttledRedraw(currentStock);
     }
   });
   
@@ -3457,7 +3461,7 @@ function setupChartInteraction() {
           }
           
           if (currentStock) {
-            scheduleTACharts(currentStock);
+            throttledRedraw(currentStock);
           }
         }
       }
@@ -3470,7 +3474,7 @@ function setupChartInteraction() {
         let newPan = chartInteraction.startPan + delta;
         newPan = Math.max(-400, Math.min(400, newPan));
         S.chartPan = newPan;
-        scheduleTACharts(currentStock);  // ✅ No throttle for pan - needs instant response
+        throttledRedraw(currentStock);
       }
     }
   };
@@ -3684,20 +3688,32 @@ async function loadAndRenderMovers(){
     }
     
     // Calculate totals
-    const totalVal = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.ltp || 0)), 0);
+    const totalVal = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.price || s.ltp || 0)), 0);
     const totalCost = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.avg || 0)), 0);
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
     
-    // Find gainers and losers by daily change % (1d%)
-    const withChange = portfolio.filter(s => s.chg1d !== undefined && s.chg1d !== null);
+    // Find gainers and losers by daily change % (market_change_pct or chg1d)
+    const withChange = portfolio.filter(s => {
+      const change = s.market_change_pct || s.chg1d;
+      return change !== undefined && change !== null;
+    });
+    
     const gainers = [...withChange]
-      .sort((a, b) => (b.chg1d || 0) - (a.chg1d || 0))
+      .sort((a, b) => {
+        const aChange = a.market_change_pct || a.chg1d || 0;
+        const bChange = b.market_change_pct || b.chg1d || 0;
+        return bChange - aChange;
+      })
       .slice(0, 8);
     
     const losers = [...withChange]
-      .sort((a, b) => (a.chg1d || 0) - (b.chg1d || 0))
+      .sort((a, b) => {
+        const aChange = a.market_change_pct || a.chg1d || 0;
+        const bChange = b.market_change_pct || b.chg1d || 0;
+        return aChange - bChange;
+      })
       .slice(0, 8);
     
     
@@ -3705,10 +3721,11 @@ async function loadAndRenderMovers(){
     const sectorMap = {};
     portfolio.forEach(s => {
       const sec = s.sector || '—';
+      const change = s.market_change_pct || s.chg1d || 0;
       if(!sectorMap[sec]) sectorMap[sec] = {sum: 0, count: 0, stocks: []};
-      sectorMap[sec].sum += (s.chg1d || 0);
+      sectorMap[sec].sum += change;
       sectorMap[sec].count++;
-      sectorMap[sec].stocks.push({sym: s.ticker || s.sym, chg: s.chg1d});
+      sectorMap[sec].stocks.push({sym: s.ticker || s.sym, chg: change});
     });
     
     const sectors = Object.entries(sectorMap)
@@ -3739,17 +3756,25 @@ async function loadAndRenderMovers(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
-          ${gainers.length ? gainers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${((s.chg1d || 0).toFixed(2))}%</div></div>
-          </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
+          ${gainers.length ? gainers.map(s => {
+            const price = s.price || s.ltp || 0;
+            const change = s.market_change_pct || s.chg1d || 0;
+            return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${price.toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${change.toFixed(2)}%</div></div>
+          </div>`;
+          }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
         </div>
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
-          ${losers.length ? losers.map(s => `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${(s.ltp || 0).toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${((s.chg1d || 0).toFixed(2))}%</div></div>
-          </div>`).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
+          ${losers.length ? losers.map(s => {
+            const price = s.price || s.ltp || 0;
+            const change = s.market_change_pct || s.chg1d || 0;
+            return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${price.toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${change.toFixed(2)}%</div></div>
+          </div>`;
+          }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
         </div>
       </div>
       
@@ -3843,10 +3868,12 @@ function drawPortfolioHeatmap(portfolio){
   portfolio.forEach(s=>{
     const sec = (s.sector && s.sector!=='—') ? s.sector : 'Other';
     if(!sMap[sec]) sMap[sec]={name:sec, holdVal:0, mcap:0, chgSum:0, n:0, stocks:[]};
-    const holdingVal = (s.qty || 0) * (s.ltp || 0);
+    const price = s.price || s.ltp || 0;
+    const change = s.market_change_pct || s.chg1d || 0;
+    const holdingVal = (s.qty || 0) * price;
     sMap[sec].holdVal += holdingVal;
-    sMap[sec].mcap    += (s.mcap||0);
-    sMap[sec].chgSum  += (s.chg1d||0);
+    sMap[sec].mcap    += (s.market_cap || s.mcap || 0);
+    sMap[sec].chgSum  += change;
     sMap[sec].n++;
     sMap[sec].stocks.push(s);
   });
