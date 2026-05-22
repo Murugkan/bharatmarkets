@@ -2702,13 +2702,35 @@ CRITICAL RULES:
                 const fieldCount = Object.keys(sample).length;
                 log(`   ${fieldCount} fields in stock object`);
                 
-                // List all fields
+                // List all fields in chunks
                 log('');
-                log('📋 ALL FIELD NAMES:');
+                log('📋 ALL FIELD NAMES (158 total):');
+                log('');
+                
                 const allFields = Object.keys(sample);
-                allFields.forEach((field, idx) => {
-                    log(`   ${idx + 1}. ${field}`);
-                });
+                const chunkSize = 30;
+                
+                for (let i = 0; i < allFields.length; i += chunkSize) {
+                    const chunk = allFields.slice(i, i + chunkSize);
+                    log(`--- Fields ${i + 1} to ${Math.min(i + chunkSize, allFields.length)} ---`);
+                    chunk.forEach((field, idx) => {
+                        const value = sample[field];
+                        let displayValue = '';
+                        if (value === null || value === undefined) {
+                            displayValue = 'null';
+                        } else if (typeof value === 'object') {
+                            displayValue = Array.isArray(value) ? '[Array]' : '[Object]';
+                        } else if (typeof value === 'number') {
+                            displayValue = value.toString().substring(0, 20);
+                        } else if (typeof value === 'string') {
+                            displayValue = value.substring(0, 20);
+                        } else {
+                            displayValue = String(value).substring(0, 20);
+                        }
+                        log(`   ${i + idx + 1}. ${field} = ${displayValue}`);
+                    });
+                    log('');
+                }
                 
                 // Count stocks with guidance
                 let guidanceCount = 0;
