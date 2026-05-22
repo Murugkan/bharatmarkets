@@ -2524,6 +2524,7 @@ CRITICAL RULES:
                     
                     let savedCount = 0;
                     let skippedCount = 0;
+                    let guidanceCount = 0;
                     
                     json.stocks.forEach(function(stock) {
                         const ticker = stock.ticker || stock.symbol;
@@ -2542,12 +2543,21 @@ CRITICAL RULES:
                             record.userDataUpdatedAt = new Date().toISOString();
                         }
                         
+                        // Track guidance/insights
+                        if (record.guidance || record.insights) {
+                            guidanceCount++;
+                        }
+                        
+                        // Save complete record (includes guidance, insights, and all 158+ fields)
                         store.put(record);
                         savedCount++;
                     });
                     
                     tx.oncomplete = function() {
                         log('✅ Loaded ' + savedCount + ' stocks to IndexedDB');
+                        if (guidanceCount > 0) {
+                            log('📋 Guidance/Insights: ' + guidanceCount + ' stocks');
+                        }
                         if (skippedCount > 0) {
                             log('⚠️ Skipped ' + skippedCount + ' invalid records');
                         }

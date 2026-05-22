@@ -1420,10 +1420,167 @@ def main():
         'stocks': stocks_array  # Array, not dictionary
     }
     
+    # ========================================================================
+    # PORTFOLIO MERGE (from unified-symbols.json)
+    # ========================================================================
+    
+    portfolio_path = 'unified-symbols.json'
+    if Path(portfolio_path).exists():
+        print()
+        print("="*80)
+        print("MERGING PORTFOLIO DATA (unified-symbols.json)")
+        print("="*80)
+        print()
+        
+        try:
+            with open(portfolio_path, 'r') as f:
+                portfolio = json.load(f)
+            
+            portfolio_stocks = portfolio.get('symbols', [])
+            print(f"Portfolio stocks: {len(portfolio_stocks)}")
+            print(f"Portfolio updated: {portfolio.get('updated', 'N/A')}")
+            print()
+            
+            # Create lookup
+            portfolio_lookup = {}
+            for stock in portfolio_stocks:
+                ticker = stock.get('ticker', '').upper()
+                if ticker:
+                    portfolio_lookup[ticker] = stock
+            
+            # Merge
+            merged_count = 0
+            watchlist_count = 0
+            
+            for stock in stocks_array:
+                ticker = stock.get('ticker', '').upper()
+                
+                if ticker in portfolio_lookup:
+                    portfolio_stock = portfolio_lookup[ticker]
+                    stock['qty'] = portfolio_stock.get('qty', 0)
+                    stock['avg'] = portfolio_stock.get('avg', 0)
+                    stock['type'] = portfolio_stock.get('type', 'portfolio')
+                    stock['source'] = portfolio_stock.get('source', 'import')
+                    merged_count += 1
+                    print(f"  ✓ {ticker:12} qty={stock['qty']:>6}  avg={stock['avg']:>8.2f}")
+                else:
+                    # Watchlist
+                    if 'qty' not in stock:
+                        stock['qty'] = 0
+                    if 'avg' not in stock:
+                        stock['avg'] = 0
+                    if 'type' not in stock:
+                        stock['type'] = 'watchlist'
+                    watchlist_count += 1
+            
+            # Check for missing stocks
+            market_tickers = {s.get('ticker', '').upper() for s in stocks_array}
+            missing = [t for t in portfolio_lookup.keys() if t not in market_tickers]
+            
+            print()
+            print(f"Portfolio stocks merged: {merged_count}")
+            print(f"Watchlist only: {watchlist_count}")
+            
+            if missing:
+                print(f"⚠️  In portfolio but NOT in market data: {len(missing)}")
+                for ticker in missing[:5]:
+                    print(f"     - {ticker}")
+                if len(missing) > 5:
+                    print(f"     ... and {len(missing) - 5} more")
+            
+            # Update metadata
+            output['metadata']['portfolio_merged'] = True
+            output['metadata']['portfolio_updated'] = portfolio.get('updated')
+            output['metadata']['portfolio_count'] = merged_count
+            
+            print()
+            
+        except Exception as e:
+            print(f"⚠️  Portfolio merge failed: {str(e)}")
+            print("   Continuing without portfolio data...")
+            print()
+    else:
+        print()
+        print(f"⚠️  No portfolio file found at: {portfolio_path}")
+        print("   All stocks will be marked as 'watchlist'")
+        print()
+        
+        # Set defaults
+        for stock in stocks_array:
+            if 'qty' not in stock:
+                stock['qty'] = 0
+            if 'avg' not in stock:
+                stock['avg'] = 0
+            if 'type' not in stock:
+                stock['type'] = 'watchlist'
+    
+    # ========================================================================
+    # GUIDANCE MERGE (from guidance.json)
+    # ========================================================================
+    
+    guidance_path = 'guidance.json'
+    if Path(guidance_path).exists():
+        print("="*80)
+        print("MERGING GUIDANCE DATA (guidance.json)")
+        print("="*80)
+        print()
+        
+        try:
+            with open(guidance_path, 'r') as f:
+                guidance_data = json.load(f)
+            
+            # Remove metadata if present
+            if '_metadata' in guidance_data:
+                del guidance_data['_metadata']
+            
+            print(f"Guidance entries: {len(guidance_data)}")
+            print()
+            
+            # Merge guidance into stocks
+            guidance_merged = 0
+            
+            for stock in stocks_array:
+                ticker = stock.get('ticker', '').upper()
+                
+                if ticker in guidance_data:
+                    # Add guidance data
+                    stock['guidance'] = guidance_data[ticker].get('guidance', {})
+                    stock['insights'] = guidance_data[ticker].get('insights', {})
+                    guidance_merged += 1
+                    print(f"  ✓ {ticker:12} guidance added")
+            
+            print()
+            print(f"Stocks with guidance: {guidance_merged}")
+            print(f"Stocks without guidance: {len(stocks_array) - guidance_merged}")
+            
+            # Update metadata
+            output['metadata']['guidance_merged'] = True
+            output['metadata']['guidance_count'] = guidance_merged
+            
+            print()
+            
+        except Exception as e:
+            print(f"⚠️  Guidance merge failed: {str(e)}")
+            print("   Continuing without guidance data...")
+            print()
+    else:
+        print(f"⚠️  No guidance file found at: {guidance_path}")
+        print()
+    
+    # ========================================================================
+    # SAVE FINAL OUTPUT
+    # ========================================================================
+    
     success, error = save_json(output, 'data/market_data.json')
     if success:
-        print("✓ data/market_data.json")
-        print(f"  Stocks: {len(normalized_stocks)}")
+        print("="*80)
+        print("SAVED: data/market_data.json")
+        print("="*80)
+        print(f"  Stocks: {len(stocks_array)}")
+        if output['metadata'].get('portfolio_merged'):
+            print(f"  Portfolio: {output['metadata'].get('portfolio_count')} stocks")
+        if output['metadata'].get('guidance_merged'):
+            print(f"  Guidance: {output['metadata'].get('guidance_count')} stocks")
         print(f"  Decimal precision: 4 places")
         print(f"  Rejections logged to: {rejections_log_path}")
     else:
@@ -1431,8 +1588,14 @@ def main():
     
     print()
     print("="*80)
-    print("COMPLETE")
+    print("✅ COMPLETE - READY FOR INDEXDB")
     print("="*80)
+    print()
+    print("Next steps:")
+    print("  1. Open data.html in browser")
+    print("  2. Click 🚀 LOAD JSON button")
+    print("  3. Open index.html to see your portfolio")
+    print()
 
 
 if __name__ == '__main__':

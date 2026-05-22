@@ -44,6 +44,20 @@
 </head>
 <body>
 
+<!-- DEBUG PANEL for iPhone -->
+<div id="debugPanel" style="display:none; position:fixed; top:50px; left:10px; right:10px; bottom:80px; background:rgba(0,0,0,0.95); border:2px solid #00ff88; z-index:9999; overflow-y:auto; padding:15px; font-size:11px; border-radius:8px;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:10px; border-bottom:1px solid #00ff88; padding-bottom:8px;">
+        <h3 style="color:#00ff88; margin:0;">🔍 Debug Panel</h3>
+        <button onclick="closeDebug()" style="background:#ff4d6d; color:#fff; border:none; padding:4px 12px; border-radius:4px; font-weight:800;">CLOSE</button>
+    </div>
+    <div id="debugOutput" style="font-family:monospace; color:#fff; line-height:1.6;"></div>
+</div>
+
+<!-- DEBUG BUTTON (floating) -->
+<button id="debugBtn" onclick="showDebug()" style="position:fixed; bottom:70px; right:10px; background:#00ff88; color:#000; border:none; padding:10px 15px; border-radius:20px; font-weight:800; z-index:8888; font-size:11px; box-shadow:0 2px 10px rgba(0,255,136,0.5);">
+    🐛 DEBUG
+</button>
+
 <header>
     <div class="kpi-box"><div class="kpi-label">Portfolio</div><div class="kpi-val" id="k-pval">₹0</div></div>
     <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="k-inv">₹0</div></div>
@@ -199,46 +213,45 @@ const resolve = (obj, field) => {
         '1D%':['changePct','1D%','CHANGE','CHANGE_1D'], 
         '1DCH':['change','1DCH','1D_CHANGE'],
         '1D_GAIN':['1dGain','1D_GAIN','1DGAIN'],
-        'LTP':['price','ltp','LTP','PRICE','current_price'], // ← Added 'price' first
+        'LTP':['ltp','LTP','PRICE','price'], 
         'QTY':['qty','QTY','quantity'], 
         'AVG':['avg','AVG','AVGBUY','avgbuy'], 
         'INVESTED':['invested','INVESTED'], 
         'POS':['pos','POS','POSITIVE'], 
         'NEG':['neg','NEG','NEGATIVE'], 
-        'ROE%':['return_on_equity','roe','ROE%','ROE'], // ← Added 'return_on_equity' first
-        'ROCE%':['return_on_capital_employed','roce','ROCE%','ROCE'], // ← Added snake_case
-        'OPM%':['operating_margins','opm','OPM%','OPM','opmPct','opm_pct'], // ← Added snake_case
-        'NPM%':['profit_margins','npm','NPM%','NPM','npmPct','npm_pct'], // ← Added snake_case
-        'PE':['trailing_pe','pe','PE','P/E','forward_pe'], // ← Added snake_case
-        'PB':['price_to_book','pb','PB','P/B'], // ← Added snake_case
-        'BV':['book_value','BV','BOOK_VALUE','bookValue'],
-        'MCAP':['market_cap','mcap','MCAP','marketcap'], // ← Added snake_case
-        'SALES':['total_revenue','sales','SALES','revenue'], // ← Added snake_case
+        'ROE%':['roe','ROE%','ROE','roe'], 
+        'ROCE%':['roce','ROCE%','ROCE'], 
+        'OPM%':['opm','OPM%','OPM','opmPct','opm_pct'], 
+        'NPM%':['npm','NPM%','NPM','npmPct','npm_pct'], 
+        'PE':['pe','PE','P/E'], 
+        'PB':['pb','PB','P/B'], 
+        'BV':['book_value','BV','BOOK_VALUE','bookValue'],  // ✨ NEW v4.8
+        'MCAP':['mcap','MCAP','marketcap'], 
+        'SALES':['sales','SALES','revenue'], 
         'EBITDA':['ebitda','EBITDA'], 
-        'CFO':['operating_cash_flow','cfo','CFO'], // ← Added snake_case
-        'NETCF':['net_cf','NETCF','NET_CF','netCF'],
-        'EPS':['trailing_eps','eps','EPS','forward_eps'], // ← Added snake_case
+        'CFO':['cfo','CFO'], 
+        'NETCF':['net_cf','NETCF','NET_CF','netCF'],  // ✨ NEW v4.8
+        'EPS':['eps','EPS'], 
         'FV':['face_value','FV','FACE_VALUE','faceValue'],
-        'PROM%':['gross_margins','prom','PROM%','prom_pct'], // ← Added snake_case
+        'PROM%':['prom','PROM%','prom_pct'], 
         'FII%':['fii','FII%','fii_pct'], 
         'DII%':['dii','DII%','dii_pct'], 
         'ATH%':['ath','ATH%','ath_pct'], 
         '52W%':['w52','52W%','52WEEK','w52_pct'], 
-        'W52H':['week_52_high','w52h','W52H','52WH','52weekHigh'], // ← Added snake_case
-        'W52L':['week_52_low','w52l','W52L','52WL','52weekLow'], // ← Added snake_case
+        'W52H':['w52h','W52H','52WH','52weekHigh'],
+        'W52L':['w52l','W52L','52WL','52weekLow'],
         'SECTOR':['sector','SECTOR'],
         'NAME':['name','NAME','COMPANY'],
-        'INDUSTRY':['industry','INDUSTRY'], // ← Added industry
         'OPEN':['open','OPEN'],
         'HIGH':['high','HIGH'],
         'LOW':['low','LOW'],
         'CHANGE':['change','CHANGE'],
-        'VOL':['volume','vol','VOL','VOLUME'], // ← Added 'volume' first
+        'VOL':['vol','VOL','VOLUME'],
         'BETA':['beta','BETA'],
         'CAPEX':['capex','CAPEX','capital_expenditure'],
-        'FCF':['free_cash_flow','fcf','FCF','freeCashFlow'], // ← Added snake_case
-        'DIV_YIELD':['trailing_annual_dividend_yield','dividend_yield','div_yield','DIV_YIELD','dividendYield'], // ← Added snake_case
-        'DEBT_EQ':['debt_to_equity','debt_eq','DEBT_EQ','debt_equity','debtToEquity'], // ← Added snake_case
+        'FCF':['fcf','FCF','freeCashFlow','free_cash_flow'],
+        'DIV_YIELD':['div_yield','DIV_YIELD','dividend_yield','dividendYield'],
+        'DEBT_EQ':['debt_eq','DEBT_EQ','debt_equity','debtToEquity'],
         'INT_COV':['interest_coverage','INT_COV','INTEREST_COVERAGE'],
         'P/S':['price_to_sales','P/S','PS','priceToSales'],
         'EV/EBITDA':['ev_to_ebitda','EV/EBITDA','EV_EBITDA','evToEbitda'],
@@ -986,6 +999,186 @@ window.addEventListener('pageshow', function(event) {
         });
     }
 });
+
+// ============================================================================
+// DEBUG PANEL FUNCTIONS (for iPhone)
+// ============================================================================
+
+function showDebug() {
+    document.getElementById('debugPanel').style.display = 'block';
+    document.getElementById('debugBtn').style.display = 'none';
+    runDebug();
+}
+
+function closeDebug() {
+    document.getElementById('debugPanel').style.display = 'none';
+    document.getElementById('debugBtn').style.display = 'block';
+}
+
+function runDebug() {
+    const output = document.getElementById('debugOutput');
+    output.innerHTML = '<div style="color:#ffb347;">⏳ Running debug checks...</div>';
+    
+    let html = '';
+    
+    // Check 1: IndexDB
+    html += '<div style="margin:10px 0; padding:10px; background:#0a0a0a; border-left:3px solid #00f2ff;">';
+    html += '<strong style="color:#00f2ff;">📊 IndexDB Check</strong><br>';
+    
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    req.onerror = () => {
+        html += '<span style="color:#ff4d6d;">❌ Cannot open IndexDB</span>';
+        output.innerHTML = html;
+    };
+    
+    req.onsuccess = (e) => {
+        const db = e.target.result;
+        html += '<span style="color:#00ff88;">✓ IndexDB opened</span><br>';
+        
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const getAllReq = store.getAll();
+        
+        getAllReq.onsuccess = () => {
+            const stocks = getAllReq.result;
+            
+            html += `<span style="color:#00ff88;">✓ Stocks loaded: ${stocks.length}</span><br>`;
+            html += '</div>';
+            
+            if (stocks.length > 0) {
+                const sample = stocks[0];
+                
+                // Check 2: Sample Stock
+                html += '<div style="margin:10px 0; padding:10px; background:#0a0a0a; border-left:3px solid #00ff88;">';
+                html += '<strong style="color:#00ff88;">📦 Sample Stock</strong><br>';
+                html += `Ticker: <span style="color:#00f2ff;">${sample.ticker || 'N/A'}</span><br>`;
+                html += `Name: <span style="color:#00f2ff;">${sample.name || 'N/A'}</span><br>`;
+                html += `Type: <span style="color:#00f2ff;">${sample.type || 'N/A'}</span><br>`;
+                html += `Qty: <span style="color:#00f2ff;">${sample.qty !== undefined ? sample.qty : 'N/A'}</span><br>`;
+                html += `Avg: <span style="color:#00f2ff;">${sample.avg !== undefined ? sample.avg : 'N/A'}</span><br>`;
+                html += '</div>';
+                
+                // Check 3: All Fields
+                const fields = Object.keys(sample);
+                html += '<div style="margin:10px 0; padding:10px; background:#0a0a0a; border-left:3px solid #ffb347;">';
+                html += '<strong style="color:#ffb347;">🔑 All Fields</strong><br>';
+                html += `Total: <span style="color:#00f2ff;">${fields.length}</span><br><br>`;
+                html += '<div style="max-height:200px; overflow-y:auto; font-size:10px;">';
+                fields.forEach((field, i) => {
+                    const value = sample[field];
+                    const type = typeof value;
+                    let displayValue = value;
+                    
+                    if (type === 'object' && value !== null) {
+                        displayValue = Array.isArray(value) ? `[Array: ${value.length}]` : '[Object]';
+                    } else if (type === 'string' && value.length > 30) {
+                        displayValue = value.substring(0, 30) + '...';
+                    } else if (value === null) {
+                        displayValue = '<span style="color:#666;">null</span>';
+                    }
+                    
+                    html += `<div style="padding:2px 0; border-bottom:1px solid #111;">`;
+                    html += `<span style="color:#00ff88;">${i+1}. ${field}</span>: `;
+                    html += `<span style="color:#aaa;">${displayValue}</span>`;
+                    html += `</div>`;
+                });
+                html += '</div></div>';
+                
+                // Check 4: Critical Fields
+                html += '<div style="margin:10px 0; padding:10px; background:#0a0a0a; border-left:3px solid #ff4d6d;">';
+                html += '<strong style="color:#ff4d6d;">⚠️ Critical Fields</strong><br><br>';
+                
+                const criticalFields = [
+                    {display: 'LTP', keys: ['price', 'ltp', 'LTP']},
+                    {display: 'PE', keys: ['trailing_pe', 'pe', 'PE']},
+                    {display: 'ROE%', keys: ['return_on_equity', 'roe', 'ROE%']},
+                    {display: 'PB', keys: ['price_to_book', 'pb', 'PB']},
+                    {display: 'MCAP', keys: ['market_cap', 'mcap', 'MCAP']},
+                ];
+                
+                criticalFields.forEach(field => {
+                    let found = false;
+                    let foundKey = '';
+                    let foundValue = '';
+                    
+                    for (let key of field.keys) {
+                        if (sample[key] !== undefined && sample[key] !== null) {
+                            found = true;
+                            foundKey = key;
+                            foundValue = sample[key];
+                            break;
+                        }
+                    }
+                    
+                    if (found) {
+                        html += `<div style="padding:3px 0;"><span style="color:#00ff88;">✓</span> ${field.display}: <span style="color:#00f2ff;">${foundKey} = ${foundValue}</span></div>`;
+                    } else {
+                        html += `<div style="padding:3px 0;"><span style="color:#ff4d6d;">✗</span> ${field.display}: NOT FOUND</div>`;
+                        html += `<div style="font-size:9px; color:#666; padding-left:15px;">Looking for: ${field.keys.join(', ')}</div>`;
+                    }
+                });
+                html += '</div>';
+                
+                // Check 4.5: Guidance & Insights
+                html += '<div style="margin:10px 0; padding:10px; background:#0a0a0a; border-left:3px solid #ffb347;">';
+                html += '<strong style="color:#ffb347;">📋 Guidance & Insights</strong><br><br>';
+                
+                if (sample.guidance && typeof sample.guidance === 'object') {
+                    html += '<div style="padding:3px 0;"><span style="color:#00ff88;">✓</span> Guidance: ';
+                    html += `<span style="color:#00f2ff;">Quarter: ${sample.guidance.quarter || 'N/A'}</span></div>`;
+                    if (sample.guidance.management && sample.guidance.management.tone) {
+                        html += `<div style="padding-left:15px; font-size:10px; color:#aaa;">Tone: ${sample.guidance.management.tone}</div>`;
+                    }
+                } else {
+                    html += '<div style="padding:3px 0;"><span style="color:#666;">—</span> Guidance: Not available</div>';
+                }
+                
+                if (sample.insights && typeof sample.insights === 'object') {
+                    html += '<div style="padding:3px 0;"><span style="color:#00ff88;">✓</span> Insights: ';
+                    html += `<span style="color:#00f2ff;">Recommendation: ${sample.insights.recommendation || 'N/A'}</span></div>`;
+                    if (sample.insights.thesis) {
+                        const thesis = sample.insights.thesis.substring(0, 60) + '...';
+                        html += `<div style="padding-left:15px; font-size:10px; color:#aaa;">${thesis}</div>`;
+                    }
+                } else {
+                    html += '<div style="padding:3px 0;"><span style="color:#666;">—</span> Insights: Not available</div>';
+                }
+                html += '</div>';
+                
+                // Check 5: MASTER array
+                html += '<div style="margin:10px 0; padding:10px; background:#0a0a0a; border-left:3px solid #00f2ff;">';
+                html += '<strong style="color:#00f2ff;">📋 MASTER Array</strong><br>';
+                if (typeof MASTER !== 'undefined') {
+                    html += `<span style="color:#00ff88;">✓ Loaded: ${MASTER.length} stocks</span>`;
+                } else {
+                    html += '<span style="color:#ff4d6d;">✗ MASTER not loaded</span>';
+                }
+                html += '</div>';
+                    } else {
+                        html += `<div style="padding:3px 0;"><span style="color:#ff4d6d;">✗</span> ${field.display}: NOT FOUND</div>`;
+                        html += `<div style="font-size:9px; color:#666; padding-left:15px;">Looking for: ${field.keys.join(', ')}</div>`;
+                    }
+                });
+                html += '</div>';
+                
+                // Check 5: MASTER array
+                html += '<div style="margin:10px 0; padding:10px; background:#0a0a0a; border-left:3px solid #00f2ff;">';
+                html += '<strong style="color:#00f2ff;">📋 MASTER Array</strong><br>';
+                if (typeof MASTER !== 'undefined') {
+                    html += `<span style="color:#00ff88;">✓ Loaded: ${MASTER.length} stocks</span>`;
+                } else {
+                    html += '<span style="color:#ff4d6d;">✗ MASTER not loaded</span>';
+                }
+                html += '</div>';
+            } else {
+                html += '<div style="color:#ff4d6d; padding:10px;">❌ No stocks in IndexDB!</div>';
+            }
+            
+            output.innerHTML = html;
+        };
+    };
+}
 
 // Initialize on first page load
 init().catch(err => {
