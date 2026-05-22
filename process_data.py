@@ -1392,6 +1392,9 @@ def main():
     # Normalize all decimal places in stock data
     normalized_stocks = normalize_decimals(processed_stocks, decimals=4)
     
+    # Convert stocks dictionary to array for JavaScript compatibility
+    stocks_array = list(normalized_stocks.values())
+    
     # Single comprehensive output file (WITHOUT rejections)
     output = {
         'metadata': {
@@ -1414,7 +1417,7 @@ def main():
             'accounting_stats': accounting_summary,
             'decimal_precision': 4
         },
-        'stocks': normalized_stocks
+        'stocks': stocks_array  # Array, not dictionary
     }
     
     success, error = save_json(output, 'data/market_data.json')
