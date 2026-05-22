@@ -2698,6 +2698,32 @@ CRITICAL RULES:
                 }
                 
                 log('');
+                log('📈 PRICE HISTORY DETAILED CHECK:');
+                if (sample.price_history) {
+                    const ph = sample.price_history;
+                    log(`   Type: ${typeof ph}`);
+                    log(`   Is Array: ${Array.isArray(ph)}`);
+                    
+                    if (Array.isArray(ph)) {
+                        log(`   Length: ${ph.length} items`);
+                        if (ph.length > 0) {
+                            log('   First 3 items:');
+                            ph.slice(0, 3).forEach((item, i) => {
+                                log(`   [${i}] ${JSON.stringify(item).substring(0, 100)}`);
+                            });
+                            log('   Keys in first item:');
+                            Object.keys(ph[0]).forEach(key => {
+                                log(`      - ${key}: ${ph[0][key]}`);
+                            });
+                        }
+                    } else if (typeof ph === 'object') {
+                        log(`   Object keys: ${Object.keys(ph).slice(0, 10).join(', ')}`);
+                    }
+                } else {
+                    log(`   ❌ price_history field not found`);
+                }
+                
+                log('');
                 log('🔑 TOTAL FIELDS:');
                 const fieldCount = Object.keys(sample).length;
                 log(`   ${fieldCount} fields in stock object`);

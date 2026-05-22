@@ -277,17 +277,35 @@ async function loadStock() {
         
         
         
-        // 🚀 Auto-load candles for Canvas chart
+        // 🚀 Auto-load candles from price_history field or external file
         if (!currentStock.candles || currentStock.candles.length === 0) {
-            try {
-                const sym = currentStock.ticker || currentStock.sym || ticker;
-                const res = await fetch(`./charts/${sym}.json`);
-                if (res.ok) {
-                    const data = await res.json();
-                    currentStock.candles = data.bars || [];
-                    
+            // Try to get from price_history field first (from IndexDB)
+            if (currentStock.price_history) {
+                // price_history is already an array of bars with d,o,h,l,c,v format
+                if (Array.isArray(currentStock.price_history)) {
+                    currentStock.candles = currentStock.price_history;
+                    console.log('📊 Using price_history from IndexDB:', currentStock.candles.length, 'candles');
                 }
-            } catch (e) {
+                // If price_history is an object with bars property
+                else if (currentStock.price_history.bars && Array.isArray(currentStock.price_history.bars)) {
+                    currentStock.candles = currentStock.price_history.bars;
+                    console.log('📊 Using price_history.bars from IndexDB:', currentStock.candles.length, 'candles');
+                }
+            }
+            
+            // Fallback: try external file
+            if (!currentStock.candles || currentStock.candles.length === 0) {
+                try {
+                    const sym = currentStock.ticker || currentStock.sym || ticker;
+                    const res = await fetch(`./charts/${sym}.json`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        currentStock.candles = data.bars || [];
+                        console.log('📊 Loaded candles from file:', currentStock.candles.length);
+                    }
+                } catch (e) {
+                    console.log('⚠️ No chart data available (no price_history or chart file)');
+                }
             }
         }
         
