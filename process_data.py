@@ -2177,6 +2177,8 @@ def main():
     # SAVE FINAL OUTPUT
     # ========================================================================
     
+    rejections_log_path = 'data/process.json'
+    
     success, error = save_json(output, 'data/market_data.json')
     if success:
         print("="*80)
