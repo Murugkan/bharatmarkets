@@ -532,20 +532,90 @@ class EarningsExtractor(BaseExtractor):
 
 class CompanyExtractor(BaseExtractor):
     def extract(self, raw_info: Dict) -> Dict:
-        return {
+        """Extract ALL available company information from raw_info"""
+        
+        # Core company info
+        company = {
             "businessSummary": raw_info.get('longBusinessSummary', ''),
             "employees": self.parser.parse_int(raw_info.get('fullTimeEmployees')),
             "headquarters": {
                 "address1": raw_info.get('address1', ''),
+                "address2": raw_info.get('address2', ''),
+                "address3": raw_info.get('address3', ''),
                 "city": raw_info.get('city', ''),
+                "state": raw_info.get('state', ''),
+                "zip": raw_info.get('zip', ''),
                 "country": raw_info.get('country', '')
             },
             "contact": {
                 "phone": raw_info.get('phone', ''),
-                "website": raw_info.get('website', '')
+                "website": raw_info.get('website', ''),
+                "fax": raw_info.get('fax', '')
             },
-            "executives": raw_info.get('companyOfficers', [])
+            "executives": raw_info.get('companyOfficers', []),
+            
+            # Industry classification
+            "industry": {
+                "name": raw_info.get('industry', ''),
+                "sector": raw_info.get('sector', ''),
+                "industryKey": raw_info.get('industryKey', ''),
+                "sectorKey": raw_info.get('sectorKey', '')
+            },
+            
+            # Market and trading info
+            "market": {
+                "exchange": raw_info.get('exchange', ''),
+                "exchangeName": raw_info.get('exchangeName', ''),
+                "exchangeTimezoneName": raw_info.get('exchangeTimezoneName', ''),
+                "exchangeTimezoneShortName": raw_info.get('exchangeTimezoneShortName', ''),
+                "gmtOffsetMilliseconds": raw_info.get('gmtOffsetMilliseconds'),
+                "marketState": raw_info.get('marketState', ''),
+                "quoteType": raw_info.get('quoteType', ''),
+                "tradeable": raw_info.get('tradeable'),
+                "messageBoardId": raw_info.get('messageBoardId', '')
+            },
+            
+            # ESG and governance
+            "governance": {
+                "esgPopulated": raw_info.get('esgPopulated'),
+                "auditRisk": raw_info.get('auditRisk'),
+                "boardRisk": raw_info.get('boardRisk'),
+                "compensationRisk": raw_info.get('compensationRisk'),
+                "shareHolderRightsRisk": raw_info.get('shareHolderRightsRisk')
+            },
+            
+            # Ownership and holdings
+            "ownership": {
+                "heldByInsiders": self.parser.parse_float(raw_info.get('heldPercentInsiders')),
+                "heldByInstitutions": self.parser.parse_float(raw_info.get('heldPercentInstitutions')),
+                "floatShares": self.parser.parse_int(raw_info.get('floatShares')),
+                "sharesOutstanding": self.parser.parse_int(raw_info.get('sharesOutstanding')),
+                "impliedSharesOutstanding": self.parser.parse_int(raw_info.get('impliedSharesOutstanding')),
+                "bookValue": self.parser.parse_float(raw_info.get('bookValue'))
+            },
+            
+            # Corporate structure
+            "corporate": {
+                "firstTradeDateMilliseconds": raw_info.get('firstTradeDateMilliseconds'),
+                "hasPrePostMarketData": raw_info.get('hasPrePostMarketData'),
+                "cryptoTradeable": raw_info.get('cryptoTradeable'),
+                "corpActions": raw_info.get('corporateActions', [])
+            },
+            
+            # All raw fields (as fallback for fields not explicitly mapped)
+            "rawFields": {k: v for k, v in raw_info.items() 
+                         if k not in ['longBusinessSummary', 'fullTimeEmployees', 'address1', 'address2', 'address3',
+                                     'city', 'state', 'zip', 'country', 'phone', 'website', 'fax', 
+                                     'companyOfficers', 'industry', 'sector', 'industryKey', 'sectorKey',
+                                     'exchange', 'exchangeName', 'exchangeTimezoneName', 'exchangeTimezoneShortName',
+                                     'gmtOffsetMilliseconds', 'marketState', 'quoteType', 'tradeable', 'messageBoardId',
+                                     'esgPopulated', 'auditRisk', 'boardRisk', 'compensationRisk', 'shareHolderRightsRisk',
+                                     'heldPercentInsiders', 'heldPercentInstitutions', 'floatShares', 'sharesOutstanding',
+                                     'impliedSharesOutstanding', 'bookValue', 'firstTradeDateMilliseconds', 
+                                     'hasPrePostMarketData', 'cryptoTradeable', 'corporateActions']}
         }
+        
+        return company
 
 class GuidanceExtractor(BaseExtractor):
     def extract(self, guidance_data: Dict = None) -> Dict:
@@ -583,6 +653,44 @@ class GuidanceExtractor(BaseExtractor):
             }
         }
 
+
+class ScreenerExtractor(BaseExtractor):
+    """Extract data from screener_raw"""
+    def extract(self, screener_raw: Dict = None) -> Dict:
+        if not screener_raw or 'observations' not in screener_raw:
+            return {}
+        
+        obs = screener_raw['observations'][0].get('raw', {}) if screener_raw.get('observations') else {}
+        return obs
+
+
+class FinancialsExtractor(BaseExtractor):
+    """Extract quarterly and historical financial data"""
+    def extract(self, yahoofin_financials: Dict = None) -> Dict:
+        if not yahoofin_financials or 'observations' not in yahoofin_financials:
+            return {"quarterly": []}
+        
+        obs = yahoofin_financials['observations'][0].get('raw', {}) if yahoofin_financials.get('observations') else {}
+        
+        quarterly_data = []
+        
+        # Add latest quarter
+        if obs.get('latest'):
+            quarterly_data.append({
+                "period": "latest",
+                "data": obs['latest']
+            })
+        
+        # Add historical quarters
+        if obs.get('historical_periods'):
+            for period in obs['historical_periods']:
+                quarterly_data.append({
+                    "period": period.get('period_end_date', 'unknown'),
+                    "data": period
+                })
+        
+        return {"quarterly": quarterly_data}
+
 # ============================================================================
 # STOCK TRANSFORMER
 # ============================================================================
@@ -618,6 +726,10 @@ class StockTransformer:
         guidance = GuidanceExtractor(self.rejection_tracker).extract(ticker_guidance)
         time_series = TimeSeriesExtractor(self.rejection_tracker).extract(observations)
         
+        # Extract screener data and financials
+        screener_data = ScreenerExtractor(self.rejection_tracker).extract(raw_stock.get('screener_raw'))
+        financials = FinancialsExtractor(self.rejection_tracker).extract(raw_stock.get('yahoofin_financials'))
+        
         # Assemble for signal analysis
         signal_input = {
             'ticker': ticker,
@@ -652,9 +764,8 @@ class StockTransformer:
                 }
             },
             "timeSeries": time_series,
-            "fundamentals": {
-                "quarterly": []  # Placeholder
-            },
+            "fundamentals": financials,
+            "screener": screener_data,
             "dataQuality": {
                 "lastUpdated": datetime.now().isoformat(),
                 "rejections": len([r for r in self.rejection_tracker.rejections if r.ticker == ticker]),
@@ -663,7 +774,9 @@ class StockTransformer:
                     "priceCandles": time_series['summary']['totalCandles'],
                     "priceFields": len(ticker_prices),
                     "portfolioFields": 6,
-                    "total": len(raw_info) + time_series['summary']['totalCandles'] + len(ticker_prices) + 6
+                    "screenerFields": len(screener_data),
+                    "financialQuarters": len(financials.get('quarterly', [])),
+                    "total": len(raw_info) + time_series['summary']['totalCandles'] + len(ticker_prices) + 6 + len(screener_data) + len(financials.get('quarterly', []))
                 }
             }
         }
