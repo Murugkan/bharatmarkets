@@ -134,7 +134,7 @@ class RejectionTracker:
         )
     
     def get_summary(self) -> Dict:
-        return {"total": len(self.rejections), "unresolved": len(self.rejections), "bySeverity": dict(self.stats)}
+        return {"total": len(self.rejections), "unresolved": len(self.rejections), "by_severity": dict(self.stats)}
     
     def get_for_ticker(self, ticker: str) -> List[Dict]:
         return [asdict(r) for r in self.rejections if r.ticker == ticker]
