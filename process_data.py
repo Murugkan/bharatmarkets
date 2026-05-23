@@ -12,6 +12,283 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 from pathlib import Path
+from enum import Enum
+
+
+# ============================================================================
+# SECTOR-AWARE SIGNAL ANALYZER MODULE (NEW)
+# ============================================================================
+
+class Signal(Enum):
+    """Trading signals based on composite score"""
+    STRONG_BUY = "STRONG BUY"
+    BUY = "BUY"
+    HOLD = "HOLD"
+    SELL = "SELL"
+    STRONG_SELL = "STRONG SELL"
+
+
+class SectorAwareSignalAnalyzer:
+    """Generate sector-aware EOD signals for stocks."""
+    
+    def __init__(self):
+        """Initialize with sector profiles."""
+        self.sector_profiles = self._build_sector_profiles()
+        self.sector_mapping = self._build_sector_mapping()
+    
+    def _build_sector_mapping(self) -> Dict[str, str]:
+        """Map data sector/industry to sector profile."""
+        return {
+            'Financial Services': 'Banking',
+            'Financial Conglomerates': 'Banking',
+            'Banks': 'Banking',
+            'Technology': 'Information Technology',
+            'Software': 'Information Technology',
+            'Industrials': 'Industrials',
+            'Machinery': 'Industrials',
+            'Consumer Defensive': 'Consumer Staples',
+            'Food & Beverage': 'Consumer Staples',
+            'Consumer Discretionary': 'Consumer Discretionary',
+            'Retail': 'Consumer Discretionary',
+            'Healthcare': 'Healthcare',
+            'Pharmaceuticals': 'Healthcare',
+            'Basic Materials': 'Materials',
+            'Metals & Mining': 'Materials',
+            'Energy': 'Energy',
+            'Oil & Gas E&P': 'Energy',
+            'Utilities': 'Utilities',
+            'Electric Utilities': 'Utilities',
+            'Communication Services': 'Telecom',
+            'Telecom': 'Telecom',
+            'Real Estate': 'Real Estate',
+        }
+    
+    def _build_sector_profiles(self) -> Dict[str, Dict]:
+        """Build sector profiles with thresholds."""
+        return {
+            'Banking': {
+                'name': 'Banking',
+                'weights': {'fundamental': 0.50, 'technical': 0.20, 'valuation': 0.20, 'sentiment': 0.10},
+                'de_limit': 12.0,
+                'roe_excellent': 0.18,
+            },
+            'Information Technology': {
+                'name': 'Technology',
+                'weights': {'fundamental': 0.35, 'technical': 0.35, 'valuation': 0.20, 'sentiment': 0.10},
+                'de_limit': 0.5,
+                'roe_excellent': 0.30,
+            },
+            'Industrials': {
+                'name': 'Industrials',
+                'weights': {'fundamental': 0.45, 'technical': 0.25, 'valuation': 0.20, 'sentiment': 0.10},
+                'de_limit': 1.5,
+                'roe_excellent': 0.20,
+            },
+            'Consumer Staples': {
+                'name': 'Consumer Staples',
+                'weights': {'fundamental': 0.50, 'technical': 0.15, 'valuation': 0.25, 'sentiment': 0.10},
+                'de_limit': 1.0,
+                'roe_excellent': 0.25,
+            },
+            'Consumer Discretionary': {
+                'name': 'Consumer Discretionary',
+                'weights': {'fundamental': 0.35, 'technical': 0.40, 'valuation': 0.15, 'sentiment': 0.10},
+                'de_limit': 1.5,
+                'roe_excellent': 0.18,
+            },
+            'Healthcare': {
+                'name': 'Healthcare',
+                'weights': {'fundamental': 0.40, 'technical': 0.20, 'valuation': 0.30, 'sentiment': 0.10},
+                'de_limit': 1.0,
+                'roe_excellent': 0.25,
+            },
+            'Materials': {
+                'name': 'Materials',
+                'weights': {'fundamental': 0.30, 'technical': 0.45, 'valuation': 0.15, 'sentiment': 0.10},
+                'de_limit': 2.0,
+                'roe_excellent': 0.20,
+            },
+            'Energy': {
+                'name': 'Energy',
+                'weights': {'fundamental': 0.35, 'technical': 0.40, 'valuation': 0.15, 'sentiment': 0.10},
+                'de_limit': 2.0,
+                'roe_excellent': 0.18,
+            },
+            'Telecom': {
+                'name': 'Telecom',
+                'weights': {'fundamental': 0.40, 'technical': 0.25, 'valuation': 0.25, 'sentiment': 0.10},
+                'de_limit': 2.0,
+                'roe_excellent': 0.20,
+            },
+            'Real Estate': {
+                'name': 'Real Estate',
+                'weights': {'fundamental': 0.35, 'technical': 0.30, 'valuation': 0.25, 'sentiment': 0.10},
+                'de_limit': 2.0,
+                'roe_excellent': 0.25,
+            },
+            'Utilities': {
+                'name': 'Utilities',
+                'weights': {'fundamental': 0.60, 'technical': 0.10, 'valuation': 0.20, 'sentiment': 0.10},
+                'de_limit': 2.5,
+                'roe_excellent': 0.18,
+            },
+        }
+    
+    def generate_signal(self, stock: Dict) -> Dict:
+        """Generate sector-aware signal for a stock."""
+        try:
+            ticker = stock.get('ticker', 'UNKNOWN')
+            sector = self._detect_sector(stock.get('sector', ''), stock.get('industry', ''))
+            profile = self.sector_profiles.get(sector, self.sector_profiles['Industrials'])
+            
+            # Calculate scores
+            val_score = self._score_valuation(stock)
+            health_score = self._score_health(stock, profile)
+            growth_score = self._score_growth(stock)
+            tech_score = self._score_technical(stock)
+            
+            # Composite using sector weights
+            weights = profile['weights']
+            composite = (
+                val_score * weights['valuation'] +
+                health_score * weights['fundamental'] +
+                growth_score * weights['technical'] +
+                tech_score * weights['sentiment']
+            )
+            
+            signal = self._get_signal(composite)
+            
+            return {
+                'signal': signal.value,
+                'composite_score': round(composite, 2),
+                'component_scores': {
+                    'valuation': round(val_score, 2),
+                    'health': round(health_score, 2),
+                    'growth': round(growth_score, 2),
+                    'technical': round(tech_score, 2),
+                },
+                'sector': sector,
+                'sector_weights': weights,
+                'confidence': self._assess_confidence(stock),
+            }
+        except Exception as e:
+            return {
+                'signal': Signal.HOLD.value,
+                'composite_score': 50.0,
+                'error': str(e),
+            }
+    
+    def _detect_sector(self, sector: str, industry: str) -> str:
+        """Detect sector from sector/industry fields."""
+        for key, value in self.sector_mapping.items():
+            if key.lower() in (sector or '').lower() or key.lower() in (industry or '').lower():
+                return value
+        return 'Industrials'
+    
+    def _score_valuation(self, stock: Dict) -> float:
+        """Score valuation (0-100)."""
+        scores = []
+        
+        pe = stock.get('trailing_pe')
+        if pe and pe > 0:
+            scores.append(70 if pe < 25 else (50 if pe < 35 else 30))
+        
+        pb = stock.get('price_to_book')
+        if pb and pb > 0:
+            scores.append(75 if pb < 2 else (50 if pb < 3 else 30))
+        
+        return sum(scores) / len(scores) if scores else 50
+    
+    def _score_health(self, stock: Dict, profile: Dict) -> float:
+        """Score financial health using sector thresholds."""
+        scores = []
+        
+        roe = stock.get('return_on_equity', 0)
+        if roe:
+            if roe >= profile['roe_excellent']:
+                scores.append(95)
+            elif roe >= profile['roe_excellent'] * 0.75:
+                scores.append(85)
+            else:
+                scores.append(60)
+        
+        de = stock.get('debt_to_equity', 0)
+        if de >= 0:
+            if de <= profile['de_limit'] * 0.5:
+                scores.append(95)
+            elif de <= profile['de_limit']:
+                scores.append(85)
+            else:
+                scores.append(50)
+        
+        cr = stock.get('current_ratio')
+        if cr and cr > 0:
+            scores.append(90 if cr >= 2 else (75 if cr >= 1.5 else 50))
+        
+        margin = stock.get('profit_margins', 0)
+        if margin > 0:
+            scores.append(90 if margin >= 0.20 else (75 if margin >= 0.15 else 50))
+        
+        return sum(scores) / len(scores) if scores else 50
+    
+    def _score_growth(self, stock: Dict) -> float:
+        """Score growth metrics."""
+        scores = []
+        
+        rev_g = stock.get('revenue_growth', 0)
+        if rev_g is not None:
+            scores.append(90 if rev_g >= 0.15 else (70 if rev_g >= 0.10 else 50))
+        
+        earn_g = stock.get('earnings_growth', 0)
+        if earn_g is not None:
+            scores.append(90 if earn_g >= 0.20 else (70 if earn_g >= 0.10 else 50))
+        
+        return sum(scores) / len(scores) if scores else 50
+    
+    def _score_technical(self, stock: Dict) -> float:
+        """Score technical indicators."""
+        scores = []
+        
+        beta = stock.get('beta')
+        if beta and beta > 0:
+            scores.append(75 if beta < 1.2 else 50)
+        
+        momentum = stock.get('week_52_change', 0)
+        if momentum is not None:
+            scores.append(80 if momentum >= 0.20 else (60 if momentum >= 0 else 40))
+        
+        return sum(scores) / len(scores) if scores else 50
+    
+    def _get_signal(self, score: float) -> Signal:
+        """Convert score to signal."""
+        if score >= 80:
+            return Signal.STRONG_BUY
+        elif score >= 65:
+            return Signal.BUY
+        elif score >= 50:
+            return Signal.HOLD
+        elif score >= 35:
+            return Signal.SELL
+        else:
+            return Signal.STRONG_SELL
+    
+    def _assess_confidence(self, stock: Dict) -> str:
+        """Assess confidence level."""
+        data_points = sum(1 for v in [
+            stock.get('trailing_pe'),
+            stock.get('return_on_equity'),
+            stock.get('debt_to_equity'),
+            stock.get('profit_margins'),
+            stock.get('revenue_growth'),
+            stock.get('earnings_growth'),
+        ] if v is not None)
+        
+        if data_points >= 5:
+            return 'HIGH'
+        elif data_points >= 3:
+            return 'MEDIUM'
+        else:
+            return 'LOW'
 
 
 # ============================================================================
@@ -1361,6 +1638,35 @@ def save_json(data: Dict, filepath: str) -> Tuple[bool, Optional[str]]:
 # MAIN
 # ============================================================================
 
+def generate_signals_for_stocks(stocks_array: List[Dict]) -> None:
+    """Generate and add signals to all stocks."""
+    analyzer = SectorAwareSignalAnalyzer()
+    
+    print()
+    print("="*80)
+    print("GENERATING SECTOR-AWARE SIGNALS FOR ALL STOCKS")
+    print("="*80)
+    print()
+    
+    signal_distribution = defaultdict(int)
+    
+    for i, stock in enumerate(stocks_array):
+        signal_data = analyzer.generate_signal(stock)
+        stock['signal'] = signal_data
+        signal_distribution[signal_data['signal']] += 1
+        
+        if (i + 1) % 20 == 0:
+            print(f"  ✓ Processed {i + 1}/{len(stocks_array)} stocks")
+    
+    print()
+    print("Signal Distribution:")
+    for sig in ['STRONG BUY', 'BUY', 'HOLD', 'SELL', 'STRONG SELL']:
+        count = signal_distribution[sig]
+        pct = (count / len(stocks_array) * 100) if stocks_array else 0
+        print(f"  {sig:.<20} {count:>3} ({pct:>5.1f}%)")
+    print()
+
+
 def main():
     print("="*80)
     print("MARKET DATA PROCESSING - COMPLETE FIELD MAPPING")
@@ -1429,6 +1735,12 @@ def main():
     
     # Convert stocks dictionary to array for JavaScript compatibility
     stocks_array = list(normalized_stocks.values())
+    
+    # ========================================================================
+    # GENERATE SECTOR-AWARE SIGNALS (NEW)
+    # ========================================================================
+    
+    generate_signals_for_stocks(stocks_array)
     
     # Single comprehensive output file (WITHOUT rejections)
     output = {
