@@ -26,9 +26,9 @@ jobs:
           python-version: "3.12"
 
       - name: Create data directories
-        run: mkdir -p data/logs
+        run: mkdir -p data logs
 
-      - name: Run merge_4datasets.py
+      - name: Run merge_script.py
         run: python merge_script.py
 
       - name: Configure Git
@@ -38,7 +38,7 @@ jobs:
 
       - name: Commit and Push
         run: |
-          git add data/raw_market_data.json data/logs/raw_market_data.log
+          git add data/raw_market_data.json logs/raw_market_data.log
           git commit -m "Auto: Merge Raw Data $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
           git push origin HEAD:main
 
@@ -60,10 +60,10 @@ jobs:
           python-version: "3.12"
 
       - name: Create data directories
-        run: mkdir -p data/logs
+        run: mkdir -p data logs
 
-      - name: Run process_data.py
-        run: python process_data.py
+      - name: Run data_processing.py
+        run: python data_processing.py
 
       - name: Configure Git
         run: |
@@ -72,6 +72,6 @@ jobs:
 
       - name: Commit and Push
         run: |
-          git add data/market_data.json data/logs/complete_processing.log
+          git add data/market_data.json logs/data_processing.log
           git commit -m "Auto: Generate Market Data $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
           git push origin HEAD:main
