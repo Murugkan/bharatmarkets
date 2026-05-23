@@ -65,13 +65,31 @@ jobs:
       - name: Run data_processing.py
         run: python data_processing.py
 
+      - name: Verify Output Files
+        run: |
+          echo "Checking generated files..."
+          ls -lh data/market_data.json || echo "ERROR: market_data.json not created"
+          ls -lh logs/data_processing.log || echo "ERROR: log file not created"
+          wc -l data/market_data.json
+
       - name: Configure Git
         run: |
           git config user.email "pipeline@bharatmarkets.dev"
           git config user.name "BharatMarkets Pipeline"
 
-      - name: Commit and Push
+      - name: Commit and Push Generated Data
         run: |
-          git add data/market_data.json logs/data_processing.log || true
-          git commit -m "Auto: Generate Market Data $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
-          git push origin HEAD:main || true
+          # Stage generated data files
+          git add -f data/market_data.json
+          git add -f logs/
+          
+          # Show what's staged
+          echo "Files staged:"
+          git diff --cached --name-only
+          
+          # Commit if there are changes
+          git commit -m "Data: Generate canonical market_data.json $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
+          
+          # Push to main
+          git push origin HEAD:main || echo "Push failed, retrying..."
+          git push -u origin main || true
