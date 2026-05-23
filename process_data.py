@@ -1717,9 +1717,10 @@ def main():
     
     rejection_summary = processor.rejection_tracker.get_summary()
     
-    # Save rejections to log file only
-    rejections_log_path = f"data/logs/rejections_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    success, error = save_json(rejection_summary, rejections_log_path)
+    # Build rejection map by ticker for easy lookup
+    rejections_by_ticker = rejection_summary.get('by_ticker', {})
+    
+    # NOTE: Rejections integrated PER STOCK (not scattered in metadata)
     
     # Normalize all decimal places in stock data
     # BUT FIRST: Copy financials from raw data for quarterly transformation
@@ -1742,7 +1743,16 @@ def main():
     
     generate_signals_for_stocks(stocks_array)
     
-    # Single comprehensive output file (WITHOUT rejections)
+    # ========================================================================
+    # ADD REJECTIONS PER STOCK (NEW)
+    # ========================================================================
+    
+    for stock in stocks_array:
+        ticker = stock.get('ticker', '')
+        if ticker in rejections_by_ticker:
+            stock['rejections'] = rejections_by_ticker[ticker]
+    
+    # Single comprehensive output file (WITH rejections integrated per stock)
     output = {
         'metadata': {
             'version': '1.0.0',
@@ -1759,7 +1769,7 @@ def main():
                 'resolved': rejection_summary['resolved_after_retry'],
                 'unresolved': rejection_summary['unresolved'],
                 'by_severity': rejection_summary['by_severity'],
-                'log_file': rejections_log_path
+                'note': 'Detailed rejections per stock are included in each stock object'
             },
             'accounting_stats': accounting_summary,
             'decimal_precision': 4
