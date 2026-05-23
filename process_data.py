@@ -357,70 +357,149 @@ class MetaExtractor(BaseExtractor):
 
 class PortfolioExtractor(BaseExtractor):
     def extract(self, stock: Dict) -> Dict:
-        qty = self.safe_get(stock, 'qty', 0)
-        avg_price = self.safe_get(stock, 'avg', 0)
-        current_price = self.safe_get(stock, 'price', 0)
-        current_value, cost_value = qty * current_price, qty * avg_price
+        qty = float(stock.get('qty', 0) or 0)
+        avg_price = float(stock.get('avg', 0) or 0)
+        current_price = float(stock.get('currentPrice', 0) or 0)
+        current_value = qty * current_price if current_price else 0
+        cost_value = qty * avg_price if avg_price else 0
         unrealized_gl = current_value - cost_value
         unrealized_gl_pct = (unrealized_gl / cost_value * 100) if cost_value else 0
         return {
-            "quantity": qty, "avgPrice": round(float(avg_price), 4), "currentPrice": round(float(current_price), 4),
+            "quantity": int(qty), "avgPrice": round(avg_price, 4), "currentPrice": round(current_price, 4),
             "currentValue": round(current_value, 2), "costValue": round(cost_value, 2),
             "unrealizedGL": round(unrealized_gl, 2), "unrealizedGLPercent": round(unrealized_gl_pct, 2)
         }
 
 class PricingExtractor(BaseExtractor):
+    def __init__(self, rejection_tracker: RejectionTracker, prices_data: Dict = None):
+        super().__init__(rejection_tracker)
+        self.prices_data = prices_data or {}
+    
     def extract(self, stock: Dict) -> Dict:
+        ticker = stock.get('ticker', 'UNKNOWN')
+        
+        # Try to get current price from prices.json first (more recent)
+        price_source = "raw_data"
+        current_price = self.safe_get(stock, 'currentPrice')
+        
+        if ticker in self.prices_data:
+            prices_quote = self.prices_data[ticker]
+            ltp = prices_quote.get('ltp')
+            if ltp:
+                current_price = ltp
+                price_source = "prices_json"
+        
         return {
-            "current": {"price": self.safe_get(stock, 'price'), "change": self.safe_get(stock, 'market_change'),
-                       "changePercent": self.safe_get(stock, 'market_change_pct'), "volume": self.safe_get(stock, 'volume'),
-                       "avgVolume10D": self.safe_get(stock, 'avg_daily_volume_10d')},
-            "ohlc": {"open": self.safe_get(stock, 'open'), "high": self.safe_get(stock, 'day_high'),
-                    "low": self.safe_get(stock, 'day_low'), "close": self.safe_get(stock, 'price')},
-            "ranges": {"week52": {"low": self.safe_get(stock, 'week_52_low'), "high": self.safe_get(stock, 'week_52_high')},
-                      "allTime": {"low": self.safe_get(stock, 'all_time_low'), "high": self.safe_get(stock, 'all_time_high')},
-                      "ma50Day": self.safe_get(stock, 'day_50_average'), "ma200Day": self.safe_get(stock, 'day_200_average')}
+            "current": {
+                "price": current_price, 
+                "change": self.safe_get(stock, 'regularMarketChange') or (self.prices_data.get(ticker, {}).get('change')),
+                "changePercent": self.safe_get(stock, 'regularMarketChangePercent') or (self.prices_data.get(ticker, {}).get('changePct')),
+                "volume": self.safe_get(stock, 'volume') or (self.prices_data.get(ticker, {}).get('vol')),
+                "avgVolume10D": self.safe_get(stock, 'averageDailyVolume10Day'),
+                "priceSource": price_source
+            },
+            "ohlc": {
+                "open": self.safe_get(stock, 'open') or (self.prices_data.get(ticker, {}).get('open')),
+                "high": self.safe_get(stock, 'dayHigh') or (self.prices_data.get(ticker, {}).get('high')),
+                "low": self.safe_get(stock, 'dayLow') or (self.prices_data.get(ticker, {}).get('low')),
+                "close": current_price,
+                "prevClose": self.safe_get(stock, 'previousClose') or (self.prices_data.get(ticker, {}).get('prev'))
+            },
+            "ranges": {
+                "week52": {
+                    "low": self.safe_get(stock, 'fiftyTwoWeekLow') or (self.prices_data.get(ticker, {}).get('w52l')),
+                    "high": self.safe_get(stock, 'fiftyTwoWeekHigh') or (self.prices_data.get(ticker, {}).get('w52h'))
+                },
+                "allTime": {
+                    "low": self.safe_get(stock, 'allTimeLow'),
+                    "high": self.safe_get(stock, 'allTimeHigh')
+                },
+                "ma50Day": self.safe_get(stock, 'fiftyDayAverage'),
+                "ma200Day": self.safe_get(stock, 'twoHundredDayAverage')
+            },
+            "beta": self.safe_get(stock, 'beta') or (self.prices_data.get(ticker, {}).get('beta'))
         }
 
 class ValuationExtractor(BaseExtractor):
     def extract(self, stock: Dict) -> Dict:
+        market_cap = self.safe_get(stock, 'marketCap')
+        enterprise_value = self.safe_get(stock, 'enterpriseValue')
+        net_income = self.safe_get(stock, 'netIncomeToCommon')
+        invested_capital = self.safe_get(stock, 'investedCapital')
+        total_debt = self.safe_get(stock, 'totalDebt')
+        total_equity = self.safe_get(stock, 'totalEquity')
+        
+        # Calculate ROIC: Net Income / (Debt + Equity) as proxy
+        roic = None
+        try:
+            if invested_capital and invested_capital > 0 and net_income:
+                roic = round(net_income / invested_capital, 4)
+            elif total_debt and total_equity and net_income:
+                total_capital = total_debt + total_equity
+                if total_capital > 0:
+                    roic = round(net_income / total_capital, 4)
+        except:
+            pass
+        
         return {
-            "marketCap": self.safe_get(stock, 'market_cap'), "enterpriseValue": self.safe_get(stock, 'enterprise_value'),
-            "pe": {"trailing": self.safe_get(stock, 'trailing_pe'), "forward": self.safe_get(stock, 'forward_pe')},
-            "pb": self.safe_get(stock, 'price_to_book'), "ps": self.safe_get(stock, 'price_to_sales_ttm'),
-            "ev": {"toRevenue": self.safe_get(stock, 'enterprise_to_revenue')}
+            "marketCap": market_cap, 
+            "enterpriseValue": enterprise_value,
+            "pe": {"trailing": self.safe_get(stock, 'trailingPE'), "forward": self.safe_get(stock, 'forwardPE')},
+            "pb": self.safe_get(stock, 'priceToBook'), 
+            "ps": self.safe_get(stock, 'priceToSalesTrailing12Months'),
+            "ev": {"toRevenue": self.safe_get(stock, 'enterpriseToRevenue')},
+            "roic": roic
         }
 
 class ProfitabilityExtractor(BaseExtractor):
     def extract(self, stock: Dict) -> Dict:
         return {
-            "margins": {"gross": self.safe_get(stock, 'gross_margins'), "operating": self.safe_get(stock, 'operating_margins'),
-                       "net": self.safe_get(stock, 'profit_margins'), "ebitda": self.safe_get(stock, 'ebitda_margins')},
-            "returns": {"roe": self.safe_get(stock, 'return_on_equity'), "roa": self.safe_get(stock, 'return_on_assets')},
-            "efficiency": {"assetTurnover": self.safe_get(stock, 'asset_turnover_ratio'), 
-                          "revenuePerShare": self.safe_get(stock, 'revenue_per_share')}
+            "margins": {"gross": self.safe_get(stock, 'grossMargins'), "operating": self.safe_get(stock, 'operatingMargins'),
+                       "net": self.safe_get(stock, 'profitMargins'), "ebitda": self.safe_get(stock, 'ebitdaMargins')},
+            "returns": {"roe": self.safe_get(stock, 'returnOnEquity'), "roa": self.safe_get(stock, 'returnOnAssets')},
+            "efficiency": {"assetTurnover": None, "revenuePerShare": self.safe_get(stock, 'revenuePerShare')}
         }
 
 class BalanceExtractor(BaseExtractor):
     def extract(self, stock: Dict) -> Dict:
+        total_debt = self.safe_get(stock, 'totalDebt')
+        interest_expense = self.safe_get(stock, 'interestExpense')
+        ebit = self.safe_get(stock, 'ebit')
+        operating_income = self.safe_get(stock, 'operatingIncome')
+        
+        # Calculate Interest Coverage Ratio: EBIT / Interest Expense
+        interest_coverage = None
+        try:
+            ebit_value = ebit or operating_income
+            if ebit_value and interest_expense and interest_expense > 0:
+                interest_coverage = round(ebit_value / interest_expense, 2)
+        except:
+            pass
+        
         return {
-            "assets": {"total": self.safe_get(stock, 'total_assets')},
-            "liabilities": {"total": self.safe_get(stock, 'total_liabilities'),
-                           "debt": {"total": self.safe_get(stock, 'total_debt'), "longTerm": self.safe_get(stock, 'long_term_debt'),
-                                   "shortTerm": self.safe_get(stock, 'short_term_debt')}},
-            "equity": {"total": self.safe_get(stock, 'total_equity'), "bookValuePerShare": self.safe_get(stock, 'book_value')},
-            "ratios": {"currentRatio": self.safe_get(stock, 'current_ratio'), "quickRatio": self.safe_get(stock, 'quick_ratio'),
-                      "debtToEquity": self.safe_get(stock, 'debt_to_equity'), "debtToRevenue": self.safe_get(stock, 'debt_to_revenue')}
+            "assets": {"total": self.safe_get(stock, 'totalAssets')},
+            "liabilities": {
+                "total": self.safe_get(stock, 'totalLiabilities'), 
+                "debt": {"total": total_debt, "longTerm": self.safe_get(stock, 'longTermDebt'), "shortTerm": None}
+            },
+            "equity": {"total": self.safe_get(stock, 'totalEquity'), "bookValuePerShare": self.safe_get(stock, 'bookValue')},
+            "ratios": {
+                "currentRatio": self.safe_get(stock, 'currentRatio'), 
+                "quickRatio": self.safe_get(stock, 'quickRatio'),
+                "debtToEquity": self.safe_get(stock, 'debtToEquity'), 
+                "debtToRevenue": None,
+                "interestCoverage": interest_coverage
+            }
         }
 
 class EarningsExtractor(BaseExtractor):
     def extract(self, stock: Dict) -> Dict:
         return {
-            "current": {"eps": {"trailing": self.safe_get(stock, 'eps_ttm'), "forward": self.safe_get(stock, 'eps_forward')},
-                       "net": self.safe_get(stock, 'net_income_to_common'), "revenue": self.safe_get(stock, 'total_revenue')},
-            "growth": {"revenue": self.safe_get(stock, 'revenue_growth'), "earnings": self.safe_get(stock, 'earnings_growth'),
-                      "earningsQuarterly": self.safe_get(stock, 'earnings_quarterly_growth')},
-            "targets": {"priceTargetMean": self.safe_get(stock, 'target_price_mean'), "analystCount": self.safe_get(stock, 'analyst_opinion_count')}
+            "current": {"eps": {"trailing": self.safe_get(stock, 'trailingEps'), "forward": self.safe_get(stock, 'forwardEps')},
+                       "net": self.safe_get(stock, 'netIncomeToCommon'), "revenue": self.safe_get(stock, 'totalRevenue')},
+            "growth": {"revenue": self.safe_get(stock, 'revenueGrowth'), "earnings": self.safe_get(stock, 'earningsGrowth'),
+                      "earningsQuarterly": self.safe_get(stock, 'earningsQuarterlyGrowth')},
+            "targets": {"priceTargetMean": self.safe_get(stock, 'targetMeanPrice'), "analystCount": self.safe_get(stock, 'numberOfAnalystOpinions')}
         }
 
 class CompanyExtractor(BaseExtractor):
@@ -433,6 +512,47 @@ class CompanyExtractor(BaseExtractor):
             "executives": self.safe_get(stock, 'executives', [])
         }
 
+class GuidanceExtractor(BaseExtractor):
+    """Extract analyst guidance and fundamental analysis"""
+    
+    def __init__(self, rejection_tracker: RejectionTracker, guidance_data: Dict = None):
+        super().__init__(rejection_tracker)
+        self.guidance_data = guidance_data or {}
+    
+    def extract(self, stock: Dict) -> Dict:
+        ticker = stock.get('ticker', 'UNKNOWN')
+        guidance = self.guidance_data.get(ticker, {})
+        
+        if not guidance:
+            return {"recommendation": None, "analysis": None, "sector": None}
+        
+        insights = guidance.get('insights', {})
+        analysis = insights.get('analysis', {})
+        sector = insights.get('sector_briefing', {})
+        
+        return {
+            "recommendation": insights.get('recommendation'),
+            "thesis": insights.get('thesis'),
+            "trigger": insights.get('trigger'),
+            "analysisDate": insights.get('date'),
+            "analysis": {
+                "valuation": analysis.get('valuation', {}),
+                "growth": analysis.get('growth', {}),
+                "profitability": analysis.get('profitability', {}),
+                "cashStrength": analysis.get('cash_strength', {}),
+                "catalyst": analysis.get('catalyst', {}),
+                "moat": analysis.get('moat', {}),
+                "opportunity": analysis.get('opportunity', {})
+            },
+            "sector": {
+                "name": sector.get('sector_name'),
+                "outlook": sector.get('sector_outlook'),
+                "growth": sector.get('sector_growth'),
+                "positioning": sector.get('company_positioning'),
+                "risks": sector.get('sector_risks')
+            }
+        }
+
 # ============================================================================
 # PART 7: MAIN TRANSFORMER
 # ============================================================================
@@ -440,21 +560,77 @@ class CompanyExtractor(BaseExtractor):
 class StockTransformer:
     """Transform to hierarchical structure"""
     
-    def __init__(self, rejection_tracker: RejectionTracker, signal_analyzer: SectorAwareSignalAnalyzer):
+    def __init__(self, rejection_tracker: RejectionTracker, signal_analyzer: SectorAwareSignalAnalyzer, guidance_data: Dict = None, prices_data: Dict = None):
         self.tracker = rejection_tracker
         self.signal_analyzer = signal_analyzer
         self.logger = logging.getLogger('market_data.transformation')
+        self.guidance_data = guidance_data or {}
+        self.prices_data = prices_data or {}
         
         self.extractors = {
             'meta': MetaExtractor(rejection_tracker),
             'portfolio': PortfolioExtractor(rejection_tracker),
-            'pricing': PricingExtractor(rejection_tracker),
+            'pricing': PricingExtractor(rejection_tracker, prices_data),
             'valuation': ValuationExtractor(rejection_tracker),
             'profitability': ProfitabilityExtractor(rejection_tracker),
             'balance': BalanceExtractor(rejection_tracker),
             'earnings': EarningsExtractor(rejection_tracker),
             'company': CompanyExtractor(rejection_tracker),
+            'guidance': GuidanceExtractor(rejection_tracker, guidance_data),
         }
+    
+    def _validate_sanity_bounds(self, ticker: str, data: Dict) -> None:
+        """Validate that metrics fall within reasonable bounds"""
+        val = data.get('valuation', {})
+        prof = data.get('profitability', {})
+        bal = data.get('balance', {})
+        
+        # P/E Ratio bounds: typically 0-100 (negative = loss-making)
+        pe = val.get('pe', {}).get('trailing')
+        if pe is not None and (pe < 0 or pe > 500):
+            self.tracker.reject(ticker, 'valuation', 'pe.trailing', pe, 
+                              f"P/E outside bounds (0-500): {pe}", 'FIELD')
+        
+        # Margins bounds: -100 to +100
+        for margin_type in ['gross', 'operating', 'net', 'ebitda']:
+            margin = prof.get('margins', {}).get(margin_type)
+            if margin is not None:
+                if isinstance(margin, float):
+                    margin_pct = margin * 100 if margin <= 1 else margin
+                    if margin_pct < -100 or margin_pct > 100:
+                        self.tracker.reject(ticker, 'profitability', f'margins.{margin_type}', 
+                                          margin, f"Margin outside bounds (-100 to 100%): {margin_pct}%", 'FIELD')
+        
+        # ROE/ROA bounds: typically -100 to +100
+        for ret_type in ['roe', 'roa']:
+            ret = prof.get('returns', {}).get(ret_type)
+            if ret is not None:
+                if isinstance(ret, float):
+                    ret_pct = ret * 100 if ret <= 1 else ret
+                    if ret_pct < -500 or ret_pct > 500:
+                        self.tracker.reject(ticker, 'profitability', f'returns.{ret_type}', 
+                                          ret, f"Return outside bounds (-500 to 500%): {ret_pct}%", 'FIELD')
+        
+        # Debt-to-Equity ratio bounds: typically 0-10
+        de = bal.get('ratios', {}).get('debtToEquity')
+        if de is not None and (de < 0 or de > 100):
+            self.tracker.reject(ticker, 'balance', 'ratios.debtToEquity', de,
+                              f"D/E ratio outside bounds (0-100): {de}", 'FIELD')
+        
+        # Current Ratio bounds: typically 0.5-5
+        cr = bal.get('ratios', {}).get('currentRatio')
+        if cr is not None and (cr < 0 or cr > 20):
+            self.tracker.reject(ticker, 'balance', 'ratios.currentRatio', cr,
+                              f"Current ratio outside bounds (0-20): {cr}", 'FIELD')
+        
+        # Growth bounds: typically -100 to +1000
+        growth = data.get('earnings', {}).get('growth', {}).get('earnings')
+        if growth is not None:
+            if isinstance(growth, float):
+                growth_pct = growth * 100 if growth <= 10 else growth
+                if growth_pct < -100 or growth_pct > 1000:
+                    self.tracker.reject(ticker, 'earnings', 'growth.earnings', growth,
+                                      f"Growth outside bounds (-100 to 1000%): {growth_pct}%", 'FIELD')
     
     def transform(self, raw_stock: Dict) -> Dict:
         ticker = raw_stock.get('ticker', 'UNKNOWN')
@@ -478,6 +654,9 @@ class StockTransformer:
         transformed['fundamentals'] = {'quarterly': raw_stock.get('quarterly', [])}
         transformed['dataQuality'] = {'lastUpdated': datetime.utcnow().isoformat(), 'rejections': len(self.tracker.get_for_ticker(ticker))}
         
+        # Validate sanity bounds on extracted data
+        self._validate_sanity_bounds(ticker, transformed)
+        
         return transformed
 
 # ============================================================================
@@ -495,6 +674,37 @@ class DataLoader:
                 return json.load(f), None
         except Exception as e:
             return {}, f"Error: {str(e)}"
+    
+    @staticmethod
+    def load_supporting_files() -> Tuple[Dict, Dict, Dict]:
+        """Load unified-symbols, guidance, and prices files"""
+        symbols_data = {}
+        guidance_data = {}
+        prices_data = {}
+        
+        # Try to load unified-symbols
+        try:
+            data, _ = DataLoader.load_json('data/unified-symbols.json')
+            if data and 'symbols' in data:
+                symbols_data = {s['ticker']: s for s in data['symbols']}
+        except:
+            pass
+        
+        # Try to load guidance
+        try:
+            guidance_data, _ = DataLoader.load_json('data/guidance.json')
+        except:
+            pass
+        
+        # Try to load prices
+        try:
+            data, _ = DataLoader.load_json('data/prices.json')
+            if data and 'quotes' in data:
+                prices_data = data['quotes']
+        except:
+            pass
+        
+        return symbols_data, guidance_data, prices_data
 
 class DataWriter:
     @staticmethod
@@ -514,30 +724,56 @@ class DataWriter:
 class DataProcessor:
     """Main orchestrator"""
     
-    def __init__(self):
+    def __init__(self, guidance_data: Dict = None, prices_data: Dict = None):
         self.rejection_tracker = RejectionTracker()
         self.signal_analyzer = SectorAwareSignalAnalyzer()
-        self.transformer = StockTransformer(self.rejection_tracker, self.signal_analyzer)
+        self.transformer = StockTransformer(self.rejection_tracker, self.signal_analyzer, guidance_data, prices_data)
         self.logger = logging.getLogger('market_data.processor')
         self.stats = defaultdict(int)
     
+    def _extract_raw_info(self, stock: Dict) -> Dict:
+        """Extract raw info from nested structure"""
+        try:
+            yf_raw = stock.get('yahoofin_raw', {})
+            observations = yf_raw.get('observations', [])
+            if observations:
+                raw = observations[0].get('raw', {})
+                return raw.get('info', {})
+        except Exception as e:
+            self.logger.warning(f"Failed to extract raw info: {str(e)}")
+        return {}
+    
     def process(self, raw_data: Dict) -> Tuple[List[Dict], Dict]:
         stocks_array = []
-        data = raw_data.get('data', {})
-        total = len(data)
         
+        # Handle both formats: list of stocks or dict with 'data' key
+        data = raw_data.get('data', {})
+        if isinstance(data, dict):
+            data_items = [(k, v) for k, v in data.items()]
+        else:
+            data_items = [(str(i), v) for i, v in enumerate(data)]
+        
+        total = len(data_items)
         self.logger.info(f"Processing {total} stocks")
         
-        for idx, (ticker, stock_data) in enumerate(data.items(), 1):
+        for idx, (key, stock_data) in enumerate(data_items, 1):
             try:
+                ticker = stock_data.get('ticker', key)
                 self.logger.info(f"Progress: {idx}/{total} ({(idx/total)*100:.1f}%) - Current: {ticker}")
-                transformed = self.transformer.transform(stock_data)
+                
+                # Extract raw info from nested structure
+                raw_info = self._extract_raw_info(stock_data)
+                
+                # Merge with top-level fields
+                merged_data = {**stock_data, **raw_info}
+                
+                transformed = self.transformer.transform(merged_data)
                 stocks_array.append(transformed)
                 self.stats['processed'] += 1
                 self.logger.info(f"✓ {ticker} complete")
             except Exception as e:
                 self.stats['failed'] += 1
-                self.logger.error(f"✗ {ticker} failed: {str(e)}", exc_info=True)
+                self.logger.error(f"✗ Stock #{idx} failed: {str(e)}", exc_info=True)
         
         metadata = {
             'version': '2.0.0', 'processedAt': datetime.utcnow().isoformat(),
@@ -561,7 +797,7 @@ def main():
     logger = setup_logging()
     logger.info("Pipeline started")
     
-    # Load
+    # Load main data
     print("Loading...")
     raw_data, error = DataLoader.load_json('data/raw_market_data.json')
     if error:
@@ -569,21 +805,35 @@ def main():
         print(f"✗ {error}")
         return 1
     
-    stock_count = len(raw_data.get('data', {}))
+    # Load supporting files
+    symbols_data, guidance_data, prices_data = DataLoader.load_supporting_files()
+    if symbols_data:
+        print(f"✓ Loaded {len(symbols_data)} symbol mappings")
+        logger.info(f"Loaded {len(symbols_data)} symbol mappings")
+    if guidance_data:
+        guidance_count = len({k: v for k, v in guidance_data.items() if k != '_metadata'})
+        print(f"✓ Loaded guidance for {guidance_count} stocks")
+        logger.info(f"Loaded guidance for {guidance_count} stocks")
+    if prices_data:
+        print(f"✓ Loaded real-time prices for {len(prices_data)} stocks")
+        logger.info(f"Loaded real-time prices for {len(prices_data)} stocks")
+    
+    data = raw_data.get('data', {})
+    stock_count = len(data) if isinstance(data, dict) else len(data)
     logger.info(f"Loaded {stock_count} stocks")
     print(f"✓ Loaded {stock_count} stocks")
     print()
     
     # Process
     print("Processing...")
-    processor = DataProcessor()
+    processor = DataProcessor(guidance_data, prices_data)
     stocks, metadata = processor.process(raw_data)
     print()
     
     # Save
     print("Saving...")
     output = {'metadata': metadata, 'stocks': stocks}
-    success, msg = DataWriter.save_json(output, 'data/market_data.json')
+    success, msg = DataWriter.save_json(output, 'data/market_data_processed.json')
     print(msg)
     logger.info(msg)
     
@@ -616,7 +866,7 @@ def main():
     print(f"Stocks failed: {metadata['failed']}")
     print()
     print("📊 Files generated:")
-    print("   ✓ data/market_data.json")
+    print("   ✓ data/market_data_processed.json")
     print("   ✓ logs/processing.log (all events + rejections)")
     print()
     
