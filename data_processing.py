@@ -347,20 +347,21 @@ class MetaExtractor(BaseExtractor):
             company_fields = [
                 'industry', 'industryKey', 'industryDisp', 'sector', 'sectorKey',
                 'longName', 'shortName', 'longBusinessSummary', 'businessSummary',
-                'currency', 'market', 'marketCap', 'enterpriseValue',
+                'currency', 'market',
                 'employees', 'fullTimeEmployees', 'founded'
             ]
             
-            # FINANCIAL INDICATORS (reference data)
-            # NOTE: Skipping 'currentPrice' - we have LTP in prices.json
-            # NOTE: Skipping dayHigh, dayLow, volume - not required
+            # FINANCIAL INDICATORS (minimal - avoid duplication)
+            # NOTE: Removed duplicate financial fields that belong in specific sections
+            # NOTE: returnOnEquity, debtToEquity, etc. are in profitability/balance sections
+            # NOTE: marketCap, enterpriseValue are in valuation section
+            # NOTE: beta is in pricing section
+            # NOTE: trailingPE, forwardPE, priceToBook, priceToSalesTrailing12Months in valuation
             financial_fields = [
                 'targetPrice', 'recommendationKey',
                 'averageAnalystRating', 'numberOfAnalysts',
-                'trailingPE', 'forwardPE', 'pegRatio', 'beta',
-                'yield', 'dividendRate', 'exDividendDate',
-                'fiveYearAvgDividendYield', 'priceToBook',
-                'priceToSalesTrailing12Months',
+                'pegRatio', 'dividendRate', 'exDividendDate',
+                'fiveYearAvgDividendYield', 'yield',
                 'fiftyTwoWeekChange', 'fiftyTwoWeekHigh', 'fiftyTwoWeekLow',
                 'fiftyTwoWeekChangePercent', 'SandP52WeekChange',
                 'twoHundredDayAverage', 'twoHundredDayAverageChange',
@@ -368,15 +369,7 @@ class MetaExtractor(BaseExtractor):
                 'allTimeHigh', 'allTimeLow',
                 'bid', 'ask', 'bidSize', 'askSize',
                 'averageVolume', 'averageVolume10days',
-                'averageDailyVolume10Day', 'averageDailyVolume3Month',
-                # IMPORTANT RATIO FIELDS
-                'currentRatio', 'quickRatio', 'debtToEquity',
-                'returnOnEquity', 'returnOnAssets', 
-                'enterpriseToRevenue', 'earningsQuarterlyGrowth',
-                'payoutRatio', 'debtToAssets', 'equityRatio',
-                'interestCoverage', 'assetTurnover', 'receivablesTurnover',
-                'inventoryTurnover', 'freeCashflowGrowth', 'bookValueGrowth',
-                'trailingPegRatio', 'forwardPegRatio'
+                'averageDailyVolume10Day', 'averageDailyVolume3Month'
             ]
             
             # GOVERNANCE & STRUCTURE
@@ -553,18 +546,11 @@ class BalanceExtractor(BaseExtractor):
         except:
             pass
         
-        # Normalize ratios from percentage scale
+        # Use ratios directly from raw_info (already correct from yahoofin)
+        # No normalization needed - yahoofin data is authoritative
         current_ratio = self.parser.parse_float(raw_info.get('currentRatio'))
-        if current_ratio and current_ratio > 10:
-            current_ratio = current_ratio / 100
-        
         quick_ratio = self.parser.parse_float(raw_info.get('quickRatio'))
-        if quick_ratio and quick_ratio > 10:
-            quick_ratio = quick_ratio / 100
-        
         debt_to_equity = self.parser.parse_float(raw_info.get('debtToEquity'))
-        if debt_to_equity and debt_to_equity > 20:
-            debt_to_equity = debt_to_equity / 100
         
         return {
             "assets": {"total": self.parser.parse_float(raw_info.get('totalAssets'))},
@@ -580,13 +566,11 @@ class BalanceExtractor(BaseExtractor):
                 "total": self.parser.parse_float(raw_info.get('totalEquity')),
                 "bookValuePerShare": self.parser.parse_float(raw_info.get('bookValue'))
             },
-            "ratios": {
-                "currentRatio": current_ratio,
-                "quickRatio": quick_ratio,
-                "debtToEquity": debt_to_equity,
-                "debtToRevenue": None,
-                "interestCoverage": interest_coverage
-            }
+            # Ratios at top level (no balance.ratios duplication with wrong scaling)
+            "currentRatio": current_ratio,
+            "quickRatio": quick_ratio,
+            "debtToEquity": debt_to_equity,
+            "interestCoverage": interest_coverage
         }
 
 class EarningsExtractor(BaseExtractor):
@@ -1023,6 +1007,21 @@ class StockTransformer:
             if 'forwardPegRatio' in raw_info and raw_info['forwardPegRatio']:
                 valuation['forwardPegRatio'] = raw_info['forwardPegRatio']
             
+            # VALUATION section: Price targets (P2 - REALIGNMENT)
+            valuation['priceTargets'] = {}
+            if 'targetHighPrice' in raw_info and raw_info['targetHighPrice'] is not None:
+                valuation['priceTargets']['high'] = raw_info['targetHighPrice']
+            if 'targetLowPrice' in raw_info and raw_info['targetLowPrice'] is not None:
+                valuation['priceTargets']['low'] = raw_info['targetLowPrice']
+            if 'targetMeanPrice' in raw_info and raw_info['targetMeanPrice'] is not None:
+                valuation['priceTargets']['mean'] = raw_info['targetMeanPrice']
+            if 'targetMedianPrice' in raw_info and raw_info['targetMedianPrice'] is not None:
+                valuation['priceTargets']['median'] = raw_info['targetMedianPrice']
+            
+            # Clean up empty priceTargets dict
+            if not valuation['priceTargets']:
+                del valuation['priceTargets']
+            
             # EARNINGS section: Growth metrics
             if 'earningsQuarterlyGrowth' in raw_info and raw_info['earningsQuarterlyGrowth']:
                 earnings['earningsQuarterlyGrowth'] = raw_info['earningsQuarterlyGrowth']
@@ -1058,6 +1057,21 @@ class StockTransformer:
                 earnings['operatingCashflow'] = raw_info['operatingCashflow']
             if 'operatingExpenses' in raw_info and raw_info['operatingExpenses']:
                 earnings['operatingExpenses'] = raw_info['operatingExpenses']
+            
+            # EARNINGS section: EPS metrics (P1 - REALIGNMENT)
+            earnings['eps'] = {}
+            if 'epsCurrentYear' in raw_info and raw_info['epsCurrentYear'] is not None:
+                earnings['eps']['epsCurrentYear'] = raw_info['epsCurrentYear']
+            if 'epsForward' in raw_info and raw_info['epsForward'] is not None:
+                earnings['eps']['epsForward'] = raw_info['epsForward']
+            if 'epsTrailingTwelveMonths' in raw_info and raw_info['epsTrailingTwelveMonths'] is not None:
+                earnings['eps']['epsTrailingTwelveMonths'] = raw_info['epsTrailingTwelveMonths']
+            if 'trailingEps' in raw_info and raw_info['trailingEps'] is not None:
+                earnings['eps']['trailingEps'] = raw_info['trailingEps']
+            
+            # Clean up empty eps dict
+            if not earnings['eps']:
+                del earnings['eps']
         
         # MERGE screener_raw data (ANNUAL) into functional sections
         if screener_data and isinstance(screener_data, dict) and 'tables' in screener_data:
