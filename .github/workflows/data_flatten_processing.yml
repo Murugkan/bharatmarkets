@@ -1,0 +1,125 @@
+name: "[MERGE] data processing"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  flatten-data:
+    name: "Flatten Raw Data"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create data directories
+        run: mkdir -p data/logs
+
+      - name: Run market_data_flatten.py
+        run: python market_data_flatten.py
+
+      - name: Verify flattened output
+        run: |
+          echo "Checking flattened data..."
+          ls -lh data/market_data_raw.json || echo "ERROR: market_data_raw.json not created"
+          ls -lh data/logs/pipeline.log || echo "ERROR: pipeline.log not created"
+
+      - name: Configure Git
+        run: |
+          git config user.email "pipeline@bharatmarkets.dev"
+          git config user.name "BharatMarkets Pipeline"
+
+      - name: Commit flattened data
+        run: |
+          # Check if files exist before committing
+          if [ -f data/market_data_raw.json ]; then
+            git add -f data/market_data_raw.json
+            echo "✓ Added market_data_raw.json"
+          else
+            echo "✗ market_data_raw.json not found"
+          fi
+          
+          if [ -f data/logs/pipeline.log ]; then
+            git add -f data/logs/pipeline.log
+            echo "✓ Added pipeline.log"
+          else
+            echo "⚠ pipeline.log not found"
+          fi
+          
+          # Only commit if there are staged changes
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Data: Flatten raw market data $(date +'%Y-%m-%d %H:%M:%S')"
+            git push origin HEAD:main || true
+          fi
+
+  process-data:
+    name: "Generate market_data.json"
+    needs: flatten-data
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create data directories
+        run: mkdir -p data/logs
+
+      - name: Run market_data.py
+        run: python market_data.py
+
+      - name: Verify output files
+        run: |
+          echo "Checking generated files..."
+          ls -lh data/market_data.json || echo "ERROR: market_data.json not created"
+          ls -lh data/logs/market_data.log || echo "ERROR: market_data.log not created"
+          wc -l data/market_data.json
+
+      - name: Configure Git
+        run: |
+          git config user.email "pipeline@bharatmarkets.dev"
+          git config user.name "BharatMarkets Pipeline"
+
+      - name: Commit processed data
+        run: |
+          # Check if files exist before committing
+          if [ -f data/market_data.json ]; then
+            git add -f data/market_data.json
+            echo "✓ Added market_data.json"
+          else
+            echo "✗ market_data.json not found"
+            exit 1
+          fi
+          
+          if [ -f data/logs/market_data.log ]; then
+            git add -f data/logs/market_data.log
+            echo "✓ Added market_data.log"
+          else
+            echo "⚠ market_data.log not found"
+          fi
+          
+          # Commit and push
+          git commit -m "Data: Generate market_data.json with buckets + derived metrics $(date +'%Y-%m-%d %H:%M:%S')"
+          git push origin HEAD:main || true
