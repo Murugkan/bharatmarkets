@@ -10,8 +10,31 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  prepare-source-data:
+    name: "Prepare Source Data"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create data directories
+        run: mkdir -p data/logs
+
+      - name: Check source data files
+        run: |
+          echo "Checking for required source files in /data:"
+          ls -lh data/prices.json || echo "⚠ prices.json missing"
+          ls -lh data/fundamentals.json || echo "⚠ fundamentals.json missing"
+          ls -lh data/yahoofin_raw_data.json || echo "⚠ yahoofin_raw_data.json missing"
+          ls -lh data/guidance.json || echo "⚠ guidance.json missing"
+          ls -lh data/unified-symbols.json || echo "⚠ unified-symbols.json missing"
+
   flatten-data:
     name: "Flatten Raw Data"
+    needs: prepare-source-data
     runs-on: ubuntu-latest
     
     steps:
