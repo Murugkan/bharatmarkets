@@ -1,0 +1,497 @@
+#!/usr/bin/env python3
+"""
+BharatMarkets Onyx Pro Terminal - Multi-Ticker Data Pipeline
+Dynamically processes all tickers from prices.json without hardcoding
+All logs written to file for GitHub workflow
+Headers preserve exact source names (no underscore stripping)
+"""
+
+import json
+import re
+import os
+import sys
+from datetime import datetime
+from collections import OrderedDict
+from pathlib import Path
+
+# ===== CONFIGURATION =====
+PROJECT_ROOT = Path(__file__).parent
+DATA_DIR = PROJECT_ROOT / 'data'
+LOGS_DIR = DATA_DIR / 'logs'
+
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# ===== LOGGING SETUP =====
+LOG_FILE = LOGS_DIR / 'pipeline.log'
+
+class Logger:
+    """Write all logs to file (for GitHub workflow)"""
+    def __init__(self, log_path):
+        self.log_path = log_path
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Initialize log file
+        with open(self.log_path, 'w') as f:
+            f.write(f"{'='*120}\n")
+            f.write(f"BharatMarkets Onyx Pro Terminal - Pipeline Execution Log\n")
+            f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"{'='*120}\n\n")
+    
+    def write(self, message, category='INFO'):
+        """Write message to log file"""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(self.log_path, 'a') as f:
+            f.write(f"[{timestamp}] [{category:10}] {message}\n")
+    
+    def write_section(self, title):
+        """Write section header"""
+        with open(self.log_path, 'a') as f:
+            f.write(f"\n{'='*120}\n{title}\n{'='*120}\n")
+    
+    def write_rejection(self, ticker, source, metric, reason, details=''):
+        """Log rejected metric"""
+        msg = f"{ticker:15} | {source:15} | {metric:40} | {reason}"
+        if details:
+            msg += f" | {details}"
+        self.write(msg, 'REJECTION')
+    
+    def write_error(self, ticker, source, metric, error_msg):
+        """Log error"""
+        msg = f"{ticker:15} | {source:15} | {metric:40} | {error_msg}"
+        self.write(msg, 'ERROR')
+    
+    def write_ticker_start(self, ticker):
+        """Log start of ticker processing"""
+        self.write(f"\n>>> Processing {ticker}", 'TICKER')
+    
+    def write_ticker_summary(self, ticker, sections_count, metrics_loaded, rejections_list, errors_list):
+        """Write ticker processing summary"""
+        self.write(f"\n✓ {ticker} - Loaded {metrics_loaded} metrics across {sections_count} sections", 'SUCCESS')
+        
+        if rejections_list:
+            self.write(f"  Rejections: {len(rejections_list)}", 'SUMMARY')
+            for r in rejections_list[:10]:
+                self.write(f"    - {r}", 'DETAIL')
+            if len(rejections_list) > 10:
+                self.write(f"    ... and {len(rejections_list)-10} more", 'DETAIL')
+        
+        if errors_list:
+            self.write(f"  Errors: {len(errors_list)}", 'SUMMARY')
+            for e in errors_list[:10]:
+                self.write(f"    - {e}", 'DETAIL')
+            if len(errors_list) > 10:
+                self.write(f"    ... and {len(errors_list)-10} more", 'DETAIL')
+    
+    def write_final_summary(self, total_tickers, output_file_size):
+        """Write final execution summary"""
+        self.write_section("FINAL SUMMARY")
+        self.write(f"Processed {total_tickers} tickers successfully", 'COMPLETE')
+        self.write(f"Output file size: {output_file_size} bytes", 'COMPLETE')
+        self.write(f"Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 'COMPLETE')
+
+logger = Logger(LOG_FILE)
+
+# Read tickers from prices.json dynamically
+logger.write_section("INITIALIZATION")
+logger.write("Reading tickers from prices.json", 'INIT')
+
+with open(DATA_DIR / 'prices.json') as f:
+    prices_data = json.load(f)
+
+TICKERS_TO_PROCESS = list(prices_data.keys())
+logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers: {', '.join(TICKERS_TO_PROCESS)}", 'INIT')
+logger.write(f"Input directory: {DATA_DIR}", 'INIT')
+logger.write(f"Output: {DATA_DIR / 'market_data_multi.json'}", 'INIT')
+
+# Console output (minimal)
+print(f"Pipeline running... Check {LOG_FILE} for detailed logs")
+print(f"Processing {len(TICKERS_TO_PROCESS)} tickers: {', '.join(TICKERS_TO_PROCESS)}")
+
+TODAY = datetime.now().strftime('%Y-%m-%d')
+
+# ===== UTILITY FUNCTIONS =====
+def parse_period_to_iso(period_str):
+    """Convert period strings (Jun 2023, Mar 2026) to ISO 8601 (2023-06-01)"""
+    try:
+        parts = str(period_str).strip().split()
+        if len(parts) == 2:
+            months = {'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+                     'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'}
+            if parts[0] in months:
+                return f"{parts[1]}-{months[parts[0]]}-01"
+            elif parts[1] in months:
+                return f"{parts[0]}-{months[parts[1]]}-01"
+    except Exception as e:
+        logger.write_error('UTIL', 'parse_period', period_str, f"Parse error: {str(e)}")
+    return None
+
+def parse_datetime_to_iso(date_str):
+    """Convert datetime to ISO 8601 date"""
+    try:
+        if isinstance(date_str, str):
+            if ' ' in date_str:
+                dt = datetime.strptime(date_str.split('+')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                return dt.strftime('%Y-%m-%d')
+            else:
+                return date_str[:10]
+    except Exception as e:
+        logger.write_error('UTIL', 'parse_datetime', date_str, str(e))
+    return date_str
+
+def standardize_value(value):
+    """Convert numeric strings to float"""
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value.replace(',', ''))
+        except:
+            pass
+    return value
+
+def sort_array_by_date(values_array):
+    """Sort OHLCV array by Date descending (latest first)"""
+    if not isinstance(values_array, list):
+        return values_array
+    try:
+        return sorted(values_array, key=lambda x: x.get('Date', ''), reverse=True)
+    except Exception as e:
+        logger.write_error('UTIL', 'sort_array_by_date', 'array', str(e))
+        return values_array
+
+def standardize_array_dates(values_array):
+    """Standardize dates in array records"""
+    if not isinstance(values_array, list):
+        return values_array
+    for record in values_array:
+        if isinstance(record, dict) and 'Date' in record:
+            record['Date'] = parse_datetime_to_iso(record['Date'])
+    return values_array
+
+# No categorization - load raw data only from source
+
+def clean_metric_names(obj):
+    """Clean metric names - remove non-breaking spaces only"""
+    if isinstance(obj, dict):
+        cleaned_dict = {}
+        for k, v in obj.items():
+            if isinstance(k, str):
+                cleaned_key = k.replace('\u00a0', ' ').replace('\xa0', ' ')
+                cleaned_key = re.sub(r'\s+', ' ', cleaned_key).strip()
+            else:
+                cleaned_key = k
+            
+            cleaned_value = clean_metric_names(v)
+            
+            if isinstance(cleaned_value, dict) and 'metric' in cleaned_value:
+                metric_val = cleaned_value['metric']
+                if isinstance(metric_val, str):
+                    metric_val = metric_val.replace('\u00a0', ' ').replace('\xa0', ' ')
+                    metric_val = re.sub(r'\s+', ' ', metric_val).strip()
+                cleaned_value['metric'] = metric_val
+            
+            cleaned_dict[cleaned_key] = cleaned_value
+        return cleaned_dict
+    
+    elif isinstance(obj, list):
+        cleaned_list = []
+        for item in obj:
+            cleaned_item = clean_metric_names(item)
+            if isinstance(cleaned_item, dict) and 'metric' in cleaned_item:
+                metric_val = cleaned_item['metric']
+                if isinstance(metric_val, str):
+                    metric_val = metric_val.replace('\u00a0', ' ').replace('\xa0', ' ')
+                    metric_val = re.sub(r'\s+', ' ', metric_val).strip()
+                cleaned_item['metric'] = metric_val
+            cleaned_list.append(cleaned_item)
+        return cleaned_list
+    
+    else:
+        return obj
+
+# ===== LOAD DATA FOR ALL TICKERS =====
+def load_all_data():
+    """Load all source files - these are ticker-independent"""
+    logger.write_section("LOADING SOURCE FILES")
+    
+    data = {}
+    files = {
+        'screener_fin': DATA_DIR / 'screener_financials.json',
+        'screener_raw': DATA_DIR / 'screener_raw_data.json',
+        'yahoofin_fin': DATA_DIR / 'yahoofin_financials.json',
+        'yahoofin_raw': DATA_DIR / 'yahoofin_raw_data.json',
+        'guidance': DATA_DIR / 'guidance.json',
+        'prices': DATA_DIR / 'prices.json',
+        'unified_symbols': DATA_DIR / 'unified-symbols.json',
+    }
+    
+    for source, filepath in files.items():
+        try:
+            if filepath.exists():
+                with open(filepath) as f:
+                    data[source] = json.load(f)
+                logger.write(f"✓ Loaded {source:20} ({len(data[source])} keys)", 'LOAD')
+            else:
+                data[source] = {}
+                logger.write(f"⚠ Missing {source:20} (file not found)", 'WARN')
+        except Exception as e:
+            data[source] = {}
+            logger.write_error('LOADER', source, filepath.name, f"Load failed: {str(e)}")
+    
+    return data
+
+# ===== PROCESS ALL TICKERS =====
+logger.write_section("DATA PROCESSING")
+all_data = load_all_data()
+
+output_all = {}
+total_rejections = 0
+total_errors = 0
+
+for TICKER in TICKERS_TO_PROCESS:
+    logger.write_ticker_start(TICKER)
+    
+    output = {TICKER: {'data': {}}}
+    metrics = {}
+    ticker_rejections = []
+    ticker_errors = []
+    
+    try:
+        # === SCREENER FINANCIALS ===
+        sf = all_data.get('screener_fin', {}).get(TICKER, {})
+        for table_name, table_data in sf.get('tables', {}).items():
+            for metric_name, period_data in table_data.get('data', {}).items():
+                try:
+                    if metric_name and metric_name.strip():
+                        key = f"{metric_name}|{table_name}"
+                        metrics[key] = {'metric': metric_name, 'section': table_name, 'source': 'screener_fin', 'periods': {}}
+                        for period, value in (period_data.items() if isinstance(period_data, dict) else []):
+                            iso = parse_period_to_iso(period)
+                            if iso:
+                                metrics[key]['periods'][iso] = standardize_value(value)
+                            else:
+                                metrics[key]['periods'][str(period)] = standardize_value(value)
+                    else:
+                        ticker_rejections.append(f"screener_fin | {table_name} | Empty metric name")
+                except Exception as e:
+                    ticker_errors.append(f"screener_fin | {table_name} | {metric_name} | {str(e)}")
+                    logger.write_error(TICKER, 'screener_fin', metric_name, str(e))
+        
+        # === SCREENER RAW ===
+        sr = all_data.get('screener_raw', {}).get(TICKER, {})
+        sr_obs = sr.get('observations', [{}])[0].get('raw', {})
+        for table in sr_obs.get('tables', []):
+            section = table.get('section', '')
+            rows = table.get('rows', [])
+            for row in rows[1:]:
+                try:
+                    if row and row[0] and row[0].strip():
+                        metric_name = row[0]
+                        key = f"{metric_name}|{section}"
+                        if key not in metrics:
+                            metrics[key] = {'metric': metric_name, 'section': section, 'source': 'screener_raw', 'periods': {}}
+                        for col_idx in range(1, min(len(rows[0]), len(row))):
+                            iso = parse_period_to_iso(rows[0][col_idx])
+                            if iso and iso not in metrics[key]['periods']:
+                                metrics[key]['periods'][iso] = standardize_value(row[col_idx])
+                    else:
+                        ticker_rejections.append(f"screener_raw | {section} | Empty metric")
+                except Exception as e:
+                    ticker_errors.append(f"screener_raw | {section} | Error: {str(e)}")
+                    logger.write_error(TICKER, 'screener_raw', section, str(e))
+        
+        # === YAHOOFIN FINANCIALS ===
+        yf = all_data.get('yahoofin_fin', {}).get(TICKER, {})
+        raw = yf.get('observations', [{}])[0].get('raw', {}) if yf.get('observations') else {}
+        for k, v in raw.get('latest', {}).items():
+            try:
+                if k and k.strip() and k not in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp']:
+                    metrics[f"{k}|latest"] = {'metric': k, 'section': 'latest', 'source': 'yahoofin_fin', 'value': standardize_value(v)}
+                elif k in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp']:
+                    ticker_rejections.append(f"yahoofin_fin | latest | Excluded metadata key: {k}")
+            except Exception as e:
+                ticker_errors.append(f"yahoofin_fin | latest | {k} | {str(e)}")
+                logger.write_error(TICKER, 'yahoofin_fin', k, str(e))
+        
+        # === YAHOOFIN RAW ===
+        yr = all_data.get('yahoofin_raw', {}).get(TICKER, {})
+        for k, v in yr.items():
+            try:
+                if k != 'observations' and k and k.strip():
+                    metrics[f"{k}|metadata"] = {'metric': k, 'section': 'metadata', 'source': 'yahoofin_raw', 'value': standardize_value(v)}
+            except Exception as e:
+                ticker_errors.append(f"yahoofin_raw | metadata | {k} | {str(e)}")
+                logger.write_error(TICKER, 'yahoofin_raw', k, str(e))
+        
+        obs = yr.get('observations', [])
+        if obs:
+            raw = obs[0].get('raw', {})
+            
+            # Load ALL 145 fields from info as raw data - NO grouping/categorization
+            # Match exact source field names (camelCase, no underscores)
+            for k, v in raw.get('info', {}).items():
+                try:
+                    if not k or not k.strip():
+                        ticker_rejections.append(f"yahoofin_raw | info | Empty field name")
+                        continue
+                    
+                    # Skip system metadata keys only (not part of raw financial data)
+                    if k in ['industryKey', 'sectorKey', 'maxAge', 'executiveTeam']:
+                        ticker_rejections.append(f"yahoofin_raw | info | Excluded: {k}")
+                        continue
+                    
+                    # Store all fields under 'info' section - raw data as-is
+                    metric_key = f"{k}|info"
+                    
+                    # Keep all data types as-is (arrays, objects, scalars)
+                    if isinstance(v, list):
+                        metrics[metric_key] = {'metric': k, 'section': 'info', 'source': 'yahoofin_raw', 
+                                              'value': v}
+                    elif isinstance(v, dict):
+                        metrics[metric_key] = {'metric': k, 'section': 'info', 'source': 'yahoofin_raw', 
+                                              'value': v}
+                    else:
+                        metrics[metric_key] = {'metric': k, 'section': 'info', 'source': 'yahoofin_raw', 
+                                              'value': standardize_value(v)}
+                
+                except Exception as e:
+                    ticker_errors.append(f"yahoofin_raw | info | {k} | {str(e)}")
+                    logger.write_error(TICKER, 'yahoofin_raw', k, str(e))
+            
+            for section_key in ['history_6mo_1d', 'history_5y_1wk', 'history_5y_1mo']:
+                try:
+                    history = raw.get(section_key, [])
+                    if history:
+                        standardized = standardize_array_dates(history)
+                        sorted_hist = sort_array_by_date(standardized)
+                        metrics[f"{section_key}|{section_key}"] = {
+                            'metric': f"{section_key}_data",
+                            'section': section_key,
+                            'source': 'yahoofin_raw',
+                            'data_type': 'array',
+                            'record_count': len(sorted_hist),
+                            'values': sorted_hist
+                        }
+                except Exception as e:
+                    ticker_errors.append(f"yahoofin_raw | {section_key} | {str(e)}")
+                    logger.write_error(TICKER, 'yahoofin_raw', section_key, str(e))
+        
+        # === GUIDANCE ===
+        guidance = all_data.get('guidance', {}).get(TICKER, {})
+        for category in ['guidance', 'insights']:
+            try:
+                for k, v in guidance.get(category, {}).items():
+                    if k and k.strip():
+                        metrics[f"{k}|{category}"] = {'metric': k, 'section': category, 'source': 'guidance', 'value': v}
+            except Exception as e:
+                ticker_errors.append(f"guidance | {category} | {str(e)}")
+                logger.write_error(TICKER, 'guidance', category, str(e))
+        
+        # === UNIFIED SYMBOLS ===
+        try:
+            us = all_data.get('unified_symbols', {})
+            us_ticker = next((s for s in us.get('symbols', []) if s.get('ticker') == TICKER), {})
+            for k, v in us_ticker.items():
+                metrics[f"{k}|metadata"] = {'metric': k, 'section': 'metadata', 'source': 'unified_symbols', 'value': standardize_value(v)}
+        except Exception as e:
+            ticker_errors.append(f"unified_symbols | {str(e)}")
+            logger.write_error(TICKER, 'unified_symbols', 'symbols', str(e))
+        
+        # === TRANSFORM TO OUTPUT ===
+        for key, obj in metrics.items():
+            source = obj.get('source', 'unknown')
+            section_name = obj['section']
+            # Use exact source:section format with original names
+            section_key = f"{source}:{section_name}"
+            
+            if section_key not in output[TICKER]['data']:
+                if 'value' in obj and not isinstance(obj.get('values'), list):
+                    output[TICKER]['data'][section_key] = {}
+                else:
+                    output[TICKER]['data'][section_key] = []
+            
+            if 'value' in obj:
+                if not isinstance(output[TICKER]['data'][section_key], dict):
+                    output[TICKER]['data'][section_key] = {}
+                output[TICKER]['data'][section_key][obj['metric']] = obj['value']
+            elif obj.get('data_type') == 'array':
+                if not isinstance(output[TICKER]['data'][section_key], list):
+                    output[TICKER]['data'][section_key] = []
+                row = {
+                    'metric': obj['metric'],
+                    'source': source,
+                    'section': section_name,
+                    'record_count': obj.get('record_count'),
+                    'values': obj.get('values', [])
+                }
+                output[TICKER]['data'][section_key].append(row)
+            else:
+                if not isinstance(output[TICKER]['data'][section_key], list):
+                    output[TICKER]['data'][section_key] = []
+                row = {
+                    'metric': obj['metric'],
+                    'source': source,
+                    'section': section_name,
+                    'data_type': 'time_series'
+                }
+                if obj.get('periods'):
+                    row['periods'] = OrderedDict(sorted(obj['periods'].items(), reverse=True))
+                output[TICKER]['data'][section_key].append(row)
+        
+        # === ADD LTP FROM PRICES ===
+        ticker_prices = prices_data.get(TICKER, {})
+        daily_section = "yahoofin_raw:history_6mo_1d"
+        daily_data = output[TICKER]['data'].get(daily_section, [])
+        
+        if daily_data and len(daily_data) > 0:
+            ltp_obj = {
+                'metric': 'LTP',
+                'source': 'prices',
+                'section': 'latest_price',
+                'data': {
+                    'ltp': ticker_prices.get('ltp'),
+                    'change': ticker_prices.get('change'),
+                    'changePct': ticker_prices.get('changePct'),
+                    'open': ticker_prices.get('open'),
+                    'high': ticker_prices.get('high'),
+                    'low': ticker_prices.get('low'),
+                    'prev': ticker_prices.get('prev'),
+                    'vol': ticker_prices.get('vol'),
+                    'w52h': ticker_prices.get('w52h'),
+                    'w52l': ticker_prices.get('w52l'),
+                    'beta': ticker_prices.get('beta'),
+                }
+            }
+            daily_data.insert(0, ltp_obj)
+        
+        # === CLEAN AND FINALIZE ===
+        output[TICKER]['data'] = clean_metric_names(output[TICKER]['data'])
+        output_all[TICKER] = output[TICKER]
+        
+        logger.write_ticker_summary(TICKER, len(output[TICKER]['data']), len(metrics), ticker_rejections, ticker_errors)
+        total_rejections += len(ticker_rejections)
+        total_errors += len(ticker_errors)
+    
+    except Exception as e:
+        logger.write_error(TICKER, 'TICKER_PROCESSING', 'OVERALL', f"Critical error: {str(e)}")
+        total_errors += 1
+
+# ===== SAVE OUTPUT =====
+logger.write_section("SAVING OUTPUT")
+output_file = DATA_DIR / 'market_data_raw.json'
+try:
+    with open(output_file, 'w') as f:
+        json.dump(output_all, f, indent=2, default=str)
+    
+    file_size = output_file.stat().st_size
+    logger.write(f"Output saved: {output_file}", 'SAVE')
+    logger.write(f"File size: {file_size} bytes ({file_size/1024:.2f} KB)", 'SAVE')
+except Exception as e:
+    logger.write_error('OUTPUT', 'save', output_file.name, f"Save failed: {str(e)}")
+
+# ===== FINAL SUMMARY =====
+logger.write_final_summary(len(output_all), output_file.stat().st_size if output_file.exists() else 0)
+
+# Console feedback
+print(f"\n✓ Processed {len(output_all)} tickers")
+print(f"✓ Log file: {LOG_FILE}")
+
