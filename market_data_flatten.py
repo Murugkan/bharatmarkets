@@ -95,12 +95,15 @@ logger.write_section("INITIALIZATION")
 logger.write("Reading tickers from prices.json", 'INIT')
 
 with open(DATA_DIR / 'prices.json') as f:
-    prices_data = json.load(f)
+    prices_file = json.load(f)
 
+# Extract tickers from quotes wrapper
+prices_data = prices_file.get("quotes", {})
 TICKERS_TO_PROCESS = list(prices_data.keys())
+
 logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers: {', '.join(TICKERS_TO_PROCESS)}", 'INIT')
 logger.write(f"Input directory: {DATA_DIR}", 'INIT')
-logger.write(f"Output: {DATA_DIR / 'market_data_multi.json'}", 'INIT')
+logger.write(f"Output: {DATA_DIR / 'market_data_raw.json'}", 'INIT')
 
 # Console output (minimal)
 print(f"Pipeline running... Check {LOG_FILE} for detailed logs")
@@ -242,6 +245,11 @@ def load_all_data():
 # ===== PROCESS ALL TICKERS =====
 logger.write_section("DATA PROCESSING")
 all_data = load_all_data()
+
+# Extract quotes from prices (has metadata wrapper)
+if "prices" in all_data:
+    prices_file = all_data["prices"]
+    all_data["prices"] = prices_file.get("quotes", {})
 
 output_all = {}
 total_rejections = 0
