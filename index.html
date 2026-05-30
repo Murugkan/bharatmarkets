@@ -170,6 +170,7 @@ const fmt = (val, field) => {
     
     if (['MCAP', 'EBITDA', 'SALES', 'CFO', 'NETCF'].includes(field)) return formatLargeNum(n);
     if (['INVESTED', '1D_GAIN', '1DCH', 'PNL'].includes(field)) return formatLargeNum(n);
+    if (['QTY'].includes(field)) return Math.round(n).toString(); // Integer quantities
     if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
     if (['FV'].includes(field)) return Math.round(n).toString();
     if (['PE', 'PB', 'EPS'].includes(field)) return n.toFixed(1); // 1 decimal for EPS
@@ -202,8 +203,8 @@ const resolve = (obj, field) => {
         '1DG':['price_trading.ltp.high','price_trading.regular_market_day_high','market_day_high','1dg','1DG','day_high'],
         '1D_GAIN':['1dGain','1D_GAIN','1DGAIN'],
         'LTP':['price_trading.ltp.ltp','price_trading.current_price','price','ltp','LTP','PRICE','current_price'], 
-        'QTY':['qty','QTY','quantity'], 
-        'AVG':['avg','AVG','AVGBUY','avgbuy'], 
+        'QTY':['portfolio_context.qty','qty','QTY','quantity'], 
+        'AVG':['portfolio_context.avg_cost','avg','AVG','AVGBUY','avgbuy'], 
         'INVESTED':['invested','INVESTED'], 
         'POS':['pos','POS','POSITIVE'], 
         'NEG':['neg','NEG','NEGATIVE'], 
@@ -442,6 +443,36 @@ async function init() {
     if (MASTER.length === 0) {
         statusEl.innerHTML = "DATABASE EMPTY<br><br>📊 Go to Data tab → Click 🚀 LOAD JSON<br>(No authentication required)";
         return;
+    }
+    
+    // MIGRATION: Ensure all stocks have portfolio_context with qty & avg_cost fields
+    let needsUpgrade = false;
+    MASTER.forEach(stock => {
+        if (!stock.portfolio_context) {
+            stock.portfolio_context = {};
+            needsUpgrade = true;
+        }
+        if (stock.portfolio_context.qty === undefined || stock.portfolio_context.qty === null) {
+            stock.portfolio_context.qty = 0;
+            needsUpgrade = true;
+        }
+        if (stock.portfolio_context.avg_cost === undefined || stock.portfolio_context.avg_cost === null) {
+            stock.portfolio_context.avg_cost = 0;
+            needsUpgrade = true;
+        }
+    });
+    
+    // If migration needed, save back to DB
+    if (needsUpgrade) {
+        try {
+            const writeTx = db.transaction(STORE_NAME, "readwrite");
+            MASTER.forEach(stock => {
+                writeTx.objectStore(STORE_NAME).put(stock);
+            });
+            console.log('✅ Migrated qty/avg fields for all stocks');
+        } catch(e) {
+            console.warn('Migration failed (non-critical):', e);
+        }
     }
     
     console.log('✅ Loaded ' + MASTER.length + ' stocks from IndexedDB');
