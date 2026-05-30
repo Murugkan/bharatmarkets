@@ -2580,6 +2580,16 @@ CRITICAL RULES:
                     const db = ev.target.result;
                     log('✅ DB opened, store names: ' + Array.from(db.objectStoreNames).join(', '));
                     
+                    // CRITICAL: Verify store exists
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        log('❌ CRITICAL ERROR: Store "' + STORE_NAME + '" does not exist!');
+                        log('Available stores: ' + Array.from(db.objectStoreNames).join(', '));
+                        updateStatusButton('❌ Store Error');
+                        return;
+                    }
+                    
+                    log('✅ Store "' + STORE_NAME + '" confirmed to exist');
+                    
                     const tx = db.transaction(STORE_NAME, 'readwrite');
                     const store = tx.objectStore(STORE_NAME);
                     
