@@ -266,18 +266,35 @@ for TICKER in TICKERS_TO_PROCESS:
     try:
         # === SCREENER FINANCIALS ===
         sf = all_data.get('screener_fin', {}).get(TICKER, {})
-        for table_name, table_data in sf.get('tables', {}).items():
+        tables = sf.get('tables', {})
+        for table_name, table_data in tables.items():
             for metric_name, period_data in table_data.get('data', {}).items():
                 try:
                     if metric_name and metric_name.strip():
-                        key = f"{metric_name}|{table_name}"
-                        metrics[key] = {'metric': metric_name, 'section': table_name, 'source': 'screener_fin', 'periods': {}}
+                        # Collect periods first
+                        temp_periods = {}
                         for period, value in (period_data.items() if isinstance(period_data, dict) else []):
                             iso = parse_period_to_iso(period)
                             if iso:
-                                metrics[key]['periods'][iso] = standardize_value(value)
+                                temp_periods[iso] = standardize_value(value)
                             else:
-                                metrics[key]['periods'][str(period)] = standardize_value(value)
+                                temp_periods[str(period)] = standardize_value(value)
+                        
+                        # Map table_name to granularity
+                        # profit_loss = quarterly, balance_sheet/cash_flow/ratios = annual
+                        if table_name == 'profit_loss':
+                            granule = 'quarterly'
+                        else:
+                            granule = 'annual'
+                        
+                        # screener_fin = consolidated
+                        consol = 'consolidated'
+                        
+                        key = f"{metric_name}|{table_name}|{granule}|{consol}"
+                        if key not in metrics:
+                            metrics[key] = {'metric': metric_name, 'section': table_name, 'granule': granule, 'consolidation': consol, 'source': 'screener_fin', 'periods': temp_periods}
+                        else:
+                            metrics[key]['periods'].update(temp_periods)
                     else:
                         ticker_rejections.append(f"screener_fin | {table_name} | Empty metric name")
                 except Exception as e:
@@ -301,32 +318,34 @@ for TICKER in TICKERS_TO_PROCESS:
                             if iso:
                                 temp_periods[iso] = standardize_value(row[col_idx])
                         
-                        # Detect granularity from dates
-                        from datetime import datetime
-                        months_seen = set()
-                        for date_key in temp_periods.keys():
-                            try:
-                                dt = datetime.fromisoformat(date_key[:10])
-                                months_seen.add(dt.month)
-                            except:
-                                pass
-                        
-                        # Map months to granularity
-                        if months_seen == {3}:
-                            granule = 'annual'
-                        elif {3, 6, 9, 12} <= months_seen:
-                            granule = 'quarterly'
-                        elif months_seen == {3, 9}:
-                            granule = 'half_yearly'
-                        else:
-                            granule = 'other'
-                        
-                        # Determine consolidation type based on section
-                        # Quarterly Results = standalone, P&L/Balance Sheet = consolidated
+                        # Detect granularity from section name first, then from dates as fallback
                         if 'Quarterly' in section:
-                            consol = 'standalone'
+                            granule = 'quarterly'
+                        elif 'Profit' in section or 'Balance' in section or 'Cash' in section or 'Ratios' in section:
+                            granule = 'annual'
                         else:
-                            consol = 'consolidated'
+                            # Fallback: detect from dates
+                            from datetime import datetime
+                            months_seen = set()
+                            for date_key in temp_periods.keys():
+                                try:
+                                    dt = datetime.fromisoformat(date_key[:10])
+                                    months_seen.add(dt.month)
+                                except:
+                                    pass
+                            
+                            if months_seen == {3}:
+                                granule = 'annual'
+                            elif {3, 6, 9, 12} <= months_seen:
+                                granule = 'quarterly'
+                            elif months_seen == {3, 9}:
+                                granule = 'half_yearly'
+                            else:
+                                granule = 'other'
+                        
+                        # Determine consolidation type based on SOURCE
+                        # screener_raw = standalone, screener_fin = consolidated
+                        consol = 'standalone'  # screener_raw is always standalone
                         
                         # Create section key with granularity and consolidation
                         key = f"{metric_name}|{section}|{granule}|{consol}"
@@ -445,10 +464,17 @@ for TICKER in TICKERS_TO_PROCESS:
             granule = obj.get('granule', '')
             consol = obj.get('consolidation', '')
             
+        # Restructure: section > consolidation > granularity > [list of metrics]
+        for key, obj in metrics.items():
+            source = obj.get('source', 'unknown')
+            section_name = obj['section']
+            granule = obj.get('granule', '')
+            consol = obj.get('consolidation', '')
+            
             # Build hierarchical section key
-            if source == 'screener_raw' and consol and granule:
-                # For screener_raw with consolidation and granularity:
-                # screener_raw:SectionName > consolidation > granularity > [metrics]
+            if (source in ['screener_raw', 'screener_fin']) and consol and granule:
+                # For screener_raw/screener_fin with consolidation and granularity:
+                # source:SectionName > consolidation > granularity > [metrics]
                 section_key = f"{source}:{section_name}"
                 
                 # Ensure nested structure exists
