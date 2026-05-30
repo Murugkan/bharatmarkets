@@ -400,8 +400,8 @@ const getMetricColor = (field, value, stock) => {
 async function init() {
     const statusEl = document.getElementById('status');
     const db = await new Promise(res => {
-        // Open without specific version to handle version mismatches from data.html
-        const req = indexedDB.open(DB_NAME);
+        // Open same DB version as data.html (v8)
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = e => {
             const d = e.target.result;
             if (!d.objectStoreNames.contains(STORE_NAME)) {
