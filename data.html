@@ -436,7 +436,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-    const DB_NAME = 'OnyxPortfolioDB';
+    const DB_NAME = 'raalanportfolio';
     const DB_VERSION = 8;
     const STORE_NAME = 'stocks';
 
@@ -2600,6 +2600,8 @@ CRITICAL RULES:
                     
                     log('⏳ Starting PUT operations...');
                     
+                    let putErrorCount = 0;
+                    
                     stocks_to_process.forEach(function(stock) {
                         const ticker = stock.ticker || stock.symbol;
                         if (!ticker || ticker === '' || ticker === '?') {
@@ -2607,11 +2609,9 @@ CRITICAL RULES:
                             return;
                         }
                         
-                        // Ensure ticker field exists (already set above, but for safety)
                         const record = stock;
                         record.ticker = ticker;
                         
-                        // Auto-add portfolio context fields if missing
                         if (!record.qty) record.qty = 0;
                         if (!record.avg) record.avg = 0;
                         if (!record.source) record.source = 'market_data_pipeline';
@@ -2619,23 +2619,33 @@ CRITICAL RULES:
                             record.userDataUpdatedAt = new Date().toISOString();
                         }
                         
-                        // Track if has guidance/insights
                         if (record.management_guidance || record.analyst_consensus) {
                             guidanceCount++;
                         }
                         
-                        // PUT the record
-                        const putReq = store.put(record);
-                        
-                        putReq.onerror = function() {
-                            log('❌ Error putting ' + ticker + ': ' + putReq.error);
-                        };
-                        
-                        // Save complete record with all nested sections (dynamic schema)
-                        savedCount++;
+                        try {
+                            const putReq = store.put(record);
+                            
+                            putReq.onsuccess = function() {
+                                // Silently succeed
+                            };
+                            
+                            putReq.onerror = function() {
+                                log('❌ PUT ERROR for ' + ticker + ': ' + (putReq.error ? putReq.error.message : 'Unknown'));
+                                putErrorCount++;
+                            };
+                            
+                            savedCount++;
+                        } catch(err) {
+                            log('❌ EXCEPTION putting ' + ticker + ': ' + err.message);
+                            putErrorCount++;
+                        }
                     });
                     
                     log('✅ Queued ' + savedCount + ' PUT operations');
+                    if (putErrorCount > 0) {
+                        log('❌ PUT ERRORS: ' + putErrorCount);
+                    }
                     
                     tx.oncomplete = function() {
                         log('✅ TRANSACTION COMMITTED - all writes complete');
