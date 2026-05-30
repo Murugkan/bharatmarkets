@@ -1039,63 +1039,72 @@ window.addEventListener('pageshow', function(event) {
 function showDebugAlert() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onsuccess = (e) => {
-        const tx = e.target.result.transaction(STORE_NAME, 'readonly');
-        tx.objectStore(STORE_NAME).getAll().onsuccess = (e) => {
+        const db = e.target.result;
+        let m = '🐛 PORTFOLIO DEBUG\n\n';
+        m += `DB Name: ${DB_NAME}\n`;
+        m += `DB Version: ${DB_VERSION}\n`;
+        m += `Store Name: ${STORE_NAME}\n`;
+        m += `Available stores: ${Array.from(db.objectStoreNames).join(', ')}\n\n`;
+        
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+            m += '❌ Store does not exist!\n';
+            alert(m);
+            return;
+        }
+        
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const getAllReq = tx.objectStore(STORE_NAME).getAll();
+        
+        getAllReq.onsuccess = (e) => {
             const stocks = e.target.result;
-            if (!stocks.length) { alert('⚠️ No data in DB!\nLoad market_data.json in Data page first.'); return; }
+            m += `📊 Total Records: ${stocks.length}\n\n`;
+            
+            if (stocks.length === 0) {
+                m += '⚠️ Store is EMPTY!\n';
+                m += 'Data not saved to DB.';
+                alert(m);
+                return;
+            }
             
             const s = stocks[0];
-            let m = '🐛 PORTFOLIO DEBUG\n\n';
-            
-            // Basic info
-            m += `📊 Total Stocks: ${stocks.length}\n`;
-            m += `🔑 Fields in Record: ${Object.keys(s).length}\n`;
-            m += `📌 First Stock: ${s.ticker}\n\n`;
+            m += `✅ First Record Ticker: ${s.ticker}\n`;
+            m += `Record has ${Object.keys(s).length} fields\n\n`;
             
             // Test resolve function
             m += '=== RESOLVE TEST ===\n';
-            const fields = ['TICKER', 'NAME', 'SECTOR', 'LTP', 'PE', 'ROE%', 'QTY', 'AVG'];
+            const fields = ['TICKER', 'NAME', 'SECTOR', 'LTP', 'PE', 'ROE%'];
             fields.forEach(f => {
                 const val = resolve(s, f);
                 const status = val !== '—' ? '✅' : '❌';
-                m += `${status} ${f.padEnd(8)}: ${String(val).substring(0, 20)}\n`;
+                m += `${status} ${f.padEnd(8)}: ${String(val).substring(0, 15)}\n`;
             });
             
-            m += '\n=== FILTERS ===\n';
-            m += `Filter (sector): ${filter || 'none'}\n`;
+            m += '\n=== FILTER TEST ===\n';
+            m += `MASTER.length: ${MASTER.length}\n`;
+            m += `Filter: ${filter || 'none'}\n`;
             m += `ViewMode: ${viewMode}\n`;
-            m += `SearchQuery: ${searchQuery || 'none'}\n`;
-            m += `MASTER length: ${MASTER.length}\n`;
             
-            // Test applyFilters
-            m += '\n=== APPLY FILTERS TEST ===\n';
             const filtered = applyFilters(MASTER);
-            m += `After filters: ${filtered.length} stocks\n`;
+            m += `After filters: ${filtered.length}\n`;
+            
             if (filtered.length === 0) {
-                m += '⚠️ ALL FILTERED OUT!\n';
-                m += `Check: sector filter (${filter})\n`;
-                m += `Check: viewMode (${viewMode})\n`;
-            }
-            
-            // Test render
-            m += '\n=== RENDER TEST ===\n';
-            let header = buildTableHeader();
-            let rows = buildTableRows(filtered.slice(0, 1));
-            let footer = buildTableFooter({sumPnl: 0, sumInv: 0, sum1dGain: 0});
-            let html = header + rows + footer;
-            
-            if (html.length < 100) {
-                m += `❌ HTML too small: ${html.length} bytes\n`;
+                m += '\n❌ PROBLEM: All stocks filtered out!';
             } else {
-                m += `✅ HTML generated: ${html.length} bytes\n`;
+                m += `\n✅ Should render ${filtered.length} rows`;
             }
-            
-            m += '\n' + (filtered.length > 0 ? '✅ READY TO RENDER' : '❌ NO DATA TO RENDER');
             
             alert(m);
         };
+        
+        getAllReq.onerror = (e) => {
+            m += '❌ Error reading store: ' + getAllReq.error;
+            alert(m);
+        };
     };
-    req.onerror = () => alert('❌ DB error! Cannot open IndexedDB');
+    
+    req.onerror = () => {
+        alert(`❌ Cannot open DB!\nDB: ${DB_NAME}\nVersion: ${DB_VERSION}`);
+    };
 }
 
 // Initialize on first page load

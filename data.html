@@ -2578,12 +2578,16 @@ CRITICAL RULES:
                 
                 request.onsuccess = function(ev) {
                     const db = ev.target.result;
+                    log('✅ DB opened, store names: ' + Array.from(db.objectStoreNames).join(', '));
+                    
                     const tx = db.transaction(STORE_NAME, 'readwrite');
                     const store = tx.objectStore(STORE_NAME);
                     
                     let savedCount = 0;
                     let skippedCount = 0;
                     let guidanceCount = 0;
+                    
+                    log('⏳ Starting PUT operations...');
                     
                     stocks_to_process.forEach(function(stock) {
                         const ticker = stock.ticker || stock.symbol;
@@ -2609,12 +2613,21 @@ CRITICAL RULES:
                             guidanceCount++;
                         }
                         
+                        // PUT the record
+                        const putReq = store.put(record);
+                        
+                        putReq.onerror = function() {
+                            log('❌ Error putting ' + ticker + ': ' + putReq.error);
+                        };
+                        
                         // Save complete record with all nested sections (dynamic schema)
-                        store.put(record);
                         savedCount++;
                     });
                     
+                    log('✅ Queued ' + savedCount + ' PUT operations');
+                    
                     tx.oncomplete = function() {
+                        log('✅ TRANSACTION COMMITTED - all writes complete');
                         log('✅ Loaded ' + savedCount + ' stocks to IndexedDB');
                         if (guidanceCount > 0) {
                             log('📋 Guidance/Insights: ' + guidanceCount + ' stocks');
@@ -2631,9 +2644,14 @@ CRITICAL RULES:
                     };
                     
                     tx.onerror = function(err) {
-                        log('❌ Transaction error: ' + (err.message || 'Unknown error'));
+                        log('❌ TRANSACTION ERROR: ' + (err.message || 'Unknown error'));
                         showToast('Error saving to database', 'error');
                         updateStatusButton('❌ Save Error');
+                    };
+                    
+                    tx.onabort = function() {
+                        log('❌ TRANSACTION ABORTED');
+                        updateStatusButton('❌ Aborted');
                     };
                 };
                 
