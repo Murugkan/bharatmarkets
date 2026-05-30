@@ -735,6 +735,11 @@ function buildTableHeader() {
 function buildTableRows(stocks) {
     let html = '';
     
+    if (stocks.length === 0) {
+        html += '<tr><td colspan="' + UI_FIELDS.length + '" style="text-align:center; padding:40px; color:#666;">No stocks to display</td></tr>';
+        return html;
+    }
+    
     stocks.forEach((stock, index) => {
         const ticker = resolve(stock, 'TICKER');
         html += '<tr style="cursor:pointer;" onclick="window.location.href=\'analysis.html?drill=' + encodeURIComponent(ticker) + '\'">';
