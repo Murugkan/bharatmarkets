@@ -91,7 +91,7 @@
 // ===== CONSTANTS & CONFIGURATION =====
 const DB_NAME = 'BharatMarketsDB';
 const STORE_NAME = 'stocks';
-const DB_VERSION = 1;
+const DB_VERSION = 8;
 
 const PALETTE = [
     '#00f2ff', '#7000ff', '#ff007a', '#ffb800', '#00ff88', '#007aff',
@@ -435,6 +435,7 @@ async function init() {
         });
     } catch(e) {
         statusEl.innerHTML = "ERROR READING DATABASE<br>" + e.message;
+        console.error('Error reading database:', e);
         return;
     }
     
@@ -823,7 +824,7 @@ function render() {
     let filteredRows = applyFilters(MASTER);
     filteredRows = sortStocks(filteredRows);
     
-    console.log('Rendering ' + filteredRows.length + ' filtered stocks');
+    console.log('Rendering ' + filteredRows.length + ' filtered stocks out of ' + MASTER.length);
     
     // Calculate totals from displayed table rows (not all master stocks)
     const totals = calculateTotals(filteredRows);
@@ -835,6 +836,12 @@ function render() {
     html += buildTableFooter(totals);
     
     console.log('Generated HTML length:', html.length);
+    
+    if (!html || html.length < 50) {
+        console.error('ERROR: Generated HTML too short or empty. MASTER:', MASTER.length, 'Filtered:', filteredRows.length);
+        document.getElementById('app').innerHTML = '<div style="padding:20px; color:#f00;">ERROR: Table generation failed. Check console.</div>';
+        return;
+    }
     
     document.getElementById('app').innerHTML = html;
 }
