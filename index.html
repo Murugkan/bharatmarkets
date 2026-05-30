@@ -1057,7 +1057,7 @@ function showDebugAlert() {
         
         getAllReq.onsuccess = (e) => {
             const stocks = e.target.result;
-            m += `📊 Total Records: ${stocks.length}\n\n`;
+            m += `📊 Total Records in DB: ${stocks.length}\n\n`;
             
             if (stocks.length === 0) {
                 m += '⚠️ Store is EMPTY!\n';
@@ -1067,30 +1067,61 @@ function showDebugAlert() {
             }
             
             const s = stocks[0];
-            m += `✅ First Record Ticker: ${s.ticker}\n`;
-            m += `Record has ${Object.keys(s).length} fields\n\n`;
+            m += `✅ First Record: ${s.ticker}\n`;
+            m += `Record fields: ${Object.keys(s).length}\n\n`;
             
-            // Test resolve function
-            m += '=== RESOLVE TEST ===\n';
-            const fields = ['TICKER', 'NAME', 'SECTOR', 'LTP', 'PE', 'ROE%'];
-            fields.forEach(f => {
+            // Test resolve
+            m += '=== RESOLVE TEST (first stock) ===\n';
+            const testFields = ['TICKER', 'NAME', 'SECTOR', 'LTP', 'PE', 'QTY', 'AVG'];
+            testFields.forEach(f => {
                 const val = resolve(s, f);
-                const status = val !== '—' ? '✅' : '❌';
-                m += `${status} ${f.padEnd(8)}: ${String(val).substring(0, 15)}\n`;
+                m += `${f.padEnd(8)}: ${String(val).substring(0, 20)}\n`;
             });
             
-            m += '\n=== FILTER TEST ===\n';
+            m += '\n=== MASTER ARRAY ===\n';
             m += `MASTER.length: ${MASTER.length}\n`;
-            m += `Filter: ${filter || 'none'}\n`;
-            m += `ViewMode: ${viewMode}\n`;
+            
+            if (MASTER.length === 0) {
+                m += '❌ MASTER is EMPTY!\n';
+                m += 'Data loaded from DB but MASTER not populated';
+                alert(m);
+                return;
+            }
+            
+            m += `First stock: ${MASTER[0].ticker}\n\n`;
+            
+            m += '=== FILTER & RENDER TEST ===\n';
+            m += `viewMode: ${viewMode}\n`;
+            m += `filter (sector): ${filter || 'none'}\n`;
+            m += `searchQuery: ${searchQuery || 'none'}\n`;
+            m += `categoryFilter: ${categoryFilter || 'all'}\n\n`;
             
             const filtered = applyFilters(MASTER);
-            m += `After filters: ${filtered.length}\n`;
+            m += `After applyFilters: ${filtered.length} stocks\n`;
             
             if (filtered.length === 0) {
-                m += '\n❌ PROBLEM: All stocks filtered out!';
+                m += '❌ ALL FILTERED OUT!\n';
+                m += 'Check viewMode, sector filter, search query\n\n';
             } else {
-                m += `\n✅ Should render ${filtered.length} rows`;
+                m += `✅ ${filtered.length} stocks passed filters\n\n`;
+                
+                m += '=== TABLE BUILD TEST ===\n';
+                const sorted = sortStocks(filtered);
+                const header = buildTableHeader();
+                const rows = buildTableRows(sorted);
+                const footer = buildTableFooter({sumPnl: 0, sumInv: 0, sum1dGain: 0});
+                const html = header + rows + footer;
+                
+                m += `Header bytes: ${header.length}\n`;
+                m += `Rows HTML bytes: ${rows.length}\n`;
+                m += `Footer bytes: ${footer.length}\n`;
+                m += `Total HTML: ${html.length}\n`;
+                
+                if (html.length < 500) {
+                    m += '\n❌ HTML TOO SHORT\n';
+                } else {
+                    m += '\n✅ HTML looks good\n';
+                }
             }
             
             alert(m);

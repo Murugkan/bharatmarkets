@@ -821,13 +821,13 @@
 
     async function loadFromIndexedDB() {
         return new Promise((resolve) => {
-            // Try opening with current version first, then with incremented version
             var attemptVersion = DB_VERSION;
             
             function attemptOpen(version) {
                 var req = indexedDB.open(DB_NAME, version);
                 
                 req.onerror = () => {
+                    log('❌ loadFromIndexedDB: Error opening ' + DB_NAME);
                     masterData = [];
                     resolve();
                 };
@@ -841,12 +841,17 @@
                 
                 req.onsuccess = (e) => {
                     var db = e.target.result;
+                    log(`✅ loadFromIndexedDB: Opened ${DB_NAME} v${db.version}`);
+                    
                     try {
                         if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            log('❌ loadFromIndexedDB: Store "' + STORE_NAME + '" not found');
                             masterData = [];
                             resolve();
                             return;
                         }
+                        
+                        log('✅ loadFromIndexedDB: Store "' + STORE_NAME + '" exists');
                         
                         var transaction = db.transaction(STORE_NAME, 'readonly');
                         var store = transaction.objectStore(STORE_NAME);
@@ -859,10 +864,12 @@
                         };
                         
                         getAllReq.onerror = () => {
+                            log('❌ loadFromIndexedDB: Error reading from store');
                             masterData = [];
                             resolve();
                         };
                     } catch (e) {
+                        log('❌ loadFromIndexedDB: Exception - ' + e.message);
                         masterData = [];
                         resolve();
                     }
