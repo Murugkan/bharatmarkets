@@ -457,7 +457,6 @@
         PATHS: {
             symbols: 'unified-symbols.json',
             prices: 'prices.json',
-            fundamentals: 'fundamentals.json',
             guidance: 'guidance.json',
             macro: 'macro_data.json'
         }
@@ -467,8 +466,7 @@
     
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
-        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
-        { name: 'fundamentals.json', path: GITHUB_CONFIG.PATHS.fundamentals }
+        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices }
     ];
 
     async function fetchGitHubData(filePath) {
@@ -2469,19 +2467,12 @@ CRITICAL RULES:
                     const priceQuote = pricesData.quotes[ticker];
                     
                     if (priceQuote) {
-                        // Merge price data - overwrite with real-time values
-                        stock.price = priceQuote.ltp;  // Map ltp → price
-                        stock.ltp = priceQuote.ltp;    // Keep both for compatibility
-                        stock.market_change = priceQuote.change;
-                        stock.market_change_pct = priceQuote.changePct;
-                        stock.market_open = priceQuote.open;
-                        stock.market_day_high = priceQuote.high;
-                        stock.market_day_low = priceQuote.low;
-                        stock.prev_close = priceQuote.prev;
-                        stock.volume = priceQuote.vol;
-                        stock.week_52_high = priceQuote.w52h;
-                        stock.week_52_low = priceQuote.w52l;
-                        stock.beta = priceQuote.beta;
+                        // Overwrite ONLY the ltp object with prices.json data
+                        // Keep all other price_trading data and history intact
+                        if (!stock.price_trading) {
+                            stock.price_trading = {};
+                        }
+                        stock.price_trading.ltp = priceQuote;
                         
                         // Save updated stock
                         store.put(stock);
