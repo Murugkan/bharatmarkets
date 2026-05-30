@@ -338,6 +338,7 @@ FIELD_MAP = {
 
     # ── screener_fin:profit_loss  (quarterly consolidated) ───────────────────
     "screener_fin:profit_loss": {
+        "Revenue +":         ("financials", "Revenue"),
         "Sales +":           ("financials", "Sales"),
         "Expenses +":        ("financials", "Expenses"),
         "Operating Profit":  ("financials", "Operating_Profit"),
@@ -354,6 +355,7 @@ FIELD_MAP = {
 
     # ── screener_fin:balance_sheet  (annual consolidated P&L, 7yr) ───────────
     "screener_fin:balance_sheet": {
+        "Revenue +":          ("financials", "Revenue"),
         "Sales +":            ("financials", "Sales"),
         "Expenses +":         ("financials", "Expenses"),
         "Operating Profit":   ("financials", "Operating_Profit"),
@@ -645,8 +647,8 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                         B["kpis"][m] = r.get("periods", {})
             continue
 
-        # ── screener_raw sections with consolidation > granularity hierarchy ──
-        if sec_key.startswith("screener_raw:") and isinstance(records, dict):
+        # ── screener_raw & screener_fin sections with consolidation > granularity hierarchy ──
+        if (sec_key.startswith("screener_raw:") or sec_key.startswith("screener_fin:")) and isinstance(records, dict):
             # New structure: section > consolidation > granularity > [metrics]
             for consol, granule_dict in records.items():
                 if isinstance(granule_dict, dict):
@@ -665,22 +667,25 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                                     pass
                                 else:
                                     target_bucket, target_key = mapping
-                                    # Wrap with metadata
+                                    # Wrap with metadata - use consolidation from metric object if available
+                                    metric_consol = r.get("consolidation") or consol
                                     periods_data = {
                                         "_periods": r.get("periods", {}),
                                         "_source": sec_key,
-                                        "_granule": granule,
-                                        "_consolidation": consol
+                                        "_granule": r.get("granule") or granule,
+                                        "_consolidation": metric_consol
                                     }
                                     
                                     # Check if metric exists
                                     if target_key in B[target_bucket]:
                                         existing = B[target_bucket][target_key]
-                                        if isinstance(existing, dict) and "_source" in existing:
-                                            if not isinstance(existing, list):
-                                                B[target_bucket][target_key] = [existing, periods_data]
-                                            else:
-                                                existing.append(periods_data)
+                                        # If already a list, append
+                                        if isinstance(existing, list):
+                                            existing.append(periods_data)
+                                        # If dict with source, convert to list then append
+                                        elif isinstance(existing, dict) and "_source" in existing:
+                                            B[target_bucket][target_key] = [existing, periods_data]
+                                        # Otherwise overwrite
                                         else:
                                             B[target_bucket][target_key] = periods_data
                                     else:
@@ -711,11 +716,13 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                     # Check if metric exists
                     if target_key in B[target_bucket]:
                         existing = B[target_bucket][target_key]
-                        if isinstance(existing, dict) and "_source" in existing:
-                            if not isinstance(existing, list):
-                                B[target_bucket][target_key] = [existing, periods_data]
-                            else:
-                                existing.append(periods_data)
+                        # If already a list, append
+                        if isinstance(existing, list):
+                            existing.append(periods_data)
+                        # If dict with source, convert to list then append
+                        elif isinstance(existing, dict) and "_source" in existing:
+                            B[target_bucket][target_key] = [existing, periods_data]
+                        # Otherwise overwrite
                         else:
                             B[target_bucket][target_key] = periods_data
                     else:
@@ -1842,7 +1849,7 @@ def main():
         bucketed = reorganize_valuation_eps_pe(bucketed)  # Group EPS & P/E in valuation
         bucketed = reorganize_price_52w_volume(bucketed)  # Group 52-week & volume in price
         bucketed = reorganize_identity_shareholding(bucketed)  # Group shareholding under company_details
-        bucketed = compute_derived_metrics(bucketed)  # Apply derived metrics
+        #        bucketed = compute_derived_metrics(bucketed)  # Apply derived metrics
         bucketed = reorganize_derived_metrics_guidance(bucketed)  # Move guidance to derived_metrics
         output[symbol] = bucketed
 
