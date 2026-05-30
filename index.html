@@ -229,7 +229,7 @@ const resolve = (obj, field) => {
         'W52H':['price_trading.fifty_two_week_high','valuation.fifty_two_week_high','week_52_high','w52h','W52H','52WH','52weekHigh'],
         'W52L':['price_trading.fifty_two_week_low','valuation.fifty_two_week_low','week_52_low','w52l','W52L','52WL','52weekLow'],
         'SECTOR':['company_identity.sector','sector','SECTOR'],
-        'NAME':['company_identity.name','name','NAME','COMPANY'],
+        'NAME':['company_identity.long_name','company_identity.short_name','name','NAME','COMPANY'],
         'OPEN':['price_trading.ltp.open','price_trading.regular_market_open','open','OPEN'],
         'HIGH':['price_trading.ltp.high','price_trading.regular_market_day_high','high','HIGH'],
         'LOW':['price_trading.ltp.low','price_trading.regular_market_day_low','low','LOW'],
@@ -442,6 +442,10 @@ async function init() {
         statusEl.innerHTML = "DATABASE EMPTY<br><br>📊 Go to Data tab → Click 🚀 LOAD JSON<br>(No authentication required)";
         return;
     }
+    
+    console.log('✅ Loaded ' + MASTER.length + ' stocks from IndexedDB');
+    console.log('First stock ticker:', MASTER[0].ticker);
+    console.log('First stock structure:', Object.keys(MASTER[0]).slice(0, 10));
     
     statusEl.style.display = "none";
     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
@@ -814,6 +818,8 @@ function render() {
     let filteredRows = applyFilters(MASTER);
     filteredRows = sortStocks(filteredRows);
     
+    console.log('Rendering ' + filteredRows.length + ' filtered stocks');
+    
     // Calculate totals from displayed table rows (not all master stocks)
     const totals = calculateTotals(filteredRows);
     updateKPIDisplay(totals);
@@ -822,6 +828,8 @@ function render() {
     let html = buildTableHeader();
     html += buildTableRows(filteredRows);
     html += buildTableFooter(totals);
+    
+    console.log('Generated HTML length:', html.length);
     
     document.getElementById('app').innerHTML = html;
 }
