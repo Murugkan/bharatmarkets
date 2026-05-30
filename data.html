@@ -2524,14 +2524,31 @@ CRITICAL RULES:
                 
                 const json = JSON.parse(text);
                 
-                if (!json.stocks || !Array.isArray(json.stocks)) {
-                    log('❌ Invalid market_data.json format - missing stocks array');
+                // Detect format: stocks array OR ticker-keyed object
+                let stocks_to_process = [];
+                let detected_format = '';
+                
+                if (json.stocks && Array.isArray(json.stocks)) {
+                    // Old format: { stocks: [...] }
+                    stocks_to_process = json.stocks;
+                    detected_format = 'array';
+                    log('📋 Detected format: stocks array');
+                } else if (typeof json === 'object' && Object.keys(json).length > 0 && !json.stocks) {
+                    // New format: { TICKER: {...}, TICKER2: {...} }
+                    stocks_to_process = Object.entries(json).map(function([ticker, data]) {
+                        data.ticker = ticker;
+                        return data;
+                    });
+                    detected_format = 'ticker-keyed';
+                    log('📋 Detected format: ticker-keyed object');
+                } else {
+                    log('❌ Invalid market_data.json format - neither stocks array nor ticker-keyed object');
                     showToast('Invalid JSON format', 'error');
                     updateStatusButton('❌ Error');
                     return;
                 }
                 
-                log('📦 Processing ' + json.stocks.length + ' stocks from market_data.json');
+                log('📦 Processing ' + stocks_to_process.length + ' stocks from market_data.json');
                 updateStatusButton('⏳ Saving to DB');
                 
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -2551,16 +2568,18 @@ CRITICAL RULES:
                     let skippedCount = 0;
                     let guidanceCount = 0;
                     
-                    json.stocks.forEach(function(stock) {
+                    stocks_to_process.forEach(function(stock) {
                         const ticker = stock.ticker || stock.symbol;
                         if (!ticker || ticker === '' || ticker === '?') {
                             skippedCount++;
                             return;
                         }
                         
-                        // Auto-add IndexDB required fields if missing
+                        // Ensure ticker field exists (already set above, but for safety)
                         const record = stock;
-                        if (!record.type) record.type = 'watchlist';
+                        record.ticker = ticker;
+                        
+                        // Auto-add portfolio context fields if missing
                         if (!record.qty) record.qty = 0;
                         if (!record.avg) record.avg = 0;
                         if (!record.source) record.source = 'market_data_pipeline';
@@ -2568,12 +2587,12 @@ CRITICAL RULES:
                             record.userDataUpdatedAt = new Date().toISOString();
                         }
                         
-                        // Track guidance/insights
-                        if (record.guidance || record.insights) {
+                        // Track if has guidance/insights
+                        if (record.management_guidance || record.analyst_consensus) {
                             guidanceCount++;
                         }
                         
-                        // Save complete record (includes guidance, insights, and all 158+ fields)
+                        // Save complete record with all nested sections (dynamic schema)
                         store.put(record);
                         savedCount++;
                     });
@@ -2586,9 +2605,6 @@ CRITICAL RULES:
                         if (skippedCount > 0) {
                             log('⚠️ Skipped ' + skippedCount + ' invalid records');
                         }
-                        
-                        // Update master data
-                        masterData = json.stocks;
                         
                         updateStatusButton('✅ Loaded (' + savedCount + ')');
                         
