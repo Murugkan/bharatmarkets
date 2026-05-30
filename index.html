@@ -736,8 +736,20 @@ function buildTableHeader() {
 function buildTableRows(stocks) {
     let html = '';
     
+    console.log('buildTableRows called with ' + stocks.length + ' stocks');
+    
     if (stocks.length === 0) {
-        html += '<tr><td colspan="' + UI_FIELDS.length + '" style="text-align:center; padding:40px; color:#666;">No stocks to display</td></tr>';
+        html += '<tr><td colspan="' + UI_FIELDS.length + '" style="text-align:center; padding:40px; color:#f00;">NO STOCKS TO DISPLAY - Check filters (sector=' + filter + ', searchQuery=' + searchQuery + ')</td></tr>';
+        return html;
+    }
+    
+    // Safety check: if all rows would be empty, show raw data for first 3 stocks
+    const testStock = stocks[0];
+    const testTicker = resolve(testStock, 'TICKER');
+    if (testTicker === '—') {
+        console.error('ERROR: resolve(TICKER) returned dash for first stock');
+        console.log('Stock keys:', Object.keys(testStock).slice(0, 10));
+        html += '<tr><td colspan="' + UI_FIELDS.length + '" style="text-align:center; padding:40px; color:#f00;">ERROR: Cannot resolve TICKER field. Stock has ' + Object.keys(testStock).length + ' fields</td></tr>';
         return html;
     }
     
@@ -1030,25 +1042,60 @@ function showDebugAlert() {
         const tx = e.target.result.transaction(STORE_NAME, 'readonly');
         tx.objectStore(STORE_NAME).getAll().onsuccess = (e) => {
             const stocks = e.target.result;
-            if (!stocks.length) { alert('⚠️ No data! Load in Data page first.'); return; }
+            if (!stocks.length) { alert('⚠️ No data in DB!\nLoad market_data.json in Data page first.'); return; }
+            
             const s = stocks[0];
-            let m = '🐛 DEBUG\n\n';
-            m += `📊 Stocks: ${stocks.length}\n`;
-            m += `🔑 Fields: ${Object.keys(s).length}\n\n`;
-            m += `Sample: ${s.ticker}\n`;
-            m += `Type: ${s.type}\nQty: ${s.qty}\n\n`;
-            m += `${s.price ? '✅' : '❌'} Price\n`;
-            m += `${s.trailing_pe ? '✅' : '❌'} PE\n`;
-            m += `${s.return_on_equity ? '✅' : '❌'} ROE\n\n`;
-            m += `${s.guidance ? '✅' : '❌'} Guidance\n`;
-            m += `${s.insights ? '✅' : '❌'} Insights\n`;
-            let gc = 0; stocks.forEach(x => { if(x.guidance) gc++; });
-            m += `${gc} with guidance\n\n`;
-            m += (!s.price || !s.guidance) ? '⚠️ Issues found!\nCheck Data page DEBUG' : '✅ All good!';
+            let m = '🐛 PORTFOLIO DEBUG\n\n';
+            
+            // Basic info
+            m += `📊 Total Stocks: ${stocks.length}\n`;
+            m += `🔑 Fields in Record: ${Object.keys(s).length}\n`;
+            m += `📌 First Stock: ${s.ticker}\n\n`;
+            
+            // Test resolve function
+            m += '=== RESOLVE TEST ===\n';
+            const fields = ['TICKER', 'NAME', 'SECTOR', 'LTP', 'PE', 'ROE%', 'QTY', 'AVG'];
+            fields.forEach(f => {
+                const val = resolve(s, f);
+                const status = val !== '—' ? '✅' : '❌';
+                m += `${status} ${f.padEnd(8)}: ${String(val).substring(0, 20)}\n`;
+            });
+            
+            m += '\n=== FILTERS ===\n';
+            m += `Filter (sector): ${filter || 'none'}\n`;
+            m += `ViewMode: ${viewMode}\n`;
+            m += `SearchQuery: ${searchQuery || 'none'}\n`;
+            m += `MASTER length: ${MASTER.length}\n`;
+            
+            // Test applyFilters
+            m += '\n=== APPLY FILTERS TEST ===\n';
+            const filtered = applyFilters(MASTER);
+            m += `After filters: ${filtered.length} stocks\n`;
+            if (filtered.length === 0) {
+                m += '⚠️ ALL FILTERED OUT!\n';
+                m += `Check: sector filter (${filter})\n`;
+                m += `Check: viewMode (${viewMode})\n`;
+            }
+            
+            // Test render
+            m += '\n=== RENDER TEST ===\n';
+            let header = buildTableHeader();
+            let rows = buildTableRows(filtered.slice(0, 1));
+            let footer = buildTableFooter({sumPnl: 0, sumInv: 0, sum1dGain: 0});
+            let html = header + rows + footer;
+            
+            if (html.length < 100) {
+                m += `❌ HTML too small: ${html.length} bytes\n`;
+            } else {
+                m += `✅ HTML generated: ${html.length} bytes\n`;
+            }
+            
+            m += '\n' + (filtered.length > 0 ? '✅ READY TO RENDER' : '❌ NO DATA TO RENDER');
+            
             alert(m);
         };
     };
-    req.onerror = () => alert('❌ DB error!');
+    req.onerror = () => alert('❌ DB error! Cannot open IndexedDB');
 }
 
 // Initialize on first page load
