@@ -92,16 +92,25 @@ logger = Logger(LOG_FILE)
 
 # Read tickers from prices.json dynamically
 logger.write_section("INITIALIZATION")
-logger.write("Reading tickers from prices.json", 'INIT')
+logger.write("Reading tickers from screener_raw_data.json", 'INIT')
 
-with open(DATA_DIR / 'prices.json') as f:
-    prices_file = json.load(f)
+# Try to get tickers from screener_raw first, then prices as fallback
+try:
+    with open(DATA_DIR / 'screener_raw_data.json') as f:
+        screener_raw_file = json.load(f)
+    TICKERS_TO_PROCESS = list(screener_raw_file.keys())
+    if TICKERS_TO_PROCESS:
+        logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from screener_raw", 'INIT')
+    else:
+        raise ValueError("screener_raw is empty")
+except:
+    with open(DATA_DIR / 'prices.json') as f:
+        prices_file = json.load(f)
+    prices_data = prices_file.get("quotes", {})
+    TICKERS_TO_PROCESS = list(prices_data.keys())
+    logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from prices.json", 'INIT')
 
-# Extract tickers from quotes wrapper
-prices_data = prices_file.get("quotes", {})
-TICKERS_TO_PROCESS = list(prices_data.keys())
-
-logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers: {', '.join(TICKERS_TO_PROCESS)}", 'INIT')
+logger.write(f"Processing tickers: {', '.join(TICKERS_TO_PROCESS)}", 'INIT')
 logger.write(f"Input directory: {DATA_DIR}", 'INIT')
 logger.write(f"Output: {DATA_DIR / 'market_data_raw.json'}", 'INIT')
 
@@ -265,10 +274,22 @@ for TICKER in TICKERS_TO_PROCESS:
     
     try:
         # === SCREENER FINANCIALS ===
-        sf = all_data.get('screener_fin', {}).get(TICKER, {})
+        # Original structure: all_data['screener_fin']['data'][TICKER]['tables'][table_name]
+        # Sample structure: all_data['screener_fin'][TICKER]['tables'][table_name]
+        sf = all_data.get('screener_fin', {})
+        
+        # Handle both original and sample formats
+        if 'data' in sf:
+            # Original format
+            sf = sf['data'].get(TICKER, {})
+        else:
+            # Sample format
+            sf = sf.get(TICKER, {})
+            
         tables = sf.get('tables', {})
         for table_name, table_data in tables.items():
-            for metric_name, period_data in table_data.get('data', {}).items():
+            table_dict = table_data.get('data', {}) if isinstance(table_data, dict) and 'data' in table_data else table_data
+            for metric_name, period_data in table_dict.items():
                 try:
                     if metric_name and metric_name.strip():
                         # Collect periods first
@@ -541,7 +562,8 @@ for TICKER in TICKERS_TO_PROCESS:
                     output[TICKER]['data'][section_key].append(row)
         
         # === ADD LTP FROM PRICES ===
-        ticker_prices = prices_data.get(TICKER, {})
+        prices_dict = all_data.get('prices', {})
+        ticker_prices = prices_dict.get('quotes', {}).get(TICKER, {}) if prices_dict else {}
         daily_section = "yahoofin_raw:history_6mo_1d"
         daily_data = output[TICKER]['data'].get(daily_section, [])
         

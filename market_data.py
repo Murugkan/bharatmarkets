@@ -1537,27 +1537,57 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     # RETURN METRICS (ROE, ROA)
     # ────────────────────────────────────────────────────────────────────────
     
+    def extract_latest_value(val):
+        """Extract latest numeric value from nested structure"""
+        if not val:
+            return None
+        
+        # If it's a number, return it
+        if isinstance(val, (int, float)):
+            return val
+        
+        # If it's a dict with consolidation > granularity > dates
+        if isinstance(val, dict):
+            # Try to find a path to dates
+            for consol, granule_dict in val.items():
+                if isinstance(granule_dict, dict):
+                    for granule, dates_dict in granule_dict.items():
+                        if isinstance(dates_dict, dict):
+                            # Found dates, get latest
+                            years = sorted(dates_dict.keys(), reverse=True)
+                            if years:
+                                return dates_dict[years[0]]
+            
+            # Fallback: try direct date extraction
+            years = sorted(val.keys(), reverse=True)
+            if years:
+                return val[years[0]]
+        
+        return None
+    
     equity_capital = safe_val(["financials", "equity_capital"]) or \
                      safe_val(["financials", "Equity_Capital"])
+    equity_capital = extract_latest_value(equity_capital)
+    
     reserves = safe_val(["financials", "reserves"]) or \
                safe_val(["financials", "Reserves"])
-    
-    # Extract latest value if time-series dict
-    if isinstance(equity_capital, dict):
-        years = sorted(equity_capital.keys(), reverse=True)
-        equity_capital = equity_capital[years[0]] if years else None
-    if isinstance(reserves, dict):
-        years = sorted(reserves.keys(), reverse=True)
-        reserves = reserves[years[0]] if years else None
+    reserves = extract_latest_value(reserves)
     
     if equity_capital and reserves:
-        total_equity = equity_capital + reserves
+        try:
+            total_equity = float(equity_capital) + float(reserves)
+        except (TypeError, ValueError):
+            total_equity = None
     else:
         total_equity = safe_val(["financials", "total_equity"]) or \
-                      safe_val(["financials", "Equity_Capital"])
-        if isinstance(total_equity, dict):
-            years = sorted(total_equity.keys(), reverse=True)
-            total_equity = total_equity[years[0]] if years else None
+                      safe_val(["financials", "Total_Equity"])
+        total_equity = extract_latest_value(total_equity)
+    
+    try:
+        net_profit = float(net_profit) if net_profit else None
+        total_equity = float(total_equity) if total_equity else None
+    except (TypeError, ValueError):
+        pass
     
     if net_profit and total_equity and total_equity > 0:
         roe = (net_profit / total_equity) * 100
@@ -1565,9 +1595,14 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     
     total_assets = safe_val(["financials", "total_assets"]) or \
                    safe_val(["financials", "Total_Assets"])
-    if isinstance(total_assets, dict):
-        years = sorted(total_assets.keys(), reverse=True)
-        total_assets = total_assets[years[0]] if years else None
+    total_assets = extract_latest_value(total_assets)
+    
+    try:
+        net_profit = float(net_profit) if net_profit else None
+        total_assets = float(total_assets) if total_assets else None
+    except (TypeError, ValueError):
+        pass
+    
     if net_profit and total_assets and total_assets > 0:
         roa = (net_profit / total_assets) * 100
         metrics["roa"] = round(roa, 2)
@@ -1578,16 +1613,38 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     
     total_debt = safe_val(["valuation", "total_debt"]) or \
                  safe_val(["financials", "total_debt"])
+    total_debt = extract_latest_value(total_debt)
+    
+    try:
+        total_debt = float(total_debt) if total_debt else None
+        total_equity = float(total_equity) if total_equity else None
+    except (TypeError, ValueError):
+        pass
     
     if total_debt and total_equity and total_equity > 0:
         de_ratio = total_debt / total_equity
         metrics["leverage_quality"] = round(de_ratio, 2)
     
+    try:
+        total_debt = float(total_debt) if total_debt else None
+        mc = float(mc) if mc else None
+    except (TypeError, ValueError):
+        pass
+    
     if total_debt and mc and mc > 0:
         metrics["debt_to_market_cap"] = round((total_debt / mc) * 100, 2)
     
     ebit = safe_val(["financials", "ebit"])
+    ebit = extract_latest_value(ebit)
     interest_exp = safe_val(["financials", "interest_expense"])
+    interest_exp = extract_latest_value(interest_exp)
+    
+    try:
+        ebit = float(ebit) if ebit else None
+        interest_exp = float(interest_exp) if interest_exp else None
+    except (TypeError, ValueError):
+        pass
+    
     if ebit and interest_exp and interest_exp > 0:
         metrics["interest_coverage"] = round(ebit / interest_exp, 2)
     
