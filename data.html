@@ -2486,12 +2486,21 @@ CRITICAL RULES:
                 if (notFoundCount > 0) {
                     log('⚠️ ' + notFoundCount + ' stocks not found in prices.json');
                 }
-                
-                finishLoading();
             };
             
             getAllReq.onerror = function() {
                 log('❌ Error reading stocks from IndexDB');
+                // Don't reload on error during read - let transaction complete
+            };
+            
+            // CRITICAL: Wait for transaction to complete before reloading page
+            tx.oncomplete = function() {
+                log('✅ Transaction committed - all writes saved');
+                finishLoading();
+            };
+            
+            tx.onerror = function() {
+                log('❌ Transaction error during price merge');
                 finishLoading();
             };
             
