@@ -196,9 +196,7 @@ FIELD_MAP = {
         "allTimeHigh":                   ("price", "all_time_high"),
         "allTimeLow":                    ("price", "all_time_low"),
         "beta":                          ("price", "beta"),
-        "lastSplitDate":                 ("price", "last_split_date"),
-        "lastSplitFactor":               ("price", "last_split_factor"),
-        # dividends & shareholding
+        # dividends & splits → company_details
         "dividendRate":                  ("company_details", "dividend_rate"),
         "dividendYield":                 ("company_details", "dividend_yield"),
         "exDividendDate":                ("company_details", "ex_dividend_date"),
@@ -208,6 +206,8 @@ FIELD_MAP = {
         "lastDividendValue":             ("company_details", "last_dividend_value"),
         "lastDividendDate":              ("company_details", "last_dividend_date"),
         "fiveYearAvgDividendYield":      ("company_details", "five_year_avg_dividend_yield"),
+        "lastSplitDate":                 ("company_details", "last_split_date"),
+        "lastSplitFactor":               ("company_details", "last_split_factor"),
         "heldPercentInsiders":           ("company_details", "held_pct_insiders"),
         "heldPercentInstitutions":       ("company_details", "held_pct_institutions"),
         "floatShares":                   ("company_details", "float_shares"),
@@ -339,56 +339,81 @@ FIELD_MAP = {
     # ── screener_fin:profit_loss  (quarterly consolidated) ───────────────────
     "screener_fin:profit_loss": {
         "Revenue +":         ("financials", "Revenue"),
+        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
         "Sales +":           ("financials", "Sales"),
+        "Sales\xa0+":          ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
+        "Expenses\xa0+":       ("financials", "Expenses"),  # Non-breaking space variant
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
         "Other Income +":    ("financials", "Other_Income"),
+        "Other Income\xa0+":   ("financials", "Other_Income"),  # Non-breaking space variant
         "Interest":          ("financials", "Interest"),
         "Depreciation":      ("financials", "Depreciation"),
         "Profit before tax": ("financials", "Profit_before_tax"),
         "Tax %":             ("financials", "Tax_pct"),
         "Net Profit +":      ("financials", "Net_Profit"),
+        "Net Profit\xa0+":     ("financials", "Net_Profit"),  # Non-breaking space variant
         "EPS in Rs":         ("financials", "EPS_Rs"),
-        "Raw PDF":           ("__skip__", "__skip__"),
+        "Financing Profit":  ("financials", "Financing_Profit"),
+        "Financing Margin %":("financials", "Financing_Margin_pct"),
+        "Gross NPA %":       ("financials", "Gross_NPA_pct"),
+        "Net NPA %":         ("financials", "Net_NPA_pct"),
+        "Raw PDF":           ("websignals", "raw_pdf_profit_loss"),
     },
 
     # ── screener_fin:balance_sheet  (annual consolidated P&L, 7yr) ───────────
     "screener_fin:balance_sheet": {
         "Revenue +":          ("financials", "Revenue"),
+        "Revenue +":         ("financials", "Revenue"),  # Non-breaking space variant
         "Sales +":            ("financials", "Sales"),
+        "Sales\xa0+":           ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":         ("financials", "Expenses"),
+        "Expenses\xa0+":        ("financials", "Expenses"),  # Non-breaking space variant
         "Operating Profit":   ("financials", "Operating_Profit"),
         "OPM %":              ("financials", "OPM_pct"),
         "Other Income +":     ("financials", "Other_Income"),
+        "Other Income\xa0+":    ("financials", "Other_Income"),  # Non-breaking space variant
         "Interest":           ("financials", "Interest"),
         "Depreciation":       ("financials", "Depreciation"),
         "Profit before tax":  ("financials", "Profit_before_tax"),
         "Tax %":              ("financials", "Tax_pct"),
         "Net Profit +":       ("financials", "Net_Profit"),
+        "Net Profit\xa0+":      ("financials", "Net_Profit"),  # Non-breaking space variant
         "EPS in Rs":          ("financials", "EPS_Rs"),
         "Dividend Payout %":  ("financials", "Dividend_Payout_pct"),
+        "Financing Profit":   ("financials", "Financing_Profit"),
+        "Financing Margin %": ("financials", "Financing_Margin_pct"),
     },
 
     # ── screener_fin:cash_flow  (annual consolidated balance sheet, 7yr) ─────
     "screener_fin:cash_flow": {
         "Equity Capital":     ("financials", "Equity_Capital"),
         "Reserves":           ("financials", "Reserves"),
+        "Borrowing":          ("financials", "Borrowing"),
         "Borrowings +":       ("financials", "Borrowings"),
+        "Borrowings\xa0+":      ("financials", "Borrowings"),  # Non-breaking space variant
         "Other Liabilities +":("financials", "Other_Liabilities"),
+        "Other Liabilities\xa0+":("financials", "Other_Liabilities"),  # Non-breaking space variant
         "Total Liabilities":  ("financials", "Total_Liabilities"),
         "Fixed Assets +":     ("financials", "Fixed_Assets"),
+        "Fixed Assets\xa0+":    ("financials", "Fixed_Assets"),  # Non-breaking space variant
         "CWIP":               ("financials", "CWIP"),
         "Investments":        ("financials", "Investments"),
         "Other Assets +":     ("financials", "Other_Assets"),
+        "Other Assets\xa0+":    ("financials", "Other_Assets"),  # Non-breaking space variant
         "Total Assets":       ("financials", "Total_Assets"),
+        "Deposits":           ("financials", "Deposits"),  # Bank-specific field
     },
 
     # ── screener_fin:ratios  (annual consolidated cash flow, 7yr) ────────────
     "screener_fin:ratios": {
         "Cash from Operating Activity +": ("financials", "CFO"),
+        "Cash from Operating Activity\xa0+": ("financials", "CFO"),  # Non-breaking space variant
         "Cash from Investing Activity +": ("financials", "CFI"),
+        "Cash from Investing Activity\xa0+": ("financials", "CFI"),  # Non-breaking space variant
         "Cash from Financing Activity +": ("financials", "CFF"),
+        "Cash from Financing Activity\xa0+": ("financials", "CFF"),  # Non-breaking space variant
         "Net Cash Flow":                  ("financials", "Net_Cash_Flow"),
         "Free Cash Flow":                 ("financials", "Free_Cash_Flow"),
         "CFO/OP":                         ("financials", "CFO_over_OP"),
@@ -398,6 +423,7 @@ FIELD_MAP = {
     "screener_raw:Quarterly Results": {
         "Sales +":           ("financials", "Sales"),
         "Revenue +":         ("financials", "Revenue"),
+        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
@@ -419,6 +445,7 @@ FIELD_MAP = {
     "screener_raw:Profit & Loss": {
         "Sales +":           ("financials", "Sales"),
         "Revenue +":         ("financials", "Revenue"),
+        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
@@ -490,6 +517,7 @@ FIELD_MAP = {
     "screener_raw:Half Yearly Results": {
         "Sales +":           ("financials", "Sales"),
         "Revenue +":         ("financials", "Revenue"),
+        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
@@ -635,16 +663,45 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                 if r.get("metric") == "LTP":
                     B["price"]["ltp"] = r.get("data")
                 elif r.get("values"):
-                    B["price"][hist_key] = r["values"]
+                    # Remove Dividends and Stock Splits columns from history
+                    # (these are already in company_details.shareholding.dividends)
+                    cleaned_values = []
+                    for record in r["values"]:
+                        if isinstance(record, dict):
+                            # Make a copy and remove redundant columns
+                            clean_record = {k: v for k, v in record.items() 
+                                          if k not in ['Dividends', 'Stock Splits']}
+                            cleaned_values.append(clean_record)
+                        else:
+                            cleaned_values.append(record)
+                    
+                    B["price"][hist_key] = cleaned_values
             continue
 
         # ── operational_kpis: all metrics as-is ───────────────────────────
         if sec_map == "__all_ts__":
-            for r in (records if isinstance(records, list) else []):
-                if isinstance(r, dict):
-                    m = r.get("metric", "")
-                    if m:
-                        B["kpis"][m] = r.get("periods", {})
+            # Handle both old flat list structure and new consolidation > granularity structure
+            if isinstance(records, list):
+                # Old format: flat list
+                for r in records:
+                    if isinstance(r, dict):
+                        m = r.get("metric", "")
+                        if m:
+                            B["kpis"][m] = r.get("periods", {})
+            elif isinstance(records, dict):
+                # New format: consolidation > granularity > [metrics]
+                for consol, consol_dict in records.items():
+                    if isinstance(consol_dict, dict):
+                        for granule, metrics_list in consol_dict.items():
+                            if isinstance(metrics_list, list):
+                                for r in metrics_list:
+                                    if isinstance(r, dict):
+                                        m = r.get("metric", "")
+                                        if m:
+                                            # Store with consolidation/granularity context
+                                            key = f"{m}"
+                                            if key not in B["kpis"]:
+                                                B["kpis"][key] = r.get("periods", {})
             continue
 
         # ── screener_raw & screener_fin sections with consolidation > granularity hierarchy ──
@@ -896,7 +953,7 @@ def detect_granularity_from_dates(periods_dict):
 
 def clean_metadata_wrapper(bucketed: dict) -> dict:
     """
-    Remove _periods and _source metadata from all buckets.
+    Remove _periods, _source, _granule, _consolidation metadata from all buckets.
     Unwrap the actual data.
     """
     for bucket_name, bucket_data in bucketed.items():
@@ -905,24 +962,40 @@ def clean_metadata_wrapper(bucketed: dict) -> dict:
         
         cleaned = {}
         for key, value in bucket_data.items():
-            # Remove _periods and _source wrapping
+            # Remove metadata wrapping
             if isinstance(value, dict):
-                if "_periods" in value and len(value) == 2 and "_source" in value:
-                    # This is a wrapped metric, unwrap it
+                # If has _periods, unwrap it (this is the actual time-series data)
+                if "_periods" in value:
                     cleaned[key] = value["_periods"]
-                elif "_periods" in value and len(value) == 1:
-                    # Just _periods, unwrap
-                    cleaned[key] = value["_periods"]
-                elif "_periods" in value:
-                    # Has _periods + other data, keep the other data and unwrap periods
-                    cleaned[key] = {k: v for k, v in value.items() if k not in ["_periods", "_source"]}
-                    if cleaned[key]:  # If there's data after removing metadata
-                        pass
-                    else:  # If nothing left, use periods
-                        cleaned[key] = value.get("_periods", {})
+                # Skip metadata-only values (_granule, _consolidation, etc)
+                elif any(k.startswith("_") for k in value.keys()):
+                    # Has metadata but no periods - skip these
+                    continue
                 else:
+                    # Regular dict, keep as-is
                     cleaned[key] = value
+            elif isinstance(value, list):
+                # Handle lists (multiple sources for same metric)
+                cleaned_list = []
+                for item in value:
+                    if isinstance(item, dict) and "_periods" in item:
+                        # Convert to consolidated/standalone structure if it has consolidation info
+                        consol = item.get("_consolidation")
+                        if consol:
+                            # Keep the structure for consolidation grouping
+                            cleaned_list.append({
+                                "_periods": item["_periods"],
+                                "_consolidation": consol,
+                                "_granule": item.get("_granule")
+                            })
+                        else:
+                            cleaned_list.append(item["_periods"])
+                    else:
+                        cleaned_list.append(item)
+                if cleaned_list:
+                    cleaned[key] = cleaned_list
             else:
+                # Scalar values, keep as-is
                 cleaned[key] = value
         
         bucketed[bucket_name] = cleaned
@@ -1022,6 +1095,7 @@ def reorganize_by_period(bucketed: dict) -> dict:
 def reorganize_valuation_eps_pe(bucketed: dict) -> dict:
     """
     Group EPS and P/E metrics under separate sub-objects in valuation.
+    Remove original keys to avoid duplicates.
     """
     if "valuation" not in bucketed:
         return bucketed
@@ -1035,16 +1109,16 @@ def reorganize_valuation_eps_pe(bucketed: dict) -> dict:
     
     pe_keys = {
         'trailing_pe', 'forward_pe', 'peg_ratio', 'trailing_peg_ratio', 'price_to_book',
-        'price_to_sales_ttm'
+        'price_to_sales_ttm', 'forward_peg_ratio'
     }
     
-    # Extract EPS metrics
+    # Extract EPS metrics (and remove from top level)
     eps_obj = {}
     for key in eps_keys:
         if key in valuation:
             eps_obj[key] = valuation.pop(key)
     
-    # Extract P/E metrics
+    # Extract P/E metrics (and remove from top level)
     pe_obj = {}
     for key in pe_keys:
         if key in valuation:
@@ -1058,6 +1132,226 @@ def reorganize_valuation_eps_pe(bucketed: dict) -> dict:
     
     bucketed["valuation"] = valuation
     return bucketed
+
+
+def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
+    """
+    Compute derived metrics from bucketed data with sector-aware weightage.
+    Handles nested financial structure: metric > consolidation > granularity > dates > values
+    """
+    derived = bucketed.copy()
+    sector = sector or derived.get("company_details", {}).get("sector", "Industrials")
+    sector_profile = SECTOR_PROFILES.get(sector, SECTOR_PROFILES["Industrials"])
+    
+    metrics = {}
+    
+    # Helper to extract latest scalar value from nested structure
+    def get_latest_value(metric_dict):
+        if not isinstance(metric_dict, dict):
+            return None
+        for consol_key in ['consolidated', 'standalone']:
+            if consol_key in metric_dict:
+                consol_data = metric_dict[consol_key]
+                if isinstance(consol_data, dict):
+                    for granule_key in ['annual', 'quarterly']:
+                        if granule_key in consol_data:
+                            granule_data = consol_data[granule_key]
+                            if isinstance(granule_data, dict):
+                                dates = sorted(granule_data.keys(), reverse=True)
+                                if dates:
+                                    val = granule_data[dates[0]]
+                                    if isinstance(val, (int, float)) and val is not None:
+                                        return val
+        return None
+    
+    def get_flat_value(obj, key):
+        if isinstance(obj, dict):
+            val = obj.get(key)
+            if isinstance(val, (int, float)) and val is not None:
+                return val
+        return None
+    
+    fin = bucketed.get("financials", {})
+    val = bucketed.get("valuation", {})
+    price = bucketed.get("price", {})
+    websignals = bucketed.get("websignals", {})
+    
+    # FUNDAMENTAL METRICS
+    roe_pct = get_latest_value(fin.get("Return_on_Equity_pct", {}))
+    if roe_pct is not None:
+        metrics["roe_pct"] = round(roe_pct, 2)
+        roe_excellent = sector_profile.get("roe_excellent", 0.15)
+        if roe_pct >= roe_excellent * 100:
+            metrics["roe_score"] = 100
+        elif roe_pct >= roe_excellent * 100 * 0.75:
+            metrics["roe_score"] = 75
+        elif roe_pct >= roe_excellent * 100 * 0.5:
+            metrics["roe_score"] = 50
+        else:
+            metrics["roe_score"] = 25
+    
+    total_debt = get_latest_value(fin.get("Total_Debt", {}))
+    equity = get_latest_value(fin.get("Equity_Capital", {}))
+    if total_debt is not None and equity and equity > 0:
+        de_ratio = total_debt / equity
+        metrics["debt_to_equity"] = round(de_ratio, 2)
+        de_limit = sector_profile.get("de_limit", 2.0)
+        if de_ratio <= de_limit * 0.5:
+            metrics["de_score"] = 100
+        elif de_ratio <= de_limit:
+            metrics["de_score"] = 75
+        elif de_ratio <= de_limit * 1.5:
+            metrics["de_score"] = 50
+        else:
+            metrics["de_score"] = 25
+    
+    net_margin = get_latest_value(fin.get("Net_Margin_pct", {}))
+    if net_margin is not None:
+        metrics["net_margin_pct"] = round(net_margin, 2)
+        if net_margin >= 15:
+            metrics["margin_score"] = 100
+        elif net_margin >= 10:
+            metrics["margin_score"] = 75
+        elif net_margin >= 5:
+            metrics["margin_score"] = 50
+        else:
+            metrics["margin_score"] = 25
+    
+    # VALUATION METRICS
+    pe_data = val.get("pe", {})
+    trailing_pe = get_flat_value(pe_data, "trailing_pe")
+    if trailing_pe and trailing_pe > 0:
+        metrics["pe_ratio"] = round(trailing_pe, 2)
+        if trailing_pe < 10:
+            metrics["pe_score"] = 100
+        elif trailing_pe < 15:
+            metrics["pe_score"] = 80
+        elif trailing_pe < 20:
+            metrics["pe_score"] = 60
+        elif trailing_pe < 30:
+            metrics["pe_score"] = 40
+        else:
+            metrics["pe_score"] = 20
+    
+    pb = get_flat_value(pe_data, "price_to_book")
+    if pb and pb > 0:
+        metrics["price_to_book"] = round(pb, 2)
+        if pb < 1:
+            metrics["pb_score"] = 100
+        elif pb < 1.5:
+            metrics["pb_score"] = 80
+        elif pb < 3:
+            metrics["pb_score"] = 60
+        else:
+            metrics["pb_score"] = 40
+    
+    # TECHNICAL METRICS
+    price_change = get_flat_value(price, "regular_market_change_pct")
+    if price_change is not None:
+        metrics["price_momentum_pct"] = round(price_change, 2)
+        if price_change > 10:
+            metrics["momentum_score"] = 100
+        elif price_change > 5:
+            metrics["momentum_score"] = 75
+        elif price_change > 0:
+            metrics["momentum_score"] = 60
+        elif price_change > -5:
+            metrics["momentum_score"] = 40
+        else:
+            metrics["momentum_score"] = 20
+    
+    avg_vol = get_flat_value(price, "average_volume")
+    avg_vol_3m = get_flat_value(price, "average_volume_3mo")
+    if avg_vol and avg_vol_3m and avg_vol_3m > 0:
+        vol_ratio = avg_vol / avg_vol_3m
+        metrics["volume_ratio"] = round(vol_ratio, 2)
+        if vol_ratio > 1.2:
+            metrics["volume_score"] = 100
+        elif vol_ratio > 1.0:
+            metrics["volume_score"] = 75
+        elif vol_ratio > 0.8:
+            metrics["volume_score"] = 50
+        else:
+            metrics["volume_score"] = 25
+    
+    # SENTIMENT METRICS
+    sentiment = websignals.get("ai_insights_date")
+    if sentiment:
+        metrics["sentiment_score"] = 60
+    
+    # COMPOSITE SCORE WITH SECTOR WEIGHTAGE
+    fundamental_score = 50
+    technical_score = 50
+    valuation_score = 50
+    sentiment_score = 50
+    
+    fundamental_components = []
+    if "roe_score" in metrics:
+        fundamental_components.append(metrics["roe_score"])
+    if "de_score" in metrics:
+        fundamental_components.append(metrics["de_score"])
+    if "margin_score" in metrics:
+        fundamental_components.append(metrics["margin_score"])
+    
+    if fundamental_components:
+        fundamental_score = round(sum(fundamental_components) / len(fundamental_components), 1)
+    metrics["fundamental_score"] = fundamental_score
+    
+    technical_components = []
+    if "momentum_score" in metrics:
+        technical_components.append(metrics["momentum_score"])
+    if "volume_score" in metrics:
+        technical_components.append(metrics["volume_score"])
+    
+    if technical_components:
+        technical_score = round(sum(technical_components) / len(technical_components), 1)
+    metrics["technical_score"] = technical_score
+    
+    valuation_components = []
+    if "pe_score" in metrics:
+        valuation_components.append(metrics["pe_score"])
+    if "pb_score" in metrics:
+        valuation_components.append(metrics["pb_score"])
+    
+    if valuation_components:
+        valuation_score = round(sum(valuation_components) / len(valuation_components), 1)
+    metrics["valuation_score"] = valuation_score
+    
+    if sentiment:
+        sentiment_score = 70
+    metrics["sentiment_score"] = sentiment_score
+    
+    weights = sector_profile
+    composite = (
+        fundamental_score * weights.get("fundamental", 0.5) +
+        technical_score * weights.get("technical", 0.2) +
+        valuation_score * weights.get("valuation", 0.2) +
+        sentiment_score * weights.get("sentiment", 0.1)
+    )
+    metrics["composite_score"] = round(composite, 1)
+    
+    score = metrics["composite_score"]
+    if score >= 75:
+        metrics["rating"] = "STRONG BUY"
+    elif score >= 60:
+        metrics["rating"] = "BUY"
+    elif score >= 50:
+        metrics["rating"] = "HOLD"
+    elif score >= 35:
+        metrics["rating"] = "SELL"
+    else:
+        metrics["rating"] = "STRONG SELL"
+    
+    metrics["sector"] = sector
+    metrics["sector_weights"] = {
+        "fundamental": weights.get("fundamental", 0.5),
+        "technical": weights.get("technical", 0.2),
+        "valuation": weights.get("valuation", 0.2),
+        "sentiment": weights.get("sentiment", 0.1)
+    }
+    
+    derived["derived_metrics"]["calculated_metrics"] = metrics
+    return derived
 
 
 def reorganize_derived_metrics_guidance(bucketed: dict) -> dict:
@@ -1081,7 +1375,7 @@ def reorganize_derived_metrics_guidance(bucketed: dict) -> dict:
     guidance_obj = {}
     for key in guidance_keys:
         if key in websignals:
-            guidance_obj[key] = websignals.pop(key)
+            guidance_obj[key] = websignals[key]
     
     # Add guidance to derived_metrics if it has data
     if guidance_obj:
@@ -1115,13 +1409,13 @@ def reorganize_price_52w_volume(bucketed: dict) -> dict:
     week_52_obj = {}
     for key in week_52_keys:
         if key in price:
-            week_52_obj[key] = price.pop(key)
+            week_52_obj[key] = price[key]
     
     # Extract volume metrics
     volume_obj = {}
     for key in volume_keys:
         if key in price:
-            volume_obj[key] = price.pop(key)
+            volume_obj[key] = price[key]
     
     # Add sub-objects back
     if week_52_obj:
@@ -1150,7 +1444,7 @@ def reorganize_financials_debt(bucketed: dict) -> dict:
     debt_obj = {}
     for key in debt_keys:
         if key in financials:
-            debt_obj[key] = financials.pop(key)
+            debt_obj[key] = financials[key]
     
     # Add debt object back to financials if it has data
     if debt_obj:
@@ -1177,7 +1471,7 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
     shares_obj = {}
     for key in ['float_shares', 'shares_outstanding', 'implied_shares_outstanding']:
         if key in identity:
-            shares_obj[key] = identity.pop(key)
+            shares_obj[key] = identity[key]
     if shares_obj:
         shareholding_obj['shares'] = shares_obj
     
@@ -1185,7 +1479,7 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
     ownership_obj = {}
     for key in ['held_pct_insiders', 'held_pct_institutions']:
         if key in identity:
-            ownership_obj[key] = identity.pop(key)
+            ownership_obj[key] = identity[key]
     if ownership_obj:
         shareholding_obj['ownership'] = ownership_obj
     
@@ -1193,7 +1487,7 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
     fiscal_obj = {}
     for key in ['last_fiscal_year_end', 'next_fiscal_year_end', 'most_recent_quarter']:
         if key in identity:
-            fiscal_obj[key] = identity.pop(key)
+            fiscal_obj[key] = identity[key]
     if fiscal_obj:
         shareholding_obj['fiscal_dates'] = fiscal_obj
     
@@ -1201,20 +1495,26 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
     pattern_obj = {}
     for key in ['promoters', 'fiis', 'diis', 'public', 'government', 'others', 'no_of_shareholders']:
         if key in identity:
-            pattern_obj[key] = identity.pop(key)
+            val = identity[key]
+            # Simply extract _periods if available
+            if isinstance(val, dict) and '_periods' in val:
+                pattern_obj[key] = val.get('_periods', {})
+            else:
+                pattern_obj[key] = val
     if pattern_obj:
         shareholding_obj['pattern'] = pattern_obj
     
-    # Dividends sub-group
+    # Dividends & Splits sub-group
     dividend_obj = {}
     dividend_keys = {
         'dividend_rate', 'dividend_yield', 'ex_dividend_date', 'payout_ratio',
         'trailing_annual_dividend_rate', 'trailing_annual_dividend_yield',
-        'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield'
+        'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield',
+        'last_split_date', 'last_split_factor'
     }
     for key in dividend_keys:
         if key in identity:
-            dividend_obj[key] = identity.pop(key)
+            dividend_obj[key] = identity[key]
     if dividend_obj:
         shareholding_obj['dividends'] = dividend_obj
     
@@ -1453,379 +1753,6 @@ def extract_scalar_or_dict(value):
     
     return value
 
-def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
-    """
-    Compute derived metrics from bucketed data with sector-aware logic.
-    
-    Args:
-        bucketed: output from bucket_symbol()
-        sector: company sector for sector-aware thresholds
-    
-    Returns:
-        Updated bucketed dict with derived metrics in analyst_consensus bucket.
-        Never modifies input; returns new dict.
-    """
-    derived = deepcopy(bucketed)
-    sector = sector or derived.get("company_details", {}).get("sector", "Industrials")
-    sector_profile = SECTOR_PROFILES.get(sector, SECTOR_PROFILES["Industrials"])
-    
-    metrics = {}
-    
-    # Helper to safely get values (with FIX: extracts scalar from dicts)
-    def safe_val(path_list, default=None):
-        val = bucketed
-        for key in path_list:
-            if isinstance(val, dict):
-                val = val.get(key)
-            else:
-                return default
-        # FIX: Extract scalar if dict (prevents dict arithmetic errors)
-        return extract_scalar_or_dict(val) if val is not None else default
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # VALUATION METRICS
-    # ────────────────────────────────────────────────────────────────────────
-    
-    pe = safe_val(["valuation", "trailing_pe"])
-    if pe and pe > 0:
-        metrics["valuation_score"] = min(100, max(0, 85 if pe < 15 else (60 if pe < 25 else 40)))
-    else:
-        metrics["valuation_score"] = 50
-    
-    ev = safe_val(["valuation", "enterprise_value"])
-    revenue = safe_val(["financials", "revenue"])
-    if ev and revenue and revenue > 0:
-        metrics["ev_to_sales"] = round(ev / revenue, 2)
-    
-    mc = safe_val(["valuation", "market_cap"])
-    fcf = safe_val(["financials", "free_cash_flow"])
-    if mc and fcf and mc > 0:
-        metrics["price_to_fcf"] = round(mc / fcf, 2) if fcf > 0 else None
-        metrics["fcf_yield"] = round((fcf / mc) * 100, 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # TECHNICAL & MOMENTUM METRICS
-    # ────────────────────────────────────────────────────────────────────────
-    
-    change_pct = safe_val(["price", "regular_market_change_pct"])
-    if change_pct is not None:
-        metrics["price_momentum_short"] = round(change_pct, 2)
-        metrics["technical_score"] = min(100, max(0, 75 if change_pct > 5 else (60 if change_pct > 0 else 40)))
-    else:
-        metrics["technical_score"] = 50
-    
-    current_price = safe_val(["price", "current_price"])
-    ma_50 = safe_val(["price", "fifty_day_avg"])
-    if current_price and ma_50 and ma_50 > 0:
-        metrics["ma_50_position"] = round(current_price / ma_50, 3)
-    
-    ma_200 = safe_val(["price", "two_hundred_day_avg"])
-    if current_price and ma_200 and ma_200 > 0:
-        metrics["ma_200_position"] = round(current_price / ma_200, 3)
-    
-    volume = safe_val(["price", "regular_market_volume"])
-    avg_volume_3mo = safe_val(["price", "average_daily_volume_3mo"])
-    if volume and avg_volume_3mo and avg_volume_3mo > 0:
-        metrics["volume_trend"] = round(volume / avg_volume_3mo, 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # PROFITABILITY & MARGIN METRICS
-    # ────────────────────────────────────────────────────────────────────────
-    
-    net_profit = safe_val(["financials", "net_profit"])
-    if net_profit and revenue and revenue > 0:
-        metrics["profitability_ratio"] = round((net_profit / revenue) * 100, 2)
-    
-    operating_income = safe_val(["financials", "operating_income"])
-    if operating_income and revenue and revenue > 0:
-        metrics["operating_margin"] = round((operating_income / revenue) * 100, 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # RETURN METRICS (ROE, ROA)
-    # ────────────────────────────────────────────────────────────────────────
-    
-    def extract_latest_value(val):
-        """Extract latest numeric value from nested structure"""
-        if not val:
-            return None
-        
-        # If it's a number, return it
-        if isinstance(val, (int, float)):
-            return val
-        
-        # If it's a dict with consolidation > granularity > dates
-        if isinstance(val, dict):
-            # Try to find a path to dates
-            for consol, granule_dict in val.items():
-                if isinstance(granule_dict, dict):
-                    for granule, dates_dict in granule_dict.items():
-                        if isinstance(dates_dict, dict):
-                            # Found dates, get latest
-                            years = sorted(dates_dict.keys(), reverse=True)
-                            if years:
-                                return dates_dict[years[0]]
-            
-            # Fallback: try direct date extraction
-            years = sorted(val.keys(), reverse=True)
-            if years:
-                return val[years[0]]
-        
-        return None
-    
-    equity_capital = safe_val(["financials", "equity_capital"]) or \
-                     safe_val(["financials", "Equity_Capital"])
-    equity_capital = extract_latest_value(equity_capital)
-    
-    reserves = safe_val(["financials", "reserves"]) or \
-               safe_val(["financials", "Reserves"])
-    reserves = extract_latest_value(reserves)
-    
-    if equity_capital and reserves:
-        try:
-            total_equity = float(equity_capital) + float(reserves)
-        except (TypeError, ValueError):
-            total_equity = None
-    else:
-        total_equity = safe_val(["financials", "total_equity"]) or \
-                      safe_val(["financials", "Total_Equity"])
-        total_equity = extract_latest_value(total_equity)
-    
-    try:
-        net_profit = float(net_profit) if net_profit else None
-        total_equity = float(total_equity) if total_equity else None
-    except (TypeError, ValueError):
-        pass
-    
-    if net_profit and total_equity and total_equity > 0:
-        roe = (net_profit / total_equity) * 100
-        metrics["roe"] = round(roe, 2)
-    
-    total_assets = safe_val(["financials", "total_assets"]) or \
-                   safe_val(["financials", "Total_Assets"])
-    total_assets = extract_latest_value(total_assets)
-    
-    try:
-        net_profit = float(net_profit) if net_profit else None
-        total_assets = float(total_assets) if total_assets else None
-    except (TypeError, ValueError):
-        pass
-    
-    if net_profit and total_assets and total_assets > 0:
-        roa = (net_profit / total_assets) * 100
-        metrics["roa"] = round(roa, 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # LEVERAGE & SOLVENCY METRICS
-    # ────────────────────────────────────────────────────────────────────────
-    
-    total_debt = safe_val(["valuation", "total_debt"]) or \
-                 safe_val(["financials", "total_debt"])
-    total_debt = extract_latest_value(total_debt)
-    
-    try:
-        total_debt = float(total_debt) if total_debt else None
-        total_equity = float(total_equity) if total_equity else None
-    except (TypeError, ValueError):
-        pass
-    
-    if total_debt and total_equity and total_equity > 0:
-        de_ratio = total_debt / total_equity
-        metrics["leverage_quality"] = round(de_ratio, 2)
-    
-    try:
-        total_debt = float(total_debt) if total_debt else None
-        mc = float(mc) if mc else None
-    except (TypeError, ValueError):
-        pass
-    
-    if total_debt and mc and mc > 0:
-        metrics["debt_to_market_cap"] = round((total_debt / mc) * 100, 2)
-    
-    ebit = safe_val(["financials", "ebit"])
-    ebit = extract_latest_value(ebit)
-    interest_exp = safe_val(["financials", "interest_expense"])
-    interest_exp = extract_latest_value(interest_exp)
-    
-    try:
-        ebit = float(ebit) if ebit else None
-        interest_exp = float(interest_exp) if interest_exp else None
-    except (TypeError, ValueError):
-        pass
-    
-    if ebit and interest_exp and interest_exp > 0:
-        metrics["interest_coverage"] = round(ebit / interest_exp, 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # GROWTH METRICS (YoY from time-series)
-    # ────────────────────────────────────────────────────────────────────────
-    
-    # Revenue YoY growth (last 2 years of consolidated annual)
-    revenue_series = safe_val(["financials", "Sales"])
-    if isinstance(revenue_series, dict):
-        years = sorted(revenue_series.keys(), reverse=True)
-        if len(years) >= 2:
-            latest_rev = revenue_series[years[0]]
-            prev_rev = revenue_series[years[1]]
-            if latest_rev and prev_rev and prev_rev > 0:
-                revenue_growth = ((latest_rev - prev_rev) / prev_rev) * 100
-                metrics["revenue_growth_yoy"] = round(revenue_growth, 2)
-    
-    # Earnings YoY growth
-    earnings_series = safe_val(["financials", "Net_Profit"])
-    if isinstance(earnings_series, dict):
-        years = sorted(earnings_series.keys(), reverse=True)
-        if len(years) >= 2:
-            latest_earn = earnings_series[years[0]]
-            prev_earn = earnings_series[years[1]]
-            if latest_earn and prev_earn and prev_earn > 0:
-                earnings_growth = ((latest_earn - prev_earn) / prev_earn) * 100
-                metrics["earnings_growth_yoy"] = round(earnings_growth, 2)
-    
-    # FCF growth
-    fcf_series = safe_val(["financials", "Free_Cash_Flow"])
-    if isinstance(fcf_series, dict):
-        years = sorted(fcf_series.keys(), reverse=True)
-        if len(years) >= 2:
-            latest_fcf = fcf_series[years[0]]
-            prev_fcf = fcf_series[years[1]]
-            if latest_fcf and prev_fcf and prev_fcf > 0:
-                fcf_growth = ((latest_fcf - prev_fcf) / prev_fcf) * 100
-                metrics["fcf_growth"] = round(fcf_growth, 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # EFFICIENCY METRICS
-    # ────────────────────────────────────────────────────────────────────────
-    
-    if revenue and total_assets and total_assets > 0:
-        metrics["asset_turnover"] = round(revenue / total_assets, 2)
-    
-    roce_pct = safe_val(["ratios", "ROCE_pct"])
-    if roce_pct:
-        # ROCE_pct is likely a time-series dict, get latest value
-        if isinstance(roce_pct, dict):
-            years = sorted(roce_pct.keys(), reverse=True)
-            roce_val = roce_pct[years[0]] if years else None
-        else:
-            roce_val = roce_pct
-        if roce_val is not None:
-            try:
-                metrics["roce"] = round(float(roce_val), 2)
-            except (ValueError, TypeError):
-                pass
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # SECTOR-AWARE SCORING
-    # ────────────────────────────────────────────────────────────────────────
-    
-    # Health score (sector-aware)
-    de_limit = sector_profile.get("de_limit", 2.0)
-    roe_excellent = sector_profile.get("roe_excellent", 0.15)
-    
-    health_score = 50
-    if metrics.get("leverage_quality") is not None:
-        de = metrics["leverage_quality"]
-        if de < de_limit:
-            health_score += 20
-        elif de > de_limit * 2:
-            health_score -= 20
-    
-    if metrics.get("roe") is not None:
-        roe_val = metrics["roe"] / 100
-        if roe_val > roe_excellent:
-            health_score += 20
-        elif roe_val > roe_excellent * 0.5:
-            health_score += 10
-    
-    metrics["health_score"] = max(0, min(100, health_score))
-    
-    # Growth score
-    growth_score = 50
-    if metrics.get("earnings_growth_yoy") is not None:
-        eg = metrics["earnings_growth_yoy"]
-        if eg > 20:
-            growth_score = 85
-        elif eg > 10:
-            growth_score = 70
-        elif eg > 0:
-            growth_score = 55
-        else:
-            growth_score = 30
-    
-    metrics["growth_score"] = growth_score
-    
-    # Quality score
-    quality_components = [
-        metrics.get("roe"),
-        metrics.get("roce_pct") if "roce_pct" in safe_val(["ratios"], {}) else None,
-        metrics.get("operating_margin")
-    ]
-    quality_components = [x for x in quality_components if x is not None]
-    if quality_components:
-        metrics["quality_score"] = round(sum(quality_components) / len(quality_components), 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # COMPOSITE SIGNAL (Sector-weighted)
-    # ────────────────────────────────────────────────────────────────────────
-    
-    val_score = metrics.get("valuation_score", 50)
-    tech_score = metrics.get("technical_score", 50)
-    growth_s = metrics.get("growth_score", 50)
-    health_s = metrics.get("health_score", 50)
-    
-    # Use sector weights
-    fundamental_w = sector_profile.get("fundamental", 0.4)
-    technical_w = sector_profile.get("technical", 0.3)
-    valuation_w = sector_profile.get("valuation", 0.2)
-    sentiment_w = sector_profile.get("sentiment", 0.1)
-    
-    composite = (health_s * fundamental_w + tech_score * technical_w + 
-                val_score * valuation_w + growth_s * sentiment_w)
-    
-    metrics["composite_score"] = round(composite, 2)
-    
-    # Signal classification
-    if composite >= 75:
-        signal = "STRONG_BUY"
-    elif composite >= 60:
-        signal = "BUY"
-    elif composite >= 40:
-        signal = "HOLD"
-    elif composite >= 25:
-        signal = "SELL"
-    else:
-        signal = "STRONG_SELL"
-    
-    metrics["investment_signal"] = signal
-    metrics["signal_confidence"] = round(min(99.99, 50 + abs(composite - 50) * 0.9), 2)
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # RISK FLAGS
-    # ────────────────────────────────────────────────────────────────────────
-    
-    metrics["debt_risk_flag"] = de_ratio > 2.5 if metrics.get("leverage_quality") else False
-    metrics["profitability_risk_flag"] = (metrics.get("roe", 100) < 8 or 
-                                          metrics.get("profitability_ratio", 100) < 5)
-    
-    current_ratio = safe_val(["ratios", "current_ratio"])
-    quick_ratio = safe_val(["ratios", "quick_ratio"])
-    metrics["liquidity_risk_flag"] = (current_ratio is not None and current_ratio < 1.2) or \
-                                     (quick_ratio is not None and quick_ratio < 0.8)
-    
-    # Add to derived_metrics bucket (separate top-level)
-    if "derived_metrics" not in derived:
-        derived["derived_metrics"] = {}
-    
-    derived["derived_metrics"]["signals"] = metrics
-    derived["derived_metrics"]["sector_aware"] = True
-    derived["derived_metrics"]["sector"] = sector
-    
-    return derived
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ══════════════════════════════════════════════════════════════════════════════
-
 def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
@@ -1834,6 +1761,14 @@ def main():
     logger.info(f"Reading {INPUT_FILE} …")
     with open(INPUT_FILE) as f:
         raw = json.load(f)
+    
+    # Load guidance data
+    guidance_file = DATA_DIR / 'guidance.json'
+    guidance_data = {}
+    if guidance_file.exists():
+        with open(guidance_file) as f:
+            guidance_data = json.load(f)
+        logger.info(f"  ✓ Loaded guidance.json ({len(guidance_data)} tickers)")
 
     output  = {}
     symbols = list(raw.keys())
@@ -1849,8 +1784,15 @@ def main():
         bucketed = reorganize_valuation_eps_pe(bucketed)  # Group EPS & P/E in valuation
         bucketed = reorganize_price_52w_volume(bucketed)  # Group 52-week & volume in price
         bucketed = reorganize_identity_shareholding(bucketed)  # Group shareholding under company_details
-        #        bucketed = compute_derived_metrics(bucketed)  # Apply derived metrics
+        bucketed = compute_derived_metrics(bucketed)  # Compute derived financial metrics
         bucketed = reorganize_derived_metrics_guidance(bucketed)  # Move guidance to derived_metrics
+        
+        # Add guidance data from guidance.json
+        if symbol in guidance_data:
+            if 'derived_metrics' not in bucketed:
+                bucketed['derived_metrics'] = {}
+            bucketed['derived_metrics']['ai_insights_guidance'] = guidance_data[symbol]
+        
         output[symbol] = bucketed
 
         # Report any unmapped fields for visibility
@@ -1864,8 +1806,79 @@ def main():
         logger.info(status)
 
     logger.info(f"Writing {OUTPUT_FILE} …")
+    
+    # Create output with metadata
+    from datetime import datetime
+    import time
+    
+    final_output = {
+        "_metadata": {
+            "generated_at": datetime.now().isoformat(),
+            "total_tickers": total,
+            "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
+            "data_sources": [
+                "screener_raw_data.json (97 tickers)",
+                "screener_financials.json (97 tickers)",
+                "yahoofin_raw_data.json (97 tickers)",
+                "yahoofin_financials.json (97 tickers)",
+                "guidance.json (29 tickers)",
+                "prices.json (98 tickers)",
+                "unified-symbols.json (97 tickers)"
+            ],
+            "buckets": {
+                "company_details": {
+                    "sub_sections": ["promoters", "fiis", "diis", "government", "public", "shareholding", "dividends"],
+                    "description": "Company profile, ownership, shareholding pattern, dividends, splits"
+                },
+                "financials": {
+                    "sub_sections": ["Sales", "Revenue", "Expenses", "Operating_Profit", "Net_Profit", "Free_Cash_Flow", "Total_Debt", "Equity_Capital", "..."],
+                    "description": "Revenue, expenses, profitability, cash flows, debt metrics - with consolidated/standalone > quarterly/annual structure"
+                },
+                "ratios": {
+                    "sub_sections": ["Return_on_Equity_pct", "Return_on_Assets_pct", "Net_Margin_pct", "Operating_Margin_pct", "..."],
+                    "description": "Financial ratios - profitability, efficiency, leverage"
+                },
+                "valuation": {
+                    "sub_sections": ["pe { trailing_pe, forward_pe, peg_ratio }", "eps { basic_eps, diluted_eps, trailing_eps, forward_eps, ... }", "enterprise_value", "market_cap", "price_to_book"],
+                    "description": "Valuation metrics grouped by PE and EPS sub-groups"
+                },
+                "price": {
+                    "sub_sections": ["current_price", "ltp", "52_week { high, low, change }", "volume { daily, average }", "history_6mo_1d", "history_5y_1wk", "history_5y_1mo"],
+                    "description": "Price data - current, 52-week range, volume, OHLCV history"
+                },
+                "websignals": {
+                    "sub_sections": ["ai_insights_date", "recommendation_key", "recommendation_mean", "number_of_analyst_opinions", "target_high_price", "target_low_price", "raw_pdf_*"],
+                    "description": "Analyst sentiment, recommendations, price targets"
+                },
+                "kpis": {
+                    "sub_sections": ["Capacity_Utilization_Factor", "Plant_Availability", "Power_Generation", "... (company-specific)"],
+                    "description": "Key performance indicators from screener_raw:Insights - varies by company"
+                },
+                "derived_metrics": {
+                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "guidance { 15 fields }", "ai_insights_guidance { guidance + insights }"],
+                    "description": "Computed metrics with sector weightage, management guidance, AI insights"
+                },
+                "_unmapped": {
+                    "sub_sections": [],
+                    "description": "Fields that couldn't be mapped to any bucket (0 fields in this output)"
+                }
+            },
+            "derived_metrics_structure": {
+                "calculated_metrics": "Sector-weighted financial scores (fundamental, technical, valuation, sentiment, composite) with rating",
+                "guidance": "Management guidance on 15 topics (only for tickers with websignals guidance data)",
+                "ai_insights_guidance": "AI-extracted guidance + insights (only for 29 tickers in guidance.json)"
+            },
+            "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
+            "unmapped_tickers": list(unmapped_summary.keys()),
+            "notes": "Each ticker has 9 buckets. Guidance presence depends on data availability."
+        }
+    }
+    
+    # Add all ticker data
+    final_output.update(output)
+    
     with open(OUTPUT_FILE, "w") as f:
-        json.dump(output, f, indent=2, default=str)
+        json.dump(final_output, f, indent=2, default=str)
 
     size_kb = OUTPUT_FILE.stat().st_size / 1024
     logger.info(f"✓ DONE. {total} symbols → {OUTPUT_FILE} ({size_kb:.1f} KB)")
