@@ -1356,7 +1356,8 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
 
 def reorganize_derived_metrics_guidance(bucketed: dict) -> dict:
     """
-    Move guidance fields from websignals into derived_metrics as 'guidance' sub-group.
+    Move guidance fields from websignals into derived_metrics as 'management_guidance' sub-group.
+    Remove from websignals to avoid duplication.
     """
     if "websignals" not in bucketed or "derived_metrics" not in bucketed:
         return bucketed
@@ -1364,22 +1365,22 @@ def reorganize_derived_metrics_guidance(bucketed: dict) -> dict:
     websignals = bucketed["websignals"]
     derived_metrics = bucketed["derived_metrics"]
     
-    # Guidance-related keys
+    # Guidance-related keys (management guidance from websignals)
     guidance_keys = {
         'quarter', 'financial', 'business', 'management', 'summary', 'deals_and_pipeline',
         'customers', 'segments', 'geography', 'operations', 'capital_allocation',
         'competitive_position', 'investor_verdict', 'analyst_dimensions', 'date'
     }
     
-    # Extract guidance data
+    # Extract guidance data (using pop to remove from websignals)
     guidance_obj = {}
     for key in guidance_keys:
         if key in websignals:
-            guidance_obj[key] = websignals[key]
+            guidance_obj[key] = websignals.pop(key)
     
-    # Add guidance to derived_metrics if it has data
+    # Add as management_guidance to derived_metrics (not "guidance" to avoid conflict with ai_insights_guidance.guidance)
     if guidance_obj:
-        derived_metrics['guidance'] = guidance_obj
+        derived_metrics['management_guidance'] = guidance_obj
     
     bucketed["websignals"] = websignals
     bucketed["derived_metrics"] = derived_metrics
@@ -1389,6 +1390,7 @@ def reorganize_derived_metrics_guidance(bucketed: dict) -> dict:
 def reorganize_price_52w_volume(bucketed: dict) -> dict:
     """
     Group 52-week and volume metrics under separate sub-objects in price.
+    Remove originals to avoid duplication.
     """
     if "price" not in bucketed:
         return bucketed
@@ -1405,23 +1407,39 @@ def reorganize_price_52w_volume(bucketed: dict) -> dict:
         'average_daily_volume_3mo', 'regular_market_volume'
     }
     
-    # Extract 52-week metrics
+    ltp_keys = {
+        'open', 'beta', 'high', 'low', 'prev'
+    }
+    
+    # Extract 52-week metrics (using pop to remove originals)
     week_52_obj = {}
     for key in week_52_keys:
         if key in price:
-            week_52_obj[key] = price[key]
+            week_52_obj[key] = price.pop(key)
     
-    # Extract volume metrics
+    # Extract volume metrics (using pop to remove originals)
     volume_obj = {}
     for key in volume_keys:
         if key in price:
-            volume_obj[key] = price[key]
+            volume_obj[key] = price.pop(key)
+    
+    # Extract ltp-related metrics (using pop to remove originals)
+    ltp_obj = {}
+    for key in ltp_keys:
+        if key in price:
+            ltp_obj[key] = price.pop(key)
+    
+    # If there's already an ltp dict, merge with it
+    if 'ltp' in price and isinstance(price['ltp'], dict):
+        ltp_obj.update(price.pop('ltp'))
     
     # Add sub-objects back
     if week_52_obj:
         price['52_week'] = week_52_obj
     if volume_obj:
         price['volume'] = volume_obj
+    if ltp_obj:
+        price['ltp'] = ltp_obj
     
     bucketed["price"] = price
     return bucketed
@@ -1430,6 +1448,7 @@ def reorganize_price_52w_volume(bucketed: dict) -> dict:
 def reorganize_financials_debt(bucketed: dict) -> dict:
     """
     Group debt-related fields under 'debt' sub-object in financials.
+    Remove originals to avoid duplication.
     """
     if "financials" not in bucketed:
         return bucketed
@@ -1440,11 +1459,11 @@ def reorganize_financials_debt(bucketed: dict) -> dict:
         'total_debt', 'net_debt', 'short_term_debt', 'long_term_debt', 'capital_lease_obligations'
     }
     
-    # Extract debt metrics
+    # Extract debt metrics (using pop to remove from financials)
     debt_obj = {}
     for key in debt_keys:
         if key in financials:
-            debt_obj[key] = financials[key]
+            debt_obj[key] = financials.pop(key)  # Remove original after copying
     
     # Add debt object back to financials if it has data
     if debt_obj:
@@ -1771,7 +1790,7 @@ def main():
         logger.info(f"  ✓ Loaded guidance.json ({len(guidance_data)} tickers)")
 
     output  = {}
-    symbols = list(raw.keys())
+    symbols = [k for k in raw.keys() if k != '_metadata']  # Skip _metadata
     total   = len(symbols)
     unmapped_summary = {}
 
@@ -1855,7 +1874,7 @@ def main():
                     "description": "Key performance indicators from screener_raw:Insights - varies by company"
                 },
                 "derived_metrics": {
-                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "guidance { 15 fields }", "ai_insights_guidance { guidance + insights }"],
+                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "management_guidance { 15 fields }", "ai_insights_guidance { guidance + insights }"],
                     "description": "Computed metrics with sector weightage, management guidance, AI insights"
                 },
                 "_unmapped": {
@@ -1865,7 +1884,7 @@ def main():
             },
             "derived_metrics_structure": {
                 "calculated_metrics": "Sector-weighted financial scores (fundamental, technical, valuation, sentiment, composite) with rating",
-                "guidance": "Management guidance on 15 topics (only for tickers with websignals guidance data)",
+                "management_guidance": "Management guidance on 15 topics (only for tickers with websignals guidance data)",
                 "ai_insights_guidance": "AI-extracted guidance + insights (only for 29 tickers in guidance.json)"
             },
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
