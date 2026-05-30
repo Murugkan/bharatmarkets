@@ -294,17 +294,50 @@ for TICKER in TICKERS_TO_PROCESS:
                 try:
                     if row and row[0] and row[0].strip():
                         metric_name = row[0]
-                        key = f"{metric_name}|{section}"
-                        if key not in metrics:
-                            metrics[key] = {'metric': metric_name, 'section': section, 'source': 'screener_raw', 'periods': {}}
+                        # Collect periods first
+                        temp_periods = {}
                         for col_idx in range(1, min(len(rows[0]), len(row))):
                             iso = parse_period_to_iso(rows[0][col_idx])
-                            if iso and iso not in metrics[key]['periods']:
-                                metrics[key]['periods'][iso] = standardize_value(row[col_idx])
+                            if iso:
+                                temp_periods[iso] = standardize_value(row[col_idx])
+                        
+                        # Detect granularity from dates
+                        from datetime import datetime
+                        months_seen = set()
+                        for date_key in temp_periods.keys():
+                            try:
+                                dt = datetime.fromisoformat(date_key[:10])
+                                months_seen.add(dt.month)
+                            except:
+                                pass
+                        
+                        # Map months to granularity
+                        if months_seen == {3}:
+                            granule = 'annual'
+                        elif {3, 6, 9, 12} <= months_seen:
+                            granule = 'quarterly'
+                        elif months_seen == {3, 9}:
+                            granule = 'half_yearly'
+                        else:
+                            granule = 'other'
+                        
+                        # Determine consolidation type based on section
+                        # Quarterly Results = standalone, P&L/Balance Sheet = consolidated
+                        if 'Quarterly' in section:
+                            consol = 'standalone'
+                        else:
+                            consol = 'consolidated'
+                        
+                        # Create section key with granularity and consolidation
+                        key = f"{metric_name}|{section}|{granule}|{consol}"
+                        if key not in metrics:
+                            metrics[key] = {'metric': metric_name, 'section': section, 'granule': granule, 'consolidation': consol, 'source': 'screener_raw', 'periods': temp_periods}
+                        else:
+                            metrics[key]['periods'].update(temp_periods)
                     else:
                         ticker_rejections.append(f"screener_raw | {section} | Empty metric")
                 except Exception as e:
-                    ticker_errors.append(f"screener_raw | {section} | Error: {str(e)}")
+                    ticker_errors.append(f"screener_raw | {section} | {metric_name} | Error: {str(e)}")
                     logger.write_error(TICKER, 'screener_raw', section, str(e))
         
         # === YAHOOFIN FINANCIALS ===
@@ -405,45 +438,81 @@ for TICKER in TICKERS_TO_PROCESS:
             logger.write_error(TICKER, 'unified_symbols', 'symbols', str(e))
         
         # === TRANSFORM TO OUTPUT ===
+        # Restructure: section > consolidation > granularity > [list of metrics]
         for key, obj in metrics.items():
             source = obj.get('source', 'unknown')
             section_name = obj['section']
-            # Use exact source:section format with original names
-            section_key = f"{source}:{section_name}"
+            granule = obj.get('granule', '')
+            consol = obj.get('consolidation', '')
             
-            if section_key not in output[TICKER]['data']:
-                if 'value' in obj and not isinstance(obj.get('values'), list):
+            # Build hierarchical section key
+            if source == 'screener_raw' and consol and granule:
+                # For screener_raw with consolidation and granularity:
+                # screener_raw:SectionName > consolidation > granularity > [metrics]
+                section_key = f"{source}:{section_name}"
+                
+                # Ensure nested structure exists
+                if section_key not in output[TICKER]['data']:
                     output[TICKER]['data'][section_key] = {}
-                else:
-                    output[TICKER]['data'][section_key] = []
-            
-            if 'value' in obj:
-                if not isinstance(output[TICKER]['data'][section_key], dict):
-                    output[TICKER]['data'][section_key] = {}
-                output[TICKER]['data'][section_key][obj['metric']] = obj['value']
-            elif obj.get('data_type') == 'array':
-                if not isinstance(output[TICKER]['data'][section_key], list):
-                    output[TICKER]['data'][section_key] = []
+                
+                if consol not in output[TICKER]['data'][section_key]:
+                    output[TICKER]['data'][section_key][consol] = {}
+                
+                if granule not in output[TICKER]['data'][section_key][consol]:
+                    output[TICKER]['data'][section_key][consol][granule] = []
+                
+                # Add metric as list item
                 row = {
                     'metric': obj['metric'],
                     'source': source,
                     'section': section_name,
-                    'record_count': obj.get('record_count'),
-                    'values': obj.get('values', [])
-                }
-                output[TICKER]['data'][section_key].append(row)
-            else:
-                if not isinstance(output[TICKER]['data'][section_key], list):
-                    output[TICKER]['data'][section_key] = []
-                row = {
-                    'metric': obj['metric'],
-                    'source': source,
-                    'section': section_name,
+                    'granule': granule,
+                    'consolidation': consol,
                     'data_type': 'time_series'
                 }
                 if obj.get('periods'):
                     row['periods'] = OrderedDict(sorted(obj['periods'].items(), reverse=True))
-                output[TICKER]['data'][section_key].append(row)
+                output[TICKER]['data'][section_key][consol][granule].append(row)
+            else:
+                # For other sections, use existing flat structure
+                if granule:
+                    section_key = f"{source}:{section_name}:{granule}"
+                else:
+                    section_key = f"{source}:{section_name}"
+                
+                if section_key not in output[TICKER]['data']:
+                    if 'value' in obj and not isinstance(obj.get('values'), list):
+                        output[TICKER]['data'][section_key] = {}
+                    else:
+                        output[TICKER]['data'][section_key] = []
+                
+                if 'value' in obj:
+                    if not isinstance(output[TICKER]['data'][section_key], dict):
+                        output[TICKER]['data'][section_key] = {}
+                    output[TICKER]['data'][section_key][obj['metric']] = obj['value']
+                elif obj.get('data_type') == 'array':
+                    if not isinstance(output[TICKER]['data'][section_key], list):
+                        output[TICKER]['data'][section_key] = []
+                    row = {
+                        'metric': obj['metric'],
+                        'source': source,
+                        'section': section_name,
+                        'record_count': obj.get('record_count'),
+                        'values': obj.get('values', [])
+                    }
+                    output[TICKER]['data'][section_key].append(row)
+                else:
+                    if not isinstance(output[TICKER]['data'][section_key], list):
+                        output[TICKER]['data'][section_key] = []
+                    row = {
+                        'metric': obj['metric'],
+                        'source': source,
+                        'section': section_name,
+                        'data_type': 'time_series'
+                    }
+                    if obj.get('periods'):
+                        row['periods'] = OrderedDict(sorted(obj['periods'].items(), reverse=True))
+                    output[TICKER]['data'][section_key].append(row)
         
         # === ADD LTP FROM PRICES ===
         ticker_prices = prices_data.get(TICKER, {})
