@@ -170,7 +170,6 @@ const fmt = (val, field) => {
     
     if (['MCAP', 'EBITDA', 'SALES', 'CFO', 'NETCF'].includes(field)) return formatLargeNum(n);
     if (['INVESTED', '1D_GAIN', '1DCH', 'PNL'].includes(field)) return formatLargeNum(n);
-    if (['QTY'].includes(field)) return Math.round(n).toString(); // Integer quantities
     if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
     if (['FV'].includes(field)) return Math.round(n).toString();
     if (['PE', 'PB', 'EPS'].includes(field)) return n.toFixed(1); // 1 decimal for EPS
@@ -191,21 +190,6 @@ const resolve = (obj, field) => {
     if (!obj || typeof obj !== 'object') return '—';
     if (!field || typeof field !== 'string') return '—';
     
-    // Helper: extract latest value from time-series object (dated keys)
-    const getLatestValue = (timeSeriesObj) => {
-        if (!timeSeriesObj || typeof timeSeriesObj !== 'object') return undefined;
-        const dates = Object.keys(timeSeriesObj).sort().reverse();
-        if (dates.length > 0) {
-            const val = timeSeriesObj[dates[0]];
-            // Extract percentage or numeric value
-            if (typeof val === 'string') {
-                return parseFloat(val.replace('%', '')) || val;
-            }
-            return val;
-        }
-        return undefined;
-    };
-    
     const f = field.toUpperCase();
     const mappings = { 
         'SYM':['ticker','SYM','SYMBOL','TICKER'], 
@@ -217,88 +201,52 @@ const resolve = (obj, field) => {
         '1DCH':['price_trading.ltp.change','price_trading.regular_market_change','market_change','change','1DCH','1D_CHANGE'],
         '1DG':['price_trading.ltp.high','price_trading.regular_market_day_high','market_day_high','1dg','1DG','day_high'],
         '1D_GAIN':['1dGain','1D_GAIN','1DGAIN'],
-        'LTP':['price.current_price','price.ltp.ltp','price.regular_market_price','ltp','LTP','PRICE'],
-        'OPEN':['price.regular_market_open','price.regularMarketOpen','open','OPEN'],
-        'HIGH':['price.regular_market_day_high','price.day_high','high','HIGH'],
-        'LOW':['price.regular_market_day_low','price.day_low','low','LOW'],
-        'W52H':['price.52_week.fifty_two_week_high','w52h','W52H','52WH'],
-        'W52L':['price.52_week.fifty_two_week_low','w52l','W52L','52WL'],
-        'ATH%':['price.52_week.fifty_two_week_change_pct','ath','ATH%'],
-        '52W%':['price.52_week.fifty_two_week_change_pct','52w','52W%'],
-        '1D_GAIN':['price.regular_market_change','1dGain','1D_GAIN'],
-        '1DCH':['price.regular_market_change_pct','1DCH','1D_CHANGE'],
-        'QTY':['portfolio_context.qty','company_details.qty','qty','QTY'],
-        'AVG':['portfolio_context.avg_cost','company_details.avg_cost','avg','AVG'],
-        'PE':['valuation.pe.trailing_pe','valuation.trailing_pe','pe','PE'],
-        'PB':['valuation.book_value','pb','PB'],
-        'EPS':['valuation.eps.basic_eps','valuation.eps.trailing_eps','eps','EPS'],
-        'MCAP':['valuation.market_cap','mcap','MCAP'],
-        'SALES':['financials.Sales','sales','SALES','revenue'],
-        'NETCF':['financials.Free_Cash_Flow','financials.freeCashFlow','netcf','NETCF'],
-        'VOL':['price.volume','price.regularMarketVolume','vol','VOL','VOLUME'],
-        'SECTOR':['company_details.industry','company_details.sector','sector','SECTOR'],
-        'NAME':['company_details.long_name','company_details.shortName','name','NAME'],
-        'ROE%':['ratios.ROE_pct','return_on_equity','roe','ROE%','ROE'],
-        'ROCE%':['ratios.return_on_capital_employed','ratios.ROCE_pct','roce','ROCE%','ROCE'],
-        'OPM%':['ratios.operating_margins','opm','OPM%','OPM'],
-        'NPM%':['ratios.profit_margins','npm','NPM%','NPM'],
-        'PROM%':['ratios.gross_margins','gross_margins','prom','PROM%'],
-        'BV':['valuation.book_value','book_value','BV'],
-        'EBITDA':['ratios.ebitda_margins','ebitda','EBITDA'],
-        'SIGNAL':['signal','SIGNAL','TECH_SIGNAL'],
-        'POS':['pos','POS','POSITIVE'],
-        'NEG':['neg','NEG','NEGATIVE'],
-        'INVESTED':['invested','INVESTED'],
-        'PNL':['pnl','PNL','P/L'],
-        'PNL%':['pnlPct','PNL%','PNL_PCT'],
-        'CAPEX':['financials.Depreciation','financials.Capital_Expenditure','capex','CAPEX'],
-        'FCF':['financials.Free_Cash_Flow','financials.freeCashFlow','fcf','FCF'],
-        'DIV_YIELD':['ratios.dividend_yield','dividend_yield','DIV_YIELD'],
-        'DEBT_EQ':['ratios.debt_to_equity','debt_eq','DEBT_EQ'],
-        'INT_COV':['ratios.interest_coverage','int_cov','INT_COV'],
-        'P/S':['valuation.price_to_sales','ps','P/S'],
-        'EV/EBITDA':['valuation.ev_to_ebitda','ev_ebitda','EV/EBITDA'],
-        'TAX_RATE':['financials.Tax_pct','tax_rate','TAX_RATE'],
-        'CFO':['financials.Operating_Profit','financials.Operating_Cash_Flow','cfo','CFO'],
+        'LTP':['price.ltp.ltp','price.current_price','price.regular_market_price'], 
+        'QTY':['qty','QTY','quantity'], 
+        'AVG':['avg','AVG','AVGBUY','avgbuy'], 
+        'INVESTED':['invested','INVESTED'], 
+        'POS':['pos','POS','POSITIVE'], 
+        'NEG':['neg','NEG','NEGATIVE'], 
+        'ROE%':['profitability_growth.return_on_equity','return_on_equity','roe','ROE%','ROE'], 
+        'ROCE%':['efficiency_ratios.roce','profitability_growth.return_on_assets','return_on_capital_employed','roce','ROCE%','ROCE'], 
+        'OPM%':['profitability_growth.operating_margins','operating_margins','opm','OPM%','OPM','opmPct','opm_pct'], 
+        'NPM%':['profitability_growth.profit_margins','profit_margins','npm','NPM%','NPM','npmPct','npm_pct'], 
+        'PE':['valuation.trailing_pe','trailing_pe','pe','PE','P/E','forward_pe'], 
+        'PB':['valuation.price_to_book','price_to_book','pb','PB','P/B'], 
+        'BV':['valuation.book_value','book_value','BV','BOOK_VALUE','bookValue'],
+        'MCAP':['valuation.market_cap','market_cap','mcap','MCAP','marketcap'], 
+        'SALES':['profitability_growth.total_revenue','total_revenue','sales','SALES','revenue'], 
+        'EBITDA':['profitability_growth.ebitda_margins','ebitda','EBITDA'], 
+        'CFO':['profitability_growth.operating_cashflow','operating_cash_flow','cfo','CFO'], 
+        'NETCF':['cash_flow_annual.net_cash_flow','net_cf','NETCF','NET_CF','netCF'],
+        'EPS':['valuation.basic_eps','eps_ttm','trailing_eps','eps','EPS','forward_eps'], 
+        'FV':['valuation.face_value','face_value','FV','FACE_VALUE','faceValue'],
+        'PROM%':['profitability_growth.gross_margins','gross_margins','prom','PROM%','prom_pct'], 
+        'FII%':['dividends_shareholding.fii_holdings_pct','fii','FII%','fii_pct'], 
+        'DII%':['dividends_shareholding.dii_holdings_pct','dii','DII%','dii_pct'], 
+        'ATH%':['price_trading.fifty_two_week_change_pct','valuation.fifty_two_week_change_pct','ath','ATH%','ath_pct'], 
+        '52W%':['price_trading.fifty_two_week_change_pct','valuation.fifty_two_week_change_pct','w52','52W%','52WEEK','w52_pct'], 
+        'W52H':['price_trading.fifty_two_week_high','valuation.fifty_two_week_high','week_52_high','w52h','W52H','52WH','52weekHigh'],
+        'W52L':['price_trading.fifty_two_week_low','valuation.fifty_two_week_low','week_52_low','w52l','W52L','52WL','52weekLow'],
+        'SECTOR':['company_identity.sector','sector','SECTOR'],
+        'NAME':['company_identity.long_name','company_identity.short_name','name','NAME','COMPANY'],
+        'OPEN':['price_trading.ltp.open','price_trading.regular_market_open','open','OPEN'],
+        'HIGH':['price_trading.ltp.high','price_trading.regular_market_day_high','high','HIGH'],
+        'LOW':['price_trading.ltp.low','price_trading.regular_market_day_low','low','LOW'],
+        'CHANGE':['price_trading.ltp.change','price_trading.regular_market_change','change','CHANGE'],
+        'VOL':['price_trading.ltp.vol','price_trading.regular_market_volume','volume','vol','VOL','VOLUME'],
+        'BETA':['price_trading.ltp.beta','price_trading.beta','beta','BETA'],
+        'CAPEX':['cash_flow_annual.capital_expenditure','capex','CAPEX','capital_expenditure'],
+        'FCF':['cash_flow_annual.free_cash_flow','free_cash_flow','fcf','FCF','freeCashFlow'],
+        'DIV_YIELD':['dividends_shareholding.dividend_yield','trailing_annual_dividend_yield','dividend_yield','div_yield','DIV_YIELD','dividendYield'],
+        'DEBT_EQ':['profitability_growth.debt_to_equity','balance_sheet_annual.debt_to_equity','debt_to_equity','debt_eq','DEBT_EQ','debt_equity','debtToEquity'],
+        'INT_COV':['efficiency_ratios.interest_coverage','interest_coverage','INT_COV','INTEREST_COVERAGE'],
+        'P/S':['valuation.price_to_sales_ttm','price_to_sales','P/S','PS','priceToSales'],
+        'EV/EBITDA':['valuation.enterprise_value','ev_to_ebitda','EV/EBITDA','EV_EBITDA','evToEbitda'],
+        'TAX_RATE':['income_statement_annual.effective_tax_rate','tax_rate_effective','TAX_RATE','tax_rate','effectiveTaxRate']
     };
     const targets = mappings[f] || [f];
     for (let t of targets) {
-        // Special handling for time-series fields with dated keys
-        if (f === 'ROE%' && obj.ratios && obj.ratios.ROE_pct && typeof obj.ratios.ROE_pct === 'object') {
-            const val = getLatestValue(obj.ratios.ROE_pct);
-            if (val !== undefined) return val;
-        }
-        if (f === 'DII%' && obj.company_details && obj.company_details.diis && typeof obj.company_details.diis === 'object') {
-            const val = getLatestValue(obj.company_details.diis);
-            if (val !== undefined) return val;
-        }
-        if (f === 'FII%' && obj.company_details && obj.company_details.fiis && typeof obj.company_details.fiis === 'object') {
-            const val = getLatestValue(obj.company_details.fiis);
-            if (val !== undefined) return val;
-        }
-        
-        // Handle nested financial/ratio objects with consolidated/annual structure
-        if ((f === 'SALES' || f === 'CFO' || f === 'FCF' || f === 'TAX_RATE') && obj.financials) {
-            let finKey = null;
-            if (f === 'SALES') finKey = 'Sales';
-            else if (f === 'CFO') finKey = 'Operating_Profit'; // or Operating_Cash_Flow
-            else if (f === 'FCF') finKey = 'Free_Cash_Flow';
-            else if (f === 'TAX_RATE') finKey = 'Tax_pct';
-            
-            if (finKey && obj.financials[finKey]) {
-                const finData = obj.financials[finKey];
-                if (typeof finData === 'object' && finData.consolidated && finData.consolidated.annual) {
-                    const val = getLatestValue(finData.consolidated.annual);
-                    if (val !== undefined) return val;
-                } else if (typeof finData === 'object' && finData.annual) {
-                    const val = getLatestValue(finData.annual);
-                    if (val !== undefined) return val;
-                } else if (typeof finData === 'number' || typeof finData === 'string') {
-                    return finData;
-                }
-            }
-        }
-        
         // Handle nested paths like "price_trading.ltp.ltp"
         if (t.includes('.')) {
             const parts = t.split('.');
@@ -494,36 +442,6 @@ async function init() {
     if (MASTER.length === 0) {
         statusEl.innerHTML = "DATABASE EMPTY<br><br>📊 Go to Data tab → Click 🚀 LOAD JSON<br>(No authentication required)";
         return;
-    }
-    
-    // MIGRATION: Ensure all stocks have portfolio_context with qty & avg_cost fields
-    let needsUpgrade = false;
-    MASTER.forEach(stock => {
-        if (!stock.portfolio_context) {
-            stock.portfolio_context = {};
-            needsUpgrade = true;
-        }
-        if (stock.portfolio_context.qty === undefined || stock.portfolio_context.qty === null) {
-            stock.portfolio_context.qty = 0;
-            needsUpgrade = true;
-        }
-        if (stock.portfolio_context.avg_cost === undefined || stock.portfolio_context.avg_cost === null) {
-            stock.portfolio_context.avg_cost = 0;
-            needsUpgrade = true;
-        }
-    });
-    
-    // If migration needed, save back to DB
-    if (needsUpgrade) {
-        try {
-            const writeTx = db.transaction(STORE_NAME, "readwrite");
-            MASTER.forEach(stock => {
-                writeTx.objectStore(STORE_NAME).put(stock);
-            });
-            console.log('✅ Migrated qty/avg fields for all stocks');
-        } catch(e) {
-            console.warn('Migration failed (non-critical):', e);
-        }
     }
     
     console.log('✅ Loaded ' + MASTER.length + ' stocks from IndexedDB');
