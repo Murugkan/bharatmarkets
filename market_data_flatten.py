@@ -22,7 +22,7 @@ LOGS_DIR = DATA_DIR / 'logs'
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ===== LOGGING SETUP =====
-LOG_FILE = LOGS_DIR / 'pipeline.log'
+LOG_FILE = LOGS_DIR / 'market_data_flatten.log'
 
 class Logger:
     """Write all logs to file (for GitHub workflow)"""

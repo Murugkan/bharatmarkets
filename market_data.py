@@ -54,6 +54,9 @@ INPUT_FILE = DATA_DIR / "market_data_raw.json"
 OUTPUT_FILE = DATA_DIR / "market_data.json"
 LOG_FILE = LOGS_DIR / "market_data.log"
 
+# Purge old log file
+LOG_FILE.write_text("")
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
