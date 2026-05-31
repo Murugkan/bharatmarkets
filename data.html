@@ -330,8 +330,7 @@
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
-            <button onclick="document.getElementById('ltpFileInput').click()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>UPDATE LTP<br><span style="font-size:9px; font-weight:normal;">Daily</span></button>
-            <input type="file" id="ltpFileInput" accept=".json" onchange="loadLTPJSON(this.files[0])" style="display:none;">
+            <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>UPDATE LTP<br><span style="font-size:9px; font-weight:normal;">Live</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH</button>
             <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
         </div>
@@ -458,7 +457,7 @@
         BRANCH: 'main',
         PATHS: {
             symbols: 'unified-symbols.json',
-            prices: 'prices.json',
+            ltp: 'ltp.json',
             guidance: 'guidance.json',
             macro: 'macro_data.json'
         }
@@ -468,7 +467,7 @@
     
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
-        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
+        { name: 'ltp.json', path: GITHUB_CONFIG.PATHS.ltp },
         { name: 'market_data.json', path: 'market_data.json', local: true }
     ];
 
@@ -690,7 +689,11 @@
         DATA_SOURCES.forEach((s, index) => {
             // Fetch count from GitHub/local with cache bust
             var count = '⏳ Loading...';
-            const fullUrl = s.local ? `./${s.path}` : `${RAW_GITHUB_URL}/${s.path}?cache=${Date.now()}`;
+            let fullUrl = s.local ? `./${s.path}` : `${RAW_GITHUB_URL}/${s.path}?cache=${Date.now()}`;
+            // Special case for market_data.json which is in data/ folder
+            if (s.name === 'market_data.json') {
+                fullUrl = `./data/${s.path}`;
+            }
             
             fetch(fullUrl)
                 .then(r => r.json())
@@ -843,17 +846,13 @@
                 
                 req.onsuccess = (e) => {
                     var db = e.target.result;
-                    log(`✅ loadFromIndexedDB: Opened ${DB_NAME} v${db.version}`);
                     
                     try {
                         if (!db.objectStoreNames.contains(STORE_NAME)) {
-                            log('❌ loadFromIndexedDB: Store "' + STORE_NAME + '" not found');
                             masterData = [];
                             resolve();
                             return;
                         }
-                        
-                        log('✅ loadFromIndexedDB: Store "' + STORE_NAME + '" exists');
                         
                         var transaction = db.transaction(STORE_NAME, 'readonly');
                         var store = transaction.objectStore(STORE_NAME);
@@ -866,12 +865,10 @@
                         };
                         
                         getAllReq.onerror = () => {
-                            log('❌ loadFromIndexedDB: Error reading from store');
                             masterData = [];
                             resolve();
                         };
                     } catch (e) {
-                        log('❌ loadFromIndexedDB: Exception - ' + e.message);
                         masterData = [];
                         resolve();
                     }
@@ -942,7 +939,7 @@
     function renderSymbols() {
         var html = '';
         
-        log(`🔍 renderSymbols() called - masterData.length = ${masterData.length}`);
+        // Render stock list
         
         if (!masterData || masterData.length === 0) {
             html = '<tr><td colspan="10" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
@@ -963,19 +960,13 @@
                     <td style="color:#ffff00; font-size:12px; font-weight:700; padding:8px 4px; text-align:center; min-width:60px; vertical-align:middle;">${ltp}</td>
                     <td style="color:#ffaa44; font-size:12px; font-weight:700; padding:8px 6px; text-align:center; min-width:40px; vertical-align:middle;">${serialNo}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
-                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
-                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                        </div>
+                        ${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date ? stock.derived_metrics.ai_insights_guidance.guidance.date.substring(5) : '—'}
                     </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—'}</td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date ? stock.derived_metrics.ai_insights_guidance.guidance.date : '—'}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
-                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
-                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                        </div>
+                        ${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date ? stock.derived_metrics.ai_insights_guidance.insights.date.substring(5) : '—'}
                     </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—'}</td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date ? stock.derived_metrics.ai_insights_guidance.insights.date : '—'}</td>
                     <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
                 </tr>`;
             });
@@ -2143,49 +2134,90 @@ CRITICAL RULES:
         }
     }
     
-    function loadLTPJSON(file) {
-        if (!file) return;
-        log('⚡ UPDATE LTP: Loading daily prices...');
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const json = JSON.parse(e.target.result);
-                if (!json.quotes) { log('❌ Invalid LTP JSON'); return; }
+    function updateLTPFromGitHub() {
+        log('⚡ UPDATE LTP: Fetching latest prices from GitHub...');
+        updateStatusButton('⏳ Fetching LTP');
+        
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?cache=${Date.now()}`;
+        
+        fetch(ltpUrl)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
+            .then(json => {
+                if (!json.quotes) {
+                    log('❌ Invalid LTP JSON - missing quotes');
+                    updateStatusButton('❌ Invalid Format');
+                    return;
+                }
+                
+                log(`⏳ Updating ${Object.keys(json.quotes).length} stocks...`);
+                updateStatusButton('⏳ Updating DB');
                 
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
                 request.onsuccess = function() {
                     const db = request.result;
                     const tx = db.transaction(STORE_NAME, 'readwrite');
                     const store = tx.objectStore(STORE_NAME);
-                    let count = 0;
+                    let updatedCount = 0;
                     
                     Object.entries(json.quotes).forEach(function([ticker, quote]) {
-                        const req = store.get(ticker);
-                        req.onsuccess = function() {
-                            const stock = req.result;
+                        const getReq = store.get(ticker);
+                        
+                        getReq.onsuccess = function() {
+                            const stock = getReq.result;
                             if (!stock) return;
+                            
+                            // Update price.ltp with live data
                             if (!stock.price) stock.price = {};
                             if (!stock.price.ltp) stock.price.ltp = {};
+                            
                             stock.price.ltp.ltp = quote.ltp;
                             stock.price.ltp.open = quote.open;
                             stock.price.ltp.high = quote.high;
                             stock.price.ltp.low = quote.low;
+                            stock.price.ltp.prev = quote.prev;
+                            stock.price.ltp.change = quote.change;
+                            stock.price.ltp.changePct = quote.changePct;
+                            stock.price.ltp.vol = quote.vol;
+                            stock.price.ltp.w52h = quote.w52h;
+                            stock.price.ltp.w52l = quote.w52l;
+                            stock.price.ltp.beta = quote.beta;
+                            
                             stock.ltpUpdatedAt = new Date().toISOString();
-                            store.put(stock);
-                            count++;
+                            
+                            const putReq = store.put(stock);
+                            putReq.onsuccess = function() {
+                                updatedCount++;
+                            };
                         };
                     });
                     
                     tx.oncomplete = function() {
-                        log(`✅ LTP Updated: ${count} stocks`);
+                        log(`✅ LTP Updated: ${updatedCount} stocks`);
+                        log(`📊 Updated at: ${new Date().toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata'})}`);
                         updateStatusButton('✅ LTP Updated');
+                        showToast(`Updated ${updatedCount} stocks with latest prices`, 'success');
+                    };
+                    
+                    tx.onerror = function() {
+                        log('❌ Transaction error');
+                        updateStatusButton('❌ Error');
                     };
                 };
-            } catch(err) {
-                log(`❌ Error: ${err.message}`);
-            }
-        };
-        reader.readAsText(file);
+                
+                request.onerror = function() {
+                    log('❌ Failed to open database');
+                    updateStatusButton('❌ DB Error');
+                };
+            })
+            .catch(err => {
+                log(`❌ Error fetching LTP: ${err.message}`);
+                updateStatusButton('❌ Fetch Error');
+                showToast(`Error: ${err.message}`, 'error');
+            });
     }
     
     /* ========================================================================
