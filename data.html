@@ -380,6 +380,7 @@
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left; width:100px;">NAME</th>
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
+                        <th style="color:#ffff00; font-weight:700; padding:10px 4px; text-align:center; width:60px;">LTP</th>
                         <th style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px;">S.NO</th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
                         <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
@@ -465,7 +466,7 @@
     
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
-        { name: 'ltp.json', path: GITHUB_CONFIG.PATHS.prices },
+        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
         { name: 'market_data.json', path: 'market_data.json', local: true }
     ];
 
@@ -692,23 +693,18 @@
             fetch(fullUrl)
                 .then(r => r.json())
                 .then(data => {
-                    // Handle different file formats
-                    if (s.name === 'ltp.json' && data.count !== undefined) {
-                        // For ltp.json - extract from metadata
+                    if (data.count !== undefined) {
+                        // For prices.json which has "count" field
                         count = data.count;
-                        // Also capture updated timestamp
-                        if (data.updated) {
-                            dataUpdatedTimes[s.path] = data.updated;
-                        }
-                    } else if (s.name === 'market_data.json' && data._metadata && data._metadata.total_tickers) {
-                        // For market_data.json - read from metadata
-                        count = data._metadata.total_tickers;
-                        if (data._metadata.generated_at) {
-                            dataUpdatedTimes[s.path] = data._metadata.generated_at;
-                        }
                     } else if (data.symbols && Array.isArray(data.symbols)) {
                         // For unified-symbols.json with symbols array
                         count = data.symbols.length;
+                    } else if (s.name === 'market_data.json' && typeof data === 'object' && !Array.isArray(data)) {
+                        // For market_data.json - keyed by ticker, count the keys
+                        count = Object.keys(data).length;
+                    } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
+                        // For fundamentals.json with stocks object
+                        count = Object.keys(data.stocks).length;
                     } else if (Array.isArray(data)) {
                         // If it's a direct array
                         count = data.length;
@@ -718,9 +714,6 @@
                     // Update the count in the table cell
                     var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
                     if (countCell) countCell.textContent = count;
-                    
-                    // Save updated timestamps to localStorage
-                    localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
                 })
                 .catch(e => {
                     var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
@@ -767,7 +760,7 @@
             return;
         }
         
-        let fetchType = source === 'ltp.json' ? 'prices_only' : 'fundamentals_only';
+        let fetchType = source === 'prices.json' ? 'prices_only' : 'fundamentals_only';
         log(`⏳ Triggering workflow: ${fetchType}`);
         showToast('⏳ Starting workflow...');
         
@@ -868,17 +861,6 @@
                         getAllReq.onsuccess = () => {
                             masterData = getAllReq.result || [];
                             log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
-                            
-                            // Extract concall & insights dates from stock records
-                            masterData.forEach(stock => {
-                                if (stock.ai_insights_guidance && stock.ai_insights_guidance.guidance && stock.ai_insights_guidance.guidance.date) {
-                                    concallTimestamps[stock.ticker] = stock.ai_insights_guidance.guidance.date;
-                                }
-                                if (stock.ai_insights_guidance && stock.ai_insights_guidance.insights && stock.ai_insights_guidance.insights.date) {
-                                    insightsTimestamps[stock.ticker] = stock.ai_insights_guidance.insights.date;
-                                }
-                            });
-                            
                             resolve();
                         };
                         
@@ -969,6 +951,7 @@
                 var name = stock.name || '—';
                 var qty = (stock.portfolio_context && stock.portfolio_context.qty) || 0;
                 var avg = (stock.portfolio_context && stock.portfolio_context.avg_cost) || 0;
+                var ltp = (stock.price && stock.price.ltp && stock.price.ltp.ltp) || '—';
                 var serialNo = index + 1;
 
                 html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
@@ -976,6 +959,7 @@
                     <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:100px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="color:#ffff00; font-size:12px; font-weight:700; padding:8px 4px; text-align:center; min-width:60px; vertical-align:middle;">${ltp}</td>
                     <td style="color:#ffaa44; font-size:12px; font-weight:700; padding:8px 6px; text-align:center; min-width:40px; vertical-align:middle;">${serialNo}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
                         <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
@@ -1914,20 +1898,14 @@ CRITICAL RULES:
             var ticker = input.dataset.ticker;
             var newQty = parseFloat(input.value) || 0;
             var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) {
-                if (!stock.portfolio_context) stock.portfolio_context = {};
-                stock.portfolio_context.qty = newQty;
-            }
+            if (stock) stock.qty = newQty;
         });
         
         document.querySelectorAll('.avg-input').forEach(input => {
             var ticker = input.dataset.ticker;
             var newAvg = parseFloat(input.value) || 0;
             var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) {
-                if (!stock.portfolio_context) stock.portfolio_context = {};
-                stock.portfolio_context.avg_cost = newAvg;
-            }
+            if (stock) stock.avg = newAvg;
         });
         
         // Upload to GitHub
@@ -2439,31 +2417,13 @@ CRITICAL RULES:
         return new Date().toISOString();
     }
 
-    function reloadAuto() {
-        log('🔄 REFRESH: Full DB & cache clear...');
+    async function reloadAuto() {
+        log('🔄 REFRESH: Full DB & UI clear + fresh reload...');
         updateStatusButton('⏳ Clearing...');
         try {
-            // Clear localStorage
-            localStorage.clear();
-            log('✅ Browser cache cleared');
-            
-            // Clear IndexedDB
-            const request = indexedDB.deleteDatabase(DB_NAME);
-            request.onsuccess = function() {
-                log('✅ IndexedDB deleted');
-                // Reload page to reinitialize
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-            };
-            request.onerror = function() {
-                log('❌ Failed to delete DB, reloading anyway');
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-            };
+            await loadAllData();
         } catch (e) {
-            log(`❌ Error: ${e.message}`);
+            log(`❌ Refresh failed: ${e.message}`);
             updateStatusButton('❌ Error');
         }
     }
@@ -2668,25 +2628,8 @@ CRITICAL RULES:
                         const record = stock;
                         record.ticker = ticker;
                         
-                        // Initialize portfolio_context with qty & avg_cost
-                        if (!record.portfolio_context) {
-                            record.portfolio_context = {};
-                        }
-                        
-                        // Extract qty from company_details if available
-                        if (record.company_details && record.company_details.qty !== undefined) {
-                            record.portfolio_context.qty = record.company_details.qty;
-                        } else if (record.portfolio_context.qty === undefined || record.portfolio_context.qty === null) {
-                            record.portfolio_context.qty = 0;
-                        }
-                        
-                        // Extract avg_cost from company_details if available
-                        if (record.company_details && record.company_details.avg_cost !== undefined) {
-                            record.portfolio_context.avg_cost = record.company_details.avg_cost;
-                        } else if (record.portfolio_context.avg_cost === undefined || record.portfolio_context.avg_cost === null) {
-                            record.portfolio_context.avg_cost = 0;
-                        }
-                        
+                        if (!record.qty) record.qty = 0;
+                        if (!record.avg) record.avg = 0;
                         if (!record.source) record.source = 'market_data_pipeline';
                         if (!record.userDataUpdatedAt) {
                             record.userDataUpdatedAt = new Date().toISOString();
