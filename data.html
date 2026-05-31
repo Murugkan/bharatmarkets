@@ -2683,12 +2683,22 @@ CRITICAL RULES:
                         const record = stock;
                         record.ticker = ticker;
                         
-                        // Initialize portfolio_context
+                        // Initialize portfolio_context from company_details
                         if (!record.portfolio_context) {
                             record.portfolio_context = {};
                         }
-                        record.portfolio_context.qty = record.portfolio_context.qty || 0;
-                        record.portfolio_context.avg_cost = record.portfolio_context.avg_cost || 0;
+                        // Copy from company_details if not already in portfolio_context
+                        if (!record.portfolio_context.qty && record.company_details && record.company_details.qty) {
+                            record.portfolio_context.qty = record.company_details.qty;
+                        } else {
+                            record.portfolio_context.qty = record.portfolio_context.qty || 0;
+                        }
+                        
+                        if (!record.portfolio_context.avg_cost && record.company_details && record.company_details.avg_cost) {
+                            record.portfolio_context.avg_cost = record.company_details.avg_cost;
+                        } else {
+                            record.portfolio_context.avg_cost = record.portfolio_context.avg_cost || 0;
+                        }
                         
                         if (!record.source) record.source = 'market_data_pipeline';
                         if (!record.userDataUpdatedAt) {
