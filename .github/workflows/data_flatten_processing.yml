@@ -27,8 +27,10 @@ jobs:
         run: |
           echo "Checking for required source files in /data:"
           ls -lh data/prices.json || echo "⚠ prices.json missing"
-          ls -lh data/fundamentals.json || echo "⚠ fundamentals.json missing"
+          ls -lh data/screener_raw_data.json || echo "⚠ screener_raw_data.json missing"
           ls -lh data/yahoofin_raw_data.json || echo "⚠ yahoofin_raw_data.json missing"
+          ls -lh data/screener_financials.json || echo "⚠ screener_financials.json missing"
+          ls -lh data/yahoofin_financials.json || echo "⚠ yahoofin_financials.json missing"
           ls -lh data/guidance.json || echo "⚠ guidance.json missing"
           ls -lh data/unified-symbols.json || echo "⚠ unified-symbols.json missing"
 
@@ -58,7 +60,7 @@ jobs:
         run: |
           echo "Checking flattened data..."
           ls -lh data/market_data_raw.json || echo "ERROR: market_data_raw.json not created"
-          ls -lh data/logs/pipeline.log || echo "ERROR: pipeline.log not created"
+          ls -lh data/logs/market_data_flatten.log || echo "ERROR: pipeline.log not created"
 
       - name: Configure Git
         run: |
@@ -75,9 +77,9 @@ jobs:
             echo "✗ market_data_raw.json not found"
           fi
           
-          if [ -f data/logs/pipeline.log ]; then
+          if [ -f data/logs/market_data_flatten.log ]; then
             git add -f data/logs/pipeline.log
-            echo "✓ Added pipeline.log"
+            echo "✓ Added market_data_flatten.log"
           else
             echo "⚠ pipeline.log not found"
           fi
