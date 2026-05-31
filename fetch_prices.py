@@ -23,11 +23,11 @@ try:
 except ImportError:
     raise SystemExit("pip install yfinance")
 
-SYMBOLS_FILE   = "unified-symbols.json"
-SYMBOL_MAP_FILE= "symbol_map.json"
-PRICES_FILE    = "prices.json"
-CHARTS_DIR     = Path("charts")
-CHARTS_DIR.mkdir(exist_ok=True)
+SYMBOLS_FILE   = "data/unified-symbols.json"
+SYMBOL_MAP_FILE= "data/symbol_map.json"
+PRICES_FILE    = "data/prices.json"
+CHARTS_DIR     = Path("data/charts")
+CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 
 DO_RESOLVE     = os.environ.get("RESOLVE",      "").lower() in ("true","1")
 DO_CLEAN       = os.environ.get("CLEAN_STALE",  "").lower() in ("true","1")
@@ -276,10 +276,10 @@ def fetch_ticker(sym):
     yf_sym = to_yf(sym)
     t = yf.Ticker(yf_sym)
     try:
-        hist_1m = t.history(period="1mo", interval="1d", auto_adjust=True)
+        hist_1m = t.history(period="6d", interval="1d", auto_adjust=True)
         if hist_1m is None or hist_1m.empty:
             t_bo = yf.Ticker(sym + ".BO")
-            hist_bo = t_bo.history(period="1mo", interval="1d", auto_adjust=True)
+            hist_bo = t_bo.history(period="6d", interval="1d", auto_adjust=True)
             if hist_bo is not None and not hist_bo.empty:
                 print(f"  ⚠ {sym}: falling back to BSE")
                 try:    info_bo = t_bo.info or {}
@@ -297,7 +297,7 @@ def fetch_ticker(sym):
     except Exception as e:
         print(f"  ✗ {sym}: {e}")
         return {}, None
-    try:    hist = t.history(period="5y", interval="1d", auto_adjust=True)
+    try:    hist = t.history(period="6d", interval="1d", auto_adjust=True)
     except: hist = hist_1m
     try:    info = t.info or {}
     except: info = {}
@@ -333,6 +333,8 @@ def build_quote(sym, info, hist):
 
 def build_chart(sym, hist):
     if hist is None or hist.empty: return
+    # Keep only last 6 days (market date + previous 5)
+    hist = hist.iloc[-6:] if len(hist) > 6 else hist
     bars = []
     for date, row in hist.iterrows():
         try:
@@ -412,8 +414,9 @@ def main():
             mapped_count = sum(1 for _, is_mapped in resolved_codes.values() if is_mapped)
             print(f"   ({mapped_count} tickers resolved via symbol_map/isin_map)")
         try:
+            # Fetch last 6 days (market date + previous 5 days)
             batch_hist = yf.download(
-                tickers=" ".join(yf_tickers), period="5y", interval="1d",
+                tickers=" ".join(yf_tickers), period="6d", interval="1d",
                 auto_adjust=True, group_by="ticker", progress=False, threads=True)
             print(f"  ✓ Batch done")
         except Exception as e:
