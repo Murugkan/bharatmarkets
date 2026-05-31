@@ -23,24 +23,18 @@ log_dir = Path("data/logs")
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "fetch_ltp.log"
 
+# Purge log file on startup
+log_file.write_text("")
+
+# Only log warnings and errors, not info messages
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(message)s',
+    level=logging.WARNING,
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file),
     ]
 )
 logger = logging.getLogger(__name__)
-
-# Redirect print to logger
-class LogPrinter:
-    def write(self, msg):
-        if msg.strip():
-            logger.info(msg.rstrip())
-    def flush(self):
-        pass
-
-sys.stdout = LogPrinter()
 
 SYMBOLS_FILE   = "data/unified-symbols.json"
 SYMBOL_MAP_FILE= "data/symbol_map.json"
@@ -326,8 +320,13 @@ def build_quote(sym, info, hist):
 
 
 def main():
+    # Purge old data
+    Path(LTP_FILE).write_text("")
+    
     symbols, symbols_data = load_symbols()
-    print(f"📊 BharatMarkets LTP Fetch | {now_utc().strftime('%Y-%m-%d %H:%M UTC')}")
+    start_time = now_utc()
+    
+    print(f"📊 BharatMarkets LTP Fetch | {start_time.strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"📋 {len(symbols)} symbols\n")
 
     # ── Build symbol-to-entry map for ISIN lookup ─────────────────────────
@@ -339,6 +338,7 @@ def main():
     sgb_syms = []       # SGB ISINs
     mf_syms = []        # Other ISINs (Mutual Funds)
     unknown_syms = []   # Missing ISIN
+    errors = []         # Track failed fetches
     
     for sym in symbols:
         entry = sym_to_entry.get(sym, {})
@@ -394,9 +394,8 @@ def main():
             batch_hist = yf.download(
                 tickers=" ".join(yf_tickers), period="6d", interval="1d",
                 auto_adjust=True, group_by="ticker", progress=False, threads=True)
-            print(f"  ✓ Batch done")
         except Exception as e:
-            print(f"  ✗ Batch failed: {e}")
+            logger.warning(f"Batch download failed: {e}")
             batch_hist = None
     else:
         batch_hist = None
@@ -441,16 +440,15 @@ def main():
         q = build_quote(sym, info, hist)
         if q:
             quotes[sym] = q
-            mapped_str = " (mapped)" if is_mapped else ""
-            print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
         else:
             errors.append(sym)
+            logger.warning(f"Failed to fetch {sym}")
 
     # ──────────────────────────────────────────────────────────────────────
     # FETCH: Mutual Funds (try Yahoo first, then NSE API)
     # ──────────────────────────────────────────────────────────────────────
     if mf_syms:
-        print(f"\n💰 Fetching mutual funds…")
+        print(f"💰 Fetching {len(mf_syms)} mutual funds…")
         for sym in mf_syms:
             entry = sym_to_entry.get(sym, {})
             isin = entry.get("isin", "").upper()
@@ -467,8 +465,6 @@ def main():
                     q = build_quote(sym, info, hist)
                     if q:
                         quotes[sym] = q
-                        mapped_str = " (mapped via Yahoo)" if is_mapped else " (Yahoo)"
-                        print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
             except:
                 pass
             
@@ -487,16 +483,15 @@ def main():
                         "vol": 0, "w52h": None, "w52l": None, "beta": None,
                     }
                     quotes[sym] = q
-                    print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%) (NSE API)")
                 else:
-                    print(f"  ✗ {sym}: Both Yahoo & NSE API failed → null")
+                    logger.warning(f"Failed to fetch {sym} (Yahoo & NSE API)")
                     errors.append(sym)
 
     # ──────────────────────────────────────────────────────────────────────
     # FETCH: SGBs (resolve ISIN to trading code, then fetch via Yahoo)
     # ──────────────────────────────────────────────────────────────────────
     if sgb_syms:
-        print(f"\n🏆 Fetching SGBs…")
+        print(f"🏆 Fetching {len(sgb_syms)} govt securities…")
         for sym in sgb_syms:
             entry = sym_to_entry.get(sym, {})
             isin = entry.get("isin", "").upper()
@@ -507,22 +502,19 @@ def main():
             q = build_quote(sym, info, hist)
             if q:
                 quotes[sym] = q
-                mapped_str = " (mapped)" if is_mapped else ""
-                print(f"  ✓ {sym} ({trading_code}): ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
             else:
-                print(f"  ✗ {sym}: quote build failed → null")
+                logger.warning(f"Failed to fetch {sym}")
                 errors.append(sym)
 
     # ──────────────────────────────────────────────────────────────────────
     # FETCH: Indices
     # ──────────────────────────────────────────────────────────────────────
-    print(f"\n📊 Fetching {len(index_syms)} indices…")
+    print(f"📊 Fetching {len(index_syms)} indices…")
     for sym in index_syms:
         info, hist = fetch_ticker(sym)
         q = build_quote(sym, info, hist)
         if q:
             quotes[sym] = q
-            print(f"  ✓ {sym}: {q['ltp']}")
         time.sleep(0.3)
 
     Path(LTP_FILE).write_text(
@@ -533,9 +525,19 @@ def main():
             "count": len(quotes),
             "quotes": quotes
         }, separators=(",",":")))
-    print(f"\n✓ ltp.json → {len(quotes)} quotes")
-    if errors: print(f"⚠  Failed: {', '.join(errors)}")
-    print(f"\n✅ Done {now_utc().strftime('%H:%M UTC')}\n")
+    
+    elapsed = (now_utc() - start_time).total_seconds()
+    print(f"\n{'='*50}")
+    print(f"✅ SUMMARY")
+    print(f"{'='*50}")
+    print(f"Total quotes:  {len(quotes)}")
+    print(f"Failed:        {len(errors)}")
+    if errors:
+        print(f"Failed syms:   {', '.join(errors)}")
+        logger.warning(f"Failed symbols: {', '.join(errors)}")
+    print(f"Elapsed:       {elapsed:.1f}s")
+    print(f"File:          {LTP_FILE}")
+    print(f"{'='*50}\n")
 
 if __name__ == "__main__":
     main()
