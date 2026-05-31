@@ -718,6 +718,9 @@
                     // Update the count in the table cell
                     var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
                     if (countCell) countCell.textContent = count;
+                    
+                    // Save updated timestamps to localStorage
+                    localStorage.setItem('dataUpdatedTimes', JSON.stringify(dataUpdatedTimes));
                 })
                 .catch(e => {
                     var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
@@ -865,6 +868,17 @@
                         getAllReq.onsuccess = () => {
                             masterData = getAllReq.result || [];
                             log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
+                            
+                            // Extract concall & insights dates from stock records
+                            masterData.forEach(stock => {
+                                if (stock.ai_insights_guidance && stock.ai_insights_guidance.guidance && stock.ai_insights_guidance.guidance.date) {
+                                    concallTimestamps[stock.ticker] = stock.ai_insights_guidance.guidance.date;
+                                }
+                                if (stock.ai_insights_guidance && stock.ai_insights_guidance.insights && stock.ai_insights_guidance.insights.date) {
+                                    insightsTimestamps[stock.ticker] = stock.ai_insights_guidance.insights.date;
+                                }
+                            });
+                            
                             resolve();
                         };
                         
@@ -2425,13 +2439,31 @@ CRITICAL RULES:
         return new Date().toISOString();
     }
 
-    async function reloadAuto() {
-        log('🔄 REFRESH: Full DB & UI clear + fresh reload...');
+    function reloadAuto() {
+        log('🔄 REFRESH: Full DB & cache clear...');
         updateStatusButton('⏳ Clearing...');
         try {
-            await loadAllData();
+            // Clear localStorage
+            localStorage.clear();
+            log('✅ Browser cache cleared');
+            
+            // Clear IndexedDB
+            const request = indexedDB.deleteDatabase(DB_NAME);
+            request.onsuccess = function() {
+                log('✅ IndexedDB deleted');
+                // Reload page to reinitialize
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            };
+            request.onerror = function() {
+                log('❌ Failed to delete DB, reloading anyway');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            };
         } catch (e) {
-            log(`❌ Refresh failed: ${e.message}`);
+            log(`❌ Error: ${e.message}`);
             updateStatusButton('❌ Error');
         }
     }
