@@ -341,8 +341,8 @@ FIELD_MAP = {
 
     # ── screener_fin:profit_loss  (quarterly consolidated) ───────────────────
     "screener_fin:profit_loss": {
-        "Revenue +":         ("financials", "Revenue"),
-        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
+        "Revenue +":         ("financials", "Sales"),
+        "Revenue +":        ("financials", "Sales"),  # Non-breaking space variant
         "Sales +":           ("financials", "Sales"),
         "Sales\xa0+":          ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
@@ -367,8 +367,8 @@ FIELD_MAP = {
 
     # ── screener_fin:balance_sheet  (annual consolidated P&L, 7yr) ───────────
     "screener_fin:balance_sheet": {
-        "Revenue +":          ("financials", "Revenue"),
-        "Revenue +":         ("financials", "Revenue"),  # Non-breaking space variant
+        "Revenue +":          ("financials", "Sales"),
+        "Revenue +":         ("financials", "Sales"),  # Non-breaking space variant
         "Sales +":            ("financials", "Sales"),
         "Sales\xa0+":           ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":         ("financials", "Expenses"),
@@ -425,8 +425,8 @@ FIELD_MAP = {
     # ── screener_raw:Quarterly Results  (quarterly standalone) ───────────────
     "screener_raw:Quarterly Results": {
         "Sales +":           ("financials", "Sales"),
-        "Revenue +":         ("financials", "Revenue"),
-        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
+        "Revenue +":         ("financials", "Sales"),
+        "Revenue +":        ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
@@ -447,8 +447,8 @@ FIELD_MAP = {
     # ── screener_raw:Profit & Loss  (annual standalone P&L, 12yr) ────────────
     "screener_raw:Profit & Loss": {
         "Sales +":           ("financials", "Sales"),
-        "Revenue +":         ("financials", "Revenue"),
-        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
+        "Revenue +":         ("financials", "Sales"),
+        "Revenue +":        ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
@@ -519,8 +519,8 @@ FIELD_MAP = {
     # ── screener_raw:Half Yearly Results  (half-yearly standalone) ────────────
     "screener_raw:Half Yearly Results": {
         "Sales +":           ("financials", "Sales"),
-        "Revenue +":         ("financials", "Revenue"),
-        "Revenue +":        ("financials", "Revenue"),  # Non-breaking space variant
+        "Revenue +":         ("financials", "Sales"),
+        "Revenue +":        ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
@@ -534,34 +534,12 @@ FIELD_MAP = {
         "Raw PDF":           ("__skip__", "__skip__"),
     },
 
-    # ── guidance:guidance ─────────────────────────────────────────────────────
-    "guidance:guidance": {
-        "quarter":               ("websignals", "quarter"),
-        "financial":             ("websignals", "financial"),
-        "business":              ("websignals", "business"),
-        "management":            ("websignals", "management"),
-        "summary":               ("websignals", "summary"),
-        "deals_and_pipeline":    ("websignals", "deals_and_pipeline"),
-        "customers":             ("websignals", "customers"),
-        "segments":              ("websignals", "segments"),
-        "geography":             ("websignals", "geography"),
-        "operations":            ("websignals", "operations"),
-        "capital_allocation":    ("websignals", "capital_allocation"),
-        "competitive_position":  ("websignals", "competitive_position"),
-        "investor_verdict":      ("websignals", "investor_verdict"),
-        "analyst_dimensions":    ("websignals", "analyst_dimensions"),
-        "date":                  ("websignals", "date"),
-    },
-
-    # ── guidance:insights ─────────────────────────────────────────────────────
-    "guidance:insights": {
-        "recommendation":  ("websignals", "ai_recommendation"),
-        "thesis":          ("websignals", "ai_thesis"),
-        "trigger":         ("websignals", "ai_trigger"),
-        "analysis":        ("websignals", "ai_analysis"),
-        "sector_briefing": ("websignals", "ai_sector_briefing"),
-        "date":            ("websignals", "ai_insights_date"),
-    },
+    # ── guidance:* ──────────────────────────────────────────────────────────────
+    # NOTE: guidance.json is loaded separately in main() and added directly to
+    # derived_metrics.ai_insights_guidance. Do NOT map guidance fields through FIELD_MAP.
+    # Keeping entries commented for reference only:
+    # "guidance:guidance": { ... guidance fields ... },
+    # "guidance:insights": { ... insight fields ... },
 
     # ── yahoofin_raw:history_*  (OHLCV) ──────────────────────────────────────
     # handled separately via __history__ logic below
@@ -650,6 +628,10 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
     B = {b: {} for b in ALL_BUCKETS}
 
     for sec_key, records in sections.items():
+        # ── SKIP guidance sections (loaded separately from guidance.json) ──────
+        if sec_key in ("guidance:guidance", "guidance:insights"):
+            continue
+        
         sec_map = FIELD_MAP.get(sec_key)
 
         # ── section not in FIELD_MAP at all → entire section goes to _unmapped
@@ -954,6 +936,40 @@ def detect_granularity_from_dates(periods_dict):
     return 'monthly'  # Default
 
 
+def clean_websignals(bucketed: dict) -> dict:
+    """
+    Clean websignals:
+    - Remove empty/null values
+    - Remove dicts with all empty values
+    """
+    if "websignals" not in bucketed:
+        return bucketed
+    
+    ws = bucketed["websignals"]
+    cleaned = {}
+    
+    for key, val in ws.items():
+        # Skip None/null
+        if val is None:
+            continue
+        
+        # Skip empty strings
+        if isinstance(val, str) and val.strip() == "":
+            continue
+        
+        # Skip dicts with only empty values
+        if isinstance(val, dict):
+            # Remove empty values from dict
+            cleaned_dict = {k: v for k, v in val.items() if v != "" and v is not None}
+            if cleaned_dict:  # Only keep dict if it has non-empty values
+                cleaned[key] = cleaned_dict
+        else:
+            cleaned[key] = val
+    
+    bucketed["websignals"] = cleaned
+    return bucketed
+
+
 def clean_metadata_wrapper(bucketed: dict) -> dict:
     """
     Remove _periods, _source, _granule, _consolidation metadata from all buckets.
@@ -1092,6 +1108,34 @@ def reorganize_by_period(bucketed: dict) -> dict:
             metrics_by_name[metric_key] = metric_value
     
     bucketed["financials"] = metrics_by_name
+    return bucketed
+
+
+def reorganize_ratios_revenue(bucketed: dict) -> dict:
+    """
+    Group revenue-related metrics under 'revenue' sub-object in ratios.
+    Remove originals to avoid scattering.
+    """
+    if "ratios" not in bucketed:
+        return bucketed
+    
+    ratios = bucketed["ratios"]
+    
+    revenue_keys = {
+        'total_revenue', 'revenue_per_share', 'revenue_growth'
+    }
+    
+    # Extract revenue metrics (using pop to remove originals)
+    revenue_obj = {}
+    for key in revenue_keys:
+        if key in ratios:
+            revenue_obj[key] = ratios.pop(key)
+    
+    # Add revenue object back if it has data
+    if revenue_obj:
+        ratios['revenue'] = revenue_obj
+    
+    bucketed["ratios"] = ratios
     return bucketed
 
 
@@ -1359,34 +1403,26 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
 
 def reorganize_derived_metrics_guidance(bucketed: dict) -> dict:
     """
-    Move guidance fields from websignals into derived_metrics as 'management_guidance' sub-group.
-    Remove from websignals to avoid duplication.
+    Remove guidance fields from websignals (they're duplicated in ai_insights_guidance).
+    Keep only ai_insights_guidance which comes from guidance.json.
     """
     if "websignals" not in bucketed or "derived_metrics" not in bucketed:
         return bucketed
     
     websignals = bucketed["websignals"]
-    derived_metrics = bucketed["derived_metrics"]
     
-    # Guidance-related keys (management guidance from websignals)
+    # Guidance-related keys to REMOVE (they're duplicated in ai_insights_guidance)
     guidance_keys = {
         'quarter', 'financial', 'business', 'management', 'summary', 'deals_and_pipeline',
         'customers', 'segments', 'geography', 'operations', 'capital_allocation',
         'competitive_position', 'investor_verdict', 'analyst_dimensions', 'date'
     }
     
-    # Extract guidance data (using pop to remove from websignals)
-    guidance_obj = {}
+    # Remove guidance keys from websignals (using pop)
     for key in guidance_keys:
-        if key in websignals:
-            guidance_obj[key] = websignals.pop(key)
-    
-    # Add as management_guidance to derived_metrics (not "guidance" to avoid conflict with ai_insights_guidance.guidance)
-    if guidance_obj:
-        derived_metrics['management_guidance'] = guidance_obj
+        websignals.pop(key, None)
     
     bucketed["websignals"] = websignals
-    bucketed["derived_metrics"] = derived_metrics
     return bucketed
 
 
@@ -1526,19 +1562,27 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
     if pattern_obj:
         shareholding_obj['pattern'] = pattern_obj
     
-    # Dividends & Splits sub-group
+    # Dividends sub-group
     dividend_obj = {}
     dividend_keys = {
         'dividend_rate', 'dividend_yield', 'ex_dividend_date', 'payout_ratio',
         'trailing_annual_dividend_rate', 'trailing_annual_dividend_yield',
-        'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield',
-        'last_split_date', 'last_split_factor'
+        'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield'
     }
     for key in dividend_keys:
         if key in identity:
-            dividend_obj[key] = identity[key]
+            dividend_obj[key] = identity.pop(key)  # Remove from identity
     if dividend_obj:
         shareholding_obj['dividends'] = dividend_obj
+    
+    # Stock Splits sub-group
+    split_obj = {}
+    split_keys = {'last_split_date', 'last_split_factor'}
+    for key in split_keys:
+        if key in identity:
+            split_obj[key] = identity.pop(key)  # Remove from identity
+    if split_obj:
+        shareholding_obj['stock_splits'] = split_obj
     
     # Add shareholding object back to identity
     if shareholding_obj:
@@ -1801,8 +1845,10 @@ def main():
         sections = raw[symbol].get("data", {})
         bucketed = bucket_symbol(symbol, sections)
         bucketed = reorganize_by_period(bucketed)  # Separate by period type
+        bucketed = clean_websignals(bucketed)  # Remove empty values from websignals
         bucketed = clean_metadata_wrapper(bucketed)  # Remove _periods and _source
         bucketed = reorganize_financials_debt(bucketed)  # Group debt metrics
+        bucketed = reorganize_ratios_revenue(bucketed)  # Group revenue metrics in ratios
         bucketed = reorganize_valuation_eps_pe(bucketed)  # Group EPS & P/E in valuation
         bucketed = reorganize_price_52w_volume(bucketed)  # Group 52-week & volume in price
         bucketed = reorganize_identity_shareholding(bucketed)  # Group shareholding under company_details
@@ -1849,8 +1895,8 @@ def main():
             ],
             "buckets": {
                 "company_details": {
-                    "sub_sections": ["promoters", "fiis", "diis", "government", "public", "shareholding", "dividends"],
-                    "description": "Company profile, ownership, shareholding pattern, dividends, splits"
+                    "sub_sections": ["promoters", "fiis", "diis", "government", "public", "shareholding { pattern, shares, ownership, fiscal_dates, dividends, stock_splits }"],
+                    "description": "Company profile, ownership, shareholding pattern, dividends, stock splits"
                 },
                 "financials": {
                     "sub_sections": ["Sales", "Revenue", "Expenses", "Operating_Profit", "Net_Profit", "Free_Cash_Flow", "Total_Debt", "Equity_Capital", "..."],
@@ -1877,8 +1923,8 @@ def main():
                     "description": "Key performance indicators from screener_raw:Insights - varies by company"
                 },
                 "derived_metrics": {
-                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "management_guidance { 15 fields }", "ai_insights_guidance { guidance + insights }"],
-                    "description": "Computed metrics with sector weightage, management guidance, AI insights"
+                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "ai_insights_guidance { guidance + insights }"],
+                    "description": "Computed metrics with sector weightage and AI insights"
                 },
                 "_unmapped": {
                     "sub_sections": [],
@@ -1887,8 +1933,7 @@ def main():
             },
             "derived_metrics_structure": {
                 "calculated_metrics": "Sector-weighted financial scores (fundamental, technical, valuation, sentiment, composite) with rating",
-                "management_guidance": "Management guidance on 15 topics (only for tickers with websignals guidance data)",
-                "ai_insights_guidance": "AI-extracted guidance + insights (only for 29 tickers in guidance.json)"
+                "ai_insights_guidance": "AI-extracted guidance (15 topics) + insights (only for 29 tickers in guidance.json)"
             },
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
             "unmapped_tickers": list(unmapped_summary.keys()),
