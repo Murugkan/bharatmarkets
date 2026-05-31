@@ -191,6 +191,21 @@ const resolve = (obj, field) => {
     if (!obj || typeof obj !== 'object') return '—';
     if (!field || typeof field !== 'string') return '—';
     
+    // Helper: extract latest value from time-series object (dated keys)
+    const getLatestValue = (timeSeriesObj) => {
+        if (!timeSeriesObj || typeof timeSeriesObj !== 'object') return undefined;
+        const dates = Object.keys(timeSeriesObj).sort().reverse();
+        if (dates.length > 0) {
+            const val = timeSeriesObj[dates[0]];
+            // Extract percentage or numeric value
+            if (typeof val === 'string') {
+                return parseFloat(val.replace('%', '')) || val;
+            }
+            return val;
+        }
+        return undefined;
+    };
+    
     const f = field.toUpperCase();
     const mappings = { 
         'SYM':['ticker','SYM','SYMBOL','TICKER'], 
@@ -210,6 +225,8 @@ const resolve = (obj, field) => {
         'W52L':['price.fifty_two_week_low','w52l','W52L','52WL'],
         '1D_GAIN':['price.regular_market_change','1dGain','1D_GAIN'],
         '1DCH':['price.regular_market_change_pct','1DCH','1D_CHANGE'],
+        'QTY':['portfolio_context.qty','company_details.qty','qty','QTY'],
+        'AVG':['portfolio_context.avg_cost','company_details.avg_cost','avg','AVG'],
         'PE':['valuation.pe.trailing_pe','valuation.trailing_pe','pe','PE'],
         'PB':['valuation.book_value','pb','PB'],
         'EPS':['valuation.eps.basic_eps','valuation.eps.trailing_eps','eps','EPS'],
@@ -233,17 +250,54 @@ const resolve = (obj, field) => {
         'INVESTED':['invested','INVESTED'],
         'PNL':['pnl','PNL','P/L'],
         'PNL%':['pnlPct','PNL%','PNL_PCT'],
-        'CAPEX':['financials.Capital_Expenditure','capex','CAPEX'],
-        'FCF':['financials.Free_Cash_Flow','fcf','FCF'],
+        'CAPEX':['financials.Depreciation','financials.Capital_Expenditure','capex','CAPEX'],
+        'FCF':['financials.Free_Cash_Flow','financials.freeCashFlow','fcf','FCF'],
         'DIV_YIELD':['ratios.dividend_yield','dividend_yield','DIV_YIELD'],
         'DEBT_EQ':['ratios.debt_to_equity','debt_eq','DEBT_EQ'],
         'INT_COV':['ratios.interest_coverage','int_cov','INT_COV'],
         'P/S':['valuation.price_to_sales','ps','P/S'],
         'EV/EBITDA':['valuation.ev_to_ebitda','ev_ebitda','EV/EBITDA'],
         'TAX_RATE':['financials.Tax_pct','tax_rate','TAX_RATE'],
+        'CFO':['financials.Operating_Profit','financials.Operating_Cash_Flow','cfo','CFO'],
     };
     const targets = mappings[f] || [f];
     for (let t of targets) {
+        // Special handling for time-series fields with dated keys
+        if (f === 'ROE%' && obj.ratios && obj.ratios.ROE_pct && typeof obj.ratios.ROE_pct === 'object') {
+            const val = getLatestValue(obj.ratios.ROE_pct);
+            if (val !== undefined) return val;
+        }
+        if (f === 'DII%' && obj.company_details && obj.company_details.diis && typeof obj.company_details.diis === 'object') {
+            const val = getLatestValue(obj.company_details.diis);
+            if (val !== undefined) return val;
+        }
+        if (f === 'FII%' && obj.company_details && obj.company_details.fiis && typeof obj.company_details.fiis === 'object') {
+            const val = getLatestValue(obj.company_details.fiis);
+            if (val !== undefined) return val;
+        }
+        
+        // Handle nested financial/ratio objects with consolidated/annual structure
+        if ((f === 'SALES' || f === 'CFO' || f === 'FCF' || f === 'TAX_RATE') && obj.financials) {
+            let finKey = null;
+            if (f === 'SALES') finKey = 'Sales';
+            else if (f === 'CFO') finKey = 'Operating_Profit'; // or Operating_Cash_Flow
+            else if (f === 'FCF') finKey = 'Free_Cash_Flow';
+            else if (f === 'TAX_RATE') finKey = 'Tax_pct';
+            
+            if (finKey && obj.financials[finKey]) {
+                const finData = obj.financials[finKey];
+                if (typeof finData === 'object' && finData.consolidated && finData.consolidated.annual) {
+                    const val = getLatestValue(finData.consolidated.annual);
+                    if (val !== undefined) return val;
+                } else if (typeof finData === 'object' && finData.annual) {
+                    const val = getLatestValue(finData.annual);
+                    if (val !== undefined) return val;
+                } else if (typeof finData === 'number' || typeof finData === 'string') {
+                    return finData;
+                }
+            }
+        }
+        
         // Handle nested paths like "price_trading.ltp.ltp"
         if (t.includes('.')) {
             const parts = t.split('.');
