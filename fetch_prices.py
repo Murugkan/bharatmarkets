@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-BharatMarkets Pro — Price & Chart Fetcher
+BharatMarkets Pro — Price Fetcher
 Reads:  unified-symbols.json  (source of truth)
         symbol_map.json (shared exchange overrides + delisted list)
-Writes: prices.json, charts/*.json
+Writes: prices.json
         unified-symbols.json (resolved sym+yf written back when RESOLVE=true)
 
-Daily metrics only (intraday/daily updates):
+Daily metrics (last 6 days: current market date + previous 5):
 - ltp, change, changePct, open, high, low, prev, vol
 - w52h, w52l, beta
 
@@ -26,8 +26,6 @@ except ImportError:
 SYMBOLS_FILE   = "data/unified-symbols.json"
 SYMBOL_MAP_FILE= "data/symbol_map.json"
 PRICES_FILE    = "data/prices.json"
-CHARTS_DIR     = Path("data/charts")
-CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 
 DO_RESOLVE     = os.environ.get("RESOLVE",      "").lower() in ("true","1")
 DO_CLEAN       = os.environ.get("CLEAN_STALE",  "").lower() in ("true","1")
@@ -331,22 +329,6 @@ def build_quote(sym, info, hist):
         "beta": safe(info.get("beta")),
     }
 
-def build_chart(sym, hist):
-    if hist is None or hist.empty: return
-    # Keep only last 6 days (market date + previous 5)
-    hist = hist.iloc[-6:] if len(hist) > 6 else hist
-    bars = []
-    for date, row in hist.iterrows():
-        try:
-            bars.append({"d":str(date.date()),
-                "o":round(float(row["Open"]),2),"h":round(float(row["High"]),2),
-                "l":round(float(row["Low"]),2), "c":round(float(row["Close"]),2),
-                "v":int(row.get("Volume",0))})
-        except: continue
-    if bars:
-        (CHARTS_DIR / f"{sym}.json").write_text(
-            json.dumps({"sym":sym,"bars":bars}, separators=(",",":")))
-        print(f"  ✓ chart: {len(bars)} bars")
 
 def main():
     symbols, symbols_data = load_symbols()
@@ -469,8 +451,6 @@ def main():
             print(f"  ✓ {sym}: ₹{q['ltp']} ({q['changePct']:+.2f}%){mapped_str}")
         else:
             errors.append(sym)
-        if hist is not None and not hist.empty:
-            build_chart(sym, hist)
 
     # ──────────────────────────────────────────────────────────────────────
     # FETCH: Mutual Funds (try Yahoo first, then NSE API)
@@ -549,8 +529,6 @@ def main():
         if q:
             quotes[sym] = q
             print(f"  ✓ {sym}: {q['ltp']}")
-        if hist is not None and not hist.empty:
-            build_chart(sym, hist)
         time.sleep(0.3)
 
     # CLEAN: wipe everything not in current symbols.json
@@ -559,9 +537,7 @@ def main():
         removed = [s for s in list(quotes) if s not in active]
         for s in removed:
             del quotes[s]
-            cf = CHARTS_DIR / f"{s}.json"
-            if cf.exists(): cf.unlink()
-        if removed: print(f"  🗑 cleaned prices+charts: {', '.join(removed)}")
+        if removed: print(f"  🗑 cleaned prices: {', '.join(removed)}")
         else:       print(f"  ✓ prices already clean")
 
     Path(PRICES_FILE).write_text(
