@@ -330,7 +330,9 @@
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; title='Complete DB & UI wipe & rebuild';"><span style="font-size:12px;">🔄</span>REFRESH</button>
+            <button onclick="document.getElementById('ltpFileInput').click()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>UPDATE LTP<br><span style="font-size:9px; font-weight:normal;">Daily</span></button>
+            <input type="file" id="ltpFileInput" accept=".json" onchange="loadLTPJSON(this.files[0])" style="display:none;">
+            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH</button>
             <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
         </div>
 
@@ -699,9 +701,8 @@
                     } else if (data.symbols && Array.isArray(data.symbols)) {
                         // For unified-symbols.json with symbols array
                         count = data.symbols.length;
-                    } else if (s.name === 'market_data.json' && typeof data === 'object' && !Array.isArray(data)) {
-                        // For market_data.json - keyed by ticker, count the keys
-                        count = Object.keys(data).length;
+                    } else if (s.name === 'market_data.json' && data._metadata) {
+                        count = data._metadata.total_tickers;
                     } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
                         // For fundamentals.json with stocks object
                         count = Object.keys(data.stocks).length;
@@ -2142,6 +2143,51 @@ CRITICAL RULES:
         }
     }
     
+    function loadLTPJSON(file) {
+        if (!file) return;
+        log('⚡ UPDATE LTP: Loading daily prices...');
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                if (!json.quotes) { log('❌ Invalid LTP JSON'); return; }
+                
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onsuccess = function() {
+                    const db = request.result;
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(STORE_NAME);
+                    let count = 0;
+                    
+                    Object.entries(json.quotes).forEach(function([ticker, quote]) {
+                        const req = store.get(ticker);
+                        req.onsuccess = function() {
+                            const stock = req.result;
+                            if (!stock) return;
+                            if (!stock.price) stock.price = {};
+                            if (!stock.price.ltp) stock.price.ltp = {};
+                            stock.price.ltp.ltp = quote.ltp;
+                            stock.price.ltp.open = quote.open;
+                            stock.price.ltp.high = quote.high;
+                            stock.price.ltp.low = quote.low;
+                            stock.ltpUpdatedAt = new Date().toISOString();
+                            store.put(stock);
+                            count++;
+                        };
+                    });
+                    
+                    tx.oncomplete = function() {
+                        log(`✅ LTP Updated: ${count} stocks`);
+                        updateStatusButton('✅ LTP Updated');
+                    };
+                };
+            } catch(err) {
+                log(`❌ Error: ${err.message}`);
+            }
+        };
+        reader.readAsText(file);
+    }
+    
     /* ========================================================================
        OLD GITHUB LOADING FLOW - NO LONGER USED
        market_data.json now contains everything (prices, fundamentals, guidance)
@@ -2417,14 +2463,23 @@ CRITICAL RULES:
         return new Date().toISOString();
     }
 
-    async function reloadAuto() {
-        log('🔄 REFRESH: Full DB & UI clear + fresh reload...');
+    function reloadAuto() {
+        log('🔄 REFRESH: Clearing cache and database...');
         updateStatusButton('⏳ Clearing...');
         try {
-            await loadAllData();
+            localStorage.clear();
+            log('✅ Cache cleared');
+            const req = indexedDB.deleteDatabase(DB_NAME);
+            req.onsuccess = function() {
+                log('✅ Database cleared');
+                setTimeout(() => window.location.reload(), 500);
+            };
+            req.onerror = function() {
+                log('⚠️ DB error, reloading anyway');
+                setTimeout(() => window.location.reload(), 500);
+            };
         } catch (e) {
-            log(`❌ Refresh failed: ${e.message}`);
-            updateStatusButton('❌ Error');
+            log(`❌ Error: ${e.message}`);
         }
     }
         
@@ -2628,8 +2683,13 @@ CRITICAL RULES:
                         const record = stock;
                         record.ticker = ticker;
                         
-                        if (!record.qty) record.qty = 0;
-                        if (!record.avg) record.avg = 0;
+                        // Initialize portfolio_context
+                        if (!record.portfolio_context) {
+                            record.portfolio_context = {};
+                        }
+                        record.portfolio_context.qty = record.portfolio_context.qty || 0;
+                        record.portfolio_context.avg_cost = record.portfolio_context.avg_cost || 0;
+                        
                         if (!record.source) record.source = 'market_data_pipeline';
                         if (!record.userDataUpdatedAt) {
                             record.userDataUpdatedAt = new Date().toISOString();
