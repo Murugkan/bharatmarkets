@@ -2625,14 +2625,22 @@ CRITICAL RULES:
                         const record = stock;
                         record.ticker = ticker;
                         
-                        // Initialize portfolio context with qty & avg_cost
+                        // Extract portfolio_context from company_details or initialize
                         if (!record.portfolio_context) {
                             record.portfolio_context = {};
                         }
-                        if (record.portfolio_context.qty === undefined || record.portfolio_context.qty === null) {
+                        
+                        // Sync qty from company_details.qty if exists
+                        if (record.company_details && record.company_details.qty !== undefined) {
+                            record.portfolio_context.qty = record.company_details.qty;
+                        } else if (record.portfolio_context.qty === undefined || record.portfolio_context.qty === null) {
                             record.portfolio_context.qty = 0;
                         }
-                        if (record.portfolio_context.avg_cost === undefined || record.portfolio_context.avg_cost === null) {
+                        
+                        // Sync avg_cost from company_details.avg_cost if exists
+                        if (record.company_details && record.company_details.avg_cost !== undefined) {
+                            record.portfolio_context.avg_cost = record.company_details.avg_cost;
+                        } else if (record.portfolio_context.avg_cost === undefined || record.portfolio_context.avg_cost === null) {
                             record.portfolio_context.avg_cost = 0;
                         }
                         if (!record.source) record.source = 'market_data_pipeline';
