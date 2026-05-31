@@ -329,7 +329,7 @@
         
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
-            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON<br><span id="statusBadge" style="font-size:9px; font-weight:normal;">✅ Ready</span></button>
+            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON</button>
             <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>UPDATE LTP<br><span style="font-size:9px; font-weight:normal;">Live</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH</button>
             <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
@@ -602,33 +602,32 @@
 
     function updateStatusButton(statusText) {
         const btn = document.getElementById('loadJsonBtn');
-        const badge = document.getElementById('statusBadge');
         
-        // Safe: Only update if elements exist (data.html page)
-        if (btn && badge) {
-            badge.textContent = statusText;
-            
-            // Update button styling based on status
-            if (statusText.includes('Ready')) {
-                btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
-                btn.style.color = '#000';
-                btn.disabled = false;
-            } else if (statusText.includes('Loading') || statusText.includes('Clearing')) {
-                btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
-                btn.style.color = '#000';
-                btn.disabled = true;
-            } else if (statusText.includes('Error') || statusText.includes('Failed')) {
-                btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
-                btn.style.color = '#fff';
-                btn.disabled = false;
-            } else {
-                btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
-                btn.style.color = '#000';
-                btn.disabled = false;
-            }
+        if (!btn) return;
+        
+        // Update button styling based on status
+        if (statusText.includes('✅') || statusText.includes('Loaded')) {
+            btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
+            btn.style.color = '#000';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        } else if (statusText.includes('⏳') || statusText.includes('Loading') || statusText.includes('Clearing') || statusText.includes('Saving') || statusText.includes('Updating') || statusText.includes('Fetching')) {
+            btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
+            btn.style.color = '#000';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+        } else if (statusText.includes('❌') || statusText.includes('Error') || statusText.includes('Failed')) {
+            btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
+            btn.style.color = '#fff';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        } else {
+            btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
+            btn.style.color = '#000';
+            btn.style.opacity = '1';
         }
         
-        // Always log
+        // Always log status
         log(statusText);
     }
     
@@ -939,8 +938,6 @@
     function renderSymbols() {
         var html = '';
         
-        // Render stock list
-        
         if (!masterData || masterData.length === 0) {
             html = '<tr><td colspan="10" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
         } else {
@@ -949,24 +946,30 @@
                 var name = stock.name || '—';
                 var qty = (stock.portfolio_context && stock.portfolio_context.qty) || 0;
                 var avg = (stock.portfolio_context && stock.portfolio_context.avg_cost) || 0;
-                var ltp = (stock.price && stock.price.ltp && stock.price.ltp.ltp) || '—';
                 var serialNo = index + 1;
+                var concallDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date) ? stock.derived_metrics.ai_insights_guidance.guidance.date : (concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—');
+                var insightsDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date) ? stock.derived_metrics.ai_insights_guidance.insights.date : (insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—');
 
                 html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
                     <td class="sticky" style="font-weight:700; color:#00ffff; font-size:14px; padding:8px 8px; min-width:90px; vertical-align:middle;">${ticker}</td>
                     <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:100px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
                     <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
-                    <td style="color:#ffff00; font-size:12px; font-weight:700; padding:8px 4px; text-align:center; min-width:60px; vertical-align:middle;">${ltp}</td>
                     <td style="color:#ffaa44; font-size:12px; font-weight:700; padding:8px 6px; text-align:center; min-width:40px; vertical-align:middle;">${serialNo}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        ${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date ? stock.derived_metrics.ai_insights_guidance.guidance.date.substring(5) : '—'}
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
+                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
+                        </div>
                     </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date ? stock.derived_metrics.ai_insights_guidance.guidance.date : '—'}</td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${concallDate}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
-                        ${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date ? stock.derived_metrics.ai_insights_guidance.insights.date.substring(5) : '—'}
+                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
+                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
+                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
+                        </div>
                     </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date ? stock.derived_metrics.ai_insights_guidance.insights.date : '—'}</td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${insightsDate}</td>
                     <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
                 </tr>`;
             });
@@ -2162,36 +2165,41 @@ CRITICAL RULES:
                     const tx = db.transaction(STORE_NAME, 'readwrite');
                     const store = tx.objectStore(STORE_NAME);
                     let updatedCount = 0;
+                    let processedCount = 0;
+                    const totalQuotes = Object.keys(json.quotes).length;
                     
                     Object.entries(json.quotes).forEach(function([ticker, quote]) {
                         const getReq = store.get(ticker);
                         
                         getReq.onsuccess = function() {
                             const stock = getReq.result;
-                            if (!stock) return;
-                            
-                            // Update price.ltp with live data
-                            if (!stock.price) stock.price = {};
-                            if (!stock.price.ltp) stock.price.ltp = {};
-                            
-                            stock.price.ltp.ltp = quote.ltp;
-                            stock.price.ltp.open = quote.open;
-                            stock.price.ltp.high = quote.high;
-                            stock.price.ltp.low = quote.low;
-                            stock.price.ltp.prev = quote.prev;
-                            stock.price.ltp.change = quote.change;
-                            stock.price.ltp.changePct = quote.changePct;
-                            stock.price.ltp.vol = quote.vol;
-                            stock.price.ltp.w52h = quote.w52h;
-                            stock.price.ltp.w52l = quote.w52l;
-                            stock.price.ltp.beta = quote.beta;
-                            
-                            stock.ltpUpdatedAt = new Date().toISOString();
-                            
-                            const putReq = store.put(stock);
-                            putReq.onsuccess = function() {
-                                updatedCount++;
-                            };
+                            if (stock) {
+                                // Update price.ltp with live data
+                                if (!stock.price) stock.price = {};
+                                if (!stock.price.ltp) stock.price.ltp = {};
+                                
+                                stock.price.ltp.ltp = quote.ltp;
+                                stock.price.ltp.open = quote.open;
+                                stock.price.ltp.high = quote.high;
+                                stock.price.ltp.low = quote.low;
+                                stock.price.ltp.prev = quote.prev;
+                                stock.price.ltp.change = quote.change;
+                                stock.price.ltp.changePct = quote.changePct;
+                                stock.price.ltp.vol = quote.vol;
+                                stock.price.ltp.w52h = quote.w52h;
+                                stock.price.ltp.w52l = quote.w52l;
+                                stock.price.ltp.beta = quote.beta;
+                                
+                                stock.ltpUpdatedAt = new Date().toISOString();
+                                
+                                const putReq = store.put(stock);
+                                putReq.onsuccess = function() {
+                                    updatedCount++;
+                                    processedCount++;
+                                };
+                            } else {
+                                processedCount++;
+                            }
                         };
                     });
                     
@@ -2217,6 +2225,72 @@ CRITICAL RULES:
                 log(`❌ Error fetching LTP: ${err.message}`);
                 updateStatusButton('❌ Fetch Error');
                 showToast(`Error: ${err.message}`, 'error');
+            });
+    }
+    
+    function fetchAndMergeLTP(db) {
+        log('⚡ Fetching ltp.json from GitHub...');
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?cache=${Date.now()}`;
+        
+        fetch(ltpUrl)
+            .then(r => {
+                if (!r.ok) throw new Error(`ltp.json fetch failed: HTTP ${r.status}`);
+                return r.json();
+            })
+            .then(json => {
+                if (!json.quotes) {
+                    log('⚠️ ltp.json not available or invalid, skipping LTP merge');
+                    updateStatusButton('✅ Loaded (no LTP)');
+                    return;
+                }
+                
+                log(`⏳ Merging ${Object.keys(json.quotes).length} LTP quotes...`);
+                
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const getAllReq = store.getAll();
+                
+                getAllReq.onsuccess = function() {
+                    const stocks = getAllReq.result;
+                    let mergedCount = 0;
+                    
+                    stocks.forEach(function(stock) {
+                        const ticker = stock.ticker;
+                        const quote = json.quotes[ticker];
+                        
+                        if (quote) {
+                            if (!stock.price) stock.price = {};
+                            if (!stock.price.ltp) stock.price.ltp = {};
+                            
+                            stock.price.ltp.ltp = quote.ltp;
+                            stock.price.ltp.open = quote.open;
+                            stock.price.ltp.high = quote.high;
+                            stock.price.ltp.low = quote.low;
+                            stock.price.ltp.prev = quote.prev;
+                            stock.price.ltp.change = quote.change;
+                            stock.price.ltp.changePct = quote.changePct;
+                            stock.price.ltp.vol = quote.vol;
+                            stock.price.ltp.w52h = quote.w52h;
+                            stock.price.ltp.w52l = quote.w52l;
+                            stock.price.ltp.beta = quote.beta;
+                            stock.ltpUpdatedAt = new Date().toISOString();
+                            
+                            store.put(stock);
+                            mergedCount++;
+                        }
+                    });
+                    
+                    tx.oncomplete = function() {
+                        log(`✅ LTP merged for ${mergedCount} stocks`);
+                        updateStatusButton('✅ Loaded');
+                        renderSymbols();
+                    };
+                };
+            })
+            .catch(err => {
+                log(`⚠️ Could not fetch ltp.json: ${err.message}`);
+                updateStatusButton('✅ Loaded (no LTP)');
+                renderSymbols();
             });
     }
     
@@ -2777,9 +2851,9 @@ CRITICAL RULES:
                         
                         updateStatusButton('✅ Loaded (' + savedCount + ')');
                         
-                        // Now fetch and merge prices.json
-                        log('📡 Fetching prices.json for real-time data...');
-                        fetchAndMergePrices(db);
+                        // Now fetch and merge ltp.json (latest prices)
+                        log('⚡ Fetching ltp.json for latest prices...');
+                        fetchAndMergeLTP(db);
                     };
                     
                     tx.onerror = function(err) {
