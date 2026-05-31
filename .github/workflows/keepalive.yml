@@ -1,9 +1,19 @@
-name: Keep Alive
+name: Keep Alive & Rebuild Pages
 
 on:
   schedule:
     - cron: '0 0 * * 0'   # every Sunday midnight UTC
   workflow_dispatch:
+  push:
+    paths:
+      - '*.py'
+      - '*.js'
+      - '*.html'
+      - '*.json'
+      - '*.csv'
+      - 'data/**'
+    branches:
+      - main
 
 jobs:
   keepalive:
@@ -19,3 +29,30 @@ jobs:
           git add .keepalive
           git commit -m "chore: keepalive [skip pages]" || echo "Nothing to commit"
           git push || echo "Nothing to push"
+
+  rebuild-pages:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build site
+        run: |
+          echo "Building GitHub Pages..."
+          echo "✓ Files ready for deployment"
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+
