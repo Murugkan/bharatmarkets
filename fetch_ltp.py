@@ -327,8 +327,7 @@ def build_quote(sym, info, hist):
 
 def main():
     symbols, symbols_data = load_symbols()
-    print(f"📊 BharatMarkets Price Fetch | {now_utc().strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"   RESOLVE={DO_RESOLVE} CLEAN_STALE={DO_CLEAN}")
+    print(f"📊 BharatMarkets LTP Fetch | {now_utc().strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"📋 {len(symbols)} symbols\n")
 
     # ── Build symbol-to-entry map for ISIN lookup ─────────────────────────
