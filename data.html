@@ -2750,37 +2750,12 @@ CRITICAL RULES:
                         const record = stock;
                         record.ticker = ticker;
                         
-                        // Standardize fields - flatten nested JSON into top-level fields
-                        record.qty = record.company_details?.qty || 0;
-                        record.avg = record.company_details?.avg_cost || 0;
-                        record.ltp = record.price?.ltp?.ltp || record.price?.current_price || 0;
-                        record.change = record.price?.ltp?.change || 0;
-                        record.changePct = record.price?.ltp?.changePct || 0;
-                        record.open = record.price?.ltp?.open || 0;
-                        record.high = record.price?.ltp?.high || record.price?.regular_market_day_high || 0;
-                        record.low = record.price?.ltp?.low || record.price?.regular_market_day_low || 0;
-                        record.w52h = record.price?.['52_week']?.fifty_two_week_high || 0;
-                        record.w52l = record.price?.['52_week']?.fifty_two_week_low || 0;
-                        record.w52change = record.price?.['52_week']?.fifty_two_week_change_pct || 0;
-                        record.pe = record.valuation?.pe?.trailing_pe || 0;
-                        record.eps = record.valuation?.eps?.basic_eps || 0;
-                        record.bv = record.valuation?.book_value || 0;
-                        record.mcap = record.valuation?.market_cap || 0;
-                        record.sector = record.company_details?.industry || record.company_details?.sector || '';
-                        record.name = record.company_details?.long_name || '';
-                        record.roe = record.ratios?.ROE_pct || {};
-                        record.npm = record.ratios?.profit_margins || {};
-                        record.opm = record.ratios?.operating_margins || {};
-                        record.roce = record.ratios?.ROCE_pct || {};
-                        record.fii = record.company_details?.fiis || {};
-                        record.dii = record.company_details?.diis || {};
-                        
                         if (!record.source) record.source = 'market_data_pipeline';
                         if (!record.userDataUpdatedAt) {
                             record.userDataUpdatedAt = new Date().toISOString();
                         }
                         
-                        if (record.management_guidance || record.analyst_consensus) {
+                        if (record.derived_metrics?.ai_insights_guidance) {
                             guidanceCount++;
                         }
                         
