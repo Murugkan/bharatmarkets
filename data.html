@@ -465,7 +465,7 @@
     
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
-        { name: 'prices.json', path: GITHUB_CONFIG.PATHS.prices },
+        { name: 'ltp.json', path: GITHUB_CONFIG.PATHS.prices },
         { name: 'market_data.json', path: 'market_data.json', local: true }
     ];
 
@@ -692,18 +692,23 @@
             fetch(fullUrl)
                 .then(r => r.json())
                 .then(data => {
-                    if (data.count !== undefined) {
-                        // For prices.json which has "count" field
+                    // Handle different file formats
+                    if (s.name === 'ltp.json' && data.count !== undefined) {
+                        // For ltp.json - extract from metadata
                         count = data.count;
+                        // Also capture updated timestamp
+                        if (data.updated) {
+                            dataUpdatedTimes[s.path] = data.updated;
+                        }
+                    } else if (s.name === 'market_data.json' && data._metadata && data._metadata.total_tickers) {
+                        // For market_data.json - read from metadata
+                        count = data._metadata.total_tickers;
+                        if (data._metadata.generated_at) {
+                            dataUpdatedTimes[s.path] = data._metadata.generated_at;
+                        }
                     } else if (data.symbols && Array.isArray(data.symbols)) {
                         // For unified-symbols.json with symbols array
                         count = data.symbols.length;
-                    } else if (s.name === 'market_data.json' && typeof data === 'object' && !Array.isArray(data)) {
-                        // For market_data.json - keyed by ticker, count the keys
-                        count = Object.keys(data).length;
-                    } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
-                        // For fundamentals.json with stocks object
-                        count = Object.keys(data.stocks).length;
                     } else if (Array.isArray(data)) {
                         // If it's a direct array
                         count = data.length;
@@ -759,7 +764,7 @@
             return;
         }
         
-        let fetchType = source === 'prices.json' ? 'prices_only' : 'fundamentals_only';
+        let fetchType = source === 'ltp.json' ? 'prices_only' : 'fundamentals_only';
         log(`⏳ Triggering workflow: ${fetchType}`);
         showToast('⏳ Starting workflow...');
         
@@ -948,8 +953,8 @@
             masterData.forEach((stock, index) => {
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
-                var qty = stock.qty || 0;
-                var avg = stock.avg || 0;
+                var qty = (stock.portfolio_context && stock.portfolio_context.qty) || 0;
+                var avg = (stock.portfolio_context && stock.portfolio_context.avg_cost) || 0;
                 var serialNo = index + 1;
 
                 html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
@@ -1895,14 +1900,20 @@ CRITICAL RULES:
             var ticker = input.dataset.ticker;
             var newQty = parseFloat(input.value) || 0;
             var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.qty = newQty;
+            if (stock) {
+                if (!stock.portfolio_context) stock.portfolio_context = {};
+                stock.portfolio_context.qty = newQty;
+            }
         });
         
         document.querySelectorAll('.avg-input').forEach(input => {
             var ticker = input.dataset.ticker;
             var newAvg = parseFloat(input.value) || 0;
             var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.avg = newAvg;
+            if (stock) {
+                if (!stock.portfolio_context) stock.portfolio_context = {};
+                stock.portfolio_context.avg_cost = newAvg;
+            }
         });
         
         // Upload to GitHub
@@ -2625,24 +2636,8 @@ CRITICAL RULES:
                         const record = stock;
                         record.ticker = ticker;
                         
-                        // Extract portfolio_context from company_details or initialize
-                        if (!record.portfolio_context) {
-                            record.portfolio_context = {};
-                        }
-                        
-                        // Sync qty from company_details.qty if exists
-                        if (record.company_details && record.company_details.qty !== undefined) {
-                            record.portfolio_context.qty = record.company_details.qty;
-                        } else if (record.portfolio_context.qty === undefined || record.portfolio_context.qty === null) {
-                            record.portfolio_context.qty = 0;
-                        }
-                        
-                        // Sync avg_cost from company_details.avg_cost if exists
-                        if (record.company_details && record.company_details.avg_cost !== undefined) {
-                            record.portfolio_context.avg_cost = record.company_details.avg_cost;
-                        } else if (record.portfolio_context.avg_cost === undefined || record.portfolio_context.avg_cost === null) {
-                            record.portfolio_context.avg_cost = 0;
-                        }
+                        if (!record.qty) record.qty = 0;
+                        if (!record.avg) record.avg = 0;
                         if (!record.source) record.source = 'market_data_pipeline';
                         if (!record.userDataUpdatedAt) {
                             record.userDataUpdatedAt = new Date().toISOString();
