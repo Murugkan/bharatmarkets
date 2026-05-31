@@ -601,33 +601,7 @@
     }
 
     function updateStatusButton(statusText) {
-        const btn = document.getElementById('loadJsonBtn');
-        
-        if (!btn) return;
-        
-        // Update button styling based on status
-        if (statusText.includes('✅') || statusText.includes('Loaded')) {
-            btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00dd66 100%)';
-            btn.style.color = '#000';
-            btn.disabled = false;
-            btn.style.opacity = '1';
-        } else if (statusText.includes('⏳') || statusText.includes('Loading') || statusText.includes('Clearing') || statusText.includes('Saving') || statusText.includes('Updating') || statusText.includes('Fetching')) {
-            btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #f87316 100%)';
-            btn.style.color = '#000';
-            btn.disabled = true;
-            btn.style.opacity = '0.7';
-        } else if (statusText.includes('❌') || statusText.includes('Error') || statusText.includes('Failed')) {
-            btn.style.background = 'linear-gradient(135deg, #ff4d6d 0%, #ff1a4d 100%)';
-            btn.style.color = '#fff';
-            btn.disabled = false;
-            btn.style.opacity = '1';
-        } else {
-            btn.style.background = 'linear-gradient(135deg, #00f2ff 0%, #00ccff 100%)';
-            btn.style.color = '#000';
-            btn.style.opacity = '1';
-        }
-        
-        // Always log status
+        // Just log the status - don't mess with button styling
         log(statusText);
     }
     
@@ -947,8 +921,6 @@
                 var qty = (stock.portfolio_context && stock.portfolio_context.qty) || 0;
                 var avg = (stock.portfolio_context && stock.portfolio_context.avg_cost) || 0;
                 var serialNo = index + 1;
-                var concallDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date) ? stock.derived_metrics.ai_insights_guidance.guidance.date : (concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—');
-                var insightsDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date) ? stock.derived_metrics.ai_insights_guidance.insights.date : (insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—');
 
                 html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
                     <td class="sticky" style="font-weight:700; color:#00ffff; font-size:14px; padding:8px 8px; min-width:90px; vertical-align:middle;">${ticker}</td>
@@ -962,14 +934,14 @@
                             <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
                         </div>
                     </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${concallDate}</td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${(stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date) ? stock.derived_metrics.ai_insights_guidance.guidance.date : (concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—')}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
                         <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
                             <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
                             <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
                         </div>
                     </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${insightsDate}</td>
+                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${(stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date) ? stock.derived_metrics.ai_insights_guidance.insights.date : (insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—')}</td>
                     <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
                 </tr>`;
             });
@@ -2112,6 +2084,7 @@ CRITICAL RULES:
 
     async function loadAllData() {
         log('🚀 LOAD JSON initiated');
+        updateStatusButton('✅ Starting'); // Reset button to green
         
         // Only check for local market_data.json - no GitHub loading
         try {
@@ -2165,15 +2138,18 @@ CRITICAL RULES:
                     const tx = db.transaction(STORE_NAME, 'readwrite');
                     const store = tx.objectStore(STORE_NAME);
                     let updatedCount = 0;
-                    let processedCount = 0;
-                    const totalQuotes = Object.keys(json.quotes).length;
                     
-                    Object.entries(json.quotes).forEach(function([ticker, quote]) {
-                        const getReq = store.get(ticker);
+                    // Use getAll() to get all stocks at once
+                    const getAllReq = store.getAll();
+                    
+                    getAllReq.onsuccess = function() {
+                        const stocks = getAllReq.result;
                         
-                        getReq.onsuccess = function() {
-                            const stock = getReq.result;
-                            if (stock) {
+                        stocks.forEach(function(stock) {
+                            const ticker = stock.ticker;
+                            const quote = json.quotes[ticker];
+                            
+                            if (quote) {
                                 // Update price.ltp with live data
                                 if (!stock.price) stock.price = {};
                                 if (!stock.price.ltp) stock.price.ltp = {};
@@ -2192,16 +2168,11 @@ CRITICAL RULES:
                                 
                                 stock.ltpUpdatedAt = new Date().toISOString();
                                 
-                                const putReq = store.put(stock);
-                                putReq.onsuccess = function() {
-                                    updatedCount++;
-                                    processedCount++;
-                                };
-                            } else {
-                                processedCount++;
+                                store.put(stock);
+                                updatedCount++;
                             }
-                        };
-                    });
+                        });
+                    };
                     
                     tx.oncomplete = function() {
                         log(`✅ LTP Updated: ${updatedCount} stocks`);
@@ -2569,23 +2540,14 @@ CRITICAL RULES:
         return new Date().toISOString();
     }
 
-    function reloadAuto() {
-        log('🔄 REFRESH: Clearing cache and database...');
+    async function reloadAuto() {
+        log('🔄 REFRESH: Full DB & UI clear + fresh reload...');
         updateStatusButton('⏳ Clearing...');
         try {
-            localStorage.clear();
-            log('✅ Cache cleared');
-            const req = indexedDB.deleteDatabase(DB_NAME);
-            req.onsuccess = function() {
-                log('✅ Database cleared');
-                setTimeout(() => window.location.reload(), 500);
-            };
-            req.onerror = function() {
-                log('⚠️ DB error, reloading anyway');
-                setTimeout(() => window.location.reload(), 500);
-            };
+            await loadAllData();
         } catch (e) {
-            log(`❌ Error: ${e.message}`);
+            log(`❌ Refresh failed: ${e.message}`);
+            updateStatusButton('❌ Error');
         }
     }
         
