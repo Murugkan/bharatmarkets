@@ -2115,7 +2115,8 @@ CRITICAL RULES:
         log('⚡ UPDATE LTP: Fetching latest prices from GitHub...');
         updateStatusButton('⏳ Fetching LTP');
         
-        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?cache=${Date.now()}`;
+        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
         fetch(ltpUrl)
             .then(r => {
@@ -2202,7 +2203,8 @@ CRITICAL RULES:
     
     function fetchAndMergeLTP(db) {
         log('⚡ Fetching ltp.json from GitHub...');
-        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?cache=${Date.now()}`;
+        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
         fetch(ltpUrl)
             .then(r => {
