@@ -1037,16 +1037,30 @@ function runEngineSync() {
     req.onsuccess = function(e) {
         try {
             const database = e.target.result;
+            console.log('✅ DB opened: ' + database.name + ' v' + database.version);
             const tx = database.transaction(STORE_NAME, 'readonly');
             const getReq = tx.objectStore(STORE_NAME).getAll();
             
             getReq.onsuccess = function() {
                 MASTER = getReq.result || [];
                 console.log('✅ Synced ' + MASTER.length + ' stocks from IndexedDB');
+                
+                // Log sample data
+                if (MASTER.length > 0) {
+                    const abcap = MASTER.find(s => s.ticker === 'ABCAPITAL');
+                    if (abcap) {
+                        const ltpVal = abcap.price && abcap.price.ltp && abcap.price.ltp.ltp ? abcap.price.ltp.ltp : '?';
+                        console.log('  📍 ABCAPITAL LTP from DB: ' + ltpVal);
+                    }
+                    console.log('  First stock:', MASTER[0].ticker, 'LTP:', MASTER[0].price?.ltp?.ltp || '?');
+                }
+                
                 if (MASTER.length > 0) {
                     statusEl.style.display = 'none';
                     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
+                    console.log('✅ Sectors: ' + SECTORS.join(', '));
                     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+                    console.log('⏳ Calling render()...');
                     render();
                     console.log('✅ Render complete');
                 } else {

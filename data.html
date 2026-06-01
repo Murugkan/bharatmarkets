@@ -2217,6 +2217,10 @@ CRITICAL RULES:
                 }
                 
                 log(`⏳ Merging ${Object.keys(json.quotes).length} LTP quotes...`);
+                // Show sample of what's in GitHub ltp.json
+                if (json.quotes['ABCAPITAL']) {
+                    log(`  🔍 ABCAPITAL from ltp.json: LTP=${json.quotes['ABCAPITAL'].ltp}, Change=${json.quotes['ABCAPITAL'].change}`);
+                }
                 
                 const tx = db.transaction(STORE_NAME, 'readwrite');
                 const store = tx.objectStore(STORE_NAME);
@@ -2246,6 +2250,11 @@ CRITICAL RULES:
                             stock.price.ltp.w52l = quote.w52l;
                             stock.price.ltp.beta = quote.beta;
                             stock.ltpUpdatedAt = new Date().toISOString();
+                            
+                            // Log sample stocks including ABCAPITAL
+                            if (ticker === 'ABCAPITAL' || mergedCount < 3) {
+                                log(`  📍 ${ticker}: LTP=${quote.ltp}, Change=${quote.change}, ChangePct=${quote.changePct}%`);
+                            }
                             
                             store.put(stock);
                             mergedCount++;
