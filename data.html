@@ -2087,7 +2087,9 @@ CRITICAL RULES:
         
         // Only check for local market_data.json - no GitHub loading
         try {
-            const response = await fetch('data/market_data.json');
+            // Add cache buster to force fresh fetch
+            const cacheBuster = '?t=' + Date.now();
+            const response = await fetch('data/market_data.json' + cacheBuster);
             if (!response.ok) {
                 log('❌ market_data.json not found at data/market_data.json');
                 log('   Please run process_data.py first to generate it');
@@ -2549,6 +2551,87 @@ CRITICAL RULES:
             updateStatusButton('❌ Error');
         }
     }
+    
+    // New dedicated function to refresh LTP only (quick refresh without reloading fundamentals)
+    async function refreshLTPOnly() {
+        log('⚡ QUICK REFRESH: Updating LTP prices only...');
+        updateStatusButton('⏳ Refreshing prices');
+        
+        try {
+            const cacheBuster = Date.now(); // Random timestamp to bypass all caches
+            const response = await fetch(`prices.json?t=${cacheBuster}`, {
+                cache: 'no-store', // Force no-cache
+                headers: {
+                    'pragma': 'no-cache',
+                    'cache-control': 'no-cache'
+                }
+            });
+            
+            if (!response.ok) {
+                log('⚠️ prices.json not found');
+                updateStatusButton('❌ Not found');
+                return;
+            }
+            
+            const pricesData = await response.json();
+            if (!pricesData.quotes) {
+                log('❌ Invalid prices.json');
+                updateStatusButton('❌ Invalid');
+                return;
+            }
+            
+            log('📦 Merging ' + Object.keys(pricesData.quotes).length + ' price quotes');
+            
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onsuccess = function() {
+                const db = request.result;
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const getAllReq = store.getAll();
+                
+                let updatedCount = 0;
+                
+                getAllReq.onsuccess = function() {
+                    const stocks = getAllReq.result;
+                    stocks.forEach(function(stock) {
+                        const ticker = stock.ticker;
+                        const priceQuote = pricesData.quotes[ticker];
+                        
+                        if (priceQuote) {
+                            if (!stock.price_trading) {
+                                stock.price_trading = {};
+                            }
+                            stock.price_trading.ltp = priceQuote;
+                            store.put(stock);
+                            updatedCount++;
+                        }
+                    });
+                };
+                
+                tx.oncomplete = function() {
+                    log(`✅ Updated ${updatedCount} stocks`);
+                    updateStatusButton('✅ LTP Updated');
+                    showToast(`✅ Updated ${updatedCount} prices. Refresh index.html to see changes.`, 'success');
+                    // Trigger re-render if possible
+                    renderSymbols();
+                };
+                
+                tx.onerror = function() {
+                    log('❌ Transaction error');
+                    updateStatusButton('❌ Error');
+                };
+            };
+            
+            request.onerror = function() {
+                log('❌ DB Error');
+                updateStatusButton('❌ DB Error');
+            };
+            
+        } catch(err) {
+            log('❌ Error: ' + err.message);
+            updateStatusButton('❌ Error');
+        }
+    }
         
 
     function updateHeader() {
@@ -2572,7 +2655,9 @@ CRITICAL RULES:
     // Fetch prices.json and merge with IndexedDB stocks
     async function fetchAndMergePrices(db) {
         try {
-            const response = await fetch('prices.json');
+            // Add cache buster to force fresh fetch of prices
+            const cacheBuster = '?t=' + Date.now();
+            const response = await fetch('prices.json' + cacheBuster);
             if (!response.ok) {
                 log('⚠️ prices.json not found - skipping price update');
                 finishLoading();
