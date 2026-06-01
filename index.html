@@ -247,7 +247,7 @@ const resolve = (obj, field) => {
     };
     const targets = mappings[f] || [f];
     for (let t of targets) {
-        // Handle nested paths like "price_trading.ltp.ltp"
+        // Handle nested paths like "price.ltp.ltp"
         if (t.includes('.')) {
             const parts = t.split('.');
             let val = obj;
@@ -259,12 +259,13 @@ const resolve = (obj, field) => {
                     break;
                 }
             }
-            if (val !== undefined) return val;
+            // Only return if value is not null/undefined
+            if (val !== undefined && val !== null) return val;
         }
         // Direct field access
-        if (obj[t] !== undefined) return obj[t];
+        if (obj[t] !== undefined && obj[t] !== null) return obj[t];
         const cleanT = t.replace('%', '');
-        if (obj[cleanT] !== undefined) return obj[cleanT];
+        if (obj[cleanT] !== undefined && obj[cleanT] !== null) return obj[cleanT];
     }
     return '—';
 };
@@ -1024,26 +1025,54 @@ function runEngineSync() {
     console.log('🔄 Syncing data from IndexedDB...');
     MASTER = [];  // Clear old data
     const statusEl = document.getElementById('status');
+    if (!statusEl) {
+        console.error('Status element not found');
+        return;
+    }
     statusEl.innerHTML = 'Syncing...';
     statusEl.style.display = 'block';
     
     const req = indexedDB.open(DB_NAME, DB_VERSION);
+    
     req.onsuccess = function(e) {
-        const database = e.target.result;
-        const tx = database.transaction(STORE_NAME, 'readonly');
-        const getReq = tx.objectStore(STORE_NAME).getAll();
-        getReq.onsuccess = function() {
-            MASTER = getReq.result || [];
-            console.log('✅ Synced ' + MASTER.length + ' stocks from IndexedDB');
-            if (MASTER.length > 0) {
-                statusEl.style.display = 'none';
-                SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
-                SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
-                render();
-            } else {
-                statusEl.innerHTML = 'DATABASE EMPTY';
-            }
-        };
+        try {
+            const database = e.target.result;
+            const tx = database.transaction(STORE_NAME, 'readonly');
+            const getReq = tx.objectStore(STORE_NAME).getAll();
+            
+            getReq.onsuccess = function() {
+                MASTER = getReq.result || [];
+                console.log('✅ Synced ' + MASTER.length + ' stocks from IndexedDB');
+                if (MASTER.length > 0) {
+                    statusEl.style.display = 'none';
+                    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
+                    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+                    render();
+                    console.log('✅ Render complete');
+                } else {
+                    statusEl.innerHTML = 'DATABASE EMPTY';
+                    console.warn('No stocks in database');
+                }
+            };
+            
+            getReq.onerror = function() {
+                console.error('getAll error:', getReq.error);
+                statusEl.innerHTML = '❌ Sync failed';
+            };
+            
+            tx.onerror = function() {
+                console.error('Transaction error:', tx.error);
+                statusEl.innerHTML = '❌ Sync failed';
+            };
+        } catch(err) {
+            console.error('Sync exception:', err);
+            statusEl.innerHTML = '❌ Sync failed: ' + err.message;
+        }
+    };
+    
+    req.onerror = function() {
+        console.error('DB open error:', req.error);
+        statusEl.innerHTML = '❌ DB open failed';
     };
 }
 
