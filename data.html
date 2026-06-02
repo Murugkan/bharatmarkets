@@ -760,65 +760,60 @@
             return;
         }
         
-        let fetchType = source === 'prices.json' ? 'prices_only' : 'fundamentals_only';
-        log(`⏳ Triggering workflow: ${fetchType}`);
-        showToast('⏳ Starting workflow...');
+        log(`📥 Fetching ${source} from GitHub...`);
+        showToast('📥 Fetching file...');
         
-        triggerWorkflow(pat, fetchType, source);
-    }
-
-    function triggerWorkflow(pat, fetchType, source) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch-prices.yml/dispatches`;
-        
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': `token ${pat}`,
-                'Accept': 'application/vnd.github.v3+json'
-            },
-            body: JSON.stringify({
-                ref: GITHUB_CONFIG.BRANCH,
-                inputs: { fetch_type: fetchType }
-            })
-        })
-        .then(r => {
-            if (r.ok) {
-                log(`✅ Workflow triggered! Waiting...`);
-                showToast('⏳ Workflow running (30 sec)...');
-                setTimeout(() => fetchUpdated(source), 30000);
-            } else {
-                return r.json().then(e => {
-                    log(`❌ Workflow trigger failed: ${e.message}`);
-                    showToast('❌ Failed');
-                });
-            }
-        })
-        .catch(e => {
-            log(`❌ Error: ${e.message}`);
-            showToast('❌ Error');
-        });
+        // Just fetch the file directly without triggering workflow
+        fetchUpdated(source);
     }
 
     function fetchUpdated(source) {
-        log(`📥 Fetching updated ${source}...`);
-        fetch(`${source}?cache=${Date.now()}`)
-            .then(r => r.json())
+        // Map source to correct GitHub path
+        let githubUrl = '';
+        if (source === 'unified-symbols.json') {
+            githubUrl = `${RAW_GITHUB_URL}/unified-symbols.json`;
+        } else if (source === 'ltp.json') {
+            githubUrl = `${RAW_GITHUB_URL}/data/ltp.json`;
+        } else if (source === 'market_data.json') {
+            githubUrl = `${RAW_GITHUB_URL}/market_data.json`;
+        }
+        
+        if (!githubUrl) {
+            log(`❌ Unknown source: ${source}`);
+            return;
+        }
+        
+        log(`📥 Fetching ${source} from GitHub...`);
+        const cacheBuster = '?cache=' + Date.now();
+        
+        fetch(githubUrl + cacheBuster)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
             .then(data => {
                 if (data) {
-                    log(`✅ ${source} updated! Reloading...`);
-                    showToast('✅ Reloading...');
-                    setTimeout(() => location.reload(), 500);
+                    log(`✅ ${source} fetched successfully!`);
+                    let count = 0;
+                    
+                    // Count records
+                    if (data.quotes) count = Object.keys(data.quotes).length;
+                    else if (data.symbols) count = data.symbols.length;
+                    else if (data.stocks) count = Object.keys(data.stocks).length;
+                    else if (Array.isArray(data)) count = data.length;
+                    
+                    log(`📊 Retrieved ${count} records from ${source}`);
+                    showToast(`✅ Fetched ${source} (${count} records)`);
                 } else {
-                    log(`❌ Fetch failed`);
-                    showToast('❌ Failed');
+                    log(`❌ Fetch returned empty data`);
+                    showToast('❌ No data received');
                 }
             })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
-                showToast('❌ Error');
+            .catch(err => {
+                log(`❌ Fetch failed: ${err.message}`);
+                showToast(`❌ Error: ${err.message}`);
             });
     }
-
 
     async function loadFromIndexedDB() {
         return new Promise((resolve) => {
