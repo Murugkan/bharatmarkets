@@ -329,8 +329,8 @@
         
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
-            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>LOAD JSON</button>
-            <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>UPDATE LTP<br><span style="font-size:9px; font-weight:normal;">Live</span></button>
+            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>DATA LOAD</button>
+            <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>LTP LOAD<br><span style="font-size:9px; font-weight:normal;">Live</span></button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH</button>
             <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
         </div>
@@ -666,18 +666,29 @@
             if (s.name === 'market_data.json') {
                 fullUrl = `./data/${s.path}`;
             }
+            // Special case for ltp.json which is in data/ subfolder
+            if (s.name === 'ltp.json') {
+                fullUrl = `${RAW_GITHUB_URL}/data/ltp.json?cache=${Date.now()}`;
+            }
             
             fetch(fullUrl)
                 .then(r => r.json())
                 .then(data => {
                     if (data.count !== undefined) {
-                        // For ltp.json and prices.json which have "count" field
+                        // For prices.json which have "count" field
                         count = data.count;
+                    } else if (data.quotes && typeof data.quotes === 'object') {
+                        // For ltp.json with quotes object
+                        count = Object.keys(data.quotes).length;
+                        // Update timestamp for ltp.json
+                        dataUpdatedTimes['ltp.json'] = new Date().toISOString();
                     } else if (data.symbols && Array.isArray(data.symbols)) {
                         // For unified-symbols.json with symbols array
                         count = data.symbols.length;
                     } else if (s.name === 'market_data.json' && data._metadata) {
                         count = data._metadata.total_tickers;
+                        // Update timestamp for market_data.json
+                        dataUpdatedTimes['market_data.json'] = new Date().toISOString();
                     } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
                         // For fundamentals.json with stocks object
                         count = Object.keys(data.stocks).length;
@@ -690,6 +701,19 @@
                     // Update the count in the table cell
                     var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
                     if (countCell) countCell.textContent = count;
+                    
+                    // Update timestamp cell
+                    var timeCell = document.querySelector(`[data-source="${s.name}"] .time-cell`);
+                    if (timeCell) {
+                        var jsonTime = dataUpdatedTimes[s.path] || dataUpdatedTimes[s.name] || new Date().toISOString();
+                        try {
+                            var date = new Date(jsonTime);
+                            var istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                            timeCell.textContent = istTime;
+                        } catch(e) {
+                            timeCell.textContent = jsonTime;
+                        }
+                    }
                 })
                 .catch(e => {
                     var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
@@ -697,7 +721,7 @@
                 });
             
             // Get the actual timestamp from dataUpdatedTimes
-            var jsonTime = dataUpdatedTimes[s.path] || '—';
+            var jsonTime = dataUpdatedTimes[s.path] || dataUpdatedTimes[s.name] || '—';
             
             // Convert ISO to IST (UTC+5:30)
             var istTime = '—';
@@ -721,7 +745,7 @@
             html += `<tr data-source="${s.name}">
                 <td>${s.name}</td>
                 <td class="count-cell">${count}</td>
-                <td style="font-size:9px;">${istTime}</td>
+                <td class="time-cell" style="font-size:9px;">${istTime}</td>
                 <td style="text-align:center;">${loadButton}</td>
             </tr>`;
         });
@@ -2081,75 +2105,329 @@ CRITICAL RULES:
         }, 1000);
     }
 
-    async function loadAllData() {
-        log('🚀 LOAD JSON initiated');
-        updateStatusButton('✅ Starting'); // Reset button to green
+    function loadAllData() {
+        log('🚀 DATA LOAD: Starting complete data refresh...');
+        updateStatusButton('⏳ Starting Fresh Load');
         
-        // Only check for local market_data.json - no GitHub loading
-        try {
-            // Add cache buster to force fresh fetch
-            const cacheBuster = '?t=' + Date.now();
-            const response = await fetch('data/market_data.json' + cacheBuster);
-            if (!response.ok) {
-                log('❌ market_data.json not found at data/market_data.json');
-                log('   Please run process_data.py first to generate it');
-                updateStatusButton('❌ File not found');
-                showToast('market_data.json not found!', 'error');
-                return;
-            }
+        // Clear existing data first
+        log('🗑️ Clearing existing database...');
+        clearDatabaseAndRefresh();
+    }
+    
+    function clearDatabaseAndRefresh() {
+        const request = indexedDB.deleteDatabase(DB_NAME);
+        
+        request.onsuccess = function() {
+            log('✅ Database cleared');
+            log('📥 Loading fresh data from GitHub...');
+            updateStatusButton('⏳ Loading Data Files');
             
-            log('📁 Found local market_data.json - loading...');
-            updateStatusButton('⏳ Loading local file');
-            const blob = await response.blob();
-            const file = new File([blob], 'market_data.json', {type: 'application/json'});
-            loadMarketDataJSON(file);
+            loadMarketDataFromGitHub();
+        };
+        
+        request.onerror = function() {
+            log('❌ Error clearing database');
+            updateStatusButton('❌ Clear Error');
+        };
+    }
+    
+    function loadMarketDataFromGitHub() {
+        log('📥 Loading market_data.json from GitHub...');
+        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+        const marketDataUrl = `${RAW_GITHUB_URL}/market_data.json?v=${cacheBuster}`;
+        
+        fetch(marketDataUrl)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.text();
+            })
+            .then(text => {
+                // Safety: Replace NaN/Infinity with null
+                text = text.replace(/:\s*NaN/g, ': null');
+                text = text.replace(/:\s*Infinity/g, ': null');
+                text = text.replace(/:\s*-Infinity/g, ': null');
+                
+                const json = JSON.parse(text);
+                
+                // Detect format
+                let stocks_to_process = [];
+                if (json.stocks && Array.isArray(json.stocks)) {
+                    stocks_to_process = json.stocks;
+                    log('📋 Detected format: stocks array');
+                } else if (typeof json === 'object' && Object.keys(json).length > 0 && !json.stocks) {
+                    stocks_to_process = Object.entries(json).map(function([ticker, data]) {
+                        data.ticker = ticker;
+                        return data;
+                    });
+                    log('📋 Detected format: ticker-keyed object');
+                } else {
+                    throw new Error('Invalid format - neither stocks array nor ticker-keyed object');
+                }
+                
+                log('📦 Processing ' + stocks_to_process.length + ' stocks...');
+                return saveMarketDataToDB(stocks_to_process);
+            })
+            .then(() => {
+                log('✅ market_data.json loaded successfully');
+                log('📥 Now loading ltp.json for latest prices...');
+                return loadLTPFromGitHub();
+            })
+            .catch(err => {
+                log(`❌ Error loading market_data.json: ${err.message}`);
+                updateStatusButton('❌ Load Error');
+                showToast(`Error: ${err.message}`, 'error');
+            });
+    }
+    
+    function saveMarketDataToDB(stocks_to_process) {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
             
-        } catch(e) {
-            log('❌ Error loading market_data.json: ' + e.message);
-            updateStatusButton('❌ Error');
-            showToast('Failed to load market_data.json', 'error');
-        }
+            request.onupgradeneeded = function(event) {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                    log('✅ Created object store');
+                }
+            };
+            
+            request.onsuccess = function(ev) {
+                const db = ev.target.result;
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                
+                let savedCount = 0;
+                
+                stocks_to_process.forEach(function(stock) {
+                    const ticker = stock.ticker || stock.symbol;
+                    if (!ticker || ticker === '' || ticker === '?') return;
+                    
+                    stock.ticker = ticker;
+                    if (!stock.source) stock.source = 'market_data_pipeline';
+                    if (!stock.userDataUpdatedAt) {
+                        stock.userDataUpdatedAt = new Date().toISOString();
+                    }
+                    
+                    store.put(stock);
+                    savedCount++;
+                });
+                
+                tx.oncomplete = function() {
+                    log('✅ Saved ' + savedCount + ' stocks to IndexedDB');
+                    
+                    // Update timestamp for market_data.json
+                    dataUpdatedTimes['market_data.json'] = new Date().toISOString();
+                    
+                    db.close();
+                    resolve();
+                };
+                
+                tx.onerror = function() {
+                    log('❌ Transaction error');
+                    db.close();
+                    reject(new Error('Transaction error'));
+                };
+            };
+            
+            request.onerror = function() {
+                reject(new Error('Cannot open database'));
+            };
+        });
+    }
+    
+    function loadLTPFromGitHub() {
+        return new Promise((resolve, reject) => {
+            log('📥 Loading ltp.json from GitHub...');
+            const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+            const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
+            
+            fetch(ltpUrl)
+                .then(r => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return r.json();
+                })
+                .then(json => {
+                    if (!json.quotes) {
+                        log('⚠️ ltp.json not available, continuing without live prices');
+                        resolve();
+                        return;
+                    }
+                    
+                    log('⏳ Merging ' + Object.keys(json.quotes).length + ' live prices...');
+                    mergeLTPIntoDB(json.quotes)
+                        .then(() => resolve())
+                        .catch(err => reject(err));
+                })
+                .catch(err => {
+                    log(`⚠️ Could not fetch ltp.json: ${err.message}`);
+                    resolve(); // Don't fail - we have market_data already
+                });
+        });
+    }
+    
+    function mergeLTPIntoDB(quotes) {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            
+            request.onsuccess = function(ev) {
+                const db = ev.target.result;
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const getAllReq = store.getAll();
+                
+                let mergedCount = 0;
+                
+                getAllReq.onsuccess = function() {
+                    const stocks = getAllReq.result;
+                    
+                    stocks.forEach(function(stock) {
+                        const ticker = stock.ticker;
+                        const quote = quotes[ticker];
+                        
+                        if (quote) {
+                            if (!stock.price) stock.price = {};
+                            if (!stock.price.ltp) stock.price.ltp = {};
+                            
+                            stock.price.ltp.ltp = quote.ltp;
+                            stock.price.ltp.open = quote.open;
+                            stock.price.ltp.high = quote.high;
+                            stock.price.ltp.low = quote.low;
+                            stock.price.ltp.prev = quote.prev;
+                            stock.price.ltp.change = quote.change;
+                            stock.price.ltp.changePct = quote.changePct;
+                            stock.price.ltp.vol = quote.vol;
+                            stock.price.ltp.w52h = quote.w52h;
+                            stock.price.ltp.w52l = quote.w52l;
+                            stock.price.ltp.beta = quote.beta;
+                            stock.ltpUpdatedAt = new Date().toISOString();
+                            
+                            store.put(stock);
+                            mergedCount++;
+                        }
+                    });
+                };
+                
+                tx.oncomplete = function() {
+                    log('✅ LTP merged for ' + mergedCount + ' stocks');
+                    log('✅ Complete data load finished successfully!');
+                    updateStatusButton('✅ Loaded (' + mergedCount + ' prices)');
+                    showToast('✅ Fresh data loaded! Refresh to see updates.', 'success');
+                    
+                    // Update timestamp for ltp.json
+                    dataUpdatedTimes['ltp.json'] = new Date().toISOString();
+                    
+                    db.close();
+                    renderSymbols();
+                    renderDataSources(); // Refresh the sources table with new timestamp
+                    resolve();
+                };
+                
+                tx.onerror = function() {
+                    log('❌ Transaction error during LTP merge');
+                    db.close();
+                    reject(new Error('Transaction error'));
+                };
+            };
+            
+            request.onerror = function() {
+                reject(new Error('Cannot open database'));
+            };
+        });
     }
     
     function updateLTPFromGitHub() {
-        log('⚡ UPDATE LTP: Triggering GitHub workflow...');
-        updateStatusButton('⏳ Triggering Workflow');
+        log('⚡ LTP LOAD: Fetching latest prices from GitHub...');
+        updateStatusButton('⏳ Fetching LTP');
         
-        const pat = localStorage.getItem('github_pat');
-        if (!pat) {
-            log('⚠️ PAT token not configured. Fetching existing ltp.json instead...');
-            fetchAndMergeLTPOnly();
-            return;
-        }
+        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
-        // Trigger the GitHub Actions workflow
-        triggerGitHubWorkflow(pat)
-            .then(runId => {
-                log(`✅ Workflow triggered! Run ID: ${runId}`);
-                log('⏳ Waiting for workflow to complete (this may take 1-2 minutes)...');
-                updateStatusButton('⏳ Workflow Running');
-                
-                // Poll for workflow completion
-                return waitForWorkflowCompletion(runId, pat, 120000); // 2 minute timeout
+        fetch(ltpUrl)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
             })
-            .then(() => {
-                log('✅ Workflow completed successfully!');
-                log('📥 Fetching fresh ltp.json from GitHub...');
-                updateStatusButton('⏳ Fetching Fresh Data');
+            .then(json => {
+                if (!json.quotes) {
+                    log('❌ Invalid LTP JSON - missing quotes');
+                    updateStatusButton('❌ Invalid Format');
+                    return;
+                }
                 
-                // Wait a moment for GitHub to propagate the changes
-                return new Promise(resolve => {
-                    setTimeout(() => {
-                        fetchAndMergeLTPOnly();
-                        resolve();
-                    }, 3000);
-                });
+                log(`⏳ Updating ${Object.keys(json.quotes).length} stocks...`);
+                updateStatusButton('⏳ Updating DB');
+                
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
+                request.onsuccess = function() {
+                    const db = request.result;
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(STORE_NAME);
+                    let updatedCount = 0;
+                    
+                    const getAllReq = store.getAll();
+                    
+                    getAllReq.onsuccess = function() {
+                        const stocks = getAllReq.result;
+                        
+                        stocks.forEach(function(stock) {
+                            const ticker = stock.ticker;
+                            const quote = json.quotes[ticker];
+                            
+                            if (quote) {
+                                if (!stock.price) stock.price = {};
+                                if (!stock.price.ltp) stock.price.ltp = {};
+                                
+                                stock.price.ltp.ltp = quote.ltp;
+                                stock.price.ltp.open = quote.open;
+                                stock.price.ltp.high = quote.high;
+                                stock.price.ltp.low = quote.low;
+                                stock.price.ltp.prev = quote.prev;
+                                stock.price.ltp.change = quote.change;
+                                stock.price.ltp.changePct = quote.changePct;
+                                stock.price.ltp.vol = quote.vol;
+                                stock.price.ltp.w52h = quote.w52h;
+                                stock.price.ltp.w52l = quote.w52l;
+                                stock.price.ltp.beta = quote.beta;
+                                
+                                stock.ltpUpdatedAt = new Date().toISOString();
+                                
+                                store.put(stock);
+                                updatedCount++;
+                            }
+                        });
+                    };
+                    
+                    tx.oncomplete = function() {
+                        log(`✅ LTP Updated: ${updatedCount} stocks`);
+                        log(`📊 Updated at: ${new Date().toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata'})}`);
+                        updateStatusButton('✅ LTP Updated');
+                        showToast(`Updated ${updatedCount} stocks. Refresh index.html to see prices.`, 'success');
+                        
+                        // Update timestamp for ltp.json
+                        dataUpdatedTimes['ltp.json'] = new Date().toISOString();
+                        
+                        db.close();
+                        renderSymbols();
+                        renderDataSources(); // Refresh the sources table with new timestamp
+                    };
+                    
+                    tx.onerror = function() {
+                        log('❌ Transaction error');
+                        updateStatusButton('❌ Error');
+                        db.close();
+                    };
+                };
+                
+                request.onerror = function() {
+                    log('❌ Failed to open database');
+                    updateStatusButton('❌ DB Error');
+                };
             })
             .catch(err => {
-                log(`❌ Workflow error: ${err.message}`);
-                log('💡 Falling back to fetch existing ltp.json...');
-                updateStatusButton('⚠️ Workflow Failed');
-                fetchAndMergeLTPOnly();
+                log(`❌ Error fetching LTP: ${err.message}`);
+                updateStatusButton('❌ Fetch Error');
+                showToast(`Error: ${err.message}`, 'error');
             });
     }
     
@@ -2724,15 +3002,75 @@ CRITICAL RULES:
         return new Date().toISOString();
     }
 
-    async function reloadAuto() {
-        log('🔄 REFRESH: Full DB & UI clear + fresh reload...');
-        updateStatusButton('⏳ Clearing...');
-        try {
-            await loadAllData();
-        } catch (e) {
-            log(`❌ Refresh failed: ${e.message}`);
-            updateStatusButton('❌ Error');
+    function reloadAuto() {
+        log('🔄 REFRESH: Clearing browser cache & merging fresh LTP data...');
+        updateStatusButton('⏳ Refreshing');
+        
+        // Clear all service worker caches
+        if ('caches' in window) {
+            caches.keys().then(cacheNames => {
+                cacheNames.forEach(cacheName => {
+                    caches.delete(cacheName);
+                    log('✅ Cleared cache: ' + cacheName);
+                });
+            });
         }
+        
+        // Clear localStorage if needed (except PAT)
+        const pat = localStorage.getItem('github_pat');
+        const savedKeys = {};
+        ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData'].forEach(key => {
+            const val = localStorage.getItem(key);
+            if (val) savedKeys[key] = val;
+        });
+        localStorage.clear();
+        Object.keys(savedKeys).forEach(key => {
+            localStorage.setItem(key, savedKeys[key]);
+        });
+        
+        log('✅ Cache cleared');
+        log('📥 Fetching fresh ltp.json from GitHub...');
+        
+        // Fetch fresh ltp.json and merge
+        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
+        
+        fetch(ltpUrl)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
+            .then(json => {
+                if (!json.quotes) {
+                    log('⚠️ ltp.json not available, reloading without price update');
+                    setTimeout(() => {
+                        location.reload(true);
+                    }, 500);
+                    return;
+                }
+                
+                log('⏳ Merging ' + Object.keys(json.quotes).length + ' fresh prices...');
+                return mergeLTPIntoDB(json.quotes);
+            })
+            .then(() => {
+                log('✅ Fresh data merged successfully');
+                log('🔄 Reloading page...');
+                updateStatusButton('✅ Refreshed');
+                
+                // Reload page after a brief delay
+                setTimeout(() => {
+                    location.reload(true);
+                }, 500);
+            })
+            .catch(err => {
+                log(`⚠️ Error fetching ltp.json: ${err.message}`);
+                log('💡 Reloading page anyway...');
+                updateStatusButton('⚠️ Partial Refresh');
+                
+                setTimeout(() => {
+                    location.reload(true);
+                }, 500);
+            });
     }
     
     // New dedicated function to refresh LTP only (quick refresh without reloading fundamentals)
