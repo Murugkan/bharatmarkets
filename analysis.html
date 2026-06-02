@@ -2971,54 +2971,60 @@ function getSlicedCandles(s, canvasWidth){
 function getQuarterlyData(s){
   const quarterly = [];
   
-  // Try to get from financials object
-  if(s.financials) {
-    const financials = s.financials;
-    const salesQ = financials.Sales?.consolidated?.quarterly || {};
-    const revenueQ = financials.Revenue?.consolidated?.quarterly || {};
-    const netQ = financials.Net_Profit?.consolidated?.quarterly || {};
-    const cfoQ = financials.Operating_CF?.consolidated?.quarterly || {};
-    const opmQ = financials.Operating_Profit?.consolidated?.quarterly || {};
-    const debtQ = financials.Total_Debt?.consolidated?.quarterly || {};
-    const epsQ = financials.EPS?.consolidated?.quarterly || {};
-    
-    // Get all unique dates from any quarterly metric
-    const allDates = new Set([
-      ...Object.keys(salesQ),
-      ...Object.keys(revenueQ),
-      ...Object.keys(netQ),
-      ...Object.keys(cfoQ),
-      ...Object.keys(opmQ),
-      ...Object.keys(debtQ),
-      ...Object.keys(epsQ)
-    ]);
-    
-    // Build quarterly data points
-    Array.from(allDates).sort().reverse().forEach(date => {
-      const q = { d: date };
-      if(salesQ[date]) q.rev = parseFloat(salesQ[date]) || 0;
-      if(revenueQ[date]) q.rev = parseFloat(revenueQ[date]) || q.rev;
-      if(netQ[date]) q.net = parseFloat(netQ[date]) || 0;
-      if(cfoQ[date]) q.cfo = parseFloat(cfoQ[date]) || 0;
-      if(opmQ[date]) {
-        const sales = q.rev || parseFloat(salesQ[date]) || 1;
-        q.opm = (parseFloat(opmQ[date]) / sales * 100) || 0;
-      }
-      if(debtQ[date]) q.debt = parseFloat(debtQ[date]) || 0;
-      if(epsQ[date]) q.eps = parseFloat(epsQ[date]) || 0;
-      if(Object.keys(q).length > 1) quarterly.push(q);
-    });
+  try {
+    // Try to get from financials object
+    if(s.financials) {
+      const f = s.financials;
+      const salesQ = (f.Sales && f.Sales.consolidated && f.Sales.consolidated.quarterly) || {};
+      const revenueQ = (f.Revenue && f.Revenue.consolidated && f.Revenue.consolidated.quarterly) || {};
+      const netQ = (f.Net_Profit && f.Net_Profit.consolidated && f.Net_Profit.consolidated.quarterly) || {};
+      const cfoQ = (f.Operating_CF && f.Operating_CF.consolidated && f.Operating_CF.consolidated.quarterly) || {};
+      const opmQ = (f.Operating_Profit && f.Operating_Profit.consolidated && f.Operating_Profit.consolidated.quarterly) || {};
+      const debtQ = (f.Total_Debt && f.Total_Debt.consolidated && f.Total_Debt.consolidated.quarterly) || {};
+      const epsQ = (f.EPS && f.EPS.consolidated && f.EPS.consolidated.quarterly) || {};
+      
+      // Get all unique dates from any quarterly metric
+      const allDates = new Set([
+        ...Object.keys(salesQ),
+        ...Object.keys(revenueQ),
+        ...Object.keys(netQ),
+        ...Object.keys(cfoQ),
+        ...Object.keys(opmQ),
+        ...Object.keys(debtQ),
+        ...Object.keys(epsQ)
+      ]);
+      
+      // Build quarterly data points
+      Array.from(allDates).sort().reverse().forEach(date => {
+        const q = { d: date };
+        if(salesQ[date]) q.rev = parseFloat(salesQ[date]) || 0;
+        if(revenueQ[date]) q.rev = parseFloat(revenueQ[date]) || q.rev;
+        if(netQ[date]) q.net = parseFloat(netQ[date]) || 0;
+        if(cfoQ[date]) q.cfo = parseFloat(cfoQ[date]) || 0;
+        if(opmQ[date]) {
+          const sales = q.rev || parseFloat(salesQ[date]) || 1;
+          q.opm = (parseFloat(opmQ[date]) / sales * 100) || 0;
+        }
+        if(debtQ[date]) q.debt = parseFloat(debtQ[date]) || 0;
+        if(epsQ[date]) q.eps = parseFloat(epsQ[date]) || 0;
+        if(Object.keys(q).length > 1) quarterly.push(q);
+      });
+      
+      if(quarterly.length > 0) return quarterly;
+    }
+  } catch(e) {
+    console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
   
-  return quarterly.length > 0 ? quarterly : (s.quarterly || []);
+  // Fallback to simple quarterly array if exists
+  return s.quarterly || [];
 }
 
 
 function drawCandlestick(s){
-  
-  
-  const cv=document.getElementById('cv-candle');
-  if(!cv)return;
+  try {
+    const cv=document.getElementById('cv-candle');
+    if(!cv)return;
   
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
@@ -3288,47 +3294,59 @@ function drawCandlestick(s){
     if(!S.kpiVis[k]) return;
 
     let pts = [];
-    if(k === 'pe'){
-      quarterly.forEach(q=>{
-        if(!q.eps || q.eps <= 0) return;
-        const annEPS = q.eps * 4;
-        const price = priceAt(q.d);
-        if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d});
-      });
-      // Always add current PE at far right
-      const currentPE = resolveField(s, 'trailing_pe') || resolveField(s, 'pe');
-      if(currentPE > 0 && candles.length > 0){
-        const rightX = PAD.l + cW;
-        if(!pts.length || pts[pts.length-1].x < rightX - 10)
-          pts.push({x: rightX, v: currentPE, d: 'now'});
+    try {
+      if(k === 'pe'){
+        // P/E ratio from EPS
+        if(quarterly && quarterly.length > 0) {
+          quarterly.forEach(q=>{
+            if(!q.eps || q.eps <= 0) return;
+            const annEPS = q.eps * 4;
+            const price = priceAt(q.d);
+            if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d});
+          });
+        }
+        // Always add current PE at far right
+        const currentPE = resolveField(s, 'trailing_pe') || resolveField(s, 'pe');
+        if(currentPE > 0 && candles.length > 0){
+          const rightX = PAD.l + cW;
+          if(!pts.length || pts[pts.length-1].x < rightX - 10)
+            pts.push({x: rightX, v: currentPE, d: 'now'});
+        }
+      } else {
+        // Other KPIs from quarterly data
+        if(quarterly && quarterly.length > 0) {
+          quarterly.forEach(q=>{
+            const v = q[k];
+            if(v != null && !isNaN(v)) pts.push({x: xForDate(q.d), v, d: q.d});
+          });
+        }
+        // Add current value as rightmost anchor if available
+        let curVal = null;
+        if(k === 'cfo') {
+          curVal = resolveField(s, 'operating_cash_flow') || resolveField(s, 'cfo');
+        } else if(k === 'rev') {
+          curVal = resolveField(s, 'total_revenue') || resolveField(s, 'sales');
+        } else if(k === 'net') {
+          curVal = resolveField(s, 'profit_margins') || resolveField(s, 'npm');
+        } else if(k === 'opm') {
+          curVal = resolveField(s, 'operating_margins') || resolveField(s, 'opm');
+        } else if(k === 'debt') {
+          curVal = resolveField(s, 'total_debt');
+        }
+        
+        if(curVal != null && !isNaN(curVal) && curVal > 0 && pts.length){
+          pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
+        }
       }
-    } else {
-      quarterly.forEach(q=>{
-        const v = q[k];
-        if(v != null) pts.push({x: xForDate(q.d), v, d: q.d});
-      });
-      // Add current value as rightmost anchor if available
-      let curVal = null;
-      if(k === 'cfo') {
-        curVal = resolveField(s, 'operating_cash_flow') || resolveField(s, 'cfo');
-      } else if(k === 'rev') {
-        curVal = resolveField(s, 'total_revenue') || resolveField(s, 'sales');
-      } else if(k === 'net') {
-        curVal = resolveField(s, 'profit_margins') || resolveField(s, 'npm');
-      } else if(k === 'opm') {
-        curVal = resolveField(s, 'operating_margins') || resolveField(s, 'opm');
-      } else if(k === 'debt') {
-        curVal = resolveField(s, 'total_debt');
-      }
-      
-      if(curVal != null && curVal > 0 && pts.length){
-        pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
-      }
-    }
 
-    // ✅ Keep points that fall within or near visible chart area
-    // Extend margin so points just outside edges still connect to line
-    pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+      // ✅ Keep points that fall within or near visible chart area
+      pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+      
+      if(pts.length < 2) return; // Need at least 2 points to draw a line
+    } catch(e) {
+      console.warn(`⚠️ KPI ${label} error:`, e.message);
+      return;
+    }
     
     // ✅ OPTIMIZATION: Limit points per overlay when many overlays enabled
     const enabledOverlays = Object.values(S.kpiVis).filter(v => v).length;
@@ -3424,6 +3442,21 @@ function drawCandlestick(s){
     ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8));
     ctx.restore();
   });
+  } catch(e) {
+    console.error('❌ Chart draw error:', e.message, e.stack);
+    const cv = document.getElementById('cv-candle');
+    if(cv) {
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#060c18';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = 'rgba(255, 107, 133, 0.7)';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Chart render failed', cv.width/2, cv.height/2);
+      ctx.font = '10px monospace';
+      ctx.fillText(e.message, cv.width/2, cv.height/2 + 20);
+    }
+  }
 }
 
 // Volume bars with 5-period MA trend line
