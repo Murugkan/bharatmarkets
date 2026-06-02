@@ -190,68 +190,89 @@ const get = (obj, ...keys) => {
 // 🎯 INDEXEDDB FIELD MAPPING RESOLVER
 // Maps analysis.html field paths to IndexedDB stock object structure
 const fieldMapping = {
-    // Price & Performance
-    'ltp': ['price.ltp.ltp', 'ltp', 'price', 'current_price'],
-    'price': ['price.ltp.ltp', 'ltp', 'price', 'current_price'],
-    'changePct': ['price.ltp.changePct', 'chg_pct', 'change_pct', 'changePct'],
-    'change': ['price.ltp.change', 'chg', 'price_change'],
-    'chg1d': ['price.ltp.change', 'chg', 'price_change'],
+    // Price & Performance (from price object)
+    'ltp': ['price.current_price', 'price.regular_market_price', 'ltp'],
+    'price': ['price.current_price', 'price.regular_market_price', 'ltp'],
+    'changePct': ['price.regular_market_change_pct', 'chg_pct'],
+    'change': ['price.regular_market_change', 'chg'],
+    'chg1d': ['price.regular_market_change', 'chg'],
     
-    // Valuation
-    'trailing_pe': ['ratios.PE', 'pe', 'P/E', 'price_to_earnings'],
-    'pe': ['ratios.PE', 'pe', 'P/E'],
-    'forward_pe': ['ratios.forward_pe', 'fpe', 'forward_P/E'],
-    'price_to_book': ['ratios.PB', 'pb', 'P/B'],
-    'pb': ['ratios.PB', 'pb', 'P/B'],
+    // Valuation (from valuation.pe and valuation.eps)
+    'trailing_pe': ['valuation.pe.trailing_pe', 'pe.trailing_pe'],
+    'pe': ['valuation.pe.trailing_pe', 'pe.trailing_pe'],
+    'forward_pe': ['valuation.pe.forward_pe', 'pe.forward_pe'],
+    'price_to_book': ['valuation.pe.price_to_book', 'pe.price_to_book', 'pb'],
+    'pb': ['valuation.pe.price_to_book', 'pb'],
+    'price_to_sales': ['valuation.pe.price_to_sales_ttm', 'ps'],
     
-    // Margins & Returns
-    'return_on_equity': ['ratios.ROE_pct', 'roe_pct', 'roe', 'ROE'],
-    'roe': ['ratios.ROE_pct', 'roe_pct', 'roe'],
-    'return_on_capital_employed': ['ratios.ROCE_pct', 'roce_pct', 'roce', 'ROCE'],
-    'roce': ['ratios.ROCE_pct', 'roce_pct', 'roce'],
-    'operating_margins': ['derived_metrics.operating_margin_pct', 'opm_pct', 'opm'],
-    'opm_pct': ['derived_metrics.operating_margin_pct', 'opm_pct'],
-    'opm': ['derived_metrics.operating_margin_pct', 'opm_pct', 'opm'],
-    'profit_margins': ['derived_metrics.net_margin_pct', 'npm_pct', 'npm'],
-    'npm_pct': ['derived_metrics.net_margin_pct', 'npm_pct'],
-    'npm': ['derived_metrics.net_margin_pct', 'npm_pct', 'npm'],
-    'gross_margins': ['derived_metrics.gross_margin_pct', 'gpm_pct', 'prom_pct'],
-    'prom': ['derived_metrics.gross_margin_pct', 'gpm_pct', 'prom_pct'],
-    'prom_pct': ['derived_metrics.gross_margin_pct', 'gpm_pct', 'prom_pct'],
+    // EPS Values (from valuation.eps)
+    'trailing_eps': ['valuation.eps.trailing_eps', 'eps.trailing_eps'],
+    'eps_ttm': ['valuation.eps.eps_ttm', 'eps.eps_ttm'],
+    'forward_eps': ['valuation.eps.forward_eps', 'eps.forward_eps'],
+    'eps': ['valuation.eps.trailing_eps', 'eps.trailing_eps'],
+    'basic_eps': ['valuation.eps.basic_eps', 'eps.basic_eps'],
+    'diluted_eps': ['valuation.eps.diluted_eps', 'eps.diluted_eps'],
     
-    // Size & Fundamentals
-    'market_cap': ['company_details.market_cap', 'mcap', 'market_cap'],
-    'mcap': ['company_details.market_cap', 'mcap'],
-    'total_revenue': ['financials.Sales', 'sales', 'revenue', 'total_revenue'],
-    'sales': ['financials.Sales', 'sales', 'revenue'],
-    'ebitda': ['financials.EBITDA', 'ebitda'],
-    'operating_cash_flow': ['financials.Operating_CF', 'cfo', 'operating_cf'],
-    'cfo': ['financials.Operating_CF', 'cfo'],
-    'free_cash_flow': ['financials.Free_CF', 'fcf', 'free_cf'],
-    'fcf': ['financials.Free_CF', 'fcf'],
-    'eps_ttm': ['financials.EPS', 'eps', 'eps_ttm'],
-    'trailing_eps': ['financials.EPS', 'eps'],
-    'eps': ['financials.EPS', 'eps'],
-    'interest_exp': ['financials.Interest', 'interest_exp'],
-    'cash': ['company_details.cash', 'cash_balance'],
+    // Market Cap & Enterprise Value
+    'market_cap': ['valuation.market_cap', 'mcap'],
+    'mcap': ['valuation.market_cap'],
+    'enterprise_value': ['valuation.enterprise_value', 'ev'],
+    'total_debt': ['valuation.total_debt', 'debt'],
+    'book_value': ['valuation.book_value'],
+    'ev_to_revenue': ['valuation.ev_to_revenue'],
     
-    // Ownership
-    'fii': ['market_data.fii_pct', 'fii_pct', 'fii'],
-    'fii_pct': ['market_data.fii_pct', 'fii_pct'],
-    'dii': ['market_data.dii_pct', 'dii_pct', 'dii'],
-    'dii_pct': ['market_data.dii_pct', 'dii_pct'],
+    // Financials (from financials.Sales, Interest, Expenses, etc.)
+    'total_revenue': ['financials.Sales.consolidated.annual', 'financials.Sales.quarterly'],
+    'sales': ['financials.Sales.consolidated.annual', 'financials.Sales.quarterly'],
+    'interest_exp': ['financials.Interest.consolidated.annual', 'financials.Interest.quarterly'],
+    'ebitda': ['financials.EBITDA.consolidated.annual', 'financials.EBITDA'],
+    'operating_cash_flow': ['financials.Operating_CF.consolidated.annual'],
+    'cfo': ['financials.Operating_CF.consolidated.annual'],
+    'free_cash_flow': ['financials.Free_CF.consolidated.annual'],
+    'fcf': ['financials.Free_CF.consolidated.annual'],
+    'expenses': ['financials.Expenses.consolidated.annual'],
     
-    // Signals & Guidance
-    'pos': ['derived_metrics.positive', 'positive_signals', 'pos'],
-    'positive': ['derived_metrics.positive', 'positive_signals'],
-    'neg': ['derived_metrics.negative', 'negative_signals', 'neg'],
-    'negative': ['derived_metrics.negative', 'negative_signals'],
-    'signal': ['derived_metrics.ai_insights_guidance.signal', 'signal', 'recommendation'],
-    'Signal': ['derived_metrics.ai_insights_guidance.signal', 'signal'],
+    // Margins & Returns (may need to be calculated)
+    'return_on_equity': ['ratios.ROE_pct', 'roe'],
+    'roe': ['ratios.ROE_pct', 'roe'],
+    'return_on_capital_employed': ['ratios.ROCE_pct', 'roce'],
+    'roce': ['ratios.ROCE_pct', 'roce'],
+    'operating_margins': ['ratios.opm_pct', 'opm'],
+    'opm': ['ratios.opm_pct', 'opm'],
+    'profit_margins': ['ratios.npm_pct', 'npm'],
+    'npm': ['ratios.npm_pct', 'npm'],
+    'gross_margins': ['ratios.prom_pct', 'prom'],
+    'prom': ['ratios.prom_pct', 'prom'],
+    
+    // Ownership (from company_details)
+    'fii': ['company_details.fiis', 'company_details.shareholding.pattern.fiis'],
+    'fii_pct': ['company_details.fiis'],
+    'dii': ['company_details.diis', 'company_details.shareholding.pattern.diis'],
+    'dii_pct': ['company_details.diis'],
+    'promoter': ['company_details.promoters', 'company_details.shareholding.pattern.promoters'],
+    'cash': ['company_details.cash'],
+    
+    // Company Info
+    'name': ['company_details.name'],
+    'ticker': ['company_details.ticker'],
+    'sector': ['company_details.sector'],
+    'industry': ['company_details.industry'],
+    'qty': ['company_details.qty'],
+    'avg_cost': ['company_details.avg_cost'],
+    
+    // Signals & Guidance (from derived_metrics)
+    'pos': ['derived_metrics.calculated_metrics.positive', 'derived_metrics.positive'],
+    'positive': ['derived_metrics.calculated_metrics.positive'],
+    'neg': ['derived_metrics.calculated_metrics.negative', 'derived_metrics.negative'],
+    'negative': ['derived_metrics.calculated_metrics.negative'],
+    'signal': ['derived_metrics.ai_insights_guidance.signal'],
     
     // Data Arrays
-    'quarterly': ['derived_metrics.quarterly_metrics', 'quarterly'],
-    'price_history': ['price_history', 'candles', 'bars'],
+    'quarterly': ['financials.Sales.consolidated.quarterly'],
+    'price_history': ['price_history'],
+    'history_6mo_1d': ['price.history_6mo_1d', 'price_history'],
+    'history_5y_1wk': ['price.history_5y_1wk', 'price_history'],
+    'history_5y_1mo': ['price.history_5y_1mo', 'price_history']
 };
 
 // 🎯 RESOLVE FIELD FROM INDEXEDDB STOCK OBJECT
@@ -376,28 +397,68 @@ async function loadStock() {
             return;
         }
         
+        // 🔍 DEBUG: Log the actual stock object structure
+        console.log('📊 Stock object structure:', currentStock);
+        console.log('📋 Available keys:', Object.keys(currentStock));
+        console.log('💰 Price data:', currentStock.price);
+        console.log('📈 Market data:', currentStock.market_data);
+        console.log('💼 Company details:', currentStock.company_details);
+        console.log('📊 Financials:', currentStock.financials);
+        console.log('🎯 Derived metrics:', currentStock.derived_metrics);
+        console.log('📉 Ratios:', currentStock.ratios);
+        
         // Determine data source
         dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
         
-        
-        
-        // 🚀 Auto-load candles from price_history field or external file
+        // 🚀 Auto-load candles from price history fields with support for d/w/m intervals
         if (!currentStock.candles || currentStock.candles.length === 0) {
-            // Try to get from price_history field first (from IndexDB)
-            if (currentStock.price_history) {
-                // price_history is already an array of bars with d,o,h,l,c,v format
-                if (Array.isArray(currentStock.price_history)) {
-                    currentStock.candles = currentStock.price_history;
-                    console.log('📊 Using price_history from IndexDB:', currentStock.candles.length, 'candles');
-                }
-                // If price_history is an object with bars property
-                else if (currentStock.price_history.bars && Array.isArray(currentStock.price_history.bars)) {
-                    currentStock.candles = currentStock.price_history.bars;
-                    console.log('📊 Using price_history.bars from IndexDB:', currentStock.candles.length, 'candles');
+            // Try to load from price object history fields (history_6mo_1d, history_5y_1wk, history_5y_1mo)
+            let historyData = null;
+            let historyType = null;
+            
+            // Priority: daily > weekly > monthly
+            if (currentStock.price && currentStock.price.history_6mo_1d && Array.isArray(currentStock.price.history_6mo_1d)) {
+                historyData = currentStock.price.history_6mo_1d;
+                historyType = 'daily (6mo)';
+            } else if (currentStock.price && currentStock.price.history_5y_1wk && Array.isArray(currentStock.price.history_5y_1wk)) {
+                historyData = currentStock.price.history_5y_1wk;
+                historyType = 'weekly (5y)';
+            } else if (currentStock.price && currentStock.price.history_5y_1mo && Array.isArray(currentStock.price.history_5y_1mo)) {
+                historyData = currentStock.price.history_5y_1mo;
+                historyType = 'monthly (5y)';
+            }
+            
+            // Convert history format { Date, Open, High, Low, Close, Volume } to chart format
+            if (historyData && historyData.length > 0) {
+                try {
+                    currentStock.candles = historyData.map(bar => ({
+                        d: bar.Date,  // Date as YYYY-MM-DD string for aggregation functions
+                        o: parseFloat(bar.Open),
+                        h: parseFloat(bar.High),
+                        l: parseFloat(bar.Low),
+                        c: parseFloat(bar.Close),
+                        v: parseInt(bar.Volume) || 0
+                    }));
+                    console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'candles');
+                } catch (e) {
+                    console.warn('⚠️ Error converting price history:', e.message);
                 }
             }
             
-            // Fallback: try external file
+            // Fallback: Try generic price_history field
+            if (!currentStock.candles || currentStock.candles.length === 0) {
+                if (currentStock.price_history) {
+                    if (Array.isArray(currentStock.price_history)) {
+                        currentStock.candles = currentStock.price_history;
+                        console.log('📊 Using price_history array from IndexDB:', currentStock.candles.length, 'candles');
+                    } else if (currentStock.price_history.bars && Array.isArray(currentStock.price_history.bars)) {
+                        currentStock.candles = currentStock.price_history.bars;
+                        console.log('📊 Using price_history.bars from IndexDB:', currentStock.candles.length, 'candles');
+                    }
+                }
+            }
+            
+            // Final fallback: try external file
             if (!currentStock.candles || currentStock.candles.length === 0) {
                 try {
                     const sym = currentStock.ticker || currentStock.sym || ticker;
@@ -769,11 +830,11 @@ function renderTab(tab) {
     } else if (tab === 'movers') {
         loadAndRenderMovers();
     } else if (tab === 'fundamentals') {
+        // Try to get guidance from derived_metrics.ai_insights_guidance.guidance
         let guidance = {};
         try {
-            // Try to get guidance from the current stock record (already loaded from IndexedDB)
-            if (s && s.guidance) {
-                guidance = { guidance: s.guidance };
+            if (s && s.derived_metrics && s.derived_metrics.ai_insights_guidance && s.derived_metrics.ai_insights_guidance.guidance) {
+                guidance = { guidance: s.derived_metrics.ai_insights_guidance.guidance };
             }
             // Fallback to localStorage if not in stock record
             if (!guidance.guidance) {
@@ -786,11 +847,11 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
-            
+            console.log('Error loading fundamentals guidance:', e.message);
         }
         
         if (!guidance || !guidance.guidance) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save guidance from Data tab</div></div>';
+            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No guidance data available</div></div>';
         } else {
             const g = guidance.guidance;
             const ad = g.analyst_dimensions || {};
@@ -807,8 +868,8 @@ function renderTab(tab) {
                 
                 <!-- SUMMARY -->
                 <div style="background:linear-gradient(135deg, rgba(0,242,255,.1), rgba(0,200,150,.1));border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--ac)">
-                    <div style="font-size:9px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 ${g.quarter}</div>
-                    <div style="font-size:14px;color:var(--tx1);line-height:1.6;font-weight:500;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.summary}</div>
+                    <div style="font-size:9px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 ${g.quarter || 'Guidance'}</div>
+                    <div style="font-size:14px;color:var(--tx1);line-height:1.6;font-weight:500;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.summary || 'Company guidance summary'}</div>
                     <div style="font-size:8px;color:var(--tx3);margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Updated: ${g.date || 'N/A'}</div>
                 </div>
                 
@@ -818,86 +879,80 @@ function renderTab(tab) {
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                         <div style="background:rgba(0,0,0,.2);padding:10px;border-radius:6px;border-left:3px solid var(--yw)">
                             <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Revenue</div>
-                            <div style="font-size:12px;color:var(--tx1);font-weight:400">${g.financial.revenue}</div>
+                            <div style="font-size:11px;color:var(--tx1);font-weight:400;line-height:1.4">${(g.financial && g.financial.revenue) ? g.financial.revenue.substring(0, 120) + '...' : 'Not disclosed'}</div>
                         </div>
                         <div style="background:rgba(0,232,150,.15);padding:10px;border-radius:6px;border-left:3px solid var(--gr)">
                             <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Growth</div>
-                            <div style="font-size:14px;color:var(--gr);font-weight:400">↑ ${g.financial.growth}</div>
+                            <div style="font-size:12px;color:var(--gr);font-weight:400">↑ ${(g.financial && g.financial.growth) ? g.financial.growth.substring(0, 60) : 'N/A'}</div>
                         </div>
                         <div style="background:rgba(0,255,136,.15);padding:10px;border-radius:6px;border-left:3px solid var(--gr)">
                             <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Margins</div>
-                            <div style="font-size:14px;color:var(--gr);font-weight:400">📈 ${g.financial.margins}</div>
+                            <div style="font-size:12px;color:var(--gr);font-weight:400">📈 ${(g.financial && g.financial.margins) ? g.financial.margins.substring(0, 60) : 'N/A'}</div>
                         </div>
                         <div style="background:rgba(0,212,255,.15);padding:10px;border-radius:6px;border-left:3px solid var(--ac)">
                             <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Capex</div>
-                            <div style="font-size:12px;color:var(--ac);font-weight:400">${g.financial.capex}</div>
+                            <div style="font-size:11px;color:var(--ac);font-weight:400">${(g.financial && g.financial.capex) ? g.financial.capex.substring(0, 80) : 'N/A'}</div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- BUSINESS -->
+                ${g.business ? `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--gr)">
                     <div style="font-size:9px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:10px;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🏢 Business</div>
-                    <div style="font-size:12px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">
-                        <div style="margin-bottom:10px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Expansion:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.expansion}</span></div>
-                        <div style="margin-bottom:10px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Products:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.products}</span></div>
-                        <div><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Geography:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.geography}</span></div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">
+                        <div style="margin-bottom:8px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Expansion:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.expansion || 'N/A'}</span></div>
+                        <div style="margin-bottom:8px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Products:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.products || 'N/A'}</span></div>
+                        <div><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Geography:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.geography || 'N/A'}</span></div>
                     </div>
                 </div>
+                ` : ''}
                 
                 <!-- MANAGEMENT SENTIMENT -->
+                ${g.management ? `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--ac)">
                     <div style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px">👔 Management</div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-                        <div style="background:${g.management.tone === 'Positive' ? 'rgba(0,232,150,.15)' : g.management.tone === 'Cautious' ? 'rgba(255,191,71,.15)' : 'rgba(255,107,133,.15)'};padding:12px;border-radius:8px;border:2px solid ${g.management.tone === 'Positive' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">
+                        <div style="background:${g.management.tone === 'POSITIVE' ? 'rgba(0,232,150,.15)' : g.management.tone === 'Cautious' ? 'rgba(255,191,71,.15)' : 'rgba(255,107,133,.15)'};padding:12px;border-radius:8px;border:2px solid ${g.management.tone === 'POSITIVE' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">
                             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
                                 <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Tone</div>
-                                <div style="font-size:18px;font-weight:800">${g.management.tone === 'Positive' ? '📈' : g.management.tone === 'Cautious' ? '⚠️' : '📉'}</div>
+                                <div style="font-size:18px;font-weight:800">${g.management.tone === 'POSITIVE' ? '📈' : g.management.tone === 'Cautious' ? '⚠️' : '📉'}</div>
                             </div>
-                            <div style="font-size:13px;font-weight:700;color:${g.management.tone === 'Positive' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">${g.management.tone}</div>
+                            <div style="font-size:13px;font-weight:700;color:${g.management.tone === 'POSITIVE' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">${g.management.tone || 'N/A'}</div>
                         </div>
                         <div style="background:rgba(0,242,255,.12);padding:12px;border-radius:8px;border:2px solid var(--ac)">
                             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
                                 <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Confidence</div>
-                                <div style="font-size:18px;font-weight:800">${g.management.confidence === 'High' ? '🎯' : g.management.confidence === 'Medium' ? '📊' : '❓'}</div>
+                                <div style="font-size:18px;font-weight:800">${g.management.confidence === 'HIGH' ? '🎯' : g.management.confidence === 'Medium' ? '📊' : '❓'}</div>
                             </div>
-                            <div style="font-size:13px;font-weight:700;color:var(--ac)">${g.management.confidence}</div>
+                            <div style="font-size:13px;font-weight:700;color:var(--ac)">${g.management.confidence || 'N/A'}</div>
                         </div>
                     </div>
+                    ${g.management.commitments && g.management.commitments.length > 0 ? `
                     <div style="margin-bottom:8px">
                         <div style="font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">✓ Commitments</div>
-                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.commitments.map(c => `<li style="color:var(--gr);margin-bottom:3px;font-weight:600">✓ ${c}</li>`).join('')}</ul>
+                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:10px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.commitments.map(c => `<li style="color:var(--gr);margin-bottom:3px;font-weight:600">✓ ${c.substring(0, 100)}</li>`).join('')}</ul>
                     </div>
+                    ` : ''}
+                    ${g.management.risks && g.management.risks.length > 0 ? `
                     <div>
                         <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠ Risks</div>
-                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:11px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.risks.map(r => `<li style="color:var(--rd);margin-bottom:3px;font-weight:600">⚠ ${r}</li>`).join('')}</ul>
+                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:10px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.risks.map(r => `<li style="color:var(--rd);margin-bottom:3px;font-weight:600">⚠ ${r.substring(0, 100)}</li>`).join('')}</ul>
                     </div>
+                    ` : ''}
                 </div>
-                
-                <!-- ========== ANALYST DEEP DIVE ========== -->
-                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px">📈 Analyst Deep Dive</div>
-                
-                ${dimCard('Valuation Context', '💹', ad.valuation_context, 'var(--ac)')}
-                ${dimCard('Consensus Gap', '📊', ad.consensus_gap, 'var(--yw)')}
-                ${dimCard('Achievability', '✅', ad.achievability, 'var(--gr)')}
-                ${dimCard('Margin Quality', '🎯', ad.margin_quality, 'var(--ac)')}
-                ${dimCard('Capex & ROI', '🏗️', ad.capex_roi, 'var(--yw)')}
-                ${dimCard('Order Book Health', '📦', ad.order_book_health, 'var(--gr)')}
-                ${dimCard('Risk/Opportunity', '⚡', ad.risk_opportunity_scorecard, 'var(--rd)')}
-                ${dimCard('Management Credibility', '🏆', ad.management_credibility, 'var(--ac)')}
-                ${dimCard('Forward Estimates', '📈', ad.forward_estimate_impact, 'var(--yw)')}
-                ${dimCard('Quarterly Path', '📅', ad.quarterly_trajectory, 'var(--gr)')}
+                ` : ''}
                 
                 </div>
             `;
         }
     } else if (tab === 'guidance') {
-        // Fetch guidance data from current stock record (already loaded from IndexedDB), fallback to localStorage
+        // Fetch insights data from derived_metrics.ai_insights_guidance.insights
         let data = {};
         try {
             // Try to get insights from the current stock record (already loaded from IndexedDB)
-            if (s && s.insights) {
-                data = { insights: s.insights };
+            if (s && s.derived_metrics && s.derived_metrics.ai_insights_guidance && s.derived_metrics.ai_insights_guidance.insights) {
+                data = { insights: s.derived_metrics.ai_insights_guidance.insights };
             }
             // Fallback to localStorage if not in stock record
             if (!data.insights) {
@@ -910,21 +965,23 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
-            
+            console.log('Error loading insights:', e.message);
         }
         
         if (!data || !data.insights) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No data - save insights from Data tab</div></div>';
+            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No insights data available</div></div>';
         } else {
             const i = data.insights;
             const sb = i.sector_briefing || {};
+            const an = i.analysis || {};
             
             // Helper function for signal color
             const getSignalColor = (signal) => {
                 if (!signal) return 'var(--tx3)';
-                if (signal.includes('Positive')) return 'var(--gr)';
-                if (signal.includes('Caution')) return 'var(--rd)';
-                return 'var(--yw)';
+                if (signal && signal.includes('Positive')) return 'var(--gr)';
+                if (signal && signal.includes('Caution')) return 'var(--rd)';
+                if (signal && signal.includes('Neutral')) return 'var(--yw)';
+                return 'var(--tx3)';
             };
             
             // Investment dimension card helper
@@ -934,8 +991,8 @@ function renderTab(tab) {
                         <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${emoji} ${title}</div>
                         <div style="font-size:9px;font-weight:700;color:${getSignalColor(signal)};padding:2px 6px;background:${getSignalColor(signal) === 'var(--gr)' ? 'rgba(0,232,150,.15)' : getSignalColor(signal) === 'var(--rd)' ? 'rgba(255,107,133,.15)' : 'rgba(255,191,71,.15)'};border-radius:3px">${signal || 'Neutral'}</div>
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"><strong>Metric:</strong> ${metric}</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${assessment}</div>
+                    <div style="font-size:9px;color:var(--tx3);margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;line-height:1.5"><strong>Metric:</strong> ${metric ? metric.substring(0, 200) : 'N/A'}</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${assessment ? assessment.substring(0, 300) : 'No assessment'}</div>
                 </div>
             `;
             
@@ -945,7 +1002,7 @@ function renderTab(tab) {
                 recColor = 'var(--gr)'; recBg = 'rgba(0,232,150,.15)';
             } else if (i.recommendation && i.recommendation.toUpperCase() === 'REDUCE') {
                 recColor = 'var(--yw)'; recBg = 'rgba(255,191,71,.15)';
-            } else if (i.recommendation && i.recommendation.toUpperCase() === 'EXIT') {
+            } else if (i.recommendation && i.recommendation.toUpperCase() === 'SELL' || i.recommendation && i.recommendation.toUpperCase() === 'EXIT') {
                 recColor = 'var(--rd)'; recBg = 'rgba(255,107,133,.15)';
             }
             
@@ -955,43 +1012,53 @@ function renderTab(tab) {
                 <!-- RECOMMENDATION HEADLINE -->
                 <div style="background:${recBg};border:1px solid ${recColor};border-radius:8px;padding:12px;margin-bottom:12px">
                     <div style="font-size:12px;font-weight:900;color:${recColor};margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${i.recommendation || 'HOLD'}</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-weight:600;margin-bottom:4px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${i.thesis || 'No thesis provided'}</div>
-                    ${i.trigger ? `<div style="font-size:9px;color:var(--tx3);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"><strong>Trigger:</strong> ${i.trigger}</div>` : ''}
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-weight:600;margin-bottom:4px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${i.thesis ? i.thesis.substring(0, 400) + '...' : 'No thesis provided'}</div>
+                    ${i.trigger ? `<div style="font-size:9px;color:var(--tx3);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;line-height:1.5"><strong>Trigger:</strong> ${i.trigger.substring(0, 250)}</div>` : ''}
                 </div>
                 
                 <!-- INVESTMENT ANALYSIS DIMENSIONS -->
                 <div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:10px;padding:0 4px">📊 Investment Analysis</div>
                 
-                ${analysisCard('Valuation', '💹', i.analysis.valuation.metric, i.analysis.valuation.assessment, i.analysis.valuation.signal, 'var(--ac)')}
-                ${analysisCard('Growth', '📈', i.analysis.growth.metric, i.analysis.growth.assessment, i.analysis.growth.signal, 'var(--yw)')}
-                ${analysisCard('Profitability', '🎯', i.analysis.profitability.metric, i.analysis.profitability.assessment, i.analysis.profitability.signal, 'var(--gr)')}
-                ${analysisCard('Cash Strength', '💰', i.analysis.cash_strength.metric, i.analysis.cash_strength.assessment, i.analysis.cash_strength.signal, 'var(--ac)')}
-                ${analysisCard('Catalyst', '🚀', i.analysis.catalyst.metric, i.analysis.catalyst.assessment, i.analysis.catalyst.signal, 'var(--yw)')}
-                ${analysisCard('Moat', '🛡️', i.analysis.moat.metric, i.analysis.moat.assessment, i.analysis.moat.signal, 'var(--gr)')}
-                ${analysisCard('Opportunity', '⭐', i.analysis.opportunity.metric, i.analysis.opportunity.assessment, i.analysis.opportunity.signal, 'var(--ac)')}
+                ${an.valuation ? analysisCard('Valuation', '💹', an.valuation.metric, an.valuation.assessment, an.valuation.signal, 'var(--ac)') : ''}
+                ${an.growth ? analysisCard('Growth', '📈', an.growth.metric, an.growth.assessment, an.growth.signal, 'var(--yw)') : ''}
+                ${an.profitability ? analysisCard('Profitability', '🎯', an.profitability.metric, an.profitability.assessment, an.profitability.signal, 'var(--gr)') : ''}
+                ${an.cash_strength ? analysisCard('Cash Strength', '💰', an.cash_strength.metric, an.cash_strength.assessment, an.cash_strength.signal, 'var(--ac)') : ''}
+                ${an.catalyst ? analysisCard('Catalyst', '🚀', an.catalyst.metric, an.catalyst.assessment, an.catalyst.signal, 'var(--yw)') : ''}
+                ${an.moat ? analysisCard('Moat', '🛡️', an.moat.metric, an.moat.assessment, an.moat.signal, 'var(--gr)') : ''}
+                ${an.opportunity ? analysisCard('Opportunity', '⭐', an.opportunity.metric, an.opportunity.assessment, an.opportunity.signal, 'var(--ac)') : ''}
                 
                 <!-- SECTOR BRIEFING -->
-                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🌍 Sector Briefing</div>
+                ${sb.sector_name ? `
+                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🌍 Sector Briefing: ${sb.sector_name}</div>
+                ` : ''}
                 
+                ${sb.sector_outlook ? `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--ac)">
                     <div style="font-size:10px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🔮 Sector Outlook</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_outlook || 'Not provided'}</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_outlook}</div>
                 </div>
+                ` : ''}
                 
+                ${sb.sector_growth ? `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--yw)">
                     <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 Sector Growth & Dynamics</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_growth || 'Not provided'}</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_growth}</div>
                 </div>
+                ` : ''}
                 
+                ${sb.company_positioning ? `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--gr)">
                     <div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🎯 Company Positioning</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.company_positioning || 'Not provided'}</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.company_positioning}</div>
                 </div>
+                ` : ''}
                 
+                ${sb.sector_risks ? `
                 <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--rd)">
                     <div style="font-size:10px;font-weight:700;color:var(--rd);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠️ Sector Risks</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_risks || 'Not provided'}</div>
+                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_risks}</div>
                 </div>
+                ` : ''}
                 
                 </div>
             `;
@@ -3750,7 +3817,7 @@ async function loadAndRenderMovers(){
   try {
     // Open IndexedDB - this is where portfolio data actually lives
     const db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open('OnyxPortfolioDB');
+      const req = indexedDB.open(DB);
       req.onsuccess = () => {
         resolve(req.result);
       };
@@ -3759,10 +3826,10 @@ async function loadAndRenderMovers(){
       };
     });
     
-    // Get all stocks from Stocks store
+    // Get all stocks from stocks store
     const allStocks = await new Promise((resolve, reject) => {
-      const tx = db.transaction('Stocks', 'readonly');
-      const store = tx.objectStore('Stocks');
+      const tx = db.transaction(STORE, 'readonly');
+      const store = tx.objectStore(STORE);
       const req = store.getAll();
       
       req.onsuccess = () => {
