@@ -331,8 +331,7 @@
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>DATA LOAD</button>
             <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>LTP LOAD<br><span style="font-size:9px; font-weight:normal;">Live</span></button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH</button>
-            <div style="background:linear-gradient(135deg, #1a4d8f 0%, #0d2a52 100%); color:#fff; padding:6px 4px; border-radius:4px; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; gap:6px;">db <span id="dbCountBox">0</span></div>
+            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH <span id="dbCountBox" style="font-weight:800; margin-left:4px;">0|0</span></button>
         </div>
 
         <!-- SECTION 1: DATA SOURCES -->
@@ -637,7 +636,7 @@
     }
 
     function log(msg) {
-        var ts = new Date().toLocaleTimeString();
+        var ts = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
         var fullMsg = `[${ts}] ${msg}`;
         logMessages.push(fullMsg);
         var logBox = document.getElementById('live-log');
@@ -647,6 +646,39 @@
         }
         saveLogs();
         console.log(msg);
+    }
+    
+    // Standardized log helpers
+    function logSuccess(action, details) {
+        log(`✅ ${action}${details ? ' • ' + details : ''}`);
+    }
+    
+    function logInfo(action, details) {
+        log(`ℹ️ ${action}${details ? ' • ' + details : ''}`);
+    }
+    
+    function logWarning(action, details) {
+        log(`⚠️ ${action}${details ? ' • ' + details : ''}`);
+    }
+    
+    function logError(action, details) {
+        log(`❌ ${action}${details ? ' • ' + details : ''}`);
+    }
+    
+    function logLoad(source, count) {
+        log(`📥 Loaded ${count} records from ${source}`);
+    }
+    
+    function logFetch(source) {
+        log(`📡 Fetching ${source}...`);
+    }
+    
+    function logProcess(action, count) {
+        log(`⚙️ Processing ${count} items • ${action}`);
+    }
+    
+    function logUpdate(field, value) {
+        log(`📝 Updated ${field} → ${value}`);
     }
     
     function showToast(msg) {
@@ -844,8 +876,10 @@
                         var getAllReq = store.getAll();
 
                         getAllReq.onsuccess = () => {
-                            masterData = getAllReq.result || [];
-                            log(`✅ Loaded ${masterData.length} stocks from IndexedDB`);
+                            const allRecords = getAllReq.result || [];
+                            // Filter out _METADATA_ record - only keep actual stocks
+                            masterData = allRecords.filter(record => record.ticker !== '_METADATA_');
+                            log(`✅ Loaded ${masterData.length} stocks from IndexedDB (${allRecords.length} total records)`);
                             resolve();
                         };
                         
@@ -2095,11 +2129,11 @@ CRITICAL RULES:
     }
 
     function loadAllData() {
-        log('🚀 DATA LOAD: Starting complete data refresh...');
+        logInfo('DATA LOAD: Starting complete data refresh');
         updateStatusButton('⏳ Starting Fresh Load');
         
         // Clear existing data first
-        log('🗑️ Clearing existing database...');
+        logInfo('Clearing existing database');
         clearDatabaseAndRefresh();
     }
     
@@ -2107,21 +2141,21 @@ CRITICAL RULES:
         const request = indexedDB.deleteDatabase(DB_NAME);
         
         request.onsuccess = function() {
-            log('✅ Database cleared');
-            log('📥 Loading fresh data from GitHub...');
+            logSuccess('Database cleared');
+            logFetch('GitHub');
             updateStatusButton('⏳ Loading Data Files');
             
             loadMarketDataFromGitHub();
         };
         
         request.onerror = function() {
-            log('❌ Error clearing database');
+            logError('Failed to clear database');
             updateStatusButton('❌ Clear Error');
         };
     }
     
     function loadMarketDataFromGitHub() {
-        log('📥 Loading market_data.json from GitHub...');
+        logFetch('market_data.json');
         const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
         const marketDataUrl = `${RAW_GITHUB_URL}/data/market_data.json?v=${cacheBuster}`;
         
@@ -2140,19 +2174,19 @@ CRITICAL RULES:
                 
                 // Extract metadata timestamp
                 const generatedAt = json._metadata?.generated_at || new Date().toISOString();
-                log(`📅 Market data generated at: ${generatedAt}`);
+                logUpdate('market_data timestamp', generatedAt);
                 
                 // Detect format
                 let stocks_to_process = [];
                 if (json.stocks && Array.isArray(json.stocks)) {
                     stocks_to_process = json.stocks;
-                    log('📋 Detected format: stocks array');
+                    logInfo('Format detected: stocks array');
                 } else if (typeof json === 'object' && Object.keys(json).length > 0 && !json.stocks && !json._metadata) {
                     stocks_to_process = Object.entries(json).map(function([ticker, data]) {
                         data.ticker = ticker;
                         return data;
                     });
-                    log('📋 Detected format: ticker-keyed object');
+                    logInfo('Format detected: ticker-keyed object');
                 } else if (json._metadata) {
                     // Stocks are top-level, filter out _metadata
                     stocks_to_process = Object.entries(json)
@@ -2161,27 +2195,31 @@ CRITICAL RULES:
                             data.ticker = ticker;
                             return data;
                         });
-                    log('📋 Detected format: ticker-keyed with _metadata');
+                    logInfo('Format detected: ticker-keyed with _metadata');
                 } else {
                     throw new Error('Invalid format - cannot find stocks');
                 }
                 
-                log('📦 Processing ' + stocks_to_process.length + ' stocks...');
-                return saveMarketDataToDB(stocks_to_process, generatedAt);
+                logProcess('saving to DB', stocks_to_process.length);
+                
+                // Extract guidance count from metadata if available
+                const guidanceCount = json._metadata?.tickers_with_guidance || 0;
+                
+                return saveMarketDataToDB(stocks_to_process, generatedAt, guidanceCount);
             })
             .then(() => {
-                log('✅ market_data.json loaded successfully');
-                log('📥 Now loading ltp.json for latest prices...');
+                logSuccess('market_data.json loaded');
+                logFetch('ltp.json for latest prices');
                 return loadLTPFromGitHub();
             })
             .catch(err => {
-                log(`❌ Error loading market_data.json: ${err.message}`);
+                logError('Loading market_data.json', err.message);
                 updateStatusButton('❌ Load Error');
                 showToast(`Error: ${err.message}`, 'error');
             });
     }
     
-    function saveMarketDataToDB(stocks_to_process, generatedAt) {
+    function saveMarketDataToDB(stocks_to_process, generatedAt, guidanceCount) {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
             
@@ -2216,21 +2254,24 @@ CRITICAL RULES:
                     ticker: '_METADATA_',
                     market_data_generated_at: generatedAt || new Date().toISOString(),
                     market_data_count: savedCount,
+                    tickers_with_guidance: guidanceCount || 0,  // Store guidance count
                     ltp_updated_at: null,  // Will be updated when LTP loads
                     ltp_count: null
                 };
                 store.put(metadata);
                 
                 tx.oncomplete = function() {
-                    log('✅ Saved ' + savedCount + ' stocks to IndexedDB');
-                    log('📊 Market data timestamp: ' + (generatedAt || new Date().toISOString()));
+                    logSuccess('Saved to IndexedDB', `${savedCount} stocks`);
+                    if (guidanceCount) {
+                        logUpdate('guidance count', guidanceCount);
+                    }
                     
                     db.close();
                     resolve();
                 };
                 
                 tx.onerror = function() {
-                    log('❌ Transaction error');
+                    logError('Transaction failed during save');
                     db.close();
                     reject(new Error('Transaction error'));
                 };
@@ -2244,7 +2285,7 @@ CRITICAL RULES:
     
     function loadLTPFromGitHub() {
         return new Promise((resolve, reject) => {
-            log('📥 Loading ltp.json from GitHub...');
+            logFetch('ltp.json');
             const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
             const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
             
@@ -2255,18 +2296,18 @@ CRITICAL RULES:
                 })
                 .then(json => {
                     if (!json.quotes) {
-                        log('⚠️ ltp.json not available, continuing without live prices');
+                        logWarning('ltp.json not available, continuing without live prices');
                         resolve();
                         return;
                     }
                     
-                    log('⏳ Merging ' + Object.keys(json.quotes).length + ' live prices...');
+                    logProcess('merging live prices', Object.keys(json.quotes).length);
                     mergeLTPIntoDB(json)  // Pass full JSON with updated timestamp
                         .then(() => resolve())
                         .catch(err => reject(err));
                 })
                 .catch(err => {
-                    log(`⚠️ Could not fetch ltp.json: ${err.message}`);
+                    logWarning('Could not fetch ltp.json', err.message);
                     resolve(); // Don't fail - we have market_data already
                 });
         });
@@ -2322,11 +2363,35 @@ CRITICAL RULES:
                             mergedCount++;
                         }
                     });
+                    
+                    // Update metadata with LTP timestamp and count
+                    const getMetadataReq = store.get('_METADATA_');
+                    getMetadataReq.onsuccess = function() {
+                        const existingMetadata = getMetadataReq.result || {};
+                        
+                        const metadata = {
+                            ticker: '_METADATA_',
+                            market_data_generated_at: existingMetadata.market_data_generated_at,
+                            market_data_count: existingMetadata.market_data_count,
+                            ltp_updated_at: ltpTime,
+                            ltp_count: mergedCount
+                        };
+                        store.put(metadata);
+                    };
+                    getMetadataReq.onerror = function() {
+                        // If metadata doesn't exist, create it
+                        const metadata = {
+                            ticker: '_METADATA_',
+                            ltp_updated_at: ltpTime,
+                            ltp_count: mergedCount
+                        };
+                        store.put(metadata);
+                    };
                 };
                 
                 tx.oncomplete = function() {
-                    log('✅ LTP merged for ' + mergedCount + ' stocks');
-                    log('✅ Complete data load finished successfully!');
+                    logSuccess('LTP merged', `${mergedCount} stocks`);
+                    logSuccess('Complete data load finished');
                     updateStatusButton('✅ Loaded (' + mergedCount + ' prices)');
                     showToast('✅ Fresh data loaded! Refresh to see updates.', 'success');
                     
@@ -2341,7 +2406,7 @@ CRITICAL RULES:
                 };
                 
                 tx.onerror = function() {
-                    log('❌ Transaction error during LTP merge');
+                    logError('Transaction failed during LTP merge');
                     db.close();
                     reject(new Error('Transaction error'));
                 };
@@ -2354,7 +2419,7 @@ CRITICAL RULES:
     }
     
     function updateLTPFromGitHub() {
-        log('⚡ LTP LOAD: Fetching and merging latest LTP data...');
+        logInfo('LTP LOAD: Fetching and merging latest LTP data');
         updateStatusButton('⏳ Fetching LTP');
         
         // Just fetch and merge - no workflow trigger needed
@@ -2362,12 +2427,12 @@ CRITICAL RULES:
     }
     
     function triggerLTPWorkflowOnly() {
-        log('⚡ Triggering GitHub workflow to fetch fresh LTP data...');
+        logInfo('Triggering GitHub workflow to fetch fresh LTP data');
         updateStatusButton('⏳ Triggering Workflow');
         
         const pat = localStorage.getItem('github_pat');
         if (!pat) {
-            log('⚠️ PAT not configured - cannot trigger workflow');
+            logWarning('PAT not configured - cannot trigger workflow');
             showToast('❌ PAT required to trigger workflow');
             return;
         }
@@ -2375,7 +2440,7 @@ CRITICAL RULES:
         // Trigger the fetch_ltp.yml workflow
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch_ltp.yml/dispatches`;
         
-        log(`🔗 Dispatching workflow to: ${apiUrl}`);
+        logFetch(`workflow: ${apiUrl}`);
         
         fetch(apiUrl, {
             method: 'POST',
@@ -2391,28 +2456,28 @@ CRITICAL RULES:
         })
         .then(r => {
             if (r.status === 204) {
-                log('✅ Workflow dispatch request accepted (204)');
-                log('⏳ Workflow triggered! The ltp.json will be updated on GitHub.');
+                logSuccess('Workflow dispatch accepted');
+                logInfo('LTP data will be updated on GitHub soon');
                 updateStatusButton('✅ Workflow Triggered');
                 showToast('✅ Workflow triggered! ltp.json will be updated soon.', 'success');
             } else if (r.status === 401) {
-                log('❌ Invalid PAT token');
+                logError('Invalid PAT token');
                 updateStatusButton('❌ Invalid PAT');
                 showToast('❌ Invalid PAT token');
             } else if (r.status === 404) {
-                log('❌ Workflow not found - check fetch_ltp.yml exists');
+                logError('Workflow not found', 'check fetch_ltp.yml exists');
                 updateStatusButton('❌ Workflow Not Found');
                 showToast('❌ Workflow not found');
             } else {
                 return r.text().then(text => {
-                    log(`❌ Error: HTTP ${r.status}: ${text}`);
+                    logError('Workflow dispatch failed', `HTTP ${r.status}`);
                     updateStatusButton('❌ Workflow Error');
                     showToast(`❌ Error: HTTP ${r.status}`);
                 });
             }
         })
         .catch(err => {
-            log(`❌ Error: ${err.message}`);
+            logError('Workflow dispatch error', err.message);
             updateStatusButton('❌ Error');
             showToast(`❌ Error: ${err.message}`);
         });
@@ -2420,7 +2485,7 @@ CRITICAL RULES:
     
     
     function fetchAndMergeLTPOnly() {
-        log('⚡ Fetching ltp.json from GitHub...');
+        logFetch('ltp.json');
         updateStatusButton('⏳ Fetching LTP');
         
         const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
@@ -2433,17 +2498,17 @@ CRITICAL RULES:
             })
             .then(json => {
                 if (!json.quotes) {
-                    log('❌ Invalid LTP JSON - missing quotes');
+                    logError('Invalid LTP JSON', 'missing quotes');
                     updateStatusButton('❌ Invalid Format');
                     return;
                 }
                 
-                log(`⏳ Updating ${Object.keys(json.quotes).length} stocks...`);
+                logProcess('updating stocks', Object.keys(json.quotes).length);
                 updateStatusButton('⏳ Updating DB');
                 
                 // Extract and store the updated timestamp from ltp.json
                 const ltpUpdatedTime = json.updated || new Date().toISOString();
-                log(`📅 LTP data generated at: ${ltpUpdatedTime}`);
+                logUpdate('LTP timestamp', ltpUpdatedTime);
                 
                 // Store the timestamp for display in sources table
                 dataUpdatedTimes['ltp.json'] = ltpUpdatedTime;
@@ -2487,7 +2552,7 @@ CRITICAL RULES:
                             }
                         });
                         
-                        // Get existing metadata to preserve market_data fields
+                        // Now update metadata BEFORE transaction completes
                         const getMetadataReq = store.get('_METADATA_');
                         getMetadataReq.onsuccess = function() {
                             const existingMetadata = getMetadataReq.result || {};
@@ -2501,12 +2566,20 @@ CRITICAL RULES:
                                 ltp_count: updatedCount
                             };
                             store.put(metadata);
+                            logUpdate('metadata', `ltp_updated_at + ${updatedCount} count`);
+                        };
+                        getMetadataReq.onerror = function() {
+                            const metadata = {
+                                ticker: '_METADATA_',
+                                ltp_updated_at: ltpUpdatedTime,
+                                ltp_count: updatedCount
+                            };
+                            store.put(metadata);
                         };
                     };
                     
                     tx.oncomplete = function() {
-                        log(`✅ LTP Updated: ${updatedCount} stocks`);
-                        log(`📊 Updated at: ${new Date().toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata'})}`);
+                        logSuccess('LTP updated', `${updatedCount} stocks`);
                         updateStatusButton('✅ LTP Updated');
                         showToast(`Updated ${updatedCount} stocks. Refresh index.html to see prices.`, 'success');
                         
@@ -2516,19 +2589,19 @@ CRITICAL RULES:
                     };
                     
                     tx.onerror = function() {
-                        log('❌ Transaction error');
+                        logError('Transaction failed');
                         updateStatusButton('❌ Error');
                         db.close();
                     };
                 };
                 
                 request.onerror = function() {
-                    log('❌ Failed to open database');
+                    logError('Failed to open database');
                     updateStatusButton('❌ DB Error');
                 };
             })
             .catch(err => {
-                log(`❌ Error fetching LTP: ${err.message}`);
+                logError('Fetching LTP', err.message);
                 updateStatusButton('❌ Fetch Error');
                 showToast(`Error: ${err.message}`, 'error');
             });
@@ -3056,7 +3129,39 @@ CRITICAL RULES:
         
 
     function updateHeader() {
-        document.getElementById('dbCountBox').textContent = masterData.length;
+        // Get stock count from masterData
+        const stockCount = masterData.length;
+        
+        // Get guidance count from metadata in IndexedDB
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onsuccess = function(ev) {
+            const db = ev.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.close();
+                document.getElementById('dbCountBox').textContent = stockCount + '|0';
+                return;
+            }
+            
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const getMetadataReq = store.get('_METADATA_');
+            
+            getMetadataReq.onsuccess = function() {
+                const metadata = getMetadataReq.result || {};
+                const guidanceCount = metadata.tickers_with_guidance || 0;
+                db.close();
+                document.getElementById('dbCountBox').textContent = stockCount + '|' + guidanceCount;
+            };
+            
+            getMetadataReq.onerror = function() {
+                db.close();
+                document.getElementById('dbCountBox').textContent = stockCount + '|0';
+            };
+        };
+        
+        request.onerror = function() {
+            document.getElementById('dbCountBox').textContent = stockCount + '|0';
+        };
     }
 
     // Initialize with error handling
