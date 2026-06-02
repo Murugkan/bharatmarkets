@@ -263,15 +263,35 @@
 
         /* LOG */
         .log-box {
-            background: #111;
-            border: 1px solid var(--b1);
-            border-radius: 4px;
-            padding: 10px;
-            max-height: 200px;
+            background: #0a0a0a;
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 6px;
+            padding: 12px;
+            max-height: 250px;
             overflow-y: auto;
-            font-size: 9px;
-            color: var(--gr);
-            line-height: 1.4;
+            font-size: 10px;
+            color: #00ff88;
+            line-height: 1.6;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.3px;
+        }
+        
+        .log-box::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .log-box::-webkit-scrollbar-track {
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 3px;
+        }
+        
+        .log-box::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 136, 0.4);
+            border-radius: 3px;
+        }
+        
+        .log-box::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 255, 136, 0.6);
         }
 
         /* INPUT FIELDS */
@@ -637,7 +657,10 @@
 
     function log(msg) {
         var ts = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
-        var fullMsg = `[${ts}] ${msg}`;
+        // Pad timestamp to consistent width
+        var paddedTs = ts.padEnd(12);
+        // Format: [HH:MM:SS AM/PM] Message
+        var fullMsg = `[${paddedTs}] ${msg}`;
         logMessages.push(fullMsg);
         var logBox = document.getElementById('live-log');
         if (logBox) {
@@ -650,35 +673,39 @@
     
     // Standardized log helpers
     function logSuccess(action, details) {
-        log(`✅ ${action}${details ? ' • ' + details : ''}`);
+        const detail = details ? ` › ${details}` : '';
+        log(`✅ ${action}${detail}`);
     }
     
     function logInfo(action, details) {
-        log(`ℹ️ ${action}${details ? ' • ' + details : ''}`);
+        const detail = details ? ` › ${details}` : '';
+        log(`ℹ️  ${action}${detail}`);
     }
     
     function logWarning(action, details) {
-        log(`⚠️ ${action}${details ? ' • ' + details : ''}`);
+        const detail = details ? ` › ${details}` : '';
+        log(`⚠️  ${action}${detail}`);
     }
     
     function logError(action, details) {
-        log(`❌ ${action}${details ? ' • ' + details : ''}`);
+        const detail = details ? ` › ${details}` : '';
+        log(`❌ ${action}${detail}`);
     }
     
     function logLoad(source, count) {
-        log(`📥 Loaded ${count} records from ${source}`);
+        log(`📥 Loaded ${count} records › ${source}`);
     }
     
     function logFetch(source) {
-        log(`📡 Fetching ${source}...`);
+        log(`🔗 Fetching › ${source}`);
     }
     
     function logProcess(action, count) {
-        log(`⚙️ Processing ${count} items • ${action}`);
+        log(`⚙️  Processing ${count} items › ${action}`);
     }
     
     function logUpdate(field, value) {
-        log(`📝 Updated ${field} → ${value}`);
+        log(`📝 ${field} → ${value}`);
     }
     
     function showToast(msg) {
@@ -3132,7 +3159,7 @@ CRITICAL RULES:
         // Get stock count from masterData
         const stockCount = masterData.length;
         
-        // Get guidance count from metadata in IndexedDB
+        // Get guidance count from metadata in IndexedDB, or count from masterData
         const request = indexedDB.open(DB_NAME, DB_VERSION);
         request.onsuccess = function(ev) {
             const db = ev.target.result;
@@ -3148,19 +3175,35 @@ CRITICAL RULES:
             
             getMetadataReq.onsuccess = function() {
                 const metadata = getMetadataReq.result || {};
-                const guidanceCount = metadata.tickers_with_guidance || 0;
+                let guidanceCount = metadata.tickers_with_guidance;
+                
+                // If guidance count not in metadata, count from masterData
+                if (guidanceCount === undefined || guidanceCount === 0 || guidanceCount === null) {
+                    guidanceCount = masterData.filter(stock => 
+                        stock.derived_metrics?.ai_insights_guidance?.guidance?.date
+                    ).length;
+                }
+                
                 db.close();
                 document.getElementById('dbCountBox').textContent = stockCount + '|' + guidanceCount;
             };
             
             getMetadataReq.onerror = function() {
+                // If metadata doesn't exist, count from masterData
+                const guidanceCount = masterData.filter(stock => 
+                    stock.derived_metrics?.ai_insights_guidance?.guidance?.date
+                ).length;
                 db.close();
-                document.getElementById('dbCountBox').textContent = stockCount + '|0';
+                document.getElementById('dbCountBox').textContent = stockCount + '|' + guidanceCount;
             };
         };
         
         request.onerror = function() {
-            document.getElementById('dbCountBox').textContent = stockCount + '|0';
+            // If DB access fails, count from masterData
+            const guidanceCount = masterData.filter(stock => 
+                stock.derived_metrics?.ai_insights_guidance?.guidance?.date
+            ).length;
+            document.getElementById('dbCountBox').textContent = stockCount + '|' + guidanceCount;
         };
     }
 

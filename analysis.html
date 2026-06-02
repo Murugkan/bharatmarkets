@@ -171,11 +171,115 @@ let chartCache = {};
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
 const fmt = (v, decimals = 2) => num(v) === 0 && !v ? '—' : num(v).toFixed(decimals);
 const get = (obj, ...keys) => {
+    if (!obj) return '—';
+    
+    // Try exact key first (for direct properties)
     for (let k of keys) {
-        if (obj[k] !== undefined) return obj[k];
+        if (obj[k] !== undefined && obj[k] !== null) return obj[k];
     }
+    
+    // Try field mapping (for nested properties)
+    for (let k of keys) {
+        const resolved = resolveField(obj, k);
+        if (resolved !== undefined && resolved !== null) return resolved;
+    }
+    
     return '—';
 };
+
+// 🎯 INDEXEDDB FIELD MAPPING RESOLVER
+// Maps analysis.html field paths to IndexedDB stock object structure
+const fieldMapping = {
+    // Price & Performance
+    'ltp': ['price.ltp.ltp', 'ltp', 'price', 'current_price'],
+    'price': ['price.ltp.ltp', 'ltp', 'price', 'current_price'],
+    'changePct': ['price.ltp.changePct', 'chg_pct', 'change_pct', 'changePct'],
+    'change': ['price.ltp.change', 'chg', 'price_change'],
+    'chg1d': ['price.ltp.change', 'chg', 'price_change'],
+    
+    // Valuation
+    'trailing_pe': ['ratios.PE', 'pe', 'P/E', 'price_to_earnings'],
+    'pe': ['ratios.PE', 'pe', 'P/E'],
+    'forward_pe': ['ratios.forward_pe', 'fpe', 'forward_P/E'],
+    'price_to_book': ['ratios.PB', 'pb', 'P/B'],
+    'pb': ['ratios.PB', 'pb', 'P/B'],
+    
+    // Margins & Returns
+    'return_on_equity': ['ratios.ROE_pct', 'roe_pct', 'roe', 'ROE'],
+    'roe': ['ratios.ROE_pct', 'roe_pct', 'roe'],
+    'return_on_capital_employed': ['ratios.ROCE_pct', 'roce_pct', 'roce', 'ROCE'],
+    'roce': ['ratios.ROCE_pct', 'roce_pct', 'roce'],
+    'operating_margins': ['derived_metrics.operating_margin_pct', 'opm_pct', 'opm'],
+    'opm_pct': ['derived_metrics.operating_margin_pct', 'opm_pct'],
+    'opm': ['derived_metrics.operating_margin_pct', 'opm_pct', 'opm'],
+    'profit_margins': ['derived_metrics.net_margin_pct', 'npm_pct', 'npm'],
+    'npm_pct': ['derived_metrics.net_margin_pct', 'npm_pct'],
+    'npm': ['derived_metrics.net_margin_pct', 'npm_pct', 'npm'],
+    'gross_margins': ['derived_metrics.gross_margin_pct', 'gpm_pct', 'prom_pct'],
+    'prom': ['derived_metrics.gross_margin_pct', 'gpm_pct', 'prom_pct'],
+    'prom_pct': ['derived_metrics.gross_margin_pct', 'gpm_pct', 'prom_pct'],
+    
+    // Size & Fundamentals
+    'market_cap': ['company_details.market_cap', 'mcap', 'market_cap'],
+    'mcap': ['company_details.market_cap', 'mcap'],
+    'total_revenue': ['financials.Sales', 'sales', 'revenue', 'total_revenue'],
+    'sales': ['financials.Sales', 'sales', 'revenue'],
+    'ebitda': ['financials.EBITDA', 'ebitda'],
+    'operating_cash_flow': ['financials.Operating_CF', 'cfo', 'operating_cf'],
+    'cfo': ['financials.Operating_CF', 'cfo'],
+    'free_cash_flow': ['financials.Free_CF', 'fcf', 'free_cf'],
+    'fcf': ['financials.Free_CF', 'fcf'],
+    'eps_ttm': ['financials.EPS', 'eps', 'eps_ttm'],
+    'trailing_eps': ['financials.EPS', 'eps'],
+    'eps': ['financials.EPS', 'eps'],
+    'interest_exp': ['financials.Interest', 'interest_exp'],
+    'cash': ['company_details.cash', 'cash_balance'],
+    
+    // Ownership
+    'fii': ['market_data.fii_pct', 'fii_pct', 'fii'],
+    'fii_pct': ['market_data.fii_pct', 'fii_pct'],
+    'dii': ['market_data.dii_pct', 'dii_pct', 'dii'],
+    'dii_pct': ['market_data.dii_pct', 'dii_pct'],
+    
+    // Signals & Guidance
+    'pos': ['derived_metrics.positive', 'positive_signals', 'pos'],
+    'positive': ['derived_metrics.positive', 'positive_signals'],
+    'neg': ['derived_metrics.negative', 'negative_signals', 'neg'],
+    'negative': ['derived_metrics.negative', 'negative_signals'],
+    'signal': ['derived_metrics.ai_insights_guidance.signal', 'signal', 'recommendation'],
+    'Signal': ['derived_metrics.ai_insights_guidance.signal', 'signal'],
+    
+    // Data Arrays
+    'quarterly': ['derived_metrics.quarterly_metrics', 'quarterly'],
+    'price_history': ['price_history', 'candles', 'bars'],
+};
+
+// 🎯 RESOLVE FIELD FROM INDEXEDDB STOCK OBJECT
+function resolveField(stock, fieldName) {
+    const paths = fieldMapping[fieldName];
+    if (!paths) return undefined;
+    
+    for (let path of paths) {
+        const value = getNestedValue(stock, path);
+        if (value !== undefined && value !== null) return value;
+    }
+    return undefined;
+}
+
+// Helper to get nested object value by dot notation
+function getNestedValue(obj, path) {
+    if (!obj) return undefined;
+    const parts = path.split('.');
+    let current = obj;
+    for (let part of parts) {
+        if (current && typeof current === 'object' && part in current) {
+            current = current[part];
+        } else {
+            return undefined;
+        }
+    }
+    return current;
+}
 
 // Generate TBD link with search capability
 const tbdLink = (label) => {
