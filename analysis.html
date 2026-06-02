@@ -121,7 +121,6 @@
             <div class="price-val" id="ltp">₹—</div>
             <div class="price-chg" id="chg" style="color:var(--gr)">—</div>
         </div>
-        <button class="back-btn" onclick="loadPortfolioData()" style="color:var(--gr);font-size:16px;padding:4px 8px" title="Load portfolio data with qty">💾</button>
     </div>
     
     <div class="tabs">
@@ -153,6 +152,25 @@ const STORE = "stocks";
 let currentStock = null;
 let currentTab = "overview";
 let dataSource = null; // Track where data comes from: 'db' or 'json'
+
+// 🔧 LOG CONSOLE - Display logs in DEBUG panel
+function logConsole(msg) {
+  const logDiv = document.getElementById('debug-logs');
+  if (!logDiv) return;
+  
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.textContent = `[${time}] ${msg}`;
+  line.style.marginBottom = '2px';
+  line.style.wordBreak = 'break-word';
+  line.style.lineHeight = '1.3';
+  
+  logDiv.appendChild(line);
+  logDiv.scrollTop = logDiv.scrollHeight;
+  
+  console.log(msg);
+}
+
 
 // ✅ Canvas Chart State (REQUIRED for chart functions)
 const S = {
@@ -190,34 +208,29 @@ const get = (obj, ...keys) => {
 
 // 💾 LOAD PORTFOLIO DATA INTO IndexedDB
 async function loadPortfolioData() {
-  logConsole(`📥 Loading portfolio data from market_data.json...`);
+  logConsole(`📥 Loading portfolio data...`);
   
   try {
-    // Fetch market data
     const response = await fetch('../uploads/market_data.json');
-    if (!response.ok) throw new Error(`Failed to load: ${response.status}`);
+    if (!response.ok) throw new Error(`Failed: ${response.status}`);
     const allData = await response.json();
     logConsole(`✅ Loaded ${Object.keys(allData).length} stocks`);
     
-    // Set portfolio holdings
     if (allData.GRSE) {
       allData.GRSE.qty = 50;
       allData.GRSE.company_details = allData.GRSE.company_details || {};
       allData.GRSE.company_details.avg_cost = 2400;
-      logConsole(`✅ GRSE: qty=50, avg_cost=₹2400`);
     }
     if (allData.ABCAPITAL) {
       allData.ABCAPITAL.qty = 100;
       allData.ABCAPITAL.company_details = allData.ABCAPITAL.company_details || {};
       allData.ABCAPITAL.company_details.avg_cost = 350;
-      logConsole(`✅ ABCAPITAL: qty=100, avg_cost=₹350`);
     }
     
-    // Open IndexedDB
     const db = await new Promise((resolve, reject) => {
       const req = indexedDB.open(DB, 8);
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(new Error('Cannot open IndexedDB'));
+      req.onerror = () => reject(new Error('DB open failed'));
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE)) {
@@ -226,7 +239,6 @@ async function loadPortfolioData() {
       };
     });
     
-    // Save all stocks
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
     
@@ -235,24 +247,21 @@ async function loadPortfolioData() {
     
     for (const [ticker, stock] of Object.entries(allData)) {
       stock.ticker = ticker;
-      stock.qty = stock.qty || 0;  // CRITICAL: ensure qty exists
+      stock.qty = stock.qty || 0;
       
-      await new Promise((resolve, reject) => {
+      await new Promise((resolve) => {
         const req = store.put(stock);
         req.onsuccess = () => {
           saved++;
           if ((stock.qty || 0) > 0) portfolio++;
           resolve();
         };
-        req.onerror = () => reject(req.error);
+        req.onerror = () => resolve();
       });
     }
     
     db.close();
-    
-    logConsole(`✅ Saved ${saved} stocks to IndexedDB`);
-    logConsole(`✅ Portfolio holdings: ${portfolio}`);
-    logConsole(`✅ Ready! Click Movers tab to see portfolio`);
+    logConsole(`✅ Saved ${saved} stocks, portfolio: ${portfolio}`);
     
   } catch (e) {
     logConsole(`❌ Error: ${e.message}`);
