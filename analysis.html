@@ -2917,6 +2917,8 @@ function scheduleTACharts(s){
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
       try {
+        // Recalculate indicators if needed
+        recalculateIndicators(s);
         drawCandlestick(s);
         if(S.maVis.vol) drawVolume(s);
         updateChartStats(s);
@@ -2925,6 +2927,50 @@ function scheduleTACharts(s){
       }
     });
   });
+}
+
+// Recalculate technical indicators for current candles
+function recalculateIndicators(s){
+  if(!s || !s.candles || s.candles.length === 0) return;
+  
+  // Create cache key based on interval + candle count + last candle close
+  const cacheKey = `${S.chartInterval}_${s.candles.length}_${s.candles[s.candles.length-1]?.c || 0}`;
+  
+  // Skip if we've already calculated for this exact data set
+  if(recalculateIndicators._lastKey === cacheKey) return;
+  recalculateIndicators._lastKey = cacheKey;
+  
+  console.log(`📊 Recalculating indicators for ${S.chartInterval} (${s.candles.length} candles)`);
+  
+  try {
+    // Calculate SMAs (not EMAs - simpler moving averages)
+    s.sma20 = calculateSMA(s.candles, 20);
+    s.sma50 = calculateSMA(s.candles, 50);
+    s.ema200 = calculateEMA(s.candles, 200);
+  } catch(e) {
+    console.warn('⚠️ Error recalculating indicators:', e.message);
+    s.sma20 = [];
+    s.sma50 = [];
+    s.ema200 = [];
+  }
+}
+
+// Calculate Simple Moving Average
+function calculateSMA(bars, period) {
+  if(!bars || bars.length < period) return [];
+  const sma = [];
+  for(let i = 0; i < bars.length; i++) {
+    if(i < period - 1) {
+      sma.push(null);
+    } else {
+      let sum = 0;
+      for(let j = i - period + 1; j <= i; j++) {
+        sum += bars[j].c;
+      }
+      sma.push(sum / period);
+    }
+  }
+  return sma;
 }
 
 let _chartResizeObs = null;
@@ -3616,7 +3662,7 @@ function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv) { 
   S.chartInterval = iv;
   
-  // When interval changes, reload candles from the correct history source
+  // When interval changes, reload candles from the correct history source AND recalculate all indicators
   if(currentStock && currentStock.price) {
     let historyData = null;
     let historyType = null;
@@ -3645,7 +3691,17 @@ function canvasSetChartInterval(iv) {
           v: parseInt(bar.Volume) || 0
         })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c));
         
-        console.log(`🔄 Switched to ${historyType} (${iv}):`, currentStock.candles.length, 'candles');
+        // FORCE clear all cached indicators
+        delete currentStock.sma20;
+        delete currentStock.sma50;
+        delete currentStock.ema200;
+        delete currentStock.rsi14;
+        recalculateIndicators._lastKey = null; // Force recalculation
+        aggregateCandles._cache = null; // Clear aggregation cache
+        
+        console.log(`🔄 Switched to ${historyType} (${iv}): ${currentStock.candles.length} candles - recalculating indicators`);
+        
+        // Schedule redraw which will recalculate indicators
         scheduleChartRedraw();
         return;
       } catch (e) {
@@ -3988,7 +4044,7 @@ async function loadAndRenderMovers(){
   c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading portfolio data...</div>';
   
   try {
-    // Open IndexedDB
+    // Open IndexedDB - same as index.html
     const db = await new Promise((resolve, reject) => {
       const req = indexedDB.open(DB);
       req.onsuccess = () => {
@@ -3999,7 +4055,7 @@ async function loadAndRenderMovers(){
       };
     });
     
-    // Get all stocks from stocks store
+    // Get all stocks from stocks store - same as index.html
     const allStocks = await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const store = tx.objectStore(STORE);
@@ -4015,9 +4071,14 @@ async function loadAndRenderMovers(){
     
     db.close();
     
-    // Filter portfolio holdings (qty > 0)
-    const portfolio = allStocks.filter(s => (s.qty || 0) > 0);
-    console.log('Portfolio holdings:', portfolio.length, 'from', allStocks.length, 'total stocks');
+    // Filter portfolio holdings - same as index.html enrichStock function
+    // Portfolio = stocks with qty > 0
+    const portfolio = allStocks.filter(s => {
+      const qty = s.qty || 0;
+      return qty > 0;
+    });
+    
+    console.log('📊 Portfolio holdings:', portfolio.length, 'from', allStocks.length, 'total stocks');
     
     if(!portfolio || !portfolio.length){
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
@@ -4027,43 +4088,53 @@ async function loadAndRenderMovers(){
       return;
     }
     
-    // Calculate portfolio totals
-    const totalVal = portfolio.reduce((a, s) => a + ((s.qty || 0) * (resolveField(s, 'ltp') || 0)), 0);
-    const totalCost = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.company_details?.avg_cost || 0)), 0);
+    // Enrich portfolio with same logic as index.html resolve() function
+    const enrichedPortfolio = portfolio.map(s => {
+      const qty = s.qty || 0;
+      const ltp = resolveField(s, 'ltp') || 0;
+      const avgCost = s.company_details?.avg_cost || resolveField(s, 'avg_cost') || 0;
+      const changePct = resolveField(s, 'changePct') || 0;
+      
+      return {
+        ...s,
+        qty,
+        ltp,
+        avgCost,
+        changePct,
+        value: qty * ltp,
+        cost: qty * avgCost,
+        gain: (qty * ltp) - (qty * avgCost),
+        gainPct: avgCost > 0 ? ((ltp - avgCost) / avgCost * 100) : 0,
+        change1d: changePct * qty
+      };
+    });
+    
+    // Calculate portfolio totals - same as index.html
+    const totalVal = enrichedPortfolio.reduce((a, s) => a + s.value, 0);
+    const totalCost = enrichedPortfolio.reduce((a, s) => a + s.cost, 0);
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
     // Find gainers and losers by daily change %
-    const withChange = portfolio.filter(s => {
-      const change = resolveField(s, 'changePct');
-      return change !== undefined && change !== null && !isNaN(change);
-    });
+    const withChange = enrichedPortfolio.filter(s => s.changePct !== undefined && !isNaN(s.changePct));
     
     const gainers = [...withChange]
-      .sort((a, b) => {
-        const aChange = resolveField(a, 'changePct') || 0;
-        const bChange = resolveField(b, 'changePct') || 0;
-        return bChange - aChange;
-      })
+      .sort((a, b) => b.changePct - a.changePct)
       .slice(0, 8);
     
     const losers = [...withChange]
-      .sort((a, b) => {
-        const aChange = resolveField(a, 'changePct') || 0;
-        const bChange = resolveField(b, 'changePct') || 0;
-        return aChange - bChange;
-      })
+      .sort((a, b) => a.changePct - b.changePct)
       .slice(0, 8);
     
     // Sector aggregation
     const sectorMap = {};
-    portfolio.forEach(s => {
-      const sec = resolveField(s, 'sector') || '—';
-      const change = resolveField(s, 'changePct') || 0;
-      if(!sectorMap[sec]) sectorMap[sec] = {sum: 0, count: 0, stocks: []};
-      sectorMap[sec].sum += change;
-      sectorMap[sec].count++;
-      sectorMap[sec].stocks.push({sym: s.ticker || s.sym, chg: change});
+    enrichedPortfolio.forEach(s => {
+      const sector = resolveField(s, 'sector') || '—';
+      const change = s.changePct || 0;
+      if(!sectorMap[sector]) sectorMap[sector] = {sum: 0, count: 0, stocks: []};
+      sectorMap[sector].sum += change;
+      sectorMap[sector].count++;
+      sectorMap[sector].stocks.push({sym: s.ticker || s.sym, chg: change});
     });
     
     const sectors = Object.entries(sectorMap)
@@ -4076,7 +4147,7 @@ async function loadAndRenderMovers(){
     c.innerHTML = `<div style="padding:12px 13px 14px;padding-bottom:100px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--title)">Market Movers</div>
-        <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">${portfolio.length} holdings</div>
+        <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">${enrichedPortfolio.length} holdings</div>
       </div>
       
       <!-- Portfolio Summary -->
@@ -4095,22 +4166,18 @@ async function loadAndRenderMovers(){
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
           ${gainers.length ? gainers.map(s => {
-            const price = resolveField(s, 'ltp') || 0;
-            const change = resolveField(s, 'changePct') || 0;
             return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${price.toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${change.toFixed(2)}%</div></div>
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${s.changePct.toFixed(2)}%</div></div>
           </div>`;
           }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
         </div>
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
           ${losers.length ? losers.map(s => {
-            const price = resolveField(s, 'ltp') || 0;
-            const change = resolveField(s, 'changePct') || 0;
             return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${price.toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${change.toFixed(2)}%</div></div>
+            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
+            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${s.changePct.toFixed(2)}%</div></div>
           </div>`;
           }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
         </div>
@@ -4150,7 +4217,7 @@ async function loadAndRenderMovers(){
     
     // Draw heatmap after DOM renders
     setTimeout(() => {
-      drawPortfolioHeatmap(portfolio);
+      drawPortfolioHeatmap(enrichedPortfolio);
     }, 200);
     
   } catch(e) {
