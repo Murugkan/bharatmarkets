@@ -3087,6 +3087,7 @@ function drawCandlestick(s){
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
+    console.warn('⚠️ No candles to display');
     ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
     ctx.textAlign='center';
     if(s._noChartData){
@@ -3101,6 +3102,8 @@ function drawCandlestick(s){
     }
     return;
   }
+  
+  console.log(`📊 Drawing chart: ${candles.length} candles, price range ${candles[0]?.c}-${candles[candles.length-1]?.c}`);
 
   const W=W2,H=312;  // ✅ Increased 30% from 240
   const PAD={l:6,r:52,t:8,b:22};
@@ -3122,9 +3125,22 @@ function drawCandlestick(s){
   const allRange = allLast - allFirst || 1;
 
   const allPrices=candles.flatMap(c=>[c.h,c.l]);
-  if(s.sma20&&S.maVis.sma20)allPrices.push(s.sma20);
-  if(s.sma50&&S.maVis.sma50)allPrices.push(s.sma50);
-  if(s.ema200&&S.maVis.ema200)allPrices.push(s.ema200);
+  if(s.sma20&&S.maVis.sma20)allPrices.push(...s.sma20.filter(v=>v!==null));
+  if(s.sma50&&S.maVis.sma50)allPrices.push(...s.sma50.filter(v=>v!==null));
+  if(s.ema200&&S.maVis.ema200)allPrices.push(...s.ema200.filter(v=>v!==null));
+  
+  // Ensure we have valid price data
+  if(allPrices.length === 0) {
+    console.error('❌ No valid price data found');
+    ctx.fillStyle='#060c18';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(255,107,133,0.7)';
+    ctx.font='bold 11px monospace';
+    ctx.textAlign='center';
+    ctx.fillText('No valid price data', W/2, H/2);
+    return;
+  }
+  
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
   
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
