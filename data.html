@@ -2228,9 +2228,10 @@ CRITICAL RULES:
                 const store = tx.objectStore(STORE_NAME);
                 const getAllReq = store.getAll();
                 
+                let mergedCount = 0;
+                
                 getAllReq.onsuccess = function() {
                     const stocks = getAllReq.result;
-                    let mergedCount = 0;
                     
                     stocks.forEach(function(stock) {
                         const ticker = stock.ticker;
@@ -2258,16 +2259,32 @@ CRITICAL RULES:
                                 log(`  📍 ${ticker}: LTP=${quote.ltp}, Change=${quote.change}, ChangePct=${quote.changePct}%`);
                             }
                             
-                            store.put(stock);
-                            mergedCount++;
+                            // CRITICAL FIX: Actually write the updated stock record back to DB
+                            const putReq = store.put(stock);
+                            putReq.onsuccess = function() {
+                                mergedCount++;
+                            };
+                            putReq.onerror = function() {
+                                log(`  ❌ Error writing ${ticker}: ${putReq.error.message}`);
+                            };
                         }
                     });
-                    
-                    tx.oncomplete = function() {
-                        log(`✅ LTP merged for ${mergedCount} stocks`);
-                        updateStatusButton('✅ Loaded');
-                        renderSymbols();
-                    };
+                };
+                
+                getAllReq.onerror = function() {
+                    log('❌ Error reading stocks from DB');
+                };
+                
+                // CRITICAL FIX: Move tx.oncomplete OUTSIDE getAllReq.onsuccess so it waits for ALL puts to complete
+                tx.oncomplete = function() {
+                    log(`✅ LTP merged for ${mergedCount} stocks`);
+                    updateStatusButton('✅ Loaded');
+                    renderSymbols();
+                };
+                
+                tx.onerror = function() {
+                    log('❌ Transaction error during LTP merge');
+                    updateStatusButton('✅ Loaded (with errors)');
                 };
             })
             .catch(err => {
