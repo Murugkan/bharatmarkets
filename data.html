@@ -2082,36 +2082,32 @@ CRITICAL RULES:
     }
 
     async function loadAllData() {
-        log('🚀 LOAD JSON initiated - fetching market_data.json with fresh cache...');
-        updateStatusButton('⏳ Loading'); 
+        log('🚀 LOAD JSON initiated');
+        updateStatusButton('✅ Starting'); // Reset button to green
         
         // Only check for local market_data.json - no GitHub loading
         try {
-            // Add strong cache buster to force fresh fetch every time
-            const cacheBuster = '?t=' + Date.now() + '&r=' + Math.random().toString(36).substring(2, 8);
+            // Add cache buster to force fresh fetch
+            const cacheBuster = '?t=' + Date.now();
             const response = await fetch('data/market_data.json' + cacheBuster);
             if (!response.ok) {
                 log('❌ market_data.json not found at data/market_data.json');
-                log('   HTTP Status: ' + response.status);
                 log('   Please run process_data.py first to generate it');
                 updateStatusButton('❌ File not found');
-                showToast('market_data.json not found - run process_data.py first', 'error');
+                showToast('market_data.json not found!', 'error');
                 return;
             }
             
-            log('📁 Found local market_data.json - reading and parsing...');
-            updateStatusButton('⏳ Parsing JSON');
+            log('📁 Found local market_data.json - loading...');
+            updateStatusButton('⏳ Loading local file');
             const blob = await response.blob();
             const file = new File([blob], 'market_data.json', {type: 'application/json'});
-            
-            log('📦 Starting MarketDataJSON load into IndexedDB...');
             loadMarketDataJSON(file);
             
         } catch(e) {
             log('❌ Error loading market_data.json: ' + e.message);
-            log('💡 Ensure data/market_data.json exists in the same directory as data.html');
             updateStatusButton('❌ Error');
-            showToast('Failed to load market_data.json: ' + e.message, 'error');
+            showToast('Failed to load market_data.json', 'error');
         }
     }
     
@@ -2119,8 +2115,8 @@ CRITICAL RULES:
         log('⚡ UPDATE LTP: Fetching latest prices from GitHub...');
         updateStatusButton('⏳ Fetching LTP');
         
-        const cacheBuster = '?t=' + Date.now() + '&v=' + Math.random().toString(36).substring(2, 8);
-        const ltpUrl = RAW_GITHUB_URL + '/data/ltp.json' + cacheBuster;
+        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
         fetch(ltpUrl)
             .then(r => {
@@ -2128,10 +2124,9 @@ CRITICAL RULES:
                 return r.json();
             })
             .then(json => {
-                if (!json.quotes || typeof json.quotes !== 'object') {
-                    log('❌ Invalid LTP JSON - missing or invalid quotes');
+                if (!json.quotes) {
+                    log('❌ Invalid LTP JSON - missing quotes');
                     updateStatusButton('❌ Invalid Format');
-                    showToast('Invalid LTP format from GitHub', 'error');
                     return;
                 }
                 
@@ -2151,14 +2146,13 @@ CRITICAL RULES:
                     
                     getAllReq.onsuccess = function() {
                         const stocks = getAllReq.result;
-                        log(`📊 Processing ${stocks.length} stocks from IndexedDB`);
                         
                         stocks.forEach(function(stock) {
                             const ticker = stock.ticker;
                             const quote = json.quotes[ticker];
                             
                             if (quote) {
-                                // Update price.ltp with live data from GitHub
+                                // Update price.ltp with live data
                                 if (!stock.price) stock.price = {};
                                 if (!stock.price.ltp) stock.price.ltp = {};
                                 
@@ -2180,55 +2174,37 @@ CRITICAL RULES:
                                 updatedCount++;
                             }
                         });
-                        
-                        log(`✅ Queued ${updatedCount} stock updates`);
                     };
                     
-                    getAllReq.onerror = function() {
-                        log('❌ Error reading stocks from IndexedDB for LTP update');
-                        log('Error: ' + (getAllReq.error ? getAllReq.error.message : 'Unknown'));
-                    };
-                    
-                    // CRITICAL: Wait for entire transaction to complete before updating UI
                     tx.oncomplete = function() {
-                        log(`✅ LTP Updated Successfully: ${updatedCount} stocks`);
+                        log(`✅ LTP Updated: ${updatedCount} stocks`);
                         log(`📊 Updated at: ${new Date().toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata'})}`);
                         updateStatusButton('✅ LTP Updated');
-                        showToast(`✅ Updated ${updatedCount} stocks. Refresh index.html to see new prices.`, 'success');
-                        log('💡 Tip: Go to index.html and click SYNC to see the updated prices');
+                        showToast(`Updated ${updatedCount} stocks. Refresh index.html to see prices.`, 'success');
                     };
                     
                     tx.onerror = function() {
-                        log('❌ Transaction Error: ' + (tx.error ? tx.error.message : 'Unknown'));
+                        log('❌ Transaction error');
                         updateStatusButton('❌ Error');
-                        showToast('Error updating prices in database', 'error');
-                    };
-                    
-                    tx.onabort = function() {
-                        log('❌ Transaction Aborted during LTP update');
-                        updateStatusButton('❌ Aborted');
                     };
                 };
                 
                 request.onerror = function() {
-                    log('❌ Failed to open database: ' + (request.error ? request.error.message : 'Unknown'));
+                    log('❌ Failed to open database');
                     updateStatusButton('❌ DB Error');
-                    showToast('Database error - cannot update prices', 'error');
                 };
             })
             .catch(err => {
                 log(`❌ Error fetching LTP: ${err.message}`);
                 updateStatusButton('❌ Fetch Error');
-                showToast(`Network error: ${err.message}`, 'error');
-                log('💡 Tip: Check network connection and GitHub URL');
-            });
+                showToast(`Error: ${err.message}`, 'error');
             });
     }
     
     function fetchAndMergeLTP(db) {
         log('⚡ Fetching ltp.json from GitHub...');
-        const cacheBuster = '?t=' + Date.now() + '&v=' + Math.random().toString(36).substring(2, 8);
-        const ltpUrl = RAW_GITHUB_URL + '/data/ltp.json' + cacheBuster;
+        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
         fetch(ltpUrl)
             .then(r => {
@@ -2236,11 +2212,9 @@ CRITICAL RULES:
                 return r.json();
             })
             .then(json => {
-                if (!json.quotes || typeof json.quotes !== 'object') {
-                    log('⚠️ ltp.json not available or invalid format, skipping LTP merge');
-                    log('📊 Completed LOAD JSON (no LTP available)');
+                if (!json.quotes) {
+                    log('⚠️ ltp.json not available or invalid, skipping LTP merge');
                     updateStatusButton('✅ Loaded (no LTP)');
-                    finishLoading();
                     return;
                 }
                 
@@ -2257,7 +2231,6 @@ CRITICAL RULES:
                 getAllReq.onsuccess = function() {
                     const stocks = getAllReq.result;
                     let mergedCount = 0;
-                    log(`📊 Processing ${stocks.length} stocks from IndexedDB for LTP merge`);
                     
                     stocks.forEach(function(stock) {
                         const ticker = stock.ticker;
@@ -2267,7 +2240,6 @@ CRITICAL RULES:
                             if (!stock.price) stock.price = {};
                             if (!stock.price.ltp) stock.price.ltp = {};
                             
-                            // Merge all LTP fields from GitHub
                             stock.price.ltp.ltp = quote.ltp;
                             stock.price.ltp.open = quote.open;
                             stock.price.ltp.high = quote.high;
@@ -2291,36 +2263,17 @@ CRITICAL RULES:
                         }
                     });
                     
-                    log(`✅ Queued ${mergedCount} stock updates`);
-                };
-                
-                getAllReq.onerror = function() {
-                    log('❌ Error reading stocks for LTP merge');
-                };
-                
-                // CRITICAL: Wait for transaction completion before finishing
-                tx.oncomplete = function() {
-                    log(`✅ LTP Transaction Complete - ${getAllReq.result.length} stocks merged`);
-                    log(`📊 Updated at: ${new Date().toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata'})}`);
-                    updateStatusButton('✅ Loaded with LTP');
-                    finishLoading();
-                };
-                
-                tx.onerror = function() {
-                    log('❌ LTP Merge Transaction Error: ' + (tx.error ? tx.error.message : 'Unknown'));
-                    finishLoading();
-                };
-                
-                tx.onabort = function() {
-                    log('❌ LTP Merge Transaction Aborted');
-                    finishLoading();
+                    tx.oncomplete = function() {
+                        log(`✅ LTP merged for ${mergedCount} stocks`);
+                        updateStatusButton('✅ Loaded');
+                        renderSymbols();
+                    };
                 };
             })
             .catch(err => {
                 log(`⚠️ Could not fetch ltp.json: ${err.message}`);
-                log(`📊 Completed LOAD JSON (fetch failed: ${err.message})`);
-                updateStatusButton('✅ Loaded (fetch failed)');
-                finishLoading();
+                updateStatusButton('✅ Loaded (no LTP)');
+                renderSymbols();
             });
     }
     
@@ -2792,15 +2745,11 @@ CRITICAL RULES:
     }
     
     function finishLoading() {
-        log('✅ All data operations complete');
-        log('🔄 Page will reload in 2 seconds to display updated data...');
-        showToast('✅ Successfully loaded with LTP data!');
-        
-        // Wait 2 seconds to ensure IndexedDB writes are flushed before reload
+        showToast('Successfully loaded with real-time prices!');
+        log('🔄 Reloading page to display data...');
         setTimeout(function() {
-            log('📄 Reloading page...');
             location.reload();
-        }, 2000);
+        }, 1000);
     }
     
     function loadMarketDataJSON(file) {
