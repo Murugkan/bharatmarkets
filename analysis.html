@@ -121,6 +121,7 @@
             <div class="price-val" id="ltp">₹—</div>
             <div class="price-chg" id="chg" style="color:var(--gr)">—</div>
         </div>
+        <button class="back-btn" onclick="loadPortfolioData()" style="color:var(--gr);font-size:16px;padding:4px 8px" title="Load portfolio data with qty">💾</button>
     </div>
     
     <div class="tabs">
@@ -186,6 +187,78 @@ const get = (obj, ...keys) => {
     
     return '—';
 };
+
+// 💾 LOAD PORTFOLIO DATA INTO IndexedDB
+async function loadPortfolioData() {
+  logConsole(`📥 Loading portfolio data from market_data.json...`);
+  
+  try {
+    // Fetch market data
+    const response = await fetch('../uploads/market_data.json');
+    if (!response.ok) throw new Error(`Failed to load: ${response.status}`);
+    const allData = await response.json();
+    logConsole(`✅ Loaded ${Object.keys(allData).length} stocks`);
+    
+    // Set portfolio holdings
+    if (allData.GRSE) {
+      allData.GRSE.qty = 50;
+      allData.GRSE.company_details = allData.GRSE.company_details || {};
+      allData.GRSE.company_details.avg_cost = 2400;
+      logConsole(`✅ GRSE: qty=50, avg_cost=₹2400`);
+    }
+    if (allData.ABCAPITAL) {
+      allData.ABCAPITAL.qty = 100;
+      allData.ABCAPITAL.company_details = allData.ABCAPITAL.company_details || {};
+      allData.ABCAPITAL.company_details.avg_cost = 350;
+      logConsole(`✅ ABCAPITAL: qty=100, avg_cost=₹350`);
+    }
+    
+    // Open IndexedDB
+    const db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB, 8);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(new Error('Cannot open IndexedDB'));
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE, { keyPath: 'ticker' });
+        }
+      };
+    });
+    
+    // Save all stocks
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    
+    let saved = 0;
+    let portfolio = 0;
+    
+    for (const [ticker, stock] of Object.entries(allData)) {
+      stock.ticker = ticker;
+      stock.qty = stock.qty || 0;  // CRITICAL: ensure qty exists
+      
+      await new Promise((resolve, reject) => {
+        const req = store.put(stock);
+        req.onsuccess = () => {
+          saved++;
+          if ((stock.qty || 0) > 0) portfolio++;
+          resolve();
+        };
+        req.onerror = () => reject(req.error);
+      });
+    }
+    
+    db.close();
+    
+    logConsole(`✅ Saved ${saved} stocks to IndexedDB`);
+    logConsole(`✅ Portfolio holdings: ${portfolio}`);
+    logConsole(`✅ Ready! Click Movers tab to see portfolio`);
+    
+  } catch (e) {
+    logConsole(`❌ Error: ${e.message}`);
+  }
+}
+
 
 // 🎯 INDEXEDDB FIELD MAPPING RESOLVER
 // Maps analysis.html field paths to IndexedDB stock object structure
@@ -4091,9 +4164,21 @@ async function loadAndRenderMovers(){
       const req = store.getAll();
       
       req.onsuccess = () => {
-        resolve(req.result || []);
+        const stocks = req.result || [];
+        logConsole(`✅ Loaded ${stocks.length} stocks from IndexedDB`);
+        
+        // Log first 5 stocks to see their structure
+        if(stocks.length > 0) {
+          logConsole(`📋 Sample stocks (first 5):`);
+          stocks.slice(0, 5).forEach(s => {
+            logConsole(`  ├─ ${s.ticker}: qty=${s.qty || 'undefined'}, price=${s.price?.current_price || 'N/A'}`);
+          });
+        }
+        
+        resolve(stocks);
       };
       req.onerror = () => {
+        logConsole(`❌ Error reading from IndexedDB: ${req.error}`);
         reject(new Error('Cannot read stocks'));
       };
     });
@@ -4107,9 +4192,17 @@ async function loadAndRenderMovers(){
       return qty > 0;
     });
     
-    console.log('📊 Portfolio holdings:', portfolio.length, 'from', allStocks.length, 'total stocks');
+    logConsole(`📊 Portfolio holdings: ${portfolio.length} from ${allStocks.length} total stocks`);
+    
+    if(portfolio.length > 0) {
+      portfolio.slice(0, 5).forEach(s => {
+        logConsole(`  ├─ ${s.ticker}: qty=${s.qty}, avg_cost=${s.company_details?.avg_cost || 'N/A'}`);
+      });
+      if(portfolio.length > 5) logConsole(`  └─ ... and ${portfolio.length - 5} more`);
+    }
     
     if(!portfolio || !portfolio.length){
+      logConsole(`❌ NO PORTFOLIO HOLDINGS - Movers tab empty`);
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
         <div style="font-size:14px;margin-bottom:12px">📊 No holdings in portfolio</div>
         <div style="font-size:11px;line-height:1.6">Add stocks with qty > 0 to see portfolio movers</div>
@@ -4123,6 +4216,8 @@ async function loadAndRenderMovers(){
       const ltp = resolveField(s, 'ltp') || 0;
       const avgCost = s.company_details?.avg_cost || resolveField(s, 'avg_cost') || 0;
       const changePct = resolveField(s, 'changePct') || 0;
+      
+      logConsole(`  💼 ${s.ticker}: qty=${qty}, ltp=₹${ltp}, avgCost=₹${avgCost}, change=${changePct}%`);
       
       return {
         ...s,
@@ -4143,6 +4238,8 @@ async function loadAndRenderMovers(){
     const totalCost = enrichedPortfolio.reduce((a, s) => a + s.cost, 0);
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
+    
+    logConsole(`📊 Portfolio Totals: Value=₹${totalVal.toFixed(0)}, Cost=₹${totalCost.toFixed(0)}, Gain=₹${totalGain.toFixed(0)}, Gain%=${gainPct.toFixed(2)}%`);
     
     // Find gainers and losers by daily change %
     const withChange = enrichedPortfolio.filter(s => s.changePct !== undefined && !isNaN(s.changePct));
