@@ -456,9 +456,10 @@
         BRANCH: 'main',
         PATHS: {
             symbols: 'unified-symbols.json',
-            ltp: 'ltp.json',
+            ltp: 'data/ltp.json',
             guidance: 'guidance.json',
-            macro: 'macro_data.json'
+            macro: 'macro_data.json',
+            market_data: 'data/market_data.json'
         }
     };
     
@@ -467,7 +468,7 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'ltp.json', path: GITHUB_CONFIG.PATHS.ltp },
-        { name: 'market_data.json', path: 'market_data.json', local: true }
+        { name: 'market_data.json', path: GITHUB_CONFIG.PATHS.market_data }
     ];
 
     async function fetchGitHubData(filePath) {
@@ -658,7 +659,7 @@
     function renderDataSources() {
         var html = '';
         
-        // First, get timestamps from metadata record in DB
+        // Get all data from DB metadata record only
         const request = indexedDB.open(DB_NAME, DB_VERSION);
         request.onsuccess = function(ev) {
             const db = ev.target.result;
@@ -674,13 +675,9 @@
             
             getMetadataReq.onsuccess = function() {
                 const metadata = getMetadataReq.result || {};
-                const timestamps = {
-                    'market_data.json': metadata.market_data_generated_at,
-                    'ltp.json': metadata.ltp_updated_at
-                };
                 
                 db.close();
-                renderDataSourcesTable(html, timestamps);
+                renderDataSourcesTable(html, metadata);
             };
             
             getMetadataReq.onerror = function() {
@@ -694,54 +691,25 @@
         };
     }
     
-    function renderDataSourcesTable(html, timestamps) {
+    function renderDataSourcesTable(html, metadata) {
         DATA_SOURCES.forEach((s, index) => {
-            // Fetch count from GitHub/local with cache bust
-            var count = '⏳ Loading...';
-            let fullUrl = s.local ? `./${s.path}` : `${RAW_GITHUB_URL}/${s.path}?cache=${Date.now()}`;
-            // Special case for market_data.json which is in data/ folder
+            // Get count from metadata
+            let count = '—';
             if (s.name === 'market_data.json') {
-                fullUrl = `./data/${s.path}`;
-            }
-            // Special case for ltp.json which is in data/ subfolder
-            if (s.name === 'ltp.json') {
-                fullUrl = `${RAW_GITHUB_URL}/data/ltp.json?cache=${Date.now()}`;
+                count = metadata.market_data_count || '—';
+            } else if (s.name === 'ltp.json') {
+                count = metadata.ltp_count || '—';
+            } else if (s.name === 'unified-symbols.json') {
+                count = metadata.symbols_count || '—';
             }
             
-            fetch(fullUrl)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.count !== undefined) {
-                        // For prices.json which have "count" field
-                        count = data.count;
-                    } else if (data.quotes && typeof data.quotes === 'object') {
-                        // For ltp.json with quotes object
-                        count = Object.keys(data.quotes).length;
-                    } else if (data.symbols && Array.isArray(data.symbols)) {
-                        // For unified-symbols.json with symbols array
-                        count = data.symbols.length;
-                    } else if (s.name === 'market_data.json' && data._metadata) {
-                        count = data._metadata.total_tickers;
-                    } else if (data.stocks && typeof data.stocks === 'object' && !Array.isArray(data.stocks)) {
-                        // For fundamentals.json with stocks object
-                        count = Object.keys(data.stocks).length;
-                    } else if (Array.isArray(data)) {
-                        // If it's a direct array
-                        count = data.length;
-                    } else {
-                        count = '—';
-                    }
-                    // Update the count in the table cell
-                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
-                    if (countCell) countCell.textContent = count;
-                })
-                .catch(e => {
-                    var countCell = document.querySelector(`[data-source="${s.name}"] .count-cell`);
-                    if (countCell) countCell.textContent = '❌';
-                });
-            
-            // Get timestamp from DB (passed in timestamps object)
-            var jsonTime = timestamps[s.name] || '—';
+            // Get timestamp from metadata
+            var jsonTime = '—';
+            if (s.name === 'market_data.json') {
+                jsonTime = metadata.market_data_generated_at || '—';
+            } else if (s.name === 'ltp.json') {
+                jsonTime = metadata.ltp_updated_at || '—';
+            }
             
             // Convert ISO to IST (UTC+5:30)
             var istTime = '—';
@@ -768,7 +736,7 @@
                 <td class="time-cell" style="font-size:9px;">${istTime}</td>
                 <td style="text-align:center;">${loadButton}</td>
             </tr>`;
-            });
+        });
         
         // Render the table
         document.getElementById('sources-table').innerHTML = html;
@@ -797,7 +765,7 @@
         } else if (source === 'ltp.json') {
             githubUrl = `${RAW_GITHUB_URL}/data/ltp.json`;
         } else if (source === 'market_data.json') {
-            githubUrl = `${RAW_GITHUB_URL}/market_data.json`;
+            githubUrl = `${RAW_GITHUB_URL}/data/market_data.json`;
         }
         
         if (!githubUrl) {
@@ -2151,7 +2119,7 @@ CRITICAL RULES:
     function loadMarketDataFromGitHub() {
         log('📥 Loading market_data.json from GitHub...');
         const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
-        const marketDataUrl = `${RAW_GITHUB_URL}/market_data.json?v=${cacheBuster}`;
+        const marketDataUrl = `${RAW_GITHUB_URL}/data/market_data.json?v=${cacheBuster}`;
         
         fetch(marketDataUrl)
             .then(r => {
@@ -2243,7 +2211,9 @@ CRITICAL RULES:
                 const metadata = {
                     ticker: '_METADATA_',
                     market_data_generated_at: generatedAt || new Date().toISOString(),
-                    ltp_updated_at: null  // Will be updated when LTP loads
+                    market_data_count: savedCount,
+                    ltp_updated_at: null,  // Will be updated when LTP loads
+                    ltp_count: null
                 };
                 store.put(metadata);
                 
@@ -2604,10 +2574,11 @@ CRITICAL RULES:
                             }
                         });
                         
-                        // Update metadata record with ltp timestamp
+                        // Update metadata record with ltp timestamp and count
                         const metadata = {
                             ticker: '_METADATA_',
-                            ltp_updated_at: ltpUpdatedTime
+                            ltp_updated_at: ltpUpdatedTime,
+                            ltp_count: updatedCount
                         };
                         store.put(metadata);
                     };
