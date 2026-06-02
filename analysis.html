@@ -28,7 +28,7 @@
         .tab.active{background:rgba(0,242,255,.1);border-color:var(--ac);color:var(--ac)}
         .tab:hover:not(.active){color:var(--tx1)}
         
-        .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch}
+        .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch;contain:layout style paint;will-change:scroll-position}
         .content::-webkit-scrollbar{width:14px;background:transparent}
         .content::-webkit-scrollbar-track{background:transparent}
         .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
@@ -3547,9 +3547,9 @@ function setupChartInteraction() {
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
   let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 33;  // ~30fps for smooth panning on mobile
+  const REDRAW_THROTTLE_MS = 50;  // ~20fps for smooth panning - optimal for mobile performance
   
-  // Debounced redraw: only redraw if 16ms has passed (prevents excessive redraws)
+  // Debounced redraw: only redraw if throttle duration has passed (prevents excessive redraws)
   const throttledRedraw = (stock) => {
     const now = performance.now();
     if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
@@ -3558,13 +3558,13 @@ function setupChartInteraction() {
     }
   };
   
-  // Mouse/Touch Pan on canvas
+  // Mouse/Touch Pan on canvas - with passive event listeners for better scroll performance
   canvas.addEventListener('mousedown', (e) => {
     console.log('🖱️ Pan START');
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
-  });
+  }, { passive: false, capture: false });
   
   document.addEventListener('mousemove', (e) => {
     if (!chartInteraction.isPanning || !currentStock) return;
@@ -3577,12 +3577,12 @@ function setupChartInteraction() {
       S.chartPan = newPan;
       throttledRedraw(currentStock);
     }
-  });
+  }, { passive: true, capture: false });
   
   document.addEventListener('mouseup', () => { 
     console.log('🖱️ Pan END');
     chartInteraction.isPanning = false; 
-  });
+  }, { passive: true });
   
   // Touch handlers with pinch support
   const handleTouchStart = (e) => {
@@ -3812,10 +3812,10 @@ async function loadAndRenderMovers(){
     return;
   }
   
-  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading from IndexedDB...</div>';
+  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading portfolio data...</div>';
   
   try {
-    // Open IndexedDB - this is where portfolio data actually lives
+    // Open IndexedDB
     const db = await new Promise((resolve, reject) => {
       const req = indexedDB.open(DB);
       req.onsuccess = () => {
@@ -3842,57 +3842,51 @@ async function loadAndRenderMovers(){
     
     db.close();
     
-    // Filter stocks that have qty > 0 (actual portfolio holdings)
+    // Filter portfolio holdings (qty > 0)
     const portfolio = allStocks.filter(s => (s.qty || 0) > 0);
-    console.log('Total stocks in DB:', allStocks.length, 'Portfolio holdings:', portfolio.length);
+    console.log('Portfolio holdings:', portfolio.length, 'from', allStocks.length, 'total stocks');
     
     if(!portfolio || !portfolio.length){
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
         <div style="font-size:14px;margin-bottom:12px">📊 No holdings in portfolio</div>
-        <div style="font-size:11px;line-height:1.6;margin-bottom:16px">
-          Database has <strong>${allStocks.length} stocks</strong> but none with qty > 0<br>
-          <strong>Go to Portfolio tab and add holdings</strong>
-        </div>
-        <div style="font-size:10px;color:var(--tx3)">Debug: Check 🔧 panel</div>
+        <div style="font-size:11px;line-height:1.6">Add stocks with qty > 0 to see portfolio movers</div>
       </div>`;
       return;
     }
     
-    // Calculate totals
-    const totalVal = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.price || s.ltp || 0)), 0);
-    const totalCost = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.avg || 0)), 0);
+    // Calculate portfolio totals
+    const totalVal = portfolio.reduce((a, s) => a + ((s.qty || 0) * (resolveField(s, 'ltp') || 0)), 0);
+    const totalCost = portfolio.reduce((a, s) => a + ((s.qty || 0) * (s.company_details?.avg_cost || 0)), 0);
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
-    
-    // Find gainers and losers by daily change % (market_change_pct or chg1d)
+    // Find gainers and losers by daily change %
     const withChange = portfolio.filter(s => {
-      const change = s.market_change_pct || s.chg1d;
-      return change !== undefined && change !== null;
+      const change = resolveField(s, 'changePct');
+      return change !== undefined && change !== null && !isNaN(change);
     });
     
     const gainers = [...withChange]
       .sort((a, b) => {
-        const aChange = a.market_change_pct || a.chg1d || 0;
-        const bChange = b.market_change_pct || b.chg1d || 0;
+        const aChange = resolveField(a, 'changePct') || 0;
+        const bChange = resolveField(b, 'changePct') || 0;
         return bChange - aChange;
       })
       .slice(0, 8);
     
     const losers = [...withChange]
       .sort((a, b) => {
-        const aChange = a.market_change_pct || a.chg1d || 0;
-        const bChange = b.market_change_pct || b.chg1d || 0;
+        const aChange = resolveField(a, 'changePct') || 0;
+        const bChange = resolveField(b, 'changePct') || 0;
         return aChange - bChange;
       })
       .slice(0, 8);
     
-    
     // Sector aggregation
     const sectorMap = {};
     portfolio.forEach(s => {
-      const sec = s.sector || '—';
-      const change = s.market_change_pct || s.chg1d || 0;
+      const sec = resolveField(s, 'sector') || '—';
+      const change = resolveField(s, 'changePct') || 0;
       if(!sectorMap[sec]) sectorMap[sec] = {sum: 0, count: 0, stocks: []};
       sectorMap[sec].sum += change;
       sectorMap[sec].count++;
@@ -3928,8 +3922,8 @@ async function loadAndRenderMovers(){
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
           ${gainers.length ? gainers.map(s => {
-            const price = s.price || s.ltp || 0;
-            const change = s.market_change_pct || s.chg1d || 0;
+            const price = resolveField(s, 'ltp') || 0;
+            const change = resolveField(s, 'changePct') || 0;
             return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
             <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${price.toFixed(1)}</div></div>
             <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${change.toFixed(2)}%</div></div>
@@ -3939,8 +3933,8 @@ async function loadAndRenderMovers(){
         <div class="card">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
           ${losers.length ? losers.map(s => {
-            const price = s.price || s.ltp || 0;
-            const change = s.market_change_pct || s.chg1d || 0;
+            const price = resolveField(s, 'ltp') || 0;
+            const change = resolveField(s, 'changePct') || 0;
             return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
             <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${price.toFixed(1)}</div></div>
             <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${change.toFixed(2)}%</div></div>
@@ -3980,7 +3974,6 @@ async function loadAndRenderMovers(){
         <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1e3350;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--tx1);pointer-events:none;z-index:999"></div>
       </div>
     </div>`;
-    
     
     // Draw heatmap after DOM renders
     setTimeout(() => {
