@@ -726,7 +726,11 @@
             var loadButton = '';
             if (index === 0) {
                 loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
+            } else if (s.name === 'ltp.json') {
+                // LTP JSON: fetch, merge and sync with DB
+                loadButton = `<button onclick="updateLTPFromGitHub()" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
             } else {
+                // Market data and other files: direct fetch
                 loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
             }
             
@@ -926,8 +930,8 @@
             masterData.forEach((stock, index) => {
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
-                var qty = (stock.portfolio_context && stock.portfolio_context.qty) || 0;
-                var avg = (stock.portfolio_context && stock.portfolio_context.avg_cost) || 0;
+                var qty = (stock.company_details && stock.company_details.qty) || 0;
+                var avg = (stock.company_details && stock.company_details.avg_cost) || 0;
                 var serialNo = index + 1;
 
                 html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
@@ -2350,161 +2354,13 @@ CRITICAL RULES:
     }
     
     function updateLTPFromGitHub() {
-        log('⚡ LTP LOAD: Triggering GitHub workflow to fetch fresh LTP data...');
-        updateStatusButton('⏳ Triggering Workflow');
+        log('⚡ LTP LOAD: Fetching and merging latest LTP data...');
+        updateStatusButton('⏳ Fetching LTP');
         
-        const pat = localStorage.getItem('github_pat');
-        if (!pat) {
-            log('⚠️ PAT not configured - fetching existing ltp.json instead');
-            fetchAndMergeLTPOnly();
-            return;
-        }
-        
-        // Trigger the fetch_ltp.yml workflow
-        triggerLTPWorkflow(pat)
-            .then(runId => {
-                log(`✅ Workflow triggered! Run ID: ${runId}`);
-                log('⏳ Waiting for workflow to complete (1-2 minutes)...');
-                updateStatusButton('⏳ Workflow Running');
-                return waitForWorkflowCompletion(runId, pat, 120000);
-            })
-            .then(() => {
-                log('✅ Workflow completed successfully!');
-                log('⏳ Waiting 3 seconds for GitHub to propagate changes...');
-                return new Promise(resolve => {
-                    setTimeout(() => {
-                        log('📥 Fetching fresh ltp.json from GitHub...');
-                        fetchAndMergeLTPOnly();
-                        resolve();
-                    }, 3000);
-                });
-            })
-            .catch(err => {
-                log(`❌ Workflow error: ${err.message}`);
-                log('💡 Falling back to fetch existing ltp.json...');
-                updateStatusButton('⚠️ Workflow Failed');
-                fetchAndMergeLTPOnly();
-            });
+        // Just fetch and merge - no workflow trigger needed
+        fetchAndMergeLTPOnly();
     }
     
-    function triggerLTPWorkflow(pat) {
-        return new Promise((resolve, reject) => {
-            const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch_ltp.yml/dispatches`;
-            
-            log(`🔗 Dispatching workflow to: ${apiUrl}`);
-            
-            fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ref: GITHUB_CONFIG.BRANCH,
-                    inputs: {}
-                })
-            })
-            .then(r => {
-                if (r.status === 204) {
-                    // Workflow dispatch accepted, now get the run ID
-                    log('✅ Workflow dispatch request accepted (204)');
-                    return new Promise(resolve => {
-                        setTimeout(() => {
-                            // Fetch the latest run
-                            getLatestWorkflowRun(pat, 'fetch_ltp.yml')
-                                .then(runId => resolve(runId))
-                                .catch(err => reject(err));
-                        }, 2000); // Wait 2 seconds for run to be created
-                    });
-                } else if (r.status === 401) {
-                    reject(new Error('Invalid PAT token'));
-                } else if (r.status === 404) {
-                    reject(new Error('Workflow not found - check fetch_ltp.yml exists'));
-                } else {
-                    return r.text().then(text => {
-                        reject(new Error(`HTTP ${r.status}: ${text}`));
-                    });
-                }
-            })
-            .catch(err => reject(err));
-        });
-    }
-    
-    function getLatestWorkflowRun(pat, workflowName) {
-        return new Promise((resolve, reject) => {
-            const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/runs?per_page=1`;
-            
-            fetch(apiUrl, {
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.workflow_runs && data.workflow_runs.length > 0) {
-                    const runId = data.workflow_runs[0].id;
-                    log(`📍 Found workflow run: ${runId}`);
-                    resolve(runId);
-                } else {
-                    reject(new Error('No recent workflow runs found'));
-                }
-            })
-            .catch(err => reject(err));
-        });
-    }
-    
-    function waitForWorkflowCompletion(runId, pat, timeoutMs) {
-        return new Promise((resolve, reject) => {
-            const startTime = Date.now();
-            const pollInterval = 5000; // Poll every 5 seconds
-            
-            const poll = () => {
-                const elapsed = Date.now() - startTime;
-                if (elapsed > timeoutMs) {
-                    reject(new Error('Workflow timeout - took too long to complete'));
-                    return;
-                }
-                
-                const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/runs/${runId}`;
-                
-                fetch(apiUrl, {
-                    headers: {
-                        'Authorization': `token ${pat}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                })
-                .then(r => r.json())
-                .then(data => {
-                    const status = data.status;
-                    const conclusion = data.conclusion;
-                    
-                    log(`  ⏳ Workflow status: ${status} (${Math.round(elapsed / 1000)}s elapsed)`);
-                    
-                    if (status === 'completed') {
-                        if (conclusion === 'success') {
-                            log(`  ✅ Workflow succeeded!`);
-                            resolve();
-                        } else if (conclusion === 'failure') {
-                            reject(new Error(`Workflow failed with conclusion: ${conclusion}`));
-                        } else {
-                            reject(new Error(`Workflow completed with status: ${conclusion}`));
-                        }
-                    } else {
-                        // Still running, poll again
-                        setTimeout(poll, pollInterval);
-                    }
-                })
-                .catch(err => {
-                    log(`  ❌ Poll error: ${err.message}, retrying...`);
-                    setTimeout(poll, pollInterval);
-                });
-            };
-            
-            poll();
-        });
-    }
     
     function fetchAndMergeLTPOnly() {
         log('⚡ Fetching ltp.json from GitHub...');
@@ -2574,13 +2430,21 @@ CRITICAL RULES:
                             }
                         });
                         
-                        // Update metadata record with ltp timestamp and count
-                        const metadata = {
-                            ticker: '_METADATA_',
-                            ltp_updated_at: ltpUpdatedTime,
-                            ltp_count: updatedCount
+                        // Get existing metadata to preserve market_data fields
+                        const getMetadataReq = store.get('_METADATA_');
+                        getMetadataReq.onsuccess = function() {
+                            const existingMetadata = getMetadataReq.result || {};
+                            
+                            // Merge: update LTP fields, preserve market_data fields
+                            const metadata = {
+                                ticker: '_METADATA_',
+                                market_data_generated_at: existingMetadata.market_data_generated_at,
+                                market_data_count: existingMetadata.market_data_count,
+                                ltp_updated_at: ltpUpdatedTime,
+                                ltp_count: updatedCount
+                            };
+                            store.put(metadata);
                         };
-                        store.put(metadata);
                     };
                     
                     tx.oncomplete = function() {
@@ -2612,119 +2476,6 @@ CRITICAL RULES:
                 showToast(`Error: ${err.message}`, 'error');
             });
     }
-    
-    function triggerGitHubWorkflow(pat) {
-        return new Promise((resolve, reject) => {
-            const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch_ltp.yml/dispatches`;
-            
-            fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ref: GITHUB_CONFIG.BRANCH,
-                    inputs: {}
-                })
-            })
-            .then(r => {
-                if (r.status === 204) {
-                    // Workflow dispatch accepted, now get the run ID
-                    return new Promise(resolve => {
-                        setTimeout(() => {
-                            // Fetch the latest run
-                            getLatestWorkflowRun(pat)
-                                .then(runId => resolve(runId))
-                                .catch(err => reject(err));
-                        }, 2000); // Wait 2 seconds for run to be created
-                    });
-                } else if (r.status === 401) {
-                    reject(new Error('Invalid PAT token'));
-                } else if (r.status === 404) {
-                    reject(new Error('Workflow not found - check workflow filename'));
-                } else {
-                    reject(new Error(`HTTP ${r.status}`));
-                }
-            })
-            .catch(err => reject(err));
-        });
-    }
-    
-    function getLatestWorkflowRun(pat) {
-        return new Promise((resolve, reject) => {
-            const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/runs?per_page=1`;
-            
-            fetch(apiUrl, {
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.workflow_runs && data.workflow_runs.length > 0) {
-                    resolve(data.workflow_runs[0].id);
-                } else {
-                    reject(new Error('No recent workflow runs found'));
-                }
-            })
-            .catch(err => reject(err));
-        });
-    }
-    
-    function waitForWorkflowCompletion(runId, pat, timeoutMs) {
-        return new Promise((resolve, reject) => {
-            const startTime = Date.now();
-            const pollInterval = 5000; // Poll every 5 seconds
-            
-            const poll = () => {
-                const elapsed = Date.now() - startTime;
-                if (elapsed > timeoutMs) {
-                    reject(new Error('Workflow timeout - took too long to complete'));
-                    return;
-                }
-                
-                const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/runs/${runId}`;
-                
-                fetch(apiUrl, {
-                    headers: {
-                        'Authorization': `token ${pat}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                })
-                .then(r => r.json())
-                .then(data => {
-                    const status = data.status;
-                    const conclusion = data.conclusion;
-                    
-                    log(`  ⏳ Workflow status: ${status} (${Math.round(elapsed / 1000)}s elapsed)`);
-                    
-                    if (status === 'completed') {
-                        if (conclusion === 'success') {
-                            log(`  ✅ Workflow succeeded!`);
-                            resolve();
-                        } else if (conclusion === 'failure') {
-                            reject(new Error(`Workflow failed with conclusion: ${conclusion}`));
-                        } else {
-                            reject(new Error(`Workflow completed with status: ${conclusion}`));
-                        }
-                    } else {
-                        // Still running, poll again
-                        setTimeout(poll, pollInterval);
-                    }
-                })
-                .catch(err => {
-                    log(`  ❌ Poll error: ${err.message}, retrying...`);
-                    setTimeout(poll, pollInterval);
-                });
-            };
-            
-            poll();
-        });
-    }
-    
     
     function fetchAndMergeLTP(db) {
         log('⚡ Fetching ltp.json from GitHub...');
