@@ -121,6 +121,7 @@
             <div class="price-val" id="ltp">₹—</div>
             <div class="price-chg" id="chg" style="color:var(--gr)">—</div>
         </div>
+        <button class="back-btn" onclick="loadPortfolioData()" style="color:var(--gr);font-size:16px;padding:4px 8px;cursor:pointer" title="Load portfolio with qty">💾</button>
     </div>
     
     <div class="tabs">
@@ -153,7 +154,35 @@ let currentStock = null;
 let currentTab = "overview";
 let dataSource = null; // Track where data comes from: 'db' or 'json'
 
-// 🔧 LOG CONSOLE - Display logs in DEBUG panel
+// ✅ AUTO-INIT: Load portfolio on first visit
+window.addEventListener('load', async () => {
+  try {
+    // Check if portfolio already loaded
+    const db = await new Promise((resolve) => {
+      const req = indexedDB.open(DB, 8);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+    
+    if (db) {
+      const tx = db.transaction(STORE, 'readonly');
+      const store = tx.objectStore(STORE);
+      const req = store.get('GRSE');
+      
+      req.onsuccess = () => {
+        const grse = req.result;
+        // If GRSE doesn't have qty field, need to load portfolio
+        if (!grse || grse.qty === undefined) {
+          console.log('📥 Auto-loading portfolio data...');
+          loadPortfolioData();
+        }
+      };
+    }
+  } catch (e) {
+    console.log('Auto-init check skipped');
+  }
+});
+
 function logConsole(msg) {
   const logDiv = document.getElementById('debug-logs');
   if (!logDiv) return;
@@ -206,28 +235,42 @@ const get = (obj, ...keys) => {
     return '—';
 };
 
-// 💾 LOAD PORTFOLIO DATA INTO IndexedDB
-async function loadPortfolioData() {
+// 💾 LOAD PORTFOLIO DATA INTO IndexedDB (with force clear option)
+async function loadPortfolioData(forceClear = false) {
   logConsole(`📥 Loading portfolio data...`);
   
   try {
     const response = await fetch('../uploads/market_data.json');
     if (!response.ok) throw new Error(`Failed: ${response.status}`);
     const allData = await response.json();
-    logConsole(`✅ Loaded ${Object.keys(allData).length} stocks`);
+    logConsole(`✅ Loaded ${Object.keys(allData).length} stocks from market_data.json`);
     
+    // Set portfolio holdings at CORRECT location: company_details.qty
     if (allData.GRSE) {
-      allData.GRSE.qty = 50;
       allData.GRSE.company_details = allData.GRSE.company_details || {};
+      allData.GRSE.company_details.qty = 50;
       allData.GRSE.company_details.avg_cost = 2400;
+      logConsole(`✅ GRSE: qty=50, avg_cost=₹2400`);
     }
     if (allData.ABCAPITAL) {
-      allData.ABCAPITAL.qty = 100;
       allData.ABCAPITAL.company_details = allData.ABCAPITAL.company_details || {};
+      allData.ABCAPITAL.company_details.qty = 100;
       allData.ABCAPITAL.company_details.avg_cost = 350;
+      logConsole(`✅ ABCAPITAL: qty=100, avg_cost=₹350`);
     }
     
-    const db = await new Promise((resolve, reject) => {
+    // Open IndexedDB
+    let db;
+    if (forceClear) {
+      logConsole(`🔄 Clearing old database...`);
+      const deleteReq = indexedDB.deleteDatabase(DB);
+      await new Promise((resolve) => {
+        deleteReq.onsuccess = resolve;
+        deleteReq.onerror = resolve;
+      });
+    }
+    
+    db = await new Promise((resolve, reject) => {
       const req = indexedDB.open(DB, 8);
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(new Error('DB open failed'));
@@ -235,6 +278,7 @@ async function loadPortfolioData() {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: 'ticker' });
+          logConsole(`✅ Created IndexedDB store`);
         }
       };
     });
@@ -242,18 +286,34 @@ async function loadPortfolioData() {
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
     
+    if (forceClear) {
+      await new Promise((resolve) => {
+        const clearReq = store.clear();
+        clearReq.onsuccess = resolve;
+        clearReq.onerror = resolve;
+      });
+      logConsole(`✅ Cleared old stocks`);
+    }
+    
     let saved = 0;
     let portfolio = 0;
     
     for (const [ticker, stock] of Object.entries(allData)) {
       stock.ticker = ticker;
-      stock.qty = stock.qty || 0;
+      
+      // Ensure company_details exists and has qty field
+      stock.company_details = stock.company_details || {};
+      stock.company_details.qty = stock.company_details.qty || 0;
       
       await new Promise((resolve) => {
         const req = store.put(stock);
         req.onsuccess = () => {
           saved++;
-          if ((stock.qty || 0) > 0) portfolio++;
+          const qty = stock.company_details.qty || 0;
+          if (qty > 0) {
+            portfolio++;
+            logConsole(`  ✅ ${ticker}: qty=${qty}`);
+          }
           resolve();
         };
         req.onerror = () => resolve();
@@ -261,7 +321,10 @@ async function loadPortfolioData() {
     }
     
     db.close();
-    logConsole(`✅ Saved ${saved} stocks, portfolio: ${portfolio}`);
+    
+    logConsole(`✅ Saved ${saved} stocks to IndexedDB raalanportfolio`);
+    logConsole(`✅ Portfolio holdings: ${portfolio}`);
+    logConsole(`✅ Refresh page to see Movers tab data`);
     
   } catch (e) {
     logConsole(`❌ Error: ${e.message}`);
@@ -875,9 +938,9 @@ function renderTab(tab) {
               <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap">${s.ticker || s.sym} · Price Chart</div>
               <div style="display:flex;gap:6px;align-items:center">
                 <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
-                  <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
-                  <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
-                  <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
+                  <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily (6mo)</option>
+                  <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly (5y)</option>
+                  <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly (5y)</option>
                 </select>
                 <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
                   <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
@@ -3773,51 +3836,65 @@ function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv) { 
   S.chartInterval = iv;
   
-  // When interval changes, reload candles from the correct history source AND recalculate all indicators
   if(currentStock && currentStock.price) {
     let historyData = null;
     let historyType = null;
     
-    // Fetch from correct history tag based on interval
-    if(iv === 'D' && currentStock.price.history_6mo_1d && Array.isArray(currentStock.price.history_6mo_1d)) {
+    // Load from correct source based on interval
+    if(iv === 'D') {
       historyData = currentStock.price.history_6mo_1d;
-      historyType = 'daily (6mo)';
-    } else if(iv === 'W' && currentStock.price.history_5y_1wk && Array.isArray(currentStock.price.history_5y_1wk)) {
+      historyType = 'Daily (6mo)';
+    } else if(iv === 'W') {
       historyData = currentStock.price.history_5y_1wk;
-      historyType = 'weekly (5y)';
-    } else if(iv === 'M' && currentStock.price.history_5y_1mo && Array.isArray(currentStock.price.history_5y_1mo)) {
+      historyType = 'Weekly (5y)';
+    } else if(iv === 'M') {
       historyData = currentStock.price.history_5y_1mo;
-      historyType = 'monthly (5y)';
+      historyType = 'Monthly (5y)';
     }
     
-    // Convert to candle format if found
-    if(historyData && historyData.length > 0) {
+    // Convert to candle format
+    if(historyData && Array.isArray(historyData) && historyData.length > 0) {
       try {
-        currentStock.candles = historyData.map((bar) => ({
-          d: bar.Date,
-          o: parseFloat(bar.Open),
-          h: parseFloat(bar.High),
-          l: parseFloat(bar.Low),
-          c: parseFloat(bar.Close),
-          v: parseInt(bar.Volume) || 0
-        })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c));
+        const converted = [];
+        for(let i = 0; i < historyData.length; i++) {
+          const bar = historyData[i];
+          const candle = {
+            d: String(bar.Date || ''),
+            o: parseFloat(bar.Open || 0),
+            h: parseFloat(bar.High || 0),
+            l: parseFloat(bar.Low || 0),
+            c: parseFloat(bar.Close || 0),
+            v: parseInt(bar.Volume || 0)
+          };
+          
+          // Only add if all OHLC values are valid numbers
+          if(!isNaN(candle.o) && !isNaN(candle.h) && !isNaN(candle.l) && !isNaN(candle.c) && candle.o > 0) {
+            converted.push(candle);
+          }
+        }
         
-        // FORCE clear all cached indicators
-        delete currentStock.sma20;
-        delete currentStock.sma50;
-        delete currentStock.ema200;
-        delete currentStock.rsi14;
-        recalculateIndicators._lastKey = null; // Force recalculation
-        aggregateCandles._cache = null; // Clear aggregation cache
-        
-        console.log(`🔄 Switched to ${historyType} (${iv}): ${currentStock.candles.length} candles - recalculating indicators`);
-        
-        // Schedule redraw which will recalculate indicators
-        scheduleChartRedraw();
-        return;
-      } catch (e) {
-        console.warn('⚠️ Error loading interval data:', e.message);
+        if(converted.length > 0) {
+          currentStock.candles = converted;
+          
+          // Clear cached indicators
+          delete currentStock.sma20;
+          delete currentStock.sma50;
+          delete currentStock.ema200;
+          delete currentStock.rsi14;
+          recalculateIndicators._lastKey = null;
+          aggregateCandles._cache = null;
+          
+          logConsole(`✅ Loaded ${historyType}: ${converted.length} candles`);
+          scheduleChartRedraw();
+          return;
+        } else {
+          logConsole(`❌ No valid candles in ${historyType}`);
+        }
+      } catch(e) {
+        logConsole(`❌ Error loading ${historyType}: ${e.message}`);
       }
+    } else {
+      logConsole(`❌ ${historyType} data not found`);
     }
   }
   
@@ -4180,7 +4257,7 @@ async function loadAndRenderMovers(){
         if(stocks.length > 0) {
           logConsole(`📋 Sample stocks (first 5):`);
           stocks.slice(0, 5).forEach(s => {
-            logConsole(`  ├─ ${s.ticker}: qty=${s.qty || 'undefined'}, price=${s.price?.current_price || 'N/A'}`);
+            logConsole(`  ├─ ${s.ticker}: qty=${s.company_details?.qty || 'undefined'}, price=${s.price?.current_price || 'N/A'}`);
           });
         }
         
@@ -4197,7 +4274,7 @@ async function loadAndRenderMovers(){
     // Filter portfolio holdings - same as index.html enrichStock function
     // Portfolio = stocks with qty > 0
     const portfolio = allStocks.filter(s => {
-      const qty = s.qty || 0;
+      const qty = s.company_details?.qty || 0;  // ✅ Check at CORRECT location
       return qty > 0;
     });
     
@@ -4205,7 +4282,7 @@ async function loadAndRenderMovers(){
     
     if(portfolio.length > 0) {
       portfolio.slice(0, 5).forEach(s => {
-        logConsole(`  ├─ ${s.ticker}: qty=${s.qty}, avg_cost=${s.company_details?.avg_cost || 'N/A'}`);
+        logConsole(`  ├─ ${s.ticker}: qty=${s.company_details?.qty}, avg_cost=${s.company_details?.avg_cost || 'N/A'}`);
       });
       if(portfolio.length > 5) logConsole(`  └─ ... and ${portfolio.length - 5} more`);
     }
@@ -4221,7 +4298,7 @@ async function loadAndRenderMovers(){
     
     // Enrich portfolio with same logic as index.html resolve() function
     const enrichedPortfolio = portfolio.map(s => {
-      const qty = s.qty || 0;
+      const qty = s.company_details?.qty || 0;  // ✅ Get from correct location
       const ltp = resolveField(s, 'ltp') || 0;
       const avgCost = s.company_details?.avg_cost || resolveField(s, 'avg_cost') || 0;
       const changePct = resolveField(s, 'changePct') || 0;
@@ -4409,7 +4486,7 @@ function drawPortfolioHeatmap(portfolio){
     if(!sMap[sec]) sMap[sec]={name:sec, holdVal:0, mcap:0, chgSum:0, n:0, stocks:[]};
     const price = s.price || s.ltp || 0;
     const change = s.market_change_pct || s.chg1d || 0;
-    const holdingVal = (s.qty || 0) * price;
+    const holdingVal = (s.company_details?.qty || 0) * price;  // ✅ Get qty from correct location
     sMap[sec].holdVal += holdingVal;
     sMap[sec].mcap    += (s.market_cap || s.mcap || 0);
     sMap[sec].chgSum  += change;
