@@ -268,11 +268,12 @@ const fieldMapping = {
     'signal': ['derived_metrics.ai_insights_guidance.signal'],
     
     // Data Arrays
-    'quarterly': ['financials.Sales.consolidated.quarterly'],
+    'quarterly': ['financials.Sales.consolidated.quarterly', 'financials.Revenue.consolidated.quarterly'],
+    'quarterly_full': ['financials', 'quarterly'],
     'price_history': ['price_history'],
-    'history_6mo_1d': ['price.history_6mo_1d', 'price_history'],
-    'history_5y_1wk': ['price.history_5y_1wk', 'price_history'],
-    'history_5y_1mo': ['price.history_5y_1mo', 'price_history']
+    'history_6mo_1d': ['price.history_6mo_1d'],
+    'history_5y_1wk': ['price.history_5y_1wk'],
+    'history_5y_1mo': ['price.history_5y_1mo']
 };
 
 // 🎯 RESOLVE FIELD FROM INDEXEDDB STOCK OBJECT
@@ -431,17 +432,19 @@ async function loadStock() {
             // Convert history format { Date, Open, High, Low, Close, Volume } to chart format
             if (historyData && historyData.length > 0) {
                 try {
-                    currentStock.candles = historyData.map(bar => ({
-                        d: bar.Date,  // Date as YYYY-MM-DD string for aggregation functions
+                    // Use efficient array conversion for large datasets
+                    currentStock.candles = historyData.map((bar, idx) => ({
+                        d: bar.Date,  // Date as YYYY-MM-DD string
                         o: parseFloat(bar.Open),
                         h: parseFloat(bar.High),
                         l: parseFloat(bar.Low),
                         c: parseFloat(bar.Close),
                         v: parseInt(bar.Volume) || 0
-                    }));
-                    console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'candles');
+                    })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c)); // Remove invalid entries
+                    console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'valid candles');
                 } catch (e) {
                     console.warn('⚠️ Error converting price history:', e.message);
+                    currentStock.candles = [];
                 }
             }
             
@@ -2836,7 +2839,47 @@ function scheduleChartRedraw(){
 }
 
 function aggregateCandles(daily, interval){
+  // If interval is 'D', return daily data as-is
   if(interval === 'D' || !daily.length) return daily;
+  
+  // For W and M, if data is already in correct format (e.g., already weekly from history_5y_1wk),
+  // detect and return as-is
+  if(interval === 'W' && daily.length > 0 && daily[0].d) {
+    // Quick check: if most dates are Mondays or spaced ~7 days apart, it's already weekly
+    const daysApart = [];
+    for(let i = 1; i < Math.min(5, daily.length); i++) {
+      const d1 = new Date(daily[i-1].d).getTime();
+      const d2 = new Date(daily[i].d).getTime();
+      daysApart.push((d2 - d1) / (1000*60*60*24));
+    }
+    const avgDaysApart = daysApart.length ? daysApart.reduce((a,b) => a+b) / daysApart.length : 0;
+    if(avgDaysApart >= 6) { // Already weekly data
+      console.log('📊 Data is already weekly, skipping aggregation');
+      return daily;
+    }
+  }
+  
+  if(interval === 'M' && daily.length > 0 && daily[0].d) {
+    // Quick check: if data is spaced ~30 days apart, it's already monthly
+    const daysApart = [];
+    for(let i = 1; i < Math.min(5, daily.length); i++) {
+      const d1 = new Date(daily[i-1].d).getTime();
+      const d2 = new Date(daily[i].d).getTime();
+      daysApart.push((d2 - d1) / (1000*60*60*24));
+    }
+    const avgDaysApart = daysApart.length ? daysApart.reduce((a,b) => a+b) / daysApart.length : 0;
+    if(avgDaysApart >= 20) { // Already monthly data
+      console.log('📊 Data is already monthly, skipping aggregation');
+      return daily;
+    }
+  }
+  
+  // Cache aggregated results to avoid recalculation
+  const cacheKey = `${interval}_${daily.length}`;
+  if(aggregateCandles._cache && aggregateCandles._cache.key === cacheKey) {
+    return aggregateCandles._cache.result;
+  }
+  
   const buckets = {};
   daily.forEach(c => {
     const d = new Date(c.d);
@@ -2859,7 +2902,9 @@ function aggregateCandles(daily, interval){
       b.v += c.v;
     }
   });
-  return Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
+  const result = Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
+  aggregateCandles._cache = { key: cacheKey, result };
+  return result;
 }
 
 function scheduleTACharts(s){
@@ -2901,26 +2946,71 @@ function getSlicedCandles(s, canvasWidth){
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   let rangeCandles = allAgg.filter(c => c.d >= cutoff);
   if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
+  
   if(canvasWidth && canvasWidth > 0){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
     const IDEAL_BAR_W = 7;
-    // MIN_BAR_W scales with zoom: zoom=0.5 → 8px bars (fewer), zoom=3 → 1.3px bars (more)
-    // ✅ FLIPPED: zoom=3.0 means "3x magnification" → SMALLER min bar width → FEWER bars visible
     const MIN_BAR_W  = 4 * S.chartZoom;
-    const maxFit = Math.floor(chartW / MIN_BAR_W);
+    const maxFit = Math.min(500, Math.floor(chartW / MIN_BAR_W)); // Cap at 500 candles for performance
+    
     if(rangeCandles.length > maxFit){
-      // ✅ PAN-BASED HISTORY SCROLL: S.chartPan controls which candles to display
-      // S.chartPan: -400 (oldest) → 0 (most recent) → +400 (newest, clamped to most recent)
+      // PAN-BASED HISTORY SCROLL
       const maxBackOffset = Math.max(0, rangeCandles.length - maxFit);
-      const backPan = Math.max(0, -S.chartPan); // Negative pan = go back in history (0-400)
-      const backNorm = Math.min(1, backPan / 400); // Normalize to 0-1
-      const backOffset = Math.floor(backNorm * maxBackOffset); // How many candles back to start
+      const backPan = Math.max(0, -S.chartPan);
+      const backNorm = Math.min(1, backPan / 400);
+      const backOffset = Math.floor(backNorm * maxBackOffset);
       const startIdx = Math.max(0, maxBackOffset - backOffset);
       return rangeCandles.slice(startIdx, startIdx + maxFit);
     }
   }
-  return rangeCandles;
+  return rangeCandles.slice(-500); // Limit to last 500 candles
+}
+
+// Extract quarterly data with all KPI metrics
+function getQuarterlyData(s){
+  const quarterly = [];
+  
+  // Try to get from financials object
+  if(s.financials) {
+    const financials = s.financials;
+    const salesQ = financials.Sales?.consolidated?.quarterly || {};
+    const revenueQ = financials.Revenue?.consolidated?.quarterly || {};
+    const netQ = financials.Net_Profit?.consolidated?.quarterly || {};
+    const cfoQ = financials.Operating_CF?.consolidated?.quarterly || {};
+    const opmQ = financials.Operating_Profit?.consolidated?.quarterly || {};
+    const debtQ = financials.Total_Debt?.consolidated?.quarterly || {};
+    const epsQ = financials.EPS?.consolidated?.quarterly || {};
+    
+    // Get all unique dates from any quarterly metric
+    const allDates = new Set([
+      ...Object.keys(salesQ),
+      ...Object.keys(revenueQ),
+      ...Object.keys(netQ),
+      ...Object.keys(cfoQ),
+      ...Object.keys(opmQ),
+      ...Object.keys(debtQ),
+      ...Object.keys(epsQ)
+    ]);
+    
+    // Build quarterly data points
+    Array.from(allDates).sort().reverse().forEach(date => {
+      const q = { d: date };
+      if(salesQ[date]) q.rev = parseFloat(salesQ[date]) || 0;
+      if(revenueQ[date]) q.rev = parseFloat(revenueQ[date]) || q.rev;
+      if(netQ[date]) q.net = parseFloat(netQ[date]) || 0;
+      if(cfoQ[date]) q.cfo = parseFloat(cfoQ[date]) || 0;
+      if(opmQ[date]) {
+        const sales = q.rev || parseFloat(salesQ[date]) || 1;
+        q.opm = (parseFloat(opmQ[date]) / sales * 100) || 0;
+      }
+      if(debtQ[date]) q.debt = parseFloat(debtQ[date]) || 0;
+      if(epsQ[date]) q.eps = parseFloat(epsQ[date]) || 0;
+      if(Object.keys(q).length > 1) quarterly.push(q);
+    });
+  }
+  
+  return quarterly.length > 0 ? quarterly : (s.quarterly || []);
 }
 
 
@@ -3161,7 +3251,7 @@ function drawCandlestick(s){
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
-  const quarterly = s.quarterly || [];
+  const quarterly = getQuarterlyData(s);
 
   const KPI_DEFS = [
     {k:'pe',   label:'P/E',     col:'#f59e0b'},
@@ -3206,7 +3296,7 @@ function drawCandlestick(s){
         if(price > 0) pts.push({x: xForDate(q.d), v: price/annEPS, d: q.d});
       });
       // Always add current PE at far right
-      const currentPE = s.trailing_pe || s.pe;
+      const currentPE = resolveField(s, 'trailing_pe') || resolveField(s, 'pe');
       if(currentPE > 0 && candles.length > 0){
         const rightX = PAD.l + cW;
         if(!pts.length || pts[pts.length-1].x < rightX - 10)
@@ -3218,12 +3308,20 @@ function drawCandlestick(s){
         if(v != null) pts.push({x: xForDate(q.d), v, d: q.d});
       });
       // Add current value as rightmost anchor if available
-      const curVal = k==='cfo'?(s.operating_cash_flow||s.cfo) : 
-                     k==='rev'?(s.total_revenue||s.sales) : 
-                     k==='net'?(s.profit_margins||s.npm_pct) : 
-                     k==='opm'?(s.operating_margins||s.opm_pct) : 
-                     k==='debt'?(s.debt_to_equity||s.debt_eq) : null;
-      if(curVal != null && pts.length){
+      let curVal = null;
+      if(k === 'cfo') {
+        curVal = resolveField(s, 'operating_cash_flow') || resolveField(s, 'cfo');
+      } else if(k === 'rev') {
+        curVal = resolveField(s, 'total_revenue') || resolveField(s, 'sales');
+      } else if(k === 'net') {
+        curVal = resolveField(s, 'profit_margins') || resolveField(s, 'npm');
+      } else if(k === 'opm') {
+        curVal = resolveField(s, 'operating_margins') || resolveField(s, 'opm');
+      } else if(k === 'debt') {
+        curVal = resolveField(s, 'total_debt');
+      }
+      
+      if(curVal != null && curVal > 0 && pts.length){
         pts.push({x: PAD.l + cW, v: curVal, d: 'now'});
       }
     }
@@ -3482,7 +3580,49 @@ function updateChartStats(s){
 
 // Chart control functions
 function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
-function canvasSetChartInterval(iv) { S.chartInterval = iv; scheduleChartRedraw(); }
+function canvasSetChartInterval(iv) { 
+  S.chartInterval = iv;
+  
+  // When interval changes, reload candles from the correct history source
+  if(currentStock && currentStock.price) {
+    let historyData = null;
+    let historyType = null;
+    
+    // Fetch from correct history tag based on interval
+    if(iv === 'D' && currentStock.price.history_6mo_1d && Array.isArray(currentStock.price.history_6mo_1d)) {
+      historyData = currentStock.price.history_6mo_1d;
+      historyType = 'daily (6mo)';
+    } else if(iv === 'W' && currentStock.price.history_5y_1wk && Array.isArray(currentStock.price.history_5y_1wk)) {
+      historyData = currentStock.price.history_5y_1wk;
+      historyType = 'weekly (5y)';
+    } else if(iv === 'M' && currentStock.price.history_5y_1mo && Array.isArray(currentStock.price.history_5y_1mo)) {
+      historyData = currentStock.price.history_5y_1mo;
+      historyType = 'monthly (5y)';
+    }
+    
+    // Convert to candle format if found
+    if(historyData && historyData.length > 0) {
+      try {
+        currentStock.candles = historyData.map((bar) => ({
+          d: bar.Date,
+          o: parseFloat(bar.Open),
+          h: parseFloat(bar.High),
+          l: parseFloat(bar.Low),
+          c: parseFloat(bar.Close),
+          v: parseInt(bar.Volume) || 0
+        })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c));
+        
+        console.log(`🔄 Switched to ${historyType} (${iv}):`, currentStock.candles.length, 'candles');
+        scheduleChartRedraw();
+        return;
+      } catch (e) {
+        console.warn('⚠️ Error loading interval data:', e.message);
+      }
+    }
+  }
+  
+  scheduleChartRedraw();
+}
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
 function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
 
