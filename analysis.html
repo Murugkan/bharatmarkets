@@ -2985,32 +2985,45 @@ function attachChartResizeObserver(s){
 function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
   if(!daily.length) return daily;
-  const allAgg = aggregateCandles(daily, S.chartInterval);
-  if(!allAgg.length) return [];
+  
+  // Get the current range setting
   const now = new Date();
   const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
-  let rangeCandles = allAgg.filter(c => c.d >= cutoff);
-  if(!rangeCandles.length) rangeCandles = allAgg.slice(-60);
   
+  // Filter by date FIRST (respect chartRange)
+  let filteredCandles = daily.filter(c => c.d >= cutoff);
+  
+  // If no candles in range, use last N candles as fallback
+  if(!filteredCandles.length) {
+    filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
+  }
+  
+  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
+  
+  // Aggregate if needed (for weekly/monthly intervals)
+  const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
+  if(!allAgg.length) return [];
+  
+  // Now apply viewport slicing for pan/zoom
   if(canvasWidth && canvasWidth > 0){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
     const IDEAL_BAR_W = 7;
     const MIN_BAR_W  = 4 * S.chartZoom;
-    const maxFit = Math.min(500, Math.floor(chartW / MIN_BAR_W)); // Cap at 500 candles for performance
+    const maxFit = Math.min(500, Math.floor(chartW / MIN_BAR_W));
     
-    if(rangeCandles.length > maxFit){
+    if(allAgg.length > maxFit){
       // PAN-BASED HISTORY SCROLL
-      const maxBackOffset = Math.max(0, rangeCandles.length - maxFit);
+      const maxBackOffset = Math.max(0, allAgg.length - maxFit);
       const backPan = Math.max(0, -S.chartPan);
       const backNorm = Math.min(1, backPan / 400);
       const backOffset = Math.floor(backNorm * maxBackOffset);
       const startIdx = Math.max(0, maxBackOffset - backOffset);
-      return rangeCandles.slice(startIdx, startIdx + maxFit);
+      return allAgg.slice(startIdx, startIdx + maxFit);
     }
   }
-  return rangeCandles.slice(-500); // Limit to last 500 candles
+  return allAgg.slice(-500);
 }
 
 // Extract quarterly data with all KPI metrics
