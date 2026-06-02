@@ -727,8 +727,8 @@
             if (index === 0) {
                 loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
             } else if (s.name === 'ltp.json') {
-                // LTP JSON: fetch, merge and sync with DB
-                loadButton = `<button onclick="updateLTPFromGitHub()" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
+                // LTP JSON: trigger workflow to fetch fresh data from Yahoo Finance
+                loadButton = `<button onclick="triggerLTPWorkflowOnly()" style="padding:4px 8px; font-size:8px;">⚡</button>`;
             } else {
                 // Market data and other files: direct fetch
                 loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
@@ -2359,6 +2359,63 @@ CRITICAL RULES:
         
         // Just fetch and merge - no workflow trigger needed
         fetchAndMergeLTPOnly();
+    }
+    
+    function triggerLTPWorkflowOnly() {
+        log('⚡ Triggering GitHub workflow to fetch fresh LTP data...');
+        updateStatusButton('⏳ Triggering Workflow');
+        
+        const pat = localStorage.getItem('github_pat');
+        if (!pat) {
+            log('⚠️ PAT not configured - cannot trigger workflow');
+            showToast('❌ PAT required to trigger workflow');
+            return;
+        }
+        
+        // Trigger the fetch_ltp.yml workflow
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch_ltp.yml/dispatches`;
+        
+        log(`🔗 Dispatching workflow to: ${apiUrl}`);
+        
+        fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ref: GITHUB_CONFIG.BRANCH,
+                inputs: {}
+            })
+        })
+        .then(r => {
+            if (r.status === 204) {
+                log('✅ Workflow dispatch request accepted (204)');
+                log('⏳ Workflow triggered! The ltp.json will be updated on GitHub.');
+                updateStatusButton('✅ Workflow Triggered');
+                showToast('✅ Workflow triggered! ltp.json will be updated soon.', 'success');
+            } else if (r.status === 401) {
+                log('❌ Invalid PAT token');
+                updateStatusButton('❌ Invalid PAT');
+                showToast('❌ Invalid PAT token');
+            } else if (r.status === 404) {
+                log('❌ Workflow not found - check fetch_ltp.yml exists');
+                updateStatusButton('❌ Workflow Not Found');
+                showToast('❌ Workflow not found');
+            } else {
+                return r.text().then(text => {
+                    log(`❌ Error: HTTP ${r.status}: ${text}`);
+                    updateStatusButton('❌ Workflow Error');
+                    showToast(`❌ Error: HTTP ${r.status}`);
+                });
+            }
+        })
+        .catch(err => {
+            log(`❌ Error: ${err.message}`);
+            updateStatusButton('❌ Error');
+            showToast(`❌ Error: ${err.message}`);
+        });
     }
     
     
