@@ -383,6 +383,7 @@ const fieldMapping = {
     'net_profit': ['financials.Net_Profit.{accounting}.{frequency}'],
     'net_income': ['financials.Net_Profit.{accounting}.{frequency}'],
     'operating_profit': ['financials.Operating_Profit.{accounting}.{frequency}'],
+    'op': ['financials.Operating_Profit.{accounting}.{frequency}'],
     'opm_pct': ['financials.OPM_pct.{accounting}.{frequency}'],
     'opm': ['financials.OPM_pct.{accounting}.annual'],
     'operating_margin': ['financials.OPM_pct.{accounting}.{frequency}'],
@@ -3242,7 +3243,7 @@ function getQuarterlyData(s){
       return f[fieldName][accounting][frequency] || {};
     };
     
-    // ✅ Map ALL financial metrics
+    // ✅ Map ALL financial metrics with CORRECT field names from market_data.json
     const salesData = getFinancialData('Sales');
     const netProfitData = getFinancialData('Net_Profit');
     const operatingProfitData = getFinancialData('Operating_Profit');
@@ -3252,8 +3253,7 @@ function getQuarterlyData(s){
     const cfoData = getFinancialData('CFO');
     const fcfData = getFinancialData('Free_Cash_Flow');
     const assetsData = getFinancialData('Total_Assets');
-    const borrowingsData = getFinancialData('Borrowings');
-    const debtData = getFinancialData('Total_Debt');
+    const borrowingsData = getFinancialData('Borrowings');  // ✅ Borrowings (plural)
     
     // Get all unique dates
     const allDates = new Set([
@@ -3266,8 +3266,7 @@ function getQuarterlyData(s){
       ...Object.keys(cfoData),
       ...Object.keys(fcfData),
       ...Object.keys(assetsData),
-      ...Object.keys(borrowingsData),
-      ...Object.keys(debtData)
+      ...Object.keys(borrowingsData)
     ]);
     
     // Build data points
@@ -3285,7 +3284,7 @@ function getQuarterlyData(s){
       // Balance Sheet metrics
       if(assetsData[date]) q.assets = parseFloat(assetsData[date]) || 0;
       if(borrowingsData[date]) q.borrowings = parseFloat(borrowingsData[date]) || 0;
-      if(debtData[date]) q.debt = parseFloat(debtData[date]) || 0;
+      if(borrowingsData[date]) q.debt = parseFloat(borrowingsData[date]) || 0;
       
       // Cash Flow metrics
       if(cfoData[date]) q.cfo = parseFloat(cfoData[date]) || 0;
@@ -3298,6 +3297,8 @@ function getQuarterlyData(s){
   } catch(e) {
     console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
+  
+  logConsole(`📊 getQuarterlyData extracted ${quarterly.length} data points`);
   
   // Fallback to simple quarterly array if exists
   return s.quarterly || [];
