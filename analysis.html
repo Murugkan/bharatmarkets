@@ -335,12 +335,12 @@ async function loadPortfolioData(forceClear = false) {
 // 🎯 INDEXEDDB FIELD MAPPING RESOLVER
 // Maps analysis.html field paths to IndexedDB stock object structure
 const fieldMapping = {
-    // Price & Performance (from price object - extracted from valuation.price by data.html)
-    'ltp': ['price.current_price', 'price.ltp'],
-    'price': ['price.current_price', 'price.ltp'],
-    'changePct': ['price.change_pct'],
-    'change': ['price.change'],
-    'chg1d': ['price.change'],
+    // Price & Performance (from price object)
+    'ltp': ['price.current_price', 'price.regular_market_price', 'ltp'],
+    'price': ['price.current_price', 'price.regular_market_price', 'ltp'],
+    'changePct': ['price.regular_market_change_pct', 'chg_pct'],
+    'change': ['price.regular_market_change', 'chg'],
+    'chg1d': ['price.regular_market_change', 'chg'],
     
     // Valuation (from valuation.pe and valuation.eps)
     'trailing_pe': ['valuation.pe.trailing_pe', 'pe.trailing_pe'],
@@ -412,7 +412,7 @@ const fieldMapping = {
     'negative': ['derived_metrics.calculated_metrics.negative'],
     'signal': ['derived_metrics.ai_insights_guidance.signal'],
     
-    // Data Arrays - Price history extracted to top level by data.html
+    // Data Arrays
     'quarterly': ['financials.Sales.consolidated.quarterly', 'financials.Revenue.consolidated.quarterly'],
     'quarterly_full': ['financials', 'quarterly'],
     'price_history': ['price_history'],
@@ -543,22 +543,10 @@ async function loadStock() {
             return;
         }
         
-        // ✅ Extract price from valuation.price
-        if (currentStock.valuation && currentStock.valuation.price) {
-            currentStock.price = currentStock.valuation.price;
-        }
-        
         // 🔍 DEBUG: Log the actual stock object structure
         console.log('📊 Stock object structure:', currentStock);
         console.log('📋 Available keys:', Object.keys(currentStock));
         console.log('💰 Price data:', currentStock.price);
-        console.log('📋 Stock fields:', Object.keys(currentStock).slice(0, 15).join(', '));
-        
-        // ✅ DEBUG: Check price structure
-        if (currentStock.price) {
-            const historyFields = ['history_6mo_1d', 'history_5y_1wk', 'history_5y_1mo'];
-            console.log('📊 Available price history:', historyFields.map(f => `${f}:${currentStock.price[f] ? '✓' : '✗'}`).join(', '));
-        }
         console.log('📈 Market data:', currentStock.market_data);
         console.log('💼 Company details:', currentStock.company_details);
         console.log('📊 Financials:', currentStock.financials);
@@ -589,43 +577,16 @@ async function loadStock() {
             // Convert history format { Date, Open, High, Low, Close, Volume } to chart format
             if (historyData && historyData.length > 0) {
                 try {
-                    let swapCount = 0;
-                    currentStock.candles = historyData.map((bar, idx) => {
-                        let h = parseFloat(bar.High);
-                        let l = parseFloat(bar.Low);
-                        // Swap if inverted
-                        if (h < l) {
-                            [h, l] = [l, h];
-                            swapCount++;
-                        }
-                        return {
-                            d: bar.Date,
-                            o: parseFloat(bar.Open),
-                            h: h,
-                            l: l,
-                            c: parseFloat(bar.Close),
-                            v: parseInt(bar.Volume) || 0
-                        };
-                    }).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c));
-                    
-                    // 📊 CRITICAL LOGGING
+                    // Use efficient array conversion for large datasets
+                    currentStock.candles = historyData.map((bar, idx) => ({
+                        d: bar.Date,  // Date as YYYY-MM-DD string
+                        o: parseFloat(bar.Open),
+                        h: parseFloat(bar.High),
+                        l: parseFloat(bar.Low),
+                        c: parseFloat(bar.Close),
+                        v: parseInt(bar.Volume) || 0
+                    })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c)); // Remove invalid entries
                     console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'valid candles');
-                    if (swapCount > 0) console.warn(`⚠️ Swapped High/Low on ${swapCount} candles (data corruption detected)`);
-                    
-                    // Log first & last candle for verification
-                    if (currentStock.candles.length > 0) {
-                        const first = currentStock.candles[0];
-                        const last = currentStock.candles[currentStock.candles.length - 1];
-                        console.log(`📅 Date range: ${first.d} → ${last.d}`);
-                        console.log(`📈 First candle: O=${first.o} H=${first.h} L=${first.l} C=${first.c}`);
-                        console.log(`📉 Last candle:  O=${last.o} H=${last.h} L=${last.l} C=${last.c}`);
-                        
-                        const allHighs = currentStock.candles.map(c => c.h);
-                        const allLows = currentStock.candles.map(c => c.l);
-                        const globalHigh = Math.max(...allHighs);
-                        const globalLow = Math.min(...allLows);
-                        console.log(`💹 Global range: ${globalLow.toFixed(2)} - ${globalHigh.toFixed(2)} (diff: ${(globalHigh - globalLow).toFixed(2)})`);
-                    }
                 } catch (e) {
                     console.warn('⚠️ Error converting price history:', e.message);
                     currentStock.candles = [];
@@ -1593,6 +1554,33 @@ function calculateRSI(closes, period = 14) {
     }
     
     return rsi;
+}
+
+function calculateEMA(closes, period) {
+    // Exponential Moving Average
+    if (closes.length < period) return [];
+    
+    const multiplier = 2 / (period + 1);
+    const ema = [];
+    
+    // First EMA is simple average
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+        sum += closes[i];
+    }
+    ema.push(sum / period);
+    
+    // Subsequent EMAs use exponential smoothing
+    for (let i = period; i < closes.length; i++) {
+        const prevEMA = ema[ema.length - 1];
+        const newEMA = closes[i] * multiplier + prevEMA * (1 - multiplier);
+        ema.push(newEMA);
+    }
+    
+    // Shift array back to align with original closes
+    // EMA[0] is at closes[period-1], so prepend nulls
+    const aligned = Array(period - 1).fill(null).concat(ema);
+    return aligned;
 }
 
 function renderPriceChart(container, sym, bars) {
@@ -3003,7 +2991,8 @@ function aggregateCandles(daily, interval){
   // history_5y_1wk = already weekly, history_5y_1mo = already monthly
   // Just return as-is, don't try to re-aggregate
   if(interval === 'W' || interval === 'M') {
-    return daily;  // ✅ No logging spam
+    logConsole(`📊 Interval ${interval}: ${daily.length} candles (already aggregated)`);
+    return daily;
   }
   
   // This code below is legacy and shouldn't be reached
@@ -3011,78 +3000,48 @@ function aggregateCandles(daily, interval){
   return daily;
 }
 
-// ✅ OPTIMIZED: Chart redraw with single RAF and proper debouncing
-let chartRedrawPending = false;
-
 function scheduleTACharts(s){
-  if(!s) return;
+  // ✅ Debounce: skip rapid redraws to prevent freezing with overlays
+  if(scheduleTACharts._pending) return;
+  scheduleTACharts._pending = true;
   
-  // Debounce rapid calls
-  if(chartRedrawPending) return;
-  chartRedrawPending = true;
+  console.log('🎨 Redrawing chart... pan=' + S.chartPan.toFixed(0));
   
-  // Single RAF - no double frame delay
   requestAnimationFrame(()=>{
-    try {
-      ensureIndicators(s);  // Calculate indicators once, cache them
-      drawCandlestick(s);
-      if(S.maVis.vol) drawVolume(s);
-      updateChartStats(s);
-    } finally {
-      chartRedrawPending = false;
-    }
+    requestAnimationFrame(()=>{
+      try {
+        // Recalculate indicators if needed
+        recalculateIndicators(s);
+        drawCandlestick(s);
+        if(S.maVis.vol) drawVolume(s);
+        updateChartStats(s);
+      } finally {
+        scheduleTACharts._pending = false;
+      }
+    });
   });
 }
 
-// ✅ OPTIMIZED: Indicator cache - prevents recalculation on every pan
-const indicatorCache = {
-  data: {},
-  lastCandleCount: -1,
-  lastInterval: null,
-  
-  isValid(candles, interval) {
-    // Use candle COUNT instead of reference (references change on pan)
-    return this.lastCandleCount === candles.length && this.lastInterval === interval;
-  },
-  
-  set(candles, interval, indicators) {
-    this.data = indicators;
-    this.lastCandleCount = candles.length;
-    this.lastInterval = interval;
-  }
-};
-
-function ensureIndicators(s){
+// Recalculate technical indicators for current candles
+function recalculateIndicators(s){
   if(!s || !s.candles || s.candles.length === 0) return;
   
-  // Check cache validity - skip if already calculated for this data
-  if(indicatorCache.isValid(s.candles, S.chartInterval)) {
-    console.log(`✓ Using cached indicators (${S.chartInterval}, ${s.candles.length} candles)`);
-    return;
-  }
+  // Create cache key based on interval + candle count + last candle close
+  const cacheKey = `${S.chartInterval}_${s.candles.length}_${s.candles[s.candles.length-1]?.c || 0}`;
   
-  console.log(`📊 Calculating indicators for ${S.chartInterval} (${s.candles.length} candles)`);
+  // Skip if we've already calculated for this exact data set
+  if(recalculateIndicators._lastKey === cacheKey) return;
+  recalculateIndicators._lastKey = cacheKey;
+  
+  console.log(`📊 Recalculating indicators for ${S.chartInterval} (${s.candles.length} candles)`);
   
   try {
-    const indicators = {
-      sma20: calculateSMA(s.candles, 20),
-      sma50: calculateSMA(s.candles, 50),
-      ema200: calculateEMA(s.candles, 200)
-    };
-    
-    console.log(`✓ Indicators: SMA20=${indicators.sma20.filter(v=>v).length}, SMA50=${indicators.sma50.filter(v=>v).length}, EMA200=${indicators.ema200.filter(v=>v).length}`);
-    
-    // Cache the results
-    indicatorCache.set(s.candles, S.chartInterval, indicators);
-    s._indicators = indicators;
-    
-    // Store at module level for drawing
-    s.sma20 = indicators.sma20;
-    s.sma50 = indicators.sma50;
-    s.ema200 = indicators.ema200;
+    // Calculate SMAs (not EMAs - simpler moving averages)
+    s.sma20 = calculateSMA(s.candles, 20);
+    s.sma50 = calculateSMA(s.candles, 50);
+    s.ema200 = calculateEMA(s.candles, 200);
   } catch(e) {
-    console.warn('⚠️ Error calculating indicators:', e.message);
-    s._indicators = { sma20: [], sma50: [], ema200: [] };
+    console.warn('⚠️ Error recalculating indicators:', e.message);
     s.sma20 = [];
     s.sma50 = [];
     s.ema200 = [];
@@ -3116,40 +3075,7 @@ function attachChartResizeObserver(s){
   _chartResizeObs.observe(wrap);
 }
 
-// ✅ Cache sliced candles to prevent redundant calculations
-const slicedCandlesCache = {
-  data: null,
-  lastParams: null,
-  
-  key(s, w, range, interval, pan, zoom) {
-    return `${s.ticker || 'unknown'}_${w}_${range}_${interval}_${Math.floor(pan)}_${zoom.toFixed(2)}`;
-  },
-  
-  isValid(s, w, range, interval, pan, zoom) {
-    const newKey = this.key(s, w, range, interval, pan, zoom);
-    return this.lastParams === newKey;
-  },
-  
-  set(s, w, range, interval, pan, zoom, data) {
-    this.data = data;
-    this.lastParams = this.key(s, w, range, interval, pan, zoom);
-  },
-  
-  get(s, w, range, interval, pan, zoom) {
-    if (this.isValid(s, w, range, interval, pan, zoom)) {
-      return this.data;
-    }
-    return null;
-  }
-};
-
 function getSlicedCandles(s, canvasWidth){
-  // ✅ Check cache first
-  const cached = slicedCandlesCache.get(s, canvasWidth, S.chartRange, S.chartInterval, S.chartPan, S.chartZoom);
-  if (cached !== null) {
-    return cached;
-  }
-  
   const daily = s.candles || [];
   if(!daily.length) return daily;
   
@@ -3166,38 +3092,31 @@ function getSlicedCandles(s, canvasWidth){
     filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
   }
   
+  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
+  
   // Aggregate if needed (for weekly/monthly intervals)
   const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
   if(!allAgg.length) return [];
   
   // Now apply viewport slicing for pan/zoom
-  let result = allAgg;
   if(canvasWidth && canvasWidth > 0){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
+    const IDEAL_BAR_W = 7;
     const MIN_BAR_W  = 4 * S.chartZoom;
     const maxFit = Math.min(500, Math.floor(chartW / MIN_BAR_W));
     
     if(allAgg.length > maxFit){
       // PAN-BASED HISTORY SCROLL
-      // Positive pan (drag right) = show newer data
-      // Negative pan (drag left) = show older data
       const maxBackOffset = Math.max(0, allAgg.length - maxFit);
-      const panNorm = Math.max(0, S.chartPan) / 400;  // Normalize 0→400 to 0→1
-      const backOffset = Math.floor(panNorm * maxBackOffset);  // How far back to go
-      const startIdx = Math.max(0, allAgg.length - maxFit - backOffset);  // Start from end, move back by offset
-      result = allAgg.slice(startIdx, startIdx + maxFit);
-      if (S.chartPan !== 0) {
-        console.log(`🖱️ Pan slicing: pan=${S.chartPan.toFixed(0)}, panNorm=${panNorm.toFixed(3)}, maxBack=${maxBackOffset}, backOff=${backOffset}, idx=${startIdx}/${allAgg.length}, show=${result.length}`);
-      }
-    } else {
-      result = allAgg.slice(-500);
+      const backPan = Math.max(0, -S.chartPan);
+      const backNorm = Math.min(1, backPan / 400);
+      const backOffset = Math.floor(backNorm * maxBackOffset);
+      const startIdx = Math.max(0, maxBackOffset - backOffset);
+      return allAgg.slice(startIdx, startIdx + maxFit);
     }
   }
-  
-  // ✅ Cache the result
-  slicedCandlesCache.set(s, canvasWidth, S.chartRange, S.chartInterval, S.chartPan, S.chartZoom, result);
-  return result;
+  return allAgg.slice(-500);
 }
 
 // Extract quarterly data with all KPI metrics
@@ -3290,12 +3209,7 @@ function drawCandlestick(s){
     return;
   }
   
-  // 📊 COMPREHENSIVE CHART DRAWING VALIDATION
-  const first = candles[0];
-  const last = candles[candles.length-1];
-  console.log(`📊 Drawing chart: ${candles.length} candles`);
-  console.log(`📅 Date range: ${first?.d} → ${last?.d}`);
-  console.log(`💹 OHLC range: O=${first?.o?.toFixed(2)}-${last?.o?.toFixed(2)}, H=${first?.h?.toFixed(2)}-${last?.h?.toFixed(2)}, L=${first?.l?.toFixed(2)}-${last?.l?.toFixed(2)}, C=${first?.c?.toFixed(2)}-${last?.c?.toFixed(2)}`);
+  console.log(`📊 Drawing chart: ${candles.length} candles, price range ${candles[0]?.c}-${candles[candles.length-1]?.c}`);
 
   const W=W2,H=312;  // ✅ Increased 30% from 240
   const PAD={l:6,r:52,t:8,b:22};
@@ -3334,8 +3248,6 @@ function drawCandlestick(s){
   }
   
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
-  console.log(`📊 Price axis: min=${mn.toFixed(2)} max=${mx.toFixed(2)} range=${rng.toFixed(2)}`);
-  console.log(`📐 Indicators: SMA20=${s.sma20?.length||0} SMA50=${s.sma50?.length||0} EMA200=${s.ema200?.length||0}`);
   
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
@@ -3973,56 +3885,68 @@ async function canvasLoadAndDrawChart(sym) {
 }
 
 // ════════════════════════════════════════════════
-// ✅ OPTIMIZED: PAN & ZOOM with better throttling
+// PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
 
 let chartInteraction = {
   isPanning: false,
   startX: 0,
-  startPan: 0,
-  lastRedrawTime: 0,
-  THROTTLE_MS: 80  // ✅ Increased to 80ms = ~12 FPS (smooth without freezing)
+  startPan: 0
 };
 
 function setupChartInteraction() {
   // Prevent duplicate setup
   if (setupChartInteraction._initialized) return;
   
-  console.log('⚙️ Setting up optimized chart interaction...');
+  console.log('⚙️ Setting up chart interaction...');
   
   const canvas = document.getElementById('cv-candle');
   if (!canvas) {
+    // Canvas not rendered yet - will retry when Canvas tab opens
     return;
   }
   
   setupChartInteraction._initialized = true;
   console.log('✓ Canvas found, attaching event listeners');
   
+  // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
+  let lastRedrawTime = 0;
+  const REDRAW_THROTTLE_MS = 50;  // ~20fps for smooth panning - optimal for mobile performance
   
-  // Mouse panning - NO throttle here, let RAF handle frame rate
+  // Debounced redraw: only redraw if throttle duration has passed (prevents excessive redraws)
+  const throttledRedraw = (stock) => {
+    const now = performance.now();
+    if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
+      scheduleTACharts(stock);
+      lastRedrawTime = now;
+    }
+  };
+  
+  // Mouse/Touch Pan on canvas - with passive event listeners for better scroll performance
   canvas.addEventListener('mousedown', (e) => {
+    console.log('🖱️ Pan START');
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
-  }, { passive: false });
+  }, { passive: false, capture: false });
   
   document.addEventListener('mousemove', (e) => {
     if (!chartInteraction.isPanning || !currentStock) return;
     
     const delta = e.clientX - chartInteraction.startX;
-    const newPan = Math.max(-400, Math.min(400, chartInteraction.startPan + delta));
+    let newPan = chartInteraction.startPan + delta;
+    newPan = Math.max(-400, Math.min(400, newPan));
     
     if (S.chartPan !== newPan) {
       S.chartPan = newPan;
-      console.log(`🖱️ Panning: delta=${delta}, newPan=${newPan}`);
-      // Always schedule redraw on pan - RAF debouncing will handle frame rate
-      scheduleTACharts(currentStock);
+      throttledRedraw(currentStock);
     }
-  }, { passive: true });
+  }, { passive: true, capture: false });
   
-  document.addEventListener('mouseup', () => {
-    chartInteraction.isPanning = false;
+  document.addEventListener('mouseup', () => { 
+    console.log('🖱️ Pan END');
+    chartInteraction.isPanning = false; 
   }, { passive: true });
   
   // Touch handlers with pinch support
@@ -4054,6 +3978,7 @@ function setupChartInteraction() {
       // Determine pinch direction: which is dominant?
       const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
       
+      
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
         const delta = ratio - 1.0;
@@ -4063,28 +3988,29 @@ function setupChartInteraction() {
           
           if (isVerticalPinch) {
             // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
+            const oldYZoom = S.yAxisZoom || 1.0;
             S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
           } else {
-            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM
+            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
+            const oldZoom = S.chartZoom;
             S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
           }
           
-          if (currentStock && shouldRedraw()) {
-            scheduleTACharts(currentStock);
+          if (currentStock) {
+            throttledRedraw(currentStock);
           }
         }
       }
       touchState.lastDistance = distance;
       e.preventDefault();
     } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN with optimized throttle
+      // SINGLE TOUCH PAN
       if (chartInteraction.isPanning && currentStock) {
         const delta = e.touches[0].clientX - chartInteraction.startX;
-        const newPan = Math.max(-400, Math.min(400, chartInteraction.startPan + delta));
+        let newPan = chartInteraction.startPan + delta;
+        newPan = Math.max(-400, Math.min(400, newPan));
         S.chartPan = newPan;
-        console.log(`👆 Touch pan: delta=${delta}, newPan=${newPan}`);
-        // Always schedule redraw on pan - RAF debouncing will handle frame rate
-        scheduleTACharts(currentStock);
+        throttledRedraw(currentStock);
       }
     }
   };
