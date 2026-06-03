@@ -438,17 +438,6 @@ const fieldMapping = {
     'book_value': ['valuation.book_value'],
     'ev_to_revenue': ['valuation.ev_to_revenue'],
     
-    // Financials (from financials.Sales, Interest, Expenses, etc.)
-    'total_revenue': ['financials.Sales.consolidated.annual', 'financials.Sales.quarterly'],
-    'sales': ['financials.Sales.consolidated.annual', 'financials.Sales.quarterly'],
-    'interest_exp': ['financials.Interest.consolidated.annual', 'financials.Interest.quarterly'],
-    'ebitda': ['financials.EBITDA.consolidated.annual', 'financials.EBITDA'],
-    'operating_cash_flow': ['financials.Operating_CF.consolidated.annual'],
-    'cfo': ['financials.Operating_CF.consolidated.annual'],
-    'free_cash_flow': ['financials.Free_CF.consolidated.annual'],
-    'fcf': ['financials.Free_CF.consolidated.annual'],
-    'expenses': ['financials.Expenses.consolidated.annual'],
-    
     // Margins & Returns (may need to be calculated)
     'return_on_equity': ['ratios.ROE_pct', 'roe'],
     'roe': ['ratios.ROE_pct', 'roe'],
@@ -3238,47 +3227,74 @@ function getSlicedCandles(s, canvasWidth){
 function getQuarterlyData(s){
   const quarterly = [];
   
+  if(!s || !s.financials) return quarterly;
+  
   try {
-    // Try to get from financials object
-    if(s.financials) {
-      const f = s.financials;
-      const salesQ = (f.Sales && f.Sales.consolidated && f.Sales.consolidated.quarterly) || {};
-      const revenueQ = (f.Revenue && f.Revenue.consolidated && f.Revenue.consolidated.quarterly) || {};
-      const netQ = (f.Net_Profit && f.Net_Profit.consolidated && f.Net_Profit.consolidated.quarterly) || {};
-      const cfoQ = (f.Operating_CF && f.Operating_CF.consolidated && f.Operating_CF.consolidated.quarterly) || {};
-      const opmQ = (f.Operating_Profit && f.Operating_Profit.consolidated && f.Operating_Profit.consolidated.quarterly) || {};
-      const debtQ = (f.Total_Debt && f.Total_Debt.consolidated && f.Total_Debt.consolidated.quarterly) || {};
-      const epsQ = (f.EPS && f.EPS.consolidated && f.EPS.consolidated.quarterly) || {};
+    // ✅ Use user-selected data source instead of hardcoded consolidated/annual
+    const accounting = S.financialSource?.accounting || 'consolidated';
+    const frequency = S.financialSource?.frequency || 'annual';
+    const f = s.financials;
+    
+    // Get data from selected accounting method and frequency
+    const getFinancialData = (fieldName) => {
+      if(!f[fieldName]) return {};
+      if(!f[fieldName][accounting]) return {};
+      return f[fieldName][accounting][frequency] || {};
+    };
+    
+    // ✅ Map ALL financial metrics
+    const salesData = getFinancialData('Sales');
+    const netProfitData = getFinancialData('Net_Profit');
+    const operatingProfitData = getFinancialData('Operating_Profit');
+    const opmData = getFinancialData('OPM_pct');
+    const pbtData = getFinancialData('Profit_before_tax');
+    const epsData = getFinancialData('EPS_Rs');
+    const cfoData = getFinancialData('CFO');
+    const fcfData = getFinancialData('Free_Cash_Flow');
+    const assetsData = getFinancialData('Total_Assets');
+    const borrowingsData = getFinancialData('Borrowings');
+    const debtData = getFinancialData('Total_Debt');
+    
+    // Get all unique dates
+    const allDates = new Set([
+      ...Object.keys(salesData),
+      ...Object.keys(netProfitData),
+      ...Object.keys(operatingProfitData),
+      ...Object.keys(opmData),
+      ...Object.keys(pbtData),
+      ...Object.keys(epsData),
+      ...Object.keys(cfoData),
+      ...Object.keys(fcfData),
+      ...Object.keys(assetsData),
+      ...Object.keys(borrowingsData),
+      ...Object.keys(debtData)
+    ]);
+    
+    // Build data points
+    Array.from(allDates).sort().reverse().forEach(date => {
+      const q = { d: date };
       
-      // Get all unique dates from any quarterly metric
-      const allDates = new Set([
-        ...Object.keys(salesQ),
-        ...Object.keys(revenueQ),
-        ...Object.keys(netQ),
-        ...Object.keys(cfoQ),
-        ...Object.keys(opmQ),
-        ...Object.keys(debtQ),
-        ...Object.keys(epsQ)
-      ]);
+      // Income Statement metrics
+      if(salesData[date]) q.rev = parseFloat(salesData[date]) || 0;
+      if(operatingProfitData[date]) q.op = parseFloat(operatingProfitData[date]) || 0;
+      if(opmData[date]) q.opm = parseFloat(opmData[date]) || 0;
+      if(pbtData[date]) q.pbt = parseFloat(pbtData[date]) || 0;
+      if(netProfitData[date]) q.net = parseFloat(netProfitData[date]) || 0;
+      if(epsData[date]) q.eps = parseFloat(epsData[date]) || 0;
       
-      // Build quarterly data points
-      Array.from(allDates).sort().reverse().forEach(date => {
-        const q = { d: date };
-        if(salesQ[date]) q.rev = parseFloat(salesQ[date]) || 0;
-        if(revenueQ[date]) q.rev = parseFloat(revenueQ[date]) || q.rev;
-        if(netQ[date]) q.net = parseFloat(netQ[date]) || 0;
-        if(cfoQ[date]) q.cfo = parseFloat(cfoQ[date]) || 0;
-        if(opmQ[date]) {
-          const sales = q.rev || parseFloat(salesQ[date]) || 1;
-          q.opm = (parseFloat(opmQ[date]) / sales * 100) || 0;
-        }
-        if(debtQ[date]) q.debt = parseFloat(debtQ[date]) || 0;
-        if(epsQ[date]) q.eps = parseFloat(epsQ[date]) || 0;
-        if(Object.keys(q).length > 1) quarterly.push(q);
-      });
+      // Balance Sheet metrics
+      if(assetsData[date]) q.assets = parseFloat(assetsData[date]) || 0;
+      if(borrowingsData[date]) q.borrowings = parseFloat(borrowingsData[date]) || 0;
+      if(debtData[date]) q.debt = parseFloat(debtData[date]) || 0;
       
-      if(quarterly.length > 0) return quarterly;
-    }
+      // Cash Flow metrics
+      if(cfoData[date]) q.cfo = parseFloat(cfoData[date]) || 0;
+      if(fcfData[date]) q.fcf = parseFloat(fcfData[date]) || 0;
+      
+      if(Object.keys(q).length > 1) quarterly.push(q);
+    });
+    
+    if(quarterly.length > 0) return quarterly;
   } catch(e) {
     console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
@@ -3543,12 +3559,22 @@ function drawCandlestick(s){
   const quarterly = getQuarterlyData(s);
 
   const KPI_DEFS = [
-    {k:'pe',   label:'P/E',     col:'#f59e0b'},
-    {k:'rev',  label:'Rev',     col:'#22d3ee'},
-    {k:'net',  label:'Net',     col:'#4ade80'},
-    {k:'cfo',  label:'CFO',     col:'#34d399'},
-    {k:'opm',  label:'OPM%',    col:'#fb923c'},
-    {k:'debt', label:'Debt',    col:'#f87171'},
+    // Income Statement
+    {k:'rev',  label:'Rev',       col:'#22d3ee'},
+    {k:'op',   label:'Op.Profit', col:'#ec4899'},
+    {k:'opm',  label:'OPM%',      col:'#fb923c'},
+    {k:'pbt',  label:'PBT',       col:'#8b5cf6'},
+    {k:'net',  label:'Net',       col:'#4ade80'},
+    {k:'eps',  label:'EPS',       col:'#06b6d4'},
+    // Balance Sheet
+    {k:'assets',     label:'Assets',  col:'#f0ad4e'},
+    {k:'borrowings', label:'Borrow',  col:'#ff6b6b'},
+    {k:'debt',       label:'Debt',    col:'#f87171'},
+    // Cash Flow
+    {k:'cfo',  label:'CFO',  col:'#34d399'},
+    {k:'fcf',  label:'FCF',  col:'#14b8a6'},
+    // Valuation
+    {k:'pe',   label:'P/E',  col:'#f59e0b'},
   ];
 
   // Use FULL candle history for price lookups — not just visible slice
@@ -3569,9 +3595,10 @@ function drawCandlestick(s){
     return allCandles.length ? allCandles[0].c : (s.ltp || 0);
   }
 
-  // Log raw quarterly data once
-  if(quarterly.length){
-        }
+  // Log raw quarterly data once (commented out - uncomment for debugging)
+  // if(quarterly.length){
+  //   console.log('📊 Quarterly data:', quarterly);
+  // }
 
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
@@ -3605,16 +3632,28 @@ function drawCandlestick(s){
         }
         // Add current value as rightmost anchor if available
         let curVal = null;
-        if(k === 'cfo') {
-          curVal = resolveField(s, 'operating_cash_flow') || resolveField(s, 'cfo');
-        } else if(k === 'rev') {
-          curVal = resolveField(s, 'total_revenue') || resolveField(s, 'sales');
-        } else if(k === 'net') {
-          curVal = resolveField(s, 'profit_margins') || resolveField(s, 'npm');
+        if(k === 'rev') {
+          curVal = resolveField(s, 'sales') || resolveField(s, 'revenue');
+        } else if(k === 'op') {
+          curVal = resolveField(s, 'operating_profit');
         } else if(k === 'opm') {
-          curVal = resolveField(s, 'operating_margins') || resolveField(s, 'opm');
+          curVal = resolveField(s, 'opm_pct') || resolveField(s, 'operating_margin');
+        } else if(k === 'pbt') {
+          curVal = resolveField(s, 'profit_before_tax') || resolveField(s, 'pbt');
+        } else if(k === 'net') {
+          curVal = resolveField(s, 'net_profit') || resolveField(s, 'net_income');
+        } else if(k === 'eps') {
+          curVal = resolveField(s, 'eps') || resolveField(s, 'earnings_per_share');
+        } else if(k === 'assets') {
+          curVal = resolveField(s, 'total_assets') || resolveField(s, 'assets');
+        } else if(k === 'borrowings') {
+          curVal = resolveField(s, 'borrowings') || resolveField(s, 'debt');
         } else if(k === 'debt') {
-          curVal = resolveField(s, 'total_debt');
+          curVal = resolveField(s, 'total_debt') || resolveField(s, 'debt');
+        } else if(k === 'cfo') {
+          curVal = resolveField(s, 'cfo') || resolveField(s, 'operating_cash_flow');
+        } else if(k === 'fcf') {
+          curVal = resolveField(s, 'fcf') || resolveField(s, 'free_cash_flow');
         }
         
         if(curVal != null && !isNaN(curVal) && curVal > 0 && pts.length){
