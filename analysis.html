@@ -206,7 +206,7 @@ const S = {
   chartRange: '1Y',
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
-  kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false },
+  kpiVis: { pe: false, rev: false, net: false, pbt: false, op: false, cfo: false, fcf: false, ncf: false, opm: false, assets: false, equity: false, debt: false, borrowing: false, liabilities: false },
   chartPan: 0,        // Pan offset in pixels
   chartZoom: 1,       // Horizontal zoom (# of candles)
   yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
@@ -957,12 +957,20 @@ function renderTab(tab) {
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
               <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio from quarterly data"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue from quarterly data"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit from quarterly data"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.pbt?'checked':''} onchange="toggleKPI('pbt')" style="accent-color:#86efac;width:11px;height:11px"><span style="font-size:9px;color:#86efac;font-weight:600">PBT</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.op?'checked':''} onchange="toggleKPI('op')" style="accent-color:#fbbf24;width:11px;height:11px"><span style="font-size:9px;color:#fbbf24;font-weight:600">Op</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.fcf?'checked':''} onchange="toggleKPI('fcf')" style="accent-color:#10b981;width:11px;height:11px"><span style="font-size:9px;color:#10b981;font-weight:600">FCF</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.ncf?'checked':''} onchange="toggleKPI('ncf')" style="accent-color:#059669;width:11px;height:11px"><span style="font-size:9px;color:#059669;font-weight:600">NCF</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.assets?'checked':''} onchange="toggleKPI('assets')" style="accent-color:#60a5fa;width:11px;height:11px"><span style="font-size:9px;color:#60a5fa;font-weight:600">Assets</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.equity?'checked':''} onchange="toggleKPI('equity')" style="accent-color:#8b5cf6;width:11px;height:11px"><span style="font-size:9px;color:#8b5cf6;font-weight:600">Equity</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.borrowing?'checked':''} onchange="toggleKPI('borrowing')" style="accent-color:#ef4444;width:11px;height:11px"><span style="font-size:9px;color:#ef4444;font-weight:600">Borrow</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.liabilities?'checked':''} onchange="toggleKPI('liabilities')" style="accent-color:#dc2626;width:11px;height:11px"><span style="font-size:9px;color:#dc2626;font-weight:600">Liab</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -3079,20 +3087,23 @@ function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
   if(!daily.length) return daily;
   
+  // ✅ CRITICAL: Ensure chronological order (oldest first, newest last)
+  const sorted = [...daily].sort((a, b) => new Date(a.d) - new Date(b.d));
+  
   // Get the current range setting
   const now = new Date();
   const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   
   // Filter by date FIRST (respect chartRange)
-  let filteredCandles = daily.filter(c => c.d >= cutoff);
+  let filteredCandles = sorted.filter(c => c.d >= cutoff);
   
   // If no candles in range, use last N candles as fallback
   if(!filteredCandles.length) {
-    filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
+    filteredCandles = sorted.slice(-Math.max(20, Math.floor(sorted.length * 0.25)));
   }
   
-  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
+  logConsole(`📊 Candles: ${daily.length} total, ${filteredCandles.length} in ${S.chartRange}, sorted ASC`);
   
   // Aggregate if needed (for weekly/monthly intervals)
   const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
@@ -3420,9 +3431,17 @@ function drawCandlestick(s){
     {k:'pe',   label:'P/E',     col:'#f59e0b'},
     {k:'rev',  label:'Rev',     col:'#22d3ee'},
     {k:'net',  label:'Net',     col:'#4ade80'},
+    {k:'pbt',  label:'PBT',     col:'#86efac'},
+    {k:'op',   label:'Op',      col:'#fbbf24'},
     {k:'cfo',  label:'CFO',     col:'#34d399'},
+    {k:'fcf',  label:'FCF',     col:'#10b981'},
+    {k:'ncf',  label:'NCF',     col:'#059669'},
     {k:'opm',  label:'OPM%',    col:'#fb923c'},
+    {k:'assets',label:'Assets', col:'#60a5fa'},
+    {k:'equity',label:'Equity', col:'#8b5cf6'},
     {k:'debt', label:'Debt',    col:'#f87171'},
+    {k:'borrowing',label:'Borrow',col:'#ef4444'},
+    {k:'liabilities',label:'Liab',col:'#dc2626'},
   ];
 
   // Use FULL candle history for price lookups — not just visible slice
@@ -3444,6 +3463,8 @@ function drawCandlestick(s){
   }
 
   // Log raw quarterly data once
+  logConsole(`📈 Quarterly data points: ${quarterly.length}`);
+  if(quarterly.length > 0) logConsole(`  First: ${quarterly[0].d}, Last: ${quarterly[quarterly.length-1].d}`);
   
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
