@@ -3077,20 +3077,27 @@ function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
   if(!daily.length) return daily;
   
+  // ✅ CRITICAL: Ensure candles are in chronological order (oldest first)
+  const sorted = [...daily].sort((a, b) => {
+    const dateA = new Date(a.d).getTime();
+    const dateB = new Date(b.d).getTime();
+    return dateA - dateB;
+  });
+  
   // Get the current range setting
   const now = new Date();
   const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   
   // Filter by date FIRST (respect chartRange)
-  let filteredCandles = daily.filter(c => c.d >= cutoff);
+  let filteredCandles = sorted.filter(c => c.d >= cutoff);
   
   // If no candles in range, use last N candles as fallback
   if(!filteredCandles.length) {
-    filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
+    filteredCandles = sorted.slice(-Math.max(20, Math.floor(sorted.length * 0.25)));
   }
   
-  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
+  console.log(`📊 getSlicedCandles: ${sorted.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
   
   // Aggregate if needed (for weekly/monthly intervals)
   const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
@@ -3122,55 +3129,69 @@ function getSlicedCandles(s, canvasWidth){
 
 // Extract quarterly data with all KPI metrics
 function getQuarterlyData(s){
+  // ✅ PRIMARY: Return pre-computed quarterly array from IndexedDB
+  if(s.quarterly && Array.isArray(s.quarterly) && s.quarterly.length > 0) {
+    console.log(`📊 Using quarterly data from IndexedDB: ${s.quarterly.length} quarters`);
+    return s.quarterly;
+  }
+  
+  // ✅ SECONDARY: Fallback - extract from financials if quarterly array not available
+  // data.html should have already pre-computed this, but this is safety net
   const quarterly = [];
   
   try {
-    // Try to get from financials object
-    if(s.financials) {
-      const f = s.financials;
-      const salesQ = (f.Sales && f.Sales.consolidated && f.Sales.consolidated.quarterly) || {};
-      const revenueQ = (f.Revenue && f.Revenue.consolidated && f.Revenue.consolidated.quarterly) || {};
-      const netQ = (f.Net_Profit && f.Net_Profit.consolidated && f.Net_Profit.consolidated.quarterly) || {};
-      const cfoQ = (f.Operating_CF && f.Operating_CF.consolidated && f.Operating_CF.consolidated.quarterly) || {};
-      const opmQ = (f.Operating_Profit && f.Operating_Profit.consolidated && f.Operating_Profit.consolidated.quarterly) || {};
-      const debtQ = (f.Total_Debt && f.Total_Debt.consolidated && f.Total_Debt.consolidated.quarterly) || {};
-      const epsQ = (f.EPS && f.EPS.consolidated && f.EPS.consolidated.quarterly) || {};
-      
-      // Get all unique dates from any quarterly metric
-      const allDates = new Set([
-        ...Object.keys(salesQ),
-        ...Object.keys(revenueQ),
-        ...Object.keys(netQ),
-        ...Object.keys(cfoQ),
-        ...Object.keys(opmQ),
-        ...Object.keys(debtQ),
-        ...Object.keys(epsQ)
-      ]);
-      
-      // Build quarterly data points
-      Array.from(allDates).sort().reverse().forEach(date => {
-        const q = { d: date };
-        if(salesQ[date]) q.rev = parseFloat(salesQ[date]) || 0;
-        if(revenueQ[date]) q.rev = parseFloat(revenueQ[date]) || q.rev;
-        if(netQ[date]) q.net = parseFloat(netQ[date]) || 0;
-        if(cfoQ[date]) q.cfo = parseFloat(cfoQ[date]) || 0;
-        if(opmQ[date]) {
-          const sales = q.rev || parseFloat(salesQ[date]) || 1;
-          q.opm = (parseFloat(opmQ[date]) / sales * 100) || 0;
-        }
-        if(debtQ[date]) q.debt = parseFloat(debtQ[date]) || 0;
-        if(epsQ[date]) q.eps = parseFloat(epsQ[date]) || 0;
-        if(Object.keys(q).length > 1) quarterly.push(q);
+    if(!s.financials) return quarterly;
+    
+    const f = s.financials;
+    const getQ = (fieldName) => {
+      const field = f[fieldName];
+      return (field && field.consolidated && field.consolidated.quarterly) || {};
+    };
+    
+    const metrics = {
+      sales: getQ('Sales'),
+      revenue: getQ('Revenue'),
+      net: getQ('Net_Profit'),
+      pbt: getQ('Profit_before_tax'),
+      op: getQ('Financing_Profit'),
+      cfo: getQ('CFO'),
+      fcf: getQ('Free_Cash_Flow'),
+      ncf: getQ('Net_Cash_Flow'),
+      equity: getQ('Equity_Capital'),
+      borrowing: getQ('Borrowing'),
+      debt: getQ('Total_Debt'),
+      assets: getQ('Total_Assets'),
+      liabilities: getQ('Total_Liabilities'),
+      fixedAssets: getQ('Fixed_Assets'),
+      investments: getQ('Investments'),
+      margin: getQ('Financing_Margin_pct'),
+      gnpa: getQ('Gross_NPA_pct'),
+      nnpa: getQ('Net_NPA_pct'),
+      eps: getQ('EPS_Rs')
+    };
+    
+    const allDates = new Set();
+    Object.values(metrics).forEach(data => Object.keys(data).forEach(d => allDates.add(d)));
+    
+    Array.from(allDates).sort().forEach(date => {
+      const q = { d: date };
+      Object.entries(metrics).forEach(([key, data]) => {
+        if(data[date]) q[key] = parseFloat(data[date]) || 0;
       });
-      
-      if(quarterly.length > 0) return quarterly;
+      if(q.sales && q.net) q.margin_pct = (q.net / q.sales) * 100;
+      if(q.op && q.sales) q.opm = (q.op / q.sales) * 100;
+      if(Object.keys(q).length > 1) quarterly.push(q);
+    });
+    
+    if(quarterly.length > 0) {
+      console.log(`⚠️ Extracted quarterly from financials (fallback): ${quarterly.length} quarters`);
+      return quarterly;
     }
   } catch(e) {
     console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
   
-  // Fallback to simple quarterly array if exists
-  return s.quarterly || [];
+  return quarterly;
 }
 
 
@@ -3428,13 +3449,42 @@ function drawCandlestick(s){
   // ── KPI overlays on price chart ──────────────────────────────────
   const quarterly = getQuarterlyData(s);
 
+  // ✅ COMPREHENSIVE KPI DEFINITIONS - Mapped to quarterly data fields
   const KPI_DEFS = [
-    {k:'pe',   label:'P/E',     col:'#f59e0b'},
-    {k:'rev',  label:'Rev',     col:'#22d3ee'},
-    {k:'net',  label:'Net',     col:'#4ade80'},
-    {k:'cfo',  label:'CFO',     col:'#34d399'},
-    {k:'opm',  label:'OPM%',    col:'#fb923c'},
-    {k:'debt', label:'Debt',    col:'#f87171'},
+    // Revenue & Sales
+    {k:'sales',    label:'Sales',    col:'#06b6d4'},  // Cyan - Sales
+    {k:'revenue',  label:'Rev',      col:'#22d3ee'},  // Light Cyan - Revenue
+    
+    // Profitability
+    {k:'net',      label:'Net',      col:'#4ade80'},  // Green - Net Profit
+    {k:'pbt',      label:'PBT',      col:'#86efac'},  // Light Green - Profit Before Tax
+    {k:'op',       label:'Op',       col:'#fbbf24'},  // Amber - Operating Profit
+    
+    // Margins
+    {k:'margin_pct', label:'Margin%',col:'#f97316'},  // Orange - Profit Margin
+    {k:'opm',      label:'OPM%',     col:'#fb923c'},  // Light Orange - Operating Margin
+    
+    // Cash Flow
+    {k:'cfo',      label:'CFO',      col:'#34d399'},  // Teal - Cash Flow Operations
+    {k:'fcf',      label:'FCF',      col:'#10b981'},  // Emerald - Free Cash Flow
+    {k:'ncf',      label:'NCF',      col:'#059669'},  // Dark Emerald - Net Cash Flow
+    
+    // Balance Sheet - Assets
+    {k:'assets',   label:'Assets',   col:'#60a5fa'},  // Blue - Total Assets
+    {k:'fixedAssets', label:'FixedAst', col:'#3b82f6'},  // Dark Blue - Fixed Assets
+    {k:'equity',   label:'Equity',   col:'#8b5cf6'},  // Purple - Equity Capital
+    
+    // Balance Sheet - Liabilities & Debt
+    {k:'debt',     label:'Debt',     col:'#f87171'},  // Red - Total Debt
+    {k:'borrowing', label:'Borrow',  col:'#ef4444'},  // Dark Red - Borrowing
+    {k:'liabilities', label:'Liab',  col:'#dc2626'},  // Darker Red - Total Liabilities
+    
+    // Risk Metrics (for banks/financial companies)
+    {k:'gnpa',     label:'GrNPA%',   col:'#f43f5e'},  // Rose - Gross NPA
+    {k:'nnpa',     label:'NetNPA%',  col:'#e11d48'},  // Dark Rose - Net NPA
+    
+    // Per Share
+    {k:'eps',      label:'EPS',      col:'#a78bfa'},  // Light Purple - EPS
   ];
 
   // Use FULL candle history for price lookups — not just visible slice

@@ -2265,12 +2265,21 @@ CRITICAL RULES:
                 
                 let savedCount = 0;
                 
+                // ✅ CRITICAL: Process each stock to compute quarterly KPI data
                 stocks_to_process.forEach(function(stock) {
                     const ticker = stock.ticker || stock.symbol;
                     if (!ticker || ticker === '' || ticker === '?') return;
                     
                     stock.ticker = ticker;
                     if (!stock.source) stock.source = 'market_data_pipeline';
+                    
+                    // ✅ COMPUTE QUARTERLY KPI DATA and store in stock.quarterly
+                    if(!stock.quarterly && stock.financials) {
+                      stock.quarterly = computeQuarterlyKPIs(stock.financials);
+                      if(stock.quarterly.length > 0) {
+                        log(`✅ Computed ${stock.quarterly.length} quarters for ${ticker}`);
+                      }
+                    }
                     
                     store.put(stock);
                     savedCount++;
@@ -2308,6 +2317,86 @@ CRITICAL RULES:
                 reject(new Error('Cannot open database'));
             };
         });
+    }
+    
+    // ✅ EXTRACT QUARTERLY FINANCIALS FROM DATA
+    // Stores quarterly financial data in stock.quarterly for chart display
+    function computeQuarterlyKPIs(financials) {
+      const quarterly = [];
+      if(!financials) return quarterly;
+      
+      // Extract quarterly data from each financial field
+      const getQuarterlyData = (fieldName) => {
+        const field = financials[fieldName];
+        if(field && field.consolidated && field.consolidated.quarterly) {
+          return field.consolidated.quarterly;
+        }
+        return {};
+      };
+      
+      // Collect ALL available quarterly metrics from financials
+      const metrics = {
+        sales: getQuarterlyData('Sales'),
+        revenue: getQuarterlyData('Revenue'),
+        net: getQuarterlyData('Net_Profit'),
+        pbt: getQuarterlyData('Profit_before_tax'),
+        op: getQuarterlyData('Financing_Profit'),
+        expenses: getQuarterlyData('Expenses'),
+        cfo: getQuarterlyData('CFO'),
+        cfi: getQuarterlyData('CFI'),
+        cff: getQuarterlyData('CFF'),
+        fcf: getQuarterlyData('Free_Cash_Flow'),
+        ncf: getQuarterlyData('Net_Cash_Flow'),
+        equity: getQuarterlyData('Equity_Capital'),
+        borrowing: getQuarterlyData('Borrowing'),
+        debt: getQuarterlyData('Total_Debt'),
+        assets: getQuarterlyData('Total_Assets'),
+        liabilities: getQuarterlyData('Total_Liabilities'),
+        fixedAssets: getQuarterlyData('Fixed_Assets'),
+        investments: getQuarterlyData('Investments'),
+        depreciation: getQuarterlyData('Depreciation'),
+        otherIncome: getQuarterlyData('Other_Income'),
+        interest: getQuarterlyData('Interest'),
+        margin: getQuarterlyData('Financing_Margin_pct'),
+        gnpa: getQuarterlyData('Gross_NPA_pct'),
+        nnpa: getQuarterlyData('Net_NPA_pct'),
+        eps: getQuarterlyData('EPS_Rs')
+      };
+      
+      // Collect all unique quarterly dates
+      const allDates = new Set();
+      Object.values(metrics).forEach(data => {
+        Object.keys(data).forEach(d => allDates.add(d));
+      });
+      
+      // Build quarterly objects sorted chronologically
+      Array.from(allDates).sort().forEach(date => {
+        const q = { d: date };
+        
+        // Extract all available metrics for this quarter
+        Object.entries(metrics).forEach(([key, data]) => {
+          if(data[date] !== undefined && data[date] !== null) {
+            const val = parseFloat(data[date]);
+            if(!isNaN(val)) q[key] = val;
+          }
+        });
+        
+        // Calculate derived metrics if source data available
+        if(q.sales && q.net) {
+          q.margin_pct = (q.net / q.sales) * 100;
+        }
+        if(q.op && q.sales) {
+          q.opm = (q.op / q.sales) * 100;
+        }
+        
+        // Only store if has at least date + 1 metric
+        if(Object.keys(q).length > 1) {
+          quarterly.push(q);
+        }
+      });
+      
+      return quarterly;
+    }
     }
     
     function loadLTPFromGitHub() {
@@ -3403,16 +3492,6 @@ CRITICAL RULES:
                         
                         const record = stock;
                         record.ticker = ticker;
-                        
-                        // ✅ Extract price from valuation.price in market_data.json
-                        if (stock.valuation && stock.valuation.price) {
-                            record.price = {
-                                ...stock.valuation.price,
-                                history_6mo_1d: stock.valuation.price.history_6mo_1d || [],
-                                history_5y_1wk: stock.valuation.price.history_5y_1wk || [],
-                                history_5y_1mo: stock.valuation.price.history_5y_1mo || []
-                            };
-                        }
                         
                         if (!record.source) record.source = 'market_data_pipeline';
                         if (!record.userDataUpdatedAt) {
