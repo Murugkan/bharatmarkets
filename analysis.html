@@ -2987,69 +2987,17 @@ function aggregateCandles(daily, interval){
   // If interval is 'D', return daily data as-is
   if(interval === 'D' || !daily.length) return daily;
   
-  // For W and M, if data is already in correct format (e.g., already weekly from history_5y_1wk),
-  // detect and return as-is
-  if(interval === 'W' && daily.length > 0 && daily[0].d) {
-    // Quick check: if most dates are Mondays or spaced ~7 days apart, it's already weekly
-    const daysApart = [];
-    for(let i = 1; i < Math.min(5, daily.length); i++) {
-      const d1 = new Date(daily[i-1].d).getTime();
-      const d2 = new Date(daily[i].d).getTime();
-      daysApart.push((d2 - d1) / (1000*60*60*24));
-    }
-    const avgDaysApart = daysApart.length ? daysApart.reduce((a,b) => a+b) / daysApart.length : 0;
-    if(avgDaysApart >= 6) { // Already weekly data
-      console.log('📊 Data is already weekly, skipping aggregation');
-      return daily;
-    }
+  // ✅ FIX: For W and M, data is ALREADY aggregated in market_data.json
+  // history_5y_1wk = already weekly, history_5y_1mo = already monthly
+  // Just return as-is, don't try to re-aggregate
+  if(interval === 'W' || interval === 'M') {
+    logConsole(`📊 Interval ${interval}: ${daily.length} candles (already aggregated)`);
+    return daily;
   }
   
-  if(interval === 'M' && daily.length > 0 && daily[0].d) {
-    // Quick check: if data is spaced ~30 days apart, it's already monthly
-    const daysApart = [];
-    for(let i = 1; i < Math.min(5, daily.length); i++) {
-      const d1 = new Date(daily[i-1].d).getTime();
-      const d2 = new Date(daily[i].d).getTime();
-      daysApart.push((d2 - d1) / (1000*60*60*24));
-    }
-    const avgDaysApart = daysApart.length ? daysApart.reduce((a,b) => a+b) / daysApart.length : 0;
-    if(avgDaysApart >= 20) { // Already monthly data
-      console.log('📊 Data is already monthly, skipping aggregation');
-      return daily;
-    }
-  }
-  
-  // Cache aggregated results to avoid recalculation
-  const cacheKey = `${interval}_${daily.length}`;
-  if(aggregateCandles._cache && aggregateCandles._cache.key === cacheKey) {
-    return aggregateCandles._cache.result;
-  }
-  
-  const buckets = {};
-  daily.forEach(c => {
-    const d = new Date(c.d);
-    let key;
-    if(interval === 'W'){
-      const day = d.getDay();
-      const monday = new Date(d);
-      monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-      key = monday.toISOString().slice(0,10);
-    } else {
-      key = c.d.slice(0,7);
-    }
-    if(!buckets[key]){
-      buckets[key] = { d: key, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
-    } else {
-      const b = buckets[key];
-      b.h = Math.max(b.h, c.h);
-      b.l = Math.min(b.l, c.l);
-      b.c = c.c;
-      b.v += c.v;
-    }
-  });
-  const result = Object.values(buckets).sort((a,b) => a.d.localeCompare(b.d));
-  aggregateCandles._cache = { key: cacheKey, result };
-  return result;
+  // This code below is legacy and shouldn't be reached
+  console.warn('⚠️ Unknown interval:', interval);
+  return daily;
 }
 
 function scheduleTACharts(s){
