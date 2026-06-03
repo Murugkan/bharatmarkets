@@ -206,11 +206,12 @@ const S = {
   chartRange: '1Y',
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
-  kpiVis: { sales: false, net: false, eps: false, pbt: false, interest: false, expenses: false, depreciation: false, other_income: false, tax_pct: false },
+  kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
   chartPan: 0,        // Pan offset in pixels
   chartZoom: 1,       // Horizontal zoom (# of candles)
   yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
-  panStart: null      // Pan start position
+  panStart: null,     // Pan start position
+  financialSource: { accounting: 'consolidated', frequency: 'annual' }  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
 };
 let chartCache = {};
 
@@ -235,7 +236,17 @@ const get = (obj, ...keys) => {
     return '—';
 };
 
-// 💾 LOAD PORTFOLIO DATA INTO IndexedDB (with force clear option)
+// ✅ Update financial data source (consolidated/standalone, annual/quarterly)
+function updateFinancialSource(value, type) {
+  S.financialSource[type] = value;
+  logConsole(`📊 Financial source changed: ${S.financialSource.accounting} + ${S.financialSource.frequency}`);
+  
+  // Recalculate KPI overlays with new source
+  if(currentStock) {
+    scheduleChartRedraw();
+  }
+}
+
 async function loadPortfolioData(forceClear = false) {
   logConsole(`📥 Loading portfolio data...`);
   
@@ -363,6 +374,67 @@ const fieldMapping = {
     'mcap': ['valuation.market_cap'],
     'enterprise_value': ['valuation.enterprise_value', 'ev'],
     'total_debt': ['valuation.total_debt', 'debt'],
+    
+    // ✅ COMPREHENSIVE FINANCIAL METRICS with user-selected source
+    // Uses {accounting} = consolidated/standalone, {frequency} = annual/quarterly
+    // Income Statement
+    'sales': ['financials.Sales.{accounting}.{frequency}'],
+    'revenue': ['financials.Sales.{accounting}.{frequency}'],
+    'net_profit': ['financials.Net_Profit.{accounting}.{frequency}'],
+    'net_income': ['financials.Net_Profit.{accounting}.{frequency}'],
+    'operating_profit': ['financials.Operating_Profit.{accounting}.{frequency}'],
+    'opm_pct': ['financials.OPM_pct.{accounting}.{frequency}'],
+    'opm': ['financials.OPM_pct.{accounting}.annual'],
+    'operating_margin': ['financials.OPM_pct.{accounting}.{frequency}'],
+    'profit_before_tax': ['financials.Profit_before_tax.{accounting}.{frequency}'],
+    'pbt': ['financials.Profit_before_tax.{accounting}.annual'],
+    'tax_pct': ['financials.Tax_pct.{accounting}.{frequency}'],
+    'tax': ['financials.Tax_pct.{accounting}.annual'],
+    'eps': ['financials.EPS_Rs.{accounting}.{frequency}'],
+    'earnings_per_share': ['financials.EPS_Rs.{accounting}.annual'],
+    'depreciation': ['financials.Depreciation.{accounting}.{frequency}'],
+    'interest_expense': ['financials.Interest.{accounting}.{frequency}'],
+    'interest': ['financials.Interest.{accounting}.annual'],
+    'other_income': ['financials.Other_Income.{accounting}.{frequency}'],
+    'expenses': ['financials.Expenses.{accounting}.{frequency}'],
+    
+    // Balance Sheet - Assets (annual only)
+    'total_assets': ['financials.Total_Assets.{accounting}.annual'],
+    'assets': ['financials.Total_Assets.{accounting}.annual'],
+    'fixed_assets': ['financials.Fixed_Assets.{accounting}.annual'],
+    'other_assets': ['financials.Other_Assets.{accounting}.annual'],
+    'investments': ['financials.Investments.{accounting}.annual'],
+    'cwip': ['financials.CWIP.{accounting}.annual'],
+    'capital_work_in_progress': ['financials.CWIP.{accounting}.annual'],
+    
+    // Balance Sheet - Liabilities (annual only)
+    'total_liabilities': ['financials.Total_Liabilities.{accounting}.annual'],
+    'liabilities': ['financials.Total_Liabilities.{accounting}.annual'],
+    'borrowings': ['financials.Borrowings.{accounting}.annual'],
+    'debt': ['financials.Borrowings.{accounting}.annual'],
+    'other_liabilities': ['financials.Other_Liabilities.{accounting}.annual'],
+    
+    // Balance Sheet - Equity (annual only)
+    'equity_capital': ['financials.Equity_Capital.{accounting}.annual'],
+    'reserves': ['financials.Reserves.{accounting}.annual'],
+    'shareholders_equity': ['financials.Equity_Capital.{accounting}.annual'],
+    
+    // Cash Flow (annual only)
+    'cfo': ['financials.CFO.{accounting}.annual'],
+    'operating_cash_flow': ['financials.CFO.{accounting}.annual'],
+    'cfi': ['financials.CFI.{accounting}.annual'],
+    'investing_cash_flow': ['financials.CFI.{accounting}.annual'],
+    'cff': ['financials.CFF.{accounting}.annual'],
+    'financing_cash_flow': ['financials.CFF.{accounting}.annual'],
+    'net_cash_flow': ['financials.Net_Cash_Flow.{accounting}.annual'],
+    'free_cash_flow': ['financials.Free_Cash_Flow.{accounting}.annual'],
+    'fcf': ['financials.Free_Cash_Flow.{accounting}.annual'],
+    'cfo_over_op': ['financials.CFO_over_OP.{accounting}.annual'],
+    'cfo_to_operating_profit': ['financials.CFO_over_OP.{accounting}.annual'],
+    
+    // Dividend & Payout (annual only)
+    'dividend_payout_pct': ['financials.Dividend_Payout_pct.{accounting}.annual'],
+    'dividend_payout': ['financials.Dividend_Payout_pct.{accounting}.annual'],
     'book_value': ['valuation.book_value'],
     'ev_to_revenue': ['valuation.ev_to_revenue'],
     
@@ -426,7 +498,15 @@ function resolveField(stock, fieldName) {
     const paths = fieldMapping[fieldName];
     if (!paths) return undefined;
     
-    for (let path of paths) {
+    // ✅ NEW: Replace {accounting} and {frequency} placeholders with user selection
+    const accounting = S.financialSource?.accounting || 'consolidated';
+    const frequency = S.financialSource?.frequency || 'annual';
+    
+    const resolvedPaths = paths.map(path => 
+      path.replace('{accounting}', accounting).replace('{frequency}', frequency)
+    );
+    
+    for (let path of resolvedPaths) {
         const value = getNestedValue(stock, path);
         if (value !== undefined && value !== null) return value;
     }
@@ -949,23 +1029,55 @@ function renderTab(tab) {
                   <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
                   <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
                 </select>
+                
+                <!-- ✅ NEW: Financial Data Source Selectors -->
+                <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+                
+                <select id="dataAccounting" onchange="updateFinancialSource(this.value, 'accounting')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none" title="Consolidated vs Standalone financials">
+                  <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Consolidated</option>
+                  <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Standalone</option>
+                </select>
+                
+                <select id="dataFrequency" onchange="updateFinancialSource(this.value, 'frequency')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none" title="Annual vs Quarterly financials">
+                  <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
+                  <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Quarterly</option>
+                </select>
+                  <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
+                  <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
+                </select>
               </div>
             </div>
             <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Volume bars"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
               <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.sales?'checked':''} onchange="toggleKPI('sales')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Sales</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.eps?'checked':''} onchange="toggleKPI('eps')" style="accent-color:#a78bfa;width:11px;height:11px"><span style="font-size:9px;color:#a78bfa;font-weight:600">EPS</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.pbt?'checked':''} onchange="toggleKPI('pbt')" style="accent-color:#86efac;width:11px;height:11px"><span style="font-size:9px;color:#86efac;font-weight:600">PBT</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.interest?'checked':''} onchange="toggleKPI('interest')" style="accent-color:#ef4444;width:11px;height:11px"><span style="font-size:9px;color:#ef4444;font-weight:600">Int</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.expenses?'checked':''} onchange="toggleKPI('expenses')" style="accent-color:#f97316;width:11px;height:11px"><span style="font-size:9px;color:#f97316;font-weight:600">Exp</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.depreciation?'checked':''} onchange="toggleKPI('depreciation')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">Dep</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.other_income?'checked':''} onchange="toggleKPI('other_income')" style="accent-color:#06b6d4;width:11px;height:11px"><span style="font-size:9px;color:#06b6d4;font-weight:600">OI</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.tax_pct?'checked':''} onchange="toggleKPI('tax_pct')" style="accent-color:#8b5cf6;width:11px;height:11px"><span style="font-size:9px;color:#8b5cf6;font-weight:600">Tax%</span></label>
+              
+              <!-- 📊 INCOME STATEMENT -->
+              <span style="font-size:8px;color:var(--tx2);font-weight:600;margin-left:4px">Income:</span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue/Sales"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating profit"><input type="checkbox" ${S.kpiVis.op?'checked':''} onchange="toggleKPI('op')" style="accent-color:#ec4899;width:11px;height:11px"><span style="font-size:9px;color:#ec4899;font-weight:600">Op.Profit</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Profit before tax"><input type="checkbox" ${S.kpiVis.pbt?'checked':''} onchange="toggleKPI('pbt')" style="accent-color:#8b5cf6;width:11px;height:11px"><span style="font-size:9px;color:#8b5cf6;font-weight:600">PBT</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Earnings per share"><input type="checkbox" ${S.kpiVis.eps?'checked':''} onchange="toggleKPI('eps')" style="accent-color:#06b6d4;width:11px;height:11px"><span style="font-size:9px;color:#06b6d4;font-weight:600">EPS</span></label>
+              
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              
+              <!-- 💰 BALANCE SHEET -->
+              <span style="font-size:8px;color:var(--tx2);font-weight:600">Balance:</span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total assets"><input type="checkbox" ${S.kpiVis.assets?'checked':''} onchange="toggleKPI('assets')" style="accent-color:#f0ad4e;width:11px;height:11px"><span style="font-size:9px;color:#f0ad4e;font-weight:600">Assets</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Borrowings/Debt"><input type="checkbox" ${S.kpiVis.borrowings?'checked':''} onchange="toggleKPI('borrowings')" style="accent-color:#ff6b6b;width:11px;height:11px"><span style="font-size:9px;color:#ff6b6b;font-weight:600">Borrow</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
+              
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              
+              <!-- 💵 CASH FLOW & VALUATION -->
+              <span style="font-size:8px;color:var(--tx2);font-weight:600">Cash/Val:</span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Free cash flow"><input type="checkbox" ${S.kpiVis.fcf?'checked':''} onchange="toggleKPI('fcf')" style="accent-color:#14b8a6;width:11px;height:11px"><span style="font-size:9px;color:#14b8a6;font-weight:600">FCF</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -3082,23 +3194,20 @@ function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
   if(!daily.length) return daily;
   
-  // ✅ CRITICAL: Ensure chronological order (oldest first, newest last)
-  const sorted = [...daily].sort((a, b) => new Date(a.d) - new Date(b.d));
-  
   // Get the current range setting
   const now = new Date();
   const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   
   // Filter by date FIRST (respect chartRange)
-  let filteredCandles = sorted.filter(c => c.d >= cutoff);
+  let filteredCandles = daily.filter(c => c.d >= cutoff);
   
   // If no candles in range, use last N candles as fallback
   if(!filteredCandles.length) {
-    filteredCandles = sorted.slice(-Math.max(20, Math.floor(sorted.length * 0.25)));
+    filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
   }
   
-  logConsole(`📊 Candles: ${daily.length} total, ${filteredCandles.length} in ${S.chartRange}, sorted ASC`);
+  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
   
   // Aggregate if needed (for weekly/monthly intervals)
   const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
@@ -3127,46 +3236,55 @@ function getSlicedCandles(s, canvasWidth){
 
 // Extract quarterly data with all KPI metrics
 function getQuarterlyData(s){
-  // ✅ Read from IndexedDB quarterly array
-  if(s.quarterly && Array.isArray(s.quarterly)) return s.quarterly;
-  
-  // Fallback: extract from financials
   const quarterly = [];
+  
   try {
-    if(!s.financials) return quarterly;
-    const f = s.financials;
-    const getQ = (fieldName) => {
-      const field = f[fieldName];
-      return (field && field.consolidated && field.consolidated.quarterly) || {};
-    };
-    
-    const metrics = {
-      sales: getQ('Sales'),
-      interest: getQ('Interest'),
-      expenses: getQ('Expenses'),
-      other_income: getQ('Other_Income'),
-      depreciation: getQ('Depreciation'),
-      pbt: getQ('Profit_before_tax'),
-      tax_pct: getQ('Tax_pct'),
-      net: getQ('Net_Profit'),
-      eps: getQ('EPS_Rs')
-    };
-    
-    const allDates = new Set();
-    Object.values(metrics).forEach(data => Object.keys(data).forEach(d => allDates.add(d)));
-    
-    Array.from(allDates).sort().forEach(date => {
-      const q = { d: date };
-      Object.entries(metrics).forEach(([key, data]) => {
-        if(data[date]) q[key] = parseFloat(data[date]) || 0;
+    // Try to get from financials object
+    if(s.financials) {
+      const f = s.financials;
+      const salesQ = (f.Sales && f.Sales.consolidated && f.Sales.consolidated.quarterly) || {};
+      const revenueQ = (f.Revenue && f.Revenue.consolidated && f.Revenue.consolidated.quarterly) || {};
+      const netQ = (f.Net_Profit && f.Net_Profit.consolidated && f.Net_Profit.consolidated.quarterly) || {};
+      const cfoQ = (f.Operating_CF && f.Operating_CF.consolidated && f.Operating_CF.consolidated.quarterly) || {};
+      const opmQ = (f.Operating_Profit && f.Operating_Profit.consolidated && f.Operating_Profit.consolidated.quarterly) || {};
+      const debtQ = (f.Total_Debt && f.Total_Debt.consolidated && f.Total_Debt.consolidated.quarterly) || {};
+      const epsQ = (f.EPS && f.EPS.consolidated && f.EPS.consolidated.quarterly) || {};
+      
+      // Get all unique dates from any quarterly metric
+      const allDates = new Set([
+        ...Object.keys(salesQ),
+        ...Object.keys(revenueQ),
+        ...Object.keys(netQ),
+        ...Object.keys(cfoQ),
+        ...Object.keys(opmQ),
+        ...Object.keys(debtQ),
+        ...Object.keys(epsQ)
+      ]);
+      
+      // Build quarterly data points
+      Array.from(allDates).sort().reverse().forEach(date => {
+        const q = { d: date };
+        if(salesQ[date]) q.rev = parseFloat(salesQ[date]) || 0;
+        if(revenueQ[date]) q.rev = parseFloat(revenueQ[date]) || q.rev;
+        if(netQ[date]) q.net = parseFloat(netQ[date]) || 0;
+        if(cfoQ[date]) q.cfo = parseFloat(cfoQ[date]) || 0;
+        if(opmQ[date]) {
+          const sales = q.rev || parseFloat(salesQ[date]) || 1;
+          q.opm = (parseFloat(opmQ[date]) / sales * 100) || 0;
+        }
+        if(debtQ[date]) q.debt = parseFloat(debtQ[date]) || 0;
+        if(epsQ[date]) q.eps = parseFloat(epsQ[date]) || 0;
+        if(Object.keys(q).length > 1) quarterly.push(q);
       });
-      if(Object.keys(q).length > 1) quarterly.push(q);
-    });
+      
+      if(quarterly.length > 0) return quarterly;
+    }
   } catch(e) {
-    console.warn('Error extracting quarterly:', e.message);
+    console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
   
-  return quarterly;
+  // Fallback to simple quarterly array if exists
+  return s.quarterly || [];
 }
 
 
@@ -3425,15 +3543,12 @@ function drawCandlestick(s){
   const quarterly = getQuarterlyData(s);
 
   const KPI_DEFS = [
-    {k:'sales',        label:'Sales',      col:'#22d3ee'},
-    {k:'net',          label:'Net',        col:'#4ade80'},
-    {k:'eps',          label:'EPS',        col:'#a78bfa'},
-    {k:'pbt',          label:'PBT',        col:'#86efac'},
-    {k:'interest',     label:'Interest',   col:'#ef4444'},
-    {k:'expenses',     label:'Expenses',   col:'#f97316'},
-    {k:'depreciation', label:'Deprec',     col:'#fb923c'},
-    {k:'other_income', label:'Other Inc',  col:'#06b6d4'},
-    {k:'tax_pct',      label:'Tax%',       col:'#8b5cf6'}
+    {k:'pe',   label:'P/E',     col:'#f59e0b'},
+    {k:'rev',  label:'Rev',     col:'#22d3ee'},
+    {k:'net',  label:'Net',     col:'#4ade80'},
+    {k:'cfo',  label:'CFO',     col:'#34d399'},
+    {k:'opm',  label:'OPM%',    col:'#fb923c'},
+    {k:'debt', label:'Debt',    col:'#f87171'},
   ];
 
   // Use FULL candle history for price lookups — not just visible slice
@@ -3455,16 +3570,11 @@ function drawCandlestick(s){
   }
 
   // Log raw quarterly data once
-  logConsole(`📈 Quarterly data points: ${quarterly.length}`);
-  if(quarterly.length > 0) {
-    logConsole(`  First: ${quarterly[0].d}, Last: ${quarterly[quarterly.length-1].d}`);
-    logConsole(`  Keys in first point: ${Object.keys(quarterly[0]).join(', ')}`);
-  }
-  
+  if(quarterly.length){
+        }
+
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
-    
-    logConsole(`🎯 Drawing KPI: ${label} (${k}), enabled=${S.kpiVis[k]}`);
 
     let pts = [];
     try {
@@ -3493,12 +3603,11 @@ function drawCandlestick(s){
             if(v != null && !isNaN(v)) pts.push({x: xForDate(q.d), v, d: q.d});
           });
         }
-        logConsole(`  ${label}: collected ${pts.length} points from quarterly`);
         // Add current value as rightmost anchor if available
         let curVal = null;
         if(k === 'cfo') {
           curVal = resolveField(s, 'operating_cash_flow') || resolveField(s, 'cfo');
-        } else if(k === 'revenue') {
+        } else if(k === 'rev') {
           curVal = resolveField(s, 'total_revenue') || resolveField(s, 'sales');
         } else if(k === 'net') {
           curVal = resolveField(s, 'profit_margins') || resolveField(s, 'npm');
