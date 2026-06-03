@@ -3910,7 +3910,7 @@ function drawVolume(s){
     handleChartClick(e, W2, H2);
   };
   
-  // ✅ Touch support for iPhone - treat tap as click
+  // ✅ Touch support for iPhone - treat tap as click (only if NOT panning)
   cv.addEventListener('touchend', (e) => {
     if (e.touches.length === 0 && !chartInteraction.isPanning) {
       // Not panning, treat as tap/click
@@ -3921,64 +3921,6 @@ function drawVolume(s){
       });
       handleChartClick(clickEvent, W2, H2);
     }
-  });
-  
-  // ✅ Mousemove for tooltip on hover (desktop and after pan on mobile)
-  let lastTooltipTime = 0;
-  cv.addEventListener('mousemove', (e) => {
-    // Throttle tooltip updates to 100ms to prevent excessive redraws
-    const now = Date.now();
-    if (now - lastTooltipTime < 100) return;
-    lastTooltipTime = now;
-    
-    if(!candlestickBars.length) return;
-    
-    const br=cv.getBoundingClientRect();
-    const scX=W2/br.width, scY=H2/br.height;
-    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
-    
-    // Find hovered bar
-    const bar=candlestickBars.find(b=>mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h);
-    
-    // Create or get preview tooltip (different from click tooltip)
-    let preview=document.getElementById('chart-preview-tooltip');
-    if(!preview){
-      preview=document.createElement('div');
-      preview.id='chart-preview-tooltip';
-      preview.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:1px solid #ffa500;border-radius:6px;padding:8px;font-family:monospace;font-size:11px;color:#ffa500;z-index:9998;display:none;max-width:160px;pointer-events:none';
-      document.body.appendChild(preview);
-    }
-    
-    if(!bar){
-      preview.style.display='none';
-      return;
-    }
-    
-    // Show preview tooltip on hover
-    const o=bar.open.toFixed(2), h=bar.high.toFixed(2), l=bar.low.toFixed(2), c=bar.close.toFixed(2);
-    const chg=((c-o)/o*100).toFixed(2);
-    const chgColor=chg>=0?'#00ff88':'#ff4466';
-    
-    preview.innerHTML=`<div>${bar.date}</div>
-      <div>O: ₹${o} H: ₹${h}</div>
-      <div>L: ₹${l} C: ₹${c}</div>
-      <div style="color:${chgColor};font-weight:bold">${chg>=0?'+':''}${chg}%</div>`;
-    
-    preview.style.display='block';
-    
-    // Position near cursor
-    let left = e.clientX + 10;
-    let top = e.clientY - 60;
-    
-    if (left + 160 > window.innerWidth) {
-      left = Math.max(10, e.clientX - 170);
-    }
-    if (top < 10) {
-      top = e.clientY + 10;
-    }
-    
-    preview.style.left = left + 'px';
-    preview.style.top = top + 'px';
   }, { passive: true });
   
   function handleChartClick(e, W2, H2) {
@@ -4188,24 +4130,21 @@ let chartInteraction = {
 };
 
 function setupChartInteraction() {
-  // Prevent duplicate setup
-  if (setupChartInteraction._initialized) return;
-  
-  console.log('⚙️ Setting up chart interaction...');
-  
+  // Reset flag on canvas tab switch to allow re-initialization
   const canvas = document.getElementById('cv-candle');
   if (!canvas) {
     // Canvas not rendered yet - will retry when Canvas tab opens
+    setupChartInteraction._initialized = false; // Reset for next time
     return;
   }
   
-  setupChartInteraction._initialized = true;
-  console.log('✓ Canvas found, attaching event listeners');
+  // Prevent duplicate setup only if canvas exists
+  if (setupChartInteraction._initialized && setupChartInteraction._lastCanvasId === canvas.id) return;
   
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
   let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 50;  // ~20fps for smooth panning - optimal for mobile performance
+  const REDRAW_THROTTLE_MS = 16;  // ~60fps for smooth panning (1000/60 = 16.67ms)
   
   // Debounced redraw: only redraw if throttle duration has passed (prevents excessive redraws)
   const throttledRedraw = (stock) => {
@@ -4366,6 +4305,11 @@ function setupChartInteraction() {
     // volCanvas.ongestureend = handleGestureEnd;
     
   }
+  
+  // Mark as initialized with canvas ID to prevent duplicate setup
+  setupChartInteraction._initialized = true;
+  setupChartInteraction._lastCanvasId = canvas.id;
+  console.log('✅ Chart interaction setup complete');
 }
 
 // Auto-setup when canvas is ready
