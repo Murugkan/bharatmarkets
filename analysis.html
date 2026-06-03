@@ -3109,10 +3109,13 @@ function getSlicedCandles(s, canvasWidth){
     if(allAgg.length > maxFit){
       // PAN-BASED HISTORY SCROLL
       const maxBackOffset = Math.max(0, allAgg.length - maxFit);
-      const backPan = Math.max(0, -S.chartPan);
-      const backNorm = Math.min(1, backPan / 400);
-      const backOffset = Math.floor(backNorm * maxBackOffset);
-      const startIdx = Math.max(0, maxBackOffset - backOffset);
+      const panAbs = Math.abs(S.chartPan);  // Get magnitude
+      const panNorm = Math.min(1, panAbs / 400);  // Normalize to 0-1
+      const backOffset = Math.floor(panNorm * maxBackOffset);
+      // If positive pan (drag right), show newer data; if negative (drag left), show older
+      const startIdx = S.chartPan >= 0 
+        ? Math.max(0, maxBackOffset - backOffset)  // Newer (right side)
+        : Math.max(0, backOffset);  // Older (left side)
       return allAgg.slice(startIdx, startIdx + maxFit);
     }
   }
