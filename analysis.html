@@ -243,6 +243,8 @@ function updateFinancialSource(value, type) {
   
   // Recalculate KPI overlays with new source
   if(currentStock) {
+    // Clear cached quarterly data so it's recalculated with new source
+    delete currentStock._quarterlyCache;
     scheduleChartRedraw();
   }
 }
@@ -1004,38 +1006,35 @@ function renderTab(tab) {
     } else if (tab === 'canvas') {
         // CANVAS TAB — Chart only, no indicators
         html = `<div style="padding:0;padding-bottom:100px">
-            <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:8px">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap">${s.ticker || s.sym} · Price Chart</div>
-              <div style="display:flex;gap:6px;align-items:center">
-                <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
-                  <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily (6mo)</option>
-                  <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly (5y)</option>
-                  <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly (5y)</option>
-                </select>
-                <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:11px;font-family:var(--mono);cursor:pointer;outline:none">
-                  <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
-                  <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
-                  <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
-                  <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
-                  <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
-                </select>
-                
-                <!-- ✅ NEW: Financial Data Source Selectors -->
-                <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-                
-                <select id="dataAccounting" onchange="updateFinancialSource(this.value, 'accounting')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none" title="Consolidated vs Standalone financials">
-                  <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Consolidated</option>
-                  <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Standalone</option>
-                </select>
-                
-                <select id="dataFrequency" onchange="updateFinancialSource(this.value, 'frequency')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none" title="Annual vs Quarterly financials">
-                  <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
-                  <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Quarterly</option>
-                </select>
-                  <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
-                  <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
-                </select>
-              </div>
+            <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:6px">
+              <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap;flex:0 0 auto">${s.ticker || s.sym}</div>
+              
+              <!-- Price Chart Controls -->
+              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
+                <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
+                <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
+                <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
+              </select>
+              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
+                <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
+                <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
+                <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
+                <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
+                <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
+              </select>
+              
+              <!-- Data Source Controls -->
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px;flex:0 0 auto"></span>
+              
+              <select id="dataAccounting" onchange="updateFinancialSource(this.value, 'accounting')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Consolidated vs Standalone">
+                <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Cons</option>
+                <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Stand</option>
+              </select>
+              
+              <select id="dataFrequency" onchange="updateFinancialSource(this.value, 'frequency')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Annual vs Quarterly">
+                <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
+                <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Qtr</option>
+              </select>
             </div>
             <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
@@ -3430,17 +3429,17 @@ function drawCandlestick(s){
     bodyTop = bodyCenter - bodyH/2;  // Recenter the body
     
     // Wick
-    ctx.strokeStyle=bull?'rgba(0,232,150,.8)':'rgba(255,107,133,.8)';
+    ctx.strokeStyle=bull?'rgba(0,255,136,.95)':'rgba(255,68,102,.95)';  // ✅ Much brighter wicks
     ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(cx,toY(c.h));ctx.lineTo(cx,toY(c.l));ctx.stroke();
 
     // Body (taller due to zoom)
-    ctx.fillStyle=bull?'#00d084':'#ff3b5c';
+    ctx.fillStyle=bull?'#00ff88':'#ff4466';  // ✅ Brighter colors
     if(ctx.roundRect)ctx.roundRect(cx-bw/2,bodyTop,bw,bodyH,1);
     else ctx.rect(cx-bw/2,bodyTop,bw,bodyH);
     ctx.fill();
 
-    if(!bull){ctx.strokeStyle='rgba(255,59,92,.3)';ctx.lineWidth=.5;ctx.stroke();}
+    if(!bull){ctx.strokeStyle='rgba(255,68,102,.5)';ctx.lineWidth=1;ctx.stroke();}  // ✅ More visible border
   });
 
   // ── Moving Average curves computed from candle close prices ──
@@ -3866,34 +3865,6 @@ function drawVolume(s){
   ctx.textAlign='right';
   ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
   ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
-  
-  // X-axis date labels - SIMPLE AND CLEAR
-  const maxLabels = Math.min(6, Math.floor(cW / 90));
-  const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='white';  // ✅ SIMPLE WHITE
-  ctx.font='bold 14px sans-serif';  // ✅ BIGGER
-  ctx.textAlign='center';
-  let dateDebug = [];
-  
-  candles.forEach((c,i)=>{
-    if(i % lblStep !== 0 && i !== n-1) return;
-    const dateStr = c.d ? String(c.d).trim() : '';
-    let lbl = '?';
-    if(dateStr.length >= 10){
-      try {
-        const parts = dateStr.slice(0,10).split('-');
-        if(parts.length === 3){
-          const [yr, mo, da] = parts;
-          if(n > 100) lbl = mo + '/' + yr.slice(2);
-          else if(n > 50) lbl = mo + '/' + da;
-          else lbl = da + '/' + mo + '/' + yr.slice(2);
-        }
-      } catch(e){ lbl = '!'; }
-    }
-    const x = Math.round(PAD.l+i*gap+gap/2);
-    if(x > W-PAD.r-4) return;
-    ctx.fillText(lbl, x, H-8);  // ✅ Position at bottom
-  });
   
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
