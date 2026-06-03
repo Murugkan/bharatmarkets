@@ -70,6 +70,104 @@ logger = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# STANDARDIZATION FUNCTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def standardize_metric(value):
+    """
+    Convert metric values to float where appropriate.
+    Handles: strings with %, commas, None, already-numeric.
+    
+    Examples:
+        "45.32"       → 45.32
+        "45.32%"      → 45.32
+        "1,234,567"   → 1234567.0
+        "N/A" or ""   → None
+        45.32         → 45.32
+        None          → None
+    """
+    if value is None:
+        return None
+    
+    # Already numeric
+    if isinstance(value, (int, float)):
+        return float(value)
+    
+    # String conversion
+    if isinstance(value, str):
+        value = value.strip()
+        if not value or value.upper() in ['N/A', 'NA', 'N.A', 'NAN', 'NONE']:
+            return None
+        
+        # Remove percentage sign and convert
+        if '%' in value:
+            try:
+                return float(value.replace('%', '').strip())
+            except (ValueError, AttributeError):
+                return None
+        
+        # Remove commas and convert
+        if ',' in value:
+            try:
+                return float(value.replace(',', '').strip())
+            except (ValueError, AttributeError):
+                return None
+        
+        # Try direct conversion
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
+    
+    return None
+
+
+def apply_standardization_to_dict(obj, depth=0, max_depth=5):
+    """
+    Recursively standardize numeric values in a dict/list structure.
+    Converts text metrics to float where applicable.
+    Avoids standardizing identifiers, keys, dates, and strings needed as-is.
+    """
+    if depth > max_depth:
+        return obj
+    
+    # Skip certain key patterns that should NOT be standardized
+    skip_keys = {
+        'ticker', 'name', 'symbol', 'isin', 'sector', 'industry', 'type',
+        'address', 'city', 'country', 'phone', 'email', 'website',
+        'currency', 'exchange', 'date', 'time', 'metric', 'period',
+        'consolidation', 'granule', '_source', '_periods', '_granule', '_consolidation'
+    }
+    
+    if isinstance(obj, dict):
+        result = {}
+        for key, val in obj.items():
+            # Check if this key should skip standardization
+            key_lower = key.lower()
+            should_skip = any(skip in key_lower for skip in skip_keys)
+            
+            if should_skip or key.startswith('_'):
+                result[key] = val
+            elif isinstance(val, (dict, list)):
+                result[key] = apply_standardization_to_dict(val, depth + 1, max_depth)
+            elif isinstance(val, (int, float)):
+                result[key] = val
+            else:
+                # Try to standardize
+                std_val = standardize_metric(val)
+                result[key] = std_val if std_val is not None else val
+        return result
+    
+    elif isinstance(obj, list):
+        return [apply_standardization_to_dict(item, depth + 1, max_depth) if isinstance(item, (dict, list)) else item for item in obj]
+    
+    return obj
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # FIELD MAP
 # ══════════════════════════════════════════════════════════════════════════════
 # Structure:
@@ -782,7 +880,9 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                     pass
                 else:
                     target_bucket, target_key = mapping
-                    B[target_bucket][target_key] = field_val
+                    # Apply standardization to the field value
+                    standardized_val = apply_standardization_to_dict(field_val)
+                    B[target_bucket][target_key] = standardized_val
 
     return B
 
@@ -1875,10 +1975,11 @@ def main():
 
     logger.info(f"Writing {OUTPUT_FILE} …")
     
-    # Create output with metadata
+    # Create output with metadata as exact ticker structure skeleton
     from datetime import datetime
     import time
     
+    # Build metadata as exact skeleton of any ticker's structure
     final_output = {
         "_metadata": {
             "generated_at": datetime.now().isoformat(),
@@ -1893,51 +1994,74 @@ def main():
                 "prices.json (98 tickers)",
                 "unified-symbols.json (97 tickers)"
             ],
-            "buckets": {
+            "structure": {
+                "company_details": "object (company info, ownership, shareholding pattern)",
+                "financials": "object (income statement, balance sheet, cash flow - by period type)",
+                "ratios": "object (efficiency, profitability, growth ratios)",
+                "valuation": "object (PE, EPS, market cap, enterprise value, price multiples)",
+                "price": "object (current price, OHLCV, 52-week, volume, history)",
+                "websignals": "object (analyst sentiment, recommendations, price targets)",
+                "kpis": "object (operational KPIs - company specific)",
+                "derived_metrics": "object (calculated scores, ratings, AI insights, guidance)",
+                "_unmapped": "object (fields not mapped to any bucket)"
+            },
+            "bucket_details": {
                 "company_details": {
-                    "sub_sections": ["promoters", "fiis", "diis", "government", "public", "shareholding { pattern, shares, ownership, fiscal_dates, dividends, stock_splits }"],
-                    "description": "Company profile, ownership, shareholding pattern, dividends, stock splits"
+                    "identity": ["ticker", "name", "symbol_yahoo", "short_name", "long_name", "isin"],
+                    "location": ["address1", "address2", "city", "zip", "country"],
+                    "contact": ["phone", "fax", "website", "ir_website"],
+                    "classification": ["sector", "industry", "type"],
+                    "exchange": ["exchange", "full_exchange_name"],
+                    "shareholding": {
+                        "pattern": ["promoters", "fiis", "diis", "government", "public"],
+                        "dividends": ["dividend_yield", "last_dividend", "ex_dividend_date"],
+                        "splits": ["stock_splits (date: split_ratio)"]
+                    }
                 },
                 "financials": {
-                    "sub_sections": ["Sales", "Revenue", "Expenses", "Operating_Profit", "Net_Profit", "Free_Cash_Flow", "Total_Debt", "Equity_Capital", "..."],
-                    "description": "Revenue, expenses, profitability, cash flows, debt metrics - with consolidated/standalone > quarterly/annual structure"
+                    "structure": "consolidated/standalone > quarterly/annual/half_yearly",
+                    "metrics": ["Revenue", "Operating_Profit", "Net_Profit", "EBITDA", "Free_Cash_Flow", "Total_Debt", "Equity", "Assets", "Liabilities"]
                 },
                 "ratios": {
-                    "sub_sections": ["Return_on_Equity_pct", "Return_on_Assets_pct", "Net_Margin_pct", "Operating_Margin_pct", "..."],
-                    "description": "Financial ratios - profitability, efficiency, leverage"
+                    "profitability": ["Net_Margin", "Operating_Margin", "EBITDA_Margin"],
+                    "efficiency": ["Return_on_Assets", "Return_on_Equity", "Asset_Turnover"],
+                    "growth": ["Revenue_Growth", "Profit_Growth"]
                 },
                 "valuation": {
-                    "sub_sections": ["pe { trailing_pe, forward_pe, peg_ratio }", "eps { basic_eps, diluted_eps, trailing_eps, forward_eps, ... }", "enterprise_value", "market_cap", "price_to_book"],
-                    "description": "Valuation metrics grouped by PE and EPS sub-groups"
+                    "pe_group": ["trailing_pe", "forward_pe", "peg_ratio"],
+                    "eps_group": ["trailing_eps", "forward_eps", "eps_ttm", "basic_eps", "diluted_eps"],
+                    "multiples": ["market_cap", "enterprise_value", "ev_to_revenue", "ev_to_ebitda"],
+                    "price_multiples": ["price_to_book", "price_to_sales_ttm"]
                 },
                 "price": {
-                    "sub_sections": ["current_price", "ltp", "52_week { high, low, change }", "volume { daily, average }", "history_6mo_1d", "history_5y_1wk", "history_5y_1mo"],
-                    "description": "Price data - current, 52-week range, volume, OHLCV history"
+                    "current": ["current_price", "ltp", "previous_close"],
+                    "52_week": ["high", "low", "change"],
+                    "volume": ["daily_volume", "average_volume"],
+                    "history": ["history_1d (6 months)", "history_1wk (5 years)", "history_1mo (5 years)"]
                 },
                 "websignals": {
-                    "sub_sections": ["ai_insights_date", "recommendation_key", "recommendation_mean", "number_of_analyst_opinions", "target_high_price", "target_low_price", "raw_pdf_*"],
-                    "description": "Analyst sentiment, recommendations, price targets"
+                    "analyst": ["recommendation_key", "recommendation_mean", "number_of_analyst_opinions"],
+                    "targets": ["target_high_price", "target_low_price"],
+                    "metadata": ["ai_insights_date", "raw_pdf_*"]
                 },
                 "kpis": {
-                    "sub_sections": ["Capacity_Utilization_Factor", "Plant_Availability", "Power_Generation", "... (company-specific)"],
-                    "description": "Key performance indicators from screener_raw:Insights - varies by company"
+                    "note": "Varies by company; examples: Capacity_Utilization_Factor, Plant_Availability, Power_Generation"
                 },
                 "derived_metrics": {
-                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "ai_insights_guidance { guidance + insights }"],
-                    "description": "Computed metrics with sector weightage and AI insights"
-                },
-                "_unmapped": {
-                    "sub_sections": [],
-                    "description": "Fields that couldn't be mapped to any bucket (0 fields in this output)"
+                    "calculated_metrics": {
+                        "scores": ["fundamental_score", "technical_score", "valuation_score", "sentiment_score", "composite_score"],
+                        "ratings": ["overall_rating"],
+                        "sector_weights": ["weight_vs_sector_avg"]
+                    },
+                    "ai_insights_guidance": {
+                        "guidance": ["revenue_guidance", "profit_guidance", "capex_guidance", "..."],
+                        "insights": ["management_tone", "growth_strategy", "risk_factors", "..."]
+                    }
                 }
-            },
-            "derived_metrics_structure": {
-                "calculated_metrics": "Sector-weighted financial scores (fundamental, technical, valuation, sentiment, composite) with rating",
-                "ai_insights_guidance": "AI-extracted guidance (15 topics) + insights (only for 29 tickers in guidance.json)"
             },
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
             "unmapped_tickers": list(unmapped_summary.keys()),
-            "notes": "Each ticker has 9 buckets. Guidance presence depends on data availability."
+            "notes": "Each ticker has 9 buckets (company_details, financials, ratios, valuation, price, websignals, kpis, derived_metrics, _unmapped). All text metrics have been standardized to float where applicable."
         }
     }
     
