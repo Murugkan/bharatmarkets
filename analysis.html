@@ -1595,33 +1595,6 @@ function calculateRSI(closes, period = 14) {
     return rsi;
 }
 
-function calculateEMA(closes, period) {
-    // Exponential Moving Average
-    if (closes.length < period) return [];
-    
-    const multiplier = 2 / (period + 1);
-    const ema = [];
-    
-    // First EMA is simple average
-    let sum = 0;
-    for (let i = 0; i < period; i++) {
-        sum += closes[i];
-    }
-    ema.push(sum / period);
-    
-    // Subsequent EMAs use exponential smoothing
-    for (let i = period; i < closes.length; i++) {
-        const prevEMA = ema[ema.length - 1];
-        const newEMA = closes[i] * multiplier + prevEMA * (1 - multiplier);
-        ema.push(newEMA);
-    }
-    
-    // Shift array back to align with original closes
-    // EMA[0] is at closes[period-1], so prepend nulls
-    const aligned = Array(period - 1).fill(null).concat(ema);
-    return aligned;
-}
-
 function renderPriceChart(container, sym, bars) {
     if (!container.clientWidth || container.clientWidth < 100) {
         setTimeout(() => renderPriceChart(container, sym, bars), 300);
@@ -3064,16 +3037,17 @@ function scheduleTACharts(s){
 // ✅ OPTIMIZED: Indicator cache - prevents recalculation on every pan
 const indicatorCache = {
   data: {},
-  lastCandles: null,
+  lastCandleCount: -1,
   lastInterval: null,
   
   isValid(candles, interval) {
-    return this.lastCandles === candles && this.lastInterval === interval;
+    // Use candle COUNT instead of reference (references change on pan)
+    return this.lastCandleCount === candles.length && this.lastInterval === interval;
   },
   
   set(candles, interval, indicators) {
     this.data = indicators;
-    this.lastCandles = candles;
+    this.lastCandleCount = candles.length;
     this.lastInterval = interval;
   }
 };
@@ -3083,6 +3057,7 @@ function ensureIndicators(s){
   
   // Check cache validity - skip if already calculated for this data
   if(indicatorCache.isValid(s.candles, S.chartInterval)) {
+    console.log(`✓ Using cached indicators (${S.chartInterval}, ${s.candles.length} candles)`);
     return;
   }
   
@@ -3095,12 +3070,22 @@ function ensureIndicators(s){
       ema200: calculateEMA(s.candles, 200)
     };
     
+    console.log(`✓ Indicators: SMA20=${indicators.sma20.filter(v=>v).length}, SMA50=${indicators.sma50.filter(v=>v).length}, EMA200=${indicators.ema200.filter(v=>v).length}`);
+    
     // Cache the results
     indicatorCache.set(s.candles, S.chartInterval, indicators);
     s._indicators = indicators;
+    
+    // Store at module level for drawing
+    s.sma20 = indicators.sma20;
+    s.sma50 = indicators.sma50;
+    s.ema200 = indicators.ema200;
   } catch(e) {
     console.warn('⚠️ Error calculating indicators:', e.message);
     s._indicators = { sma20: [], sma50: [], ema200: [] };
+    s.sma20 = [];
+    s.sma50 = [];
+    s.ema200 = [];
   }
 }
 
@@ -3195,12 +3180,16 @@ function getSlicedCandles(s, canvasWidth){
     
     if(allAgg.length > maxFit){
       // PAN-BASED HISTORY SCROLL
+      // Positive pan (drag right) = show newer data
+      // Negative pan (drag left) = show older data
       const maxBackOffset = Math.max(0, allAgg.length - maxFit);
-      const backPan = Math.max(0, -S.chartPan);
-      const backNorm = Math.min(1, backPan / 400);
-      const backOffset = Math.floor(backNorm * maxBackOffset);
-      const startIdx = Math.max(0, maxBackOffset - backOffset);
+      const panNorm = Math.max(0, S.chartPan) / 400;  // Normalize 0→400 to 0→1
+      const backOffset = Math.floor(panNorm * maxBackOffset);  // How far back to go
+      const startIdx = Math.max(0, allAgg.length - maxFit - backOffset);  // Start from end, move back by offset
       result = allAgg.slice(startIdx, startIdx + maxFit);
+      if (S.chartPan !== 0) {
+        console.log(`🖱️ Pan slicing: pan=${S.chartPan.toFixed(0)}, panNorm=${panNorm.toFixed(3)}, maxBack=${maxBackOffset}, backOff=${backOffset}, idx=${startIdx}/${allAgg.length}, show=${result.length}`);
+      }
     } else {
       result = allAgg.slice(-500);
     }
@@ -4011,17 +4000,7 @@ function setupChartInteraction() {
   
   const touchState = { lastDistance: 0, gestureStart: 1 };
   
-  // ✅ OPTIMIZED throttle function - prevents excessive redraws during pan
-  const shouldRedraw = () => {
-    const now = performance.now();
-    if (now - chartInteraction.lastRedrawTime >= chartInteraction.THROTTLE_MS) {
-      chartInteraction.lastRedrawTime = now;
-      return true;
-    }
-    return false;
-  };
-  
-  // Mouse panning with optimized throttle
+  // Mouse panning - NO throttle here, let RAF handle frame rate
   canvas.addEventListener('mousedown', (e) => {
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
@@ -4036,9 +4015,9 @@ function setupChartInteraction() {
     
     if (S.chartPan !== newPan) {
       S.chartPan = newPan;
-      if (shouldRedraw()) {
-        scheduleTACharts(currentStock);
-      }
+      console.log(`🖱️ Panning: delta=${delta}, newPan=${newPan}`);
+      // Always schedule redraw on pan - RAF debouncing will handle frame rate
+      scheduleTACharts(currentStock);
     }
   }, { passive: true });
   
@@ -4103,9 +4082,9 @@ function setupChartInteraction() {
         const delta = e.touches[0].clientX - chartInteraction.startX;
         const newPan = Math.max(-400, Math.min(400, chartInteraction.startPan + delta));
         S.chartPan = newPan;
-        if (shouldRedraw()) {
-          scheduleTACharts(currentStock);
-        }
+        console.log(`👆 Touch pan: delta=${delta}, newPan=${newPan}`);
+        // Always schedule redraw on pan - RAF debouncing will handle frame rate
+        scheduleTACharts(currentStock);
       }
     }
   };
