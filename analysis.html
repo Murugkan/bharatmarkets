@@ -3522,11 +3522,11 @@ function drawCandlestick(s){
     ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
-  // X-axis date labels
-  const maxLabels = Math.min(6, Math.floor(cW / 40));
+  // X-axis date labels - optimized for mobile
+  const maxLabels = Math.min(4, Math.floor(cW / 50));  // ✅ Fewer labels on mobile
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='white';
-  ctx.font='11px sans-serif';  // ✅ 11px normal (not bold)
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 12px sans-serif';  // ✅ Bigger font for mobile
   ctx.textBaseline = 'top';
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
@@ -3546,7 +3546,7 @@ function drawCandlestick(s){
     const x = barX(i);
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H-6);
+    ctx.fillText(lbl, x, PAD.t + cH + 10);  // ✅ More space below
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
@@ -3875,11 +3875,11 @@ function drawVolume(s){
   });
   ctx.stroke();
   
-  // ✅ X-axis date labels for volume chart (match candlestick chart)
-  const volMaxLabels = Math.min(6, Math.floor(cW / 40));
+  // ✅ X-axis date labels for volume chart - optimized for mobile
+  const volMaxLabels = Math.min(4, Math.floor(cW / 50));  // ✅ Fewer labels on mobile
   const volLblStep = Math.max(1, Math.floor(n / volMaxLabels));
-  ctx.fillStyle='white';
-  ctx.font='10px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 12px sans-serif';  // ✅ Bigger font for mobile
   ctx.textBaseline='top';
   candles.forEach((c,i)=>{
     if(i % volLblStep !== 0 && i !== n-1) return;
@@ -3899,11 +3899,28 @@ function drawVolume(s){
     const x = PAD.l + i*gap + gap/2;
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, H-4);
+    ctx.fillText(lbl, x, PAD.t + cH + 8);  // ✅ Below volume chart
   });
   
-  // ✅ Click handler to show bar details (toggle)
+  // ✅ Click handler to show bar details (toggle) - works on both mouse and touch
   cv.onclick=(e)=>{
+    handleChartClick(e, W2, H2);
+  };
+  
+  // ✅ Touch support for iPhone - treat tap as click
+  cv.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0 && !chartInteraction.isPanning) {
+      // Not panning, treat as tap/click
+      const touch = e.changedTouches[0];
+      const clickEvent = new MouseEvent('click', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      });
+      handleChartClick(clickEvent, W2, H2);
+    }
+  });
+  
+  function handleChartClick(e, W2, H2) {
     if(!candlestickBars.length) return;
     
     const br=cv.getBoundingClientRect();
@@ -3918,7 +3935,7 @@ function drawVolume(s){
     if(!tip){
       tip=document.createElement('div');
       tip.id='chart-tooltip';
-      tip.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:1px solid #00d4ff;border-radius:8px;padding:10px;font-family:monospace;font-size:11px;color:#00ff88;z-index:9999;display:none;max-width:200px';
+      tip.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:1px solid #00d4ff;border-radius:8px;padding:12px;font-family:monospace;font-size:12px;color:#00ff88;z-index:9999;display:none;max-width:220px;min-width:180px;max-height:80vh;overflow-y:auto';
       document.body.appendChild(tip);
     }
     
@@ -3935,20 +3952,36 @@ function drawVolume(s){
     const chg=((c-o)/o*100).toFixed(2);
     const chgColor=chg>=0?'#00ff88':'#ff4466';
     
-    tip.innerHTML=`<div style="color:#00d4ff"><b>${bar.date}</b></div>
-      <div style="margin-top:6px;color:var(--tx2)">
-        <div>O: ₹<span style="color:#fff">${o}</span></div>
-        <div>H: ₹<span style="color:#fff">${h}</span></div>
-        <div>L: ₹<span style="color:#fff">${l}</span></div>
-        <div>C: ₹<span style="color:#fff">${c}</span></div>
+    tip.innerHTML=`<div style="color:#00d4ff;font-weight:bold;margin-bottom:8px">${bar.date}</div>
+      <div style="color:var(--tx2);font-size:11px;line-height:1.6">
+        <div>Open:  ₹<span style="color:#fff">${o}</span></div>
+        <div>High:  ₹<span style="color:#fff">${h}</span></div>
+        <div>Low:   ₹<span style="color:#fff">${l}</span></div>
+        <div>Close: ₹<span style="color:#fff">${c}</span></div>
       </div>
-      <div style="margin-top:6px;color:${chgColor}"><b>${chg>=0?'+':''}${chg}%</b></div>
-      <div style="margin-top:4px;color:var(--tx3);font-size:9px">Vol: ${(bar.volume/1e5).toFixed(1)}L</div>`;
+      <div style="margin-top:8px;color:${chgColor};font-weight:bold;font-size:12px">${chg>=0?'+':''}${chg}%</div>
+      <div style="margin-top:4px;color:var(--tx3);font-size:10px">Vol: ${(bar.volume/1e5).toFixed(1)}L</div>`;
     
     tip.style.display='block';
-    tip.style.left=Math.min(e.clientX+10,window.innerWidth-220)+'px';
-    tip.style.top=Math.max(e.clientY-100,8)+'px';
-  };
+    
+    // Position tooltip smartly for mobile
+    let left = e.clientX + 10;
+    let top = e.clientY - 100;
+    
+    // Keep tooltip within viewport
+    if (left + 220 > window.innerWidth) {
+      left = Math.max(10, e.clientX - 230);
+    }
+    if (top < 10) {
+      top = e.clientY + 10;
+    }
+    if (top + 150 > window.innerHeight) {
+      top = Math.max(10, window.innerHeight - 160);
+    }
+    
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
 }
 
 // ── Quarterly CFO bar panel ───────────────────────────
@@ -4044,7 +4077,11 @@ function canvasSetChartInterval(iv) {
   scheduleChartRedraw();
 }
 function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
-function toggleKPI(k) { S.kpiVis[k] = !S.kpiVis[k]; scheduleChartRedraw(); }
+function toggleKPI(k) { 
+  S.kpiVis[k] = !S.kpiVis[k]; 
+  console.log(`🔧 KPI toggled: ${k} = ${S.kpiVis[k]}, pan=${S.chartPan}, zoom=${S.chartZoom}`);
+  scheduleChartRedraw(); 
+}
 
 async function canvasLoadAndDrawChart(sym) {
   // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
