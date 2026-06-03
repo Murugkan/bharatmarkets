@@ -3464,7 +3464,10 @@ function drawCandlestick(s){
 
   // Log raw quarterly data once
   logConsole(`📈 Quarterly data points: ${quarterly.length}`);
-  if(quarterly.length > 0) logConsole(`  First: ${quarterly[0].d}, Last: ${quarterly[quarterly.length-1].d}`);
+  if(quarterly.length > 0) {
+    logConsole(`  First: ${quarterly[0].d}, Last: ${quarterly[quarterly.length-1].d}`);
+    logConsole(`  Keys in first point: ${Object.keys(quarterly[0]).join(', ')}`);
+  }
   
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
@@ -3498,11 +3501,12 @@ function drawCandlestick(s){
             if(v != null && !isNaN(v)) pts.push({x: xForDate(q.d), v, d: q.d});
           });
         }
+        logConsole(`  ${label}: collected ${pts.length} points from quarterly`);
         // Add current value as rightmost anchor if available
         let curVal = null;
         if(k === 'cfo') {
           curVal = resolveField(s, 'operating_cash_flow') || resolveField(s, 'cfo');
-        } else if(k === 'rev') {
+        } else if(k === 'revenue') {
           curVal = resolveField(s, 'total_revenue') || resolveField(s, 'sales');
         } else if(k === 'net') {
           curVal = resolveField(s, 'profit_margins') || resolveField(s, 'npm');
