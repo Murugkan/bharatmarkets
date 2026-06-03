@@ -1919,6 +1919,102 @@ def extract_scalar_or_dict(value):
     
     return value
 
+
+def generate_metadata_from_samples(output_data):
+    """
+    Generate real metadata structure from actual ticker data samples.
+    Inspects all buckets across all tickers to build accurate field inventory.
+    
+    Returns:
+        {
+            "buckets": {
+                "bucket_name": {
+                    "fields": [...actual field names...],
+                    "nested_structures": {
+                        "sub_key": [...fields...]
+                    },
+                    "sample_values": {example of first few fields + types}
+                }
+            }
+        }
+    """
+    buckets_inventory = {}
+    
+    ALL_BUCKETS = [
+        "company_details", "financials", "ratios", "valuation", 
+        "price", "websignals", "kpis", "derived_metrics", "_unmapped"
+    ]
+    
+    for bucket in ALL_BUCKETS:
+        buckets_inventory[bucket] = {
+            "all_fields": set(),
+            "nested_keys": {},  # For sub-dicts like {'pe': ['field1', 'field2']}
+            "field_types": {}   # Track what type each field is
+        }
+    
+    # Scan all tickers (excluding _metadata)
+    for ticker, data in output_data.items():
+        if ticker == '_metadata':
+            continue
+        
+        for bucket in ALL_BUCKETS:
+            if bucket not in data:
+                continue
+            
+            bucket_data = data[bucket]
+            if not isinstance(bucket_data, dict):
+                continue
+            
+            # Iterate through all fields in this bucket
+            for field_name, field_value in bucket_data.items():
+                buckets_inventory[bucket]["all_fields"].add(field_name)
+                
+                # Track field type (for UI schema generation)
+                if isinstance(field_value, dict):
+                    field_type = "object"
+                    # If it's a nested dict, track its sub-keys
+                    if field_value and not field_value.get('_periods') and not field_value.get('_source'):
+                        sub_keys = [k for k in field_value.keys() if not k.startswith('_')]
+                        if sub_keys:
+                            buckets_inventory[bucket]["nested_keys"][field_name] = sub_keys
+                elif isinstance(field_value, list):
+                    field_type = "array"
+                elif isinstance(field_value, (int, float)):
+                    field_type = "number"
+                elif isinstance(field_value, bool):
+                    field_type = "boolean"
+                elif isinstance(field_value, str):
+                    field_type = "string"
+                else:
+                    field_type = "unknown"
+                
+                if field_name not in buckets_inventory[bucket]["field_types"]:
+                    buckets_inventory[bucket]["field_types"][field_name] = field_type
+    
+    # Format for output
+    structure = {}
+    for bucket in ALL_BUCKETS:
+        inv = buckets_inventory[bucket]
+        
+        if not inv["all_fields"]:
+            continue
+        
+        structure[bucket] = {
+            "fields": sorted(list(inv["all_fields"])),
+            "field_count": len(inv["all_fields"]),
+            "field_types": inv["field_types"],
+        }
+        
+        # Add nested structures if present
+        if inv["nested_keys"]:
+            structure[bucket]["nested_structures"] = {
+                parent: sorted(children) 
+                for parent, children in sorted(inv["nested_keys"].items())
+            }
+    
+    return structure
+
+
 def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
@@ -1975,93 +2071,31 @@ def main():
 
     logger.info(f"Writing {OUTPUT_FILE} …")
     
-    # Create output with metadata as exact ticker structure skeleton
+    # Generate real metadata from actual data structure
+    real_structure = generate_metadata_from_samples(output)
+    
     from datetime import datetime
     import time
     
-    # Build metadata as exact skeleton of any ticker's structure
+    # Build metadata with real field inventory from actual data
     final_output = {
         "_metadata": {
             "generated_at": datetime.now().isoformat(),
             "total_tickers": total,
             "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
             "data_sources": [
-                "screener_raw_data.json (97 tickers)",
-                "screener_financials.json (97 tickers)",
-                "yahoofin_raw_data.json (97 tickers)",
-                "yahoofin_financials.json (97 tickers)",
-                "guidance.json (29 tickers)",
-                "prices.json (98 tickers)",
-                "unified-symbols.json (97 tickers)"
+                "screener_raw_data.json",
+                "screener_financials.json",
+                "yahoofin_raw_data.json",
+                "yahoofin_financials.json",
+                "guidance.json",
+                "prices.json",
+                "unified-symbols.json"
             ],
-            "structure": {
-                "company_details": "object (company info, ownership, shareholding pattern)",
-                "financials": "object (income statement, balance sheet, cash flow - by period type)",
-                "ratios": "object (efficiency, profitability, growth ratios)",
-                "valuation": "object (PE, EPS, market cap, enterprise value, price multiples)",
-                "price": "object (current price, OHLCV, 52-week, volume, history)",
-                "websignals": "object (analyst sentiment, recommendations, price targets)",
-                "kpis": "object (operational KPIs - company specific)",
-                "derived_metrics": "object (calculated scores, ratings, AI insights, guidance)",
-                "_unmapped": "object (fields not mapped to any bucket)"
-            },
-            "bucket_details": {
-                "company_details": {
-                    "identity": ["ticker", "name", "symbol_yahoo", "short_name", "long_name", "isin"],
-                    "location": ["address1", "address2", "city", "zip", "country"],
-                    "contact": ["phone", "fax", "website", "ir_website"],
-                    "classification": ["sector", "industry", "type"],
-                    "exchange": ["exchange", "full_exchange_name"],
-                    "shareholding": {
-                        "pattern": ["promoters", "fiis", "diis", "government", "public"],
-                        "dividends": ["dividend_yield", "last_dividend", "ex_dividend_date"],
-                        "splits": ["stock_splits (date: split_ratio)"]
-                    }
-                },
-                "financials": {
-                    "structure": "consolidated/standalone > quarterly/annual/half_yearly",
-                    "metrics": ["Revenue", "Operating_Profit", "Net_Profit", "EBITDA", "Free_Cash_Flow", "Total_Debt", "Equity", "Assets", "Liabilities"]
-                },
-                "ratios": {
-                    "profitability": ["Net_Margin", "Operating_Margin", "EBITDA_Margin"],
-                    "efficiency": ["Return_on_Assets", "Return_on_Equity", "Asset_Turnover"],
-                    "growth": ["Revenue_Growth", "Profit_Growth"]
-                },
-                "valuation": {
-                    "pe_group": ["trailing_pe", "forward_pe", "peg_ratio"],
-                    "eps_group": ["trailing_eps", "forward_eps", "eps_ttm", "basic_eps", "diluted_eps"],
-                    "multiples": ["market_cap", "enterprise_value", "ev_to_revenue", "ev_to_ebitda"],
-                    "price_multiples": ["price_to_book", "price_to_sales_ttm"]
-                },
-                "price": {
-                    "current": ["current_price", "ltp", "previous_close"],
-                    "52_week": ["high", "low", "change"],
-                    "volume": ["daily_volume", "average_volume"],
-                    "history": ["history_1d (6 months)", "history_1wk (5 years)", "history_1mo (5 years)"]
-                },
-                "websignals": {
-                    "analyst": ["recommendation_key", "recommendation_mean", "number_of_analyst_opinions"],
-                    "targets": ["target_high_price", "target_low_price"],
-                    "metadata": ["ai_insights_date", "raw_pdf_*"]
-                },
-                "kpis": {
-                    "note": "Varies by company; examples: Capacity_Utilization_Factor, Plant_Availability, Power_Generation"
-                },
-                "derived_metrics": {
-                    "calculated_metrics": {
-                        "scores": ["fundamental_score", "technical_score", "valuation_score", "sentiment_score", "composite_score"],
-                        "ratings": ["overall_rating"],
-                        "sector_weights": ["weight_vs_sector_avg"]
-                    },
-                    "ai_insights_guidance": {
-                        "guidance": ["revenue_guidance", "profit_guidance", "capex_guidance", "..."],
-                        "insights": ["management_tone", "growth_strategy", "risk_factors", "..."]
-                    }
-                }
-            },
+            "schema": real_structure,
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
             "unmapped_tickers": list(unmapped_summary.keys()),
-            "notes": "Each ticker has 9 buckets (company_details, financials, ratios, valuation, price, websignals, kpis, derived_metrics, _unmapped). All text metrics have been standardized to float where applicable."
+            "notes": "Use 'schema' to map UI fields. Each bucket has 'fields' (all field names), 'field_count', 'field_types' (data types), and 'nested_structures' (for sub-objects)"
         }
     }
     
