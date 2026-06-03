@@ -206,7 +206,7 @@ const S = {
   chartRange: '1Y',
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
-  kpiVis: { pe: false, revenue: false, net: false, pbt: false, op: false, cfo: false, fcf: false, ncf: false, opm: false, assets: false, equity: false, debt: false, borrowing: false, liabilities: false },
+  kpiVis: { sales: false, depreciation: false, eps: false, expenses: false, financing_profit: false, interest: false, net: false, other_income: false, pbt: false },
   chartPan: 0,        // Pan offset in pixels
   chartZoom: 1,       // Horizontal zoom (# of candles)
   yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
@@ -957,20 +957,15 @@ function renderTab(tab) {
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
               <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.revenue?'checked':''} onchange="toggleKPI('revenue')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.sales?'checked':''} onchange="toggleKPI('sales')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Sales</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.depreciation?'checked':''} onchange="toggleKPI('depreciation')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">Depr</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.eps?'checked':''} onchange="toggleKPI('eps')" style="accent-color:#a78bfa;width:11px;height:11px"><span style="font-size:9px;color:#a78bfa;font-weight:600">EPS</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.expenses?'checked':''} onchange="toggleKPI('expenses')" style="accent-color:#f97316;width:11px;height:11px"><span style="font-size:9px;color:#f97316;font-weight:600">Exp</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.financing_profit?'checked':''} onchange="toggleKPI('financing_profit')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">FinPr</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.interest?'checked':''} onchange="toggleKPI('interest')" style="accent-color:#ef4444;width:11px;height:11px"><span style="font-size:9px;color:#ef4444;font-weight:600">Int</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.other_income?'checked':''} onchange="toggleKPI('other_income')" style="accent-color:#06b6d4;width:11px;height:11px"><span style="font-size:9px;color:#06b6d4;font-weight:600">OInc</span></label>
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.pbt?'checked':''} onchange="toggleKPI('pbt')" style="accent-color:#86efac;width:11px;height:11px"><span style="font-size:9px;color:#86efac;font-weight:600">PBT</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.op?'checked':''} onchange="toggleKPI('op')" style="accent-color:#fbbf24;width:11px;height:11px"><span style="font-size:9px;color:#fbbf24;font-weight:600">Op</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.fcf?'checked':''} onchange="toggleKPI('fcf')" style="accent-color:#10b981;width:11px;height:11px"><span style="font-size:9px;color:#10b981;font-weight:600">FCF</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.ncf?'checked':''} onchange="toggleKPI('ncf')" style="accent-color:#059669;width:11px;height:11px"><span style="font-size:9px;color:#059669;font-weight:600">NCF</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.assets?'checked':''} onchange="toggleKPI('assets')" style="accent-color:#60a5fa;width:11px;height:11px"><span style="font-size:9px;color:#60a5fa;font-weight:600">Assets</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.equity?'checked':''} onchange="toggleKPI('equity')" style="accent-color:#8b5cf6;width:11px;height:11px"><span style="font-size:9px;color:#8b5cf6;font-weight:600">Equity</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.borrowing?'checked':''} onchange="toggleKPI('borrowing')" style="accent-color:#ef4444;width:11px;height:11px"><span style="font-size:9px;color:#ef4444;font-weight:600">Borrow</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.kpiVis.liabilities?'checked':''} onchange="toggleKPI('liabilities')" style="accent-color:#dc2626;width:11px;height:11px"><span style="font-size:9px;color:#dc2626;font-weight:600">Liab</span></label>
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -3147,20 +3142,14 @@ function getQuarterlyData(s){
     
     const metrics = {
       sales: getQ('Sales'),
-      revenue: getQ('Sales'),
+      depreciation: getQ('Depreciation'),
+      eps: getQ('EPS_Rs'),
+      expenses: getQ('Expenses'),
+      financing_profit: getQ('Financing_Profit'),
+      interest: getQ('Interest'),
       net: getQ('Net_Profit'),
-      pbt: getQ('Profit_before_tax'),
-      op: getQ('Operating_Profit'),
-      cfo: getQ('CFO'),
-      fcf: getQ('Free_Cash_Flow'),
-      ncf: getQ('Net_Cash_Flow'),
-      opm: getQ('Operating_Margin_pct'),
-      assets: getQ('Total_Assets'),
-      equity: getQ('Equity_Capital'),
-      debt: getQ('Total_Debt'),
-      borrowing: getQ('Borrowing'),
-      liabilities: getQ('Total_Liabilities'),
-      eps: getQ('EPS_Rs')
+      other_income: getQ('Other_Income'),
+      pbt: getQ('Profit_before_tax')
     };
     
     const allDates = new Set();
@@ -3436,20 +3425,15 @@ function drawCandlestick(s){
   const quarterly = getQuarterlyData(s);
 
   const KPI_DEFS = [
-    {k:'pe',   label:'P/E',     col:'#f59e0b'},
-    {k:'revenue',label:'Rev',   col:'#22d3ee'},
-    {k:'net',  label:'Net',     col:'#4ade80'},
-    {k:'pbt',  label:'PBT',     col:'#86efac'},
-    {k:'op',   label:'Op',      col:'#fbbf24'},
-    {k:'cfo',  label:'CFO',     col:'#34d399'},
-    {k:'fcf',  label:'FCF',     col:'#10b981'},
-    {k:'ncf',  label:'NCF',     col:'#059669'},
-    {k:'opm',  label:'OPM%',    col:'#fb923c'},
-    {k:'assets',label:'Assets', col:'#60a5fa'},
-    {k:'equity',label:'Equity', col:'#8b5cf6'},
-    {k:'debt', label:'Debt',    col:'#f87171'},
-    {k:'borrowing',label:'Borrow',col:'#ef4444'},
-    {k:'liabilities',label:'Liab',col:'#dc2626'},
+    {k:'sales',            label:'Sales',         col:'#22d3ee'},
+    {k:'depreciation',     label:'Depreciation',  col:'#fb923c'},
+    {k:'eps',              label:'EPS',           col:'#a78bfa'},
+    {k:'expenses',         label:'Expenses',      col:'#f97316'},
+    {k:'financing_profit', label:'Fin Profit',    col:'#34d399'},
+    {k:'interest',         label:'Interest',      col:'#ef4444'},
+    {k:'net',              label:'Net Profit',    col:'#4ade80'},
+    {k:'other_income',     label:'Other Income',  col:'#06b6d4'},
+    {k:'pbt',              label:'PBT',           col:'#86efac'}
   ];
 
   // Use FULL candle history for price lookups — not just visible slice
