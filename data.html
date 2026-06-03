@@ -2246,43 +2246,6 @@ CRITICAL RULES:
             });
     }
     
-    // ✅ Extract quarterly financial data
-    function computeQuarterlyKPIs(financials) {
-      const quarterly = [];
-      if(!financials) return quarterly;
-      
-      const getQ = (fieldName) => {
-        const field = financials[fieldName];
-        return (field && field.consolidated && field.consolidated.quarterly) || {};
-      };
-      
-      const metrics = {
-        sales: getQ('Sales'),
-        revenue: getQ('Revenue'),
-        net: getQ('Net_Profit'),
-        cfo: getQ('CFO'),
-        assets: getQ('Total_Assets'),
-        debt: getQ('Total_Debt'),
-        equity: getQ('Equity_Capital'),
-        eps: getQ('EPS_Rs')
-      };
-      
-      const allDates = new Set();
-      Object.values(metrics).forEach(data => Object.keys(data).forEach(d => allDates.add(d)));
-      
-      Array.from(allDates).sort().forEach(date => {
-        const q = { d: date };
-        Object.entries(metrics).forEach(([key, data]) => {
-          if(data[date] !== undefined && data[date] !== null) {
-            q[key] = parseFloat(data[date]) || 0;
-          }
-        });
-        if(Object.keys(q).length > 1) quarterly.push(q);
-      });
-      
-      return quarterly;
-    }
-    
     function saveMarketDataToDB(stocks_to_process, generatedAt, guidanceCount) {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -2308,11 +2271,6 @@ CRITICAL RULES:
                     
                     stock.ticker = ticker;
                     if (!stock.source) stock.source = 'market_data_pipeline';
-                    
-                    // ✅ Compute quarterly KPI data
-                    if(stock.financials && !stock.quarterly) {
-                      stock.quarterly = computeQuarterlyKPIs(stock.financials);
-                    }
                     
                     store.put(stock);
                     savedCount++;

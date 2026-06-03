@@ -3008,15 +3008,17 @@ function scheduleTACharts(s){
   console.log('🎨 Redrawing chart... pan=' + S.chartPan.toFixed(0));
   
   requestAnimationFrame(()=>{
-    try {
-      // Recalculate indicators if needed
-      recalculateIndicators(s);
-      drawCandlestick(s);
-      if(S.maVis.vol) drawVolume(s);
-      updateChartStats(s);
-    } finally {
-      scheduleTACharts._pending = false;
-    }
+    requestAnimationFrame(()=>{
+      try {
+        // Recalculate indicators if needed
+        recalculateIndicators(s);
+        drawCandlestick(s);
+        if(S.maVis.vol) drawVolume(s);
+        updateChartStats(s);
+      } finally {
+        scheduleTACharts._pending = false;
+      }
+    });
   });
 }
 
@@ -3077,27 +3079,20 @@ function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
   if(!daily.length) return daily;
   
-  // ✅ CRITICAL: Ensure candles are in chronological order (oldest first)
-  const sorted = [...daily].sort((a, b) => {
-    const dateA = new Date(a.d).getTime();
-    const dateB = new Date(b.d).getTime();
-    return dateA - dateB;
-  });
-  
   // Get the current range setting
   const now = new Date();
   const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
   
   // Filter by date FIRST (respect chartRange)
-  let filteredCandles = sorted.filter(c => c.d >= cutoff);
+  let filteredCandles = daily.filter(c => c.d >= cutoff);
   
   // If no candles in range, use last N candles as fallback
   if(!filteredCandles.length) {
-    filteredCandles = sorted.slice(-Math.max(20, Math.floor(sorted.length * 0.25)));
+    filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
   }
   
-  console.log(`📊 getSlicedCandles: ${sorted.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
+  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
   
   // Aggregate if needed (for weekly/monthly intervals)
   const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
@@ -3114,13 +3109,10 @@ function getSlicedCandles(s, canvasWidth){
     if(allAgg.length > maxFit){
       // PAN-BASED HISTORY SCROLL
       const maxBackOffset = Math.max(0, allAgg.length - maxFit);
-      const panAbs = Math.abs(S.chartPan);  // Get magnitude
-      const panNorm = Math.min(1, panAbs / 400);  // Normalize to 0-1
-      const backOffset = Math.floor(panNorm * maxBackOffset);
-      // If positive pan (drag right), show newer data; if negative (drag left), show older
-      const startIdx = S.chartPan >= 0 
-        ? Math.max(0, maxBackOffset - backOffset)  // Newer (right side)
-        : Math.max(0, backOffset);  // Older (left side)
+      const backPan = Math.max(0, -S.chartPan);
+      const backNorm = Math.min(1, backPan / 400);
+      const backOffset = Math.floor(backNorm * maxBackOffset);
+      const startIdx = Math.max(0, maxBackOffset - backOffset);
       return allAgg.slice(startIdx, startIdx + maxFit);
     }
   }
@@ -3129,19 +3121,13 @@ function getSlicedCandles(s, canvasWidth){
 
 // Extract quarterly data with all KPI metrics
 function getQuarterlyData(s){
-  // ✅ PRIMARY: Return pre-computed quarterly array from IndexedDB
-  if(s.quarterly && Array.isArray(s.quarterly) && s.quarterly.length > 0) {
-    console.log(`📊 Using quarterly data from IndexedDB: ${s.quarterly.length} quarters`);
-    return s.quarterly;
-  }
+  // ✅ Read from IndexedDB quarterly array
+  if(s.quarterly && Array.isArray(s.quarterly)) return s.quarterly;
   
-  // ✅ SECONDARY: Fallback - extract from financials if quarterly array not available
-  // data.html should have already pre-computed this, but this is safety net
+  // Fallback: extract from financials
   const quarterly = [];
-  
   try {
     if(!s.financials) return quarterly;
-    
     const f = s.financials;
     const getQ = (fieldName) => {
       const field = f[fieldName];
@@ -3152,21 +3138,9 @@ function getQuarterlyData(s){
       sales: getQ('Sales'),
       revenue: getQ('Revenue'),
       net: getQ('Net_Profit'),
-      pbt: getQ('Profit_before_tax'),
-      op: getQ('Financing_Profit'),
       cfo: getQ('CFO'),
-      fcf: getQ('Free_Cash_Flow'),
-      ncf: getQ('Net_Cash_Flow'),
-      equity: getQ('Equity_Capital'),
-      borrowing: getQ('Borrowing'),
       debt: getQ('Total_Debt'),
       assets: getQ('Total_Assets'),
-      liabilities: getQ('Total_Liabilities'),
-      fixedAssets: getQ('Fixed_Assets'),
-      investments: getQ('Investments'),
-      margin: getQ('Financing_Margin_pct'),
-      gnpa: getQ('Gross_NPA_pct'),
-      nnpa: getQ('Net_NPA_pct'),
       eps: getQ('EPS_Rs')
     };
     
@@ -3178,17 +3152,10 @@ function getQuarterlyData(s){
       Object.entries(metrics).forEach(([key, data]) => {
         if(data[date]) q[key] = parseFloat(data[date]) || 0;
       });
-      if(q.sales && q.net) q.margin_pct = (q.net / q.sales) * 100;
-      if(q.op && q.sales) q.opm = (q.op / q.sales) * 100;
       if(Object.keys(q).length > 1) quarterly.push(q);
     });
-    
-    if(quarterly.length > 0) {
-      console.log(`⚠️ Extracted quarterly from financials (fallback): ${quarterly.length} quarters`);
-      return quarterly;
-    }
   } catch(e) {
-    console.warn('⚠️ Error extracting quarterly data:', e.message);
+    console.warn('Error extracting quarterly:', e.message);
   }
   
   return quarterly;
@@ -3449,42 +3416,13 @@ function drawCandlestick(s){
   // ── KPI overlays on price chart ──────────────────────────────────
   const quarterly = getQuarterlyData(s);
 
-  // ✅ COMPREHENSIVE KPI DEFINITIONS - Mapped to quarterly data fields
   const KPI_DEFS = [
-    // Revenue & Sales
-    {k:'sales',    label:'Sales',    col:'#06b6d4'},  // Cyan - Sales
-    {k:'revenue',  label:'Rev',      col:'#22d3ee'},  // Light Cyan - Revenue
-    
-    // Profitability
-    {k:'net',      label:'Net',      col:'#4ade80'},  // Green - Net Profit
-    {k:'pbt',      label:'PBT',      col:'#86efac'},  // Light Green - Profit Before Tax
-    {k:'op',       label:'Op',       col:'#fbbf24'},  // Amber - Operating Profit
-    
-    // Margins
-    {k:'margin_pct', label:'Margin%',col:'#f97316'},  // Orange - Profit Margin
-    {k:'opm',      label:'OPM%',     col:'#fb923c'},  // Light Orange - Operating Margin
-    
-    // Cash Flow
-    {k:'cfo',      label:'CFO',      col:'#34d399'},  // Teal - Cash Flow Operations
-    {k:'fcf',      label:'FCF',      col:'#10b981'},  // Emerald - Free Cash Flow
-    {k:'ncf',      label:'NCF',      col:'#059669'},  // Dark Emerald - Net Cash Flow
-    
-    // Balance Sheet - Assets
-    {k:'assets',   label:'Assets',   col:'#60a5fa'},  // Blue - Total Assets
-    {k:'fixedAssets', label:'FixedAst', col:'#3b82f6'},  // Dark Blue - Fixed Assets
-    {k:'equity',   label:'Equity',   col:'#8b5cf6'},  // Purple - Equity Capital
-    
-    // Balance Sheet - Liabilities & Debt
-    {k:'debt',     label:'Debt',     col:'#f87171'},  // Red - Total Debt
-    {k:'borrowing', label:'Borrow',  col:'#ef4444'},  // Dark Red - Borrowing
-    {k:'liabilities', label:'Liab',  col:'#dc2626'},  // Darker Red - Total Liabilities
-    
-    // Risk Metrics (for banks/financial companies)
-    {k:'gnpa',     label:'GrNPA%',   col:'#f43f5e'},  // Rose - Gross NPA
-    {k:'nnpa',     label:'NetNPA%',  col:'#e11d48'},  // Dark Rose - Net NPA
-    
-    // Per Share
-    {k:'eps',      label:'EPS',      col:'#a78bfa'},  // Light Purple - EPS
+    {k:'pe',   label:'P/E',     col:'#f59e0b'},
+    {k:'rev',  label:'Rev',     col:'#22d3ee'},
+    {k:'net',  label:'Net',     col:'#4ade80'},
+    {k:'cfo',  label:'CFO',     col:'#34d399'},
+    {k:'opm',  label:'OPM%',    col:'#fb923c'},
+    {k:'debt', label:'Debt',    col:'#f87171'},
   ];
 
   // Use FULL candle history for price lookups — not just visible slice
@@ -3506,9 +3444,7 @@ function drawCandlestick(s){
   }
 
   // Log raw quarterly data once
-  if(quarterly.length){
-        }
-
+  
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
 
@@ -3963,7 +3899,7 @@ function setupChartInteraction() {
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
   let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 33;  // ~30fps for smooth panning
+  const REDRAW_THROTTLE_MS = 50;  // ~20fps for smooth panning - optimal for mobile performance
   
   // Debounced redraw: only redraw if throttle duration has passed (prevents excessive redraws)
   const throttledRedraw = (stock) => {
