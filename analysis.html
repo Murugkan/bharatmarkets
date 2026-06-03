@@ -589,12 +589,14 @@ async function loadStock() {
             // Convert history format { Date, Open, High, Low, Close, Volume } to chart format
             if (historyData && historyData.length > 0) {
                 try {
+                    let swapCount = 0;
                     currentStock.candles = historyData.map((bar, idx) => {
                         let h = parseFloat(bar.High);
                         let l = parseFloat(bar.Low);
                         // Swap if inverted
                         if (h < l) {
                             [h, l] = [l, h];
+                            swapCount++;
                         }
                         return {
                             d: bar.Date,
@@ -605,7 +607,25 @@ async function loadStock() {
                             v: parseInt(bar.Volume) || 0
                         };
                     }).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c));
+                    
+                    // 📊 CRITICAL LOGGING
                     console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'valid candles');
+                    if (swapCount > 0) console.warn(`⚠️ Swapped High/Low on ${swapCount} candles (data corruption detected)`);
+                    
+                    // Log first & last candle for verification
+                    if (currentStock.candles.length > 0) {
+                        const first = currentStock.candles[0];
+                        const last = currentStock.candles[currentStock.candles.length - 1];
+                        console.log(`📅 Date range: ${first.d} → ${last.d}`);
+                        console.log(`📈 First candle: O=${first.o} H=${first.h} L=${first.l} C=${first.c}`);
+                        console.log(`📉 Last candle:  O=${last.o} H=${last.h} L=${last.l} C=${last.c}`);
+                        
+                        const allHighs = currentStock.candles.map(c => c.h);
+                        const allLows = currentStock.candles.map(c => c.l);
+                        const globalHigh = Math.max(...allHighs);
+                        const globalLow = Math.min(...allLows);
+                        console.log(`💹 Global range: ${globalLow.toFixed(2)} - ${globalHigh.toFixed(2)} (diff: ${(globalHigh - globalLow).toFixed(2)})`);
+                    }
                 } catch (e) {
                     console.warn('⚠️ Error converting price history:', e.message);
                     currentStock.candles = [];
@@ -3281,7 +3301,12 @@ function drawCandlestick(s){
     return;
   }
   
-  console.log(`📊 Drawing chart: ${candles.length} candles, price range ${candles[0]?.c}-${candles[candles.length-1]?.c}`);
+  // 📊 COMPREHENSIVE CHART DRAWING VALIDATION
+  const first = candles[0];
+  const last = candles[candles.length-1];
+  console.log(`📊 Drawing chart: ${candles.length} candles`);
+  console.log(`📅 Date range: ${first?.d} → ${last?.d}`);
+  console.log(`💹 OHLC range: O=${first?.o?.toFixed(2)}-${last?.o?.toFixed(2)}, H=${first?.h?.toFixed(2)}-${last?.h?.toFixed(2)}, L=${first?.l?.toFixed(2)}-${last?.l?.toFixed(2)}, C=${first?.c?.toFixed(2)}-${last?.c?.toFixed(2)}`);
 
   const W=W2,H=312;  // ✅ Increased 30% from 240
   const PAD={l:6,r:52,t:8,b:22};
@@ -3320,6 +3345,8 @@ function drawCandlestick(s){
   }
   
   const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
+  console.log(`📊 Price axis: min=${mn.toFixed(2)} max=${mx.toFixed(2)} range=${rng.toFixed(2)}`);
+  console.log(`📐 Indicators: SMA20=${s.sma20?.length||0} SMA50=${s.sma50?.length||0} EMA200=${s.ema200?.length||0}`);
   
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
