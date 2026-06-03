@@ -589,15 +589,22 @@ async function loadStock() {
             // Convert history format { Date, Open, High, Low, Close, Volume } to chart format
             if (historyData && historyData.length > 0) {
                 try {
-                    // Use efficient array conversion for large datasets
-                    currentStock.candles = historyData.map((bar, idx) => ({
-                        d: bar.Date,  // Date as YYYY-MM-DD string
-                        o: parseFloat(bar.Open),
-                        h: parseFloat(bar.High),
-                        l: parseFloat(bar.Low),
-                        c: parseFloat(bar.Close),
-                        v: parseInt(bar.Volume) || 0
-                    })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c)); // Remove invalid entries
+                    currentStock.candles = historyData.map((bar, idx) => {
+                        let h = parseFloat(bar.High);
+                        let l = parseFloat(bar.Low);
+                        // Swap if inverted
+                        if (h < l) {
+                            [h, l] = [l, h];
+                        }
+                        return {
+                            d: bar.Date,
+                            o: parseFloat(bar.Open),
+                            h: h,
+                            l: l,
+                            c: parseFloat(bar.Close),
+                            v: parseInt(bar.Volume) || 0
+                        };
+                    }).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c));
                     console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'valid candles');
                 } catch (e) {
                     console.warn('⚠️ Error converting price history:', e.message);
