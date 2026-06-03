@@ -3527,13 +3527,22 @@ function drawCandlestick(s){
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
   ctx.fillStyle='white';
   ctx.font='11px sans-serif';  // ✅ 11px normal (not bold)
+  ctx.textBaseline = 'top';
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
-    const d = new Date(c.d);
-    let lbl;
-    if(S.chartInterval==='M')      lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = (d.getMonth()+1)+'/'+String(d.getFullYear()).slice(2);
-    else                            lbl = d.getDate()+'/'+(d.getMonth()+1);
+    let lbl = '';
+    
+    // Parse date string YYYY-MM-DD
+    if(c.d && typeof c.d === 'string') {
+      const parts = c.d.split('-');
+      if(parts.length === 3) {
+        const [yyyy, mm, dd] = parts;
+        if(S.chartInterval==='M')      lbl = mm+'/'+ yyyy.slice(2);
+        else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = mm+'/'+ yyyy.slice(2);
+        else                            lbl = dd+'/'+ mm;
+      }
+    }
+    
     const x = barX(i);
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
@@ -3865,6 +3874,33 @@ function drawVolume(s){
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
   ctx.stroke();
+  
+  // ✅ X-axis date labels for volume chart (match candlestick chart)
+  const volMaxLabels = Math.min(6, Math.floor(cW / 40));
+  const volLblStep = Math.max(1, Math.floor(n / volMaxLabels));
+  ctx.fillStyle='white';
+  ctx.font='10px sans-serif';
+  ctx.textBaseline='top';
+  candles.forEach((c,i)=>{
+    if(i % volLblStep !== 0 && i !== n-1) return;
+    let lbl = '';
+    
+    // Parse date string YYYY-MM-DD
+    if(c.d && typeof c.d === 'string') {
+      const parts = c.d.split('-');
+      if(parts.length === 3) {
+        const [yyyy, mm, dd] = parts;
+        if(S.chartInterval==='M')      lbl = mm+'/'+ yyyy.slice(2);
+        else if(S.chartRange==='5Y'||S.chartRange==='1Y') lbl = mm+'/'+ yyyy.slice(2);
+        else                            lbl = dd+'/'+ mm;
+      }
+    }
+    
+    const x = PAD.l + i*gap + gap/2;
+    if(x > PAD.l+cW-8) return;
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, H-4);
+  });
   
   // ✅ Click handler to show bar details (toggle)
   cv.onclick=(e)=>{
@@ -4589,13 +4625,13 @@ function drawPortfolioHeatmap(portfolio){
   // Group by sector
   const sMap = {};
   portfolio.forEach(s=>{
-    const sec = (s.sector && s.sector!=='—') ? s.sector : 'Other';
+    const sec = resolveField(s, 'sector') || 'Other';  // ✅ Use resolveField
     if(!sMap[sec]) sMap[sec]={name:sec, holdVal:0, mcap:0, chgSum:0, n:0, stocks:[]};
-    const price = s.price || s.ltp || 0;
-    const change = s.market_change_pct || s.chg1d || 0;
+    const price = s.ltp || resolveField(s, 'ltp') || 0;
+    const change = s.changePct || resolveField(s, 'changePct') || 0;
     const holdingVal = (s.company_details?.qty || 0) * price;  // ✅ Get qty from correct location
     sMap[sec].holdVal += holdingVal;
-    sMap[sec].mcap    += (s.market_cap || s.mcap || 0);
+    sMap[sec].mcap    += (resolveField(s, 'market_cap') || 0);
     sMap[sec].chgSum  += change;
     sMap[sec].n++;
     sMap[sec].stocks.push(s);
