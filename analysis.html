@@ -28,7 +28,7 @@
         .tab.active{background:rgba(0,242,255,.1);border-color:var(--ac);color:var(--ac)}
         .tab:hover:not(.active){color:var(--tx1)}
         
-        .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch;contain:layout style paint;will-change:scroll-position}
+        .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch;contain:layout style paint;will-change:scroll-position;-webkit-transform:translate3d(0,0,0)}
         .content::-webkit-scrollbar{width:14px;background:transparent}
         .content::-webkit-scrollbar-track{background:transparent}
         .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
@@ -3165,6 +3165,9 @@ function getSlicedCandles(s, canvasWidth){
     filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
   }
   
+  // ✅ SORT chronologically (oldest first) - FIX for non-chronological x-axis
+  filteredCandles.sort((a, b) => a.d.localeCompare(b.d));
+  
   console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
   
   // Aggregate if needed (for weekly/monthly intervals)
@@ -3920,6 +3923,64 @@ function drawVolume(s){
     }
   });
   
+  // ✅ Mousemove for tooltip on hover (desktop and after pan on mobile)
+  let lastTooltipTime = 0;
+  cv.addEventListener('mousemove', (e) => {
+    // Throttle tooltip updates to 100ms to prevent excessive redraws
+    const now = Date.now();
+    if (now - lastTooltipTime < 100) return;
+    lastTooltipTime = now;
+    
+    if(!candlestickBars.length) return;
+    
+    const br=cv.getBoundingClientRect();
+    const scX=W2/br.width, scY=H2/br.height;
+    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
+    
+    // Find hovered bar
+    const bar=candlestickBars.find(b=>mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h);
+    
+    // Create or get preview tooltip (different from click tooltip)
+    let preview=document.getElementById('chart-preview-tooltip');
+    if(!preview){
+      preview=document.createElement('div');
+      preview.id='chart-preview-tooltip';
+      preview.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:1px solid #ffa500;border-radius:6px;padding:8px;font-family:monospace;font-size:11px;color:#ffa500;z-index:9998;display:none;max-width:160px;pointer-events:none';
+      document.body.appendChild(preview);
+    }
+    
+    if(!bar){
+      preview.style.display='none';
+      return;
+    }
+    
+    // Show preview tooltip on hover
+    const o=bar.open.toFixed(2), h=bar.high.toFixed(2), l=bar.low.toFixed(2), c=bar.close.toFixed(2);
+    const chg=((c-o)/o*100).toFixed(2);
+    const chgColor=chg>=0?'#00ff88':'#ff4466';
+    
+    preview.innerHTML=`<div>${bar.date}</div>
+      <div>O: ₹${o} H: ₹${h}</div>
+      <div>L: ₹${l} C: ₹${c}</div>
+      <div style="color:${chgColor};font-weight:bold">${chg>=0?'+':''}${chg}%</div>`;
+    
+    preview.style.display='block';
+    
+    // Position near cursor
+    let left = e.clientX + 10;
+    let top = e.clientY - 60;
+    
+    if (left + 160 > window.innerWidth) {
+      left = Math.max(10, e.clientX - 170);
+    }
+    if (top < 10) {
+      top = e.clientY + 10;
+    }
+    
+    preview.style.left = left + 'px';
+    preview.style.top = top + 'px';
+  }, { passive: true });
+  
   function handleChartClick(e, W2, H2) {
     if(!candlestickBars.length) return;
     
@@ -4602,15 +4663,13 @@ async function loadAndRenderMovers(){
             <span style="color:#ff6b85">■ Down</span>
           </div>
         </div>
-        <canvas id="cv-heatmap" style="width:100%;border-radius:6px;cursor:pointer;display:block;margin-bottom:8px"></canvas>
+        <canvas id="cv-heatmap" style="width:100%;border-radius:6px;cursor:pointer;display:block;margin-bottom:8px;will-change:transform;transform:translate3d(0,0,0)"></canvas>
         <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1e3350;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--tx1);pointer-events:none;z-index:999"></div>
       </div>
     </div>`;
     
-    // Draw heatmap after DOM renders
-    setTimeout(() => {
-      drawPortfolioHeatmap(enrichedPortfolio);
-    }, 200);
+    // Draw heatmap immediately (no delay)
+    drawPortfolioHeatmap(enrichedPortfolio);
     
   } catch(e) {
     console.error('Movers error:', e.message, e.stack);
@@ -4816,15 +4875,15 @@ function drawPortfolioHeatmap(portfolio){
     ctx.restore();
   });
 
-  // Tap tooltip - persistent until next click
-  // iPhone optimized: use touch events, don't block gestures
+  // Tap tooltip - iPhone optimized with debouncing & RAF
   let currentTooltip = null;
   let touchStartX = 0;
   let touchStartY = 0;
   let touchStartTime = 0;
+  let tooltipTimeout = null;
   
   cv.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) { // Single finger only
+    if (e.touches.length === 1) {
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
       touchStartTime = Date.now();
@@ -4838,35 +4897,37 @@ function drawPortfolioHeatmap(portfolio){
       const moveY = Math.abs(touch.clientY - touchStartY);
       const elapsed = Date.now() - touchStartTime;
       
-      // Only treat as tap: <8px movement, <300ms duration, single finger
+      // Only treat as tap: <8px movement, <300ms duration
       if (moveX < 8 && moveY < 8 && elapsed < 300) {
-        const br=cv.getBoundingClientRect();
-        const scX=W/br.width, scY=H/br.height;
-        const mx=(touch.clientX-br.left)*scX, my=(touch.clientY-br.top)*scY;
-        const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
-        const tip=document.getElementById('hm-tooltip');
-        
-        // If tapping on empty space or same tooltip, hide it
-        if(!hit || currentTooltip === hit.name){
-          if(tip) tip.style.display='none';
-          currentTooltip = null;
-          return;
-        }
-        
-        // Show tooltip for tapped sector
-        if(hit&&tip){
-          currentTooltip = hit.name;
-          const sign=hit.chg>=0?'+':'';
-          const invVal = hit.holdVal || 0;
-          tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
-            +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
-            +'<span style="color:var(--tx3)">💰 ₹'+invVal.toLocaleString('en-IN',{maximumFractionDigits:0})+'</span><br>'
-            +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
-            +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.ticker+' '+(s.chg1d>=0?'+':'')+s.chg1d.toFixed(1)+'%').join('  ')+'</span>';
-          tip.style.display='block';
-          tip.style.left=Math.min(touch.clientX+10,window.innerWidth-170)+'px';
-          tip.style.top=Math.max(touch.clientY-70,8)+'px';
-        }
+        // Debounce tooltip updates
+        clearTimeout(tooltipTimeout);
+        tooltipTimeout = setTimeout(() => {
+          const br=cv.getBoundingClientRect();
+          const scX=W/br.width, scY=H/br.height;
+          const mx=(touch.clientX-br.left)*scX, my=(touch.clientY-br.top)*scY;
+          const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
+          const tip=document.getElementById('hm-tooltip');
+          
+          if(!hit || currentTooltip === hit.name){
+            if(tip) tip.style.display='none';
+            currentTooltip = null;
+            return;
+          }
+          
+          if(hit&&tip){
+            currentTooltip = hit.name;
+            const sign=hit.chg>=0?'+':'';
+            const invVal = hit.holdVal || 0;
+            tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
+              +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
+              +'<span style="color:var(--tx3)">💰 ₹'+invVal.toLocaleString('en-IN',{maximumFractionDigits:0})+'</span><br>'
+              +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
+              +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.ticker+' '+(s.chg1d>=0?'+':'')+s.chg1d.toFixed(1)+'%').join('  ')+'</span>';
+            tip.style.display='block';
+            tip.style.left=Math.min(touch.clientX+10,window.innerWidth-170)+'px';
+            tip.style.top=Math.max(touch.clientY-70,8)+'px';
+          }
+        }, 0);
       }
     }
   }, { passive: true });
