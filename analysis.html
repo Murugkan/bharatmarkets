@@ -92,21 +92,6 @@
     </style>
 </head>
 <body>
-  <!-- DEBUG PANEL -->
-  <div id="debug-panel" style="position:fixed;bottom:0;right:0;width:300px;max-height:250px;background:#0d1222;border:1px solid #1e3350;border-radius:8px;overflow:hidden;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none;flex-direction:column">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #1e3350;background:#060c18;cursor:grab">
-      <div style="font-size:11px;font-weight:700;color:#00f2ff">🔧 DEBUG</div>
-      <div style="display:flex;gap:6px">
-        <button onclick="document.getElementById('debug-logs').innerHTML=''" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;padding:0 4px">Clear</button>
-        <button onclick="document.getElementById('debug-panel').style.display='none'" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;padding:0 4px">✕</button>
-      </div>
-    </div>
-    <div id="debug-logs" style="flex:1;overflow-y:auto;padding:8px;font-size:9px;font-family:monospace;color:var(--tx3)"></div>
-  </div>
-  
-  <!-- DEBUG TOGGLE BUTTON -->
-  <button id="debug-toggle" onclick="document.getElementById('debug-panel').style.display=document.getElementById('debug-panel').style.display==='none'?'flex':'none'" style="position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:#00f2ff;border:none;color:#060c18;font-weight:700;cursor:pointer;font-size:16px;z-index:9999;box-shadow:0 2px 8px rgba(0,242,255,0.3)">🔧</button>
-
 <div class="container">
     
     <div class="header">
@@ -183,23 +168,6 @@ window.addEventListener('load', async () => {
   }
 });
 
-function logConsole(msg) {
-  const logDiv = document.getElementById('debug-logs');
-  if (!logDiv) return;
-  
-  const time = new Date().toLocaleTimeString();
-  const line = document.createElement('div');
-  line.textContent = `[${time}] ${msg}`;
-  line.style.marginBottom = '2px';
-  line.style.wordBreak = 'break-word';
-  line.style.lineHeight = '1.3';
-  
-  logDiv.appendChild(line);
-  logDiv.scrollTop = logDiv.scrollHeight;
-  
-  console.log(msg);
-}
-
 
 // ✅ Canvas Chart State (REQUIRED for chart functions)
 const S = {
@@ -214,6 +182,7 @@ const S = {
   financialSource: { accounting: 'consolidated', frequency: 'annual' }  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
 };
 let chartCache = {};
+let candlestickBars = [];  // ✅ Track bar positions for click detection
 
 
 // Helpers
@@ -239,7 +208,7 @@ const get = (obj, ...keys) => {
 // ✅ Update financial data source (consolidated/standalone, annual/quarterly)
 function updateFinancialSource(value, type) {
   S.financialSource[type] = value;
-  logConsole(`📊 Financial source changed: ${S.financialSource.accounting} + ${S.financialSource.frequency}`);
+  console.log(`📊 Financial source changed: ${S.financialSource.accounting} + ${S.financialSource.frequency}`);
   
   // Recalculate KPI overlays with new source
   if(currentStock) {
@@ -250,32 +219,32 @@ function updateFinancialSource(value, type) {
 }
 
 async function loadPortfolioData(forceClear = false) {
-  logConsole(`📥 Loading portfolio data...`);
+  console.log(`📥 Loading portfolio data...`);
   
   try {
     const response = await fetch('../uploads/market_data.json');
     if (!response.ok) throw new Error(`Failed: ${response.status}`);
     const allData = await response.json();
-    logConsole(`✅ Loaded ${Object.keys(allData).length} stocks from market_data.json`);
+    console.log(`✅ Loaded ${Object.keys(allData).length} stocks from market_data.json`);
     
     // Set portfolio holdings at CORRECT location: company_details.qty
     if (allData.GRSE) {
       allData.GRSE.company_details = allData.GRSE.company_details || {};
       allData.GRSE.company_details.qty = 50;
       allData.GRSE.company_details.avg_cost = 2400;
-      logConsole(`✅ GRSE: qty=50, avg_cost=₹2400`);
+      console.log(`✅ GRSE: qty=50, avg_cost=₹2400`);
     }
     if (allData.ABCAPITAL) {
       allData.ABCAPITAL.company_details = allData.ABCAPITAL.company_details || {};
       allData.ABCAPITAL.company_details.qty = 100;
       allData.ABCAPITAL.company_details.avg_cost = 350;
-      logConsole(`✅ ABCAPITAL: qty=100, avg_cost=₹350`);
+      console.log(`✅ ABCAPITAL: qty=100, avg_cost=₹350`);
     }
     
     // Open IndexedDB
     let db;
     if (forceClear) {
-      logConsole(`🔄 Clearing old database...`);
+      console.log(`🔄 Clearing old database...`);
       const deleteReq = indexedDB.deleteDatabase(DB);
       await new Promise((resolve) => {
         deleteReq.onsuccess = resolve;
@@ -291,7 +260,7 @@ async function loadPortfolioData(forceClear = false) {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: 'ticker' });
-          logConsole(`✅ Created IndexedDB store`);
+          console.log(`✅ Created IndexedDB store`);
         }
       };
     });
@@ -305,7 +274,7 @@ async function loadPortfolioData(forceClear = false) {
         clearReq.onsuccess = resolve;
         clearReq.onerror = resolve;
       });
-      logConsole(`✅ Cleared old stocks`);
+      console.log(`✅ Cleared old stocks`);
     }
     
     let saved = 0;
@@ -325,7 +294,7 @@ async function loadPortfolioData(forceClear = false) {
           const qty = stock.company_details.qty || 0;
           if (qty > 0) {
             portfolio++;
-            logConsole(`  ✅ ${ticker}: qty=${qty}`);
+            console.log(`  ✅ ${ticker}: qty=${qty}`);
           }
           resolve();
         };
@@ -335,12 +304,12 @@ async function loadPortfolioData(forceClear = false) {
     
     db.close();
     
-    logConsole(`✅ Saved ${saved} stocks to IndexedDB raalanportfolio`);
-    logConsole(`✅ Portfolio holdings: ${portfolio}`);
-    logConsole(`✅ Refresh page to see Movers tab data`);
+    console.log(`✅ Saved ${saved} stocks to IndexedDB raalanportfolio`);
+    console.log(`✅ Portfolio holdings: ${portfolio}`);
+    console.log(`✅ Refresh page to see Movers tab data`);
     
   } catch (e) {
-    logConsole(`❌ Error: ${e.message}`);
+    console.log(`❌ Error: ${e.message}`);
   }
 }
 
@@ -3095,7 +3064,7 @@ function aggregateCandles(daily, interval){
   // history_5y_1wk = already weekly, history_5y_1mo = already monthly
   // Just return as-is, don't try to re-aggregate
   if(interval === 'W' || interval === 'M') {
-    logConsole(`📊 Interval ${interval}: ${daily.length} candles (already aggregated)`);
+    console.log(`📊 Interval ${interval}: ${daily.length} candles (already aggregated)`);
     return daily;
   }
   
@@ -3297,7 +3266,7 @@ function getQuarterlyData(s){
     console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
   
-  logConsole(`📊 getQuarterlyData extracted ${quarterly.length} data points`);
+  console.log(`📊 getQuarterlyData extracted ${quarterly.length} data points`);
   
   // Fallback to simple quarterly array if exists
   return s.quarterly || [];
@@ -3414,7 +3383,8 @@ function drawCandlestick(s){
     ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
 
-  // Candles
+  // Candles - ✅ Track bar positions for click detection
+  candlestickBars = [];
   
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
@@ -3427,6 +3397,21 @@ function drawCandlestick(s){
     const originalBodyH = bodyH;
     bodyH = bodyH * barHeightZoom;  // Make bars MUCH taller
     bodyTop = bodyCenter - bodyH/2;  // Recenter the body
+    
+    // ✅ Track bar for click detection
+    candlestickBars.push({
+      date: c.d,
+      open: c.o,
+      high: c.h,
+      low: c.l,
+      close: c.c,
+      volume: c.v,
+      bull: bull,
+      x: cx - bw/2,
+      y: bodyTop,
+      w: bw,
+      h: bodyH
+    });
     
     // Wick
     ctx.strokeStyle=bull?'rgba(0,255,136,.95)':'rgba(255,68,102,.95)';  // ✅ Much brighter wicks
@@ -3880,6 +3865,54 @@ function drawVolume(s){
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
   ctx.stroke();
+  
+  // ✅ Click handler to show bar details (toggle)
+  cv.onclick=(e)=>{
+    if(!candlestickBars.length) return;
+    
+    const br=cv.getBoundingClientRect();
+    const scX=W2/br.width, scY=H2/br.height;
+    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
+    
+    // Find clicked bar
+    const bar=candlestickBars.find(b=>mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h);
+    
+    // Create or get tooltip
+    let tip=document.getElementById('chart-tooltip');
+    if(!tip){
+      tip=document.createElement('div');
+      tip.id='chart-tooltip';
+      tip.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:1px solid #00d4ff;border-radius:8px;padding:10px;font-family:monospace;font-size:11px;color:#00ff88;z-index:9999;display:none;max-width:200px';
+      document.body.appendChild(tip);
+    }
+    
+    if(!bar || window.candleTooltipBar === bar.date){
+      // Toggle off if same bar clicked
+      tip.style.display='none';
+      window.candleTooltipBar=null;
+      return;
+    }
+    
+    // Show bar details
+    window.candleTooltipBar=bar.date;
+    const o=bar.open.toFixed(2), h=bar.high.toFixed(2), l=bar.low.toFixed(2), c=bar.close.toFixed(2);
+    const chg=((c-o)/o*100).toFixed(2);
+    const chgColor=chg>=0?'#00ff88':'#ff4466';
+    
+    tip.innerHTML=`<div style="color:#00d4ff"><b>${bar.date}</b></div>
+      <div style="margin-top:6px;color:var(--tx2)">
+        <div>O: ₹<span style="color:#fff">${o}</span></div>
+        <div>H: ₹<span style="color:#fff">${h}</span></div>
+        <div>L: ₹<span style="color:#fff">${l}</span></div>
+        <div>C: ₹<span style="color:#fff">${c}</span></div>
+      </div>
+      <div style="margin-top:6px;color:${chgColor}"><b>${chg>=0?'+':''}${chg}%</b></div>
+      <div style="margin-top:4px;color:var(--tx3);font-size:9px">Vol: ${(bar.volume/1e5).toFixed(1)}L</div>`;
+    
+    tip.style.display='block';
+    tip.style.left=Math.min(e.clientX+10,window.innerWidth-220)+'px';
+    tip.style.top=Math.max(e.clientY-100,8)+'px';
+  };
 }
 
 // ── Quarterly CFO bar panel ───────────────────────────
@@ -3958,17 +3991,17 @@ function canvasSetChartInterval(iv) {
           recalculateIndicators._lastKey = null;
           aggregateCandles._cache = null;
           
-          logConsole(`✅ Loaded ${historyType}: ${converted.length} candles`);
+          console.log(`✅ Loaded ${historyType}: ${converted.length} candles`);
           scheduleChartRedraw();
           return;
         } else {
-          logConsole(`❌ No valid candles in ${historyType}`);
+          console.log(`❌ No valid candles in ${historyType}`);
         }
       } catch(e) {
-        logConsole(`❌ Error loading ${historyType}: ${e.message}`);
+        console.log(`❌ Error loading ${historyType}: ${e.message}`);
       }
     } else {
-      logConsole(`❌ ${historyType} data not found`);
+      console.log(`❌ ${historyType} data not found`);
     }
   }
   
@@ -4325,20 +4358,20 @@ async function loadAndRenderMovers(){
       
       req.onsuccess = () => {
         const stocks = req.result || [];
-        logConsole(`✅ Loaded ${stocks.length} stocks from IndexedDB`);
+        console.log(`✅ Loaded ${stocks.length} stocks from IndexedDB`);
         
         // Log first 5 stocks to see their structure
         if(stocks.length > 0) {
-          logConsole(`📋 Sample stocks (first 5):`);
+          console.log(`📋 Sample stocks (first 5):`);
           stocks.slice(0, 5).forEach(s => {
-            logConsole(`  ├─ ${s.ticker}: qty=${s.company_details?.qty || 'undefined'}, price=${s.price?.current_price || 'N/A'}`);
+            console.log(`  ├─ ${s.ticker}: qty=${s.company_details?.qty || 'undefined'}, price=${s.price?.current_price || 'N/A'}`);
           });
         }
         
         resolve(stocks);
       };
       req.onerror = () => {
-        logConsole(`❌ Error reading from IndexedDB: ${req.error}`);
+        console.log(`❌ Error reading from IndexedDB: ${req.error}`);
         reject(new Error('Cannot read stocks'));
       };
     });
@@ -4352,17 +4385,17 @@ async function loadAndRenderMovers(){
       return qty > 0;
     });
     
-    logConsole(`📊 Portfolio holdings: ${portfolio.length} from ${allStocks.length} total stocks`);
+    console.log(`📊 Portfolio holdings: ${portfolio.length} from ${allStocks.length} total stocks`);
     
     if(portfolio.length > 0) {
       portfolio.slice(0, 5).forEach(s => {
-        logConsole(`  ├─ ${s.ticker}: qty=${s.company_details?.qty}, avg_cost=${s.company_details?.avg_cost || 'N/A'}`);
+        console.log(`  ├─ ${s.ticker}: qty=${s.company_details?.qty}, avg_cost=${s.company_details?.avg_cost || 'N/A'}`);
       });
-      if(portfolio.length > 5) logConsole(`  └─ ... and ${portfolio.length - 5} more`);
+      if(portfolio.length > 5) console.log(`  └─ ... and ${portfolio.length - 5} more`);
     }
     
     if(!portfolio || !portfolio.length){
-      logConsole(`❌ NO PORTFOLIO HOLDINGS - Movers tab empty`);
+      console.log(`❌ NO PORTFOLIO HOLDINGS - Movers tab empty`);
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
         <div style="font-size:14px;margin-bottom:12px">📊 No holdings in portfolio</div>
         <div style="font-size:11px;line-height:1.6">Add stocks with qty > 0 to see portfolio movers</div>
@@ -4377,7 +4410,7 @@ async function loadAndRenderMovers(){
       const avgCost = s.company_details?.avg_cost || resolveField(s, 'avg_cost') || 0;
       const changePct = resolveField(s, 'changePct') || 0;
       
-      logConsole(`  💼 ${s.ticker}: qty=${qty}, ltp=₹${ltp}, avgCost=₹${avgCost}, change=${changePct}%`);
+      console.log(`  💼 ${s.ticker}: qty=${qty}, ltp=₹${ltp}, avgCost=₹${avgCost}, change=${changePct}%`);
       
       return {
         ...s,
@@ -4399,7 +4432,7 @@ async function loadAndRenderMovers(){
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
-    logConsole(`📊 Portfolio Totals: Value=₹${totalVal.toFixed(0)}, Cost=₹${totalCost.toFixed(0)}, Gain=₹${totalGain.toFixed(0)}, Gain%=${gainPct.toFixed(2)}%`);
+    console.log(`📊 Portfolio Totals: Value=₹${totalVal.toFixed(0)}, Cost=₹${totalCost.toFixed(0)}, Gain=₹${totalGain.toFixed(0)}, Gain%=${gainPct.toFixed(2)}%`);
     
     // Find gainers and losers by daily change %
     const withChange = enrichedPortfolio.filter(s => s.changePct !== undefined && !isNaN(s.changePct));
@@ -4743,61 +4776,6 @@ function drawPortfolioHeatmap(portfolio){
   };
 }
 
-
-// ════════════════════════════════════════════════════════
-// DEBUG PANEL - Capture console logs
-// ════════════════════════════════════════════════════════
-
-const debugPanel = document.getElementById('debug-logs');
-let debugCount = 0;
-
-function addDebugLog(type, args) {
-  if (!debugPanel) return;
-  const time = new Date().toLocaleTimeString('en-IN', {hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'});
-  const msg = Array.from(args).map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-  const color = type === 'error' ? '#ff6b85' : type === 'warn' ? '#ffa500' : '#00f2ff';
-  
-  const line = document.createElement('div');
-  line.style.color = color;
-  line.style.marginBottom = '4px';
-  line.style.whiteSpace = 'pre-wrap';
-  line.style.wordBreak = 'break-word';
-  line.innerHTML = `<span style="color:#666">[${time}]</span> ${msg}`;
-  
-  debugPanel.appendChild(line);
-  debugPanel.scrollTop = debugPanel.scrollHeight;
-  
-  debugCount++;
-  if (debugCount > 100) {
-    debugPanel.removeChild(debugPanel.firstChild);
-  }
-}
-
-// Override console methods
-const origLog = console.log;
-const origError = console.error;
-const origWarn = console.warn;
-
-console.log = function(...args) {
-  addDebugLog('log', args);
-  origLog.apply(console, args);
-};
-
-console.error = function(...args) {
-  addDebugLog('error', args);
-  origError.apply(console, args);
-};
-
-console.warn = function(...args) {
-  addDebugLog('warn', args);
-  origWarn.apply(console, args);
-};
-
-// Show debug panel on errors
-window.addEventListener('error', (e) => {
-  console.error('UNCAUGHT ERROR:', e.message);
-  document.getElementById('debug-panel').style.display = 'flex';
-});
 
 </script>
 
