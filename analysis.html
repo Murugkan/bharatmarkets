@@ -2991,8 +2991,7 @@ function aggregateCandles(daily, interval){
   // history_5y_1wk = already weekly, history_5y_1mo = already monthly
   // Just return as-is, don't try to re-aggregate
   if(interval === 'W' || interval === 'M') {
-    logConsole(`📊 Interval ${interval}: ${daily.length} candles (already aggregated)`);
-    return daily;
+    return daily;  // ✅ No logging spam
   }
   
   // This code below is legacy and shouldn't be reached
@@ -3093,7 +3092,40 @@ function attachChartResizeObserver(s){
   _chartResizeObs.observe(wrap);
 }
 
+// ✅ Cache sliced candles to prevent redundant calculations
+const slicedCandlesCache = {
+  data: null,
+  lastParams: null,
+  
+  key(s, w, range, interval, pan, zoom) {
+    return `${s.ticker || 'unknown'}_${w}_${range}_${interval}_${Math.floor(pan)}_${zoom.toFixed(2)}`;
+  },
+  
+  isValid(s, w, range, interval, pan, zoom) {
+    const newKey = this.key(s, w, range, interval, pan, zoom);
+    return this.lastParams === newKey;
+  },
+  
+  set(s, w, range, interval, pan, zoom, data) {
+    this.data = data;
+    this.lastParams = this.key(s, w, range, interval, pan, zoom);
+  },
+  
+  get(s, w, range, interval, pan, zoom) {
+    if (this.isValid(s, w, range, interval, pan, zoom)) {
+      return this.data;
+    }
+    return null;
+  }
+};
+
 function getSlicedCandles(s, canvasWidth){
+  // ✅ Check cache first
+  const cached = slicedCandlesCache.get(s, canvasWidth, S.chartRange, S.chartInterval, S.chartPan, S.chartZoom);
+  if (cached !== null) {
+    return cached;
+  }
+  
   const daily = s.candles || [];
   if(!daily.length) return daily;
   
@@ -3110,17 +3142,15 @@ function getSlicedCandles(s, canvasWidth){
     filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
   }
   
-  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
-  
   // Aggregate if needed (for weekly/monthly intervals)
   const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
   if(!allAgg.length) return [];
   
   // Now apply viewport slicing for pan/zoom
+  let result = allAgg;
   if(canvasWidth && canvasWidth > 0){
     const PAD_L = 6, PAD_R = 52;
     const chartW = canvasWidth - PAD_L - PAD_R;
-    const IDEAL_BAR_W = 7;
     const MIN_BAR_W  = 4 * S.chartZoom;
     const maxFit = Math.min(500, Math.floor(chartW / MIN_BAR_W));
     
@@ -3131,10 +3161,15 @@ function getSlicedCandles(s, canvasWidth){
       const backNorm = Math.min(1, backPan / 400);
       const backOffset = Math.floor(backNorm * maxBackOffset);
       const startIdx = Math.max(0, maxBackOffset - backOffset);
-      return allAgg.slice(startIdx, startIdx + maxFit);
+      result = allAgg.slice(startIdx, startIdx + maxFit);
+    } else {
+      result = allAgg.slice(-500);
     }
   }
-  return allAgg.slice(-500);
+  
+  // ✅ Cache the result
+  slicedCandlesCache.set(s, canvasWidth, S.chartRange, S.chartInterval, S.chartPan, S.chartZoom, result);
+  return result;
 }
 
 // Extract quarterly data with all KPI metrics
