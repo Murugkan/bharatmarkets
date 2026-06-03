@@ -3000,51 +3000,69 @@ function aggregateCandles(daily, interval){
   return daily;
 }
 
+// ✅ OPTIMIZED: Chart redraw with single RAF and proper debouncing
+let chartRedrawPending = false;
+
 function scheduleTACharts(s){
-  // ✅ Debounce: skip rapid redraws to prevent freezing with overlays
-  if(scheduleTACharts._pending) return;
-  scheduleTACharts._pending = true;
+  if(!s) return;
   
-  console.log('🎨 Redrawing chart... pan=' + S.chartPan.toFixed(0));
+  // Debounce rapid calls
+  if(chartRedrawPending) return;
+  chartRedrawPending = true;
   
+  // Single RAF - no double frame delay
   requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      try {
-        // Recalculate indicators if needed
-        recalculateIndicators(s);
-        drawCandlestick(s);
-        if(S.maVis.vol) drawVolume(s);
-        updateChartStats(s);
-      } finally {
-        scheduleTACharts._pending = false;
-      }
-    });
+    try {
+      ensureIndicators(s);  // Calculate indicators once, cache them
+      drawCandlestick(s);
+      if(S.maVis.vol) drawVolume(s);
+      updateChartStats(s);
+    } finally {
+      chartRedrawPending = false;
+    }
   });
 }
 
-// Recalculate technical indicators for current candles
-function recalculateIndicators(s){
+// ✅ OPTIMIZED: Indicator cache - prevents recalculation on every pan
+const indicatorCache = {
+  data: {},
+  lastCandles: null,
+  lastInterval: null,
+  
+  isValid(candles, interval) {
+    return this.lastCandles === candles && this.lastInterval === interval;
+  },
+  
+  set(candles, interval, indicators) {
+    this.data = indicators;
+    this.lastCandles = candles;
+    this.lastInterval = interval;
+  }
+};
+
+function ensureIndicators(s){
   if(!s || !s.candles || s.candles.length === 0) return;
   
-  // Create cache key based on interval + candle count + last candle close
-  const cacheKey = `${S.chartInterval}_${s.candles.length}_${s.candles[s.candles.length-1]?.c || 0}`;
+  // Check cache validity - skip if already calculated for this data
+  if(indicatorCache.isValid(s.candles, S.chartInterval)) {
+    return;
+  }
   
-  // Skip if we've already calculated for this exact data set
-  if(recalculateIndicators._lastKey === cacheKey) return;
-  recalculateIndicators._lastKey = cacheKey;
-  
-  console.log(`📊 Recalculating indicators for ${S.chartInterval} (${s.candles.length} candles)`);
+  console.log(`📊 Calculating indicators for ${S.chartInterval} (${s.candles.length} candles)`);
   
   try {
-    // Calculate SMAs (not EMAs - simpler moving averages)
-    s.sma20 = calculateSMA(s.candles, 20);
-    s.sma50 = calculateSMA(s.candles, 50);
-    s.ema200 = calculateEMA(s.candles, 200);
+    const indicators = {
+      sma20: calculateSMA(s.candles, 20),
+      sma50: calculateSMA(s.candles, 50),
+      ema200: calculateEMA(s.candles, 200)
+    };
+    
+    // Cache the results
+    indicatorCache.set(s.candles, S.chartInterval, indicators);
+    s._indicators = indicators;
   } catch(e) {
-    console.warn('⚠️ Error recalculating indicators:', e.message);
-    s.sma20 = [];
-    s.sma50 = [];
-    s.ema200 = [];
+    console.warn('⚠️ Error calculating indicators:', e.message);
+    s._indicators = { sma20: [], sma50: [], ema200: [] };
   }
 }
 
@@ -3885,68 +3903,66 @@ async function canvasLoadAndDrawChart(sym) {
 }
 
 // ════════════════════════════════════════════════
-// PAN & ZOOM - Simpler Implementation
+// ✅ OPTIMIZED: PAN & ZOOM with better throttling
 // ════════════════════════════════════════════════
 
 let chartInteraction = {
   isPanning: false,
   startX: 0,
-  startPan: 0
+  startPan: 0,
+  lastRedrawTime: 0,
+  THROTTLE_MS: 80  // ✅ Increased to 80ms = ~12 FPS (smooth without freezing)
 };
 
 function setupChartInteraction() {
   // Prevent duplicate setup
   if (setupChartInteraction._initialized) return;
   
-  console.log('⚙️ Setting up chart interaction...');
+  console.log('⚙️ Setting up optimized chart interaction...');
   
   const canvas = document.getElementById('cv-candle');
   if (!canvas) {
-    // Canvas not rendered yet - will retry when Canvas tab opens
     return;
   }
   
   setupChartInteraction._initialized = true;
   console.log('✓ Canvas found, attaching event listeners');
   
-  // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
-  let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 50;  // ~20fps for smooth panning - optimal for mobile performance
   
-  // Debounced redraw: only redraw if throttle duration has passed (prevents excessive redraws)
-  const throttledRedraw = (stock) => {
+  // ✅ OPTIMIZED throttle function - prevents excessive redraws during pan
+  const shouldRedraw = () => {
     const now = performance.now();
-    if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
-      scheduleTACharts(stock);
-      lastRedrawTime = now;
+    if (now - chartInteraction.lastRedrawTime >= chartInteraction.THROTTLE_MS) {
+      chartInteraction.lastRedrawTime = now;
+      return true;
     }
+    return false;
   };
   
-  // Mouse/Touch Pan on canvas - with passive event listeners for better scroll performance
+  // Mouse panning with optimized throttle
   canvas.addEventListener('mousedown', (e) => {
-    console.log('🖱️ Pan START');
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
-  }, { passive: false, capture: false });
+  }, { passive: false });
   
   document.addEventListener('mousemove', (e) => {
     if (!chartInteraction.isPanning || !currentStock) return;
     
     const delta = e.clientX - chartInteraction.startX;
-    let newPan = chartInteraction.startPan + delta;
-    newPan = Math.max(-400, Math.min(400, newPan));
+    const newPan = Math.max(-400, Math.min(400, chartInteraction.startPan + delta));
     
     if (S.chartPan !== newPan) {
       S.chartPan = newPan;
-      throttledRedraw(currentStock);
+      if (shouldRedraw()) {
+        scheduleTACharts(currentStock);
+      }
     }
-  }, { passive: true, capture: false });
+  }, { passive: true });
   
-  document.addEventListener('mouseup', () => { 
-    console.log('🖱️ Pan END');
-    chartInteraction.isPanning = false; 
+  document.addEventListener('mouseup', () => {
+    chartInteraction.isPanning = false;
   }, { passive: true });
   
   // Touch handlers with pinch support
@@ -3978,7 +3994,6 @@ function setupChartInteraction() {
       // Determine pinch direction: which is dominant?
       const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
       
-      
       if (touchState.lastDistance > 0) {
         const ratio = distance / touchState.lastDistance;
         const delta = ratio - 1.0;
@@ -3988,29 +4003,28 @@ function setupChartInteraction() {
           
           if (isVerticalPinch) {
             // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
-            const oldYZoom = S.yAxisZoom || 1.0;
             S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
           } else {
-            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
-            const oldZoom = S.chartZoom;
+            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM
             S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
           }
           
-          if (currentStock) {
-            throttledRedraw(currentStock);
+          if (currentStock && shouldRedraw()) {
+            scheduleTACharts(currentStock);
           }
         }
       }
       touchState.lastDistance = distance;
       e.preventDefault();
     } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN
+      // SINGLE TOUCH PAN with optimized throttle
       if (chartInteraction.isPanning && currentStock) {
         const delta = e.touches[0].clientX - chartInteraction.startX;
-        let newPan = chartInteraction.startPan + delta;
-        newPan = Math.max(-400, Math.min(400, newPan));
+        const newPan = Math.max(-400, Math.min(400, chartInteraction.startPan + delta));
         S.chartPan = newPan;
-        throttledRedraw(currentStock);
+        if (shouldRedraw()) {
+          scheduleTACharts(currentStock);
+        }
       }
     }
   };
