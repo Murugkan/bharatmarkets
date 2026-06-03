@@ -3404,6 +3404,24 @@ CRITICAL RULES:
                         const record = stock;
                         record.ticker = ticker;
                         
+                        // ✅ Fix: price is under valuation.price in market_data.json
+                        if (stock.valuation && stock.valuation.price) {
+                            record.price = {
+                                ...stock.valuation.price,
+                                history_6mo_1d: stock.valuation.price.history_6mo_1d || [],
+                                history_5y_1wk: stock.valuation.price.history_5y_1wk || [],
+                                history_5y_1mo: stock.valuation.price.history_5y_1mo || []
+                            };
+                        } else if (stock.price) {
+                            // Fallback: if already at top level
+                            record.price = {
+                                ...stock.price,
+                                history_6mo_1d: stock.price.history_6mo_1d || [],
+                                history_5y_1wk: stock.price.history_5y_1wk || [],
+                                history_5y_1mo: stock.price.history_5y_1mo || []
+                            };
+                        }
+                        
                         if (!record.source) record.source = 'market_data_pipeline';
                         if (!record.userDataUpdatedAt) {
                             record.userDataUpdatedAt = new Date().toISOString();
