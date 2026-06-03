@@ -3008,17 +3008,15 @@ function scheduleTACharts(s){
   console.log('🎨 Redrawing chart... pan=' + S.chartPan.toFixed(0));
   
   requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      try {
-        // Recalculate indicators if needed
-        recalculateIndicators(s);
-        drawCandlestick(s);
-        if(S.maVis.vol) drawVolume(s);
-        updateChartStats(s);
-      } finally {
-        scheduleTACharts._pending = false;
-      }
-    });
+    try {
+      // Recalculate indicators if needed
+      recalculateIndicators(s);
+      drawCandlestick(s);
+      if(S.maVis.vol) drawVolume(s);
+      updateChartStats(s);
+    } finally {
+      scheduleTACharts._pending = false;
+    }
   });
 }
 
@@ -3915,7 +3913,7 @@ function setupChartInteraction() {
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
   let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 50;  // ~20fps for smooth panning - optimal for mobile performance
+  const REDRAW_THROTTLE_MS = 33;  // ~30fps for smooth panning
   
   // Debounced redraw: only redraw if throttle duration has passed (prevents excessive redraws)
   const throttledRedraw = (stock) => {
