@@ -4817,36 +4817,59 @@ function drawPortfolioHeatmap(portfolio){
   });
 
   // Tap tooltip - persistent until next click
+  // iPhone optimized: use touch events, don't block gestures
   let currentTooltip = null;
-  cv.onclick=(e)=>{
-    const br=cv.getBoundingClientRect();
-    const scX=W/br.width, scY=H/br.height;
-    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
-    const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
-    const tip=document.getElementById('hm-tooltip');
-    
-    // If clicking on empty space or same tooltip, hide it
-    if(!hit || currentTooltip === hit.name){
-      if(tip) tip.style.display='none';
-      currentTooltip = null;
-      return;
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+  
+  cv.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) { // Single finger only
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = Date.now();
     }
-    
-    // Show tooltip for clicked sector
-    if(hit&&tip){
-      currentTooltip = hit.name;
-      const sign=hit.chg>=0?'+':'';
-      const invVal = hit.holdVal || 0;
-      tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
-        +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
-        +'<span style="color:var(--tx3)">💰 ₹'+invVal.toLocaleString('en-IN',{maximumFractionDigits:0})+'</span><br>'
-        +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
-        +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.ticker+' '+(s.chg1d>=0?'+':'')+s.chg1d.toFixed(1)+'%').join('  ')+'</span>';
-      tip.style.display='block';
-      tip.style.left=Math.min(e.clientX+10,window.innerWidth-170)+'px';
-      tip.style.top=Math.max(e.clientY-70,8)+'px';
+  }, { passive: true });
+  
+  cv.addEventListener('touchend', (e) => {
+    if (e.changedTouches.length === 1) {
+      const touch = e.changedTouches[0];
+      const moveX = Math.abs(touch.clientX - touchStartX);
+      const moveY = Math.abs(touch.clientY - touchStartY);
+      const elapsed = Date.now() - touchStartTime;
+      
+      // Only treat as tap: <8px movement, <300ms duration, single finger
+      if (moveX < 8 && moveY < 8 && elapsed < 300) {
+        const br=cv.getBoundingClientRect();
+        const scX=W/br.width, scY=H/br.height;
+        const mx=(touch.clientX-br.left)*scX, my=(touch.clientY-br.top)*scY;
+        const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
+        const tip=document.getElementById('hm-tooltip');
+        
+        // If tapping on empty space or same tooltip, hide it
+        if(!hit || currentTooltip === hit.name){
+          if(tip) tip.style.display='none';
+          currentTooltip = null;
+          return;
+        }
+        
+        // Show tooltip for tapped sector
+        if(hit&&tip){
+          currentTooltip = hit.name;
+          const sign=hit.chg>=0?'+':'';
+          const invVal = hit.holdVal || 0;
+          tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
+            +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
+            +'<span style="color:var(--tx3)">💰 ₹'+invVal.toLocaleString('en-IN',{maximumFractionDigits:0})+'</span><br>'
+            +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
+            +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.ticker+' '+(s.chg1d>=0?'+':'')+s.chg1d.toFixed(1)+'%').join('  ')+'</span>';
+          tip.style.display='block';
+          tip.style.left=Math.min(touch.clientX+10,window.innerWidth-170)+'px';
+          tip.style.top=Math.max(touch.clientY-70,8)+'px';
+        }
+      }
     }
-  };
+  }, { passive: true });
 }
 
 
