@@ -335,12 +335,12 @@ async function loadPortfolioData(forceClear = false) {
 // 🎯 INDEXEDDB FIELD MAPPING RESOLVER
 // Maps analysis.html field paths to IndexedDB stock object structure
 const fieldMapping = {
-    // Price & Performance (from valuation.price OR price object)
-    'ltp': ['valuation.price.current_price', 'valuation.price.ltp', 'price.current_price', 'price.regular_market_price', 'ltp'],
-    'price': ['valuation.price.current_price', 'valuation.price.ltp', 'price.current_price', 'price.regular_market_price', 'ltp'],
-    'changePct': ['valuation.price.change_pct', 'price.regular_market_change_pct', 'chg_pct'],
-    'change': ['valuation.price.change', 'price.regular_market_change', 'chg'],
-    'chg1d': ['valuation.price.change', 'price.regular_market_change', 'chg'],
+    // Price & Performance (from price object - extracted from valuation.price by data.html)
+    'ltp': ['price.current_price', 'price.ltp'],
+    'price': ['price.current_price', 'price.ltp'],
+    'changePct': ['price.change_pct'],
+    'change': ['price.change'],
+    'chg1d': ['price.change'],
     
     // Valuation (from valuation.pe and valuation.eps)
     'trailing_pe': ['valuation.pe.trailing_pe', 'pe.trailing_pe'],
@@ -412,13 +412,13 @@ const fieldMapping = {
     'negative': ['derived_metrics.calculated_metrics.negative'],
     'signal': ['derived_metrics.ai_insights_guidance.signal'],
     
-    // Data Arrays - Price history now stored at top level by data.html
+    // Data Arrays - Price history extracted to top level by data.html
     'quarterly': ['financials.Sales.consolidated.quarterly', 'financials.Revenue.consolidated.quarterly'],
     'quarterly_full': ['financials', 'quarterly'],
     'price_history': ['price_history'],
-    'history_6mo_1d': ['price.history_6mo_1d', 'valuation.price.history_6mo_1d'],
-    'history_5y_1wk': ['price.history_5y_1wk', 'valuation.price.history_5y_1wk'],
-    'history_5y_1mo': ['price.history_5y_1mo', 'valuation.price.history_5y_1mo']
+    'history_6mo_1d': ['price.history_6mo_1d'],
+    'history_5y_1wk': ['price.history_5y_1wk'],
+    'history_5y_1mo': ['price.history_5y_1mo']
 };
 
 // 🎯 RESOLVE FIELD FROM INDEXEDDB STOCK OBJECT
@@ -541,6 +541,11 @@ async function loadStock() {
             console.error('Stock not found:', ticker);
             document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
             return;
+        }
+        
+        // ✅ Extract price from valuation.price
+        if (currentStock.valuation && currentStock.valuation.price) {
+            currentStock.price = currentStock.valuation.price;
         }
         
         // 🔍 DEBUG: Log the actual stock object structure
