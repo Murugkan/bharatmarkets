@@ -171,7 +171,7 @@ const S = {
   chartRange: '1Y',
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
-  kpiVis: { pe: false, sales: false, rev: false, net: false, cfo: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
+  kpiVis: { pe: false, sales: false, rev: false, net: false, cfo: false, ncf: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
   chartPan: 0,
   panOffset: 0,
   chartZoom: 1,
@@ -182,6 +182,7 @@ const S = {
 let chartCache = {};
 let candlestickBars = [];  // ✅ Track bar positions for click detection
 let kpiPoints = [];  // ✅ Track KPI overlay points for tooltip clicks
+let maPoints = [];   // Track MA line points for click/tooltip
 
 
 // Helpers
@@ -978,7 +979,7 @@ function renderTab(tab) {
             ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'},{k:'debt',c:'#f87171',l:'Debt'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
-            ${[{k:'cfo',c:'#34d399',l:'CFO'},{k:'fcf',c:'#14b8a6',l:'FCF'},{k:'pe',c:'#f59e0b',l:'P/E'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            ${[{k:'cfo',c:'#34d399',l:'CFO'},{k:'fcf',c:'#14b8a6',l:'FCF'},{k:'ncf',c:'#2dd4bf',l:'NCF'},{k:'pe',c:'#f59e0b',l:'P/E'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
             <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -3109,6 +3110,7 @@ function getQuarterlyData(s){
     const epsData = getFinancialData('EPS_Rs');
     const cfoData = getFinancialData('CFO');
     const fcfData = getFinancialData('Free_Cash_Flow');
+    const ncfData = getFinancialData('Net_Cash_Flow');
     const assetsData = getFinancialData('Total_Assets');
     const borrowingsData = getFinancialData('Borrowings');  // ✅ Borrowings (plural)
     
@@ -3122,6 +3124,7 @@ function getQuarterlyData(s){
       ...Object.keys(epsData),
       ...Object.keys(cfoData),
       ...Object.keys(fcfData),
+      ...Object.keys(ncfData),
       ...Object.keys(assetsData),
       ...Object.keys(borrowingsData)
     ]);
@@ -3146,6 +3149,7 @@ function getQuarterlyData(s){
       // Cash Flow metrics
       if(cfoData[date]) q.cfo = parseFloat(cfoData[date]) || 0;
       if(fcfData[date]) q.fcf = parseFloat(fcfData[date]) || 0;
+      if(ncfData[date]) q.ncf = parseFloat(ncfData[date]) || 0;
       
       if(Object.keys(q).length > 1) quarterly.push(q);
     });
@@ -3167,6 +3171,7 @@ function drawCandlestick(s){
     
     // ✅ Clear KPI points before redrawing
     kpiPoints = [];
+    maPoints = [];
   
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
@@ -3376,22 +3381,14 @@ function drawCandlestick(s){
       vals.forEach((v,i)=>{
         if(v === null) return;
         const x = maX(i);
-        if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; } // off-screen
+        if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; }
         const y = toY(v);
         if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
+        // Sample hit points every ~10px
+        if(maPoints.length === 0 || x - maPoints[maPoints.length-1].x > 10)
+          maPoints.push({x, y, label, value: v, date: allC[i].d, col});
       });
       ctx.stroke(); ctx.setLineDash([]);
-      // Label at rightmost visible point
-      let lastV = null, lastX = 0;
-      vals.forEach((v,i)=>{
-        if(v===null) return;
-        const x = maX(i);
-        if(x >= PAD.l && x <= PAD.l+cW){ lastV=v; lastX=x; }
-      });
-      if(lastV !== null){
-        ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-        ctx.fillText(label+' '+Math.round(lastV).toLocaleString('en-IN'), W-2, toY(lastV)-3);
-      }
     }
     drawMAFull(sma20vals,  '#f59e0b', [],    'SMA20');
     drawMAFull(sma50vals,  '#3b82f6', [],    'SMA50');
@@ -3458,6 +3455,7 @@ function drawCandlestick(s){
     // Cash Flow
     {k:'cfo',  label:'CFO',  col:'#34d399'},
     {k:'fcf',  label:'FCF',  col:'#14b8a6'},
+    {k:'ncf',  label:'NCF',  col:'#2dd4bf'},
     // Valuation
     {k:'pe',   label:'P/E',  col:'#f59e0b'},
   ];
@@ -3540,6 +3538,8 @@ function drawCandlestick(s){
           curVal = resolveField(s, 'total_debt') || resolveField(s, 'debt');
         } else if(k === 'cfo') {
           curVal = resolveField(s, 'cfo') || resolveField(s, 'operating_cash_flow');
+        } else if(k === 'ncf') {
+          curVal = resolveField(s, 'net_cash_flow');
         } else if(k === 'fcf') {
           curVal = resolveField(s, 'fcf') || resolveField(s, 'free_cash_flow');
         }
@@ -3627,8 +3627,6 @@ function drawCandlestick(s){
       ctx.beginPath();
       ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2);
       ctx.fill();
-      
-      // ✅ Track KPI point for tooltip clicks
       kpiPoints.push({
         x: p.x,
         y: kpiY(p.v),
@@ -3637,20 +3635,8 @@ function drawCandlestick(s){
         date: p.d,
         key: k,
         col: col,
-        radius: 6  // Hit detection radius (2.5 + padding)
+        radius: 12
       });
-    });
-
-    // Value labels above each dot (skip if too crowded)
-    const labelEvery = pts.length > 6 ? 2 : 1;
-    pts.forEach((p,j)=>{
-      if(j % labelEvery !== 0 && j !== pts.length-1) return;
-      const dispV = k==='pe'  ? p.v.toFixed(0)+'x' :
-                    k==='opm' ? p.v.toFixed(1)+'%' :
-                    Math.abs(p.v)>=1000 ? (p.v/1000).toFixed(1)+'K' : p.v.toFixed(0);
-      ctx.fillStyle = col; ctx.globalAlpha = 0.85;
-      ctx.font = '6px JetBrains Mono,monospace'; ctx.textAlign = 'center';
-      ctx.fillText(dispV, p.x, kpiY(p.v) - 4);
     });
 
     // Label on right axis strip
@@ -3838,10 +3824,42 @@ function drawVolume(s){
     const br=cv.getBoundingClientRect();
     const scX=W2/br.width, scY=H2/br.height;
     let mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
-    
-    // ✅ Account for pan offset when checking click position
-    
-        // ✅ First, check if clicked on KPI overlay point
+
+    // Helper: show a tooltip div
+    function showTip(id, borderCol, html, ex, ey) {
+      let tip = document.getElementById(id);
+      if(!tip){ tip=document.createElement('div'); tip.id=id; document.body.appendChild(tip); }
+      tip.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:2px solid;border-radius:8px;padding:10px 14px;font-family:monospace;font-size:12px;z-index:9999;max-width:220px;min-width:150px';
+      tip.style.borderColor = borderCol;
+      tip.innerHTML = html;
+      let left = ex + 12, top = ey - 80;
+      if(left + 230 > window.innerWidth) left = Math.max(8, ex - 240);
+      if(top < 8) top = ey + 12;
+      if(top + 120 > window.innerHeight) top = Math.max(8, window.innerHeight - 130);
+      tip.style.left = left+'px'; tip.style.top = top+'px';
+      // Auto-hide after 3s
+      clearTimeout(tip._t);
+      tip._t = setTimeout(()=>{ tip.remove(); }, 3000);
+    }
+
+    // 1. Check MA lines
+    if(maPoints.length) {
+      const maHit = maPoints.reduce((best, p) => {
+        const d = Math.sqrt((mx-p.x)**2 + (my-p.y)**2);
+        return d < (best.d||999) ? {p, d} : best;
+      }, {}).p;
+      if(maHit && Math.sqrt((mx-maHit.x)**2+(my-maHit.y)**2) <= 14) {
+        showTip('ma-tooltip', maHit.col,
+          `<div style="color:${maHit.col};font-weight:bold;margin-bottom:6px">${maHit.label}</div>
+           <div style="color:#aaa;font-size:11px;line-height:1.7">
+             <div>Date: <span style="color:#fff">${maHit.date}</span></div>
+             <div>Value: <span style="color:${maHit.col};font-weight:bold">₹${Math.round(maHit.value).toLocaleString('en-IN')}</span></div>
+           </div>`, e.clientX, e.clientY);
+        return;
+      }
+    }
+
+    // 2. Check KPI overlay points
     if(kpiPoints.length) {
       const kpiHit = kpiPoints.find(kpi => {
         const dx = mx - kpi.x;
@@ -3851,78 +3869,34 @@ function drawVolume(s){
       });
       
       if(kpiHit) {
-        // debugDiv removed - was never declared
-        // Show KPI tooltip
-        let kpiTip = document.getElementById('kpi-overlay-tooltip');
-        if(!kpiTip) {
-          kpiTip = document.createElement('div');
-          kpiTip.id = 'kpi-overlay-tooltip';
-          kpiTip.style.cssText = 'position:fixed;background:rgba(10,20,40,.95);border:2px solid;border-radius:8px;padding:12px;font-family:monospace;font-size:12px;z-index:9999;display:none;max-width:220px;min-width:160px';
-          document.body.appendChild(kpiTip);
-        }
-        
-        // Format value
-        let dispVal = kpiHit.key === 'pe' ? kpiHit.value.toFixed(1) + 'x' :
-                      kpiHit.key === 'opm' ? kpiHit.value.toFixed(1) + '%' :
-                      Math.abs(kpiHit.value) >= 1000 ? (kpiHit.value/1000).toFixed(1) + 'K' : 
-                      kpiHit.value.toFixed(0);
-        
-        kpiTip.innerHTML = `<div style="color:${kpiHit.col};font-weight:bold;margin-bottom:8px">${kpiHit.label}</div>
-          <div style="color:var(--tx2);font-size:11px;line-height:1.6">
-            <div>Date: <span style="color:#fff">${kpiHit.date === 'now' ? 'Latest' : kpiHit.date}</span></div>
-            <div>Value: <span style="color:${kpiHit.col};font-weight:bold">${dispVal}</span></div>
-          </div>`;
-        
-        kpiTip.style.borderColor = kpiHit.col;
-        kpiTip.style.color = kpiHit.col;
-        kpiTip.style.display = 'block';
-        
-        // Position tooltip
-        let left = e.clientX + 10;
-        let top = e.clientY - 100;
-        
-        if (left + 220 > window.innerWidth) {
-          left = Math.max(10, e.clientX - 230);
-        }
-        if (top < 10) {
-          top = e.clientY + 10;
-        }
-        if (top + 120 > window.innerHeight) {
-          top = Math.max(10, window.innerHeight - 130);
-        }
-        
-        kpiTip.style.left = left + 'px';
-        kpiTip.style.top = top + 'px';
-        return;  // ✅ Exit - don't process candlestick clicks
+        const dispVal = kpiHit.key==='pe'  ? kpiHit.value.toFixed(1)+'x' :
+                        kpiHit.key==='opm' ? kpiHit.value.toFixed(1)+'%' :
+                        Math.abs(kpiHit.value)>=1000 ? (kpiHit.value/1000).toFixed(1)+'K Cr' :
+                        kpiHit.value.toFixed(0)+' Cr';
+        showTip('kpi-overlay-tooltip', kpiHit.col,
+          `<div style="color:${kpiHit.col};font-weight:bold;margin-bottom:6px">${kpiHit.label}</div>
+           <div style="color:#aaa;font-size:11px;line-height:1.7">
+             <div>Date: <span style="color:#fff">${kpiHit.date==='now'?'Latest':kpiHit.date}</span></div>
+             <div>Value: <span style="color:${kpiHit.col};font-weight:bold">${dispVal}</span></div>
+           </div>`, e.clientX, e.clientY);
+        return;
       }
     }
-    
-    // ✅ Then check candlestick click
-    if(!candlestickBars.length) {
-      return;
-    }
-    
-    // Find clicked bar
-    const bar=candlestickBars.find(b=>{
-      const hit = mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h;
-      return hit;
-    });
-    
-    
-    // Create or get tooltip
+
+    // 3. Check candlestick click
+    if(!candlestickBars.length) return;
+
+    const bar=candlestickBars.find(b=> mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h);
+
     let tip=document.getElementById('chart-tooltip');
     if(!tip){
       tip=document.createElement('div');
       tip.id='chart-tooltip';
-      tip.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:1px solid #00d4ff;border-radius:8px;padding:12px;font-family:monospace;font-size:12px;color:#00ff88;z-index:9999;display:none;max-width:220px;min-width:180px;max-height:80vh;overflow-y:auto';
       document.body.appendChild(tip);
     }
-    
-    if(!bar || window.candleTooltipBar === bar.date){
-      // Toggle off if same bar clicked
-      tip.style.display='none';
-      window.candleTooltipBar=null;
-      return;
+
+    if(!bar || window.candleTooltipBar===bar.date){
+      tip.remove(); window.candleTooltipBar=null; return;
     }
     
     // Show bar details
@@ -3930,36 +3904,15 @@ function drawVolume(s){
     const o=bar.open.toFixed(2), h=bar.high.toFixed(2), l=bar.low.toFixed(2), c=bar.close.toFixed(2);
     const chg=((c-o)/o*100).toFixed(2);
     const chgColor=chg>=0?'#00ff88':'#ff4466';
-    
-    tip.innerHTML=`<div style="color:#00d4ff;font-weight:bold;margin-bottom:8px">${bar.date}</div>
-      <div style="color:var(--tx2);font-size:11px;line-height:1.6">
-        <div>Open:  ₹<span style="color:#fff">${o}</span></div>
-        <div>High:  ₹<span style="color:#fff">${h}</span></div>
-        <div>Low:   ₹<span style="color:#fff">${l}</span></div>
-        <div>Close: ₹<span style="color:#fff">${c}</span></div>
-      </div>
-      <div style="margin-top:8px;color:${chgColor};font-weight:bold;font-size:12px">${chg>=0?'+':''}${chg}%</div>
-      <div style="margin-top:4px;color:var(--tx3);font-size:10px">Vol: ${(bar.volume/1e5).toFixed(1)}L</div>`;
-    
-    tip.style.display='block';
-    
-    // Position tooltip smartly for mobile
-    let left = e.clientX + 10;
-    let top = e.clientY - 100;
-    
-    // Keep tooltip within viewport
-    if (left + 220 > window.innerWidth) {
-      left = Math.max(10, e.clientX - 230);
-    }
-    if (top < 10) {
-      top = e.clientY + 10;
-    }
-    if (top + 150 > window.innerHeight) {
-      top = Math.max(10, window.innerHeight - 160);
-    }
-    
-    tip.style.left = left + 'px';
-    tip.style.top = top + 'px';
+    showTip('chart-tooltip','#00d4ff',
+      `<div style="color:#00d4ff;font-weight:bold;margin-bottom:6px">${bar.date}</div>
+       <div style="color:#aaa;font-size:11px;line-height:1.7">
+         <div>O: ₹<span style="color:#fff">${o}</span> &nbsp; H: ₹<span style="color:#fff">${h}</span></div>
+         <div>L: ₹<span style="color:#fff">${l}</span> &nbsp; C: ₹<span style="color:#fff">${c}</span></div>
+       </div>
+       <div style="margin-top:6px;color:${chgColor};font-weight:bold">${chg>=0?'+':''}${chg}%</div>
+       <div style="color:#555;font-size:10px">Vol: ${(bar.volume/1e5).toFixed(1)}L</div>`,
+      e.clientX, e.clientY);
   }
 }
 
