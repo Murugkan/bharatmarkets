@@ -158,13 +158,11 @@ window.addEventListener('load', async () => {
         const grse = req.result;
         // If GRSE doesn't have qty field, need to load portfolio
         if (!grse || grse.qty === undefined) {
-          console.log('📥 Auto-loading portfolio data...');
           loadPortfolioData();
         }
       };
     }
   } catch (e) {
-    console.log('Auto-init check skipped');
   }
 });
 
@@ -175,8 +173,9 @@ const S = {
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
   kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
-  chartPan: 0,        // Pan offset in pixels
-  chartZoom: 1,       // Horizontal zoom (# of candles)
+  chartPan: 0,
+  panOffset: 0,       // Bars scrolled back from right edge
+  chartZoom: 1,       // >1=zoom in (fewer bars), <1=zoom out
   yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
   panStart: null,     // Pan start position
   financialSource: { accounting: 'consolidated', frequency: 'annual' }  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
@@ -209,7 +208,6 @@ const get = (obj, ...keys) => {
 // ✅ Update financial data source (consolidated/standalone, annual/quarterly)
 function updateFinancialSource(value, type) {
   S.financialSource[type] = value;
-  console.log(`📊 Financial source changed: ${S.financialSource.accounting} + ${S.financialSource.frequency}`);
   
   // Recalculate KPI overlays with new source
   if(currentStock) {
@@ -220,32 +218,27 @@ function updateFinancialSource(value, type) {
 }
 
 async function loadPortfolioData(forceClear = false) {
-  console.log(`📥 Loading portfolio data...`);
   
   try {
     const response = await fetch('../uploads/market_data.json');
     if (!response.ok) throw new Error(`Failed: ${response.status}`);
     const allData = await response.json();
-    console.log(`✅ Loaded ${Object.keys(allData).length} stocks from market_data.json`);
     
     // Set portfolio holdings at CORRECT location: company_details.qty
     if (allData.GRSE) {
       allData.GRSE.company_details = allData.GRSE.company_details || {};
       allData.GRSE.company_details.qty = 50;
       allData.GRSE.company_details.avg_cost = 2400;
-      console.log(`✅ GRSE: qty=50, avg_cost=₹2400`);
     }
     if (allData.ABCAPITAL) {
       allData.ABCAPITAL.company_details = allData.ABCAPITAL.company_details || {};
       allData.ABCAPITAL.company_details.qty = 100;
       allData.ABCAPITAL.company_details.avg_cost = 350;
-      console.log(`✅ ABCAPITAL: qty=100, avg_cost=₹350`);
     }
     
     // Open IndexedDB
     let db;
     if (forceClear) {
-      console.log(`🔄 Clearing old database...`);
       const deleteReq = indexedDB.deleteDatabase(DB);
       await new Promise((resolve) => {
         deleteReq.onsuccess = resolve;
@@ -261,7 +254,6 @@ async function loadPortfolioData(forceClear = false) {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: 'ticker' });
-          console.log(`✅ Created IndexedDB store`);
         }
       };
     });
@@ -275,7 +267,6 @@ async function loadPortfolioData(forceClear = false) {
         clearReq.onsuccess = resolve;
         clearReq.onerror = resolve;
       });
-      console.log(`✅ Cleared old stocks`);
     }
     
     let saved = 0;
@@ -295,7 +286,6 @@ async function loadPortfolioData(forceClear = false) {
           const qty = stock.company_details.qty || 0;
           if (qty > 0) {
             portfolio++;
-            console.log(`  ✅ ${ticker}: qty=${qty}`);
           }
           resolve();
         };
@@ -305,12 +295,8 @@ async function loadPortfolioData(forceClear = false) {
     
     db.close();
     
-    console.log(`✅ Saved ${saved} stocks to IndexedDB raalanportfolio`);
-    console.log(`✅ Portfolio holdings: ${portfolio}`);
-    console.log(`✅ Refresh page to see Movers tab data`);
     
   } catch (e) {
-    console.log(`❌ Error: ${e.message}`);
   }
 }
 
@@ -540,7 +526,6 @@ async function loadStock() {
                 </div>
             </div>
         `;
-        console.error('No ticker in URL. Usage: analysis.html?drill=TICKER');
         return;
     }
     
@@ -553,7 +538,6 @@ async function loadStock() {
             r(req.result);
         };
         req.onerror = () => {
-            console.error('DB error:', req.error);
             r(null);
         };
     });
@@ -574,26 +558,16 @@ async function loadStock() {
                 r(req.result);
             };
             req.onerror = () => {
-                console.error('Store error:', req.error);
                 r(null);
             };
         });
         
         if (!currentStock) {
-            console.error('Stock not found:', ticker);
             document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
             return;
         }
         
         // 🔍 DEBUG: Log the actual stock object structure
-        console.log('📊 Stock object structure:', currentStock);
-        console.log('📋 Available keys:', Object.keys(currentStock));
-        console.log('💰 Price data:', currentStock.price);
-        console.log('📈 Market data:', currentStock.market_data);
-        console.log('💼 Company details:', currentStock.company_details);
-        console.log('📊 Financials:', currentStock.financials);
-        console.log('🎯 Derived metrics:', currentStock.derived_metrics);
-        console.log('📉 Ratios:', currentStock.ratios);
         
         // Determine data source
         dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
@@ -628,9 +602,7 @@ async function loadStock() {
                         c: parseFloat(bar.Close),
                         v: parseInt(bar.Volume) || 0
                     })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c)); // Remove invalid entries
-                    console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'valid candles');
                 } catch (e) {
-                    console.warn('⚠️ Error converting price history:', e.message);
                     currentStock.candles = [];
                 }
             }
@@ -640,10 +612,8 @@ async function loadStock() {
                 if (currentStock.price_history) {
                     if (Array.isArray(currentStock.price_history)) {
                         currentStock.candles = currentStock.price_history;
-                        console.log('📊 Using price_history array from IndexDB:', currentStock.candles.length, 'candles');
                     } else if (currentStock.price_history.bars && Array.isArray(currentStock.price_history.bars)) {
                         currentStock.candles = currentStock.price_history.bars;
-                        console.log('📊 Using price_history.bars from IndexDB:', currentStock.candles.length, 'candles');
                     }
                 }
             }
@@ -656,10 +626,8 @@ async function loadStock() {
                     if (res.ok) {
                         const data = await res.json();
                         currentStock.candles = data.bars || [];
-                        console.log('📊 Loaded candles from file:', currentStock.candles.length);
                     }
                 } catch (e) {
-                    console.log('⚠️ No chart data available (no price_history or chart file)');
                 }
             }
         }
@@ -667,7 +635,6 @@ async function loadStock() {
         renderHeader();
         renderTab('overview');
     } catch(e) {
-        console.error('Error:', e);
         document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
     }
 }
@@ -974,69 +941,47 @@ function renderTab(tab) {
             </div>
         `;
     } else if (tab === 'canvas') {
-        // CANVAS TAB — Chart only, no indicators
+        const _aFin = Object.values(S.kpiVis).every(v=>v);
         html = `<div style="padding:0;padding-bottom:100px">
-            <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:6px">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap;flex:0 0 auto">${s.ticker || s.sym}</div>
-              
-              <!-- Price Chart Controls -->
-              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
+            <div style="padding:6px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+              <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--ac)">${s.ticker||s.sym}</span>
+              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
                 <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
                 <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
                 <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
               </select>
-              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
+              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
                 <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
                 <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
                 <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
                 <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
                 <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
               </select>
-              
-              <!-- Data Source Controls -->
-              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px;flex:0 0 auto"></span>
-              
-              <select id="dataAccounting" onchange="updateFinancialSource(this.value, 'accounting')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Consolidated vs Standalone">
+              <span style="flex:1"></span>
+              <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
                 <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Cons</option>
                 <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Stand</option>
               </select>
-              
-              <select id="dataFrequency" onchange="updateFinancialSource(this.value, 'frequency')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Annual vs Quarterly">
+              <select id="dataFrequency" onchange="updateFinancialSource(this.value,'frequency')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
                 <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
                 <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Qtr</option>
               </select>
             </div>
-            <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Volume bars"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
-              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-              
-              <!-- 📊 INCOME STATEMENT -->
-              <span style="font-size:8px;color:var(--tx2);font-weight:600;margin-left:4px">Income:</span>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue/Sales"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating profit"><input type="checkbox" ${S.kpiVis.op?'checked':''} onchange="toggleKPI('op')" style="accent-color:#ec4899;width:11px;height:11px"><span style="font-size:9px;color:#ec4899;font-weight:600">Op.Profit</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Profit before tax"><input type="checkbox" ${S.kpiVis.pbt?'checked':''} onchange="toggleKPI('pbt')" style="accent-color:#8b5cf6;width:11px;height:11px"><span style="font-size:9px;color:#8b5cf6;font-weight:600">PBT</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Earnings per share"><input type="checkbox" ${S.kpiVis.eps?'checked':''} onchange="toggleKPI('eps')" style="accent-color:#06b6d4;width:11px;height:11px"><span style="font-size:9px;color:#06b6d4;font-weight:600">EPS</span></label>
-              
-              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-              
-              <!-- 💰 BALANCE SHEET -->
-              <span style="font-size:8px;color:var(--tx2);font-weight:600">Balance:</span>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total assets"><input type="checkbox" ${S.kpiVis.assets?'checked':''} onchange="toggleKPI('assets')" style="accent-color:#f0ad4e;width:11px;height:11px"><span style="font-size:9px;color:#f0ad4e;font-weight:600">Assets</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Borrowings/Debt"><input type="checkbox" ${S.kpiVis.borrowings?'checked':''} onchange="toggleKPI('borrowings')" style="accent-color:#ff6b6b;width:11px;height:11px"><span style="font-size:9px;color:#ff6b6b;font-weight:600">Borrow</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
-              
-              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
-              
-              <!-- 💵 CASH FLOW & VALUATION -->
-              <span style="font-size:8px;color:var(--tx2);font-weight:600">Cash/Val:</span>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Free cash flow"><input type="checkbox" ${S.kpiVis.fcf?'checked':''} onchange="toggleKPI('fcf')" style="accent-color:#14b8a6;width:11px;height:11px"><span style="font-size:9px;color:#14b8a6;font-weight:600">FCF</span></label>
-              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
+            <div style="padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:7px;align-items:center">
+              ${[{key:'sma20',col:'#f59e0b',lbl:'SMA20',fn:"canvasToggleMA('sma20')",chk:S.maVis.sma20},{key:'sma50',col:'#3b82f6',lbl:'SMA50',fn:"canvasToggleMA('sma50')",chk:S.maVis.sma50},{key:'ema200',col:'#a855f7',lbl:'EMA200',fn:"canvasToggleMA('ema200')",chk:S.maVis.ema200},{key:'vol',col:'#22c55e',lbl:'Volume',fn:"canvasToggleMA('vol')",chk:S.maVis.vol}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.chk?'checked':''} onchange="${o.fn}" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
+              <span style="width:1px;height:16px;background:rgba(255,255,255,.1)"></span>
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.3);border-radius:4px;padding:2px 7px">
+                <input type="checkbox" id="kpi-all-chk" ${_aFin?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:#00f2ff;width:12px;height:12px">
+                <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
+              </label>
+              <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
+              ${[{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+              <span style="width:1px;height:16px;background:rgba(255,255,255,.1)"></span>
+              <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
+              ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'},{k:'debt',c:'#f87171',l:'Debt'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+              <span style="width:1px;height:16px;background:rgba(255,255,255,.1)"></span>
+              <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
+              ${[{k:'cfo',c:'#34d399',l:'CFO'},{k:'fcf',c:'#14b8a6',l:'FCF'},{k:'pe',c:'#f59e0b',l:'P/E'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             </div>
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -1069,7 +1014,6 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
-            console.log('Error loading fundamentals guidance:', e.message);
         }
         
         if (!guidance || !guidance.guidance) {
@@ -1187,7 +1131,6 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
-            console.log('Error loading insights:', e.message);
         }
         
         if (!data || !data.insights) {
@@ -1542,7 +1485,6 @@ async function loadAndRenderTechnicalChart(sym) {
     const infoDiv = document.getElementById('metricInfo');
     
     if (!priceContainer || !currentStock) {
-        console.error('Chart containers or stock not found');
         return;
     }
 
@@ -1586,7 +1528,6 @@ async function loadAndRenderTechnicalChart(sym) {
         }
         
     } catch (e) {
-        console.error('Chart error:', e);
         priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
     }
 }
@@ -1819,7 +1760,6 @@ function renderPriceChart(container, sym, bars) {
                         
                     }
                 } catch (e) {
-                    console.error(`Metric ${key} render failed:`, e);
                 }
             }
         });
@@ -1918,7 +1858,6 @@ function renderPriceChart(container, sym, bars) {
         priceChart.setOption(option);
         
     } catch (e) {
-        console.error('ECharts Price chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
 }
@@ -2053,7 +1992,6 @@ function renderMetricsChart(container, sym, bars) {
         
         
     } catch (e) {
-        console.error('Metrics chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
 }
@@ -2215,7 +2153,6 @@ function toggleEMA(emaType) {
             series.setData([]);
         }
     } catch (e) {
-        console.error(`Toggle EMA error: ${emaType}`, e.message);
     }
 }
 
@@ -2464,7 +2401,6 @@ async function renderTechnicalPro(stock) {
         
         const res = await fetch(barsUrl);
         if (!res.ok) {
-            console.error(`Failed to fetch ${barsUrl}: ${res.status}`);
             document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Cannot load bars<br/><small style="font-size:9px;color:#ff6b85">Check: ./charts/${sym}.json exists</small></div>`;
             return;
         }
@@ -2473,7 +2409,6 @@ async function renderTechnicalPro(stock) {
         const bars = barsData.bars || [];
         
         if (!bars || bars.length === 0) {
-            console.error('No bars in JSON');
             document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ No OHLCV data in file</div>';
             return;
         }
@@ -3040,7 +2975,6 @@ async function renderTechnicalPro(stock) {
     }
     
     } catch (error) {
-        console.error('Technical Pro rendering error:', error);
         document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Error: ${error.message}</div>`;
     }
 }
@@ -3050,11 +2984,9 @@ async function renderTechnicalPro(stock) {
 // ════════════════════════════════════════════════════════
 
 function scheduleChartRedraw(){
-  // ✅ Use currentStock (not S.selStock which doesn't exist)
-  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
-    // Data already loaded, just redraw
-  }
-  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(currentStock)));
+  scheduleTACharts._pending = false;
+  if(scheduleChartRedraw._t) clearTimeout(scheduleChartRedraw._t);
+  scheduleChartRedraw._t = setTimeout(()=>{scheduleChartRedraw._t=null;scheduleTACharts(currentStock);},16);
 }
 
 function aggregateCandles(daily, interval){
@@ -3065,34 +2997,20 @@ function aggregateCandles(daily, interval){
   // history_5y_1wk = already weekly, history_5y_1mo = already monthly
   // Just return as-is, don't try to re-aggregate
   if(interval === 'W' || interval === 'M') {
-    console.log(`📊 Interval ${interval}: ${daily.length} candles (already aggregated)`);
     return daily;
   }
   
   // This code below is legacy and shouldn't be reached
-  console.warn('⚠️ Unknown interval:', interval);
   return daily;
 }
 
 function scheduleTACharts(s){
-  // ✅ Debounce: skip rapid redraws to prevent freezing with overlays
   if(scheduleTACharts._pending) return;
   scheduleTACharts._pending = true;
-  
-  console.log('🎨 Redrawing chart... pan=' + S.chartPan.toFixed(0));
-  
   requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      try {
-        // Recalculate indicators if needed
-        recalculateIndicators(s);
-        drawCandlestick(s);
-        if(S.maVis.vol) drawVolume(s);
-        updateChartStats(s);
-      } finally {
-        scheduleTACharts._pending = false;
-      }
-    });
+    scheduleTACharts._pending = false;
+    if(!s) return;
+    try{ recalculateIndicators(s); drawCandlestick(s); if(S.maVis.vol) drawVolume(s); updateChartStats(s); }catch(e){}
   });
 }
 
@@ -3107,7 +3025,6 @@ function recalculateIndicators(s){
   if(recalculateIndicators._lastKey === cacheKey) return;
   recalculateIndicators._lastKey = cacheKey;
   
-  console.log(`📊 Recalculating indicators for ${S.chartInterval} (${s.candles.length} candles)`);
   
   try {
     // Calculate SMAs (not EMAs - simpler moving averages)
@@ -3115,7 +3032,6 @@ function recalculateIndicators(s){
     s.sma50 = calculateSMA(s.candles, 50);
     s.ema200 = calculateEMA(s.candles, 200);
   } catch(e) {
-    console.warn('⚠️ Error recalculating indicators:', e.message);
     s.sma20 = [];
     s.sma50 = [];
     s.ema200 = [];
@@ -3151,49 +3067,22 @@ function attachChartResizeObserver(s){
 
 function getSlicedCandles(s, canvasWidth){
   const daily = s.candles || [];
-  if(!daily.length) return daily;
-  
-  // Get the current range setting
+  if(!daily.length) return [];
   const now = new Date();
-  const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 91;
+  const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange]||365;
   const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
-  
-  // Filter by date FIRST (respect chartRange)
-  let filteredCandles = daily.filter(c => c.d >= cutoff);
-  
-  // If no candles in range, use last N candles as fallback
-  if(!filteredCandles.length) {
-    filteredCandles = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
-  }
-  
-  // ✅ SORT chronologically (oldest first)
-  filteredCandles.sort((a, b) => a.d.localeCompare(b.d));
-  
-  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
-  
-  // Aggregate if needed (for weekly/monthly intervals)
-  const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
+  let filtered = daily.filter(c=>c.d>=cutoff);
+  if(!filtered.length) filtered = daily.slice(-Math.max(20,Math.floor(daily.length*0.25)));
+  filtered.sort((a,b)=>a.d.localeCompare(b.d));
+  const allAgg = aggregateCandles(filtered, S.chartInterval);
   if(!allAgg.length) return [];
-  
-  // Now apply viewport slicing for pan/zoom
-  if(canvasWidth && canvasWidth > 0){
-    const PAD_L = 6, PAD_R = 52;
-    const chartW = canvasWidth - PAD_L - PAD_R;
-    const IDEAL_BAR_W = 7;
-    const MIN_BAR_W  = 4 * S.chartZoom;
-    const maxFit = Math.min(500, Math.floor(chartW / MIN_BAR_W));
-    
-    if(allAgg.length > maxFit){
-      // PAN-BASED HISTORY SCROLL
-      const maxBackOffset = Math.max(0, allAgg.length - maxFit);
-      const backPan = Math.max(0, -S.chartPan);
-      const backNorm = Math.min(1, backPan / 400);
-      const backOffset = Math.floor(backNorm * maxBackOffset);
-      const startIdx = Math.max(0, maxBackOffset - backOffset);
-      return allAgg.slice(startIdx, startIdx + maxFit);
-    }
-  }
-  return allAgg.slice(-500);
+  const w = canvasWidth>0 ? canvasWidth : 320;
+  const BASE = Math.max(20, Math.floor((w-60)/7));
+  const vis = Math.max(10, Math.round(BASE/S.chartZoom));
+  const maxPan = Math.max(0, allAgg.length-vis);
+  const pan = Math.max(0, Math.min(maxPan, S.panOffset));
+  const end = allAgg.length - pan;
+  return allAgg.slice(Math.max(0,end-vis), end);
 }
 
 // Extract quarterly data with all KPI metrics
@@ -3267,10 +3156,8 @@ function getQuarterlyData(s){
     
     if(quarterly.length > 0) return quarterly;
   } catch(e) {
-    console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
   
-  console.log(`📊 getQuarterlyData extracted ${quarterly.length} data points`);
   
   // Fallback to simple quarterly array if exists
   return s.quarterly || [];
@@ -3302,7 +3189,6 @@ function drawCandlestick(s){
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
-    console.warn('⚠️ No candles to display');
     ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
     ctx.textAlign='center';
     if(s._noChartData){
@@ -3318,7 +3204,6 @@ function drawCandlestick(s){
     return;
   }
   
-  console.log(`📊 Drawing chart: ${candles.length} candles, price range ${candles[0]?.c}-${candles[candles.length-1]?.c}`);
 
   const W=W2,H=312;  // ✅ Increased 30% from 240
   const PAD={l:8,r:52,t:8,b:22};  // ✅ Changed left from 6 to 8 to match volume chart
@@ -3347,7 +3232,6 @@ function drawCandlestick(s){
   
   // Ensure we have valid price data
   if(allPrices.length === 0) {
-    console.error('❌ No valid price data found');
     ctx.fillStyle='#060c18';
     ctx.fillRect(0,0,W,H);
     ctx.fillStyle='rgba(255,107,133,0.7)';
@@ -3364,7 +3248,7 @@ function drawCandlestick(s){
   
   // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
   const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
-  const barX=i=>{ const x = PAD.l+i*gap+gap/2 + S.chartPan; return x; };
+  const barX = i => PAD.l + i*gap + gap/2;
 
   // Background
   ctx.fillStyle='#070c18';
@@ -3587,7 +3471,7 @@ function drawCandlestick(s){
   function xForDate(dateStr){
     // ✅ Use VISIBLE range for alignment (same as candlesticks)
     const t = new Date(dateStr).getTime();
-    const x = PAD.l + ((t - visFirst) / visRange) * cW + S.chartPan;
+    const x = PAD.l + ((t - visFirst) / visRange) * cW;
     return x;
   }
 
@@ -3601,8 +3485,7 @@ function drawCandlestick(s){
 
   // Log raw quarterly data once (commented out - uncomment for debugging)
   // if(quarterly.length){
-  //   console.log('📊 Quarterly data:', quarterly);
-  // }
+  //  // }
 
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
@@ -3665,15 +3548,11 @@ function drawCandlestick(s){
         }
       }
 
-      // ✅ Keep points that fall within or near the full data range (filter by time, not panned pixel)
-      pts = pts.filter(p => {
-        const unPannedX = p.x - S.chartPan;
-        return unPannedX >= PAD.l - 20 && unPannedX <= PAD.l + cW + 20;
-      });
+      // ✅ Keep points that fall within or near visible chart area
+      pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
       
       if(pts.length < 2) return; // Need at least 2 points to draw a line
     } catch(e) {
-      console.warn(`⚠️ KPI ${label} error:`, e.message);
       return;
     }
     
@@ -3784,7 +3663,6 @@ function drawCandlestick(s){
     ctx.restore();
   });
   } catch(e) {
-    console.error('❌ Chart draw error:', e.message, e.stack);
     const cv = document.getElementById('cv-candle');
     if(cv) {
       const ctx = cv.getContext('2d');
@@ -3833,6 +3711,11 @@ function drawVolume(s){
   const bw = volBaseWidth * S.chartZoom;
   const mv=Math.max(...candles.map(c=>c.v))||1;
   
+  // Calculate price range from candles for labels
+  const allPrices = candles.map(c=>c.h).concat(candles.map(c=>c.l));
+  const startPrice = Math.max(...allPrices) || s.ltp || 0;
+  const endPrice = Math.min(...allPrices) || s.ltp || 0;
+  
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
   // Left axis line (thicker for visibility)
@@ -3843,7 +3726,7 @@ function drawVolume(s){
   // Volume bars - each bar colored based on corresponding candlestick
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2 + S.chartPan;  // ✅ Added pan offset
+    const x = PAD.l+i*gap+(gap-bw)/2;
     // Color: green if close > open, red if close <= open (matches candlestick color)
     const barColor = (c.c > c.o) ? '#00d084' : '#ff3b5c';
     ctx.fillStyle=barColor;
@@ -3859,10 +3742,10 @@ function drawVolume(s){
   ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
   
-  // ✅ Volume labels only on right axis (price labels removed - they live on the price chart above)
+  // ✅ Volume labels on RIGHT side (RIGHT aligned, with padding from edge)
   ctx.fillStyle='rgba(255,255,255,1)';
   ctx.font='bold 10px JetBrains Mono,monospace';
-  ctx.textAlign='right';
+  ctx.textAlign='right';  // ✅ Changed from left to right
   ctx.textBaseline='middle';
   const maxVol = Math.max(...candles.map(c=>c.v))||1;
   for(let i=0; i<=2; i++){
@@ -3879,6 +3762,13 @@ function drawVolume(s){
     ctx.fillText(label, W-6, y);  // ✅ Draw on right side (W-6)
   }
   
+  // Price labels on right axis
+  ctx.fillStyle='rgba(255,255,255,.95)';
+  ctx.font='bold 9px JetBrains Mono,monospace';
+  ctx.textAlign='right';
+  ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
+  ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
+  
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
     if(i<4) return null;
@@ -3888,7 +3778,7 @@ function drawVolume(s){
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
-    const x=PAD.l+i*gap+gap/2 + S.chartPan;
+    const x=PAD.l+i*gap+gap/2;
     const y=PAD.t+cH-(v/mv)*cH;
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
@@ -3915,7 +3805,7 @@ function drawVolume(s){
       }
     }
     
-    const x = PAD.l + i*gap + gap/2 + S.chartPan;
+    const x = PAD.l + i*gap + gap/2;
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
     ctx.fillText(lbl, x, PAD.t + cH + 8);  // ✅ Below volume chart
@@ -3923,7 +3813,6 @@ function drawVolume(s){
   
   // ✅ Click handler to show bar details (toggle) - works on both mouse and touch
   cv.onclick=(e)=>{
-    console.log('📌 Canvas click detected');
     handleChartClick(e, W2, H2);
   };
   
@@ -3941,13 +3830,11 @@ function drawVolume(s){
   });
   
   function handleChartClick(e, W2, H2) {
-    console.log('🖱️ Click detected on canvas');
     const br=cv.getBoundingClientRect();
     const scX=W2/br.width, scY=H2/br.height;
     let mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
     
     // ✅ Account for pan offset when checking click position
-    mx = mx - S.chartPan;
     
     // ✅ Show debug info on screen for iPhone
     let debugDiv = document.getElementById('debug-tooltip-info');
@@ -3967,7 +3854,6 @@ function drawVolume(s){
       if(debugDiv) debugDiv.style.display = 'none';
     }, 2000);
     
-    console.log(`  Click coords: mx=${mx.toFixed(0)}, my=${my.toFixed(0)}, kpiPoints=${kpiPoints.length}`);
     
     // ✅ First, check if clicked on KPI overlay point
     if(kpiPoints.length) {
@@ -3975,12 +3861,10 @@ function drawVolume(s){
         const dx = mx - kpi.x;
         const dy = my - kpi.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        console.log(`    KPI ${kpi.label}: dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} dist=${dist.toFixed(1)} r=${kpi.radius}`);
         return dist <= kpi.radius;
       });
       
       if(kpiHit) {
-        console.log(`  ✓ KPI HIT: ${kpiHit.label} at ${kpiHit.date}`);
         debugDiv.innerHTML += `<br/>✓ KPI: ${kpiHit.label}`;
         // Show KPI tooltip
         let kpiTip = document.getElementById('kpi-overlay-tooltip');
@@ -4029,7 +3913,6 @@ function drawVolume(s){
     
     // ✅ Then check candlestick click
     if(!candlestickBars.length) {
-      console.log('  ⚠️ No candlestick bars to check');
       return;
     }
     
@@ -4039,7 +3922,6 @@ function drawVolume(s){
       return hit;
     });
     
-    console.log(`  Candlestick search: ${candlestickBars.length} bars, hit=${!!bar}${bar?(' '+bar.date):''}`);
     
     // Create or get tooltip
     let tip=document.getElementById('chart-tooltip');
@@ -4119,10 +4001,9 @@ function updateChartStats(s){
 }
 
 // Chart control functions
-function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
-function canvasSetChartInterval(iv) { 
-  S.chartInterval = iv;
-  
+function canvasSetChartRange(r){ S.chartRange=r; S.panOffset=0; scheduleTACharts._pending=false; scheduleChartRedraw(); }
+function canvasSetChartInterval(iv){
+  S.chartInterval=iv; S.panOffset=0; scheduleTACharts._pending=false; recalculateIndicators._lastKey=null;
   if(currentStock && currentStock.price) {
     let historyData = null;
     let historyType = null;
@@ -4171,36 +4052,32 @@ function canvasSetChartInterval(iv) {
           recalculateIndicators._lastKey = null;
           aggregateCandles._cache = null;
           
-          console.log(`✅ Loaded ${historyType}: ${converted.length} candles`);
           scheduleChartRedraw();
           return;
         } else {
-          console.log(`❌ No valid candles in ${historyType}`);
         }
       } catch(e) {
-        console.log(`❌ Error loading ${historyType}: ${e.message}`);
       }
     } else {
-      console.log(`❌ ${historyType} data not found`);
     }
   }
   
   scheduleChartRedraw();
 }
-function canvasToggleMA(key) {
-  S.maVis[key] = !S.maVis[key];
-  if (key === 'vol') {
-    // renderTab rebuilds the DOM (canvases destroyed), so reset the interaction flag
-    setupChartInteraction._initialized = false;
-    renderTab('canvas');
-  } else {
-    scheduleChartRedraw();
-  }
+function canvasToggleMA(key){
+  S.maVis[key]=!S.maVis[key];
+  if(key==='vol'){setupChartInteraction._initialized=false;renderTab('canvas');}else scheduleChartRedraw();
 }
-function toggleKPI(k) { 
-  S.kpiVis[k] = !S.kpiVis[k]; 
-  console.log(`🔧 KPI toggled: ${k} = ${S.kpiVis[k]}, pan=${S.chartPan}, zoom=${S.chartZoom}`);
-  scheduleChartRedraw(); 
+function toggleAllKPI(on){
+  Object.keys(S.kpiVis).forEach(k=>{S.kpiVis[k]=on;const cb=document.getElementById('kpi-'+k);if(cb)cb.checked=on;});
+  scheduleChartRedraw();
+}
+function toggleKPI(k){
+  S.kpiVis[k]=!S.kpiVis[k];
+  const allOn=Object.values(S.kpiVis).every(v=>v),allOff=Object.values(S.kpiVis).every(v=>!v);
+  const m=document.getElementById('kpi-all-chk');
+  if(m){m.checked=allOn;m.indeterminate=!allOn&&!allOff;}
+  scheduleChartRedraw();
 }
 
 async function canvasLoadAndDrawChart(sym) {
@@ -4240,191 +4117,60 @@ async function canvasLoadAndDrawChart(sym) {
 // PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
 
-let chartInteraction = {
-  isPanning: false,
-  startX: 0,
-  startPan: 0
-};
+let chartInteraction = {isPanning:false,startX:0,startPanOffset:0};
 
-function setupChartInteraction() {
-  // Prevent duplicate setup
-  if (setupChartInteraction._initialized) return;
-  
-  console.log('⚙️ Setting up chart interaction...');
-  
+function setupChartInteraction(){
+  if(setupChartInteraction._initialized) return;
   const canvas = document.getElementById('cv-candle');
-  if (!canvas) {
-    // Canvas not rendered yet - will retry when Canvas tab opens
-    return;
-  }
-  
+  if(!canvas) return;
   setupChartInteraction._initialized = true;
-  console.log('✓ Canvas found, attaching event listeners');
-  
-  // Shared touch state
-  const touchState = { lastDistance: 0, gestureStart: 1 };
-  let lastRedrawTime = 0;
-  const REDRAW_THROTTLE_MS = 50;  // ~20fps for smooth panning - optimal for mobile performance
-  
-  // Debounced redraw: only redraw if throttle duration has passed (prevents excessive redraws)
-  const throttledRedraw = (stock) => {
-    const now = performance.now();
-    if (now - lastRedrawTime >= REDRAW_THROTTLE_MS) {
-      scheduleTACharts(stock);
-      lastRedrawTime = now;
-    }
+  const t = {lastDist:0,isPanning:false,startX:0,startPanOffset:0};
+  let lastRedraw=0;
+  const redraw = ()=>{ const now=performance.now(); if(now-lastRedraw>=32){scheduleTACharts(currentStock);lastRedraw=now;} };
+  const bpp = ()=>{ const w=canvas.offsetWidth||320; const vis=Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom)); return vis/(w-60); };
+
+  canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startPanOffset=S.panOffset;},{passive:true});
+  document.addEventListener('mousemove',e=>{
+    if(!t.isPanning||!currentStock) return;
+    S.panOffset=Math.max(0,t.startPanOffset-Math.round((e.clientX-t.startX)*bpp()));
+    redraw();
+  },{passive:true});
+  document.addEventListener('mouseup',()=>{t.isPanning=false;},{passive:true});
+  canvas.addEventListener('wheel',e=>{
+    if(!currentStock) return; e.preventDefault();
+    S.chartZoom=Math.max(0.3,Math.min(5,S.chartZoom*(e.deltaY<0?1.15:0.87)));
+    scheduleTACharts(currentStock);
+  },{passive:false});
+
+  const onStart=e=>{
+    if(e.touches.length===2){
+      const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
+      t.lastDist=Math.sqrt(dx*dx+dy*dy); t.isPanning=false;
+    } else { t.isPanning=true; t.startX=e.touches[0].clientX; t.startPanOffset=S.panOffset; t.lastDist=0; }
   };
-  
-  // Mouse/Touch Pan on canvas - with passive event listeners for better scroll performance
-  canvas.addEventListener('mousedown', (e) => {
-    console.log('🖱️ Pan START');
-    chartInteraction.isPanning = true;
-    chartInteraction.startX = e.clientX;
-    chartInteraction.startPan = S.chartPan;
-  }, { passive: false, capture: false });
-  
-  document.addEventListener('mousemove', (e) => {
-    if (!chartInteraction.isPanning || !currentStock) return;
-    
-    const delta = e.clientX - chartInteraction.startX;
-    let newPan = chartInteraction.startPan + delta;
-    newPan = Math.max(-400, Math.min(400, newPan));
-    
-    if (S.chartPan !== newPan) {
-      S.chartPan = newPan;
-      throttledRedraw(currentStock);
-    }
-  }, { passive: true, capture: false });
-  
-  document.addEventListener('mouseup', () => { 
-    console.log('🖱️ Pan END');
-    chartInteraction.isPanning = false; 
-  }, { passive: true });
-  
-  // Touch handlers with pinch support
-  const handleTouchStart = (e) => {
-    
-    if (e.touches.length === 2) {
-      // PINCH DETECTED: Calculate initial distance
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      touchState.lastDistance = Math.sqrt(dx*dx + dy*dy);
-      chartInteraction.isPanning = false;
-    } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN
-      chartInteraction.isPanning = true;
-      chartInteraction.startX = e.touches[0].clientX;
-      chartInteraction.startPan = S.chartPan;
-      touchState.lastDistance = 0;
-      
-    }
-  };
-  
-  const handleTouchMove = (e) => {
-    if (e.touches.length === 2) {
-      // TWO-FINGER PINCH: Detect direction (vertical vs horizontal)
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-      
-      // Determine pinch direction: which is dominant?
-      const isVerticalPinch = Math.abs(dy) > Math.abs(dx);
-      
-      
-      if (touchState.lastDistance > 0) {
-        const ratio = distance / touchState.lastDistance;
-        const delta = ratio - 1.0;
-        
-        if (Math.abs(delta) > 0.005) {
-          const smoothFactor = 1.0 + (delta * 0.5);
-          
-          if (isVerticalPinch) {
-            // ✅ VERTICAL PINCH → Y-AXIS ZOOM (bar height only)
-            const oldYZoom = S.yAxisZoom || 1.0;
-            S.yAxisZoom = Math.max(0.5, Math.min(3.0, (S.yAxisZoom || 1.0) * smoothFactor));
-          } else {
-            // ✅ HORIZONTAL PINCH → X-AXIS ZOOM (existing behavior, unchanged)
-            const oldZoom = S.chartZoom;
-            S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * smoothFactor));
-          }
-          
-          if (currentStock) {
-            throttledRedraw(currentStock);
-          }
+  const onMove=e=>{
+    if(e.touches.length===2){
+      const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(t.lastDist>0){
+        const delta=(dist/t.lastDist)-1;
+        if(Math.abs(delta)>0.005){
+          const f=1+delta*0.6;
+          if(Math.abs(dy)>Math.abs(dx)) S.yAxisZoom=Math.max(0.5,Math.min(3,(S.yAxisZoom||1)*f));
+          else S.chartZoom=Math.max(0.3,Math.min(5,S.chartZoom*f));
+          if(currentStock) redraw();
         }
       }
-      touchState.lastDistance = distance;
-      e.preventDefault();
-    } else if (e.touches.length === 1) {
-      // SINGLE TOUCH PAN
-      if (chartInteraction.isPanning && currentStock) {
-        const delta = e.touches[0].clientX - chartInteraction.startX;
-        let newPan = chartInteraction.startPan + delta;
-        newPan = Math.max(-400, Math.min(400, newPan));
-        S.chartPan = newPan;
-        throttledRedraw(currentStock);
-      }
+      t.lastDist=dist; e.preventDefault();
+    } else if(t.isPanning&&currentStock){
+      S.panOffset=Math.max(0,t.startPanOffset-Math.round((e.touches[0].clientX-t.startX)*bpp()));
+      redraw();
     }
   };
-  
-  const handleTouchEnd = () => {
-    
-    chartInteraction.isPanning = false;
-    touchState.lastDistance = 0;
-  };
-  
-  canvas.ontouchstart = handleTouchStart;
-  canvas.ontouchmove = handleTouchMove;
-  canvas.ontouchend = handleTouchEnd;
-  
-  // iOS Pinch Support - gesturechange detects pinch on iOS (shared state)
-  const handleGestureStart = (e) => {
-    touchState.gestureStart = e.scale;
-    
-  };
-  
-  const handleGestureChange = (e) => {
-    if (!currentStock) {
-      
-      return;
-    }
-    const scaleFactor = e.scale / touchState.gestureStart;
-    const factor = scaleFactor > 1.02 ? 1.08 : scaleFactor < 0.98 ? 0.92 : 1.0;
-    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
-    scheduleTACharts(currentStock);
-    e.preventDefault();
-  };
-  
-  const handleGestureEnd = (e) => {
-  };
-  
-  // DISABLED: Gesture events cause conflict with touch-based pinch detection
-  // Use smooth touch-based pinch instead (no gesture events)
-  // canvas.ongesturestart = handleGestureStart;
-  // canvas.ongesturechange = handleGestureChange;
-  // canvas.ongestureend = handleGestureEnd;
-  
-  // Wheel Zoom on canvas
-  canvas.onwheel = (e) => {
-    if (!currentStock) return;
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    S.chartZoom = Math.max(0.5, Math.min(3, S.chartZoom * factor));
-    scheduleTACharts(currentStock);
-  };
-  
-  // Volume canvas - touch-based pinch only (no gesture events)
-  const volCanvas = document.getElementById('cv-vol');
-  if (volCanvas) {
-    volCanvas.ontouchstart = handleTouchStart;
-    volCanvas.ontouchmove = handleTouchMove;
-    volCanvas.ontouchend = handleTouchEnd;
-    // DISABLED: Gesture events conflict with touch-based detection
-    // volCanvas.ongesturestart = handleGestureStart;
-    // volCanvas.ongesturechange = handleGestureChange;
-    // volCanvas.ongestureend = handleGestureEnd;
-    
-  }
+  const onEnd=()=>{t.isPanning=false;t.lastDist=0;};
+  canvas.ontouchstart=onStart; canvas.ontouchmove=onMove; canvas.ontouchend=onEnd;
+  const vol=document.getElementById('cv-vol');
+  if(vol){vol.ontouchstart=onStart;vol.ontouchmove=onMove;vol.ontouchend=onEnd;}
 }
 
 // Auto-setup when canvas is ready
@@ -4525,7 +4271,6 @@ async function loadStockNews(sym,name){
 async function loadAndRenderMovers(){
   const c = document.getElementById('content');
   if(!c) {
-    console.error('content div not found');
     return;
   }
   
@@ -4551,20 +4296,16 @@ async function loadAndRenderMovers(){
       
       req.onsuccess = () => {
         const stocks = req.result || [];
-        console.log(`✅ Loaded ${stocks.length} stocks from IndexedDB`);
         
         // Log first 5 stocks to see their structure
         if(stocks.length > 0) {
-          console.log(`📋 Sample stocks (first 5):`);
           stocks.slice(0, 5).forEach(s => {
-            console.log(`  ├─ ${s.ticker}: qty=${s.company_details?.qty || 'undefined'}, price=${s.price?.current_price || 'N/A'}`);
           });
         }
         
         resolve(stocks);
       };
       req.onerror = () => {
-        console.log(`❌ Error reading from IndexedDB: ${req.error}`);
         reject(new Error('Cannot read stocks'));
       };
     });
@@ -4578,17 +4319,13 @@ async function loadAndRenderMovers(){
       return qty > 0;
     });
     
-    console.log(`📊 Portfolio holdings: ${portfolio.length} from ${allStocks.length} total stocks`);
     
     if(portfolio.length > 0) {
       portfolio.slice(0, 5).forEach(s => {
-        console.log(`  ├─ ${s.ticker}: qty=${s.company_details?.qty}, avg_cost=${s.company_details?.avg_cost || 'N/A'}`);
       });
-      if(portfolio.length > 5) console.log(`  └─ ... and ${portfolio.length - 5} more`);
     }
     
     if(!portfolio || !portfolio.length){
-      console.log(`❌ NO PORTFOLIO HOLDINGS - Movers tab empty`);
       c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
         <div style="font-size:14px;margin-bottom:12px">📊 No holdings in portfolio</div>
         <div style="font-size:11px;line-height:1.6">Add stocks with qty > 0 to see portfolio movers</div>
@@ -4603,7 +4340,6 @@ async function loadAndRenderMovers(){
       const avgCost = s.company_details?.avg_cost || resolveField(s, 'avg_cost') || 0;
       const changePct = resolveField(s, 'changePct') || 0;
       
-      console.log(`  💼 ${s.ticker}: qty=${qty}, ltp=₹${ltp}, avgCost=₹${avgCost}, change=${changePct}%`);
       
       return {
         ...s,
@@ -4625,7 +4361,6 @@ async function loadAndRenderMovers(){
     const totalGain = totalVal - totalCost;
     const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
     
-    console.log(`📊 Portfolio Totals: Value=₹${totalVal.toFixed(0)}, Cost=₹${totalCost.toFixed(0)}, Gain=₹${totalGain.toFixed(0)}, Gain%=${gainPct.toFixed(2)}%`);
     
     // Find gainers and losers by daily change %
     const withChange = enrichedPortfolio.filter(s => s.changePct !== undefined && !isNaN(s.changePct));
@@ -4733,7 +4468,6 @@ async function loadAndRenderMovers(){
     }, 200);
     
   } catch(e) {
-    console.error('Movers error:', e.message, e.stack);
     c.innerHTML = `<div style="padding:40px 20px;text-align:center">
       <div style="color:#ff6b85;margin-bottom:10px;font-weight:600">${e.message}</div>
       <div style="font-size:10px;color:var(--tx3)">Check 🔧 debug panel for details</div>
@@ -4741,21 +4475,17 @@ async function loadAndRenderMovers(){
   }
 }
 function drawPortfolioHeatmap(portfolio){
-  console.log('drawPortfolioHeatmap called with', portfolio.length, 'stocks');
   
   const cv = document.getElementById('cv-heatmap');
-  console.log('Canvas found:', !!cv);
   
   if(!cv) {
     return;
   }
   
-  console.log('Canvas dimensions:', cv.offsetWidth, 'x', cv.offsetHeight);
 
   const dpr = window.devicePixelRatio || 1;
   const W = Math.max(cv.offsetWidth || window.innerWidth - 30, 180);
   const H = W;
-  console.log('Drawing at', W, 'x', H, 'with DPR', dpr);
   
   cv.width  = W * dpr; 
   cv.height = H * dpr;
@@ -4775,7 +4505,6 @@ function drawPortfolioHeatmap(portfolio){
     ctx.fillStyle='rgba(140,176,208,.4)';
     ctx.font='11px sans-serif'; ctx.textAlign='center';
     ctx.fillText('No portfolio data', W/2, H/2);
-    console.log('No portfolio - showing message');
     return;
   }
 
@@ -4794,7 +4523,6 @@ function drawPortfolioHeatmap(portfolio){
     sMap[sec].stocks.push(s);
   });
   
-  console.log('Sectors found:', Object.keys(sMap).length, 'sectors');
   
   const nodes = Object.values(sMap)
     .map(d=>({
