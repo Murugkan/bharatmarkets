@@ -40,6 +40,44 @@
         .nav-btn:hover { color: var(--bl); }
         .nav-btn.active { color: var(--bl); font-weight: 800; }
         .nav-label { font-size: 7px; margin-top: 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* ===== SIGNAL ENGINE STYLES ===== */
+        #signal-view { display:none; flex:1; overflow:hidden; flex-direction:column; background:#000; }
+        #signal-view.active { display:flex; }
+        .sig-layout { display:flex; flex:1; overflow:hidden; }
+        .sig-list { width:160px; flex-shrink:0; border-right:1px solid #1a1a1a; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+        .sig-detail { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; }
+        .sig-ticker-row { padding:8px 10px; border-bottom:1px solid #0d0d0d; cursor:pointer; transition:background 0.15s; }
+        .sig-ticker-row.selected { background:rgba(0,242,255,0.07); border-left:2px solid var(--bl); }
+        .sig-ticker-row:active { background:#111; }
+        .sig-bar-wrap { height:3px; background:#1a1a1a; border-radius:2px; overflow:hidden; margin-top:4px; }
+        .sig-bar-fill { height:100%; border-radius:2px; }
+        .sig-pill { display:inline-block; padding:1px 5px; border-radius:3px; font-size:8px; font-weight:800; letter-spacing:0.04em; }
+        .sig-gauge-wrap { position:relative; margin:0 auto 4px; width:180px; }
+        .sig-pillar-card { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:8px; padding:10px; margin-bottom:8px; cursor:pointer; }
+        .sig-pillar-card.open { border-color:#333; }
+        .sig-sub-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
+        .sig-sub-label { font-size:8px; color:#555; width:72px; flex-shrink:0; }
+        .sig-sub-bar { flex:1; height:3px; background:#1a1a1a; border-radius:2px; overflow:hidden; }
+        .sig-sub-fill { height:100%; border-radius:2px; }
+        .sig-sub-score { width:20px; text-align:right; font-size:9px; color:#444; }
+        .sig-sub-val { width:52px; text-align:right; font-size:8px; color:#333; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .sig-target-box { background:#0a0a0a; border:1px solid #1a2a1a; border-radius:8px; padding:10px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+        .sig-ctx-box { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
+        .sig-ai-box { background:#050f05; border:1px solid #0a2a0a; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
+        .sig-ai-dims { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; }
+        .sig-ai-dim { background:#0d0d0d; border-radius:4px; padding:6px 8px; }
+        .sig-header-bar { padding:8px 10px; background:#080808; border-bottom:1px solid #1a1a1a; display:flex; gap:6px; align-items:center; flex-shrink:0; }
+        .sig-filter-select { background:#111; border:1px solid #222; border-radius:4px; padding:4px 6px; font-size:9px; color:#aaa; font-family:inherit; outline:none; }
+        .sig-search { background:#111; border:1px solid #222; border-radius:4px; padding:4px 6px; font-size:9px; color:#fff; font-family:inherit; outline:none; width:60px; }
+        .sig-sort-btn { background:#111; border:1px solid #222; border-radius:4px; padding:4px 6px; font-size:9px; color:#aaa; font-family:inherit; cursor:pointer; }
+        .sig-sort-btn.active { border-color:var(--bl); color:var(--bl); }
+        .sig-weight-strip { display:flex; background:#080808; border-bottom:1px solid #1a1a1a; flex-shrink:0; }
+        .sig-weight-cell { flex:1; text-align:center; padding:5px 0; border-right:1px solid #1a1a1a; }
+        .sig-weight-cell:last-child { border-right:none; }
+        .sig-wlabel { font-size:7px; color:#444; letter-spacing:0.04em; display:block; }
+        .sig-wval { font-size:11px; font-weight:800; display:block; }
+        .sig-section-title { font-size:8px; color:#444; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:6px; }
     </style>
 </head>
 <body>
@@ -62,12 +100,35 @@
     <button onclick="resetAll()" id="btn-all" style="padding:6px 10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">CLR</button>
 </div>
 <div id="status">Loading Pro Engine...</div>
-<div class="view"><div id="app"></div></div>
+<div class="view" id="main-view"><div id="app"></div></div>
+
+<!-- ===== SIGNAL ENGINE VIEW ===== -->
+<div id="signal-view">
+    <div class="sig-header-bar">
+        <input class="sig-search" id="sig-search" placeholder="&#128269; TKR" maxlength="8" oninput="sigFilter()">
+        <select class="sig-filter-select" id="sig-sector-filter" onchange="sigFilter()">
+            <option value="">All Sectors</option>
+        </select>
+        <button class="sig-sort-btn active" id="sig-sort-score" onclick="sigSort('score')">SCORE&#8595;</button>
+        <button class="sig-sort-btn" id="sig-sort-name" onclick="sigSort('name')">A&#8211;Z</button>
+        <button class="sig-sort-btn" id="sig-sort-sector" onclick="sigSort('sector')">SEC</button>
+    </div>
+    <div class="sig-layout">
+        <div class="sig-list" id="sig-list"></div>
+        <div class="sig-detail" id="sig-detail"><div style="padding:40px 20px; text-align:center; color:#333; font-size:10px;">&#8592; Select a ticker</div></div>
+    </div>
+</div>
 
 <footer>
-    <a href="index.html" class="nav-btn active"><span class="nav-label">Portfolio</span></a>
+    <a href="index.html" class="nav-btn active" id="nav-portfolio" onclick="showMainView(); return false;"><span class="nav-label">Portfolio</span></a>
     <a href="data.html" class="nav-btn"><span class="nav-label">Data</span></a>
     <a href="analysis.html" class="nav-btn"><span class="nav-label">Analysis</span></a>
+    <a href="#" class="nav-btn" id="nav-signal" onclick="showSignalView(); return false;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 2px;">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span class="nav-label">Signal</span>
+    </a>
     <a href="#" class="nav-btn" onclick="showDebugAlert(); return false;"><span class="nav-label">Debug</span></a>
 </footer>
 
@@ -1228,6 +1289,573 @@ function showDebugAlert() {
         alert(`❌ Cannot open DB!\nDB: ${DB_NAME}\nVersion: ${DB_VERSION}`);
     };
 }
+
+
+// ============================================================
+// SIGNAL ENGINE — injected into index.html
+// Reads from same IndexedDB (raalanportfolio / stocks)
+// ============================================================
+
+// ---------- SECTOR CONFIG ----------
+const SIG_SECTOR_CFG = {
+    "Financials":             { w: { f:0.30, t:0.20, v:0.28, s:0.22 } },
+    "Information Technology": { w: { f:0.32, t:0.22, v:0.26, s:0.20 } },
+    "Healthcare":             { w: { f:0.35, t:0.18, v:0.22, s:0.25 } },
+    "Consumer Staples":       { w: { f:0.38, t:0.15, v:0.30, s:0.17 } },
+    "Consumer Discretionary": { w: { f:0.30, t:0.25, v:0.28, s:0.17 } },
+    "Industrials":            { w: { f:0.28, t:0.22, v:0.20, s:0.30 } },
+    "Defence":                { w: { f:0.28, t:0.20, v:0.18, s:0.34 } },
+    "Materials":              { w: { f:0.22, t:0.35, v:0.22, s:0.21 } },
+    "Energy":                 { w: { f:0.24, t:0.30, v:0.20, s:0.26 } },
+    "Utilities":              { w: { f:0.30, t:0.20, v:0.20, s:0.30 } },
+    "Telecom":                { w: { f:0.30, t:0.22, v:0.28, s:0.20 } },
+    "ETF":                    { w: { f:0.10, t:0.50, v:0.20, s:0.20 } },
+    "_default":               { w: { f:0.32, t:0.22, v:0.24, s:0.22 } }
+};
+
+// ---------- SIGNAL STATE ----------
+let SIG_ALL = [];           // computed signals for all tickers
+let SIG_MEDIANS = {};       // sector PE medians
+let SIG_SELECTED = null;    // selected ticker
+let SIG_SORT = 'score';     // 'score'|'name'|'sector'
+let SIG_SECTOR_F = '';      // sector filter
+let SIG_SEARCH_F = '';      // search filter
+let SIG_OPEN_PILLARS = {};  // which pillar cards are expanded
+
+// ---------- MATH UTILS ----------
+function sigToF(v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    const s = String(v).replace('%','').replace(/,/g,'').trim();
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+}
+function sigClamp(v, mn=0, mx=100){ return Math.max(mn, Math.min(mx, v)); }
+function sigLatestDict(d) {
+    if (!d || typeof d !== 'object') return null;
+    const keys = Object.keys(d).sort();
+    return keys.length ? sigToF(d[keys[keys.length-1]]) : null;
+}
+function sigSeries(d) {
+    if (!d || typeof d !== 'object') return [];
+    return Object.entries(d).sort((a,b)=>a[0].localeCompare(b[0])).map(([dt,v])=>({dt, v:sigToF(v)}));
+}
+function sigTrend(series, hiGood=true) {
+    const vals = series.filter(x=>x.v!==null);
+    if (vals.length < 2) return 50;
+    const rec = vals.slice(-3).map(x=>x.v);
+    const old = vals.slice(-6,-3).map(x=>x.v);
+    if (!rec.length||!old.length) return 50;
+    const rAvg = rec.reduce((a,b)=>a+b,0)/rec.length;
+    const oAvg = old.reduce((a,b)=>a+b,0)/old.length;
+    if (oAvg===0) return 50;
+    const ch = (rAvg-oAvg)/Math.abs(oAvg);
+    return sigClamp(hiGood ? 50+ch*150 : 50-ch*150);
+}
+function sigScoreColor(s) {
+    return s>=74?'#00ff88':s>=62?'#69f0ae':s>=48?'#ffea00':s>=36?'#ff9100':'#ff4d6d';
+}
+function sigRating(s) {
+    return s>=74?'STRONG BUY':s>=62?'BUY':s>=48?'NEUTRAL':s>=36?'REDUCE':'SELL';
+}
+
+// ---------- SECTOR MEDIANS ----------
+function buildSigMedians(stocks) {
+    const m = {};
+    stocks.forEach(st => {
+        const sec = st.derived_metrics?.calculated_metrics?.sector || st.company_details?.sector || 'Unknown';
+        const pe = sigToF(st.valuation?.pe?.trailing_pe);
+        if (pe && pe>0 && pe<200) { if(!m[sec]) m[sec]=[]; m[sec].push(pe); }
+    });
+    const out = {};
+    Object.entries(m).forEach(([sec,arr])=>{
+        arr.sort((a,b)=>a-b);
+        out[sec] = arr[Math.floor(arr.length/2)];
+    });
+    SIG_MEDIANS = out;
+}
+
+// ---------- PILLAR 1: FUNDAMENTAL ----------
+function sigFundamental(st) {
+    const fin = st.financials||{};
+    const rat = st.ratios||{};
+    const scores = {};
+
+    // ROCE
+    const roceSeries = sigSeries(rat.ROCE_pct||{});
+    const roceVal = sigLatestDict(rat.ROCE_pct||{});
+    let roceS = 50;
+    if (roceVal!==null) {
+        const lvl = roceVal>=20?90:roceVal>=15?75:roceVal>=10?60:roceVal>=5?40:20;
+        roceS = Math.round(lvl*0.6 + sigTrend(roceSeries,true)*0.4);
+    }
+    scores.roce = {s:roceS, label:'ROCE', val:roceVal!==null?roceVal.toFixed(1)+'%':'N/A'};
+
+    // Sales CAGR 3Y
+    const salesAnn = fin.Sales?.consolidated?.annual || fin.Sales?.standalone?.annual || {};
+    const salesSer = sigSeries(salesAnn);
+    let salesS=50, salesCAGR=null;
+    if (salesSer.length>=4) {
+        const s3=salesSer[salesSer.length-4], s0=salesSer[salesSer.length-1];
+        if(s3.v&&s0.v&&s3.v>0){ salesCAGR=(Math.pow(s0.v/s3.v,1/3)-1)*100; salesS=sigClamp(salesCAGR>=20?90:salesCAGR>=15?78:salesCAGR>=10?65:salesCAGR>=5?50:salesCAGR>=0?35:20); }
+    }
+    scores.sales = {s:salesS, label:'Sales CAGR 3Y', val:salesCAGR!==null?salesCAGR.toFixed(1)+'%':'N/A'};
+
+    // OPM trend
+    const opmQ = fin.OPM_pct?.consolidated?.quarterly || fin.OPM_pct?.standalone?.quarterly || {};
+    const opmA = fin.OPM_pct?.consolidated?.annual || fin.OPM_pct?.standalone?.annual || {};
+    const opmSer = sigSeries(Object.keys(opmQ).length?opmQ:opmA);
+    const opmVal = opmSer.length?opmSer[opmSer.length-1].v:null;
+    let opmS=50;
+    if(opmVal!==null){ const lvl=sigClamp(opmVal>=25?88:opmVal>=18?74:opmVal>=12?60:opmVal>=6?44:25); opmS=Math.round(lvl*0.55+sigTrend(opmSer,true)*0.45); }
+    scores.opm = {s:opmS, label:'OPM Trend', val:opmVal!==null?opmVal.toFixed(1)+'%':'N/A'};
+
+    // CFO Quality
+    const cfoOpD = fin.CFO_over_OP?.consolidated?.annual || fin.CFO_over_OP?.standalone?.annual || {};
+    const cfoOpSer = sigSeries(cfoOpD);
+    const cfoOpVal = sigLatestDict(cfoOpD);
+    let cfoS=50;
+    if(cfoOpVal!==null){ let lvl=sigClamp(cfoOpVal>=90?90:cfoOpVal>=75?75:cfoOpVal>=60?60:cfoOpVal>=40?45:25); cfoS=Math.round(lvl*0.6+sigTrend(cfoOpSer,true)*0.4); }
+    else { const ocf=sigToF(rat.operating_cashflow); if(ocf!==null) cfoS=ocf>0?65:35; }
+    scores.cfo = {s:cfoS, label:'CFO Quality', val:cfoOpVal!==null?cfoOpVal.toFixed(0)+'%':'N/A'};
+
+    // Debt Health
+    const borrSer = sigSeries(fin.Borrowings?.consolidated?.annual||fin.Borrowings?.standalone?.annual||{});
+    const deq = sigToF(rat.debt_to_equity);
+    let debtS=50;
+    if(deq!==null){ const lvl=sigClamp(deq<=0.3?90:deq<=0.7?78:deq<=1.2?62:deq<=2.0?42:22); debtS=Math.round(lvl*0.65+sigTrend(borrSer,false)*0.35); }
+    scores.debt = {s:debtS, label:'Debt Health', val:deq!==null?'D/E '+deq.toFixed(2)+'x':'N/A'};
+
+    // Net Profit momentum (Q YoY)
+    const npQ = fin.Net_Profit?.consolidated?.quarterly || fin.Net_Profit?.standalone?.quarterly || {};
+    const npSer = sigSeries(npQ);
+    let npS=50;
+    if(npSer.length>=5){ const lv=npSer[npSer.length-1].v, ya=npSer[npSer.length-5].v; if(lv&&ya&&ya>0) npS=sigClamp(50+(lv-ya)/ya*120); }
+    scores.np = {s:Math.round(npS), label:'Profit Momentum', val:'Q YoY'};
+
+    // FCF Consistency
+    const fcfSer = sigSeries(fin.Free_Cash_Flow?.consolidated?.annual||fin.Free_Cash_Flow?.standalone?.annual||{});
+    let fcfS=50;
+    if(fcfSer.length>=3){ const r3=fcfSer.slice(-3).map(x=>x.v).filter(v=>v!==null); const pos=r3.filter(v=>v>0).length; fcfS=sigClamp(pos===3?sigTrend(fcfSer,true)*0.6+35:pos===2?sigTrend(fcfSer,true)*0.4+25:25); }
+    scores.fcf = {s:Math.round(fcfS), label:'FCF Consistency', val:'3Y check'};
+
+    const ws={roce:0.22,sales:0.18,opm:0.18,cfo:0.14,debt:0.14,np:0.08,fcf:0.06};
+    const total=Object.entries(ws).reduce((acc,[k,w])=>acc+(scores[k]?.s||50)*w,0);
+    return {score:Math.round(total), sub:scores};
+}
+
+// ---------- PILLAR 2: TECHNICAL ----------
+function sigTechnical(st) {
+    const pr = st.price||{};
+    const scores = {};
+    const cp=sigToF(pr.current_price)||sigToF(pr.regular_market_price);
+    const dma50=sigToF(pr.fifty_day_avg);
+    const dma200=sigToF(pr.two_hundred_day_avg);
+    const w52h=sigToF(pr['52_week']?.fifty_two_week_high);
+    const w52l=sigToF(pr['52_week']?.fifty_two_week_low);
+    const beta=sigToF(pr.ltp?.beta);
+
+    // MA Trend
+    let maS=50;
+    if(cp&&dma50&&dma200){ const a50=cp>dma50,a200=cp>dma200,gc=dma50>dma200; maS=a50&&a200&&gc?85:a50&&a200?72:a200&&!a50?55:!a50&&!a200&&!gc?22:40; }
+    const dma50pct=cp&&dma50?((cp-dma50)/dma50*100).toFixed(1):null;
+    scores.ma = {s:maS, label:'MA Trend', val:dma50pct!==null?(dma50pct>0?'+':'')+dma50pct+'% vs 50D':'N/A'};
+
+    // 52W Position
+    let w52S=50;
+    if(cp&&w52h&&w52l){ const rng=w52h-w52l; const pos=rng>0?(cp-w52l)/rng:0.5; w52S=pos>=0.75?80:pos>=0.55?65:pos>=0.35?50:pos>=0.20?38:28; }
+    const w52Pct=sigToF(pr['52_week']?.fifty_two_week_change_pct);
+    scores.w52 = {s:w52S, label:'52W Position', val:w52Pct!==null?(w52Pct*100).toFixed(1)+'% 52W':'N/A'};
+
+    // Volume surge
+    const vol=sigToF(pr.volume?.regular_market_volume||pr.volume?.volume);
+    const avgVol=sigToF(pr.volume?.average_daily_volume_3mo||pr.volume?.average_volume);
+    let volS=50;
+    if(vol&&avgVol&&avgVol>0){ const r=vol/avgVol; volS=sigClamp(r>=2?85:r>=1.5?72:r>=1?55:r>=0.7?42:28); }
+    scores.vol = {s:volS, label:'Volume Signal', val:vol&&avgVol?((vol/avgVol).toFixed(1))+'x avg':'N/A'};
+
+    // Momentum from 6mo daily
+    const hist6=(pr.history_6mo_1d||[]).map(x=>sigToF(x.Close)).filter(v=>v!==null);
+    let momS=50;
+    if(hist6.length>=20){ const lt=hist6[hist6.length-1],m20=hist6[hist6.length-21],m60=hist6.length>=61?hist6[hist6.length-61]:hist6[0]; if(lt&&m20){ const r20=(lt-m20)/m20,r60=m60?(lt-m60)/m60:r20; momS=sigClamp(50+(r20*0.6+r60*0.4)*200); } }
+    scores.mom = {s:Math.round(momS), label:'Price Momentum', val:'20/60D ret'};
+
+    // RSI proxy
+    let rsiS=50;
+    if(hist6.length>=14){ const changes=hist6.slice(-14).map((c,i,a)=>i>0?c-a[i-1]:0).slice(1); const gains=changes.filter(c=>c>0).reduce((a,b)=>a+b,0)/13; const losses=Math.abs(changes.filter(c=>c<0).reduce((a,b)=>a+b,0))/13; if(losses===0) rsiS=85; else { const rsi=100-100/(1+gains/losses); rsiS=rsi>70?60:rsi>55?72:rsi>45?55:rsi>30?65:78; } }
+    scores.rsi = {s:rsiS, label:'RSI Signal', val:'14D'};
+
+    // Beta
+    let betaS=beta!==null?(beta<=0.5?70:beta<=1?62:beta<=1.5?50:beta<=2?38:25):55;
+    scores.beta = {s:betaS, label:'Beta Risk', val:beta!==null?'β '+beta.toFixed(2):'N/A'};
+
+    const ws={ma:0.28,w52:0.20,vol:0.15,mom:0.22,rsi:0.10,beta:0.05};
+    const total=Object.entries(ws).reduce((acc,[k,w])=>acc+(scores[k]?.s||50)*w,0);
+    return {score:Math.round(total), sub:scores};
+}
+
+// ---------- PILLAR 3: VALUATION ----------
+function sigValuation(st) {
+    const val=st.valuation||{};
+    const ws_=st.websignals||{};
+    const pr=st.price||{};
+    const scores={};
+    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||'Unknown';
+    const pe=sigToF(val.pe?.trailing_pe)||sigToF(val.pe?.forward_pe);
+    const pb=sigToF(val.pe?.price_to_book);
+    const evEb=sigToF(val.ev_to_ebitda);
+    const peg=sigToF(val.pe?.trailing_peg_ratio);
+    const cp=sigToF(pr.current_price);
+    const tgt=sigToF(ws_.target_mean_price);
+
+    // PE vs sector
+    const spe=SIG_MEDIANS[sector]||25;
+    let peS=pe!==null&&pe>0?sigClamp(pe<=spe*0.6?88:pe<=spe*0.8?76:pe<=spe?62:pe<=spe*1.3?46:pe<=spe*1.7?32:18):45;
+    scores.pe = {s:peS, label:'P/E vs Sector', val:pe!==null?pe.toFixed(1)+'x':'N/A'};
+
+    let pbS=pb!==null&&pb>0?sigClamp(pb<=1?88:pb<=2?75:pb<=3.5?60:pb<=6?44:pb<=10?30:18):50;
+    scores.pb = {s:pbS, label:'Price/Book', val:pb!==null?pb.toFixed(2)+'x':'N/A'};
+
+    let evS=evEb!==null&&evEb>0?sigClamp(evEb<=8?88:evEb<=12?76:evEb<=18?62:evEb<=25?46:evEb<=35?30:18):50;
+    scores.ev = {s:evS, label:'EV/EBITDA', val:evEb!==null?evEb.toFixed(1)+'x':'N/A'};
+
+    let pegS=peg!==null&&peg>0?sigClamp(peg<=0.5?90:peg<=1?78:peg<=1.5?62:peg<=2.5?44:25):50;
+    scores.peg = {s:pegS, label:'PEG Ratio', val:peg!==null?peg.toFixed(2)+'x':'N/A'};
+
+    let tgtS=50;
+    if(cp&&tgt){ const up=(tgt-cp)/cp*100; tgtS=sigClamp(up>=30?90:up>=20?78:up>=10?64:up>=0?50:up>=-10?38:22); }
+    const upV=cp&&tgt?((tgt-cp)/cp*100).toFixed(1)+'% upside':'N/A';
+    scores.tgt = {s:tgtS, label:'Analyst Upside', val:upV};
+
+    const w={pe:0.30,pb:0.18,ev:0.22,peg:0.14,tgt:0.16};
+    const total=Object.entries(w).reduce((acc,[k,wt])=>acc+(scores[k]?.s||50)*wt,0);
+    return {score:Math.round(total), sub:scores};
+}
+
+// ---------- PILLAR 4: SENTIMENT ----------
+function sigSentiment(st) {
+    const cd=st.company_details||{};
+    const ws_=st.websignals||{};
+    const dm=st.derived_metrics||{};
+    const sh=cd.shareholding?.pattern||{};
+    const scores={};
+
+    // Promoter trend
+    const promoSer=sigSeries(sh.promoters||{});
+    let promoterS=50;
+    if(promoSer.length>=2){ const lt=promoSer[promoSer.length-1].v, pv=promoSer.length>=5?promoSer[promoSer.length-5].v:promoSer[0].v; if(lt!==null&&pv!==null){ const lvl=lt>=65?80:lt>=50?68:lt>=35?55:lt>=20?44:35; const dlta=lt-pv; const dS=dlta>2?88:dlta>0.5?72:dlta>-0.5?55:dlta>-2?38:22; promoterS=Math.round(lvl*0.45+dS*0.55); } }
+    const promoLt=promoSer.length?promoSer[promoSer.length-1].v:null;
+    scores.prom = {s:promoterS, label:'Promoter Trend', val:promoLt!==null?promoLt.toFixed(1)+'%':'N/A'};
+
+    // FII+DII
+    const fiiSer=sigSeries(sh.fiis||{}), diiSer=sigSeries(sh.diis||{});
+    let instS=50;
+    if(fiiSer.length>=2||diiSer.length>=2){ instS=Math.round(sigTrend(fiiSer,true)*0.55+sigTrend(diiSer,true)*0.45); }
+    const fiiLt=fiiSer.length?fiiSer[fiiSer.length-1].v:null;
+    scores.inst = {s:instS, label:'FII+DII Flow', val:fiiLt!==null?'FII '+fiiLt.toFixed(1)+'%':'N/A'};
+
+    // Analyst rec
+    const recKey=ws_.recommendation_key||'';
+    const recMean=sigToF(ws_.recommendation_mean);
+    let analystS=50;
+    if(recMean!==null){ analystS=sigClamp(recMean<=1.5?88:recMean<=2?74:recMean<=2.5?60:recMean<=3?46:recMean<=3.5?34:20); }
+    else { const rm={'strong_buy':88,'buy':72,'hold':50,'underperform':34,'sell':18,'none':50}; analystS=rm[recKey]||50; }
+    const nOp=sigToF(ws_.number_of_analyst_opinions)||0;
+    const conf=nOp>=15?1:nOp/15; analystS=Math.round(analystS*conf+50*(1-conf));
+    scores.analyst = {s:analystS, label:'Analyst Consensus', val:recKey?recKey.replace('_',' ').toUpperCase():'N/A'};
+
+    // Governance risk
+    const govR=sigToF(ws_.overall_risk);
+    let govS=govR!==null?sigClamp(govR<=2?82:govR<=4?66:govR<=6?50:govR<=8?35:20):60;
+    scores.gov = {s:govS, label:'Governance Risk', val:govR!==null?'Risk '+govR+'/10':'N/A'};
+
+    // AI insights
+    const ai=dm.ai_insights_guidance||{};
+    let aiS=50;
+    if(ai.insights?.analysis){ const sm={'Positive':80,'Strong Positive':90,'Negative':25,'Strong Negative':15,'Neutral':52,'Caution':35}; const arr=Object.values(ai.insights.analysis).map(v=>sm[v?.signal]||50); if(arr.length) aiS=Math.round(arr.reduce((a,b)=>a+b,0)/arr.length); }
+    else if(ai.guidance?.management?.confidence==='HIGH') aiS=72;
+    else if(ai.guidance?.management?.confidence==='LOW') aiS=32;
+    scores.ai = {s:aiS, label:'AI Guidance', val:ai.insights?.recommendation||(ai.guidance?'Guidance':'No data')};
+
+    // Shareholder count
+    const shrSer=sigSeries(sh.no_of_shareholders||{});
+    let shrS=shrSer.length>=2?sigTrend(shrSer,true):55;
+    scores.shr = {s:shrS, label:'Shareholder Count', val:'Trend'};
+
+    const w={prom:0.25,inst:0.20,analyst:0.25,gov:0.10,ai:0.15,shr:0.05};
+    const total=Object.entries(w).reduce((acc,[k,wt])=>acc+(scores[k]?.s||50)*wt,0);
+    return {score:Math.round(total), sub:scores};
+}
+
+// ---------- COMPOSITE ----------
+function sigComposite(ticker, st) {
+    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||'Unknown';
+    const cfg=(SIG_SECTOR_CFG[sector]||SIG_SECTOR_CFG['_default']).w;
+    const F=sigFundamental(st), T=sigTechnical(st), V=sigValuation(st), S=sigSentiment(st);
+    const comp=Math.round(F.score*cfg.f + T.score*cfg.t + V.score*cfg.v + S.score*cfg.s);
+    return { ticker, comp, rating:sigRating(comp), ratingColor:sigScoreColor(comp),
+        sector, weights:cfg, name:st.company_details?.long_name||st.company_details?.short_name||ticker,
+        price:sigToF(st.price?.current_price),
+        F, T, V, S };
+}
+
+// ---------- RENDER LIST ----------
+function sigRenderList() {
+    let items = SIG_ALL.slice();
+    if(SIG_SECTOR_F) items=items.filter(x=>x.sector===SIG_SECTOR_F);
+    if(SIG_SEARCH_F) items=items.filter(x=>x.ticker.includes(SIG_SEARCH_F)||x.name.toUpperCase().includes(SIG_SEARCH_F));
+    if(SIG_SORT==='name') items.sort((a,b)=>a.ticker.localeCompare(b.ticker));
+    else if(SIG_SORT==='sector') items.sort((a,b)=>a.sector.localeCompare(b.sector));
+    else items.sort((a,b)=>b.comp-a.comp);
+
+    const listEl=document.getElementById('sig-list');
+    listEl.innerHTML=items.map(sig=>{
+        const isActive=SIG_SELECTED===sig.ticker;
+        const fc=sigScoreColor(sig.F.score), tc=sigScoreColor(sig.T.score), vc=sigScoreColor(sig.V.score), sc_=sigScoreColor(sig.S.score);
+        return `<div class="sig-ticker-row${isActive?' selected':''}" onclick="sigSelect('${sig.ticker}')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="font-size:12px;font-weight:800;color:#e2e8f0">${sig.ticker}</span>
+                <div style="display:flex;align-items:center;gap:5px;">
+                    <span style="font-size:12px;font-weight:800;color:${sig.ratingColor}">${sig.comp}</span>
+                    <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating.replace(' BUY','').replace('STRONG','STR')}</span>
+                </div>
+            </div>
+            <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${sig.comp}%;background:${sig.ratingColor}"></div></div>
+            <div style="display:flex;gap:8px;margin-top:5px;">
+                <span style="font-size:8px;color:${fc}">F${sig.F.score}</span>
+                <span style="font-size:8px;color:${tc}">T${sig.T.score}</span>
+                <span style="font-size:8px;color:${vc}">V${sig.V.score}</span>
+                <span style="font-size:8px;color:${sc_}">S${sig.S.score}</span>
+                <span style="font-size:8px;color:#333;margin-left:auto">${sig.sector.substring(0,10)}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ---------- PILLAR CARD HTML ----------
+function sigPillarCard(key, label, icon, pillar, color) {
+    const openKey=key;
+    const isOpen=SIG_OPEN_PILLARS[openKey];
+    const subs=Object.entries(pillar.sub).map(([k,v])=>`
+        <div class="sig-sub-row">
+            <span class="sig-sub-label">${v.label}</span>
+            <div class="sig-sub-bar"><div class="sig-sub-fill" style="width:${v.s}%;background:${sigScoreColor(v.s)}"></div></div>
+            <span class="sig-sub-score">${v.s}</span>
+            <span class="sig-sub-val">${v.val}</span>
+        </div>`).join('');
+    return `<div class="sig-pillar-card${isOpen?' open':''}" onclick="sigTogglePillar('${openKey}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:14px">${icon}</span>
+                <span style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.08em">${label}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;font-weight:800;color:${color}">${pillar.score}</span>
+                <span style="font-size:9px;color:#444">${isOpen?'▲':'▼'}</span>
+            </div>
+        </div>
+        <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${pillar.score}%;background:${color}"></div></div>
+        ${isOpen?`<div style="border-top:1px solid #1a1a1a;margin-top:8px;padding-top:4px">${subs}</div>`:''}
+    </div>`;
+}
+
+// ---------- GAUGE SVG ----------
+function sigGaugeSVG(score) {
+    const ang=(score/100)*180-90;
+    const cx=100,cy=90,r=68;
+    const x1=cx-r,y1=cy,x2=cx+r,y2=cy;
+    return `<svg viewBox="0 0 200 105" style="width:100%;max-width:200px;margin:4px auto 0;display:block">
+        <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ff4d6d"/><stop offset="25%" stop-color="#ff9100"/><stop offset="50%" stop-color="#ffea00"/><stop offset="75%" stop-color="#69f0ae"/><stop offset="100%" stop-color="#00ff88"/></linearGradient></defs>
+        <path d="M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}" fill="none" stroke="url(#gg)" stroke-width="10" stroke-linecap="round"/>
+        <g transform="rotate(${ang},${cx},${cy})">
+            <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-r+6}" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="${cx}" cy="${cy}" r="4" fill="#222" stroke="#fff" stroke-width="1.5"/>
+        </g>
+        <text x="${cx}" y="${cy+18}" text-anchor="middle" fill="white" font-size="18" font-weight="800" font-family="JetBrains Mono,monospace">${score}</text>
+        <text x="22" y="102" fill="#ff4d6d" font-size="7" text-anchor="middle" font-family="JetBrains Mono,monospace">SELL</text>
+        <text x="100" y="102" fill="#ffea00" font-size="7" text-anchor="middle" font-family="JetBrains Mono,monospace">NEUTRAL</text>
+        <text x="178" y="102" fill="#00ff88" font-size="7" text-anchor="middle" font-family="JetBrains Mono,monospace">BUY</text>
+    </svg>`;
+}
+
+// ---------- RENDER DETAIL ----------
+function sigRenderDetail(ticker) {
+    const sig=SIG_ALL.find(x=>x.ticker===ticker);
+    if(!sig) return;
+    const st=MASTER.find(s=>s.ticker===ticker);
+    if(!st) return;
+    const ws_=st.websignals||{};
+    const ai=st.derived_metrics?.ai_insights_guidance||{};
+    const cp=sigToF(st.price?.current_price);
+    const tgt=sigToF(ws_.target_mean_price);
+    const tgtLo=sigToF(ws_.target_low_price);
+    const tgtHi=sigToF(ws_.target_high_price);
+    const nOp=sigToF(ws_.number_of_analyst_opinions);
+    const sectorMedianPE=SIG_MEDIANS[sig.sector];
+
+    let html=`
+    <!-- STOCK HEADER -->
+    <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+                <div style="font-size:20px;font-weight:800;color:#f8fafc">${ticker}</div>
+                <div style="font-size:9px;color:#555;margin-top:2px">${sig.name}</div>
+                <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+                    <span class="sig-pill" style="background:#111;color:#666">${sig.sector}</span>
+                    ${cp?`<span style="font-size:12px;font-weight:700;color:#e2e8f0">₹${cp.toLocaleString()}</span>`:''}
+                </div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp}</div>
+                <div style="font-size:10px;font-weight:800;color:${sig.ratingColor};letter-spacing:0.06em">${sig.rating}</div>
+            </div>
+        </div>
+        ${sigGaugeSVG(sig.comp)}
+    </div>
+
+    <!-- SECTOR WEIGHTS -->
+    <div class="sig-weight-strip" style="border:1px solid #1a1a1a;border-radius:6px;margin-bottom:10px;overflow:hidden">
+        ${['Fundamental','Technical','Valuation','Sentiment'].map((lbl,i)=>{
+            const keys=['f','t','v','s'];
+            const pkeys=['F','T','V','S'];
+            const w=sig.weights[keys[i]];
+            const sc=sig[pkeys[i]].score;
+            return `<div class="sig-weight-cell">
+                <span class="sig-wlabel">${lbl.substring(0,4).toUpperCase()}</span>
+                <span class="sig-wval" style="color:${sigScoreColor(sc)}">${(w*100).toFixed(0)}%</span>
+            </div>`;
+        }).join('')}
+    </div>`;
+
+    // ANALYST TARGET
+    if(cp && tgt) {
+        const upside=((tgt-cp)/cp*100);
+        const uColor=upside>=0?'#00ff88':'#ff4d6d';
+        html+=`<div class="sig-target-box">
+            <div>
+                <div class="sig-section-title">ANALYST TARGET</div>
+                <div style="font-size:13px;font-weight:700;color:#e2e8f0">₹${tgt.toFixed(0)} <span style="color:#333;font-size:10px">/ ₹${tgtLo?tgtLo.toFixed(0):'?'} – ₹${tgtHi?tgtHi.toFixed(0):'?'}</span></div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-size:18px;font-weight:800;color:${uColor}">${upside>=0?'+':''}${upside.toFixed(1)}%</div>
+                <div style="font-size:8px;color:#444">${nOp?nOp+' analysts':''}</div>
+            </div>
+        </div>`;
+    }
+
+    // PILLAR CARDS
+    html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        ${sigPillarCard('F','Fundamental','📊',sig.F,'#00f2ff')}
+        ${sigPillarCard('T','Technical','📈',sig.T,'#7000ff')}
+        ${sigPillarCard('V','Valuation','⚖️',sig.V,'#00ff88')}
+        ${sigPillarCard('S','Sentiment','🧠',sig.S,'#ffb800')}
+    </div>`;
+
+    // AI THESIS
+    if(ai.insights?.thesis) {
+        const rec=ai.insights.recommendation||'';
+        const recColor={'BUY':'#00ff88','SELL':'#ff4d6d','HOLD':'#ffea00'}[rec]||'#aaa';
+        html+=`<div class="sig-ai-box">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <div class="sig-section-title">AI INVESTMENT THESIS</div>
+                ${rec?`<span class="sig-pill" style="background:${recColor}22;color:${recColor}">${rec}</span>`:''}
+            </div>
+            <div style="font-size:9px;color:#666;line-height:1.7">${ai.insights.thesis.substring(0,400)}${ai.insights.thesis.length>400?'…':''}</div>
+            ${ai.insights.trigger?`<div style="margin-top:8px;padding:6px 8px;background:#0a1a0a;border-left:2px solid #00ff88;font-size:9px;color:#4a8a4a;line-height:1.6"><strong style="color:#00ff88">TRIGGER: </strong>${ai.insights.trigger.substring(0,250)}…</div>`:''}
+        </div>`;
+    }
+
+    // AI ANALYSIS DIMS
+    if(ai.insights?.analysis) {
+        const sigColorMap={'Positive':'#00ff88','Strong Positive':'#00ff88','Negative':'#ff4d6d','Strong Negative':'#ff4d6d','Neutral':'#ffea00','Caution':'#ff9100'};
+        html+=`<div class="sig-ctx-box" style="margin-bottom:8px">
+            <div class="sig-section-title">AI SIGNAL BREAKDOWN</div>
+            <div class="sig-ai-dims">
+                ${Object.entries(ai.insights.analysis).map(([dim,v])=>{
+                    const c=sigColorMap[v?.signal]||'#555';
+                    return `<div class="sig-ai-dim"><div style="font-size:8px;color:#444;text-transform:capitalize">${dim}</div><div style="font-size:9px;color:${c};font-weight:700;margin-top:2px">${v.signal||'—'}</div></div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    }
+
+    // SECTOR CONTEXT
+    html+=`<div class="sig-ctx-box">
+        <div class="sig-section-title">SECTOR CONTEXT — ${sig.sector}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><div style="font-size:8px;color:#444">Sector Median PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sectorMedianPE?sectorMedianPE.toFixed(1)+'x':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#444">Stock PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.valuation?.pe?.trailing_pe)?sigToF(st.valuation?.pe?.trailing_pe).toFixed(1)+'x':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#444">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.fifty_two_week_change_pct)!==null?(sigToF(st.price['52_week'].fifty_two_week_change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#444">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price.ltp.beta).toFixed(2):'N/A'}</div></div>
+        </div>
+    </div>`;
+
+    document.getElementById('sig-detail').innerHTML=html;
+}
+
+// ---------- EVENT HANDLERS ----------
+function sigSelect(ticker) {
+    SIG_SELECTED=ticker;
+    sigRenderList();
+    sigRenderDetail(ticker);
+}
+function sigTogglePillar(key) {
+    SIG_OPEN_PILLARS[key]=!SIG_OPEN_PILLARS[key];
+    if(SIG_SELECTED) sigRenderDetail(SIG_SELECTED);
+}
+function sigFilter() {
+    SIG_SEARCH_F=(document.getElementById('sig-search').value||'').toUpperCase();
+    SIG_SECTOR_F=document.getElementById('sig-sector-filter').value||'';
+    sigRenderList();
+}
+function sigSort(by) {
+    SIG_SORT=by;
+    ['score','name','sector'].forEach(s=>{
+        const el=document.getElementById('sig-sort-'+s);
+        if(el){ el.classList.toggle('active',s===by); }
+    });
+    sigRenderList();
+}
+
+// ---------- VIEW SWITCHING ----------
+function showMainView() {
+    document.getElementById('main-view').style.display='';
+    document.getElementById('signal-view').classList.remove('active');
+    // also hide the toolbar that is only for portfolio
+    document.getElementById('bar-wrap').style.display='';
+    document.getElementById('legend').style.display='';
+    document.getElementById('view-mode-toggle').style.display='';
+    document.getElementById('nav-portfolio').classList.add('active');
+    document.getElementById('nav-signal').classList.remove('active');
+}
+
+function showSignalView() {
+    if(MASTER.length===0){ alert('Load data first (Data tab → 🚀 LOAD JSON)'); return; }
+    // hide portfolio UI
+    document.getElementById('main-view').style.display='none';
+    document.getElementById('bar-wrap').style.display='none';
+    document.getElementById('legend').style.display='none';
+    document.getElementById('view-mode-toggle').style.display='none';
+    document.getElementById('signal-view').classList.add('active');
+    document.getElementById('nav-portfolio').classList.remove('active');
+    document.getElementById('nav-signal').classList.add('active');
+
+    // Boot signal engine on first open
+    if(SIG_ALL.length===0) sigBoot();
+}
+
+function sigBoot() {
+    buildSigMedians(MASTER);
+    SIG_ALL=MASTER.map(st=>sigComposite(st.ticker,st));
+    // Populate sector dropdown
+    const sectors=[...new Set(SIG_ALL.map(x=>x.sector))].sort();
+    const sel=document.getElementById('sig-sector-filter');
+    sel.innerHTML='<option value="">All Sectors</option>'+sectors.map(s=>`<option value="${s}">${s}</option>`).join('');
+    sigRenderList();
+    // Auto-select first
+    if(SIG_ALL.length){ const top=[...SIG_ALL].sort((a,b)=>b.comp-a.comp)[0]; sigSelect(top.ticker); }
+}
+
 
 // Initialize on first page load
 init().catch(err => {
