@@ -344,19 +344,19 @@ FIELD_MAP = {
         "Revenue +":         ("financials", "Sales"),
         "Revenue +":        ("financials", "Sales"),  # Non-breaking space variant
         "Sales +":           ("financials", "Sales"),
-        "Sales\xa0+":          ("financials", "Sales"),  # Non-breaking space variant
+        "Sales +":          ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":        ("financials", "Expenses"),
-        "Expenses\xa0+":       ("financials", "Expenses"),  # Non-breaking space variant
+        "Expenses +":       ("financials", "Expenses"),  # Non-breaking space variant
         "Operating Profit":  ("financials", "Operating_Profit"),
         "OPM %":             ("financials", "OPM_pct"),
         "Other Income +":    ("financials", "Other_Income"),
-        "Other Income\xa0+":   ("financials", "Other_Income"),  # Non-breaking space variant
+        "Other Income +":   ("financials", "Other_Income"),  # Non-breaking space variant
         "Interest":          ("financials", "Interest"),
         "Depreciation":      ("financials", "Depreciation"),
         "Profit before tax": ("financials", "Profit_before_tax"),
         "Tax %":             ("financials", "Tax_pct"),
         "Net Profit +":      ("financials", "Net_Profit"),
-        "Net Profit\xa0+":     ("financials", "Net_Profit"),  # Non-breaking space variant
+        "Net Profit +":     ("financials", "Net_Profit"),  # Non-breaking space variant
         "EPS in Rs":         ("financials", "EPS_Rs"),
         "Financing Profit":  ("financials", "Financing_Profit"),
         "Financing Margin %":("financials", "Financing_Margin_pct"),
@@ -370,19 +370,19 @@ FIELD_MAP = {
         "Revenue +":          ("financials", "Sales"),
         "Revenue +":         ("financials", "Sales"),  # Non-breaking space variant
         "Sales +":            ("financials", "Sales"),
-        "Sales\xa0+":           ("financials", "Sales"),  # Non-breaking space variant
+        "Sales +":           ("financials", "Sales"),  # Non-breaking space variant
         "Expenses +":         ("financials", "Expenses"),
-        "Expenses\xa0+":        ("financials", "Expenses"),  # Non-breaking space variant
+        "Expenses +":        ("financials", "Expenses"),  # Non-breaking space variant
         "Operating Profit":   ("financials", "Operating_Profit"),
         "OPM %":              ("financials", "OPM_pct"),
         "Other Income +":     ("financials", "Other_Income"),
-        "Other Income\xa0+":    ("financials", "Other_Income"),  # Non-breaking space variant
+        "Other Income +":    ("financials", "Other_Income"),  # Non-breaking space variant
         "Interest":           ("financials", "Interest"),
         "Depreciation":       ("financials", "Depreciation"),
         "Profit before tax":  ("financials", "Profit_before_tax"),
         "Tax %":              ("financials", "Tax_pct"),
         "Net Profit +":       ("financials", "Net_Profit"),
-        "Net Profit\xa0+":      ("financials", "Net_Profit"),  # Non-breaking space variant
+        "Net Profit +":      ("financials", "Net_Profit"),  # Non-breaking space variant
         "EPS in Rs":          ("financials", "EPS_Rs"),
         "Dividend Payout %":  ("financials", "Dividend_Payout_pct"),
         "Financing Profit":   ("financials", "Financing_Profit"),
@@ -395,16 +395,16 @@ FIELD_MAP = {
         "Reserves":           ("financials", "Reserves"),
         "Borrowing":          ("financials", "Borrowing"),
         "Borrowings +":       ("financials", "Borrowings"),
-        "Borrowings\xa0+":      ("financials", "Borrowings"),  # Non-breaking space variant
+        "Borrowings +":      ("financials", "Borrowings"),  # Non-breaking space variant
         "Other Liabilities +":("financials", "Other_Liabilities"),
-        "Other Liabilities\xa0+":("financials", "Other_Liabilities"),  # Non-breaking space variant
+        "Other Liabilities +":("financials", "Other_Liabilities"),  # Non-breaking space variant
         "Total Liabilities":  ("financials", "Total_Liabilities"),
         "Fixed Assets +":     ("financials", "Fixed_Assets"),
-        "Fixed Assets\xa0+":    ("financials", "Fixed_Assets"),  # Non-breaking space variant
+        "Fixed Assets +":    ("financials", "Fixed_Assets"),  # Non-breaking space variant
         "CWIP":               ("financials", "CWIP"),
         "Investments":        ("financials", "Investments"),
         "Other Assets +":     ("financials", "Other_Assets"),
-        "Other Assets\xa0+":    ("financials", "Other_Assets"),  # Non-breaking space variant
+        "Other Assets +":    ("financials", "Other_Assets"),  # Non-breaking space variant
         "Total Assets":       ("financials", "Total_Assets"),
         "Deposits":           ("financials", "Deposits"),  # Bank-specific field
     },
@@ -412,11 +412,11 @@ FIELD_MAP = {
     # ── screener_fin:ratios  (annual consolidated cash flow, 7yr) ────────────
     "screener_fin:ratios": {
         "Cash from Operating Activity +": ("financials", "CFO"),
-        "Cash from Operating Activity\xa0+": ("financials", "CFO"),  # Non-breaking space variant
+        "Cash from Operating Activity +": ("financials", "CFO"),  # Non-breaking space variant
         "Cash from Investing Activity +": ("financials", "CFI"),
-        "Cash from Investing Activity\xa0+": ("financials", "CFI"),  # Non-breaking space variant
+        "Cash from Investing Activity +": ("financials", "CFI"),  # Non-breaking space variant
         "Cash from Financing Activity +": ("financials", "CFF"),
-        "Cash from Financing Activity\xa0+": ("financials", "CFF"),  # Non-breaking space variant
+        "Cash from Financing Activity +": ("financials", "CFF"),  # Non-breaking space variant
         "Net Cash Flow":                  ("financials", "Net_Cash_Flow"),
         "Free Cash Flow":                 ("financials", "Free_Cash_Flow"),
         "CFO/OP":                         ("financials", "CFO_over_OP"),
@@ -542,10 +542,14 @@ FIELD_MAP = {
     # "guidance:insights": { ... insight fields ... },
 
     # ── yahoofin_raw:history_*  (OHLCV) ──────────────────────────────────────
-    # handled separately via __history__ logic below
+    # Canonical keys — market_data_flatten.py normalises 5yr and 10yr source
+    # variants to these same names, so output structure is always identical.
+    # history_6mo_1d  — daily,   always present
+    # history_1wk     — weekly,  from history_5y_1wk OR history_10y_1wk
+    # history_1mo     — monthly, from history_5y_1mo OR history_10y_1mo
     "yahoofin_raw:history_6mo_1d": "__history__",
-    "yahoofin_raw:history_5y_1wk": "__history__",
-    "yahoofin_raw:history_5y_1mo": "__history__",
+    "yahoofin_raw:history_1wk":    "__history__",
+    "yahoofin_raw:history_1mo":    "__history__",
 }
 
 
@@ -1911,8 +1915,8 @@ def main():
                     "description": "Valuation metrics grouped by PE and EPS sub-groups"
                 },
                 "price": {
-                    "sub_sections": ["current_price", "ltp", "52_week { high, low, change }", "volume { daily, average }", "history_6mo_1d", "history_5y_1wk", "history_5y_1mo"],
-                    "description": "Price data - current, 52-week range, volume, OHLCV history"
+                    "sub_sections": ["current_price", "ltp", "52_week { high, low, change }", "volume { daily, average }", "history_6mo_1d", "history_1wk", "history_1mo"],
+                    "description": "Price data - current, 52-week range, volume, OHLCV history (history_1wk/history_1mo populated from 5yr or 10yr source, structure identical either way)"
                 },
                 "websignals": {
                     "sub_sections": ["ai_insights_date", "recommendation_key", "recommendation_mean", "number_of_analyst_opinions", "target_high_price", "target_low_price", "raw_pdf_*"],

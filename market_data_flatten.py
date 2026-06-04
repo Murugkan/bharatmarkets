@@ -429,15 +429,26 @@ for TICKER in TICKERS_TO_PROCESS:
                     ticker_errors.append(f"yahoofin_raw | info | {k} | {str(e)}")
                     logger.write_error(TICKER, 'yahoofin_raw', k, str(e))
             
-            for section_key in ['history_6mo_1d', 'history_5y_1wk', 'history_5y_1mo']:
+            # Canonical output keys — structure never changes regardless of 5yr/10yr input.
+            # history_6mo_1d → history_6mo_1d  (daily, always present)
+            # history_5y_1wk / history_10y_1wk → history_1wk  (weekly, whichever is present)
+            # history_5y_1mo / history_10y_1mo → history_1mo  (monthly, whichever is present)
+            HISTORY_CANONICAL = {
+                'history_6mo_1d':  'history_6mo_1d',
+                'history_5y_1wk':  'history_1wk',
+                'history_10y_1wk': 'history_1wk',
+                'history_5y_1mo':  'history_1mo',
+                'history_10y_1mo': 'history_1mo',
+            }
+            for section_key, canonical_key in HISTORY_CANONICAL.items():
                 try:
                     history = raw.get(section_key, [])
                     if history:
                         standardized = standardize_array_dates(history)
                         sorted_hist = sort_array_by_date(standardized)
-                        metrics[f"{section_key}|{section_key}"] = {
-                            'metric': f"{section_key}_data",
-                            'section': section_key,
+                        metrics[f"{canonical_key}|{canonical_key}"] = {
+                            'metric': f"{canonical_key}_data",
+                            'section': canonical_key,
                             'source': 'yahoofin_raw',
                             'data_type': 'array',
                             'record_count': len(sorted_hist),
@@ -476,13 +487,6 @@ for TICKER in TICKERS_TO_PROCESS:
             granule = obj.get('granule', '')
             consol = obj.get('consolidation', '')
             
-        # Restructure: section > consolidation > granularity > [list of metrics]
-        for key, obj in metrics.items():
-            source = obj.get('source', 'unknown')
-            section_name = obj['section']
-            granule = obj.get('granule', '')
-            consol = obj.get('consolidation', '')
-            
             # Build hierarchical section key
             if (source in ['screener_raw', 'screener_fin']) and consol and granule:
                 # For screener_raw/screener_fin with consolidation and granularity:
@@ -513,6 +517,9 @@ for TICKER in TICKERS_TO_PROCESS:
                 output[TICKER]['data'][section_key][consol][granule].append(row)
             else:
                 # For other sections, use existing flat structure
+                # Only append granule suffix when it is actually present —
+                # history/info/metadata metrics have no granule and must match
+                # FIELD_MAP keys like "yahoofin_raw:history_6mo_1d" exactly.
                 if granule:
                     section_key = f"{source}:{section_name}:{granule}"
                 else:
@@ -619,6 +626,10 @@ try:
                     "screener_fin:balance_sheet",
                     "yahoofin_raw:info",
                     "yahoofin_raw:history_6mo_1d",
+                    "yahoofin_raw:history_5y_1wk  (present if raw file is 5yr)",
+                    "yahoofin_raw:history_5y_1mo  (present if raw file is 5yr)",
+                    "yahoofin_raw:history_10y_1wk (present if raw file is 10yr)",
+                    "yahoofin_raw:history_10y_1mo (present if raw file is 10yr)",
                     "yahoofin_fin:latest",
                     "guidance:guidance",
                     "guidance:insights",
