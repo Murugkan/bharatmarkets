@@ -3325,8 +3325,9 @@ function drawCandlestick(s){
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
-  // Thinner bars for dense data: reduce multiplier and max width
-  const bw=Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
+  // ✅ Apply zoom to bar width: zoom in = wider bars, zoom out = narrower bars
+  const baseWidth = Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
+  const bw = baseWidth * S.chartZoom;
 
   // Full history + visible date range — used by both MAs and KPI overlays
   const allCandles = (s.candles || candles).sort((a, b) => a.d.localeCompare(b.d));
@@ -3823,7 +3824,10 @@ function drawVolume(s){
   const W=W2,H=H2;
   const PAD={l:8,r:52,t:6,b:28};  // ✅ Increased from 18 to 28 for more x-axis label space
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
-  const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
+  const n=candles.length,gap=cW/n;
+  // ✅ Apply zoom to volume bar width too
+  const volBaseWidth = Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
+  const bw = volBaseWidth * S.chartZoom;
   const mv=Math.max(...candles.map(c=>c.v))||1;
   
   // Calculate price range from candles for labels
@@ -3841,7 +3845,7 @@ function drawVolume(s){
   // Volume bars - each bar colored based on corresponding candlestick
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2;
+    const x=PAD.l+i*gap+(gap-bw)/2 + S.chartPan;  // ✅ Added pan offset
     // Color: green if close > open, red if close <= open (matches candlestick color)
     const barColor = (c.c > c.o) ? '#00d084' : '#ff3b5c';
     ctx.fillStyle=barColor;
