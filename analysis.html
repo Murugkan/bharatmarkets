@@ -3062,23 +3062,50 @@ function attachChartResizeObserver(s){
 }
 
 function getSlicedCandles(s, canvasWidth){
-  const daily = s.candles||[];
+  // Pick the right raw history based on interval
+  let raw = [];
+  if(S.chartInterval === 'W' && s.price && Array.isArray(s.price.history_5y_1wk) && s.price.history_5y_1wk.length)
+    raw = s.price.history_5y_1wk;
+  else if(S.chartInterval === 'M' && s.price && Array.isArray(s.price.history_5y_1mo) && s.price.history_5y_1mo.length)
+    raw = s.price.history_5y_1mo;
+  else if(s.price && Array.isArray(s.price.history_6mo_1d) && s.price.history_6mo_1d.length)
+    raw = s.price.history_6mo_1d;
+  else if(s.price && Array.isArray(s.price.history_5y_1wk) && s.price.history_5y_1wk.length)
+    raw = s.price.history_5y_1wk;
+  else if(s.price && Array.isArray(s.price.history_5y_1mo) && s.price.history_5y_1mo.length)
+    raw = s.price.history_5y_1mo;
+
+  // Normalise to {d, o, h, l, c, v}
+  let daily = raw.map(bar => ({
+    d: String(bar.Date || bar.d || ''),
+    o: parseFloat(bar.Open  || bar.o || 0),
+    h: parseFloat(bar.High  || bar.h || 0),
+    l: parseFloat(bar.Low   || bar.l || 0),
+    c: parseFloat(bar.Close || bar.c || 0),
+    v: parseInt(bar.Volume  || bar.v || 0)
+  })).filter(c => c.d && c.c > 0);
+
+  // Fall back to pre-built candles array if no price object
+  if(!daily.length) daily = s.candles || [];
   if(!daily.length) return [];
+
+  daily.sort((a,b) => a.d.localeCompare(b.d));
+
+  // Apply period cutoff
   const now = new Date();
-  const days = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange]||365;
-  const cutoff = new Date(now-days*864e5).toISOString().slice(0,10);
-  let f = daily.filter(c=>c.d>=cutoff);
-  if(!f.length) f = daily.slice(-Math.max(20,Math.floor(daily.length*0.25)));
-  f.sort((a,b)=>a.d.localeCompare(b.d));
-  const all = aggregateCandles(f, S.chartInterval);
-  if(!all.length) return [];
+  const days = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825,'MAX':99999}[S.chartRange] || 365;
+  const cutoff = new Date(now - days*864e5).toISOString().slice(0,10);
+  let f = daily.filter(c => c.d >= cutoff);
+  if(!f.length) f = daily.slice(-Math.max(20, Math.floor(daily.length*0.25)));
+
+  if(!f.length) return [];
   const w = Math.max(100, canvasWidth||320);
   const base = Math.max(20, Math.floor((w-60)/7));
   const vis  = Math.max(10, Math.round(base/S.chartZoom));
-  const maxP = Math.max(0, all.length-vis);
+  const maxP = Math.max(0, f.length-vis);
   const pan  = Math.max(0, Math.min(maxP, S.panOffset));
-  const end  = all.length - pan;
-  return all.slice(Math.max(0,end-vis), end);
+  const end  = f.length - pan;
+  return f.slice(Math.max(0, end-vis), end);
 }
 
 // Extract quarterly data with all KPI metrics
@@ -3210,8 +3237,15 @@ function drawCandlestick(s){
   const baseWidth = Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
   const bw = baseWidth * S.chartZoom;
 
-  // Full history + visible date range — used by both MAs and KPI overlays
-  const allCandles = (s.candles || candles).sort((a, b) => a.d.localeCompare(b.d));
+  // Full history for current interval — used by MAs and KPI overlays for price lookup
+  const _fullRaw = (S.chartInterval==='W' && s.price?.history_5y_1wk?.length) ? s.price.history_5y_1wk
+                 : (S.chartInterval==='M' && s.price?.history_5y_1mo?.length)  ? s.price.history_5y_1mo
+                 : (s.price?.history_6mo_1d?.length)                           ? s.price.history_6mo_1d
+                 : null;
+  const allCandles = (_fullRaw
+    ? _fullRaw.map(b=>({d:String(b.Date||b.d||''),c:parseFloat(b.Close||b.c||0)})).filter(b=>b.d&&b.c>0)
+    : (s.candles||candles).slice()
+  ).sort((a,b)=>a.d.localeCompare(b.d));
   const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
   const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
@@ -3399,17 +3433,18 @@ function drawCandlestick(s){
   }
 
   // Current price dashed line
-  if(s.ltp){
-    const lastY=toY(s.ltp);
-    const bull=s.candles?.length&&s.ltp>=(s.candles[0]?.c||s.ltp);
+  const _ltp = s.ltp || s.price?.ltp?.ltp || s.price?.current_price || s.price?.regular_market_price || 0;
+  if(_ltp){
+    const lastY=toY(_ltp);
+    const _firstClose = candles.length ? candles[0].c : _ltp;
+    const bull = _ltp >= _firstClose;
     ctx.strokeStyle=bull?'rgba(0,208,132,.5)':'rgba(255,59,92,.5)';
     ctx.lineWidth=.6;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(PAD.l,lastY);ctx.lineTo(PAD.l+cW,lastY);ctx.stroke();
     ctx.setLineDash([]);
-    // Price badge on right axis
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
+    ctx.fillText(Math.round(_ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
   // X-axis date labels - optimized for mobile
@@ -3476,7 +3511,7 @@ function drawCandlestick(s){
     for(let i=allCandles.length-1; i>=0; i--){
       if(allCandles[i].d <= dateStr) return allCandles[i].c;
     }
-    return allCandles.length ? allCandles[0].c : (s.ltp || 0);
+    return allCandles.length ? allCandles[0].c : (s.ltp || s.price?.ltp?.ltp || s.price?.current_price || 0);
   }
 
   // Log raw quarterly data once (commented out - uncomment for debugging)
