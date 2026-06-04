@@ -3689,23 +3689,6 @@ function drawCandlestick(s){
     });
 
     ctx.restore(); // restore clip
-
-    // Label drawn AFTER restore so it's in the right axis strip (not clipped)
-    const last = pts[pts.length-1];
-    const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' :
-                    k==='opm' ? last.v.toFixed(1)+'%' :
-                    Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'K' : last.v.toFixed(0)+'Cr';
-    let labelY = Math.max(kpiY(last.v), PAD.t + 8);
-    labelY = Math.min(labelY, H - PAD.b - 8);
-    while(drawCandlestick._kpiLabelY.some(y => Math.abs(y - labelY) < 9)) labelY += 9;
-    labelY = Math.min(labelY, H - PAD.b - 8);
-    drawCandlestick._kpiLabelY.push(labelY);
-    ctx.save();
-    ctx.fillStyle = col; ctx.globalAlpha = 1;
-    ctx.font = 'bold 7px JetBrains Mono,monospace';
-    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText(label+' '+dispVal, W - 3, labelY);
-    ctx.restore();
   });
   } catch(e) {
     const cv = document.getElementById('cv-candle');
