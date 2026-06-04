@@ -3310,8 +3310,8 @@ function drawCandlestick(s){
   }
   
 
-  const W=W2,H=312;  // ✅ Increased 30% from 240
-  const PAD={l:8,r:52,t:8,b:22};  // ✅ Changed left from 6 to 8 to match volume chart
+  const W=W2,H=312;
+  const PAD={l:8,r:62,t:8,b:22};  // r:62 fits 7px KPI labels like "Sales 604Cr"
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
@@ -3552,6 +3552,7 @@ function drawCandlestick(s){
 
   // ── KPI overlays on price chart ──────────────────────────────────
   const quarterly = getQuarterlyData(s);
+  drawCandlestick._kpiLabelY = []; // reset label collision tracker
 
   const KPI_DEFS = [
     // Income Statement
@@ -3682,14 +3683,22 @@ function drawCandlestick(s){
       });
     });
 
-    // Label on right axis strip
+    // Label on right axis strip — clipped inside PAD.r, with collision avoidance
     const last = pts[pts.length-1];
     const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' :
                     k==='opm' ? last.v.toFixed(1)+'%' :
-                    Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'KCr' : last.v.toFixed(0)+'Cr';
+                    Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'K' : last.v.toFixed(0)+'Cr';
     ctx.fillStyle = col; ctx.globalAlpha = 1;
     ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right';
-    ctx.fillText(label+' '+dispVal, W-2, Math.max(kpiY(last.v)-3, PAD.t+8));
+    // Find a Y that doesn't collide with already-placed labels
+    if(!drawCandlestick._kpiLabelY) drawCandlestick._kpiLabelY = [];
+    let labelY = Math.max(kpiY(last.v), PAD.t + 8);
+    labelY = Math.min(labelY, H - PAD.b - 8);
+    // Nudge down if colliding (9px line height)
+    while(drawCandlestick._kpiLabelY.some(y => Math.abs(y - labelY) < 9)) labelY += 9;
+    labelY = Math.min(labelY, H - PAD.b - 8);
+    drawCandlestick._kpiLabelY.push(labelY);
+    ctx.fillText(label+' '+dispVal, W - 3, labelY);
     ctx.restore();
   });
   } catch(e) {
@@ -3737,7 +3746,7 @@ function drawVolume(s){
   ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
 
   const W=W2,H=H2;
-  const PAD={l:8,r:52,t:6,b:28};  // ✅ Increased from 18 to 28 for more x-axis label space
+  const PAD={l:8,r:62,t:6,b:28};
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const n=candles.length,gap=cW/n;
   // ✅ Apply zoom to volume bar width too
