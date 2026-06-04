@@ -1317,20 +1317,27 @@ function getSlicedCandles(s, canvasWidth){
   else if (s.price?.history_5y_1wk?.length)
     raw = s.price.history_5y_1wk;
 
-  // Normalise to {d, o, h, l, c, v}
-  let daily = raw
-    ? raw.map(b => ({
-        d: String(b.Date || b.d || ''),
-        o: parseFloat(b.Open  || b.o || 0),
-        h: parseFloat(b.High  || b.h || 0),
-        l: parseFloat(b.Low   || b.l || 0),
-        c: parseFloat(b.Close || b.c || 0),
-        v: parseInt(b.Volume  || b.v || 0)
-      })).filter(b => b.d && b.c > 0)
-    : (s.candles || []);
+  // Cache normalised array — only rebuild when interval changes
+  const cacheKey = S.chartInterval;
+  if(!s._dailyCache || s._dailyCacheKey !== cacheKey) {
+    s._dailyCache = raw
+      ? raw.map(b => ({
+          d: String(b.Date || b.d || ''),
+          o: parseFloat(b.Open  || b.o || 0),
+          h: parseFloat(b.High  || b.h || 0),
+          l: parseFloat(b.Low   || b.l || 0),
+          c: parseFloat(b.Close || b.c || 0),
+          v: parseInt(b.Volume  || b.v || 0)
+        })).filter(b => b.d && b.c > 0)
+        .sort((a, b) => a.d.localeCompare(b.d))
+      : (s.candles || []);
+    s._dailyCacheKey = cacheKey;
+    // Pre-parse timestamps for fast date math
+    s._dailyCache.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
+  }
+  const daily = s._dailyCache;
 
   if (!daily.length) return [];
-  daily.sort((a, b) => a.d.localeCompare(b.d));
 
   // Apply period cutoff
   const now = new Date();
@@ -1505,19 +1512,26 @@ function drawCandlestick(s){
       })).filter(b => b.d && b.c > 0)
     : (s.candles || candles).slice()
   ).sort((a, b) => a.d.localeCompare(b.d));
-  const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
-  const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
+  // Pre-parse timestamps once
+  allCandles.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
+  candles.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
+  const visFirst = candles.length ? candles[0]._t : 0;
+  const visLast  = candles.length ? candles[candles.length-1]._t : 1;
   const visRange = visLast - visFirst || 1;
   
   // ✅ FIX: KPI overlays use FULL history range for correct positioning during pan
-  const allFirst = allCandles.length ? new Date(allCandles[0].d).getTime() : visFirst;
-  const allLast = allCandles.length ? new Date(allCandles[allCandles.length-1].d).getTime() : visLast;
+  const allFirst = allCandles.length ? allCandles[0]._t : visFirst;
+  const allLast  = allCandles.length ? allCandles[allCandles.length-1]._t : visLast;
   const allRange = allLast - allFirst || 1;
 
   const allPrices=candles.flatMap(c=>[c.h,c.l]);
   if(s.sma20&&S.maVis.sma20)allPrices.push(...s.sma20.filter(v=>v!==null));
   if(s.sma50&&S.maVis.sma50)allPrices.push(...s.sma50.filter(v=>v!==null));
   if(s.ema200&&S.maVis.ema200)allPrices.push(...s.ema200.filter(v=>v!==null));
+
+  // Use loop instead of Math.max/min spread to avoid stack overflow on large arrays
+  let mn=Infinity, mx=-Infinity;
+  for(let i=0;i<allPrices.length;i++){ if(allPrices[i]<mn)mn=allPrices[i]; if(allPrices[i]>mx)mx=allPrices[i]; }
   
   // Ensure we have valid price data
   if(allPrices.length === 0) {
@@ -1529,8 +1543,8 @@ function drawCandlestick(s){
     ctx.fillText('No valid price data', W/2, H/2);
     return;
   }
-  
-  const mn=Math.min(...allPrices), mx=Math.max(...allPrices), rng=mx-mn||1;
+  if(mn===Infinity || mx===-Infinity){ mn=0; mx=1; }
+  const rng=mx-mn||1;
   
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
@@ -1639,7 +1653,7 @@ function drawCandlestick(s){
     const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
 
     function maX(allIdx){
-      const t = new Date(allC[allIdx].d).getTime();
+      const t = allC[allIdx]._t || new Date(allC[allIdx].d).getTime();
       return PAD.l + ((t - visFirst) / visRange) * cW;
     }
     function drawMAFull(vals, col, dash, label){
@@ -1737,10 +1751,10 @@ function drawCandlestick(s){
   // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
 
   function xForDate(dateStr){
-    // ✅ Use VISIBLE range for alignment (same as candlesticks)
-    const t = new Date(dateStr).getTime();
-    const x = PAD.l + ((t - visFirst) / visRange) * cW;
-    return x;
+    // Parse date string YYYY-MM-DD to timestamp without new Date() overhead
+    const p = dateStr.split('-');
+    const t = Date.UTC(+p[0], +p[1]-1, +p[2]);
+    return PAD.l + ((t - visFirst) / visRange) * cW;
   }
 
   // Search FULL history for price on/before a date
@@ -2130,6 +2144,7 @@ function canvasSetChartInterval(iv){
           delete currentStock.sma20;
           delete currentStock.sma50;
           delete currentStock.ema200;
+          delete currentStock._dailyCache; // force getSlicedCandles to rebuild
           recalculateIndicators._lastKey = null;
           aggregateCandles._cache = null;
           scheduleChartRedraw();
@@ -2174,8 +2189,14 @@ function setupChartInteraction(){
   if(!canvas) return;
   setupChartInteraction._initialized = true;
   const t={lastDist:0,isPanning:false,startX:0,startPan:0};
-  let lastT=0;
-  const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
+  let rafId=0;
+  const go=()=>{
+    if(rafId) return; // already queued
+    rafId=requestAnimationFrame(()=>{
+      rafId=0;
+      if(currentStock) { drawCandlestick(currentStock); if(S.maVis.vol) drawVolume(currentStock); }
+    });
+  };
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
 
   canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startPan=S.panOffset;},{passive:true});
