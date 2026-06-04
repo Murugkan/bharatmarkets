@@ -3665,8 +3665,11 @@ function drawCandlestick(s){
         }
       }
 
-      // ✅ Keep points that fall within or near visible chart area
-      pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+      // ✅ Keep points that fall within or near the full data range (filter by time, not panned pixel)
+      pts = pts.filter(p => {
+        const unPannedX = p.x - S.chartPan;
+        return unPannedX >= PAD.l - 20 && unPannedX <= PAD.l + cW + 20;
+      });
       
       if(pts.length < 2) return; // Need at least 2 points to draw a line
     } catch(e) {
@@ -3830,11 +3833,6 @@ function drawVolume(s){
   const bw = volBaseWidth * S.chartZoom;
   const mv=Math.max(...candles.map(c=>c.v))||1;
   
-  // Calculate price range from candles for labels
-  const allPrices = candles.map(c=>c.h).concat(candles.map(c=>c.l));
-  const startPrice = Math.max(...allPrices) || s.ltp || 0;
-  const endPrice = Math.min(...allPrices) || s.ltp || 0;
-  
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
   // Left axis line (thicker for visibility)
@@ -3861,10 +3859,10 @@ function drawVolume(s){
   ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
   
-  // ✅ Volume labels on RIGHT side (RIGHT aligned, with padding from edge)
+  // ✅ Volume labels only on right axis (price labels removed - they live on the price chart above)
   ctx.fillStyle='rgba(255,255,255,1)';
   ctx.font='bold 10px JetBrains Mono,monospace';
-  ctx.textAlign='right';  // ✅ Changed from left to right
+  ctx.textAlign='right';
   ctx.textBaseline='middle';
   const maxVol = Math.max(...candles.map(c=>c.v))||1;
   for(let i=0; i<=2; i++){
@@ -3881,13 +3879,6 @@ function drawVolume(s){
     ctx.fillText(label, W-6, y);  // ✅ Draw on right side (W-6)
   }
   
-  // Price labels on right axis
-  ctx.fillStyle='rgba(255,255,255,.95)';
-  ctx.font='bold 9px JetBrains Mono,monospace';
-  ctx.textAlign='right';
-  ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
-  ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
-  
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
     if(i<4) return null;
@@ -3897,7 +3888,7 @@ function drawVolume(s){
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
-    const x=PAD.l+i*gap+gap/2;
+    const x=PAD.l+i*gap+gap/2 + S.chartPan;
     const y=PAD.t+cH-(v/mv)*cH;
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
@@ -3924,7 +3915,7 @@ function drawVolume(s){
       }
     }
     
-    const x = PAD.l + i*gap + gap/2;
+    const x = PAD.l + i*gap + gap/2 + S.chartPan;
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
     ctx.fillText(lbl, x, PAD.t + cH + 8);  // ✅ Below volume chart
@@ -4196,7 +4187,16 @@ function canvasSetChartInterval(iv) {
   
   scheduleChartRedraw();
 }
-function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+function canvasToggleMA(key) {
+  S.maVis[key] = !S.maVis[key];
+  if (key === 'vol') {
+    // renderTab rebuilds the DOM (canvases destroyed), so reset the interaction flag
+    setupChartInteraction._initialized = false;
+    renderTab('canvas');
+  } else {
+    scheduleChartRedraw();
+  }
+}
 function toggleKPI(k) { 
   S.kpiVis[k] = !S.kpiVis[k]; 
   console.log(`🔧 KPI toggled: ${k} = ${S.kpiVis[k]}, pan=${S.chartPan}, zoom=${S.chartZoom}`);
