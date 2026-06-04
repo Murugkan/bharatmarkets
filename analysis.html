@@ -3188,6 +3188,15 @@ function drawCandlestick(s){
   // ✅ Disable image smoothing to prevent blur when zoomed
   ctx.imageSmoothingEnabled = false;
 
+  // Wire click/touch → tooltip (module-scope handleChartClick)
+  cv.onclick = (e) => handleChartClick(e, cv, W2, H2);
+  cv.ontouchend = (e) => {
+    if(e.touches.length === 0 && !chartInteraction.isPanning) {
+      const t = e.changedTouches[0];
+      handleChartClick(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}), cv, W2, H2);
+    }
+  };
+
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
     ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
@@ -3801,123 +3810,93 @@ function drawVolume(s){
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
     ctx.fillText(lbl, x, PAD.t + cH + 8);  // ✅ Below volume chart
   });
-  
-  // ✅ Click handler to show bar details (toggle) - works on both mouse and touch
-  cv.onclick=(e)=>{
-    handleChartClick(e, W2, H2);
-  };
-  
-  // ✅ Touch support for iPhone - treat tap as click
-  cv.addEventListener('touchend', (e) => {
-    if (e.touches.length === 0 && !chartInteraction.isPanning) {
-      // Not panning, treat as tap/click
-      const touch = e.changedTouches[0];
-      const clickEvent = new MouseEvent('click', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-      });
-      handleChartClick(clickEvent, W2, H2);
-    }
-  });
-  
-  function handleChartClick(e, W2, H2) {
-    const br=cv.getBoundingClientRect();
-    const scX=W2/br.width, scY=H2/br.height;
-    let mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
-
-    // Helper: show a tooltip div
-    function showTip(id, borderCol, html, ex, ey) {
-      let tip = document.getElementById(id);
-      if(!tip){ tip=document.createElement('div'); tip.id=id; document.body.appendChild(tip); }
-      tip.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:2px solid;border-radius:8px;padding:10px 14px;font-family:monospace;font-size:12px;z-index:9999;max-width:220px;min-width:150px';
-      tip.style.borderColor = borderCol;
-      tip.innerHTML = html;
-      let left = ex + 12, top = ey - 80;
-      if(left + 230 > window.innerWidth) left = Math.max(8, ex - 240);
-      if(top < 8) top = ey + 12;
-      if(top + 120 > window.innerHeight) top = Math.max(8, window.innerHeight - 130);
-      tip.style.left = left+'px'; tip.style.top = top+'px';
-      // Auto-hide after 3s
-      clearTimeout(tip._t);
-      tip._t = setTimeout(()=>{ tip.remove(); }, 3000);
-    }
-
-    // 1. Check MA lines
-    if(maPoints.length) {
-      const maHit = maPoints.reduce((best, p) => {
-        const d = Math.sqrt((mx-p.x)**2 + (my-p.y)**2);
-        return d < (best.d||999) ? {p, d} : best;
-      }, {}).p;
-      if(maHit && Math.sqrt((mx-maHit.x)**2+(my-maHit.y)**2) <= 14) {
-        showTip('ma-tooltip', maHit.col,
-          `<div style="color:${maHit.col};font-weight:bold;margin-bottom:6px">${maHit.label}</div>
-           <div style="color:#aaa;font-size:11px;line-height:1.7">
-             <div>Date: <span style="color:#fff">${maHit.date}</span></div>
-             <div>Value: <span style="color:${maHit.col};font-weight:bold">₹${Math.round(maHit.value).toLocaleString('en-IN')}</span></div>
-           </div>`, e.clientX, e.clientY);
-        return;
-      }
-    }
-
-    // 2. Check KPI overlay points
-    if(kpiPoints.length) {
-      const kpiHit = kpiPoints.find(kpi => {
-        const dx = mx - kpi.x;
-        const dy = my - kpi.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        return dist <= kpi.radius;
-      });
-      
-      if(kpiHit) {
-        const dispVal = kpiHit.key==='pe'  ? kpiHit.value.toFixed(1)+'x' :
-                        kpiHit.key==='opm' ? kpiHit.value.toFixed(1)+'%' :
-                        Math.abs(kpiHit.value)>=1000 ? (kpiHit.value/1000).toFixed(1)+'K Cr' :
-                        kpiHit.value.toFixed(0)+' Cr';
-        showTip('kpi-overlay-tooltip', kpiHit.col,
-          `<div style="color:${kpiHit.col};font-weight:bold;margin-bottom:6px">${kpiHit.label}</div>
-           <div style="color:#aaa;font-size:11px;line-height:1.7">
-             <div>Date: <span style="color:#fff">${kpiHit.date==='now'?'Latest':kpiHit.date}</span></div>
-             <div>Value: <span style="color:${kpiHit.col};font-weight:bold">${dispVal}</span></div>
-           </div>`, e.clientX, e.clientY);
-        return;
-      }
-    }
-
-    // 3. Check candlestick click
-    if(!candlestickBars.length) return;
-
-    const bar=candlestickBars.find(b=> mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h);
-
-    let tip=document.getElementById('chart-tooltip');
-    if(!tip){
-      tip=document.createElement('div');
-      tip.id='chart-tooltip';
-      document.body.appendChild(tip);
-    }
-
-    if(!bar || window.candleTooltipBar===bar.date){
-      tip.remove(); window.candleTooltipBar=null; return;
-    }
-    
-    // Show bar details
-    window.candleTooltipBar=bar.date;
-    const o=bar.open.toFixed(2), h=bar.high.toFixed(2), l=bar.low.toFixed(2), c=bar.close.toFixed(2);
-    const chg=((c-o)/o*100).toFixed(2);
-    const chgColor=chg>=0?'#00ff88':'#ff4466';
-    showTip('chart-tooltip','#00d4ff',
-      `<div style="color:#00d4ff;font-weight:bold;margin-bottom:6px">${bar.date}</div>
-       <div style="color:#aaa;font-size:11px;line-height:1.7">
-         <div>O: ₹<span style="color:#fff">${o}</span> &nbsp; H: ₹<span style="color:#fff">${h}</span></div>
-         <div>L: ₹<span style="color:#fff">${l}</span> &nbsp; C: ₹<span style="color:#fff">${c}</span></div>
-       </div>
-       <div style="margin-top:6px;color:${chgColor};font-weight:bold">${chg>=0?'+':''}${chg}%</div>
-       <div style="color:#555;font-size:10px">Vol: ${(bar.volume/1e5).toFixed(1)}L</div>`,
-      e.clientX, e.clientY);
-  }
 }
 
 // ── Quarterly CFO bar panel ───────────────────────────
 // ── Quarterly P/E line panel ──────────────────────────
+
+// ── Tooltip helper ────────────────────────────────────
+function showTip(id, borderCol, html, ex, ey) {
+  let tip = document.getElementById(id);
+  if(!tip){ tip=document.createElement('div'); tip.id=id; document.body.appendChild(tip); }
+  tip.style.cssText='position:fixed;background:rgba(10,20,40,.95);border:2px solid;border-radius:8px;padding:10px 14px;font-family:monospace;font-size:12px;z-index:9999;max-width:220px;min-width:150px';
+  tip.style.borderColor = borderCol;
+  tip.innerHTML = html;
+  let left = ex + 12, top = ey - 80;
+  if(left + 230 > window.innerWidth) left = Math.max(8, ex - 240);
+  if(top < 8) top = ey + 12;
+  if(top + 120 > window.innerHeight) top = Math.max(8, window.innerHeight - 130);
+  tip.style.left = left+'px'; tip.style.top = top+'px';
+  clearTimeout(tip._t);
+  tip._t = setTimeout(()=>{ tip.remove(); }, 3000);
+}
+
+function handleChartClick(e, canvas, W2, H2) {
+  const br = canvas.getBoundingClientRect();
+  const scX = W2/br.width, scY = H2/br.height;
+  const mx = (e.clientX-br.left)*scX, my = (e.clientY-br.top)*scY;
+
+  // 1. MA lines
+  if(maPoints.length) {
+    const maHit = maPoints.reduce((best, p) => {
+      const d = Math.sqrt((mx-p.x)**2 + (my-p.y)**2);
+      return d < (best.d||999) ? {p, d} : best;
+    }, {}).p;
+    if(maHit && Math.sqrt((mx-maHit.x)**2+(my-maHit.y)**2) <= 14) {
+      showTip('ma-tooltip', maHit.col,
+        `<div style="color:${maHit.col};font-weight:bold;margin-bottom:6px">${maHit.label}</div>
+         <div style="color:#aaa;font-size:11px;line-height:1.7">
+           <div>Date: <span style="color:#fff">${maHit.date}</span></div>
+           <div>Value: <span style="color:${maHit.col};font-weight:bold">₹${Math.round(maHit.value).toLocaleString('en-IN')}</span></div>
+         </div>`, e.clientX, e.clientY);
+      return;
+    }
+  }
+
+  // 2. KPI overlay dots
+  if(kpiPoints.length) {
+    const kpiHit = kpiPoints.find(kpi => {
+      const dx = mx-kpi.x, dy = my-kpi.y;
+      return Math.sqrt(dx*dx+dy*dy) <= kpi.radius;
+    });
+    if(kpiHit) {
+      const dispVal = kpiHit.key==='pe'  ? kpiHit.value.toFixed(1)+'x' :
+                      kpiHit.key==='opm' ? kpiHit.value.toFixed(1)+'%' :
+                      Math.abs(kpiHit.value)>=1000 ? (kpiHit.value/1000).toFixed(1)+'K Cr' :
+                      kpiHit.value.toFixed(0)+' Cr';
+      showTip('kpi-overlay-tooltip', kpiHit.col,
+        `<div style="color:${kpiHit.col};font-weight:bold;margin-bottom:6px">${kpiHit.label}</div>
+         <div style="color:#aaa;font-size:11px;line-height:1.7">
+           <div>Date: <span style="color:#fff">${kpiHit.date==='now'?'Latest':kpiHit.date}</span></div>
+           <div>Value: <span style="color:${kpiHit.col};font-weight:bold">${dispVal}</span></div>
+         </div>`, e.clientX, e.clientY);
+      return;
+    }
+  }
+
+  // 3. Candlestick bars
+  if(!candlestickBars.length) return;
+  const bar = candlestickBars.find(b => mx>=b.x && mx<=b.x+b.w && my>=b.y && my<=b.y+b.h);
+  let tip = document.getElementById('chart-tooltip');
+  if(!bar || window.candleTooltipBar===bar.date) {
+    if(tip) tip.remove();
+    window.candleTooltipBar = null;
+    return;
+  }
+  window.candleTooltipBar = bar.date;
+  const o=bar.open.toFixed(2), h=bar.high.toFixed(2), l=bar.low.toFixed(2), c=bar.close.toFixed(2);
+  const chg = ((c-o)/o*100).toFixed(2);
+  const chgColor = chg>=0 ? '#00ff88' : '#ff4466';
+  showTip('chart-tooltip','#00d4ff',
+    `<div style="color:#00d4ff;font-weight:bold;margin-bottom:6px">${bar.date}</div>
+     <div style="color:#aaa;font-size:11px;line-height:1.7">
+       <div>O: ₹<span style="color:#fff">${o}</span> &nbsp; H: ₹<span style="color:#fff">${h}</span></div>
+       <div>L: ₹<span style="color:#fff">${l}</span> &nbsp; C: ₹<span style="color:#fff">${c}</span></div>
+     </div>
+     <div style="margin-top:6px;color:${chgColor};font-weight:bold">${chg>=0?'+':''}${chg}%</div>
+     <div style="color:#555;font-size:10px">Vol: ${(bar.volume/1e5).toFixed(1)}L</div>`,
+    e.clientX, e.clientY);
+}
 
 function updateChartStats(s){
   const candles=getSlicedCandles(s, 0);
