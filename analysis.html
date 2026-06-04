@@ -3467,7 +3467,9 @@ function drawCandlestick(s){
   function xForDate(dateStr){
     // ✅ Use VISIBLE range for alignment (same as candlesticks)
     const t = new Date(dateStr).getTime();
-    const x = PAD.l + ((t - visFirst) / visRange) * cW ;
+    const x = PAD.l + ((t - visFirst) / visRange) * cW;
+    return x;
+  }
 
   // Search FULL history for price on/before a date
   function priceAt(dateStr){
@@ -3672,7 +3674,11 @@ function drawCandlestick(s){
       ctx.fillText(e.message, cv.width/2, cv.height/2 + 20);
     }
   }
+  } catch(e) {} // close outer try wrapping drawCandlestick body
 }
+
+// chartInteraction declared here so it's available before first use in drawVolume touch handler
+let chartInteraction = {isPanning:false};
 
 // Volume bars with 5-period MA trend line
 
@@ -3842,7 +3848,7 @@ function drawVolume(s){
       });
       
       if(kpiHit) {
-        debugDiv.innerHTML += `<br/>✓ KPI: ${kpiHit.label}`;
+        // debugDiv removed - was never declared
         // Show KPI tooltip
         let kpiTip = document.getElementById('kpi-overlay-tooltip');
         if(!kpiTip) {
@@ -4095,8 +4101,6 @@ async function canvasLoadAndDrawChart(sym) {
 // PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
 
-let chartInteraction = {isPanning:false};
-
 function setupChartInteraction(){
   if(setupChartInteraction._initialized) return;
   const canvas = document.getElementById('cv-candle');
@@ -4234,9 +4238,6 @@ async function loadStockNews(sym,name){
   }catch(e){
     el.innerHTML=`<div class="u-pad14c">Could not load news</div>`;
   }
-}
-
-} catch(e){}
 }
 
 </script>
