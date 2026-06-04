@@ -3297,6 +3297,8 @@ function drawCandlestick(s){
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
   
+  // ✅ Disable image smoothing to prevent blur when zoomed
+  ctx.imageSmoothingEnabled = false;
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
@@ -3319,7 +3321,7 @@ function drawCandlestick(s){
   console.log(`📊 Drawing chart: ${candles.length} candles, price range ${candles[0]?.c}-${candles[candles.length-1]?.c}`);
 
   const W=W2,H=312;  // ✅ Increased 30% from 240
-  const PAD={l:6,r:52,t:8,b:22};
+  const PAD={l:8,r:52,t:8,b:22};  // ✅ Changed left from 6 to 8 to match volume chart
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
@@ -3801,7 +3803,7 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=112;  // ✅ Increased 50% from 75 to 112
+  const H2=130;  // ✅ Increased from 112 to 130 for more x-axis label space
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;
   cv.height=H2*dpr;
@@ -3809,6 +3811,9 @@ function drawVolume(s){
   cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
+  
+  // ✅ Disable image smoothing to prevent blur when zoomed
+  ctx.imageSmoothingEnabled = false;
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length)return;
@@ -3816,7 +3821,7 @@ function drawVolume(s){
   ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
 
   const W=W2,H=H2;
-  const PAD={l:8,r:52,t:6,b:18};
+  const PAD={l:8,r:52,t:6,b:28};  // ✅ Increased from 18 to 28 for more x-axis label space
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const n=candles.length,gap=cW/n,bw=Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
   const mv=Math.max(...candles.map(c=>c.v))||1;
@@ -3940,9 +3945,33 @@ function drawVolume(s){
   });
   
   function handleChartClick(e, W2, H2) {
+    console.log('🖱️ Click detected on canvas');
     const br=cv.getBoundingClientRect();
     const scX=W2/br.width, scY=H2/br.height;
-    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
+    let mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
+    
+    // ✅ Account for pan offset when checking click position
+    mx = mx - S.chartPan;
+    
+    // ✅ Show debug info on screen for iPhone
+    let debugDiv = document.getElementById('debug-tooltip-info');
+    if(!debugDiv) {
+      debugDiv = document.createElement('div');
+      debugDiv.id = 'debug-tooltip-info';
+      debugDiv.style.cssText = 'position:fixed;top:10px;left:10px;background:rgba(0,0,0,.9);color:#00ff88;border:1px solid #00ff88;border-radius:4px;padding:8px;font-family:monospace;font-size:10px;z-index:10000;max-width:150px;max-height:100px;overflow:auto';
+      document.body.appendChild(debugDiv);
+    }
+    
+    const debugMsg = `Click: mx=${mx.toFixed(0)} my=${my.toFixed(0)}<br/>KPI Pts: ${kpiPoints.length}<br/>Bars: ${candlestickBars.length}`;
+    debugDiv.innerHTML = debugMsg;
+    debugDiv.style.display = 'block';
+    
+    // Auto-hide after 2 seconds
+    setTimeout(() => {
+      if(debugDiv) debugDiv.style.display = 'none';
+    }, 2000);
+    
+    console.log(`  Click coords: mx=${mx.toFixed(0)}, my=${my.toFixed(0)}, kpiPoints=${kpiPoints.length}`);
     
     // ✅ First, check if clicked on KPI overlay point
     if(kpiPoints.length) {
@@ -3950,10 +3979,13 @@ function drawVolume(s){
         const dx = mx - kpi.x;
         const dy = my - kpi.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
+        console.log(`    KPI ${kpi.label}: dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} dist=${dist.toFixed(1)} r=${kpi.radius}`);
         return dist <= kpi.radius;
       });
       
       if(kpiHit) {
+        console.log(`  ✓ KPI HIT: ${kpiHit.label} at ${kpiHit.date}`);
+        debugDiv.innerHTML += `<br/>✓ KPI: ${kpiHit.label}`;
         // Show KPI tooltip
         let kpiTip = document.getElementById('kpi-overlay-tooltip');
         if(!kpiTip) {
@@ -4000,10 +4032,18 @@ function drawVolume(s){
     }
     
     // ✅ Then check candlestick click
-    if(!candlestickBars.length) return;
+    if(!candlestickBars.length) {
+      console.log('  ⚠️ No candlestick bars to check');
+      return;
+    }
     
     // Find clicked bar
-    const bar=candlestickBars.find(b=>mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h);
+    const bar=candlestickBars.find(b=>{
+      const hit = mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h;
+      return hit;
+    });
+    
+    console.log(`  Candlestick search: ${candlestickBars.length} bars, hit=${!!bar}${bar?(' '+bar.date):''}`);
     
     // Create or get tooltip
     let tip=document.getElementById('chart-tooltip');
