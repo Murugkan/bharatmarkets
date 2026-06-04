@@ -3674,6 +3674,9 @@ function drawCandlestick(s){
       ctx.fillText(e.message, cv.width/2, cv.height/2 + 20);
     }
   }
+  } catch(e) {
+    // outer try catch for drawCandlestick
+  }
 }
 
 // Volume bars with 5-period MA trend line
@@ -3844,7 +3847,7 @@ function drawVolume(s){
       });
       
       if(kpiHit) {
-        debugDiv.innerHTML += `<br/>✓ KPI: ${kpiHit.label}`;
+        // debugDiv removed - was never declared
         // Show KPI tooltip
         let kpiTip = document.getElementById('kpi-overlay-tooltip');
         if(!kpiTip) {
@@ -4093,11 +4096,11 @@ async function canvasLoadAndDrawChart(sym) {
   }
 }
 
+let chartInteraction = {isPanning:false};
+
 // ════════════════════════════════════════════════
 // PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
-
-let chartInteraction = {isPanning:false};
 
 function setupChartInteraction(){
   if(setupChartInteraction._initialized) return;
@@ -4236,9 +4239,6 @@ async function loadStockNews(sym,name){
   }catch(e){
     el.innerHTML=`<div class="u-pad14c">Could not load news</div>`;
   }
-}
-
-} catch(e){}
 }
 
 </script>
