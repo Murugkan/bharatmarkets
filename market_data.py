@@ -70,104 +70,6 @@ logger = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STANDARDIZATION FUNCTIONS
-# ══════════════════════════════════════════════════════════════════════════════
-
-def standardize_metric(value):
-    """
-    Convert metric values to float where appropriate.
-    Handles: strings with %, commas, None, already-numeric.
-    
-    Examples:
-        "45.32"       → 45.32
-        "45.32%"      → 45.32
-        "1,234,567"   → 1234567.0
-        "N/A" or ""   → None
-        45.32         → 45.32
-        None          → None
-    """
-    if value is None:
-        return None
-    
-    # Already numeric
-    if isinstance(value, (int, float)):
-        return float(value)
-    
-    # String conversion
-    if isinstance(value, str):
-        value = value.strip()
-        if not value or value.upper() in ['N/A', 'NA', 'N.A', 'NAN', 'NONE']:
-            return None
-        
-        # Remove percentage sign and convert
-        if '%' in value:
-            try:
-                return float(value.replace('%', '').strip())
-            except (ValueError, AttributeError):
-                return None
-        
-        # Remove commas and convert
-        if ',' in value:
-            try:
-                return float(value.replace(',', '').strip())
-            except (ValueError, AttributeError):
-                return None
-        
-        # Try direct conversion
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return None
-    
-    return None
-
-
-def apply_standardization_to_dict(obj, depth=0, max_depth=5):
-    """
-    Recursively standardize numeric values in a dict/list structure.
-    Converts text metrics to float where applicable.
-    Avoids standardizing identifiers, keys, dates, and strings needed as-is.
-    """
-    if depth > max_depth:
-        return obj
-    
-    # Skip certain key patterns that should NOT be standardized
-    skip_keys = {
-        'ticker', 'name', 'symbol', 'isin', 'sector', 'industry', 'type',
-        'address', 'city', 'country', 'phone', 'email', 'website',
-        'currency', 'exchange', 'date', 'time', 'metric', 'period',
-        'consolidation', 'granule', '_source', '_periods', '_granule', '_consolidation'
-    }
-    
-    if isinstance(obj, dict):
-        result = {}
-        for key, val in obj.items():
-            # Check if this key should skip standardization
-            key_lower = key.lower()
-            should_skip = any(skip in key_lower for skip in skip_keys)
-            
-            if should_skip or key.startswith('_'):
-                result[key] = val
-            elif isinstance(val, (dict, list)):
-                result[key] = apply_standardization_to_dict(val, depth + 1, max_depth)
-            elif isinstance(val, (int, float)):
-                result[key] = val
-            else:
-                # Try to standardize
-                std_val = standardize_metric(val)
-                result[key] = std_val if std_val is not None else val
-        return result
-    
-    elif isinstance(obj, list):
-        return [apply_standardization_to_dict(item, depth + 1, max_depth) if isinstance(item, (dict, list)) else item for item in obj]
-    
-    return obj
-
-
-
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # FIELD MAP
 # ══════════════════════════════════════════════════════════════════════════════
 # Structure:
@@ -880,9 +782,7 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                     pass
                 else:
                     target_bucket, target_key = mapping
-                    # Apply standardization to the field value
-                    standardized_val = apply_standardization_to_dict(field_val)
-                    B[target_bucket][target_key] = standardized_val
+                    B[target_bucket][target_key] = field_val
 
     return B
 
@@ -1919,102 +1819,6 @@ def extract_scalar_or_dict(value):
     
     return value
 
-
-def generate_metadata_from_samples(output_data):
-    """
-    Generate real metadata structure from actual ticker data samples.
-    Inspects all buckets across all tickers to build accurate field inventory.
-    
-    Returns:
-        {
-            "buckets": {
-                "bucket_name": {
-                    "fields": [...actual field names...],
-                    "nested_structures": {
-                        "sub_key": [...fields...]
-                    },
-                    "sample_values": {example of first few fields + types}
-                }
-            }
-        }
-    """
-    buckets_inventory = {}
-    
-    ALL_BUCKETS = [
-        "company_details", "financials", "ratios", "valuation", 
-        "price", "websignals", "kpis", "derived_metrics", "_unmapped"
-    ]
-    
-    for bucket in ALL_BUCKETS:
-        buckets_inventory[bucket] = {
-            "all_fields": set(),
-            "nested_keys": {},  # For sub-dicts like {'pe': ['field1', 'field2']}
-            "field_types": {}   # Track what type each field is
-        }
-    
-    # Scan all tickers (excluding _metadata)
-    for ticker, data in output_data.items():
-        if ticker == '_metadata':
-            continue
-        
-        for bucket in ALL_BUCKETS:
-            if bucket not in data:
-                continue
-            
-            bucket_data = data[bucket]
-            if not isinstance(bucket_data, dict):
-                continue
-            
-            # Iterate through all fields in this bucket
-            for field_name, field_value in bucket_data.items():
-                buckets_inventory[bucket]["all_fields"].add(field_name)
-                
-                # Track field type (for UI schema generation)
-                if isinstance(field_value, dict):
-                    field_type = "object"
-                    # If it's a nested dict, track its sub-keys
-                    if field_value and not field_value.get('_periods') and not field_value.get('_source'):
-                        sub_keys = [k for k in field_value.keys() if not k.startswith('_')]
-                        if sub_keys:
-                            buckets_inventory[bucket]["nested_keys"][field_name] = sub_keys
-                elif isinstance(field_value, list):
-                    field_type = "array"
-                elif isinstance(field_value, (int, float)):
-                    field_type = "number"
-                elif isinstance(field_value, bool):
-                    field_type = "boolean"
-                elif isinstance(field_value, str):
-                    field_type = "string"
-                else:
-                    field_type = "unknown"
-                
-                if field_name not in buckets_inventory[bucket]["field_types"]:
-                    buckets_inventory[bucket]["field_types"][field_name] = field_type
-    
-    # Format for output
-    structure = {}
-    for bucket in ALL_BUCKETS:
-        inv = buckets_inventory[bucket]
-        
-        if not inv["all_fields"]:
-            continue
-        
-        structure[bucket] = {
-            "fields": sorted(list(inv["all_fields"])),
-            "field_count": len(inv["all_fields"]),
-            "field_types": inv["field_types"],
-        }
-        
-        # Add nested structures if present
-        if inv["nested_keys"]:
-            structure[bucket]["nested_structures"] = {
-                parent: sorted(children) 
-                for parent, children in sorted(inv["nested_keys"].items())
-            }
-    
-    return structure
-
-
 def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
@@ -2071,31 +1875,69 @@ def main():
 
     logger.info(f"Writing {OUTPUT_FILE} …")
     
-    # Generate real metadata from actual data structure
-    real_structure = generate_metadata_from_samples(output)
-    
+    # Create output with metadata
     from datetime import datetime
     import time
     
-    # Build metadata with real field inventory from actual data
     final_output = {
         "_metadata": {
             "generated_at": datetime.now().isoformat(),
             "total_tickers": total,
             "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
             "data_sources": [
-                "screener_raw_data.json",
-                "screener_financials.json",
-                "yahoofin_raw_data.json",
-                "yahoofin_financials.json",
-                "guidance.json",
-                "prices.json",
-                "unified-symbols.json"
+                "screener_raw_data.json (97 tickers)",
+                "screener_financials.json (97 tickers)",
+                "yahoofin_raw_data.json (97 tickers)",
+                "yahoofin_financials.json (97 tickers)",
+                "guidance.json (29 tickers)",
+                "prices.json (98 tickers)",
+                "unified-symbols.json (97 tickers)"
             ],
-            "schema": real_structure,
+            "buckets": {
+                "company_details": {
+                    "sub_sections": ["promoters", "fiis", "diis", "government", "public", "shareholding { pattern, shares, ownership, fiscal_dates, dividends, stock_splits }"],
+                    "description": "Company profile, ownership, shareholding pattern, dividends, stock splits"
+                },
+                "financials": {
+                    "sub_sections": ["Sales", "Revenue", "Expenses", "Operating_Profit", "Net_Profit", "Free_Cash_Flow", "Total_Debt", "Equity_Capital", "..."],
+                    "description": "Revenue, expenses, profitability, cash flows, debt metrics - with consolidated/standalone > quarterly/annual structure"
+                },
+                "ratios": {
+                    "sub_sections": ["Return_on_Equity_pct", "Return_on_Assets_pct", "Net_Margin_pct", "Operating_Margin_pct", "..."],
+                    "description": "Financial ratios - profitability, efficiency, leverage"
+                },
+                "valuation": {
+                    "sub_sections": ["pe { trailing_pe, forward_pe, peg_ratio }", "eps { basic_eps, diluted_eps, trailing_eps, forward_eps, ... }", "enterprise_value", "market_cap", "price_to_book"],
+                    "description": "Valuation metrics grouped by PE and EPS sub-groups"
+                },
+                "price": {
+                    "sub_sections": ["current_price", "ltp", "52_week { high, low, change }", "volume { daily, average }", "history_6mo_1d", "history_5y_1wk", "history_5y_1mo"],
+                    "description": "Price data - current, 52-week range, volume, OHLCV history"
+                },
+                "websignals": {
+                    "sub_sections": ["ai_insights_date", "recommendation_key", "recommendation_mean", "number_of_analyst_opinions", "target_high_price", "target_low_price", "raw_pdf_*"],
+                    "description": "Analyst sentiment, recommendations, price targets"
+                },
+                "kpis": {
+                    "sub_sections": ["Capacity_Utilization_Factor", "Plant_Availability", "Power_Generation", "... (company-specific)"],
+                    "description": "Key performance indicators from screener_raw:Insights - varies by company"
+                },
+                "derived_metrics": {
+                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "ai_insights_guidance { guidance + insights }"],
+                    "description": "Computed metrics with sector weightage and AI insights"
+                },
+                "_unmapped": {
+                    "sub_sections": [],
+                    "description": "Fields that couldn't be mapped to any bucket (0 fields in this output)"
+                }
+            },
+            "derived_metrics_structure": {
+                "calculated_metrics": "Sector-weighted financial scores (fundamental, technical, valuation, sentiment, composite) with rating",
+                "ai_insights_guidance": "AI-extracted guidance (15 topics) + insights (only for 29 tickers in guidance.json)"
+            },
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
             "unmapped_tickers": list(unmapped_summary.keys()),
-            "notes": "Use 'schema' to map UI fields. Each bucket has 'fields' (all field names), 'field_count', 'field_types' (data types), and 'nested_structures' (for sub-objects)"
+            "notes": "Each ticker has 9 buckets. Guidance presence depends on data availability."
         }
     }
     
