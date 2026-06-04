@@ -3127,11 +3127,11 @@ function getQuarterlyData(s){
     ]);
     
     // Build data points
-    Array.from(allDates).sort().reverse().forEach(date => {
+    Array.from(allDates).sort().forEach(date => {
       const q = { d: date };
       
       // Income Statement metrics
-      if(salesData[date]) q.rev = parseFloat(salesData[date]) || 0;
+      if(salesData[date]) { q.sales = parseFloat(salesData[date]) || 0; q.rev = q.sales; }
       if(operatingProfitData[date]) q.op = parseFloat(operatingProfitData[date]) || 0;
       if(opmData[date]) q.opm = parseFloat(opmData[date]) || 0;
       if(pbtData[date]) q.pbt = parseFloat(pbtData[date]) || 0;
@@ -3549,10 +3549,11 @@ function drawCandlestick(s){
         }
       }
 
-      // ✅ Keep points that fall within or near visible chart area
-      pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+      // Keep points within or near visible area — use wider margin so annual dots
+      // just outside the view still anchor the line into the visible canvas edge
+      pts = pts.filter(p => p.x >= PAD.l - cW && p.x <= PAD.l + cW * 2);
       
-      if(pts.length < 2) return; // Need at least 2 points to draw a line
+      if(pts.length < 1) return; // Need at least 1 point to draw
     } catch(e) {
       return;
     }
@@ -3571,22 +3572,13 @@ function drawCandlestick(s){
         quarterly.forEach(q=>{
           if(!q.eps||q.eps<=0) return;
           const pr = priceAt(q.d);
-          if(pr>0) allPts2.push({x:0, v:pr/(q.eps*4), d:q.d});
+          if(pr>0) allPts2.push({x: xForDate(q.d), v:pr/(q.eps*4), d:q.d});
         });
-        if(s.pe>0) allPts2.push({x:0, v:s.pe, d:'now'});
+        if(s.pe>0) allPts2.push({x: PAD.l+cW, v:s.pe, d:'now'});
       } else {
-        quarterly.forEach(q=>{ const v=q[k]; if(v!=null) allPts2.push({x:0,v,d:q.d}); });
+        quarterly.forEach(q=>{ const v=q[k]; if(v!=null) allPts2.push({x: xForDate(q.d), v, d:q.d}); });
       }
-      if(allPts2.length>=2){
-        const t0=new Date(allPts2[0].d==='now'?Date.now():allPts2[0].d).getTime();
-        const t1=new Date(allPts2[allPts2.length-1].d==='now'?Date.now():allPts2[allPts2.length-1].d).getTime();
-        const tr=t1-t0||1;
-        allPts2.forEach(p=>{
-          const t=new Date(p.d==='now'?Date.now():p.d).getTime();
-          p.x = PAD.l + ((t-t0)/tr)*cW;
-        });
-        pts = allPts2;
-      }
+      if(allPts2.length>=1) pts = allPts2;
     }
       if(!pts.length) return;
 
