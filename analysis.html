@@ -113,7 +113,7 @@
         <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
         <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
         <button class="tab" onclick="switchTab('news')">📰 News</button>
-        <button class="tab" onclick="switchTab('movers')">🔄 Movers</button>
+        
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
@@ -158,13 +158,11 @@ window.addEventListener('load', async () => {
         const grse = req.result;
         // If GRSE doesn't have qty field, need to load portfolio
         if (!grse || grse.qty === undefined) {
-          console.log('📥 Auto-loading portfolio data...');
           loadPortfolioData();
         }
       };
     }
   } catch (e) {
-    console.log('Auto-init check skipped');
   }
 });
 
@@ -209,7 +207,6 @@ const get = (obj, ...keys) => {
 // ✅ Update financial data source (consolidated/standalone, annual/quarterly)
 function updateFinancialSource(value, type) {
   S.financialSource[type] = value;
-  console.log(`📊 Financial source changed: ${S.financialSource.accounting} + ${S.financialSource.frequency}`);
   
   // Recalculate KPI overlays with new source
   if(currentStock) {
@@ -220,32 +217,27 @@ function updateFinancialSource(value, type) {
 }
 
 async function loadPortfolioData(forceClear = false) {
-  console.log(`📥 Loading portfolio data...`);
   
   try {
     const response = await fetch('../uploads/market_data.json');
     if (!response.ok) throw new Error(`Failed: ${response.status}`);
     const allData = await response.json();
-    console.log(`✅ Loaded ${Object.keys(allData).length} stocks from market_data.json`);
     
     // Set portfolio holdings at CORRECT location: company_details.qty
     if (allData.GRSE) {
       allData.GRSE.company_details = allData.GRSE.company_details || {};
       allData.GRSE.company_details.qty = 50;
       allData.GRSE.company_details.avg_cost = 2400;
-      console.log(`✅ GRSE: qty=50, avg_cost=₹2400`);
     }
     if (allData.ABCAPITAL) {
       allData.ABCAPITAL.company_details = allData.ABCAPITAL.company_details || {};
       allData.ABCAPITAL.company_details.qty = 100;
       allData.ABCAPITAL.company_details.avg_cost = 350;
-      console.log(`✅ ABCAPITAL: qty=100, avg_cost=₹350`);
     }
     
     // Open IndexedDB
     let db;
     if (forceClear) {
-      console.log(`🔄 Clearing old database...`);
       const deleteReq = indexedDB.deleteDatabase(DB);
       await new Promise((resolve) => {
         deleteReq.onsuccess = resolve;
@@ -261,7 +253,6 @@ async function loadPortfolioData(forceClear = false) {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: 'ticker' });
-          console.log(`✅ Created IndexedDB store`);
         }
       };
     });
@@ -275,7 +266,6 @@ async function loadPortfolioData(forceClear = false) {
         clearReq.onsuccess = resolve;
         clearReq.onerror = resolve;
       });
-      console.log(`✅ Cleared old stocks`);
     }
     
     let saved = 0;
@@ -295,7 +285,6 @@ async function loadPortfolioData(forceClear = false) {
           const qty = stock.company_details.qty || 0;
           if (qty > 0) {
             portfolio++;
-            console.log(`  ✅ ${ticker}: qty=${qty}`);
           }
           resolve();
         };
@@ -305,12 +294,8 @@ async function loadPortfolioData(forceClear = false) {
     
     db.close();
     
-    console.log(`✅ Saved ${saved} stocks to IndexedDB raalanportfolio`);
-    console.log(`✅ Portfolio holdings: ${portfolio}`);
-    console.log(`✅ Refresh page to see Movers tab data`);
     
   } catch (e) {
-    console.log(`❌ Error: ${e.message}`);
   }
 }
 
@@ -540,7 +525,6 @@ async function loadStock() {
                 </div>
             </div>
         `;
-        console.error('No ticker in URL. Usage: analysis.html?drill=TICKER');
         return;
     }
     
@@ -553,7 +537,6 @@ async function loadStock() {
             r(req.result);
         };
         req.onerror = () => {
-            console.error('DB error:', req.error);
             r(null);
         };
     });
@@ -574,26 +557,16 @@ async function loadStock() {
                 r(req.result);
             };
             req.onerror = () => {
-                console.error('Store error:', req.error);
                 r(null);
             };
         });
         
         if (!currentStock) {
-            console.error('Stock not found:', ticker);
             document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
             return;
         }
         
         // 🔍 DEBUG: Log the actual stock object structure
-        console.log('📊 Stock object structure:', currentStock);
-        console.log('📋 Available keys:', Object.keys(currentStock));
-        console.log('💰 Price data:', currentStock.price);
-        console.log('📈 Market data:', currentStock.market_data);
-        console.log('💼 Company details:', currentStock.company_details);
-        console.log('📊 Financials:', currentStock.financials);
-        console.log('🎯 Derived metrics:', currentStock.derived_metrics);
-        console.log('📉 Ratios:', currentStock.ratios);
         
         // Determine data source
         dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
@@ -628,9 +601,7 @@ async function loadStock() {
                         c: parseFloat(bar.Close),
                         v: parseInt(bar.Volume) || 0
                     })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c)); // Remove invalid entries
-                    console.log(`📊 Using price history (${historyType}) from IndexDB:`, currentStock.candles.length, 'valid candles');
                 } catch (e) {
-                    console.warn('⚠️ Error converting price history:', e.message);
                     currentStock.candles = [];
                 }
             }
@@ -640,10 +611,8 @@ async function loadStock() {
                 if (currentStock.price_history) {
                     if (Array.isArray(currentStock.price_history)) {
                         currentStock.candles = currentStock.price_history;
-                        console.log('📊 Using price_history array from IndexDB:', currentStock.candles.length, 'candles');
                     } else if (currentStock.price_history.bars && Array.isArray(currentStock.price_history.bars)) {
                         currentStock.candles = currentStock.price_history.bars;
-                        console.log('📊 Using price_history.bars from IndexDB:', currentStock.candles.length, 'candles');
                     }
                 }
             }
@@ -656,10 +625,8 @@ async function loadStock() {
                     if (res.ok) {
                         const data = await res.json();
                         currentStock.candles = data.bars || [];
-                        console.log('📊 Loaded candles from file:', currentStock.candles.length);
                     }
                 } catch (e) {
-                    console.log('⚠️ No chart data available (no price_history or chart file)');
                 }
             }
         }
@@ -667,7 +634,6 @@ async function loadStock() {
         renderHeader();
         renderTab('overview');
     } catch(e) {
-        console.error('Error:', e);
         document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
     }
 }
@@ -974,80 +940,70 @@ function renderTab(tab) {
             </div>
         `;
     } else if (tab === 'canvas') {
-        const allFinOn = Object.values(S.kpiVis).every(v => v);
-        const anyFinOn = Object.values(S.kpiVis).some(v => v);
+        // CANVAS TAB — Chart only, no indicators
         html = `<div style="padding:0;padding-bottom:100px">
-            <!-- Row 1: Ticker + timeframe + data source -->
-            <div style="padding:6px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
-              <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--ac);flex:0 0 auto">${s.ticker || s.sym}</span>
-              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
+            <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:6px">
+              <div style="font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:nowrap;flex:0 0 auto">${s.ticker || s.sym}</div>
+              
+              <!-- Price Chart Controls -->
+              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
                 <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
                 <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
                 <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
               </select>
-              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
+              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
                 <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
                 <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
                 <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
                 <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
                 <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
               </select>
-              <span style="flex:1"></span>
-              <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none" title="Consolidated vs Standalone">
+              
+              <!-- Data Source Controls -->
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px;flex:0 0 auto"></span>
+              
+              <select id="dataAccounting" onchange="updateFinancialSource(this.value, 'accounting')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Consolidated vs Standalone">
                 <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Cons</option>
                 <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Stand</option>
               </select>
-              <select id="dataFrequency" onchange="updateFinancialSource(this.value,'frequency')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none" title="Annual vs Quarterly">
+              
+              <select id="dataFrequency" onchange="updateFinancialSource(this.value, 'frequency')" style="background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:4px 6px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Annual vs Quarterly">
                 <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
                 <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Qtr</option>
               </select>
             </div>
-
-            <!-- Row 2: Price overlays + financial toggles -->
-            <div style="padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:7px;align-items:center">
-              ${[
-                {key:'sma20', col:'#f59e0b', lbl:'SMA20', fn:"canvasToggleMA('sma20')", chk:S.maVis.sma20},
-                {key:'sma50', col:'#3b82f6', lbl:'SMA50', fn:"canvasToggleMA('sma50')", chk:S.maVis.sma50},
-                {key:'ema200',col:'#a855f7', lbl:'EMA200',fn:"canvasToggleMA('ema200')",chk:S.maVis.ema200},
-                {key:'vol',   col:'#22c55e', lbl:'Volume',fn:"canvasToggleMA('vol')",   chk:S.maVis.vol},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.chk?'checked':''} onchange="${o.fn}" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
-
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);flex:0 0 auto"></span>
-
-              <!-- Master toggle -->
-              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.25);border-radius:4px;padding:2px 7px" title="Toggle all financial overlays on/off">
-                <input type="checkbox" id="kpi-all-chk" ${allFinOn?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:var(--ac);width:12px;height:12px">
-                <span style="font-size:9px;color:var(--ac);font-weight:800;letter-spacing:.5px">ALL Fin</span>
-              </label>
-
-              <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
-              ${[
-                {k:'rev',  col:'#22d3ee', lbl:'Rev'},
-                {k:'op',   col:'#ec4899', lbl:'Op.P'},
-                {k:'opm',  col:'#fb923c', lbl:'OPM%'},
-                {k:'pbt',  col:'#8b5cf6', lbl:'PBT'},
-                {k:'net',  col:'#4ade80', lbl:'Net'},
-                {k:'eps',  col:'#06b6d4', lbl:'EPS'},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
-
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);flex:0 0 auto"></span>
-              <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
-              ${[
-                {k:'assets',    col:'#f0ad4e', lbl:'Assets'},
-                {k:'borrowings',col:'#ff6b6b', lbl:'Borr'},
-                {k:'debt',      col:'#f87171', lbl:'Debt'},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
-
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);flex:0 0 auto"></span>
-              <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
-              ${[
-                {k:'cfo', col:'#34d399', lbl:'CFO'},
-                {k:'fcf', col:'#14b8a6', lbl:'FCF'},
-                {k:'pe',  col:'#f59e0b', lbl:'P/E'},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
+            <div style="padding:5px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma20?'checked':''} onchange="canvasToggleMA('sma20')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">SMA20</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.sma50?'checked':''} onchange="canvasToggleMA('sma50')" style="accent-color:#3b82f6;width:11px;height:11px"><span style="font-size:9px;color:#3b82f6;font-weight:600">SMA50</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${S.maVis.ema200?'checked':''} onchange="canvasToggleMA('ema200')" style="accent-color:#a855f7;width:11px;height:11px"><span style="font-size:9px;color:#a855f7;font-weight:600">EMA200</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Volume bars"><input type="checkbox" ${S.maVis.vol?'checked':''} onchange="canvasToggleMA('vol')" style="accent-color:#22c55e;width:11px;height:11px"><span style="font-size:9px;color:#22c55e;font-weight:600">Volume</span></label>
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              
+              <!-- 📊 INCOME STATEMENT -->
+              <span style="font-size:8px;color:var(--tx2);font-weight:600;margin-left:4px">Income:</span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Revenue/Sales"><input type="checkbox" ${S.kpiVis.rev?'checked':''} onchange="toggleKPI('rev')" style="accent-color:#22d3ee;width:11px;height:11px"><span style="font-size:9px;color:#22d3ee;font-weight:600">Rev</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating profit"><input type="checkbox" ${S.kpiVis.op?'checked':''} onchange="toggleKPI('op')" style="accent-color:#ec4899;width:11px;height:11px"><span style="font-size:9px;color:#ec4899;font-weight:600">Op.Profit</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Operating margin %"><input type="checkbox" ${S.kpiVis.opm?'checked':''} onchange="toggleKPI('opm')" style="accent-color:#fb923c;width:11px;height:11px"><span style="font-size:9px;color:#fb923c;font-weight:600">OPM%</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Profit before tax"><input type="checkbox" ${S.kpiVis.pbt?'checked':''} onchange="toggleKPI('pbt')" style="accent-color:#8b5cf6;width:11px;height:11px"><span style="font-size:9px;color:#8b5cf6;font-weight:600">PBT</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Net profit"><input type="checkbox" ${S.kpiVis.net?'checked':''} onchange="toggleKPI('net')" style="accent-color:#4ade80;width:11px;height:11px"><span style="font-size:9px;color:#4ade80;font-weight:600">Net</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Earnings per share"><input type="checkbox" ${S.kpiVis.eps?'checked':''} onchange="toggleKPI('eps')" style="accent-color:#06b6d4;width:11px;height:11px"><span style="font-size:9px;color:#06b6d4;font-weight:600">EPS</span></label>
+              
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              
+              <!-- 💰 BALANCE SHEET -->
+              <span style="font-size:8px;color:var(--tx2);font-weight:600">Balance:</span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total assets"><input type="checkbox" ${S.kpiVis.assets?'checked':''} onchange="toggleKPI('assets')" style="accent-color:#f0ad4e;width:11px;height:11px"><span style="font-size:9px;color:#f0ad4e;font-weight:600">Assets</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Borrowings/Debt"><input type="checkbox" ${S.kpiVis.borrowings?'checked':''} onchange="toggleKPI('borrowings')" style="accent-color:#ff6b6b;width:11px;height:11px"><span style="font-size:9px;color:#ff6b6b;font-weight:600">Borrow</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Total debt"><input type="checkbox" ${S.kpiVis.debt?'checked':''} onchange="toggleKPI('debt')" style="accent-color:#f87171;width:11px;height:11px"><span style="font-size:9px;color:#f87171;font-weight:600">Debt</span></label>
+              
+              <span style="width:1px;height:14px;background:var(--b1);margin:0 2px"></span>
+              
+              <!-- 💵 CASH FLOW & VALUATION -->
+              <span style="font-size:8px;color:var(--tx2);font-weight:600">Cash/Val:</span>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Cash flow from operations"><input type="checkbox" ${S.kpiVis.cfo?'checked':''} onchange="toggleKPI('cfo')" style="accent-color:#34d399;width:11px;height:11px"><span style="font-size:9px;color:#34d399;font-weight:600">CFO</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="Free cash flow"><input type="checkbox" ${S.kpiVis.fcf?'checked':''} onchange="toggleKPI('fcf')" style="accent-color:#14b8a6;width:11px;height:11px"><span style="font-size:9px;color:#14b8a6;font-weight:600">FCF</span></label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer" title="P/E ratio"><input type="checkbox" ${S.kpiVis.pe?'checked':''} onchange="toggleKPI('pe')" style="accent-color:#f59e0b;width:11px;height:11px"><span style="font-size:9px;color:#f59e0b;font-weight:600">P/E</span></label>
             </div>
-
-            <!-- Chart area -->
             <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
               <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
               <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -1059,8 +1015,6 @@ function renderTab(tab) {
         html = renderNewsTab(s);
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 200);
-    } else if (tab === 'movers') {
-        loadAndRenderMovers();
     } else if (tab === 'fundamentals') {
         // Try to get guidance from derived_metrics.ai_insights_guidance.guidance
         let guidance = {};
@@ -1079,7 +1033,6 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
-            console.log('Error loading fundamentals guidance:', e.message);
         }
         
         if (!guidance || !guidance.guidance) {
@@ -1197,7 +1150,6 @@ function renderTab(tab) {
                 }
             }
         } catch (e) {
-            console.log('Error loading insights:', e.message);
         }
         
         if (!data || !data.insights) {
@@ -1552,7 +1504,6 @@ async function loadAndRenderTechnicalChart(sym) {
     const infoDiv = document.getElementById('metricInfo');
     
     if (!priceContainer || !currentStock) {
-        console.error('Chart containers or stock not found');
         return;
     }
 
@@ -1596,7 +1547,6 @@ async function loadAndRenderTechnicalChart(sym) {
         }
         
     } catch (e) {
-        console.error('Chart error:', e);
         priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
     }
 }
@@ -1758,7 +1708,6 @@ function renderPriceChart(container, sym, bars) {
                     const metricKey = key.replace('metric_', '');
                     const s = currentStock;
                     
-                    // Debug: Check if quarterly data exists
                     if (!s) {
                         
                         return;
@@ -1829,7 +1778,6 @@ function renderPriceChart(container, sym, bars) {
                         
                     }
                 } catch (e) {
-                    console.error(`Metric ${key} render failed:`, e);
                 }
             }
         });
@@ -1928,7 +1876,6 @@ function renderPriceChart(container, sym, bars) {
         priceChart.setOption(option);
         
     } catch (e) {
-        console.error('ECharts Price chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
 }
@@ -2063,7 +2010,6 @@ function renderMetricsChart(container, sym, bars) {
         
         
     } catch (e) {
-        console.error('Metrics chart error:', e);
         container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
     }
 }
@@ -2225,7 +2171,6 @@ function toggleEMA(emaType) {
             series.setData([]);
         }
     } catch (e) {
-        console.error(`Toggle EMA error: ${emaType}`, e.message);
     }
 }
 
@@ -2394,7 +2339,6 @@ function calculateEMA(bars, period = 20) {
         }
     });
     
-    // Debug logging
     const validEMAs = ema.filter(e => e !== null);
     if (validEMAs.length > 0) {
         
@@ -2474,7 +2418,6 @@ async function renderTechnicalPro(stock) {
         
         const res = await fetch(barsUrl);
         if (!res.ok) {
-            console.error(`Failed to fetch ${barsUrl}: ${res.status}`);
             document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Cannot load bars<br/><small style="font-size:9px;color:#ff6b85">Check: ./charts/${sym}.json exists</small></div>`;
             return;
         }
@@ -2483,7 +2426,6 @@ async function renderTechnicalPro(stock) {
         const bars = barsData.bars || [];
         
         if (!bars || bars.length === 0) {
-            console.error('No bars in JSON');
             document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ No OHLCV data in file</div>';
             return;
         }
@@ -2539,11 +2481,6 @@ async function renderTechnicalPro(stock) {
             displayEMA200 = calculateEMA(chartBars, 200);
         }
     
-        // Update bar count display
-        const barCountDisplay = document.getElementById('barCountDisplay');
-        if (barCountDisplay) {
-            barCountDisplay.textContent = `Bars: ${chartBars.length}`;
-        }
         
         const chart2Data = [{
             name: 'RSI(7)',
@@ -2716,7 +2653,6 @@ async function renderTechnicalPro(stock) {
         legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
     };
     
-    // Debug: Check data before rendering
     
     
     
@@ -2987,7 +2923,6 @@ async function renderTechnicalPro(stock) {
         },
         series: chart2Data,
         
-        // Debug: Check chart2 data
         ...(()=> { 
             
             
@@ -3050,7 +2985,6 @@ async function renderTechnicalPro(stock) {
     }
     
     } catch (error) {
-        console.error('Technical Pro rendering error:', error);
         document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Error: ${error.message}</div>`;
     }
 }
@@ -3060,13 +2994,11 @@ async function renderTechnicalPro(stock) {
 // ════════════════════════════════════════════════════════
 
 function scheduleChartRedraw(){
-  // Clear any pending redraw and reset stuck _pending flag
-  scheduleTACharts._pending = false;
-  if(scheduleChartRedraw._timer) clearTimeout(scheduleChartRedraw._timer);
-  scheduleChartRedraw._timer = setTimeout(()=>{
-    scheduleChartRedraw._timer = null;
-    scheduleTACharts(currentStock);
-  }, 16);  // ~1 frame debounce
+  // ✅ Use currentStock (not S.selStock which doesn't exist)
+  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
+    // Data already loaded, just redraw
+  }
+  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(currentStock)));
 }
 
 function aggregateCandles(daily, interval){
@@ -3077,29 +3009,31 @@ function aggregateCandles(daily, interval){
   // history_5y_1wk = already weekly, history_5y_1mo = already monthly
   // Just return as-is, don't try to re-aggregate
   if(interval === 'W' || interval === 'M') {
-    console.log(`📊 Interval ${interval}: ${daily.length} candles (already aggregated)`);
     return daily;
   }
   
   // This code below is legacy and shouldn't be reached
-  console.warn('⚠️ Unknown interval:', interval);
   return daily;
 }
 
 function scheduleTACharts(s){
+  // ✅ Debounce: skip rapid redraws to prevent freezing with overlays
   if(scheduleTACharts._pending) return;
   scheduleTACharts._pending = true;
+  
+  
   requestAnimationFrame(()=>{
-    scheduleTACharts._pending = false;
-    if(!s) return;
-    try {
-      recalculateIndicators(s);
-      drawCandlestick(s);
-      if(S.maVis.vol) drawVolume(s);
-      updateChartStats(s);
-    } catch(e) {
-      console.error('❌ Chart render error:', e.message);
-    }
+    requestAnimationFrame(()=>{
+      try {
+        // Recalculate indicators if needed
+        recalculateIndicators(s);
+        drawCandlestick(s);
+        if(S.maVis.vol) drawVolume(s);
+        updateChartStats(s);
+      } finally {
+        scheduleTACharts._pending = false;
+      }
+    });
   });
 }
 
@@ -3114,7 +3048,6 @@ function recalculateIndicators(s){
   if(recalculateIndicators._lastKey === cacheKey) return;
   recalculateIndicators._lastKey = cacheKey;
   
-  console.log(`📊 Recalculating indicators for ${S.chartInterval} (${s.candles.length} candles)`);
   
   try {
     // Calculate SMAs (not EMAs - simpler moving averages)
@@ -3122,7 +3055,6 @@ function recalculateIndicators(s){
     s.sma50 = calculateSMA(s.candles, 50);
     s.ema200 = calculateEMA(s.candles, 200);
   } catch(e) {
-    console.warn('⚠️ Error recalculating indicators:', e.message);
     s.sma20 = [];
     s.sma50 = [];
     s.ema200 = [];
@@ -3176,7 +3108,6 @@ function getSlicedCandles(s, canvasWidth){
   // ✅ SORT chronologically (oldest first)
   filteredCandles.sort((a, b) => a.d.localeCompare(b.d));
   
-  console.log(`📊 getSlicedCandles: ${daily.length} total, ${filteredCandles.length} after ${S.chartRange} filter`);
   
   // Aggregate if needed (for weekly/monthly intervals)
   const allAgg = aggregateCandles(filteredCandles, S.chartInterval);
@@ -3274,10 +3205,8 @@ function getQuarterlyData(s){
     
     if(quarterly.length > 0) return quarterly;
   } catch(e) {
-    console.warn('⚠️ Error extracting quarterly data:', e.message);
   }
   
-  console.log(`📊 getQuarterlyData extracted ${quarterly.length} data points`);
   
   // Fallback to simple quarterly array if exists
   return s.quarterly || [];
@@ -3309,7 +3238,6 @@ function drawCandlestick(s){
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
-    console.warn('⚠️ No candles to display');
     ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
     ctx.textAlign='center';
     if(s._noChartData){
@@ -3325,7 +3253,6 @@ function drawCandlestick(s){
     return;
   }
   
-  console.log(`📊 Drawing chart: ${candles.length} candles, price range ${candles[0]?.c}-${candles[candles.length-1]?.c}`);
 
   const W=W2,H=312;  // ✅ Increased 30% from 240
   const PAD={l:8,r:52,t:8,b:22};  // ✅ Changed left from 6 to 8 to match volume chart
@@ -3336,16 +3263,8 @@ function drawCandlestick(s){
   const baseWidth = Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
   const bw = baseWidth * S.chartZoom;
 
-  // Full history + visible date range — used by both MAs and KPI overlays
+  // Full candle history — used by MAs and KPI overlays
   const allCandles = (s.candles || candles).sort((a, b) => a.d.localeCompare(b.d));
-  const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
-  const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
-  const visRange = visLast - visFirst || 1;
-  
-  // ✅ FIX: KPI overlays use FULL history range for correct positioning during pan
-  const allFirst = allCandles.length ? new Date(allCandles[0].d).getTime() : visFirst;
-  const allLast = allCandles.length ? new Date(allCandles[allCandles.length-1].d).getTime() : visLast;
-  const allRange = allLast - allFirst || 1;
 
   const allPrices=candles.flatMap(c=>[c.h,c.l]);
   if(s.sma20&&S.maVis.sma20)allPrices.push(...s.sma20.filter(v=>v!==null));
@@ -3354,7 +3273,6 @@ function drawCandlestick(s){
   
   // Ensure we have valid price data
   if(allPrices.length === 0) {
-    console.error('❌ No valid price data found');
     ctx.fillStyle='#060c18';
     ctx.fillRect(0,0,W,H);
     ctx.fillStyle='rgba(255,107,133,0.7)';
@@ -3399,12 +3317,6 @@ function drawCandlestick(s){
     ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
     ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
-
-  // ✅ Clip to chart area — candles/wicks/MAs never bleed into right axis strip
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, W - PAD.r, H);
-  ctx.clip();
 
   // Candles - ✅ Track bar positions for click detection
   candlestickBars = [];
@@ -3496,10 +3408,12 @@ function drawCandlestick(s){
     const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
     const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
 
-    // Map allCandles index → visible x position using date
+    // MA lines use index → barX (same spacing as candles)
+    // allC index offset relative to visible slice start
+    const allCOffset = allC.length - candles.length;
     function maX(allIdx){
-      const t = new Date(allC[allIdx].d).getTime();
-      return PAD.l + ((t - visFirst) / visRange) * cW;
+      const visIdx = allIdx - allCOffset;
+      return barX(visIdx);
     }
     function drawMAFull(vals, col, dash, label){
       if(!vals) return;
@@ -3539,31 +3453,23 @@ function drawCandlestick(s){
     ctx.lineWidth=.6;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(PAD.l,lastY);ctx.lineTo(PAD.l+cW,lastY);ctx.stroke();
     ctx.setLineDash([]);
-  }
-
-  // ✅ Restore full canvas (end clip) — axis labels draw freely
-  ctx.restore();
-
-  // Price badge on right axis (outside clip)
-  if(s.ltp){
-    const lastY=toY(s.ltp);
-    const bull=s.candles?.length&&s.ltp>=(s.candles[0]?.c||s.ltp);
+    // Price badge on right axis
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.textBaseline='middle';
     ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
-  // X-axis date labels — clipped to chart area, with pan
-  const maxLabels = Math.min(4, Math.floor(cW / 55));
+  // X-axis date labels - optimized for mobile
+  const maxLabels = Math.min(4, Math.floor(cW / 50));  // ✅ Fewer labels on mobile
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(255,255,255,0.85)';
-  ctx.font='bold 11px JetBrains Mono,monospace';
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 12px sans-serif';  // ✅ Bigger font for mobile
   ctx.textBaseline = 'top';
-  const axisX = W - PAD.r;
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     let lbl = '';
+    
+    // Parse date string YYYY-MM-DD
     if(c.d && typeof c.d === 'string') {
       const parts = c.d.split('-');
       if(parts.length === 3) {
@@ -3573,10 +3479,11 @@ function drawCandlestick(s){
         else                            lbl = dd+'/'+ mm;
       }
     }
+    
     const x = barX(i);
-    if(x < PAD.l + 4 || x > axisX - 4) return;
-    ctx.textAlign = i===0 ? 'left' : 'center';
-    ctx.fillText(lbl, x, PAD.t + cH + 6);
+    if(x > PAD.l+cW-8) return;
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, PAD.t + cH + 10);  // ✅ More space below
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
@@ -3602,13 +3509,30 @@ function drawCandlestick(s){
   ];
 
   // Use FULL candle history for price lookups — not just visible slice
-  // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
 
+  // Build a date-to-index map from ALL candles for fast lookup
+  const dateToIdx = new Map();
+  allCandles.forEach((c, i) => dateToIdx.set(c.d, i));
+
+  // ✅ xForDate: uses the same index-based spacing as barX so overlays always land on bars
+  // Finds the nearest candle index for a given date, then applies barX positioning
   function xForDate(dateStr){
-    // ✅ Use VISIBLE range for alignment (same as candlesticks)
-    const t = new Date(dateStr).getTime();
-    const x = PAD.l + ((t - visFirst) / visRange) * cW + S.chartPan;
-    return x;
+    // Exact match first
+    if(dateToIdx.has(dateStr)){
+      const absIdx = dateToIdx.get(dateStr);
+      // absIdx is in allCandles; translate to visible slice index
+      const visIdx = absIdx - (allCandles.length - candles.length);
+      return barX(visIdx);
+    }
+    // Find nearest candle by date string comparison (YYYY-MM-DD sorts lexicographically)
+    let nearestIdx = 0;
+    let nearestDist = Infinity;
+    allCandles.forEach((c, i) => {
+      const dist = Math.abs(new Date(c.d) - new Date(dateStr));
+      if(dist < nearestDist){ nearestDist = dist; nearestIdx = i; }
+    });
+    const visIdx = nearestIdx - (allCandles.length - candles.length);
+    return barX(visIdx);
   }
 
   // Search FULL history for price on/before a date
@@ -3618,11 +3542,6 @@ function drawCandlestick(s){
     }
     return allCandles.length ? allCandles[0].c : (s.ltp || 0);
   }
-
-  // Log raw quarterly data once (commented out - uncomment for debugging)
-  // if(quarterly.length){
-  //   console.log('📊 Quarterly data:', quarterly);
-  // }
 
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
@@ -3685,15 +3604,11 @@ function drawCandlestick(s){
         }
       }
 
-      // Keep points whose un-panned position falls within or near the chart area
-      pts = pts.filter(p => {
-        const rawX = p.x - S.chartPan;
-        return rawX >= PAD.l - 30 && rawX <= PAD.l + cW + 30;
-      });
+      // ✅ Keep points that fall within or near visible chart area
+      pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
       
       if(pts.length < 2) return; // Need at least 2 points to draw a line
     } catch(e) {
-      console.warn(`⚠️ KPI ${label} error:`, e.message);
       return;
     }
     
@@ -3804,7 +3719,6 @@ function drawCandlestick(s){
     ctx.restore();
   });
   } catch(e) {
-    console.error('❌ Chart draw error:', e.message, e.stack);
     const cv = document.getElementById('cv-candle');
     if(cv) {
       const ctx = cv.getContext('2d');
@@ -3852,22 +3766,24 @@ function drawVolume(s){
   const volBaseWidth = Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
   const bw = volBaseWidth * S.chartZoom;
   const mv=Math.max(...candles.map(c=>c.v))||1;
+  
+  // Calculate price range from candles for labels
+  const allPrices = candles.map(c=>c.h).concat(candles.map(c=>c.l));
+  const startPrice = Math.max(...allPrices) || s.ltp || 0;
+  const endPrice = Math.min(...allPrices) || s.ltp || 0;
+  
+  // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
-  // ✅ Clip chart area — bars/MA never bleed into axis strip
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, W - PAD.r, H);
-  ctx.clip();
-
-  // Left axis line
+  // Left axis line (thicker for visibility)
   ctx.strokeStyle='rgba(100,130,180,.5)';
   ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
 
-  // Volume bars
+  // Volume bars - each bar colored based on corresponding candlestick
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
-    const x=PAD.l+i*gap+(gap-bw)/2 + S.chartPan;
+    const x=PAD.l+i*gap+(gap-bw)/2 + S.chartPan;  // ✅ Added pan offset
+    // Color: green if close > open, red if close <= open (matches candlestick color)
     const barColor = (c.c > c.o) ? '#00d084' : '#ff3b5c';
     ctx.fillStyle=barColor;
     ctx.beginPath();
@@ -3875,7 +3791,41 @@ function drawVolume(s){
     ctx.fill();
   });
 
-  // Volume trend line (smoothed MA5) — with pan offset
+  // ✅ RIGHT axis - Volume labels on RIGHT side (not left to avoid overlap)
+  ctx.fillStyle='rgba(7,12,24,.8)';
+  ctx.fillRect(W-PAD.r,0,PAD.r,H);
+  ctx.strokeStyle='rgba(100,130,180,.6)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+  
+  // ✅ Volume labels on RIGHT side (RIGHT aligned, with padding from edge)
+  ctx.fillStyle='rgba(255,255,255,1)';
+  ctx.font='bold 10px JetBrains Mono,monospace';
+  ctx.textAlign='right';  // ✅ Changed from left to right
+  ctx.textBaseline='middle';
+  const maxVol = Math.max(...candles.map(c=>c.v))||1;
+  for(let i=0; i<=2; i++){
+    const y = PAD.t + cH - (cH/2)*i;
+    const volValue = (i/2) * maxVol;
+    let label;
+    if (volValue >= 1e6) {
+      label = (volValue / 1e6).toFixed(1) + 'M';
+    } else if (volValue >= 1e3) {
+      label = (volValue / 1e3).toFixed(0) + 'K';
+    } else {
+      label = volValue.toFixed(0);
+    }
+    ctx.fillText(label, W-6, y);  // ✅ Draw on right side (W-6)
+  }
+  
+  // Price labels on right axis
+  ctx.fillStyle='rgba(255,255,255,.95)';
+  ctx.font='bold 9px JetBrains Mono,monospace';
+  ctx.textAlign='right';
+  ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
+  ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
+  
+  // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
     if(i<4) return null;
     return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
@@ -3884,48 +3834,23 @@ function drawVolume(s){
   let started=false;
   volMA.forEach((v,i)=>{
     if(v===null) return;
-    const x = PAD.l + i*gap + gap/2 + S.chartPan;
-    const y = PAD.t+cH-(v/mv)*cH;
+    const x=PAD.l+i*gap+gap/2;
+    const y=PAD.t+cH-(v/mv)*cH;
     if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
   });
   ctx.stroke();
-
-  ctx.restore();  // ✅ End clip — axis strip and labels draw freely
-
-  // RIGHT axis background + separator
-  ctx.fillStyle='rgba(7,12,24,.8)';
-  ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(100,130,180,.6)';
-  ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-
-  // Volume labels on right axis
-  ctx.fillStyle='rgba(255,255,255,1)';
-  ctx.font='bold 10px JetBrains Mono,monospace';
-  ctx.textAlign='right';
-  ctx.textBaseline='middle';
-  const maxVol = Math.max(...candles.map(c=>c.v))||1;
-  for(let i=0; i<=2; i++){
-    const y = PAD.t + cH - (cH/2)*i;
-    const volValue = (i/2) * maxVol;
-    let label;
-    if (volValue >= 1e7)      label = (volValue / 1e7).toFixed(1) + 'Cr';
-    else if (volValue >= 1e5) label = (volValue / 1e5).toFixed(1) + 'L';
-    else if (volValue >= 1e3) label = (volValue / 1e3).toFixed(0) + 'K';
-    else                      label = volValue.toFixed(0);
-    ctx.fillText(label, W-6, y);
-  }
-
-  // X-axis date labels — clipped to chart area, with pan
-  const volMaxLabels = Math.min(4, Math.floor(cW / 55));
+  
+  // ✅ X-axis date labels for volume chart - optimized for mobile
+  const volMaxLabels = Math.min(4, Math.floor(cW / 50));  // ✅ Fewer labels on mobile
   const volLblStep = Math.max(1, Math.floor(n / volMaxLabels));
-  ctx.fillStyle='rgba(255,255,255,0.85)';
-  ctx.font='bold 11px JetBrains Mono,monospace';
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 12px sans-serif';  // ✅ Bigger font for mobile
   ctx.textBaseline='top';
-  const volAxisX = W - PAD.r;
   candles.forEach((c,i)=>{
     if(i % volLblStep !== 0 && i !== n-1) return;
     let lbl = '';
+    
+    // Parse date string YYYY-MM-DD
     if(c.d && typeof c.d === 'string') {
       const parts = c.d.split('-');
       if(parts.length === 3) {
@@ -3935,15 +3860,15 @@ function drawVolume(s){
         else                            lbl = dd+'/'+ mm;
       }
     }
-    const x = PAD.l + i*gap + gap/2 + S.chartPan;
-    if(x < PAD.l + 4 || x > volAxisX - 4) return;
-    ctx.textAlign = i===0 ? 'left' : 'center';
-    ctx.fillText(lbl, x, PAD.t + cH + 6);
+    
+    const x = PAD.l + i*gap + gap/2;
+    if(x > PAD.l+cW-8) return;
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, PAD.t + cH + 8);  // ✅ Below volume chart
   });
   
   // ✅ Click handler to show bar details (toggle) - works on both mouse and touch
   cv.onclick=(e)=>{
-    console.log('📌 Canvas click detected');
     handleChartClick(e, W2, H2);
   };
   
@@ -3961,47 +3886,22 @@ function drawVolume(s){
   });
   
   function handleChartClick(e, W2, H2) {
-    console.log('🖱️ Click detected on canvas');
     const br=cv.getBoundingClientRect();
     const scX=W2/br.width, scY=H2/br.height;
     let mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
     
-    // ✅ Account for pan offset when checking click position
+    // Account for pan offset when checking click position
     mx = mx - S.chartPan;
     
-    // ✅ Show debug info on screen for iPhone
-    let debugDiv = document.getElementById('debug-tooltip-info');
-    if(!debugDiv) {
-      debugDiv = document.createElement('div');
-      debugDiv.id = 'debug-tooltip-info';
-      debugDiv.style.cssText = 'position:fixed;top:10px;left:10px;background:rgba(0,0,0,.9);color:#00ff88;border:1px solid #00ff88;border-radius:4px;padding:8px;font-family:monospace;font-size:10px;z-index:10000;max-width:150px;max-height:100px;overflow:auto';
-      document.body.appendChild(debugDiv);
-    }
-    
-    const debugMsg = `Click: mx=${mx.toFixed(0)} my=${my.toFixed(0)}<br/>KPI Pts: ${kpiPoints.length}<br/>Bars: ${candlestickBars.length}`;
-    debugDiv.innerHTML = debugMsg;
-    debugDiv.style.display = 'block';
-    
-    // Auto-hide after 2 seconds
-    setTimeout(() => {
-      if(debugDiv) debugDiv.style.display = 'none';
-    }, 2000);
-    
-    console.log(`  Click coords: mx=${mx.toFixed(0)}, my=${my.toFixed(0)}, kpiPoints=${kpiPoints.length}`);
-    
-    // ✅ First, check if clicked on KPI overlay point
+    // Check if clicked on KPI overlay point
     if(kpiPoints.length) {
       const kpiHit = kpiPoints.find(kpi => {
         const dx = mx - kpi.x;
         const dy = my - kpi.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        console.log(`    KPI ${kpi.label}: dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} dist=${dist.toFixed(1)} r=${kpi.radius}`);
-        return dist <= kpi.radius;
+        return Math.sqrt(dx*dx + dy*dy) <= kpi.radius;
       });
       
       if(kpiHit) {
-        console.log(`  ✓ KPI HIT: ${kpiHit.label} at ${kpiHit.date}`);
-        debugDiv.innerHTML += `<br/>✓ KPI: ${kpiHit.label}`;
         // Show KPI tooltip
         let kpiTip = document.getElementById('kpi-overlay-tooltip');
         if(!kpiTip) {
@@ -4049,7 +3949,6 @@ function drawVolume(s){
     
     // ✅ Then check candlestick click
     if(!candlestickBars.length) {
-      console.log('  ⚠️ No candlestick bars to check');
       return;
     }
     
@@ -4059,7 +3958,6 @@ function drawVolume(s){
       return hit;
     });
     
-    console.log(`  Candlestick search: ${candlestickBars.length} bars, hit=${!!bar}${bar?(' '+bar.date):''}`);
     
     // Create or get tooltip
     let tip=document.getElementById('chart-tooltip');
@@ -4139,16 +4037,9 @@ function updateChartStats(s){
 }
 
 // Chart control functions
-function canvasSetChartRange(r) { 
-  S.chartRange = r; 
-  scheduleTACharts._pending = false;
-  scheduleChartRedraw(); 
-}
+function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv) { 
   S.chartInterval = iv;
-  // Always reset debounce flags so period switch never gets stuck
-  scheduleTACharts._pending = false;
-  recalculateIndicators._lastKey = null;
   
   if(currentStock && currentStock.price) {
     let historyData = null;
@@ -4198,54 +4089,22 @@ function canvasSetChartInterval(iv) {
           recalculateIndicators._lastKey = null;
           aggregateCandles._cache = null;
           
-          console.log(`✅ Loaded ${historyType}: ${converted.length} candles`);
           scheduleChartRedraw();
           return;
         } else {
-          console.log(`❌ No valid candles in ${historyType}`);
         }
       } catch(e) {
-        console.log(`❌ Error loading ${historyType}: ${e.message}`);
       }
     } else {
-      console.log(`❌ ${historyType} data not found`);
     }
   }
   
   scheduleChartRedraw();
 }
-function canvasToggleMA(key) {
-  S.maVis[key] = !S.maVis[key];
-  if (key === 'vol') {
-    // Volume toggle rebuilds DOM — reset interaction flag so events reattach
-    setupChartInteraction._initialized = false;
-    renderTab('canvas');
-  } else {
-    scheduleChartRedraw();
-  }
-}
-
-function toggleAllKPI(on) {
-  Object.keys(S.kpiVis).forEach(k => { S.kpiVis[k] = on; });
-  // Sync all individual checkboxes
-  Object.keys(S.kpiVis).forEach(k => {
-    const cb = document.getElementById('kpi-' + k);
-    if(cb) cb.checked = on;
-  });
-  scheduleChartRedraw();
-}
-
-function toggleKPI(k) {
-  S.kpiVis[k] = !S.kpiVis[k];
-  // Sync master checkbox state
-  const allOn  = Object.values(S.kpiVis).every(v => v);
-  const allOff = Object.values(S.kpiVis).every(v => !v);
-  const masterCb = document.getElementById('kpi-all-chk');
-  if(masterCb) {
-    masterCb.checked = allOn;
-    masterCb.indeterminate = !allOn && !allOff;
-  }
-  scheduleChartRedraw();
+function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+function toggleKPI(k) { 
+  S.kpiVis[k] = !S.kpiVis[k]; 
+  scheduleChartRedraw(); 
 }
 
 async function canvasLoadAndDrawChart(sym) {
@@ -4295,7 +4154,6 @@ function setupChartInteraction() {
   // Prevent duplicate setup
   if (setupChartInteraction._initialized) return;
   
-  console.log('⚙️ Setting up chart interaction...');
   
   const canvas = document.getElementById('cv-candle');
   if (!canvas) {
@@ -4304,7 +4162,6 @@ function setupChartInteraction() {
   }
   
   setupChartInteraction._initialized = true;
-  console.log('✓ Canvas found, attaching event listeners');
   
   // Shared touch state
   const touchState = { lastDistance: 0, gestureStart: 1 };
@@ -4322,7 +4179,6 @@ function setupChartInteraction() {
   
   // Mouse/Touch Pan on canvas - with passive event listeners for better scroll performance
   canvas.addEventListener('mousedown', (e) => {
-    console.log('🖱️ Pan START');
     chartInteraction.isPanning = true;
     chartInteraction.startX = e.clientX;
     chartInteraction.startPan = S.chartPan;
@@ -4342,7 +4198,6 @@ function setupChartInteraction() {
   }, { passive: true, capture: false });
   
   document.addEventListener('mouseup', () => { 
-    console.log('🖱️ Pan END');
     chartInteraction.isPanning = false; 
   }, { passive: true });
   
@@ -4563,456 +4418,6 @@ async function loadStockNews(sym,name){
 // ════════════════════════════════════════════════════════
 
 
-// ════════════════════════════════════════════════════════
-// MOVERS TAB FUNCTIONS (from app.js)
-// ════════════════════════════════════════════════════════
-
-async function loadAndRenderMovers(){
-  const c = document.getElementById('content');
-  if(!c) {
-    console.error('content div not found');
-    return;
-  }
-  
-  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading portfolio data...</div>';
-  
-  try {
-    // Open IndexedDB - same as index.html
-    const db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB);
-      req.onsuccess = () => {
-        resolve(req.result);
-      };
-      req.onerror = () => {
-        reject(new Error('Cannot open database'));
-      };
-    });
-    
-    // Get all stocks from stocks store - same as index.html
-    const allStocks = await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const store = tx.objectStore(STORE);
-      const req = store.getAll();
-      
-      req.onsuccess = () => {
-        const stocks = req.result || [];
-        console.log(`✅ Loaded ${stocks.length} stocks from IndexedDB`);
-        
-        // Log first 5 stocks to see their structure
-        if(stocks.length > 0) {
-          console.log(`📋 Sample stocks (first 5):`);
-          stocks.slice(0, 5).forEach(s => {
-            console.log(`  ├─ ${s.ticker}: qty=${s.company_details?.qty || 'undefined'}, price=${s.price?.current_price || 'N/A'}`);
-          });
-        }
-        
-        resolve(stocks);
-      };
-      req.onerror = () => {
-        console.log(`❌ Error reading from IndexedDB: ${req.error}`);
-        reject(new Error('Cannot read stocks'));
-      };
-    });
-    
-    db.close();
-    
-    // Filter portfolio holdings - same as index.html enrichStock function
-    // Portfolio = stocks with qty > 0
-    const portfolio = allStocks.filter(s => {
-      const qty = s.company_details?.qty || 0;  // ✅ Check at CORRECT location
-      return qty > 0;
-    });
-    
-    console.log(`📊 Portfolio holdings: ${portfolio.length} from ${allStocks.length} total stocks`);
-    
-    if(portfolio.length > 0) {
-      portfolio.slice(0, 5).forEach(s => {
-        console.log(`  ├─ ${s.ticker}: qty=${s.company_details?.qty}, avg_cost=${s.company_details?.avg_cost || 'N/A'}`);
-      });
-      if(portfolio.length > 5) console.log(`  └─ ... and ${portfolio.length - 5} more`);
-    }
-    
-    if(!portfolio || !portfolio.length){
-      console.log(`❌ NO PORTFOLIO HOLDINGS - Movers tab empty`);
-      c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
-        <div style="font-size:14px;margin-bottom:12px">📊 No holdings in portfolio</div>
-        <div style="font-size:11px;line-height:1.6">Add stocks with qty > 0 to see portfolio movers</div>
-      </div>`;
-      return;
-    }
-    
-    // Enrich portfolio with same logic as index.html resolve() function
-    const enrichedPortfolio = portfolio.map(s => {
-      const qty = s.company_details?.qty || 0;  // ✅ Get from correct location
-      const ltp = resolveField(s, 'ltp') || 0;
-      const avgCost = s.company_details?.avg_cost || resolveField(s, 'avg_cost') || 0;
-      const changePct = resolveField(s, 'changePct') || 0;
-      
-      console.log(`  💼 ${s.ticker}: qty=${qty}, ltp=₹${ltp}, avgCost=₹${avgCost}, change=${changePct}%`);
-      
-      return {
-        ...s,
-        qty,
-        ltp,
-        avgCost,
-        changePct,
-        value: qty * ltp,
-        cost: qty * avgCost,
-        gain: (qty * ltp) - (qty * avgCost),
-        gainPct: avgCost > 0 ? ((ltp - avgCost) / avgCost * 100) : 0,
-        change1d: changePct * qty
-      };
-    });
-    
-    // Calculate portfolio totals - same as index.html
-    const totalVal = enrichedPortfolio.reduce((a, s) => a + s.value, 0);
-    const totalCost = enrichedPortfolio.reduce((a, s) => a + s.cost, 0);
-    const totalGain = totalVal - totalCost;
-    const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
-    
-    console.log(`📊 Portfolio Totals: Value=₹${totalVal.toFixed(0)}, Cost=₹${totalCost.toFixed(0)}, Gain=₹${totalGain.toFixed(0)}, Gain%=${gainPct.toFixed(2)}%`);
-    
-    // Find gainers and losers by daily change %
-    const withChange = enrichedPortfolio.filter(s => s.changePct !== undefined && !isNaN(s.changePct));
-    
-    const gainers = [...withChange]
-      .sort((a, b) => b.changePct - a.changePct)
-      .slice(0, 8);
-    
-    const losers = [...withChange]
-      .sort((a, b) => a.changePct - b.changePct)
-      .slice(0, 8);
-    
-    // Sector aggregation
-    const sectorMap = {};
-    enrichedPortfolio.forEach(s => {
-      const sector = resolveField(s, 'sector') || '—';
-      const change = s.changePct || 0;
-      if(!sectorMap[sector]) sectorMap[sector] = {sum: 0, count: 0, stocks: []};
-      sectorMap[sector].sum += change;
-      sectorMap[sector].count++;
-      sectorMap[sector].stocks.push({sym: s.ticker || s.sym, chg: change});
-    });
-    
-    const sectors = Object.entries(sectorMap)
-      .map(([name, d]) => ({name, avg: d.sum / d.count, stocks: d.stocks}))
-      .filter(s => s.avg !== 0)
-      .sort((a, b) => Math.abs(b.avg) - Math.abs(a.avg))
-      .slice(0, 10);
-    
-    // Render
-    c.innerHTML = `<div style="padding:12px 13px 14px;padding-bottom:100px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--title)">Market Movers</div>
-        <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">${enrichedPortfolio.length} holdings</div>
-      </div>
-      
-      <!-- Portfolio Summary -->
-      <div class="card" style="margin-bottom:12px">
-        <div style="font-weight:700;font-size:12px;color:var(--title);margin-bottom:8px">💼 Portfolio</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:10px">
-          <div><div style="color:var(--tx3);margin-bottom:2px">Value</div><div style="color:var(--tx1);font-weight:600">₹${totalVal.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
-          <div><div style="color:var(--tx3);margin-bottom:2px">Gain/Loss</div><div style="color:${totalGain >= 0 ? '#00e896' : '#ff6b85'};font-weight:600">${totalGain >= 0 ? '+' : ''}₹${totalGain.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
-          <div><div style="color:var(--tx3);margin-bottom:2px">Invested</div><div style="color:var(--tx1);font-weight:600">₹${totalCost.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
-          <div><div style="color:var(--tx3);margin-bottom:2px">Return</div><div style="color:${gainPct >= 0 ? '#00e896' : '#ff6b85'};font-weight:600">${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(2)}%</div></div>
-        </div>
-      </div>
-      
-      <!-- Gainers/Losers -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="card">
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
-          ${gainers.length ? gainers.map(s => {
-            return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${s.changePct.toFixed(2)}%</div></div>
-          </div>`;
-          }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
-        </div>
-        <div class="card">
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
-          ${losers.length ? losers.map(s => {
-            return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${s.changePct.toFixed(2)}%</div></div>
-          </div>`;
-          }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
-        </div>
-      </div>
-      
-      <!-- Sectors -->
-      ${sectors.length ? `<div class="card">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title);margin-bottom:10px">📊 Sectors</div>
-        <div style="display:flex;flex-direction:column;gap:5px">
-          ${sectors.map(s => {
-            const up = s.avg >= 0;
-            const barW = Math.min(100, Math.abs(s.avg) * 15).toFixed(0);
-            return `<div style="display:flex;align-items:center;gap:8px">
-              <div style="width:90px;font-size:9px;color:var(--tx2);text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</div>
-              <div style="flex:1;background:var(--s2);border-radius:3px;height:13px;position:relative;overflow:hidden">
-                <div style="position:absolute;${up?'left:0':'right:0'};top:0;height:100%;width:${barW}%;background:${up?'rgba(0,208,132,.4)':'rgba(255,59,92,.4)'};border-radius:3px"></div>
-              </div>
-              <div style="width:40px;font-size:9px;font-weight:700;color:${up?'#00e896':'#ff6b85'};font-family:var(--mono);text-align:right">${up?'+':''}${s.avg.toFixed(2)}%</div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>` : ''}
-      
-      <!-- Sector Heatmap -->
-      <div class="card" style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title)">🗺 Sector Heatmap</div>
-          <div style="display:flex;gap:6px;font-size:9px;color:var(--tx3)">
-            <span style="color:#00e896">■ Up</span>
-            <span style="color:#ff6b85">■ Down</span>
-          </div>
-        </div>
-        <canvas id="cv-heatmap" style="width:100%;border-radius:6px;cursor:pointer;display:block;margin-bottom:8px"></canvas>
-        <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1e3350;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--tx1);pointer-events:none;z-index:999"></div>
-      </div>
-    </div>`;
-    
-    // Draw heatmap after DOM renders
-    setTimeout(() => {
-      drawPortfolioHeatmap(enrichedPortfolio);
-    }, 200);
-    
-  } catch(e) {
-    console.error('Movers error:', e.message, e.stack);
-    c.innerHTML = `<div style="padding:40px 20px;text-align:center">
-      <div style="color:#ff6b85;margin-bottom:10px;font-weight:600">${e.message}</div>
-      <div style="font-size:10px;color:var(--tx3)">Check 🔧 debug panel for details</div>
-    </div>`;
-  }
-}
-function drawPortfolioHeatmap(portfolio){
-  console.log('drawPortfolioHeatmap called with', portfolio.length, 'stocks');
-  
-  const cv = document.getElementById('cv-heatmap');
-  console.log('Canvas found:', !!cv);
-  
-  if(!cv) {
-    return;
-  }
-  
-  console.log('Canvas dimensions:', cv.offsetWidth, 'x', cv.offsetHeight);
-
-  const dpr = window.devicePixelRatio || 1;
-  const W = Math.max(cv.offsetWidth || window.innerWidth - 30, 180);
-  const H = W;
-  console.log('Drawing at', W, 'x', H, 'with DPR', dpr);
-  
-  cv.width  = W * dpr; 
-  cv.height = H * dpr;
-  cv.style.width = W+'px'; 
-  cv.style.height = H+'px';
-  
-  const ctx = cv.getContext('2d');
-  if(!ctx) {
-    return;
-  }
-  
-  ctx.scale(dpr, dpr);
-  ctx.fillStyle = '#060c18';
-  ctx.fillRect(0, 0, W, H);
-
-  if(!portfolio || !portfolio.length){
-    ctx.fillStyle='rgba(140,176,208,.4)';
-    ctx.font='11px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('No portfolio data', W/2, H/2);
-    console.log('No portfolio - showing message');
-    return;
-  }
-
-  // Group by sector
-  const sMap = {};
-  portfolio.forEach(s=>{
-    const sec = resolveField(s, 'sector') || 'Other';  // ✅ Use resolveField
-    if(!sMap[sec]) sMap[sec]={name:sec, holdVal:0, mcap:0, chgSum:0, n:0, stocks:[]};
-    const price = s.ltp || resolveField(s, 'ltp') || 0;
-    const change = s.changePct || resolveField(s, 'changePct') || 0;
-    const holdingVal = (s.company_details?.qty || 0) * price;  // ✅ Get qty from correct location
-    sMap[sec].holdVal += holdingVal;
-    sMap[sec].mcap    += (resolveField(s, 'market_cap') || 0);
-    sMap[sec].chgSum  += change;
-    sMap[sec].n++;
-    sMap[sec].stocks.push(s);
-  });
-  
-  console.log('Sectors found:', Object.keys(sMap).length, 'sectors');
-  
-  const nodes = Object.values(sMap)
-    .map(d=>({
-      name:   d.name,
-      holdVal: d.holdVal,  // Portfolio investment value
-      // Size priority: 1) portfolio holding value, 2) mcap if available, 3) stock count
-      size:   d.holdVal > 0 ? d.holdVal :
-              d.mcap    > 0 ? d.mcap    :
-              d.n * 1000,
-      chg:    d.chgSum / d.n,
-      n:      d.n,
-      stocks: [...d.stocks].sort((a,b)=>Math.abs((b.chg1d||0))-Math.abs((a.chg1d||0))),
-    }))
-    .sort((a,b)=>b.size-a.size);
-
-  // Normalise sizes to W*H
-  const totalSize = nodes.reduce((a,b)=>a+b.size, 0);
-  nodes.forEach(n=>{ n.size = (n.size/totalSize) * W * H; });
-
-  // Squarified treemap — standard Bruls algorithm
-  const rects = [];
-
-  function worstRatio(row, w){
-    if(!w||!row.length) return Infinity;
-    const s = row.reduce((a,b)=>a+b.size, 0);
-    const maxS = Math.max(...row.map(r=>r.size));
-    const minS = Math.min(...row.map(r=>r.size));
-    return Math.max((w*w*maxS)/(s*s), (s*s)/(w*w*minS));
-  }
-
-  function layoutRow(row, x, y, w, h){
-    const s = row.reduce((a,b)=>a+b.size, 0);
-    let cx=x, cy=y;
-    if(w >= h){
-      // horizontal strip
-      const stripW = s/h;
-      row.forEach(item=>{
-        const ih = item.size / stripW;
-        rects.push({...item,
-          x: Math.max(0,cx), y: Math.max(0,cy),
-          w: Math.min(stripW, W-cx), h: Math.min(ih, H-cy)
-        });
-        cy += ih;
-      });
-      return {x:x+stripW, y:y, w:w-stripW, h:h};
-    } else {
-      // vertical strip
-      const stripH = s/w;
-      row.forEach(item=>{
-        const iw = item.size / stripH;
-        rects.push({...item,
-          x: Math.max(0,cx), y: Math.max(0,cy),
-          w: Math.min(iw, W-cx), h: Math.min(stripH, H-cy)
-        });
-        cx += iw;
-      });
-      return {x:x, y:y+stripH, w:w, h:h-stripH};
-    }
-  }
-
-  function squarify(children, x, y, w, h){
-    if(!children.length||w<1||h<1) return;
-    let row=[], rem=[...children];
-    const shortest = Math.min(w,h);
-    while(rem.length){
-      const test=[...row, rem[0]];
-      if(row.length>0 && worstRatio(test,shortest) > worstRatio(row,shortest)) break;
-      row.push(rem.shift());
-    }
-    const next = layoutRow(row, x, y, w, h);
-    squarify(rem, next.x, next.y, next.w, next.h);
-  }
-
-  squarify(nodes, 0, 0, W, H);
-
-  // Color by % change — use distinct bands for easy reading
-  // -3% and below = deep red, 0 = dark neutral, +3% and above = deep green
-  function tileColor(chg){
-    // Clamp to [-4, +4] range
-    const c = Math.max(-4, Math.min(4, chg));
-    if(c === 0) return 'rgba(35,50,75,0.85)';
-    if(c > 0){
-      // Green intensity: 0.1% = dim, 4% = full bright
-      const t = c / 4;
-      const g = Math.round(80  + 150*t);   // 80 → 230
-      const r = Math.round(5   + 15*t);    // keeps it green not yellow
-      const b = Math.round(10  + 20*t);
-      return 'rgba('+r+','+g+','+b+',0.90)';
-    } else {
-      const t = (-c) / 4;
-      const r = Math.round(80  + 150*t);   // 80 → 230
-      const g = Math.round(10  + 15*t);
-      const b = Math.round(15  + 20*t);
-      return 'rgba('+r+','+g+','+b+',0.90)';
-    }
-  }
-
-  const PAD = 2;
-  rects.forEach(r=>{
-    const rx=r.x+PAD, ry=r.y+PAD, rw=r.w-PAD*2, rh=r.h-PAD*2;
-    if(rw<3||rh<3) return;
-
-    ctx.fillStyle = tileColor(r.chg);
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(rx,ry,rw,rh,3); else ctx.rect(rx,ry,rw,rh);
-    ctx.fill();
-    ctx.strokeStyle='rgba(6,12,24,0.8)'; ctx.lineWidth=1; ctx.stroke();
-
-    if(rw<16||rh<12) return;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(rx,ry,rw,rh); ctx.clip();
-    ctx.textAlign='center';
-    const sign = r.chg>=0?'+':'';
-    const pct  = sign+r.chg.toFixed(2)+'%';
-    const cx   = rx+rw/2;
-
-    if(rw>=54&&rh>=36){
-      const fs=Math.min(12,Math.max(8,Math.floor(Math.min(rw/7,rh/3.5))));
-      ctx.font='700 '+fs+'px \'JetBrains Mono\',monospace';
-      ctx.fillStyle='rgba(255,255,255,0.96)';
-      const lbl=r.name.length>13?r.name.slice(0,12)+'\u2026':r.name;
-      ctx.fillText(lbl, cx, ry+rh*0.42);
-      ctx.font=Math.max(7,fs-1)+'px \'JetBrains Mono\',monospace';
-      ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.95)':'rgba(255,195,195,0.95)';
-      ctx.fillText(pct, cx, ry+rh*0.42+fs+4);
-    } else if(rw>=34&&rh>=22){
-      const fs=Math.min(9,Math.max(6,Math.floor(Math.min(rw/6,rh/3))));
-      ctx.font='700 '+fs+'px monospace';
-      ctx.fillStyle='rgba(255,255,255,0.92)';
-      ctx.fillText(r.name.slice(0,9), cx, ry+rh*0.40);
-      ctx.font=Math.max(6,fs-1)+'px monospace';
-      ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.9)':'rgba(255,195,195,0.9)';
-      ctx.fillText(pct, cx, ry+rh*0.40+fs+3);
-    } else {
-      ctx.font='6px monospace';
-      ctx.fillStyle='rgba(255,255,255,0.85)';
-      ctx.fillText(pct, cx, ry+rh/2+3);
-    }
-    ctx.restore();
-  });
-
-  // Tap tooltip - persistent until next click
-  let currentTooltip = null;
-  cv.onclick=(e)=>{
-    const br=cv.getBoundingClientRect();
-    const scX=W/br.width, scY=H/br.height;
-    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
-    const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
-    const tip=document.getElementById('hm-tooltip');
-    
-    // If clicking on empty space or same tooltip, hide it
-    if(!hit || currentTooltip === hit.name){
-      if(tip) tip.style.display='none';
-      currentTooltip = null;
-      return;
-    }
-    
-    // Show tooltip for clicked sector
-    if(hit&&tip){
-      currentTooltip = hit.name;
-      const sign=hit.chg>=0?'+':'';
-      const invVal = hit.holdVal || 0;
-      tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
-        +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
-        +'<span style="color:var(--tx3)">💰 ₹'+invVal.toLocaleString('en-IN',{maximumFractionDigits:0})+'</span><br>'
-        +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
-        +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.ticker+' '+(s.chg1d>=0?'+':'')+s.chg1d.toFixed(1)+'%').join('  ')+'</span>';
-      tip.style.display='block';
-      tip.style.left=Math.min(e.clientX+10,window.innerWidth-170)+'px';
-      tip.style.top=Math.max(e.clientY-70,8)+'px';
-    }
-  };
-}
 
 
 </script>
