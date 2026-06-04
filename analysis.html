@@ -3131,23 +3131,47 @@ function attachChartResizeObserver(s){
 }
 
 function getSlicedCandles(s, canvasWidth){
-  const daily = s.candles||[];
-  if(!daily.length) return [];
+  // Pick the right raw source based on interval
+  let raw = null;
+  if (S.chartInterval === 'W' && s.price?.history_5y_1wk?.length)
+    raw = s.price.history_5y_1wk;
+  else if (S.chartInterval === 'M' && s.price?.history_5y_1mo?.length)
+    raw = s.price.history_5y_1mo;
+  else if (s.price?.history_6mo_1d?.length)
+    raw = s.price.history_6mo_1d;
+  else if (s.price?.history_5y_1wk?.length)
+    raw = s.price.history_5y_1wk;
+
+  // Normalise to {d, o, h, l, c, v}
+  let daily = raw
+    ? raw.map(b => ({
+        d: String(b.Date || b.d || ''),
+        o: parseFloat(b.Open  || b.o || 0),
+        h: parseFloat(b.High  || b.h || 0),
+        l: parseFloat(b.Low   || b.l || 0),
+        c: parseFloat(b.Close || b.c || 0),
+        v: parseInt(b.Volume  || b.v || 0)
+      })).filter(b => b.d && b.c > 0)
+    : (s.candles || []);
+
+  if (!daily.length) return [];
+  daily.sort((a, b) => a.d.localeCompare(b.d));
+
+  // Apply period cutoff
   const now = new Date();
-  const days = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange]||365;
-  const cutoff = new Date(now-days*864e5).toISOString().slice(0,10);
-  let f = daily.filter(c=>c.d>=cutoff);
-  if(!f.length) f = daily.slice(-Math.max(20,Math.floor(daily.length*0.25)));
-  f.sort((a,b)=>a.d.localeCompare(b.d));
-  const all = aggregateCandles(f, S.chartInterval);
-  if(!all.length) return [];
-  const w = Math.max(100, canvasWidth||320);
+  const days = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 365;
+  const cutoff = new Date(now - days*864e5).toISOString().slice(0,10);
+  let f = daily.filter(c => c.d >= cutoff);
+  if (!f.length) f = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
+  if (!f.length) return [];
+
+  const w = Math.max(100, canvasWidth || 320);
   const base = Math.max(20, Math.floor((w-60)/7));
-  const vis  = Math.max(10, Math.round(base/S.chartZoom));
-  const maxP = Math.max(0, all.length-vis);
+  const vis  = Math.max(10, Math.round(base / S.chartZoom));
+  const maxP = Math.max(0, f.length - vis);
   const pan  = Math.max(0, Math.min(maxP, S.panOffset));
-  const end  = all.length - pan;
-  return all.slice(Math.max(0,end-vis), end);
+  const end  = f.length - pan;
+  return f.slice(Math.max(0, end - vis), end);
 }
 
 // Extract quarterly data with all KPI metrics
@@ -3295,8 +3319,18 @@ function drawCandlestick(s){
   const baseWidth = Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
   const bw = baseWidth * S.chartZoom;
 
-  // Full history + visible date range — used by both MAs and KPI overlays
-  const allCandles = (s.candles || candles).sort((a, b) => a.d.localeCompare(b.d));
+  // Full price history for KPI priceAt() lookups — use 5y weekly as it covers all annual dates
+  const _fullHistory = (s.price?.history_5y_1wk?.length ? s.price.history_5y_1wk
+                      : s.price?.history_5y_1mo?.length ? s.price.history_5y_1mo
+                      : s.price?.history_6mo_1d?.length ? s.price.history_6mo_1d
+                      : null);
+  const allCandles = (_fullHistory
+    ? _fullHistory.map(b => ({
+        d: String(b.Date || b.d || ''),
+        c: parseFloat(b.Close || b.c || 0)
+      })).filter(b => b.d && b.c > 0)
+    : (s.candles || candles).slice()
+  ).sort((a, b) => a.d.localeCompare(b.d));
   const visFirst = candles.length ? new Date(candles[0].d).getTime() : 0;
   const visLast  = candles.length ? new Date(candles[candles.length-1].d).getTime() : 1;
   const visRange = visLast - visFirst || 1;
@@ -3589,8 +3623,8 @@ function drawCandlestick(s){
         }
       }
 
-      // Keep points within visible chart area (wide margin for annual data)
-      pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+      // Wide margin so annual dots just outside viewport still anchor the line
+      pts = pts.filter(p => p.x >= PAD.l - cW && p.x <= PAD.l + cW * 2);
 
       if(pts.length < 2) return;
     } catch(e) {
