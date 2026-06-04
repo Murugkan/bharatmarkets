@@ -171,7 +171,7 @@ const S = {
   chartRange: '1Y',
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
-  kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
+  kpiVis: { pe: false, sales: false, rev: false, net: false, cfo: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
   chartPan: 0,
   panOffset: 0,
   chartZoom: 1,
@@ -972,7 +972,7 @@ function renderTab(tab) {
               <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
             </label>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
-            ${[{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            ${[{k:'sales',c:'#a78bfa',l:'Sales'},{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
             ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'},{k:'debt',c:'#f87171',l:'Debt'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
@@ -3131,7 +3131,7 @@ function getQuarterlyData(s){
       const q = { d: date };
       
       // Income Statement metrics
-      if(salesData[date]) q.rev = parseFloat(salesData[date]) || 0;
+      if(salesData[date]) { q.rev = parseFloat(salesData[date]) || 0; q.sales = q.rev; }
       if(operatingProfitData[date]) q.op = parseFloat(operatingProfitData[date]) || 0;
       if(opmData[date]) q.opm = parseFloat(opmData[date]) || 0;
       if(pbtData[date]) q.pbt = parseFloat(pbtData[date]) || 0;
@@ -3444,6 +3444,7 @@ function drawCandlestick(s){
 
   const KPI_DEFS = [
     // Income Statement
+    {k:'sales', label:'Sales',    col:'#a78bfa'},
     {k:'rev',  label:'Rev',       col:'#22d3ee'},
     {k:'op',   label:'Op.Profit', col:'#ec4899'},
     {k:'opm',  label:'OPM%',      col:'#fb923c'},
@@ -3517,7 +3518,9 @@ function drawCandlestick(s){
         }
         // Add current value as rightmost anchor if available
         let curVal = null;
-        if(k === 'rev') {
+        if(k === 'sales') {
+          curVal = resolveField(s, 'financials.Sales') || resolveField(s, 'sales') || resolveField(s, 'revenue');
+        } else if(k === 'rev') {
           curVal = resolveField(s, 'sales') || resolveField(s, 'revenue');
         } else if(k === 'op') {
           curVal = resolveField(s, 'operating_profit');
