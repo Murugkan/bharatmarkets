@@ -339,6 +339,49 @@ FIELD_MAP = {
         "shares_outstanding":("valuation","shares_outstanding_yf"),
     },
 
+    # ── yahoofin_fin:historical ───────────────────────────────────────────────
+    # Per-period snapshots from historical_periods (up to ~7 recent quarters).
+    # Same 31 fields as latest, stored as time-series keyed by ISO date.
+    # NOTE: Yahoo Finance API does not provide 10-year history via this endpoint.
+    # Max coverage is ~4–7 quarters (Sep 2024 → present). For longer history
+    # use screener_fin (consolidated, 7yr) or screener_raw (standalone, 12yr).
+    "yahoofin_fin:historical": {
+        # income statement
+        "net_profit":         ("financials",  "net_profit"),
+        "ebit":               ("financials",  "ebit"),
+        "operating_expenses": ("financials",  "operating_expenses"),
+        "operating_income":   ("financials",  "operating_income"),
+        "normalized_income":  ("financials",  "normalized_income"),
+        "unusual_items":      ("financials",  "unusual_items"),
+        "tax_rate":           ("financials",  "tax_rate"),
+        "interest_income":    ("financials",  "interest_income"),
+        "interest_expense":   ("financials",  "interest_expense"),
+        "depreciation":       ("financials",  "depreciation"),
+        # balance sheet
+        "total_assets":              ("financials", "total_assets"),
+        "total_liabilities":         ("financials", "total_liabilities"),
+        "total_equity":              ("financials", "total_equity"),
+        "retained_earnings":         ("financials", "retained_earnings"),
+        "tangible_book_value":       ("financials", "tangible_book_value"),
+        "invested_capital":          ("financials", "invested_capital"),
+        "total_debt":                ("financials", "total_debt"),
+        "net_debt":                  ("financials", "net_debt"),
+        "short_term_debt":           ("financials", "short_term_debt"),
+        "long_term_debt":            ("financials", "long_term_debt"),
+        "capital_lease_obligations": ("financials", "capital_lease_obligations"),
+        "minority_interest":         ("financials", "minority_interest"),
+        "total_capitalization":      ("financials", "total_capitalization"),
+        "deposits":                  ("financials", "deposits"),
+        "advances":                  ("financials", "advances"),
+        "npa":                       ("financials", "npa"),
+        # per-share
+        "diluted_eps":       ("valuation", "diluted_eps"),
+        "basic_eps":         ("valuation", "basic_eps"),
+        "diluted_shares":    ("valuation", "diluted_shares"),
+        "basic_shares":      ("valuation", "basic_shares"),
+        "shares_outstanding":("valuation", "shares_outstanding_yf"),
+    },
+
     # ── screener_fin:profit_loss  (quarterly consolidated) ───────────────────
     "screener_fin:profit_loss": {
         "Revenue +":         ("financials", "Sales"),

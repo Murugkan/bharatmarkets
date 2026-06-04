@@ -384,6 +384,31 @@ for TICKER in TICKERS_TO_PROCESS:
                 ticker_errors.append(f"yahoofin_fin | latest | {k} | {str(e)}")
                 logger.write_error(TICKER, 'yahoofin_fin', k, str(e))
         
+        # historical_periods — list of {period, metric1, metric2, ...}
+        # Each item is one quarter/year snapshot. Build per-metric time-series
+        # so downstream gets trend data, not just the latest snapshot.
+        for hp_item in raw.get('historical_periods', []):
+            try:
+                period_date = hp_item.get('period')
+                if not period_date:
+                    continue
+                iso_date = parse_datetime_to_iso(str(period_date))
+                for k, v in hp_item.items():
+                    if k == 'period' or not k or not k.strip():
+                        continue
+                    metric_key = f"{k}|historical"
+                    if metric_key not in metrics:
+                        metrics[metric_key] = {
+                            'metric': k,
+                            'section': 'historical',
+                            'source': 'yahoofin_fin',
+                            'periods': {}
+                        }
+                    metrics[metric_key]['periods'][iso_date] = standardize_value(v)
+            except Exception as e:
+                ticker_errors.append(f"yahoofin_fin | historical_periods | {str(e)}")
+                logger.write_error(TICKER, 'yahoofin_fin', 'historical_periods', str(e))
+        
         # === YAHOOFIN RAW ===
         yr = all_data.get('yahoofin_raw', {}).get(TICKER, {})
         for k, v in yr.items():
