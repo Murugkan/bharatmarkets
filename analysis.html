@@ -183,6 +183,7 @@ const S = {
 };
 let chartCache = {};
 let candlestickBars = [];  // ✅ Track bar positions for click detection
+let kpiPoints = [];  // ✅ Track KPI overlay points for tooltip clicks
 
 
 // Helpers
@@ -3280,6 +3281,9 @@ function drawCandlestick(s){
   try {
     const cv=document.getElementById('cv-candle');
     if(!cv)return;
+    
+    // ✅ Clear KPI points before redrawing
+    kpiPoints = [];
   
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
@@ -3357,7 +3361,7 @@ function drawCandlestick(s){
   
   // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
   const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
-  const barX=i=>{ const x = PAD.l+i*gap+gap/2; return x; };
+  const barX=i=>{ const x = PAD.l+i*gap+gap/2 + S.chartPan; return x; };
 
   // Background
   ctx.fillStyle='#070c18';
@@ -3581,7 +3585,7 @@ function drawCandlestick(s){
     // ✅ FIX: Use VISIBLE range (same as candlesticks) for alignment
     // Quarterly data may fall outside visible range - that's OK, they just won't show
     const t = new Date(dateStr).getTime();
-    return PAD.l + ((t - visFirst) / visRange) * cW;
+    return PAD.l + ((t - visFirst) / visRange) * cW + S.chartPan;
   }
 
   // Search FULL history for price on/before a date
@@ -3737,6 +3741,18 @@ function drawCandlestick(s){
       ctx.beginPath();
       ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2);
       ctx.fill();
+      
+      // ✅ Track KPI point for tooltip clicks
+      kpiPoints.push({
+        x: p.x,
+        y: kpiY(p.v),
+        label: label,
+        value: p.v,
+        date: p.d,
+        key: k,
+        col: col,
+        radius: 6  // Hit detection radius (2.5 + padding)
+      });
     });
 
     // Value labels above each dot (skip if too crowded)
@@ -3924,11 +3940,67 @@ function drawVolume(s){
   });
   
   function handleChartClick(e, W2, H2) {
-    if(!candlestickBars.length) return;
-    
     const br=cv.getBoundingClientRect();
     const scX=W2/br.width, scY=H2/br.height;
     const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
+    
+    // ✅ First, check if clicked on KPI overlay point
+    if(kpiPoints.length) {
+      const kpiHit = kpiPoints.find(kpi => {
+        const dx = mx - kpi.x;
+        const dy = my - kpi.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        return dist <= kpi.radius;
+      });
+      
+      if(kpiHit) {
+        // Show KPI tooltip
+        let kpiTip = document.getElementById('kpi-overlay-tooltip');
+        if(!kpiTip) {
+          kpiTip = document.createElement('div');
+          kpiTip.id = 'kpi-overlay-tooltip';
+          kpiTip.style.cssText = 'position:fixed;background:rgba(10,20,40,.95);border:2px solid;border-radius:8px;padding:12px;font-family:monospace;font-size:12px;z-index:9999;display:none;max-width:220px;min-width:160px';
+          document.body.appendChild(kpiTip);
+        }
+        
+        // Format value
+        let dispVal = kpiHit.key === 'pe' ? kpiHit.value.toFixed(1) + 'x' :
+                      kpiHit.key === 'opm' ? kpiHit.value.toFixed(1) + '%' :
+                      Math.abs(kpiHit.value) >= 1000 ? (kpiHit.value/1000).toFixed(1) + 'K' : 
+                      kpiHit.value.toFixed(0);
+        
+        kpiTip.innerHTML = `<div style="color:${kpiHit.col};font-weight:bold;margin-bottom:8px">${kpiHit.label}</div>
+          <div style="color:var(--tx2);font-size:11px;line-height:1.6">
+            <div>Date: <span style="color:#fff">${kpiHit.date === 'now' ? 'Latest' : kpiHit.date}</span></div>
+            <div>Value: <span style="color:${kpiHit.col};font-weight:bold">${dispVal}</span></div>
+          </div>`;
+        
+        kpiTip.style.borderColor = kpiHit.col;
+        kpiTip.style.color = kpiHit.col;
+        kpiTip.style.display = 'block';
+        
+        // Position tooltip
+        let left = e.clientX + 10;
+        let top = e.clientY - 100;
+        
+        if (left + 220 > window.innerWidth) {
+          left = Math.max(10, e.clientX - 230);
+        }
+        if (top < 10) {
+          top = e.clientY + 10;
+        }
+        if (top + 120 > window.innerHeight) {
+          top = Math.max(10, window.innerHeight - 130);
+        }
+        
+        kpiTip.style.left = left + 'px';
+        kpiTip.style.top = top + 'px';
+        return;  // ✅ Exit - don't process candlestick clicks
+      }
+    }
+    
+    // ✅ Then check candlestick click
+    if(!candlestickBars.length) return;
     
     // Find clicked bar
     const bar=candlestickBars.find(b=>mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h);
