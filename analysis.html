@@ -1260,9 +1260,23 @@ function recalculateIndicators(s){
   recalculateIndicators._lastKey = cacheKey;
 
   try {
-    s.sma20  = calculateSMA(s.candles, 20);
-    s.sma50  = calculateSMA(s.candles, 50);
-    s.ema200 = calculateEMA(s.candles, 200);
+    // Extend with prior history so all MAs have enough warmup bars from bar 1.
+    // Weekly bars before s.candles start date are prepended as seed data.
+    let extBars = s.candles;
+    const extSrc = s.price?.history_5y_1wk || s.price?.history_5y_1mo;
+    if(extSrc?.length) {
+      const candleStart = s.candles[0]?.d || '';
+      const prefix = extSrc
+        .map(b => ({ d: String(b.Date||b.d||''), c: parseFloat(b.Close||b.c||0) }))
+        .filter(b => b.d && b.c > 0 && b.d < candleStart)
+        .sort((a,b) => a.d.localeCompare(b.d));
+      if(prefix.length) extBars = [...prefix, ...s.candles];
+    }
+
+    const offset = extBars.length - s.candles.length;
+    s.sma20  = calculateSMA(extBars, 20).slice(offset);
+    s.sma50  = calculateSMA(extBars, 50).slice(offset);
+    s.ema200 = calculateEMA(extBars, 200).slice(offset);
   } catch(e) {
     s.sma20 = []; s.sma50 = []; s.ema200 = [];
   }
