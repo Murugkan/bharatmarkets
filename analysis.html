@@ -468,7 +468,6 @@ function resolveField(stock, fieldName) {
     const paths = fieldMapping[fieldName];
     if (!paths) return undefined;
     
-    // ✅ NEW: Replace {accounting} and {frequency} placeholders with user selection
     const accounting = S.financialSource?.accounting || 'consolidated';
     const frequency = S.financialSource?.frequency || 'annual';
     
@@ -1630,27 +1629,12 @@ function drawCandlestick(s){
     if(!bull){ctx.strokeStyle='rgba(255,68,102,.5)';ctx.lineWidth=1;ctx.stroke();}  // ✅ More visible border
   });
 
-  // MAs computed on s.candles (full interval history), then only visible portion drawn
+  // MAs: use pre-computed values from recalculateIndicators (runs once per data change, not per frame)
   if(S.maVis.sma20 || S.maVis.sma50 || S.maVis.ema200){
     const allC = s.candles || candles;
-    function calcSMA(arr, period){
-      return arr.map((c,i)=>{
-        if(i < period-1) return null;
-        let sum=0; for(let j=i-period+1;j<=i;j++) sum+=arr[j].c;
-        return sum/period;
-      });
-    }
-    function calcEMA(arr, period){
-      const k=2/(period+1), result=new Array(arr.length).fill(null);
-      let first=period-1;
-      if(first>=arr.length) return result;
-      result[first]=arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
-      for(let i=first+1;i<arr.length;i++) result[i]=arr[i].c*k+result[i-1]*(1-k);
-      return result;
-    }
-    const sma20vals  = S.maVis.sma20  ? calcSMA(allC, 20)  : null;
-    const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
-    const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
+    const sma20vals  = (S.maVis.sma20  && s.sma20?.length)  ? s.sma20  : null;
+    const sma50vals  = (S.maVis.sma50  && s.sma50?.length)  ? s.sma50  : null;
+    const ema200vals = (S.maVis.ema200 && s.ema200?.length) ? s.ema200 : null;
 
     function maX(allIdx){
       const t = allC[allIdx]._t || new Date(allC[allIdx].d).getTime();
@@ -2194,7 +2178,11 @@ function setupChartInteraction(){
     if(rafId) return; // already queued
     rafId=requestAnimationFrame(()=>{
       rafId=0;
-      if(currentStock) { drawCandlestick(currentStock); if(S.maVis.vol) drawVolume(currentStock); }
+      if(currentStock) {
+        recalculateIndicators(currentStock); // no-op if cached, ensures s.sma20/50/ema200 exist
+        drawCandlestick(currentStock);
+        if(S.maVis.vol) drawVolume(currentStock);
+      }
     });
   };
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
