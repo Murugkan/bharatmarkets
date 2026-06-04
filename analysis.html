@@ -548,6 +548,30 @@ async function loadStock() {
             return;
         }
 
+        // Build s.candles from price history (daily by default)
+        if (!currentStock.candles || currentStock.candles.length === 0) {
+            let historyData = null;
+            if (currentStock.price && currentStock.price.history_6mo_1d && Array.isArray(currentStock.price.history_6mo_1d))
+                historyData = currentStock.price.history_6mo_1d;
+            else if (currentStock.price && currentStock.price.history_5y_1wk && Array.isArray(currentStock.price.history_5y_1wk))
+                historyData = currentStock.price.history_5y_1wk;
+            else if (currentStock.price && currentStock.price.history_5y_1mo && Array.isArray(currentStock.price.history_5y_1mo))
+                historyData = currentStock.price.history_5y_1mo;
+
+            if (historyData && historyData.length > 0) {
+                try {
+                    currentStock.candles = historyData.map(bar => ({
+                        d: bar.Date,
+                        o: parseFloat(bar.Open),
+                        h: parseFloat(bar.High),
+                        l: parseFloat(bar.Low),
+                        c: parseFloat(bar.Close),
+                        v: parseInt(bar.Volume) || 0
+                    })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c));
+                } catch(e) { currentStock.candles = []; }
+            }
+        }
+
         renderHeader();
         renderTab('overview');
     } catch(e) {
@@ -1230,36 +1254,16 @@ function scheduleTACharts(s){
 
 // Recalculate technical indicators for current candles
 function recalculateIndicators(s){
-  if(!s) return;
+  if(!s || !s.candles || s.candles.length === 0) return;
 
-  // Pick full history for current interval (same logic as getSlicedCandles)
-  let raw = null;
-  if(S.chartInterval === 'W' && s.price?.history_5y_1wk?.length)
-    raw = s.price.history_5y_1wk;
-  else if(S.chartInterval === 'M' && s.price?.history_5y_1mo?.length)
-    raw = s.price.history_5y_1mo;
-  else if(s.price?.history_6mo_1d?.length)
-    raw = s.price.history_6mo_1d;
-  else if(s.price?.history_5y_1wk?.length)
-    raw = s.price.history_5y_1wk;
-
-  const bars = raw
-    ? raw.map(b => ({ d: String(b.Date||b.d||''), c: parseFloat(b.Close||b.c||0) }))
-         .filter(b => b.d && b.c > 0)
-         .sort((a,b) => a.d.localeCompare(b.d))
-    : [];
-
-  if(!bars.length) return;
-
-  // Cache key: interval + bar count + last close
-  const cacheKey = `${S.chartInterval}_${bars.length}_${bars[bars.length-1].c}`;
+  const cacheKey = `${S.chartInterval}_${s.candles.length}_${s.candles[s.candles.length-1]?.c || 0}`;
   if(recalculateIndicators._lastKey === cacheKey) return;
   recalculateIndicators._lastKey = cacheKey;
 
   try {
-    s.sma20  = calculateSMA(bars, 20);
-    s.sma50  = calculateSMA(bars, 50);
-    s.ema200 = calculateEMA(bars, 200);
+    s.sma20  = calculateSMA(s.candles, 20);
+    s.sma50  = calculateSMA(s.candles, 50);
+    s.ema200 = calculateEMA(s.candles, 200);
   } catch(e) {
     s.sma20 = []; s.sma50 = []; s.ema200 = [];
   }
@@ -1510,26 +1514,10 @@ function drawCandlestick(s){
   const allLast = allCandles.length ? new Date(allCandles[allCandles.length-1].d).getTime() : visLast;
   const allRange = allLast - allFirst || 1;
 
-  const allPrices = candles.flatMap(c => [c.h, c.l]);
-  // Only include MA values for visible date range to keep Y-scale accurate
-  if(s.sma20?.length && S.maVis.sma20) {
-    const visStart = candles[0].d, visEnd = candles[candles.length-1].d;
-    allCandles.forEach((c,i) => {
-      if(c.d >= visStart && c.d <= visEnd && s.sma20[i] != null) allPrices.push(s.sma20[i]);
-    });
-  }
-  if(s.sma50?.length && S.maVis.sma50) {
-    const visStart = candles[0].d, visEnd = candles[candles.length-1].d;
-    allCandles.forEach((c,i) => {
-      if(c.d >= visStart && c.d <= visEnd && s.sma50[i] != null) allPrices.push(s.sma50[i]);
-    });
-  }
-  if(s.ema200?.length && S.maVis.ema200) {
-    const visStart = candles[0].d, visEnd = candles[candles.length-1].d;
-    allCandles.forEach((c,i) => {
-      if(c.d >= visStart && c.d <= visEnd && s.ema200[i] != null) allPrices.push(s.ema200[i]);
-    });
-  }
+  const allPrices=candles.flatMap(c=>[c.h,c.l]);
+  if(s.sma20&&S.maVis.sma20)allPrices.push(...s.sma20.filter(v=>v!==null));
+  if(s.sma50&&S.maVis.sma50)allPrices.push(...s.sma50.filter(v=>v!==null));
+  if(s.ema200&&S.maVis.ema200)allPrices.push(...s.ema200.filter(v=>v!==null));
   
   // Ensure we have valid price data
   if(allPrices.length === 0) {
@@ -1628,26 +1616,28 @@ function drawCandlestick(s){
     if(!bull){ctx.strokeStyle='rgba(255,68,102,.5)';ctx.lineWidth=1;ctx.stroke();}  // ✅ More visible border
   });
 
-  // ── Moving Average curves computed from candle close prices ──
-  // MAs pre-computed by recalculateIndicators on full interval history
-  // allC must match the same source so indices align
+  // MAs computed on s.candles (full interval history), then only visible portion drawn
   if(S.maVis.sma20 || S.maVis.sma50 || S.maVis.ema200){
-    const allC = (() => {
-      let r = null;
-      if(S.chartInterval==='W' && s.price?.history_5y_1wk?.length) r=s.price.history_5y_1wk;
-      else if(S.chartInterval==='M' && s.price?.history_5y_1mo?.length) r=s.price.history_5y_1mo;
-      else if(s.price?.history_6mo_1d?.length) r=s.price.history_6mo_1d;
-      else if(s.price?.history_5y_1wk?.length) r=s.price.history_5y_1wk;
-      return r
-        ? r.map(b=>({d:String(b.Date||b.d||''),c:parseFloat(b.Close||b.c||0)}))
-            .filter(b=>b.d&&b.c>0).sort((a,b)=>a.d.localeCompare(b.d))
-        : candles; // visible slice only as last resort
-    })();
-    const sma20vals  = s.sma20?.length  ? s.sma20  : null;
-    const sma50vals  = s.sma50?.length  ? s.sma50  : null;
-    const ema200vals = s.ema200?.length ? s.ema200 : null;
+    const allC = s.candles || candles;
+    function calcSMA(arr, period){
+      return arr.map((c,i)=>{
+        if(i < period-1) return null;
+        let sum=0; for(let j=i-period+1;j<=i;j++) sum+=arr[j].c;
+        return sum/period;
+      });
+    }
+    function calcEMA(arr, period){
+      const k=2/(period+1), result=new Array(arr.length).fill(null);
+      let first=period-1;
+      if(first>=arr.length) return result;
+      result[first]=arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
+      for(let i=first+1;i<arr.length;i++) result[i]=arr[i].c*k+result[i-1]*(1-k);
+      return result;
+    }
+    const sma20vals  = S.maVis.sma20  ? calcSMA(allC, 20)  : null;
+    const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
+    const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
 
-    // Map allCandles index → visible x position using date
     function maX(allIdx){
       const t = new Date(allC[allIdx].d).getTime();
       return PAD.l + ((t - visFirst) / visRange) * cW;
@@ -1663,7 +1653,6 @@ function drawCandlestick(s){
         if(x < PAD.l - 2 || x > PAD.l + cW + 2){ started = false; return; }
         const y = toY(v);
         if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
-        // Sample hit points every ~10px
         if(maPoints.length === 0 || x - maPoints[maPoints.length-1].x > 10)
           maPoints.push({x, y, label, value: v, date: allC[i].d, col});
       });
@@ -2113,15 +2102,42 @@ function updateChartStats(s){
 // Chart control functions
 function canvasSetChartRange(r){ S.chartRange=r; S.panOffset=0; scheduleTACharts._pending=false; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv){
-  S.chartInterval=iv; S.panOffset=0; scheduleTACharts._pending=false;
-  // Clear cached indicators so they recalculate for new interval
-  if(currentStock) {
-    delete currentStock.sma20;
-    delete currentStock.sma50;
-    delete currentStock.ema200;
-    recalculateIndicators._lastKey = null;
+  S.chartInterval=iv; S.panOffset=0; scheduleTACharts._pending=false; recalculateIndicators._lastKey=null;
+  if(currentStock && currentStock.price) {
+    let historyData = null;
+    if(iv === 'D') historyData = currentStock.price.history_6mo_1d;
+    else if(iv === 'W') historyData = currentStock.price.history_5y_1wk;
+    else if(iv === 'M') historyData = currentStock.price.history_5y_1mo;
+
+    if(historyData && Array.isArray(historyData) && historyData.length > 0) {
+      try {
+        const converted = [];
+        for(let i = 0; i < historyData.length; i++) {
+          const bar = historyData[i];
+          const candle = {
+            d: String(bar.Date || ''),
+            o: parseFloat(bar.Open || 0),
+            h: parseFloat(bar.High || 0),
+            l: parseFloat(bar.Low || 0),
+            c: parseFloat(bar.Close || 0),
+            v: parseInt(bar.Volume || 0)
+          };
+          if(!isNaN(candle.o) && !isNaN(candle.h) && !isNaN(candle.l) && !isNaN(candle.c) && candle.o > 0)
+            converted.push(candle);
+        }
+        if(converted.length > 0) {
+          currentStock.candles = converted;
+          delete currentStock.sma20;
+          delete currentStock.sma50;
+          delete currentStock.ema200;
+          recalculateIndicators._lastKey = null;
+          aggregateCandles._cache = null;
+          scheduleChartRedraw();
+          return;
+        }
+      } catch(e) {}
+    }
   }
-  aggregateCandles._cache = null;
   scheduleChartRedraw();
 }
 function canvasToggleMA(key){
