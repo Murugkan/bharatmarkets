@@ -305,8 +305,8 @@ async function loadPortfolioData(forceClear = false) {
 // Maps analysis.html field paths to IndexedDB stock object structure
 const fieldMapping = {
     // Price & Performance (from price object)
-    'ltp': ['price.ltp.ltp', 'price.current_price', 'price.regular_market_price'],
-    'price': ['price.ltp.ltp', 'price.current_price', 'price.regular_market_price'],
+    'ltp': ['price.ltp.ltp'],
+    'price': ['price.ltp.ltp'],
     'changePct': ['price.ltp.changePct', 'price.regular_market_change_pct'],
     'change': ['price.ltp.change', 'price.regular_market_change'],
     'chg1d': ['price.ltp.change', 'price.regular_market_change'],
@@ -668,7 +668,7 @@ function renderHeader() {
     const s = currentStock;
     document.getElementById('ticker').textContent = get(s, 'ticker', 'sym', 'symbol');
     document.getElementById('company').textContent = get(s, 'name', 'company');
-    document.getElementById('ltp').textContent = '₹' + fmt(get(s, 'ltp', 'price'));
+    document.getElementById('ltp').textContent = '₹' + fmt(resolveField(s, 'ltp') || '—');
     
     const chg = num(get(s, 'changePct', 'change', 'chg1d'));
     const chgEl = document.getElementById('chg');
@@ -3519,9 +3519,10 @@ function drawCandlestick(s){
   ctx.restore();
 
   // Current price dashed line
-  if(s.ltp){
-    const lastY=toY(s.ltp);
-    const bull=s.candles?.length&&s.ltp>=(s.candles[0]?.c||s.ltp);
+  const _ltp = resolveField(s, 'ltp');
+  if(_ltp){
+    const lastY=toY(_ltp);
+    const bull = candles.length && _ltp >= candles[0].c;
     ctx.strokeStyle=bull?'rgba(0,208,132,.5)':'rgba(255,59,92,.5)';
     ctx.lineWidth=.6;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(PAD.l,lastY);ctx.lineTo(PAD.l+cW,lastY);ctx.stroke();
@@ -3529,7 +3530,7 @@ function drawCandlestick(s){
     // Price badge on right axis
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
+    ctx.fillText(Math.round(_ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
   // X-axis date labels - optimized for mobile
@@ -3599,7 +3600,7 @@ function drawCandlestick(s){
     for(let i=allCandles.length-1; i>=0; i--){
       if(allCandles[i].d <= dateStr) return allCandles[i].c;
     }
-    return allCandles.length ? allCandles[0].c : (s.ltp || 0);
+    return allCandles.length ? allCandles[0].c : (resolveField(s, 'ltp') || 0);
   }
 
   // Log raw quarterly data once (commented out - uncomment for debugging)
@@ -3662,16 +3663,7 @@ function drawCandlestick(s){
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
 
     if(drawLine){
-      // Subtle fill under line
-      ctx.beginPath();
-      pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); });
-      ctx.lineTo(pts[pts.length-1].x, yBot);
-      ctx.lineTo(pts[0].x, yBot);
-      ctx.closePath();
-      ctx.fillStyle = col;
-      ctx.globalAlpha = 0.08;
-      ctx.fill();
-      // Line
+      // Line only — no fill
       ctx.globalAlpha = 0.9;
       ctx.beginPath();
       pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); });
@@ -3770,8 +3762,9 @@ function drawVolume(s){
   
   // Calculate price range from candles for labels
   const allPrices = candles.map(c=>c.h).concat(candles.map(c=>c.l));
-  const startPrice = Math.max(...allPrices) || s.ltp || 0;
-  const endPrice = Math.min(...allPrices) || s.ltp || 0;
+  const _ltpVol = resolveField(s, 'ltp') || 0;
+  const startPrice = Math.max(...allPrices) || _ltpVol;
+  const endPrice = Math.min(...allPrices) || _ltpVol;
   
   // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
