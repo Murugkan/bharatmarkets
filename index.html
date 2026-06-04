@@ -42,7 +42,7 @@
         .nav-label { font-size: 7px; margin-top: 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* ===== SIGNAL ENGINE STYLES ===== */
-        #signal-view { display:none; flex:1; overflow:hidden; flex-direction:column; background:#000; }
+        #signal-view { display:none; overflow:hidden; flex-direction:column; background:#000; height:calc(100vh - 65px); }
         /* Signal sub-tabs */
         .sig-subtab-bar { display:flex; background:#000; border-bottom:1px solid #222; flex-shrink:0; overflow-x:auto; -webkit-overflow-scrolling:touch; }
         .sig-subtab-bar::-webkit-scrollbar { display:none; }
@@ -81,7 +81,7 @@
         .qry-btn { padding:6px 14px; border-radius:4px; font-size:9px; font-weight:800; cursor:pointer; border:none; letter-spacing:0.06em; }
         .qry-btn-run { background:var(--bl); color:#000; }
         .qry-btn-clr { background:#1a1a1a; color:#666; }
-        .qry-results { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+        .qry-results { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:80px; }
         .qry-result-row { display:flex; align-items:center; gap:0; border-bottom:1px solid #0d0d0d; cursor:pointer; }
         .qry-result-row:active { background:#0d0d0d; }
         .qry-rank { width:28px; text-align:center; font-size:8px; color:#333; flex-shrink:0; padding:8px 0; }
@@ -182,7 +182,7 @@
         </div>
         <div class="sig-layout" style="flex:1;overflow:hidden">
             <div class="sig-list" id="sig-list"></div>
-            <div class="sig-detail" id="sig-detail"><div style="padding:40px 20px; text-align:center; color:#333; font-size:10px;">&#8592; Select a ticker</div></div>
+            <div class="sig-detail" id="sig-detail" style="padding-bottom:80px"><div style="padding:40px 20px; text-align:center; color:#333; font-size:10px;">&#8592; Select a ticker</div></div>
         </div>
     </div>
 
@@ -196,18 +196,14 @@
                 <button class="sig-sort-btn" id="ss-sort-count" onclick="secSort('count')">#</button>
             </div>
         </div>
-        <div id="sec-bars" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
-        <div style="padding:10px 12px; border-top:1px solid #1a1a1a; flex-shrink:0;">
-            <div style="font-size:8px; color:#555; margin-bottom:6px; letter-spacing:0.1em">SECTOR HEATMAP — ALL 97 TICKERS</div>
-            <div class="hm-legend"><span style="color:#00ff88">■ Up signal</span><span style="color:#ff4d6d">■ Down signal</span></div>
-            <canvas id="sig-heatmap"></canvas>
-        </div>
+        <div id="sec-bars" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:12px;"></div>
+        <!-- Heatmap rendered inside sec-bars by renderSectorTab -->
     </div>
 
     <!-- SUB-TAB: Spread Analysis -->
     <div class="sig-subtab-content" id="sc-spread" style="display:none;flex-direction:column">
         <div style="padding:8px 12px; border-bottom:1px solid #1a1a1a; background:#000; font-size:8px; color:#666; letter-spacing:0.1em; flex-shrink:0;">SIGNAL DISTRIBUTION ACROSS UNIVERSE</div>
-        <div id="spread-content" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:20px;"></div>
+        <div id="spread-content" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:80px;"></div>
     </div>
 
     <!-- SUB-TAB: Rank Table -->
@@ -225,11 +221,18 @@
                 <option value="">All Sectors</option>
             </select>
         </div>
-        <div style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+        <div style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:80px;">
             <table class="rank-table">
                 <thead><tr>
-                    <th>#</th><th>Ticker</th><th>Sector</th>
-                    <th>Score</th><th>F</th><th>T</th><th>V</th><th>S</th><th>Rating</th>
+                    <th style="cursor:default">#</th>
+                    <th style="cursor:pointer" onclick="rankSortBy('ticker')"><span id="rsh-ticker">Ticker</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('sector')"><span id="rsh-sector">Sector</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('comp')"><span id="rsh-comp">Score ▼</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('F')"><span id="rsh-F">F</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('T')"><span id="rsh-T">T</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('V')"><span id="rsh-V">V</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('S')"><span id="rsh-S">S</span></th>
+                    <th>Rating</th>
                 </tr></thead>
                 <tbody id="rank-tbody"></tbody>
             </table>
@@ -239,29 +242,31 @@
 
     <!-- SUB-TAB: Query / Ad-hoc Explorer -->
     <div class="sig-subtab-content" id="sc-query" style="display:none;flex-direction:column">
-        <!-- Metric pills grouped by category -->
-        <div style="flex-shrink:0; overflow-y:auto; max-height:42vh; border-bottom:2px solid #00f2ff;">
-            <div id="qry-pill-area"></div>
-        </div>
-        <!-- Controls -->
-        <div class="qry-controls" style="flex-shrink:0">
+        <!-- Controls always visible at top -->
+        <div style="flex-shrink:0; background:#050505; border-bottom:1px solid #222; padding:8px 12px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
             <select class="qry-sel" id="qry-universe">
                 <option value="all">All Tickers</option>
                 <option value="portfolio">Portfolio Only</option>
                 <option value="watchlist">Watchlist Only</option>
             </select>
             <select class="qry-sel" id="qry-sort">
-                <option value="asc">Lowest First ↑</option>
-                <option value="desc">Highest First ↓</option>
+                <option value="asc">Lowest ↑</option>
+                <option value="desc">Highest ↓</option>
             </select>
             <select class="qry-sel" id="qry-limit">
                 <option value="10">Top 10</option>
                 <option value="20">Top 20</option>
                 <option value="0">All</option>
             </select>
-            <button class="qry-btn qry-btn-run" onclick="runQuery()">▶ RUN</button>
-            <button class="qry-btn qry-btn-clr" onclick="clearQuery()">✕ CLR</button>
+            <button class="qry-btn qry-btn-run" onclick="runQuery()" style="padding:6px 16px;font-size:10px;letter-spacing:0.08em;border-radius:6px">▶ RUN</button>
+            <button class="qry-btn qry-btn-clr" onclick="clearQuery()" style="padding:6px 10px;font-size:10px;border-radius:6px">✕</button>
         </div>
+        <!-- Metric pills — scrollable middle section -->
+        <div style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; min-height:0; padding-bottom:8px;">
+            <div id="qry-pill-area"></div>
+        </div>
+        <!-- Stat strip + results pushed below by a divider -->
+        <div style="height:2px; background:linear-gradient(90deg,#00f2ff,#7000ff); flex-shrink:0;"></div>
         <!-- Stat strip (shown after query runs) -->
         <div class="qry-stat-strip" id="qry-stats" style="display:none;flex-shrink:0">
             <div class="qry-stat"><div class="qry-stat-label">Min</div><div class="qry-stat-val" id="qs-min">—</div></div>
@@ -623,20 +628,17 @@ const getMetricColor = (field, value, stock) => {
 async function init() {
     const statusEl = document.getElementById('status');
     const db = await new Promise(res => {
-        // Open same DB version as data.html (v8)
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        // Open without forcing version — let browser use whatever version exists
+        // This avoids race between onupgradeneeded commit and first transaction
+        const req = indexedDB.open(DB_NAME);
         req.onupgradeneeded = e => {
             const d = e.target.result;
             if (!d.objectStoreNames.contains(STORE_NAME)) {
-                d.createObjectStore(STORE_NAME, { keyPath: "ticker" });
+                d.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
             }
         };
-        req.onsuccess = () => {
-            res(req.result);
-        };
-        req.onerror = () => {
-            res(null);
-        };
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => res(null);
     });
     
     if (!db) {
@@ -644,20 +646,22 @@ async function init() {
         return;
     }
     
+    // Guard: store must exist before we transact
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+        statusEl.innerHTML = 'DATABASE EMPTY — Go to Data tab → 🚀 LOAD JSON';
+        console.warn('Store not found in DB — data not loaded yet');
+        return;
+    }
+
     try {
-        const tx = db.transaction(STORE_NAME, "readonly");
+        const tx = db.transaction(STORE_NAME, 'readonly');
         MASTER = await new Promise((res, rej) => {
             const req = tx.objectStore(STORE_NAME).getAll();
-            req.onsuccess = e => {
-                const result = e.target.result || [];
-                res(result);
-            };
-            req.onerror = () => {
-                rej(req.error);
-            };
+            req.onsuccess = e => res(e.target.result || []);
+            req.onerror = () => rej(req.error);
         });
     } catch(e) {
-        statusEl.innerHTML = "ERROR READING DATABASE<br>" + e.message;
+        statusEl.innerHTML = 'ERROR READING DATABASE<br>' + e.message;
         console.error('Error reading database:', e);
         return;
     }
@@ -1279,11 +1283,30 @@ function runEngineSync() {
     statusEl.innerHTML = 'Syncing...';
     statusEl.style.display = 'block';
     
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    
+    const req = indexedDB.open(DB_NAME); // no forced version
+
+    req.onupgradeneeded = function(e) {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE_NAME)) {
+            d.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+        }
+    };
+
+    req.onerror = function() {
+        statusEl.innerHTML = '⚠️ DB Error — reload page';
+        setTimeout(() => { statusEl.style.display = 'none'; }, 4000);
+    };
+
     req.onsuccess = function(e) {
         try {
             const database = e.target.result;
+            // Guard BEFORE transaction — store may not exist yet
+            if (!database.objectStoreNames.contains(STORE_NAME)) {
+                statusEl.innerHTML = 'No data — go to Data tab → 🚀 LOAD JSON';
+                statusEl.style.color = '#ff9100';
+                setTimeout(() => { statusEl.style.display = 'none'; statusEl.style.color = ''; }, 5000);
+                return;
+            }
             console.log('✅ DB opened: ' + database.name + ' v' + database.version);
             const tx = database.transaction(STORE_NAME, 'readonly');
             const getReq = tx.objectStore(STORE_NAME).getAll();
@@ -1989,7 +2012,19 @@ function showMainView() {
 }
 
 function showSignalView() {
-    if(MASTER.length===0){ alert('Load data first (Data tab → 🚀 LOAD JSON)'); return; }
+    if(MASTER.length===0){ 
+        // Try to trigger a sync first before giving up
+        runEngineSync();
+        setTimeout(() => {
+            if(MASTER.length===0) {
+                alert('No data loaded. Go to Data tab → tap 🚀 LOAD JSON first.');
+            } else {
+                // Data loaded after sync — retry
+                showSignalView();
+            }
+        }, 1500);
+        return;
+    }
     // hide portfolio UI
     document.getElementById('main-view').style.display='none';
     document.getElementById('bar-wrap').style.display='none';
@@ -2000,7 +2035,12 @@ function showSignalView() {
     document.getElementById('nav-signal').classList.add('active');
 
     // Boot signal engine on first open
-    if(SIG_ALL.length===0) sigBoot();
+    if(SIG_ALL.length===0) {
+        sigBoot();
+    } else {
+        // Re-render current sub-tab if already booted
+        if(SIG_SUBTAB==='sectors') renderSectorTab();
+    }
 }
 
 
@@ -2190,7 +2230,7 @@ function runQuery() {
     document.getElementById('qs-med').textContent=fmtV(med);
     document.getElementById('qs-avg').textContent=fmtV(avg);
     document.getElementById('qs-n').textContent=n;
-    document.getElementById('qry-stats').style.display='flex';
+    document.getElementById('qry-stats').style.display='flex'; document.getElementById('qry-stats').style.flexShrink='0';
 
     // Render rows
     const display = limit>0 ? rows.slice(0,limit) : rows;
@@ -2302,30 +2342,124 @@ function renderSectorTab() {
     else if(SEC_SORT==='name') stats.sort((a,b)=>a.name.localeCompare(b.name));
     else stats.sort((a,b)=>b.count-a.count);
 
-    const maxScore = Math.max(...stats.map(s=>s.score));
+    // ---- SUMMARY STRIP ----
+    const universe = SIG_ALL.length;
+    const buyTotal = stats.reduce((a,s)=>a+s.buyCount,0);
+    const sellTotal = stats.reduce((a,s)=>a+s.sellCount,0);
+    const neutralTotal = universe - buyTotal - sellTotal;
+    const topSec = [...stats].sort((a,b)=>b.score-a.score)[0];
+    const weakSec = [...stats].sort((a,b)=>a.score-b.score)[0];
 
-    // Bars
-    document.getElementById('sec-bars').innerHTML = stats.map(s => {
-        const c = sigScoreColor(s.score);
-        const barW = Math.round(s.score/maxScore*100);
-        const buyStr = s.buyCount>0 ? `<span style="color:#00ff88">${s.buyCount}B</span>` : '';
-        const sellStr = s.sellCount>0 ? `<span style="color:#ff4d6d;margin-left:4px">${s.sellCount}S</span>` : '';
-        return `<div class="sec-row" onclick="sigFilter_sector('${s.name}')">
-            <div class="sec-name">${s.name}</div>
-            <div class="sec-bar-wrap">
-                <div class="sec-bar-fill" style="left:0;width:${barW}%;background:${c}33"></div>
-                <div style="position:absolute;left:6px;top:0;height:100%;display:flex;align-items:center;gap:6px;font-size:8px">
-                    <span style="color:${c};font-weight:800">${s.score}</span>
-                    <span style="color:#555">F${s.F}</span><span style="color:#555">T${s.T}</span><span style="color:#555">V${s.V}</span><span style="color:#555">S${s.S}</span>
+    // ---- SECTOR CARDS ----
+    const cards = stats.map(s => {
+        const col = sigScoreColor(s.score);
+        const rating = sigRating(s.score);
+        // Mini arc SVG (semicircle gauge)
+        const angle = (s.score/100)*180;
+        const rad = angle * Math.PI/180;
+        const cx=36,cy=36,r=26;
+        const ex = cx + r*Math.cos(Math.PI - rad);
+        const ey = cy - r*Math.sin(rad);
+        const arcSVG = `<svg width="72" height="42" viewBox="0 0 72 42" style="display:block;margin:0 auto">
+            <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round"/>
+            <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round"/>
+            <text x="${cx}" y="${cy+2}" text-anchor="middle" fill="${col}" font-size="13" font-weight="800" font-family="JetBrains Mono,monospace">${s.score}</text>
+        </svg>`;
+
+        // Pillar mini bars (4 bars stacked)
+        const pillarBar = (label, val) => {
+            const pc = sigScoreColor(val);
+            return `<div style="display:flex;align-items:center;gap:3px;margin-bottom:2px">
+                <span style="font-size:7px;color:#555;width:8px">${label}</span>
+                <div style="flex:1;height:3px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+                    <div style="height:100%;width:${val}%;background:${pc}"></div>
                 </div>
-            </div>
-            <div style="display:flex;gap:3px;font-size:8px;width:50px;text-align:right;flex-shrink:0">${buyStr}${sellStr}</div>
-            <div class="sec-count">${s.count}</div>
-        </div>`;
-    }).join('');
+                <span style="font-size:7px;color:${pc};width:18px;text-align:right">${val}</span>
+            </div>`;
+        };
 
-    // Heatmap canvas
-    setTimeout(() => drawSigHeatmap(stats), 100);
+        // Rating distribution dots
+        const buy = s.ratings['STRONG BUY']||0, obuy = s.ratings['BUY']||0;
+        const hold = s.ratings['NEUTRAL']||0;
+        const red = (s.ratings['REDUCE']||0)+(s.ratings['SELL']||0);
+        const dotBar = `<div style="display:flex;height:5px;border-radius:3px;overflow:hidden;gap:1px;margin-top:4px">
+            ${buy>0?`<div style="flex:${buy};background:#00ff88" title="Strong Buy: ${buy}"></div>`:''}
+            ${obuy>0?`<div style="flex:${obuy};background:#69f0ae" title="Buy: ${obuy}"></div>`:''}
+            ${hold>0?`<div style="flex:${hold};background:#ffea00" title="Neutral: ${hold}"></div>`:''}
+            ${red>0?`<div style="flex:${red};background:#ff4d6d" title="Sell/Reduce: ${red}"></div>`:''}
+        </div>`;
+
+        // Top ticker in sector by signal
+        const topTicker = SIG_ALL.filter(x=>x.sector===s.name).sort((a,b)=>b.comp-a.comp)[0];
+
+        return `<div onclick="sigFilter_sector('${s.name}')" style="background:#0a0a0a;border:1px solid ${col}33;border-top:2px solid ${col};border-radius:8px;padding:10px;cursor:pointer;transition:border-color .2s;display:flex;flex-direction:column;gap:4px">
+            ${arcSVG}
+            <div style="text-align:center;margin-top:2px">
+                <div style="font-size:9px;font-weight:800;color:#e2e8f0;line-height:1.2">${s.name}</div>
+                <div style="font-size:7px;color:${col};font-weight:700;letter-spacing:0.06em;margin-top:2px">${rating}</div>
+            </div>
+            <div style="margin-top:4px">
+                ${pillarBar('F',s.F)}${pillarBar('T',s.T)}${pillarBar('V',s.V)}${pillarBar('S',s.S)}
+            </div>
+            ${dotBar}
+            <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:8px">
+                <span style="color:#555">${s.count} stocks</span>
+                ${topTicker?`<span style="color:${sigScoreColor(topTicker.comp)};font-weight:700">${topTicker.ticker} ${topTicker.comp}</span>`:''}
+            </div>
+        </div>`;
+    });
+
+    document.getElementById('sec-bars').innerHTML = `
+        <!-- Summary strip -->
+        <div style="display:flex;gap:0;border-bottom:1px solid #1a1a1a;flex-shrink:0;margin-bottom:10px">
+            <div style="flex:1;padding:7px 10px;border-right:1px solid #1a1a1a;text-align:center">
+                <div style="font-size:7px;color:#555;letter-spacing:0.08em">SECTORS</div>
+                <div style="font-size:14px;font-weight:800;color:var(--bl)">${stats.length}</div>
+            </div>
+            <div style="flex:1;padding:7px 10px;border-right:1px solid #1a1a1a;text-align:center">
+                <div style="font-size:7px;color:#555">BUY</div>
+                <div style="font-size:14px;font-weight:800;color:#00ff88">${buyTotal}</div>
+            </div>
+            <div style="flex:1;padding:7px 10px;border-right:1px solid #1a1a1a;text-align:center">
+                <div style="font-size:7px;color:#555">NEUTRAL</div>
+                <div style="font-size:14px;font-weight:800;color:#ffea00">${neutralTotal}</div>
+            </div>
+            <div style="flex:1;padding:7px 10px;text-align:center">
+                <div style="font-size:7px;color:#555">SELL/RED</div>
+                <div style="font-size:14px;font-weight:800;color:#ff4d6d">${sellTotal}</div>
+            </div>
+        </div>
+        <!-- Best/Worst callout -->
+        <div style="display:flex;gap:8px;padding:0 10px 10px">
+            <div style="flex:1;background:#060f06;border:1px solid #1a3a1a;border-radius:6px;padding:8px;font-size:9px">
+                <div style="color:#555;font-size:7px;margin-bottom:3px">STRONGEST SECTOR</div>
+                <div style="color:#00ff88;font-weight:800">${topSec.name}</div>
+                <div style="color:#00ff88;font-size:11px;font-weight:800">${topSec.score}</div>
+            </div>
+            <div style="flex:1;background:#0f0606;border:1px solid #3a1a1a;border-radius:6px;padding:8px;font-size:9px">
+                <div style="color:#555;font-size:7px;margin-bottom:3px">WEAKEST SECTOR</div>
+                <div style="color:#ff4d6d;font-weight:800">${weakSec.name}</div>
+                <div style="color:#ff4d6d;font-size:11px;font-weight:800">${weakSec.score}</div>
+            </div>
+        </div>
+        <!-- Card grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 10px 12px">
+            ${cards.join('')}
+        </div>`;
+
+    // Heatmap canvas injected into sec-bars after cards
+    const secBarsEl = document.getElementById('sec-bars');
+    if(secBarsEl && !document.getElementById('sig-heatmap')) {
+        const hmDiv = document.createElement('div');
+        hmDiv.style.cssText = 'padding:0 10px 80px;';
+        hmDiv.innerHTML = `<div style="font-size:8px;color:#555;margin-bottom:6px;letter-spacing:0.1em;padding-top:4px">SIGNAL HEATMAP</div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;font-size:8px;margin-bottom:6px">
+                <span style="color:#00ff88">■ Strong</span><span style="color:#ff4d6d">■ Weak</span>
+            </div>
+            <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:6px;cursor:pointer"></canvas>`;
+        secBarsEl.appendChild(hmDiv);
+    }
+    setTimeout(() => drawSigHeatmap(stats), 150);
 }
 
 function sigFilter_sector(name) {
@@ -2350,7 +2484,7 @@ function drawSigHeatmap(stats) {
     const cv = document.getElementById('sig-heatmap');
     if(!cv) return;
     const dpr = window.devicePixelRatio||1;
-    const W = cv.parentElement.offsetWidth - 24;
+    const W = Math.max(cv.parentElement.offsetWidth - 20, 200);
     const H = Math.min(W, 320);
     cv.width = W*dpr; cv.height = H*dpr;
     cv.style.width = W+'px'; cv.style.height = H+'px';
@@ -2553,6 +2687,29 @@ function renderSpreadTab() {
 }
 
 // ---------- RENDER RANK TAB ----------
+// Rank table sort state
+let RANK_SORT_COL = 'comp';
+let RANK_SORT_DIR = 'desc';
+
+function rankSortBy(col) {
+    if(RANK_SORT_COL === col) {
+        RANK_SORT_DIR = RANK_SORT_DIR === 'desc' ? 'asc' : 'desc';
+    } else {
+        RANK_SORT_COL = col;
+        RANK_SORT_DIR = col === 'ticker' || col === 'sector' ? 'asc' : 'desc';
+    }
+    // Update header indicators
+    ['ticker','sector','comp','F','T','V','S'].forEach(k => {
+        const el = document.getElementById('rsh-'+k);
+        if(!el) return;
+        const base = {ticker:'Ticker',sector:'Sector',comp:'Score',F:'F',T:'T',V:'V',S:'S'}[k];
+        const arrow = RANK_SORT_COL===k ? (RANK_SORT_DIR==='asc'?' ↑':' ↓') : '';
+        el.textContent = base + arrow;
+        el.style.color = RANK_SORT_COL===k ? 'var(--bl)' : '';
+    });
+    renderRankTab();
+}
+
 function renderRankTab() {
     if(!SIG_ALL.length) return;
     const pillar = document.getElementById('rank-pillar-sel')?.value || 'comp';
@@ -2570,7 +2727,17 @@ function renderRankTab() {
     if(sector) items = items.filter(s=>s.sector===sector);
 
     const getScore = s => pillar==='comp' ? s.comp : s[pillar]?.score || 0;
-    items.sort((a,b)=>getScore(b)-getScore(a));
+    // Use sort state from header clicks; pillar dropdown still sets initial column
+    const sortCol = RANK_SORT_COL;
+    const sortDir = RANK_SORT_DIR;
+    items.sort((a,b)=>{
+        let av, bv;
+        if(sortCol==='ticker') { av=a.ticker; bv=b.ticker; return sortDir==='asc'?av.localeCompare(bv):bv.localeCompare(av); }
+        if(sortCol==='sector') { av=a.sector; bv=b.sector; return sortDir==='asc'?av.localeCompare(bv):bv.localeCompare(av); }
+        if(sortCol==='comp') { av=a.comp; bv=b.comp; }
+        else { av=a[sortCol]?.score||0; bv=b[sortCol]?.score||0; }
+        return sortDir==='asc'?av-bv:bv-av;
+    });
 
     document.getElementById('rank-tbody').innerHTML = items.map((sig,i)=>{
         const sc = getScore(sig);

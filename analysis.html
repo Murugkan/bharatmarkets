@@ -974,18 +974,18 @@ function renderTab(tab) {
             </div>
         `;
     } else if (tab === 'canvas') {
-        // CANVAS TAB — Chart only, no indicators
         const allFinOn = Object.values(S.kpiVis).every(v => v);
+        const anyFinOn = Object.values(S.kpiVis).some(v => v);
         html = `<div style="padding:0;padding-bottom:100px">
-            <!-- Row 1: Ticker + timeframe controls -->
-            <div style="padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
-              <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--ac);flex:0 0 auto">${s.ticker || s.sym}</span>
-              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--s1);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
+            <!-- Row 1: Ticker + timeframe + data source -->
+            <div style="padding:6px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+              <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--ac);flex:0 0 auto">${s.ticker || s.sym}</span>
+              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
                 <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
                 <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
                 <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
               </select>
-              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--s1);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto">
+              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
                 <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
                 <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
                 <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
@@ -993,39 +993,34 @@ function renderTab(tab) {
                 <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
               </select>
               <span style="flex:1"></span>
-              <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--s1);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:4px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Consolidated vs Standalone">
+              <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none" title="Consolidated vs Standalone">
                 <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Cons</option>
                 <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Stand</option>
               </select>
-              <select id="dataFrequency" onchange="updateFinancialSource(this.value,'frequency')" style="background:var(--s1);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:4px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none;flex:0 0 auto" title="Annual vs Quarterly">
+              <select id="dataFrequency" onchange="updateFinancialSource(this.value,'frequency')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none" title="Annual vs Quarterly">
                 <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
                 <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Qtr</option>
               </select>
             </div>
 
-            <!-- Row 2: Overlays -->
+            <!-- Row 2: Price overlays + financial toggles -->
             <div style="padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:7px;align-items:center">
-              <!-- Price overlays -->
               ${[
-                {key:'sma20', col:'#f59e0b', lbl:'SMA20', fn:"canvasToggleMA('sma20')", chk: S.maVis.sma20},
-                {key:'sma50', col:'#3b82f6', lbl:'SMA50', fn:"canvasToggleMA('sma50')", chk: S.maVis.sma50},
-                {key:'ema200',col:'#a855f7', lbl:'EMA200',fn:"canvasToggleMA('ema200')",chk: S.maVis.ema200},
-                {key:'vol',   col:'#22c55e', lbl:'Volume',fn:"canvasToggleMA('vol')",   chk: S.maVis.vol},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer">
-                <input type="checkbox" ${o.chk?'checked':''} onchange="${o.fn}" style="accent-color:${o.col};width:12px;height:12px">
-                <span style="font-size:9px;color:${o.col};font-weight:700;letter-spacing:.3px">${o.lbl}</span>
-              </label>`).join('')}
+                {key:'sma20', col:'#f59e0b', lbl:'SMA20', fn:"canvasToggleMA('sma20')", chk:S.maVis.sma20},
+                {key:'sma50', col:'#3b82f6', lbl:'SMA50', fn:"canvasToggleMA('sma50')", chk:S.maVis.sma50},
+                {key:'ema200',col:'#a855f7', lbl:'EMA200',fn:"canvasToggleMA('ema200')",chk:S.maVis.ema200},
+                {key:'vol',   col:'#22c55e', lbl:'Volume',fn:"canvasToggleMA('vol')",   chk:S.maVis.vol},
+              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.chk?'checked':''} onchange="${o.fn}" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
 
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);margin:0 2px;flex:0 0 auto"></span>
+              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);flex:0 0 auto"></span>
 
-              <!-- 📊 Master Financial toggle -->
-              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:2px 6px" title="Toggle all financial overlays">
-                <input type="checkbox" id="kpi-all-chk" ${allFinOn?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:#00f2ff;width:12px;height:12px">
-                <span style="font-size:9px;color:var(--ac);font-weight:700">ALL Fin</span>
+              <!-- Master toggle -->
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.25);border-radius:4px;padding:2px 7px" title="Toggle all financial overlays on/off">
+                <input type="checkbox" id="kpi-all-chk" ${allFinOn?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:var(--ac);width:12px;height:12px">
+                <span style="font-size:9px;color:var(--ac);font-weight:800;letter-spacing:.5px">ALL Fin</span>
               </label>
 
-              <!-- Income -->
-              <span style="font-size:8px;color:var(--tx3);font-weight:600;margin-left:2px">Income:</span>
+              <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
               ${[
                 {k:'rev',  col:'#22d3ee', lbl:'Rev'},
                 {k:'op',   col:'#ec4899', lbl:'Op.P'},
@@ -1033,36 +1028,23 @@ function renderTab(tab) {
                 {k:'pbt',  col:'#8b5cf6', lbl:'PBT'},
                 {k:'net',  col:'#4ade80', lbl:'Net'},
                 {k:'eps',  col:'#06b6d4', lbl:'EPS'},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer">
-                <input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px">
-                <span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span>
-              </label>`).join('')}
+              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
 
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);margin:0 2px;flex:0 0 auto"></span>
-
-              <!-- Balance -->
+              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);flex:0 0 auto"></span>
               <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
               ${[
                 {k:'assets',    col:'#f0ad4e', lbl:'Assets'},
                 {k:'borrowings',col:'#ff6b6b', lbl:'Borr'},
                 {k:'debt',      col:'#f87171', lbl:'Debt'},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer">
-                <input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px">
-                <span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span>
-              </label>`).join('')}
+              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
 
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);margin:0 2px;flex:0 0 auto"></span>
-
-              <!-- Cash/Val -->
+              <span style="width:1px;height:16px;background:rgba(255,255,255,.1);flex:0 0 auto"></span>
               <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
               ${[
                 {k:'cfo', col:'#34d399', lbl:'CFO'},
                 {k:'fcf', col:'#14b8a6', lbl:'FCF'},
                 {k:'pe',  col:'#f59e0b', lbl:'P/E'},
-              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer">
-                <input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px">
-                <span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span>
-              </label>`).join('')}
+              ].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
             </div>
 
             <!-- Chart area -->
@@ -3078,11 +3060,13 @@ async function renderTechnicalPro(stock) {
 // ════════════════════════════════════════════════════════
 
 function scheduleChartRedraw(){
-  // ✅ Use currentStock (not S.selStock which doesn't exist)
-  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
-    // Data already loaded, just redraw
-  }
-  requestAnimationFrame(()=>requestAnimationFrame(()=>scheduleTACharts(currentStock)));
+  // Clear any pending redraw and reset stuck _pending flag
+  scheduleTACharts._pending = false;
+  if(scheduleChartRedraw._timer) clearTimeout(scheduleChartRedraw._timer);
+  scheduleChartRedraw._timer = setTimeout(()=>{
+    scheduleChartRedraw._timer = null;
+    scheduleTACharts(currentStock);
+  }, 16);  // ~1 frame debounce
 }
 
 function aggregateCandles(daily, interval){
@@ -3103,24 +3087,19 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
-  // ✅ Debounce: skip rapid redraws to prevent freezing with overlays
   if(scheduleTACharts._pending) return;
   scheduleTACharts._pending = true;
-  
-  console.log('🎨 Redrawing chart... pan=' + S.chartPan.toFixed(0));
-  
   requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      try {
-        // Recalculate indicators if needed
-        recalculateIndicators(s);
-        drawCandlestick(s);
-        if(S.maVis.vol) drawVolume(s);
-        updateChartStats(s);
-      } finally {
-        scheduleTACharts._pending = false;
-      }
-    });
+    scheduleTACharts._pending = false;
+    if(!s) return;
+    try {
+      recalculateIndicators(s);
+      drawCandlestick(s);
+      if(S.maVis.vol) drawVolume(s);
+      updateChartStats(s);
+    } catch(e) {
+      console.error('❌ Chart render error:', e.message);
+    }
   });
 }
 
@@ -3421,10 +3400,10 @@ function drawCandlestick(s){
     ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
 
-  // ✅ Clip drawing to chart area — bars/wicks/MAs never bleed into right axis strip
+  // ✅ Clip to chart area — candles/wicks/MAs never bleed into right axis strip
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, W - PAD.r, H);  // everything left of the axis strip
+  ctx.rect(0, 0, W - PAD.r, H);
   ctx.clip();
 
   // Candles - ✅ Track bar positions for click detection
@@ -3562,25 +3541,26 @@ function drawCandlestick(s){
     ctx.setLineDash([]);
   }
 
-  // ✅ Restore full canvas (clip removed) — axis labels & KPI overlays draw freely
+  // ✅ Restore full canvas (end clip) — axis labels draw freely
   ctx.restore();
 
-  // Price badge on right axis (drawn outside clip)
+  // Price badge on right axis (outside clip)
   if(s.ltp){
     const lastY=toY(s.ltp);
     const bull=s.candles?.length&&s.ltp>=(s.candles[0]?.c||s.ltp);
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.textBaseline='middle';
     ctx.fillText(Math.round(s.ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
   }
 
-  // X-axis date labels - optimized for mobile
+  // X-axis date labels — clipped to chart area, with pan
   const maxLabels = Math.min(4, Math.floor(cW / 55));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
   ctx.fillStyle='rgba(255,255,255,0.85)';
   ctx.font='bold 11px JetBrains Mono,monospace';
   ctx.textBaseline = 'top';
-  const axisX = W - PAD.r;  // x position of right axis separator
+  const axisX = W - PAD.r;
   candles.forEach((c,i)=>{
     if(i % lblStep !== 0 && i !== n-1) return;
     let lbl = '';
@@ -3594,9 +3574,7 @@ function drawCandlestick(s){
       }
     }
     const x = barX(i);
-    // Skip if off left edge or would bleed into axis strip
-    if(x < PAD.l + 4) return;
-    if(x > axisX - 4) return;
+    if(x < PAD.l + 4 || x > axisX - 4) return;
     ctx.textAlign = i===0 ? 'left' : 'center';
     ctx.fillText(lbl, x, PAD.t + cH + 6);
   });
@@ -3707,8 +3685,11 @@ function drawCandlestick(s){
         }
       }
 
-      // ✅ Keep points that fall within or near visible chart area
-      pts = pts.filter(p => p.x >= PAD.l - 20 && p.x <= PAD.l + cW + 20);
+      // Keep points whose un-panned position falls within or near the chart area
+      pts = pts.filter(p => {
+        const rawX = p.x - S.chartPan;
+        return rawX >= PAD.l - 30 && rawX <= PAD.l + cW + 30;
+      });
       
       if(pts.length < 2) return; // Need at least 2 points to draw a line
     } catch(e) {
@@ -3871,10 +3852,8 @@ function drawVolume(s){
   const volBaseWidth = Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
   const bw = volBaseWidth * S.chartZoom;
   const mv=Math.max(...candles.map(c=>c.v))||1;
-  
-  // Volume bars colored by EACH candlestick's close > open logic (matches candlestick colors)
 
-  // ✅ Clip volume bars to chart area (no overflow into axis strip)
+  // ✅ Clip chart area — bars/MA never bleed into axis strip
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, W - PAD.r, H);
@@ -3885,7 +3864,7 @@ function drawVolume(s){
   ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
 
-  // Volume bars - each bar colored based on corresponding candlestick
+  // Volume bars
   candles.forEach((c,i)=>{
     const bh=Math.max(2,(c.v/mv)*cH);
     const x=PAD.l+i*gap+(gap-bw)/2 + S.chartPan;
@@ -3896,15 +3875,31 @@ function drawVolume(s){
     ctx.fill();
   });
 
-  ctx.restore();  // ✅ Restore before drawing axis
+  // Volume trend line (smoothed MA5) — with pan offset
+  const volMA = candles.map((c,i)=>{
+    if(i<4) return null;
+    return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
+  });
+  ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.lineWidth=1.5; ctx.beginPath();
+  let started=false;
+  volMA.forEach((v,i)=>{
+    if(v===null) return;
+    const x = PAD.l + i*gap + gap/2 + S.chartPan;
+    const y = PAD.t+cH-(v/mv)*cH;
+    if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
 
-  // ✅ RIGHT axis - Volume labels
+  ctx.restore();  // ✅ End clip — axis strip and labels draw freely
+
+  // RIGHT axis background + separator
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(100,130,180,.6)';
   ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-  
+
+  // Volume labels on right axis
   ctx.fillStyle='rgba(255,255,255,1)';
   ctx.font='bold 10px JetBrains Mono,monospace';
   ctx.textAlign='right';
@@ -3914,40 +3909,14 @@ function drawVolume(s){
     const y = PAD.t + cH - (cH/2)*i;
     const volValue = (i/2) * maxVol;
     let label;
-    if (volValue >= 1e6) {
-      label = (volValue / 1e6).toFixed(1) + 'M';
-    } else if (volValue >= 1e3) {
-      label = (volValue / 1e3).toFixed(0) + 'K';
-    } else {
-      label = volValue.toFixed(0);
-    }
+    if (volValue >= 1e7)      label = (volValue / 1e7).toFixed(1) + 'Cr';
+    else if (volValue >= 1e5) label = (volValue / 1e5).toFixed(1) + 'L';
+    else if (volValue >= 1e3) label = (volValue / 1e3).toFixed(0) + 'K';
+    else                      label = volValue.toFixed(0);
     ctx.fillText(label, W-6, y);
   }
-  
-  // Volume trend line (smoothed MA5)
-  const volMA = candles.map((c,i)=>{
-    if(i<4) return null;
-    return candles.slice(i-4,i+1).reduce((a,b)=>a+b.v,0)/5;
-  });
 
-  // ✅ Clip volume bars + MA line to chart area (prevents overflow into axis strip)
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, W - PAD.r, H);
-  ctx.clip();
-
-  ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.lineWidth=1.5; ctx.beginPath();
-  let started=false;
-  volMA.forEach((v,i)=>{
-    if(v===null) return;
-    const x=PAD.l+i*gap+gap/2 + S.chartPan;
-    const y=PAD.t+cH-(v/mv)*cH;
-    if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
-  });
-  ctx.stroke();
-  ctx.restore();  // ✅ Restore before drawing labels
-
-  // ✅ X-axis date labels for volume chart
+  // X-axis date labels — clipped to chart area, with pan
   const volMaxLabels = Math.min(4, Math.floor(cW / 55));
   const volLblStep = Math.max(1, Math.floor(n / volMaxLabels));
   ctx.fillStyle='rgba(255,255,255,0.85)';
@@ -3967,8 +3936,7 @@ function drawVolume(s){
       }
     }
     const x = PAD.l + i*gap + gap/2 + S.chartPan;
-    if(x < PAD.l + 4) return;
-    if(x > volAxisX - 4) return;
+    if(x < PAD.l + 4 || x > volAxisX - 4) return;
     ctx.textAlign = i===0 ? 'left' : 'center';
     ctx.fillText(lbl, x, PAD.t + cH + 6);
   });
@@ -4171,9 +4139,16 @@ function updateChartStats(s){
 }
 
 // Chart control functions
-function canvasSetChartRange(r) { S.chartRange = r; scheduleChartRedraw(); }
+function canvasSetChartRange(r) { 
+  S.chartRange = r; 
+  scheduleTACharts._pending = false;
+  scheduleChartRedraw(); 
+}
 function canvasSetChartInterval(iv) { 
   S.chartInterval = iv;
+  // Always reset debounce flags so period switch never gets stuck
+  scheduleTACharts._pending = false;
+  recalculateIndicators._lastKey = null;
   
   if(currentStock && currentStock.price) {
     let historyData = null;
@@ -4239,31 +4214,38 @@ function canvasSetChartInterval(iv) {
   
   scheduleChartRedraw();
 }
-function canvasToggleMA(key) { S.maVis[key] = !S.maVis[key]; if (key === 'vol') renderTab('canvas'); else scheduleChartRedraw(); }
+function canvasToggleMA(key) {
+  S.maVis[key] = !S.maVis[key];
+  if (key === 'vol') {
+    // Volume toggle rebuilds DOM — reset interaction flag so events reattach
+    setupChartInteraction._initialized = false;
+    renderTab('canvas');
+  } else {
+    scheduleChartRedraw();
+  }
+}
+
 function toggleAllKPI(on) {
-  // Set all financial KPI keys to on/off
   Object.keys(S.kpiVis).forEach(k => { S.kpiVis[k] = on; });
-  // Sync individual checkboxes
+  // Sync all individual checkboxes
   Object.keys(S.kpiVis).forEach(k => {
     const cb = document.getElementById('kpi-' + k);
     if(cb) cb.checked = on;
   });
-  console.log(`🔧 All KPIs ${on ? 'ON' : 'OFF'}`);
   scheduleChartRedraw();
 }
 
-function toggleKPI(k) { 
-  S.kpiVis[k] = !S.kpiVis[k]; 
-  console.log(`🔧 KPI toggled: ${k} = ${S.kpiVis[k]}, pan=${S.chartPan}, zoom=${S.chartZoom}`);
-  // Sync master "ALL Fin" checkbox
-  const allOn = Object.values(S.kpiVis).every(v => v);
+function toggleKPI(k) {
+  S.kpiVis[k] = !S.kpiVis[k];
+  // Sync master checkbox state
+  const allOn  = Object.values(S.kpiVis).every(v => v);
   const allOff = Object.values(S.kpiVis).every(v => !v);
   const masterCb = document.getElementById('kpi-all-chk');
   if(masterCb) {
     masterCb.checked = allOn;
     masterCb.indeterminate = !allOn && !allOff;
   }
-  scheduleChartRedraw(); 
+  scheduleChartRedraw();
 }
 
 async function canvasLoadAndDrawChart(sym) {
