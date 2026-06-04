@@ -459,8 +459,8 @@ const fieldMapping = {
     'quarterly': ['financials.Sales.consolidated.quarterly'],
     'price_history': ['price_history'],
     'history_6mo_1d': ['price.history_6mo_1d'],
-    'history_5y_1wk': ['price.history_5y_1wk'],
-    'history_5y_1mo': ['price.history_5y_1mo']
+    'history_1wk': ['price.history_1wk'],
+    'history_1mo': ['price.history_1mo']
 };
 
 // 🎯 RESOLVE FIELD FROM INDEXEDDB STOCK OBJECT
@@ -552,10 +552,10 @@ async function loadStock() {
             let historyData = null;
             if (currentStock.price && currentStock.price.history_6mo_1d && Array.isArray(currentStock.price.history_6mo_1d))
                 historyData = currentStock.price.history_6mo_1d;
-            else if (currentStock.price && currentStock.price.history_5y_1wk && Array.isArray(currentStock.price.history_5y_1wk))
-                historyData = currentStock.price.history_5y_1wk;
-            else if (currentStock.price && currentStock.price.history_5y_1mo && Array.isArray(currentStock.price.history_5y_1mo))
-                historyData = currentStock.price.history_5y_1mo;
+            else if (currentStock.price && currentStock.price.history_1wk && Array.isArray(currentStock.price.history_1wk))
+                historyData = currentStock.price.history_1wk;
+            else if (currentStock.price && currentStock.price.history_1mo && Array.isArray(currentStock.price.history_1mo))
+                historyData = currentStock.price.history_1mo;
 
             if (historyData && historyData.length > 0) {
                 try {
@@ -1230,7 +1230,7 @@ function aggregateCandles(daily, interval){
   if(interval === 'D' || !daily.length) return daily;
   
   // ✅ FIX: For W and M, data is ALREADY aggregated in market_data.json
-  // history_5y_1wk = already weekly, history_5y_1mo = already monthly
+  // history_1wk = already weekly, history_1mo = already monthly
   // Just return as-is, don't try to re-aggregate
   if(interval === 'W' || interval === 'M') {
     return daily;
@@ -1263,7 +1263,7 @@ function recalculateIndicators(s){
     // Extend with prior history so all MAs have enough warmup bars from bar 1.
     // Weekly bars before s.candles start date are prepended as seed data.
     let extBars = s.candles;
-    const extSrc = s.price?.history_5y_1wk || s.price?.history_5y_1mo;
+    const extSrc = s.price?.history_1wk || s.price?.history_1mo;
     if(extSrc?.length) {
       const candleStart = s.candles[0]?.d || '';
       const prefix = extSrc
@@ -1321,14 +1321,14 @@ function attachChartResizeObserver(s){
 function getSlicedCandles(s, canvasWidth){
   // Pick the right raw source based on interval
   let raw = null;
-  if (S.chartInterval === 'W' && s.price?.history_5y_1wk?.length)
-    raw = s.price.history_5y_1wk;
-  else if (S.chartInterval === 'M' && s.price?.history_5y_1mo?.length)
-    raw = s.price.history_5y_1mo;
+  if (S.chartInterval === 'W' && s.price?.history_1wk?.length)
+    raw = s.price.history_1wk;
+  else if (S.chartInterval === 'M' && s.price?.history_1mo?.length)
+    raw = s.price.history_1mo;
   else if (s.price?.history_6mo_1d?.length)
     raw = s.price.history_6mo_1d;
-  else if (s.price?.history_5y_1wk?.length)
-    raw = s.price.history_5y_1wk;
+  else if (s.price?.history_1wk?.length)
+    raw = s.price.history_1wk;
 
   // Cache normalised array — only rebuild when interval changes
   const cacheKey = S.chartInterval;
@@ -1514,8 +1514,8 @@ function drawCandlestick(s){
   const bw = baseWidth * S.chartZoom;
 
   // Full price history for KPI priceAt() lookups — use 5y weekly as it covers all annual dates
-  const _fullHistory = (s.price?.history_5y_1wk?.length ? s.price.history_5y_1wk
-                      : s.price?.history_5y_1mo?.length ? s.price.history_5y_1mo
+  const _fullHistory = (s.price?.history_1wk?.length ? s.price.history_1wk
+                      : s.price?.history_1mo?.length ? s.price.history_1mo
                       : s.price?.history_6mo_1d?.length ? s.price.history_6mo_1d
                       : null);
   const allCandles = (_fullHistory
@@ -2118,8 +2118,8 @@ function canvasSetChartInterval(iv){
   if(currentStock && currentStock.price) {
     let historyData = null;
     if(iv === 'D') historyData = currentStock.price.history_6mo_1d;
-    else if(iv === 'W') historyData = currentStock.price.history_5y_1wk;
-    else if(iv === 'M') historyData = currentStock.price.history_5y_1mo;
+    else if(iv === 'W') historyData = currentStock.price.history_1wk;
+    else if(iv === 'M') historyData = currentStock.price.history_1mo;
 
     if(historyData && Array.isArray(historyData) && historyData.length > 0) {
       try {
