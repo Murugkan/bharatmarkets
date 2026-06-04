@@ -113,7 +113,6 @@
         <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
         <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
         <button class="tab" onclick="switchTab('news')">📰 News</button>
-        <button class="tab" onclick="switchTab('movers')">🔄 Movers</button>
         <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
@@ -174,8 +173,8 @@ const S = {
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
   kpiVis: { pe: false, rev: false, net: false, cfo: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
   chartPan: 0,
-  panOffset: 0,       // Bars scrolled back from right edge
-  chartZoom: 1,       // >1=zoom in (fewer bars), <1=zoom out
+  panOffset: 0,
+  chartZoom: 1,
   yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
   panStart: null,     // Pan start position
   financialSource: { accounting: 'consolidated', frequency: 'annual' }  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
@@ -941,61 +940,57 @@ function renderTab(tab) {
             </div>
         `;
     } else if (tab === 'canvas') {
-        const _aFin = Object.values(S.kpiVis).every(v=>v);
+        const _af = Object.values(S.kpiVis).every(v=>v);
         html = `<div style="padding:0;padding-bottom:100px">
-            <div style="padding:6px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
-              <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--ac)">${s.ticker||s.sym}</span>
-              <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
-                <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
-                <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
-                <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
-              </select>
-              <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
-                <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option>
-                <option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
-                <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option>
-                <option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
-                <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
-              </select>
-              <span style="flex:1"></span>
-              <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
-                <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Cons</option>
-                <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Stand</option>
-              </select>
-              <select id="dataFrequency" onchange="updateFinancialSource(this.value,'frequency')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
-                <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
-                <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Qtr</option>
-              </select>
-            </div>
-            <div style="padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:7px;align-items:center">
-              ${[{key:'sma20',col:'#f59e0b',lbl:'SMA20',fn:"canvasToggleMA('sma20')",chk:S.maVis.sma20},{key:'sma50',col:'#3b82f6',lbl:'SMA50',fn:"canvasToggleMA('sma50')",chk:S.maVis.sma50},{key:'ema200',col:'#a855f7',lbl:'EMA200',fn:"canvasToggleMA('ema200')",chk:S.maVis.ema200},{key:'vol',col:'#22c55e',lbl:'Volume',fn:"canvasToggleMA('vol')",chk:S.maVis.vol}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.chk?'checked':''} onchange="${o.fn}" style="accent-color:${o.col};width:12px;height:12px"><span style="font-size:9px;color:${o.col};font-weight:700">${o.lbl}</span></label>`).join('')}
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1)"></span>
-              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.3);border-radius:4px;padding:2px 7px">
-                <input type="checkbox" id="kpi-all-chk" ${_aFin?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:#00f2ff;width:12px;height:12px">
-                <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
-              </label>
-              <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
-              ${[{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1)"></span>
-              <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
-              ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'},{k:'debt',c:'#f87171',l:'Debt'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
-              <span style="width:1px;height:16px;background:rgba(255,255,255,.1)"></span>
-              <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
-              ${[{k:'cfo',c:'#34d399',l:'CFO'},{k:'fcf',c:'#14b8a6',l:'FCF'},{k:'pe',c:'#f59e0b',l:'P/E'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
-            </div>
-            <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-              <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-              <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-            </div>
-          </div>`;
+          <div style="padding:6px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+            <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--ac)">${s.ticker||s.sym}</span>
+            <select id="chartInterval" onchange="canvasSetChartInterval(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
+              <option value="D" ${S.chartInterval==='D'?'selected':''}>Daily</option>
+              <option value="W" ${S.chartInterval==='W'?'selected':''}>Weekly</option>
+              <option value="M" ${S.chartInterval==='M'?'selected':''}>Monthly</option>
+            </select>
+            <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
+              <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option><option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
+              <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option><option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
+              <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
+            </select>
+            <span style="flex:1"></span>
+            <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
+              <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Cons</option>
+              <option value="standalone" ${S.financialSource?.accounting==='standalone'?'selected':''}>Stand</option>
+            </select>
+            <select id="dataFrequency" onchange="updateFinancialSource(this.value,'frequency')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
+              <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
+              <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Qtr</option>
+            </select>
+          </div>
+          <div style="padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:7px;align-items:center">
+            ${[{k:'sma20',c:'#f59e0b',l:'SMA20',fn:"canvasToggleMA('sma20')",v:S.maVis.sma20},{k:'sma50',c:'#3b82f6',l:'SMA50',fn:"canvasToggleMA('sma50')",v:S.maVis.sma50},{k:'ema200',c:'#a855f7',l:'EMA200',fn:"canvasToggleMA('ema200')",v:S.maVis.ema200},{k:'vol',c:'#22c55e',l:'Vol',fn:"canvasToggleMA('vol')",v:S.maVis.vol}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.v?'checked':''} onchange="${o.fn}" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.3);border-radius:4px;padding:2px 7px">
+              <input type="checkbox" id="kpi-all-chk" ${_af?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:#00f2ff;width:12px;height:12px">
+              <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
+            </label>
+            <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
+            ${[{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
+            <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
+            ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'},{k:'debt',c:'#f87171',l:'Debt'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
+            <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
+            ${[{k:'cfo',c:'#34d399',l:'CFO'},{k:'fcf',c:'#14b8a6',l:'FCF'},{k:'pe',c:'#f59e0b',l:'P/E'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+          </div>
+          <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
+            <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+          </div>
+        </div>`;
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
     } else if (tab === 'news') {
         html = renderNewsTab(s);
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 200);
-    } else if (tab === 'movers') {
-        loadAndRenderMovers();
     } else if (tab === 'fundamentals') {
         // Try to get guidance from derived_metrics.ai_insights_guidance.guidance
         let guidance = {};
@@ -3010,7 +3005,8 @@ function scheduleTACharts(s){
   requestAnimationFrame(()=>{
     scheduleTACharts._pending = false;
     if(!s) return;
-    try{ recalculateIndicators(s); drawCandlestick(s); if(S.maVis.vol) drawVolume(s); updateChartStats(s); }catch(e){}
+    try{ recalculateIndicators(s); drawCandlestick(s); if(S.maVis.vol) drawVolume(s); updateChartStats(s); }
+    catch(e){}
   });
 }
 
@@ -3066,23 +3062,23 @@ function attachChartResizeObserver(s){
 }
 
 function getSlicedCandles(s, canvasWidth){
-  const daily = s.candles || [];
+  const daily = s.candles||[];
   if(!daily.length) return [];
   const now = new Date();
-  const rangeMs = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange]||365;
-  const cutoff = new Date(now - rangeMs*864e5).toISOString().slice(0,10);
-  let filtered = daily.filter(c=>c.d>=cutoff);
-  if(!filtered.length) filtered = daily.slice(-Math.max(20,Math.floor(daily.length*0.25)));
-  filtered.sort((a,b)=>a.d.localeCompare(b.d));
-  const allAgg = aggregateCandles(filtered, S.chartInterval);
-  if(!allAgg.length) return [];
-  const w = canvasWidth>0 ? canvasWidth : 320;
-  const BASE = Math.max(20, Math.floor((w-60)/7));
-  const vis = Math.max(10, Math.round(BASE/S.chartZoom));
-  const maxPan = Math.max(0, allAgg.length-vis);
-  const pan = Math.max(0, Math.min(maxPan, S.panOffset));
-  const end = allAgg.length - pan;
-  return allAgg.slice(Math.max(0,end-vis), end);
+  const days = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange]||365;
+  const cutoff = new Date(now-days*864e5).toISOString().slice(0,10);
+  let f = daily.filter(c=>c.d>=cutoff);
+  if(!f.length) f = daily.slice(-Math.max(20,Math.floor(daily.length*0.25)));
+  f.sort((a,b)=>a.d.localeCompare(b.d));
+  const all = aggregateCandles(f, S.chartInterval);
+  if(!all.length) return [];
+  const w = Math.max(100, canvasWidth||320);
+  const base = Math.max(20, Math.floor((w-60)/7));
+  const vis  = Math.max(10, Math.round(base/S.chartZoom));
+  const maxP = Math.max(0, all.length-vis);
+  const pan  = Math.max(0, Math.min(maxP, S.panOffset));
+  const end  = all.length - pan;
+  return all.slice(Math.max(0,end-vis), end);
 }
 
 // Extract quarterly data with all KPI metrics
@@ -3471,9 +3467,7 @@ function drawCandlestick(s){
   function xForDate(dateStr){
     // ✅ Use VISIBLE range for alignment (same as candlesticks)
     const t = new Date(dateStr).getTime();
-    const x = PAD.l + ((t - visFirst) / visRange) * cW;
-    return x;
-  }
+    const x = PAD.l + ((t - visFirst) / visRange) * cW ;
 
   // Search FULL history for price on/before a date
   function priceAt(dateStr){
@@ -3487,6 +3481,8 @@ function drawCandlestick(s){
   // if(quarterly.length){
   //  // }
 
+  // Draw KPI overlays
+  try {
   KPI_DEFS.forEach(({k, label, col})=>{
     if(!S.kpiVis[k]) return;
 
@@ -3836,26 +3832,7 @@ function drawVolume(s){
     
     // ✅ Account for pan offset when checking click position
     
-    // ✅ Show debug info on screen for iPhone
-    let debugDiv = document.getElementById('debug-tooltip-info');
-    if(!debugDiv) {
-      debugDiv = document.createElement('div');
-      debugDiv.id = 'debug-tooltip-info';
-      debugDiv.style.cssText = 'position:fixed;top:10px;left:10px;background:rgba(0,0,0,.9);color:#00ff88;border:1px solid #00ff88;border-radius:4px;padding:8px;font-family:monospace;font-size:10px;z-index:10000;max-width:150px;max-height:100px;overflow:auto';
-      document.body.appendChild(debugDiv);
-    }
-    
-    const debugMsg = `Click: mx=${mx.toFixed(0)} my=${my.toFixed(0)}<br/>KPI Pts: ${kpiPoints.length}<br/>Bars: ${candlestickBars.length}`;
-    debugDiv.innerHTML = debugMsg;
-    debugDiv.style.display = 'block';
-    
-    // Auto-hide after 2 seconds
-    setTimeout(() => {
-      if(debugDiv) debugDiv.style.display = 'none';
-    }, 2000);
-    
-    
-    // ✅ First, check if clicked on KPI overlay point
+        // ✅ First, check if clicked on KPI overlay point
     if(kpiPoints.length) {
       const kpiHit = kpiPoints.find(kpi => {
         const dx = mx - kpi.x;
@@ -4066,7 +4043,8 @@ function canvasSetChartInterval(iv){
 }
 function canvasToggleMA(key){
   S.maVis[key]=!S.maVis[key];
-  if(key==='vol'){setupChartInteraction._initialized=false;renderTab('canvas');}else scheduleChartRedraw();
+  if(key==='vol'){setupChartInteraction._initialized=false;renderTab('canvas');}
+  else scheduleChartRedraw();
 }
 function toggleAllKPI(on){
   Object.keys(S.kpiVis).forEach(k=>{S.kpiVis[k]=on;const cb=document.getElementById('kpi-'+k);if(cb)cb.checked=on;});
@@ -4117,62 +4095,61 @@ async function canvasLoadAndDrawChart(sym) {
 // PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
 
-let chartInteraction = {isPanning:false,startX:0,startPanOffset:0};
+let chartInteraction = {isPanning:false};
 
 function setupChartInteraction(){
   if(setupChartInteraction._initialized) return;
   const canvas = document.getElementById('cv-candle');
   if(!canvas) return;
   setupChartInteraction._initialized = true;
-  const t = {lastDist:0,isPanning:false,startX:0,startPanOffset:0};
-  let lastRedraw=0;
-  const redraw = ()=>{ const now=performance.now(); if(now-lastRedraw>=32){scheduleTACharts(currentStock);lastRedraw=now;} };
-  const bpp = ()=>{ const w=canvas.offsetWidth||320; const vis=Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom)); return vis/(w-60); };
+  const t={lastDist:0,isPanning:false,startX:0,startPan:0};
+  let lastT=0;
+  const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
+  const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
 
-  canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startPanOffset=S.panOffset;},{passive:true});
+  canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startPan=S.panOffset;},{passive:true});
   document.addEventListener('mousemove',e=>{
-    if(!t.isPanning||!currentStock) return;
-    S.panOffset=Math.max(0,t.startPanOffset-Math.round((e.clientX-t.startX)*bpp()));
-    redraw();
+    if(!t.isPanning||!currentStock)return;
+    S.panOffset=Math.max(0,t.startPan-Math.round((e.clientX-t.startX)*bpp()));
+    go();
   },{passive:true});
   document.addEventListener('mouseup',()=>{t.isPanning=false;},{passive:true});
   canvas.addEventListener('wheel',e=>{
-    if(!currentStock) return; e.preventDefault();
+    if(!currentStock)return; e.preventDefault();
     S.chartZoom=Math.max(0.3,Math.min(5,S.chartZoom*(e.deltaY<0?1.15:0.87)));
     scheduleTACharts(currentStock);
   },{passive:false});
 
-  const onStart=e=>{
+  const ts=e=>{
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      t.lastDist=Math.sqrt(dx*dx+dy*dy); t.isPanning=false;
-    } else { t.isPanning=true; t.startX=e.touches[0].clientX; t.startPanOffset=S.panOffset; t.lastDist=0; }
+      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;
+    }else{t.isPanning=true;t.startX=e.touches[0].clientX;t.startPan=S.panOffset;t.lastDist=0;}
   };
-  const onMove=e=>{
+  const tm=e=>{
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      const dist=Math.sqrt(dx*dx+dy*dy);
+      const d=Math.sqrt(dx*dx+dy*dy);
       if(t.lastDist>0){
-        const delta=(dist/t.lastDist)-1;
+        const delta=(d/t.lastDist)-1;
         if(Math.abs(delta)>0.005){
           const f=1+delta*0.6;
           if(Math.abs(dy)>Math.abs(dx)) S.yAxisZoom=Math.max(0.5,Math.min(3,(S.yAxisZoom||1)*f));
           else S.chartZoom=Math.max(0.3,Math.min(5,S.chartZoom*f));
-          if(currentStock) redraw();
+          if(currentStock) go();
         }
       }
-      t.lastDist=dist; e.preventDefault();
-    } else if(t.isPanning&&currentStock){
-      S.panOffset=Math.max(0,t.startPanOffset-Math.round((e.touches[0].clientX-t.startX)*bpp()));
-      redraw();
+      t.lastDist=d; e.preventDefault();
+    }else if(t.isPanning&&currentStock){
+      S.panOffset=Math.max(0,t.startPan-Math.round((e.touches[0].clientX-t.startX)*bpp()));
+      go();
     }
   };
-  const onEnd=()=>{t.isPanning=false;t.lastDist=0;};
-  canvas.ontouchstart=onStart; canvas.ontouchmove=onMove; canvas.ontouchend=onEnd;
-  const vol=document.getElementById('cv-vol');
-  if(vol){vol.ontouchstart=onStart;vol.ontouchmove=onMove;vol.ontouchend=onEnd;}
+  const te=()=>{t.isPanning=false;t.lastDist=0;};
+  canvas.ontouchstart=ts;canvas.ontouchmove=tm;canvas.ontouchend=te;
+  const v=document.getElementById('cv-vol');
+  if(v){v.ontouchstart=ts;v.ontouchmove=tm;v.ontouchend=te;}
 }
-
 // Auto-setup when canvas is ready
 document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
@@ -4259,446 +4236,9 @@ async function loadStockNews(sym,name){
   }
 }
 
-// ════════════════════════════════════════════════════════
-// HEATMAP FOR MOVERS TAB
-// ════════════════════════════════════════════════════════
-
-
-// ════════════════════════════════════════════════════════
-// MOVERS TAB FUNCTIONS (from app.js)
-// ════════════════════════════════════════════════════════
-
-async function loadAndRenderMovers(){
-  const c = document.getElementById('content');
-  if(!c) {
-    return;
-  }
-  
-  c.innerHTML = '<div style="padding:20px;color:var(--tx3)">Loading portfolio data...</div>';
-  
-  try {
-    // Open IndexedDB - same as index.html
-    const db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB);
-      req.onsuccess = () => {
-        resolve(req.result);
-      };
-      req.onerror = () => {
-        reject(new Error('Cannot open database'));
-      };
-    });
-    
-    // Get all stocks from stocks store - same as index.html
-    const allStocks = await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const store = tx.objectStore(STORE);
-      const req = store.getAll();
-      
-      req.onsuccess = () => {
-        const stocks = req.result || [];
-        
-        // Log first 5 stocks to see their structure
-        if(stocks.length > 0) {
-          stocks.slice(0, 5).forEach(s => {
-          });
-        }
-        
-        resolve(stocks);
-      };
-      req.onerror = () => {
-        reject(new Error('Cannot read stocks'));
-      };
-    });
-    
-    db.close();
-    
-    // Filter portfolio holdings - same as index.html enrichStock function
-    // Portfolio = stocks with qty > 0
-    const portfolio = allStocks.filter(s => {
-      const qty = s.company_details?.qty || 0;  // ✅ Check at CORRECT location
-      return qty > 0;
-    });
-    
-    
-    if(portfolio.length > 0) {
-      portfolio.slice(0, 5).forEach(s => {
-      });
-    }
-    
-    if(!portfolio || !portfolio.length){
-      c.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--tx3)">
-        <div style="font-size:14px;margin-bottom:12px">📊 No holdings in portfolio</div>
-        <div style="font-size:11px;line-height:1.6">Add stocks with qty > 0 to see portfolio movers</div>
-      </div>`;
-      return;
-    }
-    
-    // Enrich portfolio with same logic as index.html resolve() function
-    const enrichedPortfolio = portfolio.map(s => {
-      const qty = s.company_details?.qty || 0;  // ✅ Get from correct location
-      const ltp = resolveField(s, 'ltp') || 0;
-      const avgCost = s.company_details?.avg_cost || resolveField(s, 'avg_cost') || 0;
-      const changePct = resolveField(s, 'changePct') || 0;
-      
-      
-      return {
-        ...s,
-        qty,
-        ltp,
-        avgCost,
-        changePct,
-        value: qty * ltp,
-        cost: qty * avgCost,
-        gain: (qty * ltp) - (qty * avgCost),
-        gainPct: avgCost > 0 ? ((ltp - avgCost) / avgCost * 100) : 0,
-        change1d: changePct * qty
-      };
-    });
-    
-    // Calculate portfolio totals - same as index.html
-    const totalVal = enrichedPortfolio.reduce((a, s) => a + s.value, 0);
-    const totalCost = enrichedPortfolio.reduce((a, s) => a + s.cost, 0);
-    const totalGain = totalVal - totalCost;
-    const gainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
-    
-    
-    // Find gainers and losers by daily change %
-    const withChange = enrichedPortfolio.filter(s => s.changePct !== undefined && !isNaN(s.changePct));
-    
-    const gainers = [...withChange]
-      .sort((a, b) => b.changePct - a.changePct)
-      .slice(0, 8);
-    
-    const losers = [...withChange]
-      .sort((a, b) => a.changePct - b.changePct)
-      .slice(0, 8);
-    
-    // Sector aggregation
-    const sectorMap = {};
-    enrichedPortfolio.forEach(s => {
-      const sector = resolveField(s, 'sector') || '—';
-      const change = s.changePct || 0;
-      if(!sectorMap[sector]) sectorMap[sector] = {sum: 0, count: 0, stocks: []};
-      sectorMap[sector].sum += change;
-      sectorMap[sector].count++;
-      sectorMap[sector].stocks.push({sym: s.ticker || s.sym, chg: change});
-    });
-    
-    const sectors = Object.entries(sectorMap)
-      .map(([name, d]) => ({name, avg: d.sum / d.count, stocks: d.stocks}))
-      .filter(s => s.avg !== 0)
-      .sort((a, b) => Math.abs(b.avg) - Math.abs(a.avg))
-      .slice(0, 10);
-    
-    // Render
-    c.innerHTML = `<div style="padding:12px 13px 14px;padding-bottom:100px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--title)">Market Movers</div>
-        <div style="font-size:9px;color:var(--tx3);font-family:var(--mono)">${enrichedPortfolio.length} holdings</div>
-      </div>
-      
-      <!-- Portfolio Summary -->
-      <div class="card" style="margin-bottom:12px">
-        <div style="font-weight:700;font-size:12px;color:var(--title);margin-bottom:8px">💼 Portfolio</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:10px">
-          <div><div style="color:var(--tx3);margin-bottom:2px">Value</div><div style="color:var(--tx1);font-weight:600">₹${totalVal.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
-          <div><div style="color:var(--tx3);margin-bottom:2px">Gain/Loss</div><div style="color:${totalGain >= 0 ? '#00e896' : '#ff6b85'};font-weight:600">${totalGain >= 0 ? '+' : ''}₹${totalGain.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
-          <div><div style="color:var(--tx3);margin-bottom:2px">Invested</div><div style="color:var(--tx1);font-weight:600">₹${totalCost.toLocaleString('en-IN',{maximumFractionDigits:0})}</div></div>
-          <div><div style="color:var(--tx3);margin-bottom:2px">Return</div><div style="color:${gainPct >= 0 ? '#00e896' : '#ff6b85'};font-weight:600">${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(2)}%</div></div>
-        </div>
-      </div>
-      
-      <!-- Gainers/Losers -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div class="card">
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#00e896;margin-bottom:8px">🟢 Top Gainers</div>
-          ${gainers.length ? gainers.map(s => {
-            return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#00e896;font-weight:700">+${s.changePct.toFixed(2)}%</div></div>
-          </div>`;
-          }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No gainers</div>'}
-        </div>
-        <div class="card">
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#ff6b85;margin-bottom:8px">🔴 Top Losers</div>
-          ${losers.length ? losers.map(s => {
-            return `<div style="padding:6px 0;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;font-size:10px">
-            <div><div style="font-weight:600;color:var(--tx2)">${s.ticker || s.sym}</div><div style="color:var(--tx3)">₹${s.ltp.toFixed(1)}</div></div>
-            <div style="text-align:right"><div style="color:#ff6b85;font-weight:700">${s.changePct.toFixed(2)}%</div></div>
-          </div>`;
-          }).join('') : '<div style="color:var(--tx3);font-size:10px;padding:8px 0">No losers</div>'}
-        </div>
-      </div>
-      
-      <!-- Sectors -->
-      ${sectors.length ? `<div class="card">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title);margin-bottom:10px">📊 Sectors</div>
-        <div style="display:flex;flex-direction:column;gap:5px">
-          ${sectors.map(s => {
-            const up = s.avg >= 0;
-            const barW = Math.min(100, Math.abs(s.avg) * 15).toFixed(0);
-            return `<div style="display:flex;align-items:center;gap:8px">
-              <div style="width:90px;font-size:9px;color:var(--tx2);text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</div>
-              <div style="flex:1;background:var(--s2);border-radius:3px;height:13px;position:relative;overflow:hidden">
-                <div style="position:absolute;${up?'left:0':'right:0'};top:0;height:100%;width:${barW}%;background:${up?'rgba(0,208,132,.4)':'rgba(255,59,92,.4)'};border-radius:3px"></div>
-              </div>
-              <div style="width:40px;font-size:9px;font-weight:700;color:${up?'#00e896':'#ff6b85'};font-family:var(--mono);text-align:right">${up?'+':''}${s.avg.toFixed(2)}%</div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>` : ''}
-      
-      <!-- Sector Heatmap -->
-      <div class="card" style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:11px;color:var(--title)">🗺 Sector Heatmap</div>
-          <div style="display:flex;gap:6px;font-size:9px;color:var(--tx3)">
-            <span style="color:#00e896">■ Up</span>
-            <span style="color:#ff6b85">■ Down</span>
-          </div>
-        </div>
-        <canvas id="cv-heatmap" style="width:100%;border-radius:6px;cursor:pointer;display:block;margin-bottom:8px"></canvas>
-        <div id="hm-tooltip" style="display:none;position:fixed;background:#0d1222;border:1px solid #1e3350;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--tx1);pointer-events:none;z-index:999"></div>
-      </div>
-    </div>`;
-    
-    // Draw heatmap after DOM renders
-    setTimeout(() => {
-      drawPortfolioHeatmap(enrichedPortfolio);
-    }, 200);
-    
-  } catch(e) {
-    c.innerHTML = `<div style="padding:40px 20px;text-align:center">
-      <div style="color:#ff6b85;margin-bottom:10px;font-weight:600">${e.message}</div>
-      <div style="font-size:10px;color:var(--tx3)">Check 🔧 debug panel for details</div>
-    </div>`;
-  }
+} catch(e){}
 }
-function drawPortfolioHeatmap(portfolio){
-  
-  const cv = document.getElementById('cv-heatmap');
-  
-  if(!cv) {
-    return;
-  }
-  
-
-  const dpr = window.devicePixelRatio || 1;
-  const W = Math.max(cv.offsetWidth || window.innerWidth - 30, 180);
-  const H = W;
-  
-  cv.width  = W * dpr; 
-  cv.height = H * dpr;
-  cv.style.width = W+'px'; 
-  cv.style.height = H+'px';
-  
-  const ctx = cv.getContext('2d');
-  if(!ctx) {
-    return;
-  }
-  
-  ctx.scale(dpr, dpr);
-  ctx.fillStyle = '#060c18';
-  ctx.fillRect(0, 0, W, H);
-
-  if(!portfolio || !portfolio.length){
-    ctx.fillStyle='rgba(140,176,208,.4)';
-    ctx.font='11px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('No portfolio data', W/2, H/2);
-    return;
-  }
-
-  // Group by sector
-  const sMap = {};
-  portfolio.forEach(s=>{
-    const sec = resolveField(s, 'sector') || 'Other';  // ✅ Use resolveField
-    if(!sMap[sec]) sMap[sec]={name:sec, holdVal:0, mcap:0, chgSum:0, n:0, stocks:[]};
-    const price = s.ltp || resolveField(s, 'ltp') || 0;
-    const change = s.changePct || resolveField(s, 'changePct') || 0;
-    const holdingVal = (s.company_details?.qty || 0) * price;  // ✅ Get qty from correct location
-    sMap[sec].holdVal += holdingVal;
-    sMap[sec].mcap    += (resolveField(s, 'market_cap') || 0);
-    sMap[sec].chgSum  += change;
-    sMap[sec].n++;
-    sMap[sec].stocks.push(s);
-  });
-  
-  
-  const nodes = Object.values(sMap)
-    .map(d=>({
-      name:   d.name,
-      holdVal: d.holdVal,  // Portfolio investment value
-      // Size priority: 1) portfolio holding value, 2) mcap if available, 3) stock count
-      size:   d.holdVal > 0 ? d.holdVal :
-              d.mcap    > 0 ? d.mcap    :
-              d.n * 1000,
-      chg:    d.chgSum / d.n,
-      n:      d.n,
-      stocks: [...d.stocks].sort((a,b)=>Math.abs((b.chg1d||0))-Math.abs((a.chg1d||0))),
-    }))
-    .sort((a,b)=>b.size-a.size);
-
-  // Normalise sizes to W*H
-  const totalSize = nodes.reduce((a,b)=>a+b.size, 0);
-  nodes.forEach(n=>{ n.size = (n.size/totalSize) * W * H; });
-
-  // Squarified treemap — standard Bruls algorithm
-  const rects = [];
-
-  function worstRatio(row, w){
-    if(!w||!row.length) return Infinity;
-    const s = row.reduce((a,b)=>a+b.size, 0);
-    const maxS = Math.max(...row.map(r=>r.size));
-    const minS = Math.min(...row.map(r=>r.size));
-    return Math.max((w*w*maxS)/(s*s), (s*s)/(w*w*minS));
-  }
-
-  function layoutRow(row, x, y, w, h){
-    const s = row.reduce((a,b)=>a+b.size, 0);
-    let cx=x, cy=y;
-    if(w >= h){
-      // horizontal strip
-      const stripW = s/h;
-      row.forEach(item=>{
-        const ih = item.size / stripW;
-        rects.push({...item,
-          x: Math.max(0,cx), y: Math.max(0,cy),
-          w: Math.min(stripW, W-cx), h: Math.min(ih, H-cy)
-        });
-        cy += ih;
-      });
-      return {x:x+stripW, y:y, w:w-stripW, h:h};
-    } else {
-      // vertical strip
-      const stripH = s/w;
-      row.forEach(item=>{
-        const iw = item.size / stripH;
-        rects.push({...item,
-          x: Math.max(0,cx), y: Math.max(0,cy),
-          w: Math.min(iw, W-cx), h: Math.min(stripH, H-cy)
-        });
-        cx += iw;
-      });
-      return {x:x, y:y+stripH, w:w, h:h-stripH};
-    }
-  }
-
-  function squarify(children, x, y, w, h){
-    if(!children.length||w<1||h<1) return;
-    let row=[], rem=[...children];
-    const shortest = Math.min(w,h);
-    while(rem.length){
-      const test=[...row, rem[0]];
-      if(row.length>0 && worstRatio(test,shortest) > worstRatio(row,shortest)) break;
-      row.push(rem.shift());
-    }
-    const next = layoutRow(row, x, y, w, h);
-    squarify(rem, next.x, next.y, next.w, next.h);
-  }
-
-  squarify(nodes, 0, 0, W, H);
-
-  // Color by % change — use distinct bands for easy reading
-  // -3% and below = deep red, 0 = dark neutral, +3% and above = deep green
-  function tileColor(chg){
-    // Clamp to [-4, +4] range
-    const c = Math.max(-4, Math.min(4, chg));
-    if(c === 0) return 'rgba(35,50,75,0.85)';
-    if(c > 0){
-      // Green intensity: 0.1% = dim, 4% = full bright
-      const t = c / 4;
-      const g = Math.round(80  + 150*t);   // 80 → 230
-      const r = Math.round(5   + 15*t);    // keeps it green not yellow
-      const b = Math.round(10  + 20*t);
-      return 'rgba('+r+','+g+','+b+',0.90)';
-    } else {
-      const t = (-c) / 4;
-      const r = Math.round(80  + 150*t);   // 80 → 230
-      const g = Math.round(10  + 15*t);
-      const b = Math.round(15  + 20*t);
-      return 'rgba('+r+','+g+','+b+',0.90)';
-    }
-  }
-
-  const PAD = 2;
-  rects.forEach(r=>{
-    const rx=r.x+PAD, ry=r.y+PAD, rw=r.w-PAD*2, rh=r.h-PAD*2;
-    if(rw<3||rh<3) return;
-
-    ctx.fillStyle = tileColor(r.chg);
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(rx,ry,rw,rh,3); else ctx.rect(rx,ry,rw,rh);
-    ctx.fill();
-    ctx.strokeStyle='rgba(6,12,24,0.8)'; ctx.lineWidth=1; ctx.stroke();
-
-    if(rw<16||rh<12) return;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(rx,ry,rw,rh); ctx.clip();
-    ctx.textAlign='center';
-    const sign = r.chg>=0?'+':'';
-    const pct  = sign+r.chg.toFixed(2)+'%';
-    const cx   = rx+rw/2;
-
-    if(rw>=54&&rh>=36){
-      const fs=Math.min(12,Math.max(8,Math.floor(Math.min(rw/7,rh/3.5))));
-      ctx.font='700 '+fs+'px \'JetBrains Mono\',monospace';
-      ctx.fillStyle='rgba(255,255,255,0.96)';
-      const lbl=r.name.length>13?r.name.slice(0,12)+'\u2026':r.name;
-      ctx.fillText(lbl, cx, ry+rh*0.42);
-      ctx.font=Math.max(7,fs-1)+'px \'JetBrains Mono\',monospace';
-      ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.95)':'rgba(255,195,195,0.95)';
-      ctx.fillText(pct, cx, ry+rh*0.42+fs+4);
-    } else if(rw>=34&&rh>=22){
-      const fs=Math.min(9,Math.max(6,Math.floor(Math.min(rw/6,rh/3))));
-      ctx.font='700 '+fs+'px monospace';
-      ctx.fillStyle='rgba(255,255,255,0.92)';
-      ctx.fillText(r.name.slice(0,9), cx, ry+rh*0.40);
-      ctx.font=Math.max(6,fs-1)+'px monospace';
-      ctx.fillStyle=r.chg>=0?'rgba(190,255,210,0.9)':'rgba(255,195,195,0.9)';
-      ctx.fillText(pct, cx, ry+rh*0.40+fs+3);
-    } else {
-      ctx.font='6px monospace';
-      ctx.fillStyle='rgba(255,255,255,0.85)';
-      ctx.fillText(pct, cx, ry+rh/2+3);
-    }
-    ctx.restore();
-  });
-
-  // Tap tooltip - persistent until next click
-  let currentTooltip = null;
-  cv.onclick=(e)=>{
-    const br=cv.getBoundingClientRect();
-    const scX=W/br.width, scY=H/br.height;
-    const mx=(e.clientX-br.left)*scX, my=(e.clientY-br.top)*scY;
-    const hit=rects.find(r=>mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h);
-    const tip=document.getElementById('hm-tooltip');
-    
-    // If clicking on empty space or same tooltip, hide it
-    if(!hit || currentTooltip === hit.name){
-      if(tip) tip.style.display='none';
-      currentTooltip = null;
-      return;
-    }
-    
-    // Show tooltip for clicked sector
-    if(hit&&tip){
-      currentTooltip = hit.name;
-      const sign=hit.chg>=0?'+':'';
-      const invVal = hit.holdVal || 0;
-      tip.innerHTML='<b style="color:'+(hit.chg>=0?'#00e896':'#ff6b85')+'">'+hit.name+'</b>'
-        +' <b>'+sign+hit.chg.toFixed(2)+'%</b><br>'
-        +'<span style="color:var(--tx3)">💰 ₹'+invVal.toLocaleString('en-IN',{maximumFractionDigits:0})+'</span><br>'
-        +'<span style="color:var(--tx3)">'+hit.n+' stock'+(hit.n>1?'s':'')+'</span><br>'
-        +'<span style="font-size:8px;color:var(--tx2)">'+hit.stocks.slice(0,5).map(s=>s.ticker+' '+(s.chg1d>=0?'+':'')+s.chg1d.toFixed(1)+'%').join('  ')+'</span>';
-      tip.style.display='block';
-      tip.style.left=Math.min(e.clientX+10,window.innerWidth-170)+'px';
-      tip.style.top=Math.max(e.clientY-70,8)+'px';
-    }
-  };
-}
-
 
 </script>
-
 </body>
 </html>
