@@ -3586,7 +3586,25 @@ function drawCandlestick(s){
   function xForDate(dateStr){
     // ✅ FIX: Use VISIBLE range (same as candlesticks) for alignment
     // Quarterly data may fall outside visible range - that's OK, they just won't show
-    const t = new Date(dateStr).getTime();
+    
+    // ✅ SNAP to nearest actual candle date for alignment
+    let snapDate = dateStr;
+    if(candles.length > 0) {
+      const targetTime = new Date(dateStr).getTime();
+      let nearestCandle = candles[0];
+      let minDiff = Math.abs(new Date(candles[0].d).getTime() - targetTime);
+      
+      for(let i = 1; i < candles.length; i++) {
+        const diff = Math.abs(new Date(candles[i].d).getTime() - targetTime);
+        if(diff < minDiff) {
+          minDiff = diff;
+          nearestCandle = candles[i];
+        }
+      }
+      snapDate = nearestCandle.d;
+    }
+    
+    const t = new Date(snapDate).getTime();
     return PAD.l + ((t - visFirst) / visRange) * cW + S.chartPan;
   }
 
