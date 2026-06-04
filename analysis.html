@@ -3392,6 +3392,12 @@ function drawCandlestick(s){
     ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
 
+  // Clip all chart drawing to chart area — nothing bleeds into right axis strip
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PAD.l, 0, cW, H);
+  ctx.clip();
+
   // Candles - ✅ Track bar positions for click detection
   candlestickBars = [];
   
@@ -3508,6 +3514,9 @@ function drawCandlestick(s){
     drawMAFull(sma50vals,  '#3b82f6', [],    'SMA50');
     drawMAFull(ema200vals, '#a855f7', [4,3], 'EMA200');
   }
+
+  // Restore chart clip — x-axis labels and right-axis items draw freely
+  ctx.restore();
 
   // Current price dashed line
   if(s.ltp){
@@ -3646,6 +3655,10 @@ function drawCandlestick(s){
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
 
     ctx.save();
+    // Clip lines/fills to chart area only — prevent bleeding into right axis
+    ctx.beginPath();
+    ctx.rect(PAD.l, PAD.t, cW, H - PAD.t - PAD.b);
+    ctx.clip();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
 
     if(drawLine){
@@ -3683,21 +3696,22 @@ function drawCandlestick(s){
       });
     });
 
-    // Label on right axis strip — clipped inside PAD.r, with collision avoidance
+    ctx.restore(); // restore clip
+
+    // Label drawn AFTER restore so it's in the right axis strip (not clipped)
     const last = pts[pts.length-1];
     const dispVal = k==='pe'  ? last.v.toFixed(0)+'x' :
                     k==='opm' ? last.v.toFixed(1)+'%' :
                     Math.abs(last.v)>=1000 ? (last.v/1000).toFixed(1)+'K' : last.v.toFixed(0)+'Cr';
-    ctx.fillStyle = col; ctx.globalAlpha = 1;
-    ctx.font = 'bold 7px JetBrains Mono,monospace'; ctx.textAlign = 'right';
-    // Find a Y that doesn't collide with already-placed labels
-    if(!drawCandlestick._kpiLabelY) drawCandlestick._kpiLabelY = [];
     let labelY = Math.max(kpiY(last.v), PAD.t + 8);
     labelY = Math.min(labelY, H - PAD.b - 8);
-    // Nudge down if colliding (9px line height)
     while(drawCandlestick._kpiLabelY.some(y => Math.abs(y - labelY) < 9)) labelY += 9;
     labelY = Math.min(labelY, H - PAD.b - 8);
     drawCandlestick._kpiLabelY.push(labelY);
+    ctx.save();
+    ctx.fillStyle = col; ctx.globalAlpha = 1;
+    ctx.font = 'bold 7px JetBrains Mono,monospace';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     ctx.fillText(label+' '+dispVal, W - 3, labelY);
     ctx.restore();
   });
