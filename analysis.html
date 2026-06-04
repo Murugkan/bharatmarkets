@@ -136,7 +136,6 @@ const DB = "raalanportfolio";
 const STORE = "stocks";
 let currentStock = null;
 let currentTab = "overview";
-let dataSource = null; // Track where data comes from: 'db' or 'json'
 
 // ✅ AUTO-INIT: Load portfolio on first visit
 window.addEventListener('load', async () => {
@@ -179,7 +178,6 @@ const S = {
   panStart: null,     // Pan start position
   financialSource: { accounting: 'consolidated', frequency: 'annual' }  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
 };
-let chartCache = {};
 let candlestickBars = [];  // ✅ Track bar positions for click detection
 let kpiPoints = [];  // ✅ Track KPI overlay points for tooltip clicks
 let maPoints = [];   // Track MA line points for click/tooltip
@@ -514,148 +512,42 @@ const ticker = urlParams.get('drill') || urlParams.get('t');
 
 
 
-// Load data
 async function loadStock() {
     if (!ticker) {
-        // Try to get list of stocks for user guidance
-        let stockList = 'ABCAPITAL, ABFRL, ADANIPORTS, ... (load data.html first)';
-        try {
-            const db = await new Promise(r => {
-                const req = indexedDB.open(DB);
-                req.onsuccess = () => r(req.result);
-                req.onerror = () => r(null);
-            });
-            if (db && db.objectStoreNames.contains(STORE)) {
-                const tx = db.transaction(STORE, 'readonly');
-                const store = tx.objectStore(STORE);
-                const keys = await new Promise(r => {
-                    const req = store.getAllKeys();
-                    req.onsuccess = () => r(req.result);
-                    req.onerror = () => r([]);
-                });
-                if (keys.length > 0) {
-                    stockList = keys.slice(0, 10).join(', ') + (keys.length > 10 ? '...' : '');
-                }
-            }
-        } catch (e) {}
-        
         document.getElementById('content').innerHTML = `
             <div class="placeholder">
                 <div class="placeholder-emoji">❌</div>
                 <div>No stock selected</div>
-                <div style="font-size:9px;color:#ff9800;margin-top:8px">
-                    Use: analysis.html?drill=TICKER<br/>
-                    Example: analysis.html?drill=ABCAPITAL<br/>
-                    Available: ${stockList}
-                </div>
-            </div>
-        `;
+                <div style="font-size:9px;color:#ff9800;margin-top:8px">Use: analysis.html?drill=TICKER</div>
+            </div>`;
         return;
     }
-    
-    
-    
+
     const db = await new Promise(r => {
-        const req = indexedDB.open(DB);
-        req.onsuccess = () => {
-            
-            r(req.result);
-        };
-        req.onerror = () => {
-            r(null);
-        };
+        const req = indexedDB.open(DB, 8);
+        req.onsuccess = () => r(req.result);
+        req.onerror = () => r(null);
     });
-    
+
     if (!db) {
         document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">⚠️</div>Database error</div>';
         return;
     }
-    
+
     try {
         const tx = db.transaction(STORE, 'readonly');
         const store = tx.objectStore(STORE);
-        
         currentStock = await new Promise(r => {
             const req = store.get(ticker);
-            req.onsuccess = () => {
-                
-                r(req.result);
-            };
-            req.onerror = () => {
-                r(null);
-            };
+            req.onsuccess = () => r(req.result);
+            req.onerror = () => r(null);
         });
         
         if (!currentStock) {
             document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">🔍</div>Stock not found: ' + ticker + '</div>';
             return;
         }
-        
-        // 🔍 DEBUG: Log the actual stock object structure
-        
-        // Determine data source
-        dataSource = currentStock._source || 'db'; // Check if _source field exists, default to 'db'
-        
-        // 🚀 Auto-load candles from price history fields with support for d/w/m intervals
-        if (!currentStock.candles || currentStock.candles.length === 0) {
-            // Try to load from price object history fields (history_6mo_1d, history_5y_1wk, history_5y_1mo)
-            let historyData = null;
-            let historyType = null;
-            
-            // Priority: daily > weekly > monthly
-            if (currentStock.price && currentStock.price.history_6mo_1d && Array.isArray(currentStock.price.history_6mo_1d)) {
-                historyData = currentStock.price.history_6mo_1d;
-                historyType = 'daily (6mo)';
-            } else if (currentStock.price && currentStock.price.history_5y_1wk && Array.isArray(currentStock.price.history_5y_1wk)) {
-                historyData = currentStock.price.history_5y_1wk;
-                historyType = 'weekly (5y)';
-            } else if (currentStock.price && currentStock.price.history_5y_1mo && Array.isArray(currentStock.price.history_5y_1mo)) {
-                historyData = currentStock.price.history_5y_1mo;
-                historyType = 'monthly (5y)';
-            }
-            
-            // Convert history format { Date, Open, High, Low, Close, Volume } to chart format
-            if (historyData && historyData.length > 0) {
-                try {
-                    // Use efficient array conversion for large datasets
-                    currentStock.candles = historyData.map((bar, idx) => ({
-                        d: bar.Date,  // Date as YYYY-MM-DD string
-                        o: parseFloat(bar.Open),
-                        h: parseFloat(bar.High),
-                        l: parseFloat(bar.Low),
-                        c: parseFloat(bar.Close),
-                        v: parseInt(bar.Volume) || 0
-                    })).filter(bar => !isNaN(bar.o) && !isNaN(bar.h) && !isNaN(bar.l) && !isNaN(bar.c)); // Remove invalid entries
-                } catch (e) {
-                    currentStock.candles = [];
-                }
-            }
-            
-            // Fallback: Try generic price_history field
-            if (!currentStock.candles || currentStock.candles.length === 0) {
-                if (currentStock.price_history) {
-                    if (Array.isArray(currentStock.price_history)) {
-                        currentStock.candles = currentStock.price_history;
-                    } else if (currentStock.price_history.bars && Array.isArray(currentStock.price_history.bars)) {
-                        currentStock.candles = currentStock.price_history.bars;
-                    }
-                }
-            }
-            
-            // Final fallback: try external file
-            if (!currentStock.candles || currentStock.candles.length === 0) {
-                try {
-                    const sym = currentStock.ticker || currentStock.sym || ticker;
-                    const res = await fetch(`./charts/${sym}.json`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        currentStock.candles = data.bars || [];
-                    }
-                } catch (e) {
-                }
-            }
-        }
-        
+
         renderHeader();
         renderTab('overview');
     } catch(e) {
@@ -1055,11 +947,11 @@ function renderTab(tab) {
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
-        setTimeout(() => { canvasLoadAndDrawChart(s.ticker || s.sym); }, 200);
+        canvasLoadAndDrawChart();
     } else if (tab === 'news') {
         html = renderNewsTab(s);
         document.getElementById('content').innerHTML = html;
-        setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 200);
+        setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 50);
     } else if (tab === 'fundamentals') {
         // Try to get guidance from derived_metrics.ai_insights_guidance.guidance
         let guidance = {};
@@ -1300,1751 +1192,8 @@ function renderTab(tab) {
 // Init
 loadStock();
 
-// ============================================================================
-// ANALYSIS TAB DISPLAY FUNCTIONS
-// ============================================================================
-
-
-function renderFundamentalsTab(ticker, guidance) {
-    let html = `
-        <div style="font-family: monospace; padding: 20px; background: var(--bg); color: var(--tx1);">
-            <h3 style="color: var(--ac); margin-bottom: 20px;">📋 FUNDAMENTALS - ${ticker}</h3>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px;">QUARTER & SUMMARY</h4>
-                <p><strong>Quarter:</strong> ${guidance.quarter}</p>
-                <p><strong>Date:</strong> ${guidance.date || 'N/A'}</p>
-                <p><strong>Summary:</strong> ${guidance.summary}</p>
-            </div>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px;">FINANCIAL</h4>
-                <p><strong>Revenue:</strong> ${guidance.financial.revenue}</p>
-                <p><strong>Growth:</strong> ${guidance.financial.growth}</p>
-                <p><strong>Margins:</strong> ${guidance.financial.margins}</p>
-                <p><strong>Capex:</strong> ${guidance.financial.capex}</p>
-            </div>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px;">BUSINESS</h4>
-                <p><strong>Expansion:</strong> ${guidance.business.expansion}</p>
-                <p><strong>Products:</strong> ${guidance.business.products}</p>
-                <p><strong>Geography:</strong> ${guidance.business.geography}</p>
-            </div>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px;">MANAGEMENT</h4>
-                <p><strong>Tone:</strong> ${guidance.management.tone}</p>
-                <p><strong>Confidence:</strong> ${guidance.management.confidence}</p>
-                
-                <p style="margin-top: 10px;"><strong>Commitments:</strong></p>
-                <ul style="margin-left: 20px; color: var(--gr);">
-    `;
-    
-    guidance.management.commitments.forEach(commitment => {
-        html += `<li>${commitment}</li>`;
-    });
-    
-    html += `
-                </ul>
-                
-                <p style="margin-top: 10px;"><strong>Risks:</strong></p>
-                <ul style="margin-left: 20px; color: var(--rd);">
-    `;
-    
-    guidance.management.risks.forEach(risk => {
-        html += `<li>${risk}</li>`;
-    });
-    
-    html += `
-                </ul>
-            </div>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px;">RAW JSON DATA</h4>
-                <pre style="background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 9px;">${JSON.stringify(guidance, null, 2)}</pre>
-            </div>
-        </div>
-    `;
-    
-    document.getElementById('content').innerHTML = html;
-}
-
-function renderInsightsTab(ticker, insights) {
-    let html = `
-        <div style="font-family: monospace; padding: 20px; background: var(--bg); color: var(--tx1);">
-            <h3 style="color: var(--ac); margin-bottom: 20px; font-size: 16px;">💡 INSIGHTS - ${ticker}</h3>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px; font-size: 13px;">RECOMMENDATION</h4>
-                <p><strong style="font-size: 14px; color: var(--gr);">Action: ${insights.recommendation}</strong></p>
-                <p style="font-size: 12px;"><strong>Date:</strong> ${insights.date || 'N/A'}</p>
-                <p style="font-size: 12px;"><strong>Thesis:</strong> ${insights.thesis}</p>
-                <p style="font-size: 12px;"><strong>Trigger:</strong> ${insights.trigger}</p>
-            </div>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px; font-size: 13px;">ANALYSIS BREAKDOWN</h4>
-    `;
-    
-    const dimensions = ['valuation', 'growth', 'profitability', 'cash_strength', 'catalyst', 'moat', 'opportunity'];
-    
-    dimensions.forEach(dim => {
-        if (insights.analysis[dim]) {
-            const analysis = insights.analysis[dim];
-            const signalColor = analysis.signal === 'Positive' ? 'var(--gr)' : analysis.signal === 'Caution' ? 'var(--rd)' : 'var(--ac)';
-            
-            html += `
-                <div style="margin: 15px 0; padding: 10px; border-left: 3px solid var(--ac); background: rgba(0,242,255,.05);">
-                    <p style="font-size: 12px;"><strong style="text-transform: uppercase;">${dim.replace(/_/g, ' ')} [${analysis.signal}]</strong></p>
-                    <p style="font-size: 11px; color: var(--tx3);"><strong>Metric:</strong> ${analysis.metric}</p>
-                    <p style="font-size: 11px; color: var(--tx3);"><strong>Assessment:</strong> ${analysis.assessment}</p>
-                </div>
-            `;
-        }
-    });
-    
-    html += `
-            </div>
-            
-            <div style="background: var(--card); border: 1px solid var(--b1); border-radius: 6px; padding: 15px;">
-                <h4 style="color: var(--ac); margin-bottom: 10px; font-size: 13px;">RAW JSON DATA</h4>
-                <pre style="background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 10px;">${JSON.stringify(insights, null, 2)}</pre>
-            </div>
-        </div>
-    `;
-    
-    document.getElementById('content').innerHTML = html;
-}
-
-// TECHNICAL TAB - METRICS & RSI
-let metricsState = {};  // Track which metrics are selected
-let rsiState = {};  // Track which RSI periods are selected
-let priceChart = null;  // Price + RSI chart
-let metricsChart = null;  // Metrics + Volume chart
-let priceSeries = {};  // Price series (candlestick, RSI)
-let metricSeries = {};  // Metric lines
-
-function toggleMetric(metricKey) {
-    metricsState[metricKey] = !metricsState[metricKey];
-    const checkbox = document.getElementById(`metric_${metricKey}`);
-    if (checkbox) checkbox.checked = metricsState[metricKey];
-    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
-}
-
-function updateRSI() {
-    rsiState = {};
-    const rsiSelect = document.getElementById('rsiSelect');
-    if (rsiSelect) {
-        for (let option of rsiSelect.selectedOptions) {
-            rsiState[option.value] = true;
-        }
-    }
-    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
-}
-
-function updateMetrics() {
-    metricsState = {};
-    const metricsSelect = document.getElementById('metricsSelect');
-    if (metricsSelect) {
-        for (let option of metricsSelect.selectedOptions) {
-            metricsState[option.value] = true;
-        }
-    }
-    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
-}
-
-function filterBarsByDuration(bars, duration) {
-    if (!bars || bars.length === 0) return [];
-    
-    if (duration === 'daily') {
-        // Return all daily bars
-        return bars;
-    } else if (duration === 'weekly') {
-        // Keep only one bar per week (first bar of each week)
-        const filtered = [];
-        let lastWeekStart = null;
-        
-        bars.forEach(bar => {
-            const date = new Date(bar.d);
-            const dayOfWeek = date.getDay();
-            const weekStart = new Date(date);
-            weekStart.setDate(date.getDate() - dayOfWeek); // Sunday as week start
-            weekStart.setHours(0, 0, 0, 0);
-            const weekKey = weekStart.toISOString().split('T')[0];
-            
-            if (lastWeekStart !== weekKey) {
-                filtered.push(bar);
-                lastWeekStart = weekKey;
-            }
-        });
-        return filtered;
-    } else if (duration === 'monthly') {
-        // Keep only one bar per month (last bar of the month or month-end close)
-        const filtered = [];
-        let lastMonth = null;
-        let monthBuffer = null;
-        
-        bars.forEach(bar => {
-            const date = new Date(bar.d);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const monthKey = year + '-' + month;
-            
-            if (lastMonth !== monthKey) {
-                // New month found, push the previous month's bar (month-end close)
-                if (monthBuffer) {
-                    filtered.push(monthBuffer);
-                }
-                monthBuffer = bar;  // Buffer this bar as potential month-end
-                lastMonth = monthKey;
-            } else {
-                // Same month, update buffer to keep the latest bar (closest to month-end)
-                monthBuffer = bar;
-            }
-        });
-        
-        // Don't forget the last month's bar
-        if (monthBuffer) {
-            filtered.push(monthBuffer);
-        }
-        
-        return filtered;
-    }
-    
-    return bars;
-}
-
-function changeDuration(duration) {
-    // Store the selected duration
-    window.chartDuration = duration;
-    
-    
-    // If not monthly, disable and uncheck metric selections
-    if (duration !== 'monthly') {
-        // Disable all metric checkboxes for daily/weekly
-        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
-            cb.checked = false;
-            cb.disabled = true;
-            cb.parentElement.style.opacity = '0.5';
-            cb.parentElement.style.pointerEvents = 'none';
-            metricsState[cb.id.replace('metric_', '')] = false;
-        });
-    } else {
-        // Enable metrics for monthly view
-        document.querySelectorAll('[id^="metric_"]').forEach(cb => {
-            cb.disabled = false;
-            cb.parentElement.style.opacity = '1';
-            cb.parentElement.style.pointerEvents = 'auto';
-        });
-        
-    }
-    
-    // Refresh the chart with new duration
-    loadAndRenderTechnicalChart(currentStock.sym || currentStock.ticker);
-}
-
-async function loadAndRenderTechnicalChart(sym) {
-    const priceContainer = document.getElementById('priceChart');
-    const infoDiv = document.getElementById('metricInfo');
-    
-    if (!priceContainer || !currentStock) {
-        return;
-    }
-
-    try {
-        // Get price bars from ./charts/{SYM}.json
-        const url = `./charts/${sym}.json`;
-        const res = await fetch(url);
-        
-        if (!res.ok) {
-            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Failed to load chart (${res.status})</div>`;
-            return;
-        }
-        
-        const data = await res.json();
-        let bars = data.bars || [];
-        
-        if (bars.length === 0) {
-            priceContainer.innerHTML = '<div style="padding:20px;color:red;font-size:10px">No price data</div>';
-            return;
-        }
-
-        // Filter bars by duration
-        const duration = window.chartDuration || 'monthly';
-        bars = filterBarsByDuration(bars, duration);
-        
-        if (bars.length === 0) {
-            priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">No data available for ${duration} view</div>`;
-            return;
-        }
-
-        // FIX: Render unified chart with price + RSI + EMA + Metrics all in one
-        renderPriceChart(priceContainer, sym, bars);
-        
-        // Update info
-        const selected = Object.keys(metricsState).filter(k => metricsState[k]);
-        if (selected.length === 0) {
-            infoDiv.innerHTML = `<strong>📊 CHART:</strong> Candlesticks + RSI/EMA - Select metrics to display`;
-        } else {
-            const hasMetrics = Object.keys(metricsState).some(k => k.startsWith('metric_'));
-            infoDiv.innerHTML = `<strong>📈 Displaying:</strong> ${selected.join(', ').toUpperCase()}${hasMetrics ? ' (Normalized Q1=100)' : ''}`;
-        }
-        
-    } catch (e) {
-        priceContainer.innerHTML = `<div style="padding:20px;color:red;font-size:10px">${e.message}</div>`;
-    }
-}
-
-function calculateRSI(closes, period = 14) {
-    // Industry Standard: Wilder's RSI (TradingView compatible)
-    // Source: https://en.wikipedia.org/wiki/Relative_strength_index
-    
-    if (closes.length < period + 1) return [];
-    
-    // Step 1: Calculate price changes
-    const changes = [];
-    for (let i = 1; i < closes.length; i++) {
-        changes.push(closes[i] - closes[i - 1]);
-    }
-    
-    // Step 2: Separate gains and losses
-    const gains = changes.map(c => c > 0 ? c : 0);
-    const losses = changes.map(c => c < 0 ? -c : 0);
-    
-    // Step 3: Calculate first average (simple average of first 'period' values)
-    let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    
-    // Step 4: Calculate RSI values using Wilder's smoothing
-    const rsi = [];
-    
-    // First RSI at position 'period'
-    const rs1 = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    rsi.push(100 - (100 / (1 + rs1)));
-    
-    // Subsequent RSI values with exponential smoothing
-    for (let i = period; i < changes.length; i++) {
-        avgGain = (avgGain * (period - 1) + gains[i]) / period;
-        avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
-        
-        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-        rsi.push(100 - (100 / (1 + rs)));
-    }
-    
-    return rsi;
-}
-
-function calculateEMA(closes, period) {
-    // Exponential Moving Average
-    if (closes.length < period) return [];
-    
-    const multiplier = 2 / (period + 1);
-    const ema = [];
-    
-    // First EMA is simple average
-    let sum = 0;
-    for (let i = 0; i < period; i++) {
-        sum += closes[i];
-    }
-    ema.push(sum / period);
-    
-    // Subsequent EMAs use exponential smoothing
-    for (let i = period; i < closes.length; i++) {
-        const prevEMA = ema[ema.length - 1];
-        const newEMA = closes[i] * multiplier + prevEMA * (1 - multiplier);
-        ema.push(newEMA);
-    }
-    
-    // Shift array back to align with original closes
-    // EMA[0] is at closes[period-1], so prepend nulls
-    const aligned = Array(period - 1).fill(null).concat(ema);
-    return aligned;
-}
-
-function renderPriceChart(container, sym, bars) {
-    if (!container.clientWidth || container.clientWidth < 100) {
-        setTimeout(() => renderPriceChart(container, sym, bars), 300);
-        return;
-    }
-
-    try {
-        // Dispose old chart if exists
-        if (priceChart) {
-            priceChart.dispose();
-        }
-
-        // Initialize ECharts
-        priceChart = echarts.init(container, 'dark');
-        priceSeries = {};
-
-        // Prepare candlestick data: [open, close, low, high] - REALISTIC PRICES
-        const ohlcData = bars.map(b => [
-            parseFloat(b.o),
-            parseFloat(b.c),
-            parseFloat(b.l),
-            parseFloat(b.h)
-        ]);
-
-        const dates = bars.map(b => b.d);
-        const closes = bars.map(b => parseFloat(b.c));
-        
-        // FIX: Keep prices realistic (NOT normalized)
-        // Only normalize for indicators (metrics & RSI calculations)
-
-        // Calculate RSI and EMA for selected indicators
-        const indicatorDataSets = {};
-        const rsiColors = { rsi_7: '#ff6b9d', rsi_14: '#00d4ff', rsi_21: '#ffa500' };
-        const emaColors = { ema_20: '#00ff00', ema_50: '#ffff00', ema_200: '#ff00ff' };
-        const metricColors = { eps: '#f59e0b', net: '#26de81', rev: '#00d2d3', ebitda: '#9f7aea', opm: '#3b82f6', debt: '#ff6b6b' };
-        
-        // FIX: Combine RSI and metrics states for iteration
-        const allStates = { ...rsiState, ...metricsState };
-        
-        Object.keys(allStates).forEach(key => {
-            // Handle RSI
-            if (key.startsWith('rsi_')) {
-                const period = parseInt(key.replace('rsi_', ''));
-                const rsiArray = calculateRSI(closes, period);  // FIX: Use original closes
-                
-                if (rsiArray.length > 0) {
-                    const rsiDates = dates.slice(period);
-                    const rsiData = rsiDates.map((date, idx) => [date, rsiArray[idx]]);
-                    
-                    indicatorDataSets[key] = {
-                        name: `RSI(${period})`,
-                        type: 'line',
-                        xAxisIndex: 0,
-                        yAxisIndex: 1,  // FIX: Right axis for normalized indicators
-                        data: rsiData,
-                        lineStyle: { color: rsiColors[key] || '#00f2ff', width: 2 },
-                        smooth: true,
-                        symbol: 'none'
-                    };
-                }
-            }
-            
-            // Handle EMA
-            if (key.startsWith('ema_')) {
-                const period = parseInt(key.replace('ema_', ''));
-                const emaArray = calculateEMA(closes, period);  // FIX: Use original closes
-                
-                if (emaArray.length > 0) {
-                    const emaData = dates.map((date, idx) => 
-                        emaArray[idx] !== null ? [date, emaArray[idx]] : null
-                    ).filter(d => d !== null);
-                    
-                    indicatorDataSets[key] = {
-                        name: `EMA(${period})`,
-                        type: 'line',
-                        xAxisIndex: 0,
-                        yAxisIndex: 0,  // FIX: Left axis - with price (realistic)
-                        data: emaData,
-                        lineStyle: { color: emaColors[key] || '#ffffff', width: 1.5, type: 'dashed' },
-                        smooth: true,
-                        symbol: 'none'
-                    };
-                }
-            }
-            
-            // FIX: Handle Metrics (NEW) - All on same chart
-            if (key.startsWith('metric_')) {
-                try {
-                    const metricKey = key.replace('metric_', '');
-                    const s = currentStock;
-                    
-                    // Debug: Check if quarterly data exists
-                    if (!s) {
-                        
-                        return;
-                    }
-                    if (!s.quarterly) {
-                        
-                        return;
-                    }
-                    if (!Array.isArray(s.quarterly) || s.quarterly.length === 0) {
-                        
-                        return;
-                    }
-                    
-                    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
-                    
-                    
-                    // Map metric keys to data keys
-                    const keyMap = {
-                        'eps': 'e',
-                        'net': 'n',
-                        'rev': 'r',
-                        'ebitda': 'eb',
-                        'opm': 'op',
-                        'debt': 'd'
-                    };
-                    
-                    const dataKey = keyMap[metricKey] || metricKey;
-                    
-                    // Get metric values
-                    const metricData = sorted.map(q => {
-                        const val = q[dataKey];
-                        return val !== undefined && val !== null ? [q.d, parseFloat(val)] : null;
-                    }).filter(d => d !== null);
-                    
-                    
-                    
-                    if (metricData.length > 0) {
-                        // Normalize to first value = 100
-                        const firstVal = metricData[0][1];
-                        if (firstVal !== 0) {
-                            const normalized = metricData.map(d => [d[0], (d[1] / firstVal) * 100]);
-                            
-                            // Color with correct metric key (without 'metric_' prefix)
-                            const metricColor = {
-                                'eps': '#f59e0b',
-                                'net': '#26de81', 
-                                'rev': '#00d2d3',
-                                'ebitda': '#9f7aea',
-                                'opm': '#3b82f6',
-                                'debt': '#ff6b6b'
-                            }[metricKey] || '#ffffff';
-                            
-                            indicatorDataSets[key] = {
-                                name: metricKey.toUpperCase(),
-                                type: 'line',
-                                xAxisIndex: 0,
-                                yAxisIndex: 1,  // Right axis (normalized scale)
-                                data: normalized,
-                                lineStyle: { color: metricColor, width: 2 },
-                                smooth: true,
-                                symbol: 'none'
-                            };
-                            
-                        } else {
-                            
-                        }
-                    } else {
-                        
-                    }
-                } catch (e) {
-                }
-            }
-        });
-
-        // Build series
-        const series = [
-            {
-                name: 'Price',
-                type: 'candlestick',
-                xAxisIndex: 0,
-                yAxisIndex: 0,  // Left axis - realistic prices
-                data: ohlcData,  // FIX: Real prices, NOT normalized
-                itemStyle: {
-                    color: '#00d084',
-                    color0: '#ff3b5c',
-                    borderColor: '#00e896',
-                    borderColor0: '#ff6b85',
-                    borderWidth: 1
-                }
-            }
-        ];
-
-        // Add all indicators (RSI & EMA)
-        Object.values(indicatorDataSets).forEach(series_item => {
-            series.push(series_item);
-        });
-
-        // ECharts option - SINGLE CHART with all overlays
-        const option = {
-            tooltip: { 
-                trigger: 'axis',
-                axisPointer: { type: 'cross' }
-            },
-            dataZoom: [
-                {
-                    // Slider at bottom for X-axis zoom
-                    type: 'slider',
-                    xAxisIndex: [0],
-                    start: 0,
-                    end: 100,
-                    height: 20,
-                    bottom: 0,
-                    backgroundColor: 'rgba(0,242,255,.05)',
-                    fillerColor: 'rgba(0,242,255,.15)',
-                    borderColor: 'rgba(0,242,255,.2)',
-                    textStyle: { color: '#7a8fa0' }
-                },
-                {
-                    // Inside zoom (drag to zoom)
-                    type: 'inside',
-                    xAxisIndex: [0],
-                    start: 0,
-                    end: 100,
-                    zoomOnMouseWheel: true,
-                    moveOnMouseMove: true
-                }
-            ],
-            grid: [
-                { left: '8%', right: '8%', top: '5%', bottom: '8%' }
-            ],
-            xAxis: [
-                { gridIndex: 0, type: 'category', data: dates, boundaryGap: true }
-            ],
-            yAxis: [
-                { 
-                    gridIndex: 0, 
-                    type: 'value', 
-                    position: 'left',
-                    scale: true,
-                    name: 'Price (Realistic)',
-                    nameTextStyle: { color: '#00d084', fontSize: 10 },
-                    axisLabel: {
-                        formatter: (p) => p.toFixed(0),
-                        color: '#7a8fa0'
-                    }
-                },
-                { 
-                    gridIndex: 0, 
-                    type: 'value',
-                    position: 'right',
-                    scale: false,
-                    min: 0,
-                    max: 200,
-                    splitNumber: 5,
-                    name: 'Metrics & RSI (Indexed)',
-                    nameTextStyle: { color: '#ffff00', fontSize: 10 },
-                    axisLabel: {
-                        formatter: (p) => p.toFixed(0),
-                        color: '#7a8fa0'
-                    }
-                }
-            ],
-            series: series
-        };
-
-        priceChart.setOption(option);
-        
-    } catch (e) {
-        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
-    }
-}
-
-function renderMetricsChart(container, sym, bars) {
-    if (metricsChart) metricsChart.remove();
-    if (!container.clientWidth || container.clientWidth < 100) {
-        setTimeout(() => renderMetricsChart(container, sym, bars), 300);
-        return;
-    }
-
-    const opts = {
-        layout: {textColor: '#7a8fa0', background: {color: '#0a0e1a'}},
-        timeScale: {timeVisible: false, secondsVisible: false, fixLeftEdge: true},
-        leftPriceScale: {
-            visible: false  // Hide metrics scale
-        },
-        rightPriceScale: {
-            visible: true,  // Show volume scale
-            textColor: '#7a8fa0',
-            borderColor: '#1a2332',
-            autoScale: true,
-            formatPrice: (p) => {
-                if (typeof p === 'number') {
-                    if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
-                    if (p >= 100000) return Math.round(p / 100000) + 'L';
-                    if (p >= 1000) return Math.round(p / 1000) + 'K';
-                    return Math.round(p).toString();
-                }
-                return p;
-            }
-        },
-        grid: {horzLines: {color: 'rgba(255,255,255,.05)'}, vertLines: {color: 'rgba(255,255,255,.05)'}}
-    };
-
-    try {
-        metricsChart = LightweightCharts.createChart(container, opts);
-        metricSeries = {};
-
-        // Add selected metrics as lines
-        const cd = bars.map(b => ({
-            time: Math.floor(new Date(b.d).getTime() / 1000),
-            open: parseFloat(b.o),
-            high: parseFloat(b.h),
-            low: parseFloat(b.l),
-            close: parseFloat(b.c)
-        }));
-
-        // Add volume bars on RIGHT scale
-        if (bars.some(b => b.v && parseFloat(b.v) > 0)) {
-            const volumeSeries = metricsChart.addHistogramSeries({
-                color: 'rgba(0, 242, 255, 0.3)',
-                priceScaleId: 'right',
-                title: 'Volume'
-            });
-            const volumeData = cd.map((c, idx) => ({
-                time: c.time,
-                value: parseFloat(bars[idx].v) || 0
-            }));
-            volumeSeries.setData(volumeData);
-            metricSeries['Volume'] = volumeSeries;
-            
-            // Explicitly apply right scale formatting for volume
-            metricsChart.priceScale('right').applyOptions({
-                autoScale: true,
-                formatPrice: (p) => {
-                    if (typeof p === 'number') {
-                        if (p >= 10000000) return Math.round(p / 10000000) + 'Cr';
-                        if (p >= 100000) return Math.round(p / 100000) + 'L';
-                        if (p >= 1000) return Math.round(p / 1000) + 'K';
-                        return Math.round(p).toString();
-                    }
-                    return p;
-                }
-            });
-        }
-
-        const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
-        
-        selectedMetrics.forEach(metricKey => {
-            addMetricSeries(metricKey, cd, metricsChart);
-        });
-
-        // Set up crosshair to show real metric values on hover
-        metricsChart.subscribeCrosshairMove((param) => {
-            const infoDiv = document.getElementById('metricInfo');
-            if (!infoDiv) return;
-            
-            if (param.time) {
-                let valueText = `📍 `;
-                const selectedMetrics = Object.keys(metricsState).filter(k => metricsState[k]);
-                let foundValues = false;
-                
-                selectedMetrics.forEach(metricKey => {
-                    const config = {
-                        eps: {label: 'EPS'},
-                        net: {label: 'Net Inc'},
-                        rev: {label: 'Revenue'},
-                        ebitda: {label: 'EBITDA'},
-                        opm: {label: 'OPM%'},
-                        debt: {label: 'Debt'}
-                    };
-                    const cfg = config[metricKey] || {label: metricKey};
-                    const seriesName = cfg.label;
-                    
-                    if (metricSeries[seriesName]) {
-                        const data = metricSeries[seriesName].data();
-                        const point = data.find(d => d.time === param.time);
-                        if (point && point.actualValue !== undefined) {
-                            const formatted = typeof point.actualValue === 'number' 
-                                ? point.actualValue.toLocaleString('en-IN', {maximumFractionDigits: 2})
-                                : point.actualValue;
-                            valueText += `${seriesName}: ${formatted} | `;
-                            foundValues = true;
-                        }
-                    }
-                });
-                
-                if (foundValues) {
-                    infoDiv.textContent = valueText.slice(0, -3);  // Remove last " | "
-                } else {
-                    infoDiv.textContent = '📊 Hover over metrics to see real values';
-                }
-            } else {
-                document.getElementById('metricInfo').textContent = '📊 Hover over metrics to see real values';
-            }
-        });
-
-        // NOW sync the timeScales AFTER both charts are created
-        syncTimeScales();
-
-        
-        
-    } catch (e) {
-        container.innerHTML = `<div style="padding:20px;color:red;font-size:10px">Error: ${e.message}</div>`;
-    }
-}
-
-function syncTimeScales() {
-    // Note: Top chart is ECharts, bottom is LightweightCharts
-    // Full sync between different libraries is complex
-    // For now, each chart manages its own zoom/pan independently
-}
-
-function addMetricSeries(metricKey, cd, chart) {
-    const s = currentStock;
-    if (!s || !s.quarterly || s.quarterly.length === 0) return;
-
-    // Get all quarterly data points
-    const sorted = [...s.quarterly].sort((a, b) => new Date(a.d) - new Date(b.d));
-    
-    // Get all price bar timestamps for snapping
-    const priceTimestamps = cd.map(c => c.time);
-    
-    // Filter metric data that exists
-    const metricData = sorted
-        .filter(q => q[metricKey] !== undefined && q[metricKey] !== null)
-        .map(q => {
-            const metricTime = Math.floor(new Date(q.d).getTime() / 1000);
-            // Snap to nearest price bar timestamp for X-axis alignment
-            const snappedTime = priceTimestamps.reduce((prev, curr) => 
-                Math.abs(curr - metricTime) < Math.abs(prev - metricTime) ? curr : prev
-            );
-            return {
-                date: q.d,
-                value: parseFloat(q[metricKey]),
-                time: snappedTime  // Use snapped timestamp
-            };
-        });
-
-    if (metricData.length === 0) {
-        
-        return;
-    }
-
-    // Color mapping
-    const config = {
-        eps: {color: '#f59e0b', label: 'EPS'},
-        net: {color: '#26de81', label: 'Net Inc'},
-        rev: {color: '#00d2d3', label: 'Revenue'},
-        ebitda: {color: '#9f7aea', label: 'EBITDA'},
-        opm: {color: '#3b82f6', label: 'OPM%'},
-        debt: {color: '#ff6b6b', label: 'Debt'}
-    };
-
-    const cfg = config[metricKey] || {color: '#00f2ff', label: metricKey};
-
-    // NORMALIZE: Convert to index (first value = 100)
-    const baseValue = metricData[0].value;
-    const normalizedData = metricData.map(m => ({
-        time: m.time,  // Use snapped timestamp
-        value: baseValue !== 0 ? (m.value / baseValue) * 100 : 100,
-        actualValue: m.value  // Store original for tooltip
-    }));
-
-    const minValue = Math.min(...normalizedData.map(d => d.value));
-    const maxValue = Math.max(...normalizedData.map(d => d.value));
-
-    // Add as line series on LEFT price scale (labels hidden)
-    // Use marker to show data points clearly
-    const ls = chart.addLineSeries({
-        color: cfg.color,
-        lineWidth: 2,
-        lineStyle: 0,  // Solid
-        pointMarkersVisible: true,  // Show points at data locations
-        pointMarkersRadius: 3,
-        title: cfg.label,  // REMOVE "(Q1=100)" - just show metric name
-        priceScaleId: 'left'  // Use LEFT scale for metrics (hidden)
-    });
-    
-    // Store ACTUAL VALUES in data for tooltip display
-    ls.setData(normalizedData.map(d => ({
-        time: d.time, 
-        value: d.value,
-        actualValue: d.actualValue  // Real value for tooltip
-    })));
-    
-    metricSeries[cfg.label] = ls;
-
-    
-}
-
-// ==================== TECHNICAL PRO CHARTS ====================
-
-let proCharts = {
-    chart1: null,
-    chart2: null,
-    currentTimeframe: 'daily',
-    data: {
-        daily: null,
-        weekly: null,
-        monthly: null
-    }
-};
-
-function switchTimeframe(tf) {
-    proCharts.currentTimeframe = tf;
-    renderTechnicalPro(currentStock);
-}
-
-function toggleDropdown(id) {
-    const dropdown = document.getElementById(id);
-    if (!dropdown) return;
-    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-}
-
-function toggleIndicator(indicator) {
-    if (!proCharts.chart1 || !proCharts.chart2) return;
-    
-    const seriesMap = {
-        'rsi7': 'RSI(7)',
-        'rsi14': 'RSI(14)',
-        'rsi21': 'RSI(21)',
-        'ema20': 'EMA(20)',
-        'ema50': 'EMA(50)',
-        'ema200': 'EMA(200)'
-    };
-    
-    const seriesName = seriesMap[indicator];
-    const chart = indicator.startsWith('rsi') ? proCharts.chart2 : proCharts.chart1;
-    
-    try {
-        chart.toggleSeries(seriesName);
-    } catch (e) {
-        
-    }
-}
-
-function toggleEMA(emaType) {
-    if (!proCharts.lineSeries || !proCharts.chart1) return;
-    
-    const series = proCharts.lineSeries[emaType];
-    if (!series) return;
-    
-    try {
-        // Get checkbox state
-        const checkbox = document.getElementById(`${emaType}-chk`);
-        if (!checkbox) return;
-        
-        const isChecked = checkbox.checked;
-        
-        // Toggle by removing and re-adding with data or empty data
-        if (isChecked) {
-            // Show - restore data
-            const dataMap = {
-                'ema20': proCharts.ema20Data || [],
-                'ema50': proCharts.ema50Data || [],
-                'ema200': proCharts.ema200Data || []
-            };
-            series.setData(dataMap[emaType]);
-        } else {
-            // Hide - clear data
-            series.setData([]);
-        }
-    } catch (e) {
-    }
-}
-
-function toggleMetric(metric) {
-    if (!proCharts.chart2) {
-        
-        return;
-    }
-    
-    const metricMap = {
-        'eps': 'EPS',
-        'net': 'Net Inc',
-        'rev': 'Revenue',
-        'opm': 'OPM%',
-        'debt': 'Debt'
-    };
-    
-    const seriesName = metricMap[metric];
-    
-    // Check if series exists before toggling
-    try {
-        const allSeries = proCharts.chart2.getSeries ? proCharts.chart2.getSeries() : [];
-        const seriesExists = allSeries && allSeries.some(s => s.name === seriesName);
-        
-        if (seriesExists) {
-            proCharts.chart2.toggleSeries(seriesName);
-            
-        } else {
-            
-        }
-    } catch (e) {
-    }
-}
-
-function aggregateToWeekly(dailyBars) {
-    if (!dailyBars || dailyBars.length === 0) return [];
-    
-    const weekly = [];
-    let week = [];
-    let currentWeekStart = null;
-    
-    for (let i = 0; i < dailyBars.length; i++) {
-        const bar = dailyBars[i];
-        const date = new Date(bar.d);
-        const dayOfWeek = date.getDay(); // 0=Sun, 5=Fri, 6=Sat
-        
-        if (week.length === 0) {
-            currentWeekStart = new Date(date);
-        }
-        
-        week.push(bar);
-        
-        // Friday close or last bar
-        const isLastBar = (i === dailyBars.length - 1);
-        const isFriday = (dayOfWeek === 5);
-        
-        if (isFriday || isLastBar) {
-            if (week.length > 0) {
-                const o = week[0].o;
-                const h = Math.max(...week.map(b => b.h));
-                const l = Math.min(...week.map(b => b.l));
-                const c = week[week.length - 1].c;
-                const v = week.reduce((sum, b) => sum + b.v, 0);
-                const d_str = week[week.length - 1].d;
-                weekly.push({ d: d_str, o, h, l, c, v });
-                week = [];
-            }
-        }
-    }
-    
-    return weekly;
-}
-
-function aggregateToMonthly(dailyBars) {
-    if (!dailyBars || dailyBars.length === 0) return [];
-    
-    const monthly = [];
-    let month = [];
-    let currentMonth = null;
-    
-    for (let i = 0; i < dailyBars.length; i++) {
-        const bar = dailyBars[i];
-        const date = new Date(bar.d);
-        const monthKey = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
-        
-        if (currentMonth === null) {
-            currentMonth = monthKey;
-        }
-        
-        if (monthKey !== currentMonth) {
-            // Month changed - finalize previous month
-            if (month.length > 0) {
-                const o = month[0].o;
-                const h = Math.max(...month.map(b => b.h));
-                const l = Math.min(...month.map(b => b.l));
-                const c = month[month.length - 1].c;
-                const v = month.reduce((sum, b) => sum + b.v, 0);
-                const d_str = month[month.length - 1].d;
-                monthly.push({ d: d_str, o, h, l, c, v });
-                month = [];
-            }
-            currentMonth = monthKey;
-        }
-        
-        month.push(bar);
-    }
-    
-    // Add last month
-    if (month.length > 0) {
-        const o = month[0].o;
-        const h = Math.max(...month.map(b => b.h));
-        const l = Math.min(...month.map(b => b.l));
-        const c = month[month.length - 1].c;
-        const v = month.reduce((sum, b) => sum + b.v, 0);
-        const d_str = month[month.length - 1].d;
-        monthly.push({ d: d_str, o, h, l, c, v });
-    }
-    
-    return monthly;
-}
-
-function downsampleRSI(dailyRSI, dailyBars, aggregatedBars) {
-    // Map daily RSI values to aggregated bars by matching end date
-    const downsampled = [];
-    
-    aggregatedBars.forEach(aggBar => {
-        const aggDate = new Date(aggBar.d);
-        let closestRSI = null;
-        let minDiff = Infinity;
-        
-        for (let i = 0; i < dailyBars.length; i++) {
-            if (dailyRSI[i] === null) continue;
-            
-            const dailyDate = new Date(dailyBars[i].d);
-            const diff = Math.abs(aggDate - dailyDate);
-            
-            if (diff < minDiff) {
-                minDiff = diff;
-                closestRSI = dailyRSI[i];
-            }
-        }
-        
-        downsampled.push(closestRSI);
-    });
-    
-    return downsampled;
-}
-
-function calculateEMA(bars, period = 20) {
-    const ema = [];
-    let sum = 0;
-    const multiplier = 2 / (period + 1);
-    
-    bars.forEach((bar, i) => {
-        if (i < period - 1) {
-            sum += bar.c;
-            ema.push(null);
-        } else if (i === period - 1) {
-            sum += bar.c;
-            const sma = sum / period;
-            ema.push(sma);
-        } else {
-            const prevEMA = ema[i - 1];
-            const newEMA = bar.c * multiplier + prevEMA * (1 - multiplier);
-            ema.push(newEMA);
-        }
-    });
-    
-    // Debug logging
-    const validEMAs = ema.filter(e => e !== null);
-    if (validEMAs.length > 0) {
-        
-    }
-    
-    return ema;
-}
-
-function calculateRSI(bars, period = 14) {
-    if (!bars || bars.length <= period) return bars.map(() => null);
-    
-    const rsi = [];
-    const changes = [];
-    
-    // Calculate all price changes
-    for (let i = 1; i < bars.length; i++) {
-        changes.push(bars[i].c - bars[i - 1].c);
-    }
-    
-    // Calculate initial average gain and loss
-    let sumGains = 0, sumLosses = 0;
-    for (let i = 0; i < period; i++) {
-        if (changes[i] > 0) {
-            sumGains += changes[i];
-        } else {
-            sumLosses += Math.abs(changes[i]);
-        }
-    }
-    
-    let avgGain = sumGains / period;
-    let avgLoss = sumLosses / period;
-    
-    // Fill nulls before period
-    for (let i = 0; i < period; i++) {
-        rsi.push(null);
-    }
-    
-    // Calculate RSI from period onwards
-    for (let i = period; i < changes.length; i++) {
-        const change = changes[i];
-        const currentGain = change > 0 ? change : 0;
-        const currentLoss = change > 0 ? 0 : Math.abs(change);
-        
-        // Smooth average (Wilder's method)
-        avgGain = (avgGain * (period - 1) + currentGain) / period;
-        avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
-        
-        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-        const rsiValue = 100 - (100 / (1 + rs));
-        rsi.push(rsiValue);
-    }
-    
-    return rsi;
-}
-
-function formatVolume(v) {
-    if (v >= 10000000) return (v / 10000000).toFixed(1) + 'Cr';
-    if (v >= 100000) return (v / 100000).toFixed(1) + 'L';
-    return (v / 1000).toFixed(0) + 'K';
-}
-
-async function renderTechnicalPro(stock) {
-    
-    
-    if (!stock || !stock.ticker) {
-        document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Stock object not available</div>';
-        return;
-    }
-    
-    const sym = stock.ticker;
-    
-    
-    try {
-        // Load OHLCV bars from ./charts/SYMBOL.json (NOT in IndexedDB)
-        const barsUrl = `./charts/${sym}.json`;
-        
-        
-        const res = await fetch(barsUrl);
-        if (!res.ok) {
-            document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Cannot load bars<br/><small style="font-size:9px;color:#ff6b85">Check: ./charts/${sym}.json exists</small></div>`;
-            return;
-        }
-        
-        const barsData = await res.json();
-        const bars = barsData.bars || [];
-        
-        if (!bars || bars.length === 0) {
-            document.getElementById('chartPro1').innerHTML = '<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ No OHLCV data in file</div>';
-            return;
-        }
-        
-        
-        
-        // Quarterly data comes from IndexedDB (already in currentStock)
-        const quarterly = stock.quarterly || [];
-        
-        
-        const tf = proCharts.currentTimeframe;
-        const recentBars = bars.slice(-252); // Last ~1 year
-        
-        // Calculate ALL indicators from DAILY bars (never aggregated)
-        const rsi7 = calculateRSI(recentBars, 7);
-        const rsi14 = calculateRSI(recentBars, 14);
-        const rsi21 = calculateRSI(recentBars, 21);
-        const ema20 = calculateEMA(recentBars, 20);
-        const ema50 = calculateEMA(recentBars, 50);
-        const ema200 = calculateEMA(recentBars, 200);
-        
-        
-        
-        // Aggregate price bars by timeframe
-        let chartBars, displayRSI7, displayRSI14, displayRSI21, displayEMA20, displayEMA50, displayEMA200;
-        
-        if (tf === 'daily') {
-            chartBars = recentBars;
-            displayRSI7 = rsi7;
-            displayRSI14 = rsi14;
-            displayRSI21 = rsi21;
-            displayEMA20 = ema20;
-            displayEMA50 = ema50;
-            displayEMA200 = ema200;
-            
-        } else if (tf === 'weekly') {
-            chartBars = aggregateToWeekly(recentBars);
-            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
-            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
-            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
-            // Recalculate EMAs on aggregated bars
-            displayEMA20 = calculateEMA(chartBars, 20);
-            displayEMA50 = calculateEMA(chartBars, 50);
-            displayEMA200 = calculateEMA(chartBars, 200);
-        } else {
-            chartBars = aggregateToMonthly(recentBars);
-            displayRSI7 = downsampleRSI(rsi7, recentBars, chartBars);
-            displayRSI14 = downsampleRSI(rsi14, recentBars, chartBars);
-            displayRSI21 = downsampleRSI(rsi21, recentBars, chartBars);
-            // Recalculate EMAs on aggregated bars
-            displayEMA20 = calculateEMA(chartBars, 20);
-            displayEMA50 = calculateEMA(chartBars, 50);
-            displayEMA200 = calculateEMA(chartBars, 200);
-        }
-    
-        // Update bar count display
-        const barCountDisplay = document.getElementById('barCountDisplay');
-        if (barCountDisplay) {
-            barCountDisplay.textContent = `Bars: ${chartBars.length}`;
-        }
-        
-        const chart2Data = [{
-            name: 'RSI(7)',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: displayRSI7[i]
-            }))
-        }, {
-            name: 'RSI(14)',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: displayRSI14[i]
-            }))
-        }, {
-            name: 'RSI(21)',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: displayRSI21[i]
-            }))
-        }];
-        
-        // Get quarterly metrics from IndexedDB (already in currentStock)
-        if (tf === 'monthly' && quarterly && quarterly.length > 0) {
-            const metricNames = ['eps', 'net', 'rev', 'opm', 'debt'];
-            const metricLabels = {
-                eps: 'EPS',
-                net: 'Net Inc',
-                rev: 'Revenue',
-                opm: 'OPM%',
-                debt: 'Debt'
-            };
-            const metricColors = {
-                eps: '#f59e0b',
-                net: '#26de81',
-                rev: '#00d2d3',
-                opm: '#3b82f6',
-                debt: '#ff6b6b'
-            };
-            
-            metricNames.forEach(metric => {
-                const metricData = quarterly
-                    .filter(q => q[metric] !== undefined && q[metric] !== null)
-                    .map(q => ({
-                        x: new Date(q.d),
-                        y: num(q[metric])
-                    }));
-                
-                if (metricData.length > 0) {
-                    chart2Data.push({
-                        name: metricLabels[metric],
-                        data: metricData,
-                        color: metricColors[metric]
-                    });
-                }
-            });
-        }
-    
-    // Destroy old charts
-    // Clear old chart
-    if (proCharts.chart1) {
-        try {
-            if (proCharts.chart1.remove) proCharts.chart1.remove();
-        } catch (e) {
-            
-        }
-    }
-    document.getElementById('chartPro1').innerHTML = '';
-    if (proCharts.chart2) proCharts.chart2.destroy();
-    
-    // Chart 1: Price + EMA + Volume (using line instead of candlestick for mixed charts)
-    const options1 = {
-        chart: {
-            type: 'candlestick',
-            background: 'transparent',
-            foreColor: '#7a8fa0',
-            toolbar: { 
-                show: true,
-                autoSelected: 'pan',
-                tools: {
-                    download: false,
-                    selection: false,
-                    zoom: true,
-                    zoomin: true,
-                    zoomout: true,
-                    pan: true,
-                    reset: true
-                }
-            },
-            zoom: {
-                enabled: true,
-                type: 'xy',
-                autoScaleYaxis: true,
-                zoomedArea: {
-                    fill: { color: '#90CAF9', opacity: 0.4 },
-                    border: { color: '#0D47A1', opacity: 0.4 }
-                }
-            },
-            selection: {
-                enabled: true,
-                xaxis: { min: undefined, max: undefined },
-                yaxis: { min: undefined, max: undefined }
-            },
-            animations: { enabled: false },
-            sparkline: { enabled: false }
-        },
-        plotOptions: {
-            candlestick: {
-                colors: { upward: '#26de81', downward: '#ff6b85' },
-                wick: { useFillColor: true }
-            }
-        },
-        series: [{
-            name: 'Price',
-            type: 'candlestick',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: [parseFloat(bar.o), parseFloat(bar.h), parseFloat(bar.l), parseFloat(bar.c)]
-            }))
-        }, {
-            name: 'EMA(20)',
-            type: 'line',
-            color: '#26de81',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: displayEMA20[i]
-            })).filter(p => p.y !== null && p.y !== undefined)
-        }, {
-            name: 'EMA(50)',
-            type: 'line',
-            color: '#f59e0b',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: displayEMA50[i]
-            })).filter(p => p.y !== null && p.y !== undefined)
-        }, {
-            name: 'EMA(200)',
-            type: 'line',
-            color: '#ff6b85',
-            data: chartBars.map((bar, i) => ({
-                x: new Date(bar.d),
-                y: displayEMA200[i]
-            })).filter(p => p.y !== null && p.y !== undefined)
-        }],
-        xaxis: {
-            type: 'datetime',
-            axisBorder: { show: true, color: '#1a2332' },
-            axisTicks: { show: true },
-            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
-        },
-        yaxis: [{
-            title: { text: 'Price (₹)', style: { color: '#00f2ff', fontSize: '11px', fontWeight: 700 } },
-            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => typeof v === 'number' ? v.toFixed(0) : '' },
-            opposite: true
-        }],
-        tooltip: {
-            theme: 'dark',
-            style: { fontSize: '10px' },
-            x: { formatter: (v) => new Date(v).toLocaleDateString() },
-            y: { 
-                formatter: (v) => {
-                    if (typeof v === 'number') {
-                        return v.toFixed(2);
-                    }
-                    return '';
-                }
-            }
-        },
-        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
-        stroke: { width: 2, curve: 'smooth' },
-        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
-    };
-    
-    // Debug: Check data before rendering
-    
-    
-    
-    
-    // Validate series data
-    const priceData = options1.series[0].data;
-    const validPrices = priceData.filter(p => p && p.y !== null && p.y !== undefined);
-    
-    
-    if (validPrices.length === 0) {
-    }
-    
-    // VALIDATE EMA SERIES
-    
-    options1.series.forEach((series, idx) => {
-        if (idx === 0) return; // Skip price
-        const seriesName = series.name;
-        const seriesType = series.type;
-        const seriesData = series.data;
-        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
-        
-        if (!validPoints || validPoints.length === 0) {
-        } else {
-            
-        }
-    });
-    
-    
-    
-    
-    try {
-        
-        
-        const container = document.getElementById('chartPro1');
-        const chart = LightweightCharts.createChart(container, {
-            width: container.offsetWidth,
-            height: 400,
-            layout: {
-                background: { color: 'rgba(6, 12, 24, 0.9)' },
-                textColor: '#7a8fa0',
-            },
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-            },
-            rightPriceScale: {
-                textColor: '#7a8fa0',
-                autoScale: true,
-                mode: LightweightCharts.PriceScaleMode.Normal,
-                borderColor: 'rgba(122, 143, 160, 0.5)',
-                scaleMargins: {
-                    top: 0.1,
-                    bottom: 0.3
-                }
-            },
-            grid: {
-                horzLines: { visible: false },
-                vertLines: { visible: false }
-            },
-            crosshair: {
-                mode: LightweightCharts.CrosshairMode.Normal,
-            }
-        });
-        
-        // Candlestick series - use RIGHT price scale for prices
-        const candlestickSeries = chart.addCandlestickSeries({
-            upColor: '#26de81',
-            downColor: '#ff6b85',
-            borderUpColor: '#26de81',
-            borderDownColor: '#ff6b85',
-            wickUpColor: '#26de81',
-            wickDownColor: '#ff6b85',
-            priceScaleId: 'right'  // EXPLICITLY use right scale
-        });
-        
-        candlestickSeries.setData(chartBars.map(bar => ({
-            time: Math.floor(new Date(bar.d).getTime() / 1000),
-            open: parseFloat(bar.o),
-            high: parseFloat(bar.h),
-            low: parseFloat(bar.l),
-            close: parseFloat(bar.c)
-        })));
-        
-        // EMA(20) line - use right price scale
-        const ema20Series = chart.addLineSeries({
-            color: '#26de81',
-            lineWidth: 2,
-            priceScaleId: 'right'
-        });
-        ema20Series.setData(
-            chartBars
-                .map((bar, i) => ({
-                    time: Math.floor(new Date(bar.d).getTime() / 1000),
-                    value: displayEMA20[i]
-                }))
-                .filter(p => p.value !== null && p.value !== undefined)
-        );
-        // Store data for toggling
-        proCharts.ema20Data = ema20Series.data();
-        
-        // EMA(50) line - use right price scale
-        const ema50Series = chart.addLineSeries({
-            color: '#f59e0b',
-            lineWidth: 2,
-            priceScaleId: 'right'
-        });
-        ema50Series.setData(
-            chartBars
-                .map((bar, i) => ({
-                    time: Math.floor(new Date(bar.d).getTime() / 1000),
-                    value: displayEMA50[i]
-                }))
-                .filter(p => p.value !== null && p.value !== undefined)
-        );
-        // Store data for toggling
-        proCharts.ema50Data = ema50Series.data();
-        
-        // EMA(200) line - use right price scale
-        const ema200Series = chart.addLineSeries({
-            color: '#ff6b85',
-            lineWidth: 2,
-            priceScaleId: 'right'
-        });
-        ema200Series.setData(
-            chartBars
-                .map((bar, i) => ({
-                    time: Math.floor(new Date(bar.d).getTime() / 1000),
-                    value: displayEMA200[i]
-                }))
-                .filter(p => p.value !== null && p.value !== undefined)
-        );
-        // Store data for toggling
-        proCharts.ema200Data = ema200Series.data();
-        
-        // Volume histogram - separate axis with color bars
-        const volumeSeries = chart.addHistogramSeries({
-            priceScaleId: 'left',  // Use LEFT scale for volume - separate from price
-            title: 'Volume'
-        });
-        
-        volumeSeries.setData(
-            chartBars.map(bar => {
-                const isUp = parseFloat(bar.c) >= parseFloat(bar.o);
-                return {
-                    time: Math.floor(new Date(bar.d).getTime() / 1000),
-                    value: bar.v / 1000000,  // Scale down to millions
-                    color: isUp ? 'rgba(38, 222, 129, 0.6)' : 'rgba(255, 107, 133, 0.6)'  // Green for up, red for down
-                };
-            })
-        );
-        
-        // Configure VOLUME scale on LEFT side - completely separate from price
-        const volumeScale = chart.priceScale('left');
-        volumeScale.applyOptions({
-            scaleMargins: {
-                top: 0.75,  // Volume at bottom only
-                bottom: 0
-            },
-            autoScale: true,
-            mode: LightweightCharts.PriceScaleMode.Normal,
-            invertScale: false,
-            alignLabels: true,
-            visible: true,  // Make sure it's visible
-            format: (price) => {
-                if (price >= 1000) {
-                    return Math.floor(price / 1000) + 'M';
-                }
-                return Math.floor(price).toString();
-            }
-        });
-        
-        // Configure RIGHT scale for PRICES only (candlestick + EMAs)
-        const priceScale = chart.priceScale('right');
-        priceScale.applyOptions({
-            scaleMargins: {
-                top: 0.1,
-                bottom: 0.3  // Leave bottom for volume
-            },
-            autoScale: true,
-            mode: LightweightCharts.PriceScaleMode.Normal,
-            visible: true,
-            format: (price) => Math.floor(price).toString()
-        });
-        
-        // Enable proper panning FIRST - before fitContent
-        chart.timeScale().applyOptions({
-            timeVisible: true,
-            secondsVisible: false,
-            lockRange: false,  // ALLOW panning
-            rightOffset: 0,  // NO offset - show all data
-            minBarSpacing: 0.5,
-            fixLeftEdge: false,
-            fixRightEdge: false
-        });
-        
-        // THEN fit to content
-        chart.timeScale().fitContent();
-        
-        // Format price axis labels - NO DECIMALS
-        setTimeout(() => {
-            try {
-                // Force integer labels on both scales
-                chart.priceScale('right').applyOptions({
-                    format: (price) => Math.floor(price).toString(),
-                    priceFormatter: (price) => Math.floor(price).toString()
-                });
-                chart.priceScale('left').applyOptions({
-                    format: (price) => Math.floor(price).toString(),
-                    priceFormatter: (price) => Math.floor(price).toString()
-                });
-                
-            } catch (e) {
-                
-            }
-        }, 200);
-        
-        // Store chart reference
-        proCharts.chart1 = chart;
-        proCharts.candleSeries = candlestickSeries;
-        proCharts.lineSeries = {
-            ema20: ema20Series,
-            ema50: ema50Series,
-            ema200: ema200Series
-        };
-        
-        
-        
-        
-        
-    } catch (err) {
-        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
-    }
-    
-    // Chart 2: RSI + Metrics
-    const options2 = {
-        chart: {
-            type: 'line',
-            background: 'transparent',
-            foreColor: '#7a8fa0',
-            toolbar: {
-                show: true,
-                autoSelected: 'pan',
-                tools: {
-                    download: false,
-                    selection: false,
-                    zoom: true,
-                    zoomin: true,
-                    zoomout: true,
-                    pan: true,
-                    reset: true
-                }
-            },
-            zoom: {
-                enabled: true,
-                type: 'xy',
-                autoScaleYaxis: true,
-                zoomedArea: {
-                    fill: { color: '#90CAF9', opacity: 0.4 },
-                    border: { color: '#0D47A1', opacity: 0.4 }
-                }
-            },
-            selection: {
-                enabled: true,
-                xaxis: { min: undefined, max: undefined },
-                yaxis: { min: undefined, max: undefined }
-            },
-            animations: { enabled: false }
-        },
-        series: chart2Data,
-        
-        // Debug: Check chart2 data
-        ...(()=> { 
-            
-            
-            chart2Data.forEach((s, i) => {
-                
-            });
-            return {}; 
-        })(),
-        xaxis: {
-            type: 'datetime',
-            axisBorder: { show: true, color: '#1a2332' },
-            axisTicks: { show: true },
-            labels: { style: { colors: '#7a8fa0', fontSize: '10px' } }
-        },
-        yaxis: [{
-            title: { text: 'RSI', style: { color: '#5b95ff', fontSize: '11px', fontWeight: 700 } },
-            min: 0,
-            max: 100,
-            labels: { style: { colors: '#7a8fa0', fontSize: '9px' }, formatter: (v) => v.toFixed(0) },
-            opposite: true
-        }],
-        tooltip: {
-            theme: 'dark',
-            style: { fontSize: '10px' },
-            x: { formatter: (v) => new Date(v).toLocaleDateString() },
-            y: { formatter: (v) => typeof v === 'number' ? v.toFixed(2) : '' }
-        },
-        grid: { borderColor: '#1a2332', show: true, xaxis: { lines: { show: true } } },
-        stroke: { width: 2, curve: 'smooth' },
-        legend: { position: 'top', fontSize: '10px', labels: { colors: '#7a8fa0' } }
-    };
-    
-    // VALIDATE CHART 2 SERIES
-    
-    chart2Data.forEach((series, idx) => {
-        const seriesName = series.name;
-        const seriesData = series.data;
-        const validPoints = seriesData.filter(p => p && p.y !== null && p.y !== undefined);
-        
-        if (!validPoints || validPoints.length === 0) {
-        } else {
-            
-        }
-    });
-    
-    
-    
-    
-    try {
-        
-        proCharts.chart2 = new ApexCharts(document.getElementById('chartPro2'), options2);
-        
-        proCharts.chart2.render();
-        
-        
-        // Charts are independent - users can pan each separately
-        // Charts ready - pan/zoom works independently
-    } catch (err) {
-        document.getElementById('chartPro2').innerHTML = `<div style="padding:20px;color:#ff6b85">❌ Chart error: ${err.message}</div>`;
-    }
-    
-    } catch (error) {
-        document.getElementById('chartPro1').innerHTML = `<div style="padding:20px;color:var(--tx3);text-align:center">⚠️ Error: ${error.message}</div>`;
-    }
-}
-
 // ════════════════════════════════════════════════════════
-// CANVAS TAB - COMPLETE CHART MODULE (from bharatmarkets v7)
+// CANVAS TAB - COMPLETE CHART MODULE
 // ════════════════════════════════════════════════════════
 
 function scheduleChartRedraw(){
@@ -3081,44 +1230,66 @@ function scheduleTACharts(s){
 
 // Recalculate technical indicators for current candles
 function recalculateIndicators(s){
-  if(!s || !s.candles || s.candles.length === 0) return;
-  
-  // Create cache key based on interval + candle count + last candle close
-  const cacheKey = `${S.chartInterval}_${s.candles.length}_${s.candles[s.candles.length-1]?.c || 0}`;
-  
-  // Skip if we've already calculated for this exact data set
+  if(!s) return;
+
+  // Pick full history for current interval (same logic as getSlicedCandles)
+  let raw = null;
+  if(S.chartInterval === 'W' && s.price?.history_5y_1wk?.length)
+    raw = s.price.history_5y_1wk;
+  else if(S.chartInterval === 'M' && s.price?.history_5y_1mo?.length)
+    raw = s.price.history_5y_1mo;
+  else if(s.price?.history_6mo_1d?.length)
+    raw = s.price.history_6mo_1d;
+  else if(s.price?.history_5y_1wk?.length)
+    raw = s.price.history_5y_1wk;
+
+  const bars = raw
+    ? raw.map(b => ({ d: String(b.Date||b.d||''), c: parseFloat(b.Close||b.c||0) }))
+         .filter(b => b.d && b.c > 0)
+         .sort((a,b) => a.d.localeCompare(b.d))
+    : (s.candles || []);
+
+  if(!bars.length) return;
+
+  // Cache key: interval + bar count + last close
+  const cacheKey = `${S.chartInterval}_${bars.length}_${bars[bars.length-1].c}`;
   if(recalculateIndicators._lastKey === cacheKey) return;
   recalculateIndicators._lastKey = cacheKey;
-  
-  
+
   try {
-    // Calculate SMAs (not EMAs - simpler moving averages)
-    s.sma20 = calculateSMA(s.candles, 20);
-    s.sma50 = calculateSMA(s.candles, 50);
-    s.ema200 = calculateEMA(s.candles, 200);
+    s.sma20  = calculateSMA(bars, 20);
+    s.sma50  = calculateSMA(bars, 50);
+    s.ema200 = calculateEMA(bars, 200);
   } catch(e) {
-    s.sma20 = [];
-    s.sma50 = [];
-    s.ema200 = [];
+    s.sma20 = []; s.sma50 = []; s.ema200 = [];
   }
 }
 
-// Calculate Simple Moving Average
+// O(n) sliding window SMA
 function calculateSMA(bars, period) {
-  if(!bars || bars.length < period) return [];
-  const sma = [];
+  if(!bars || bars.length < period) return new Array((bars||[]).length).fill(null);
+  const result = new Array(bars.length).fill(null);
+  let sum = 0;
   for(let i = 0; i < bars.length; i++) {
-    if(i < period - 1) {
-      sma.push(null);
-    } else {
-      let sum = 0;
-      for(let j = i - period + 1; j <= i; j++) {
-        sum += bars[j].c;
-      }
-      sma.push(sum / period);
-    }
+    sum += bars[i].c;
+    if(i >= period) sum -= bars[i - period].c;
+    if(i >= period - 1) result[i] = sum / period;
   }
-  return sma;
+  return result;
+}
+
+// EMA with SMA seed
+function calculateEMA(bars, period) {
+  if(!bars || bars.length < period) return new Array((bars||[]).length).fill(null);
+  const result = new Array(bars.length).fill(null);
+  const k = 2 / (period + 1);
+  let seed = 0;
+  for(let i = 0; i < period; i++) seed += bars[i].c;
+  result[period - 1] = seed / period;
+  for(let i = period; i < bars.length; i++) {
+    result[i] = bars[i].c * k + result[i-1] * (1 - k);
+  }
+  return result;
 }
 
 let _chartResizeObs = null;
@@ -3176,6 +1347,7 @@ function getSlicedCandles(s, canvasWidth){
 
 // Extract quarterly data with all KPI metrics
 function getQuarterlyData(s){
+  if(s._quarterlyCache) return s._quarterlyCache;
   const quarterly = [];
   
   if(!s || !s.financials) return quarterly;
@@ -3249,13 +1421,11 @@ function getQuarterlyData(s){
       if(Object.keys(q).length > 1) quarterly.push(q);
     });
     
-    if(quarterly.length > 0) return quarterly;
-  } catch(e) {
-  }
-  
-  
-  // Fallback to simple quarterly array if exists
-  return s.quarterly || [];
+    if(quarterly.length > 0) { s._quarterlyCache = quarterly; return quarterly; }
+  } catch(e) {}
+  const fallback = s.quarterly || [];
+  s._quarterlyCache = fallback;
+  return fallback;
 }
 
 
@@ -3340,10 +1510,26 @@ function drawCandlestick(s){
   const allLast = allCandles.length ? new Date(allCandles[allCandles.length-1].d).getTime() : visLast;
   const allRange = allLast - allFirst || 1;
 
-  const allPrices=candles.flatMap(c=>[c.h,c.l]);
-  if(s.sma20&&S.maVis.sma20)allPrices.push(...s.sma20.filter(v=>v!==null));
-  if(s.sma50&&S.maVis.sma50)allPrices.push(...s.sma50.filter(v=>v!==null));
-  if(s.ema200&&S.maVis.ema200)allPrices.push(...s.ema200.filter(v=>v!==null));
+  const allPrices = candles.flatMap(c => [c.h, c.l]);
+  // Only include MA values for visible date range to keep Y-scale accurate
+  if(s.sma20?.length && S.maVis.sma20) {
+    const visStart = candles[0].d, visEnd = candles[candles.length-1].d;
+    allCandles.forEach((c,i) => {
+      if(c.d >= visStart && c.d <= visEnd && s.sma20[i] != null) allPrices.push(s.sma20[i]);
+    });
+  }
+  if(s.sma50?.length && S.maVis.sma50) {
+    const visStart = candles[0].d, visEnd = candles[candles.length-1].d;
+    allCandles.forEach((c,i) => {
+      if(c.d >= visStart && c.d <= visEnd && s.sma50[i] != null) allPrices.push(s.sma50[i]);
+    });
+  }
+  if(s.ema200?.length && S.maVis.ema200) {
+    const visStart = candles[0].d, visEnd = candles[candles.length-1].d;
+    allCandles.forEach((c,i) => {
+      if(c.d >= visStart && c.d <= visEnd && s.ema200[i] != null) allPrices.push(s.ema200[i]);
+    });
+  }
   
   // Ensure we have valid price data
   if(allPrices.length === 0) {
@@ -3443,50 +1629,23 @@ function drawCandlestick(s){
   });
 
   // ── Moving Average curves computed from candle close prices ──
-  function calcSMA(arr, period){
-    return arr.map((c,i)=>{
-      if(i < period-1) return null;
-      const sum = arr.slice(i-period+1, i+1).reduce((a,b)=>a+b.c, 0);
-      return sum / period;
-    });
-  }
-  function calcEMA(arr, period){
-    const k = 2/(period+1);
-    const result = new Array(arr.length).fill(null);
-    // Find first valid index
-    let first = period-1;
-    if(first >= arr.length) return result;
-    result[first] = arr.slice(0,period).reduce((a,b)=>a+b.c,0)/period;
-    for(let i=first+1; i<arr.length; i++){
-      result[i] = arr[i].c * k + result[i-1] * (1-k);
-    }
-    return result;
-  }
-  function drawMALine(vals, col, dash, label){
-    ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash(dash||[]);
-    ctx.beginPath();
-    let started=false;
-    vals.forEach((v,i)=>{
-      if(v===null) return;
-      const x=barX(i), y=toY(v);
-      if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
-    });
-    ctx.stroke(); ctx.setLineDash([]);
-    // Label at last valid point
-    const lastIdx = vals.reduce((best,v,i)=>v!==null?i:best, -1);
-    if(lastIdx>=0 && label){
-      const lv = vals[lastIdx];
-      ctx.fillStyle=col; ctx.font='bold 7px JetBrains Mono,monospace'; ctx.textAlign='right';
-      ctx.fillText(label+' '+Math.round(lv).toLocaleString('en-IN'), W-2, toY(lv)-3);
-    }
-  }
-  // MAs computed on allCandles (full history), then only visible portion drawn
-  // This ensures EMA200 is correct even on short-range views
+  // MAs pre-computed by recalculateIndicators on full interval history
+  // allC must match the same source so indices align
   if(S.maVis.sma20 || S.maVis.sma50 || S.maVis.ema200){
-    const allC = s.candles || candles;
-    const sma20vals  = S.maVis.sma20  ? calcSMA(allC, 20)  : null;
-    const sma50vals  = S.maVis.sma50  ? calcSMA(allC, 50)  : null;
-    const ema200vals = S.maVis.ema200 ? calcEMA(allC, 200) : null;
+    const allC = (() => {
+      let r = null;
+      if(S.chartInterval==='W' && s.price?.history_5y_1wk?.length) r=s.price.history_5y_1wk;
+      else if(S.chartInterval==='M' && s.price?.history_5y_1mo?.length) r=s.price.history_5y_1mo;
+      else if(s.price?.history_6mo_1d?.length) r=s.price.history_6mo_1d;
+      else if(s.price?.history_5y_1wk?.length) r=s.price.history_5y_1wk;
+      return r
+        ? r.map(b=>({d:String(b.Date||b.d||''),c:parseFloat(b.Close||b.c||0)}))
+            .filter(b=>b.d&&b.c>0).sort((a,b)=>a.d.localeCompare(b.d))
+        : (s.candles||candles);
+    })();
+    const sma20vals  = s.sma20?.length  ? s.sma20  : null;
+    const sma50vals  = s.sma50?.length  ? s.sma50  : null;
+    const ema200vals = s.ema200?.length ? s.ema200 : null;
 
     // Map allCandles index → visible x position using date
     function maX(allIdx){
@@ -3954,65 +2113,15 @@ function updateChartStats(s){
 // Chart control functions
 function canvasSetChartRange(r){ S.chartRange=r; S.panOffset=0; scheduleTACharts._pending=false; scheduleChartRedraw(); }
 function canvasSetChartInterval(iv){
-  S.chartInterval=iv; S.panOffset=0; scheduleTACharts._pending=false; recalculateIndicators._lastKey=null;
-  if(currentStock && currentStock.price) {
-    let historyData = null;
-    let historyType = null;
-    
-    // Load from correct source based on interval
-    if(iv === 'D') {
-      historyData = currentStock.price.history_6mo_1d;
-      historyType = 'Daily (6mo)';
-    } else if(iv === 'W') {
-      historyData = currentStock.price.history_5y_1wk;
-      historyType = 'Weekly (5y)';
-    } else if(iv === 'M') {
-      historyData = currentStock.price.history_5y_1mo;
-      historyType = 'Monthly (5y)';
-    }
-    
-    // Convert to candle format
-    if(historyData && Array.isArray(historyData) && historyData.length > 0) {
-      try {
-        const converted = [];
-        for(let i = 0; i < historyData.length; i++) {
-          const bar = historyData[i];
-          const candle = {
-            d: String(bar.Date || ''),
-            o: parseFloat(bar.Open || 0),
-            h: parseFloat(bar.High || 0),
-            l: parseFloat(bar.Low || 0),
-            c: parseFloat(bar.Close || 0),
-            v: parseInt(bar.Volume || 0)
-          };
-          
-          // Only add if all OHLC values are valid numbers
-          if(!isNaN(candle.o) && !isNaN(candle.h) && !isNaN(candle.l) && !isNaN(candle.c) && candle.o > 0) {
-            converted.push(candle);
-          }
-        }
-        
-        if(converted.length > 0) {
-          currentStock.candles = converted;
-          
-          // Clear cached indicators
-          delete currentStock.sma20;
-          delete currentStock.sma50;
-          delete currentStock.ema200;
-          delete currentStock.rsi14;
-          recalculateIndicators._lastKey = null;
-          aggregateCandles._cache = null;
-          
-          scheduleChartRedraw();
-          return;
-        } else {
-        }
-      } catch(e) {
-      }
-    } else {
-    }
+  S.chartInterval=iv; S.panOffset=0; scheduleTACharts._pending=false;
+  // Clear cached indicators so they recalculate for new interval
+  if(currentStock) {
+    delete currentStock.sma20;
+    delete currentStock.sma50;
+    delete currentStock.ema200;
+    recalculateIndicators._lastKey = null;
   }
-  
+  aggregateCandles._cache = null;
   scheduleChartRedraw();
 }
 function canvasToggleMA(key){
@@ -4032,37 +2141,11 @@ function toggleKPI(k){
   scheduleChartRedraw();
 }
 
-async function canvasLoadAndDrawChart(sym) {
-  // ✅ Step 1: Check if stock ALREADY HAS candle data (from your database/app)
-  if(currentStock && currentStock.candles && currentStock.candles.length > 0) {
-    attachChartResizeObserver(currentStock);
-    scheduleTACharts(currentStock);
-    setupChartInteraction();  // Enable pan/zoom once
-    return;
-  }
-  
-  // ✅ Step 2: Try optional JSON file (if you have one)
-  try {
-    const res = await fetch(`./charts/${sym}.json`);
-    if (res.ok) {
-      const data = await res.json();
-      currentStock.candles = data.bars || [];
-      chartCache[sym] = currentStock.candles;
-      attachChartResizeObserver(currentStock);
-      scheduleTACharts(currentStock);
-      setupChartInteraction();  // Enable pan/zoom once
-      return;
-    }
-  } catch (e) {
-    // JSON not available - that's ok
-  }
-  
-  // ✅ Step 3: Use whatever data we have, or show helpful message
-  if(currentStock) {
-    attachChartResizeObserver(currentStock);
-    scheduleTACharts(currentStock);
-    setupChartInteraction();  // Enable pan/zoom once
-  }
+function canvasLoadAndDrawChart() {
+  if(!currentStock) return;
+  attachChartResizeObserver(currentStock);
+  scheduleTACharts(currentStock);
+  setupChartInteraction();
 }
 
 // ════════════════════════════════════════════════
