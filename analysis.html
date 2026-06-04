@@ -2131,15 +2131,8 @@ function canvasSetChartInterval(iv){
 }
 function canvasToggleMA(key){
   S.maVis[key]=!S.maVis[key];
-  if(key==='vol'){
-    // Full re-render — reset both interaction flags so handlers re-attach
-    setupChartInteraction._initialized=false;
-    const cv=document.getElementById('cv-candle');
-    if(cv) cv._tooltipTouchWired=false;
-    renderTab('canvas');
-  } else {
-    scheduleChartRedraw();
-  }
+  if(key==='vol') renderTab('canvas'); // full re-render; setupChartInteraction re-runs on new canvas
+  else scheduleChartRedraw();
 }
 function toggleAllKPI(on){
   Object.keys(S.kpiVis).forEach(k=>{S.kpiVis[k]=on;const cb=document.getElementById('kpi-'+k);if(cb)cb.checked=on;});
@@ -2165,12 +2158,12 @@ function canvasLoadAndDrawChart() {
 // ════════════════════════════════════════════════
 
 function setupChartInteraction(){
-  if(setupChartInteraction._initialized) return;
   const canvas = document.getElementById('cv-candle');
   if(!canvas) return;
-  setupChartInteraction._initialized = true;
+  if(canvas._panZoomWired) return; // already wired to THIS element
+  canvas._panZoomWired = true;
 
-  const t = chartInteraction; // use the shared module-level object
+  const t = chartInteraction;
   t.isPanning = false; t.startX = 0; t.startPan = 0; t.lastDist = 0;
   let lastT = 0;
   const go = () => {
@@ -2198,7 +2191,7 @@ function setupChartInteraction(){
     scheduleTACharts(currentStock);
   }, {passive:false});
 
-  // Touch pan + pinch zoom (applied to both candle and volume canvas)
+  // Touch pan + pinch zoom
   const ts = e => {
     if(e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -2241,9 +2234,6 @@ function setupChartInteraction(){
     v.addEventListener('touchend',   te, {passive:true});
   }
 }
-// Auto-setup when canvas is ready
-document.addEventListener('DOMContentLoaded', setupChartInteraction);
-
 // ════════════════════════════════════════════════════════
 // NEWS TAB FUNCTIONS (from app-drill.js & app.js)
 // ════════════════════════════════════════════════════════
