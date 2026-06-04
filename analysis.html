@@ -3546,11 +3546,10 @@ function drawCandlestick(s){
         }
       }
 
-      // Keep points within or near visible area — use wider margin so annual dots
-      // just outside the view still anchor the line into the visible canvas edge
+      // ✅ Keep points that fall within or near visible chart area
       pts = pts.filter(p => p.x >= PAD.l - cW && p.x <= PAD.l + cW * 2);
       
-      if(pts.length < 1) return; // Need at least 1 point to draw
+      if(pts.length < 2) return; // Need at least 2 points to draw a line
     } catch(e) {
       return;
     }
@@ -3666,9 +3665,7 @@ function drawCandlestick(s){
       ctx.fillText(e.message, cv.width/2, cv.height/2 + 20);
     }
   }
-  } catch(e) {
-    // outer try catch for drawCandlestick
-  }
+} catch(e) { /* outer drawCandlestick catch */ }
 }
 
 // Volume bars with 5-period MA trend line
@@ -3839,7 +3836,7 @@ function drawVolume(s){
       });
       
       if(kpiHit) {
-        // debugDiv removed - was never declared
+        debugDiv.innerHTML += `<br/>✓ KPI: ${kpiHit.label}`;
         // Show KPI tooltip
         let kpiTip = document.getElementById('kpi-overlay-tooltip');
         if(!kpiTip) {
@@ -4088,11 +4085,11 @@ async function canvasLoadAndDrawChart(sym) {
   }
 }
 
-let chartInteraction = {isPanning:false};
-
 // ════════════════════════════════════════════════
 // PAN & ZOOM - Simpler Implementation
 // ════════════════════════════════════════════════
+
+let chartInteraction = {isPanning:false};
 
 function setupChartInteraction(){
   if(setupChartInteraction._initialized) return;
