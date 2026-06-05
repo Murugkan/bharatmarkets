@@ -140,6 +140,17 @@
         .cmp-table { width:100%; border-collapse:collapse; font-size:9px; }
         .cmp-table td { padding:6px 8px; border-bottom:1px solid #0d0d0d; vertical-align:middle; }
         .cmp-table thead td { background:#070707; position:sticky; top:0; border-bottom:2px solid #222; z-index:1; }
+        /* Sector strip buttons */
+        .cmp-sec-btn { padding:5px 12px; border-radius:5px; font-size:9px; font-weight:700; cursor:pointer; border:1px solid #2a2a2a; color:#666; background:#0d0d0d; white-space:nowrap; font-family:inherit; letter-spacing:0.04em; transition:all .15s; }
+        .cmp-sec-btn.active { border-color:#00f2ff; color:#00f2ff; background:#0a1a1f; }
+        /* Selected chip */
+        .cmp-chip { padding:3px 8px; border-radius:4px; font-size:9px; font-weight:800; background:#00f2ff; color:#000; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
+        .cmp-chip span { font-size:10px; opacity:0.7; }
+        /* Sector group header in picker */
+        .cmp-group-hdr { font-size:8px; color:#444; letter-spacing:0.12em; text-transform:uppercase; padding:8px 0 4px; width:100%; }
+        /* Picker grid */
+        #cmp-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:5px; }
+        .cmp-group-hdr { grid-column:1/-1; }
     </style>
 </head>
 <body>
@@ -292,18 +303,29 @@
 
     <!-- COMPARE TAB -->
     <div class="sig-subtab-content" id="sc-compare">
-        <div style="flex-shrink:0;background:#060606;border-bottom:1px solid #222;padding:8px 12px;">
-            <div style="font-size:8px;color:#666;letter-spacing:0.1em;margin-bottom:6px">SELECT 2–4 STOCKS TO COMPARE</div>
-            <div id="cmp-picker" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
-            <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap;">
-                <select class="sig-filter-select" id="cmp-sector-filter" onchange="cmpPopulatePicker()"><option value="">All Sectors</option></select>
-                <button class="qry-btn qry-btn-clr" onclick="cmpClearAll()" style="font-size:9px;padding:5px 10px;">✕ Clear</button>
-                <span id="cmp-count" style="font-size:8px;color:#555;margin-left:auto"></span>
-            </div>
+
+        <!-- SECTOR STRIP — horizontal scroll -->
+        <div style="flex-shrink:0;display:flex;overflow-x:auto;gap:6px;padding:8px 12px;border-bottom:1px solid #1a1a1a;background:#050505;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+            <button id="cmp-sec-all" class="cmp-sec-btn active" onclick="cmpSetSector('')">All</button>
+            <span id="cmp-sec-btns"></span>
         </div>
+
+        <!-- SELECTED CHIPS + COUNT -->
+        <div id="cmp-selected-strip" style="flex-shrink:0;min-height:36px;padding:6px 12px;border-bottom:1px solid #1a1a1a;background:#080808;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:8px;color:#444;letter-spacing:0.1em;white-space:nowrap">SELECTED:</span>
+            <div id="cmp-chips" style="display:flex;gap:5px;flex-wrap:wrap;flex:1;"></div>
+            <button class="qry-btn qry-btn-clr" onclick="cmpClearAll()" style="font-size:8px;padding:4px 8px;flex-shrink:0;">✕ CLR</button>
+            <span id="cmp-count" style="font-size:9px;color:#555;font-weight:700;flex-shrink:0;"></span>
+        </div>
+
+        <!-- PICKER GRID — scrollable, grouped by sector -->
+        <div id="cmp-picker" style="flex-shrink:0;max-height:38vh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 12px;border-bottom:2px solid #00f2ff;"></div>
+
+        <!-- RESULTS — fills remaining space -->
         <div id="cmp-results" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px;">
-            <div style="padding:40px 20px;text-align:center;color:#333;font-size:10px;">Select stocks above to compare</div>
+            <div style="padding:30px 20px;text-align:center;color:#333;font-size:10px;">Select 2–4 stocks above<br>then compare</div>
         </div>
+
     </div>
 </div>
 
@@ -1336,7 +1358,7 @@ function runEngineSync() {
             const getReq = tx.objectStore(STORE_NAME).getAll();
             
             getReq.onsuccess = function() {
-                MASTER = getReq.result || [];
+                MASTER = (getReq.result || []).filter(s => s.ticker && s.ticker !== '_metadata');
                 console.log('✅ Synced ' + MASTER.length + ' stocks from IndexedDB');
                 
                 // Log sample data
@@ -3053,18 +3075,53 @@ function cmpFmt(v, unit, fmt) {
 }
 
 // ── Picker ─────────────────────────────────────────────────
-function cmpPopulatePicker() {
-    CMP_SECTOR_F = document.getElementById('cmp-sector-filter')?.value || '';
-    let items = SIG_ALL.slice();
-    if(CMP_SECTOR_F) items = items.filter(s=>s.sector===CMP_SECTOR_F);
-    items.sort((a,b)=>a.ticker.localeCompare(b.ticker));
+function cmpSetSector(sec) {
+    CMP_SECTOR_F = sec;
+    // Update sector button states
+    document.querySelectorAll('.cmp-sec-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.sec === sec);
+    });
+    cmpRenderPicker();
+}
 
-    document.getElementById('cmp-picker').innerHTML = items.map(sig=>
-        `<span class="cmp-pick${CMP_SELECTED.includes(sig.ticker)?' sel':''}"
-            onclick="cmpToggle('${sig.ticker}')">${sig.ticker}</span>`
+function cmpRenderPicker() {
+    let items = SIG_ALL.filter(s => s.ticker !== '_metadata');
+    if(CMP_SECTOR_F) items = items.filter(s => s.sector === CMP_SECTOR_F);
+
+    // Group by sector
+    const grouped = {};
+    items.forEach(s => {
+        const sec = s.sector || '—';
+        if(!grouped[sec]) grouped[sec] = [];
+        grouped[sec].push(s);
+    });
+    Object.values(grouped).forEach(arr => arr.sort((a,b)=>a.ticker.localeCompare(b.ticker)));
+
+    const sectors = Object.keys(grouped).sort();
+    const showHeaders = !CMP_SECTOR_F && sectors.length > 1;
+
+    const picker = document.getElementById('cmp-picker');
+    picker.innerHTML = sectors.map(sec => {
+        const tickers = grouped[sec].map(sig =>
+            `<span class="cmp-pick${CMP_SELECTED.includes(sig.ticker)?' sel':''}"
+                onclick="cmpToggle('${sig.ticker}')">${sig.ticker}</span>`
+        ).join('');
+        return (showHeaders ? `<div class="cmp-group-hdr">${sec}</div>` : '') + tickers;
+    }).join('');
+}
+
+function cmpRenderChips() {
+    const chips = document.getElementById('cmp-chips');
+    const count = document.getElementById('cmp-count');
+    chips.innerHTML = CMP_SELECTED.map(t =>
+        `<span class="cmp-chip" onclick="cmpToggle('${t}')">${t} <span>×</span></span>`
     ).join('');
-    document.getElementById('cmp-count').textContent =
-        CMP_SELECTED.length ? `${CMP_SELECTED.length}/4 selected` : '';
+    count.textContent = CMP_SELECTED.length ? `${CMP_SELECTED.length}/4` : '';
+}
+
+function cmpPopulatePicker() {
+    cmpRenderPicker();
+    cmpRenderChips();
 }
 
 function cmpToggle(ticker) {
@@ -3073,27 +3130,35 @@ function cmpToggle(ticker) {
     } else if(CMP_SELECTED.length < 4) {
         CMP_SELECTED.push(ticker);
     }
-    cmpPopulatePicker();
+    cmpRenderPicker();
+    cmpRenderChips();
     if(CMP_SELECTED.length >= 2) renderCompare();
     else document.getElementById('cmp-results').innerHTML =
-        '<div style="padding:30px;text-align:center;color:#333;font-size:10px">Select at least 2 stocks</div>';
+        '<div style="padding:30px 20px;text-align:center;color:#333;font-size:10px">Select 2–4 stocks above</div>';
 }
 
 function cmpClearAll() {
     CMP_SELECTED = [];
-    cmpPopulatePicker();
+    cmpRenderPicker();
+    cmpRenderChips();
     document.getElementById('cmp-results').innerHTML =
-        '<div style="padding:40px 20px;text-align:center;color:#333;font-size:10px">Select stocks above to compare</div>';
+        '<div style="padding:30px 20px;text-align:center;color:#333;font-size:10px">Select 2–4 stocks above<br>then compare</div>';
 }
 
 function initCompareTab() {
-    // Populate sector filter
-    const sel = document.getElementById('cmp-sector-filter');
-    if(sel && sel.options.length <= 1) {
-        const secs = [...new Set(SIG_ALL.map(s=>s.sector))].sort();
-        secs.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+    // Build sector strip buttons
+    const secBtns = document.getElementById('cmp-sec-btns');
+    if(secBtns && !secBtns.children.length) {
+        const secs = [...new Set(SIG_ALL.filter(s=>s.ticker!=='_metadata').map(s=>s.sector))].sort();
+        secBtns.innerHTML = secs.map(s =>
+            `<button class="cmp-sec-btn" data-sec="${s}" onclick="cmpSetSector('${s}')">${s}</button>`
+        ).join('');
+        // Set "All" button dataset
+        document.getElementById('cmp-sec-all').dataset.sec = '';
     }
-    cmpPopulatePicker();
+    CMP_SECTOR_F = '';
+    cmpRenderPicker();
+    cmpRenderChips();
     if(CMP_SELECTED.length >= 2) renderCompare();
 }
 
