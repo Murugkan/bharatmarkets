@@ -370,13 +370,14 @@ class ScreenerFinancialsScraper:
                 driver.set_page_load_timeout(Config.BROWSER_TIMEOUT)
                 driver.get(url)
 
-                # Wait for P&L section — avoids early snapshot on redirect to standalone
-                # where shareholding renders before financial tables.
+                # Wait for P&L table to have actual row data — not just element presence.
+                # Element-present fires when the DOM node exists but rows may still be
+                # rendering via JS. We wait until the P&L tbody has at least 5 rows.
                 WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
-                    EC.presence_of_element_located((By.XPATH,
+                    lambda d: len(d.find_elements(By.XPATH,
                         "//h2[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'profit')]"
-                        "/following::table[contains(@class,'data-table')]"
-                    ))
+                        "/following::table[contains(@class,'data-table')][1]//tbody/tr"
+                    )) >= 5
                 )
 
                 html = driver.page_source
@@ -511,12 +512,12 @@ class ScreenerFinancialsScraper:
                     raise Exception("Browser setup failed")
                 driver.set_page_load_timeout(Config.BROWSER_TIMEOUT)
                 driver.get(url)
-                # Wait for P&L section — same fix as fetch_page
+                # Wait for P&L table rows — same fix as fetch_page
                 WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
-                    EC.presence_of_element_located((By.XPATH,
+                    lambda d: len(d.find_elements(By.XPATH,
                         "//h2[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'profit')]"
-                        "/following::table[contains(@class,'data-table')]"
-                    ))
+                        "/following::table[contains(@class,'data-table')][1]//tbody/tr"
+                    )) >= 5
                 )
                 html = driver.page_source
                 time.sleep(Config.RATE_LIMIT_DELAY)
@@ -531,7 +532,6 @@ class ScreenerFinancialsScraper:
     def scrape_symbol(self, symbol: str) -> bool:
         """Scrape single symbol with retry using overrides and URL fallbacks"""
         html = self.fetch_page(symbol)
-        used_standalone = False
         
         # Fallback 1: try screener_override mapping
         if not html:
@@ -542,11 +542,10 @@ class ScreenerFinancialsScraper:
                 ticker = override_symbol.split('.')[0] if '.' in override_symbol else override_symbol
                 html = self.fetch_page(ticker)
         
-        # Fallback 2: try standalone URL (some tickers only exist on standalone view)
+        # Fallback 2: try standalone URL
         if not html:
             html = self.fetch_page_standalone(symbol)
             if html:
-                used_standalone = True
                 logger.info(f"  STANDALONE: {symbol} — consolidated failed, standalone succeeded")
         
         if not html:
@@ -557,25 +556,28 @@ class ScreenerFinancialsScraper:
         
         data = self.extract_data(symbol, html)
         
-        # Detect shareholding-only result — financial tables missing despite successful fetch.
-        # This happens when consolidated page times out → standalone succeeds but only
-        # has shareholding (financial tables need the 10yr button which standalone may miss).
-        # Retry consolidated once more with a longer wait.
-        if data and used_standalone:
+        # Detect shareholding-only result regardless of which fetch path was used.
+        # Root cause: /consolidated/ redirects to / for standalone-only tickers.
+        # Selenium's WebDriverWait fires on shareholding (first data-table to render)
+        # before P&L/BS/CF load — even though fetch_page() returned html successfully.
+        # The P&L XPath wait in fetch_page should prevent this, but if it still
+        # happens (race condition / slow render), retry with standalone URL directly.
+        if data:
             tables = data.get('tables', {})
             has_financials = any(k in tables for k in ('profit_loss', 'balance_sheet', 'cash_flow'))
             if not has_financials:
-                logger.info(f"  RETRY-CONSOL: {symbol} — standalone got shareholding only, retrying consolidated")
-                html2 = self.fetch_page(symbol)
+                logger.info(f"  RETRY-STANDALONE: {symbol} — got shareholding only, trying standalone directly")
+                html2 = self.fetch_page_standalone(symbol)
                 if html2:
                     data2 = self.extract_data(symbol, html2)
                     if data2:
                         tables2 = data2.get('tables', {})
                         if any(k in tables2 for k in ('profit_loss', 'balance_sheet', 'cash_flow')):
-                            # Merge: keep financial tables from consolidated, shareholding from standalone
-                            data2['tables']['shareholding_pattern'] = tables.get('shareholding_pattern', {})
+                            # Merge: financial tables from standalone retry, shareholding from first attempt
+                            data2['tables']['shareholding_pattern'] = tables.get('shareholding_pattern',
+                                                                                  data2['tables'].get('shareholding_pattern', {}))
                             data = data2
-                            logger.info(f"  RETRY-CONSOL: {symbol} — consolidated retry succeeded")
+                            logger.info(f"  RETRY-STANDALONE: {symbol} — succeeded")
 
         if data:
             self.scraped_data[symbol] = data
