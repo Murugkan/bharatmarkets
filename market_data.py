@@ -333,90 +333,119 @@ FIELD_MAP = {
     #                      the same financials keys → scalar overwrites time-series.
     # The merge layer is the single owner of all yahoofin_fin data.
 
-    # ── screener_fin:profit_loss  (quarterly consolidated) ───────────────────
+    # ââ screener_fin:quarterly_results  (quarterly consolidated P&L) ââââââ
+    "screener_fin:quarterly_results": {
+        "SalesÂ +":           ("financials", "Sales"),
+        "Sales +":             ("financials", "Sales"),
+        "RevenueÂ +":         ("financials", "Sales"),
+        "Revenue +":           ("financials", "Sales"),
+        "ExpensesÂ +":        ("financials", "Expenses"),
+        "Expenses +":          ("financials", "Expenses"),
+        "Operating Profit":    ("financials", "Operating_Profit"),
+        "OPM %":               ("financials", "OPM_pct"),
+        "Other IncomeÂ +":    ("financials", "Other_Income"),
+        "Other Income +":      ("financials", "Other_Income"),
+        "Interest":            ("financials", "Interest"),
+        "Depreciation":        ("financials", "Depreciation"),
+        "Profit before tax":   ("financials", "Profit_before_tax"),
+        "Tax %":               ("financials", "Tax_pct"),
+        "Net ProfitÂ +":      ("financials", "Net_Profit"),
+        "Net Profit +":        ("financials", "Net_Profit"),
+        "EPS in Rs":           ("financials", "EPS_Rs"),
+        "Financing Profit":    ("financials", "Financing_Profit"),
+        "Financing Margin %":  ("financials", "Financing_Margin_pct"),
+        "Gross NPA %":         ("financials", "Gross_NPA_pct"),
+        "Net NPA %":           ("financials", "Net_NPA_pct"),
+    },
+
+    # ââ screener_fin:profit_loss  (annual consolidated P&L, 12yr) ââââââââ
     "screener_fin:profit_loss": {
-        "Revenue +":         ("financials", "Sales"),
-        "Revenue +":        ("financials", "Sales"),  # Non-breaking space variant
-        "Sales +":           ("financials", "Sales"),
-        "Sales +":          ("financials", "Sales"),  # Non-breaking space variant
-        "Expenses +":        ("financials", "Expenses"),
-        "Expenses +":       ("financials", "Expenses"),  # Non-breaking space variant
-        "Operating Profit":  ("financials", "Operating_Profit"),
-        "OPM %":             ("financials", "OPM_pct"),
-        "Other Income +":    ("financials", "Other_Income"),
-        "Other Income +":   ("financials", "Other_Income"),  # Non-breaking space variant
-        "Interest":          ("financials", "Interest"),
-        "Depreciation":      ("financials", "Depreciation"),
-        "Profit before tax": ("financials", "Profit_before_tax"),
-        "Tax %":             ("financials", "Tax_pct"),
-        "Net Profit +":      ("financials", "Net_Profit"),
-        "Net Profit +":     ("financials", "Net_Profit"),  # Non-breaking space variant
-        "EPS in Rs":         ("financials", "EPS_Rs"),
-        "Financing Profit":  ("financials", "Financing_Profit"),
-        "Financing Margin %":("financials", "Financing_Margin_pct"),
-        "Gross NPA %":       ("financials", "Gross_NPA_pct"),
-        "Net NPA %":         ("financials", "Net_NPA_pct"),
-        "Raw PDF":           ("websignals", "raw_pdf_profit_loss"),
+        "RevenueÂ +":         ("financials", "Sales"),
+        "Revenue +":           ("financials", "Sales"),
+        "SalesÂ +":           ("financials", "Sales"),
+        "Sales +":             ("financials", "Sales"),
+        "ExpensesÂ +":        ("financials", "Expenses"),
+        "Expenses +":          ("financials", "Expenses"),
+        "Operating Profit":    ("financials", "Operating_Profit"),
+        "OPM %":               ("financials", "OPM_pct"),
+        "Other IncomeÂ +":    ("financials", "Other_Income"),
+        "Other Income +":      ("financials", "Other_Income"),
+        "Interest":            ("financials", "Interest"),
+        "Depreciation":        ("financials", "Depreciation"),
+        "Profit before tax":   ("financials", "Profit_before_tax"),
+        "Tax %":               ("financials", "Tax_pct"),
+        "Net ProfitÂ +":      ("financials", "Net_Profit"),
+        "Net Profit +":        ("financials", "Net_Profit"),
+        "EPS in Rs":           ("financials", "EPS_Rs"),
+        "Dividend Payout %":   ("financials", "Dividend_Payout_pct"),
+        "Financing Profit":    ("financials", "Financing_Profit"),
+        "Financing Margin %":  ("financials", "Financing_Margin_pct"),
+        "Gross NPA %":         ("financials", "Gross_NPA_pct"),
+        "Net NPA %":           ("financials", "Net_NPA_pct"),
     },
 
-    # ── screener_fin:balance_sheet  (annual consolidated P&L, 7yr) ───────────
+    # ââ screener_fin:balance_sheet  (annual consolidated BS, 12yr) âââââââ
     "screener_fin:balance_sheet": {
-        "Revenue +":          ("financials", "Sales"),
-        "Revenue +":         ("financials", "Sales"),  # Non-breaking space variant
-        "Sales +":            ("financials", "Sales"),
-        "Sales +":           ("financials", "Sales"),  # Non-breaking space variant
-        "Expenses +":         ("financials", "Expenses"),
-        "Expenses +":        ("financials", "Expenses"),  # Non-breaking space variant
-        "Operating Profit":   ("financials", "Operating_Profit"),
-        "OPM %":              ("financials", "OPM_pct"),
-        "Other Income +":     ("financials", "Other_Income"),
-        "Other Income +":    ("financials", "Other_Income"),  # Non-breaking space variant
-        "Interest":           ("financials", "Interest"),
-        "Depreciation":       ("financials", "Depreciation"),
-        "Profit before tax":  ("financials", "Profit_before_tax"),
-        "Tax %":              ("financials", "Tax_pct"),
-        "Net Profit +":       ("financials", "Net_Profit"),
-        "Net Profit +":      ("financials", "Net_Profit"),  # Non-breaking space variant
-        "EPS in Rs":          ("financials", "EPS_Rs"),
-        "Dividend Payout %":  ("financials", "Dividend_Payout_pct"),
-        "Financing Profit":   ("financials", "Financing_Profit"),
-        "Financing Margin %": ("financials", "Financing_Margin_pct"),
+        "Equity Capital":          ("financials", "Equity_Capital"),
+        "Reserves":                ("financials", "Reserves"),
+        "BorrowingsÂ +":        ("financials", "Borrowings"),
+        "Borrowings +":            ("financials", "Borrowings"),
+        "Borrowing":               ("financials", "Borrowing"),
+        "Deposits":                ("financials", "Deposits"),
+        "Other LiabilitiesÂ +": ("financials", "Other_Liabilities"),
+        "Other Liabilities +":     ("financials", "Other_Liabilities"),
+        "Total Liabilities":       ("financials", "Total_Liabilities"),
+        "Fixed AssetsÂ +":      ("financials", "Fixed_Assets"),
+        "Fixed Assets +":          ("financials", "Fixed_Assets"),
+        "CWIP":                    ("financials", "CWIP"),
+        "Investments":             ("financials", "Investments"),
+        "Other AssetsÂ +":      ("financials", "Other_Assets"),
+        "Other Assets +":          ("financials", "Other_Assets"),
+        "Total Assets":            ("financials", "Total_Assets"),
     },
 
-    # ── screener_fin:cash_flow  (annual consolidated balance sheet, 7yr) ─────
+    # ââ screener_fin:cash_flow  (annual consolidated CF, 12yr) ââââââââââ
     "screener_fin:cash_flow": {
-        "Equity Capital":     ("financials", "Equity_Capital"),
-        "Reserves":           ("financials", "Reserves"),
-        "Borrowing":          ("financials", "Borrowing"),
-        "Borrowings +":       ("financials", "Borrowings"),
-        "Borrowings +":      ("financials", "Borrowings"),  # Non-breaking space variant
-        "Other Liabilities +":("financials", "Other_Liabilities"),
-        "Other Liabilities +":("financials", "Other_Liabilities"),  # Non-breaking space variant
-        "Total Liabilities":  ("financials", "Total_Liabilities"),
-        "Fixed Assets +":     ("financials", "Fixed_Assets"),
-        "Fixed Assets +":    ("financials", "Fixed_Assets"),  # Non-breaking space variant
-        "CWIP":               ("financials", "CWIP"),
-        "Investments":        ("financials", "Investments"),
-        "Other Assets +":     ("financials", "Other_Assets"),
-        "Other Assets +":    ("financials", "Other_Assets"),  # Non-breaking space variant
-        "Total Assets":       ("financials", "Total_Assets"),
-        "Deposits":           ("financials", "Deposits"),  # Bank-specific field
+        "Cash from Operating ActivityÂ +": ("financials", "CFO"),
+        "Cash from Operating Activity +":   ("financials", "CFO"),
+        "Cash from Investing ActivityÂ +": ("financials", "CFI"),
+        "Cash from Investing Activity +":   ("financials", "CFI"),
+        "Cash from Financing ActivityÂ +": ("financials", "CFF"),
+        "Cash from Financing Activity +":   ("financials", "CFF"),
+        "Net Cash Flow":                    ("financials", "Net_Cash_Flow"),
+        "Free Cash Flow":                   ("financials", "Free_Cash_Flow"),
+        "CFO/OP":                           ("financials", "CFO_over_OP"),
     },
 
-    # ── screener_fin:ratios  (annual consolidated cash flow, 7yr) ────────────
+    # ââ screener_fin:ratios  (annual consolidated ratios, 12yr) âââââââââ
     "screener_fin:ratios": {
-        "Cash from Operating Activity +": ("financials", "CFO"),
-        "Cash from Operating Activity +": ("financials", "CFO"),  # Non-breaking space variant
-        "Cash from Investing Activity +": ("financials", "CFI"),
-        "Cash from Investing Activity +": ("financials", "CFI"),  # Non-breaking space variant
-        "Cash from Financing Activity +": ("financials", "CFF"),
-        "Cash from Financing Activity +": ("financials", "CFF"),  # Non-breaking space variant
-        "Net Cash Flow":                  ("financials", "Net_Cash_Flow"),
-        "Free Cash Flow":                 ("financials", "Free_Cash_Flow"),
-        "CFO/OP":                         ("financials", "CFO_over_OP"),
+        "Debtor Days":           ("ratios", "Debtor_Days"),
+        "Inventory Days":        ("ratios", "Inventory_Days"),
+        "Days Payable":          ("ratios", "Days_Payable"),
+        "Cash Conversion Cycle": ("ratios", "Cash_Conversion_Cycle"),
+        "Working Capital Days":  ("ratios", "Working_Capital_Days"),
+        "ROCE %":                ("ratios", "ROCE_pct"),
+        "ROE %":                 ("ratios", "ROE_pct"),
     },
 
-    # ── screener_raw:Quarterly Results  (quarterly standalone) ───────────────
+    # ââ screener_fin:shareholding_pattern  (quarterly consolidated) ââââââ
+    "screener_fin:shareholding_pattern": {
+        "PromotersÂ +":      ("company_details", "promoters"),
+        "Promoters +":         ("company_details", "promoters"),
+        "FIIsÂ +":           ("company_details", "fiis"),
+        "FIIs +":              ("company_details", "fiis"),
+        "DIIsÂ +":           ("company_details", "diis"),
+        "DIIs +":              ("company_details", "diis"),
+        "GovernmentÂ +":     ("company_details", "government"),
+        "Government +":        ("company_details", "government"),
+        "PublicÂ +":         ("company_details", "public"),
+        "Public +":            ("company_details", "public"),
+        "OthersÂ +":         ("company_details", "others"),
+        "Others +":            ("company_details", "others"),
+        "No. of Shareholders": ("company_details", "no_of_shareholders"),
+    },
+
+        # ── screener_raw:Quarterly Results  (quarterly standalone) ───────────────
     "screener_raw:Quarterly Results": {
         "Sales +":           ("financials", "Sales"),
         "Revenue +":         ("financials", "Sales"),
@@ -2017,7 +2046,8 @@ def _extract_yf_fin_sections(sections: dict) -> tuple:
     yf_latest = {}
 
     # --- historical ---
-    hist_section = sections.get('yahoofin_fin:historical', [])
+    # flatten stores as 'yahoofin_fin:historical:annual' (granule suffix appended)
+    hist_section = sections.get('yahoofin_fin:historical:annual') or sections.get('yahoofin_fin:historical', [])
     if isinstance(hist_section, list):
         for item in hist_section:
             if not isinstance(item, dict):
