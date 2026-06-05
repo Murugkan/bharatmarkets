@@ -196,8 +196,7 @@
                 <button class="sig-sort-btn" id="ss-sort-count" onclick="secSort('count')">#</button>
             </div>
         </div>
-        <div id="sec-bars" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:12px;"></div>
-        <!-- Heatmap rendered inside sec-bars by renderSectorTab -->
+        <div id="sec-bars" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
     </div>
 
     <!-- SUB-TAB: Spread Analysis -->
@@ -2455,19 +2454,30 @@ function renderSectorTab() {
             ${cards.join('')}
         </div>`;
 
-    // Heatmap canvas injected into sec-bars after cards
-    const secBarsEl = document.getElementById('sec-bars');
-    if(secBarsEl && !document.getElementById('sig-heatmap')) {
-        const hmDiv = document.createElement('div');
-        hmDiv.style.cssText = 'padding:0 10px 80px;';
-        hmDiv.innerHTML = `<div style="font-size:8px;color:#555;margin-bottom:6px;letter-spacing:0.1em;padding-top:4px">SIGNAL HEATMAP</div>
-            <div style="display:flex;justify-content:flex-end;gap:10px;font-size:8px;margin-bottom:6px">
-                <span style="color:#00ff88">■ Strong</span><span style="color:#ff4d6d">■ Weak</span>
+    // Heatmap is in a SEPARATE div (id=sec-heatmap-wrap) outside sec-bars
+    // so innerHTML resets on sec-bars don't destroy the canvas
+    let hmWrap = document.getElementById('sec-heatmap-wrap');
+    if (!hmWrap) {
+        hmWrap = document.createElement('div');
+        hmWrap.id = 'sec-heatmap-wrap';
+        hmWrap.style.cssText = 'flex-shrink:0;padding:8px 12px 80px;border-top:1px solid #1a1a1a;';
+        hmWrap.innerHTML = `
+            <div style="font-size:8px;color:#666;letter-spacing:0.1em;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+                <span>SIGNAL HEATMAP</span>
+                <span style="display:flex;gap:10px">
+                    <span style="color:#00c853">■ Strong Buy</span>
+                    <span style="color:#00897b">■ Buy</span>
+                    <span style="color:#e65100">■ Neutral</span>
+                    <span style="color:#c62828">■ Reduce</span>
+                    <span style="color:#6a1b9a">■ Sell</span>
+                </span>
             </div>
-            <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:6px;cursor:pointer"></canvas>`;
-        secBarsEl.appendChild(hmDiv);
+            <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:8px;cursor:pointer;"></canvas>`;
+        // Insert after sec-bars in sc-sectors
+        const secBars = document.getElementById('sec-bars');
+        secBars.parentNode.insertBefore(hmWrap, secBars.nextSibling);
     }
-    setTimeout(() => drawSigHeatmap(stats), 150);
+    setTimeout(() => drawSigHeatmap(stats), 80);
 }
 
 function sigFilter_sector(name) {
@@ -2490,79 +2500,199 @@ function secSort(by) {
 // ---------- HEATMAP (canvas treemap) ----------
 function drawSigHeatmap(stats) {
     const cv = document.getElementById('sig-heatmap');
-    if(!cv) return;
-    const dpr = window.devicePixelRatio||1;
-    const W = Math.max(cv.parentElement.offsetWidth - 20, 200);
-    const H = Math.min(W, 320);
-    cv.width = W*dpr; cv.height = H*dpr;
-    cv.style.width = W+'px'; cv.style.height = H+'px';
+    if (!cv) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.max(cv.parentElement.offsetWidth - 4, 200);
+    const H = Math.round(W * 0.65);  // 65% aspect ratio — not square, fits mobile
+
+    cv.width = W * dpr;
+    cv.height = H * dpr;
+    cv.style.width = W + 'px';
+    cv.style.height = H + 'px';
+
     const ctx = cv.getContext('2d');
-    ctx.scale(dpr,dpr);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
 
-    // Simple squarified treemap by count
-    const total = stats.reduce((a,s)=>a+s.count,0);
-    let rects = [];
-    let x=0,y=0,rowH=0,rowW=0,rowItems=[];
+    // ── SQUARIFIED TREEMAP ──────────────────────────────────
+    // Weight = count of tickers (proportional area)
+    const total = stats.reduce((a, s) => a + s.count, 0);
 
-    function flushRow(items, rowH, startX, startY, totalW) {
-        let rx=startX;
-        items.forEach(it=>{
-            const iw = (it.count/items.reduce((a,b)=>a+b.count,0))*totalW;
-            rects.push({...it, rx, ry:startY, rw:iw, rh:rowH});
-            rx+=iw;
+    // Normalize to canvas area
+    const items = [...stats]
+        .sort((a, b) => b.count - a.count)
+        .map(s => ({ ...s, area: (s.count / total) * W * H }));
+
+    // Squarified algorithm: layout into rows minimising aspect ratio
+    const rects = [];
+
+    function worst(row, w) {
+        const s = row.reduce((a, b) => a + b.area, 0);
+        const maxA = Math.max(...row.map(r => r.area));
+        const minA = Math.min(...row.map(r => r.area));
+        return Math.max((w * w * maxA) / (s * s), (s * s) / (w * w * minA));
+    }
+
+    function layoutRow(row, x, y, w, h) {
+        const s = row.reduce((a, b) => a + b.area, 0);
+        let cx = x;
+        row.forEach(r => {
+            const rw = (r.area / s) * w;
+            rects.push({ ...r, rx: cx, ry: y, rw, rh: h });
+            cx += rw;
         });
     }
 
-    // Simple row-based layout
-    const sorted = [...stats].sort((a,b)=>b.count-a.count);
-    let rem = sorted.slice(); let cy=0;
-    while(rem.length) {
-        // Take items for next row (fill to ~40% width)
-        let rowItems=[]; let rowCount=0;
-        while(rem.length && (rowCount/total)*H < H*0.4 || rowItems.length===0) {
-            const item = rem.shift();
-            rowItems.push(item);
-            rowCount+=item.count;
-            if((rowCount/total)*W > W*0.35 && rowItems.length>0) break;
+    function squarify(items, x, y, w, h) {
+        if (!items.length) return;
+        if (items.length === 1) {
+            rects.push({ ...items[0], rx: x, ry: y, rw: w, rh: h });
+            return;
         }
-        const rh = (rowCount/total)*H;
-        flushRow(rowItems, rh, 0, cy, W);
-        cy+=rh;
+
+        let row = [];
+        let remaining = items.slice();
+        const isHorizontal = w >= h;
+        const strip = isHorizontal ? h : w;
+
+        while (remaining.length) {
+            const next = remaining[0];
+            const testRow = [...row, next];
+            if (row.length === 0 || worst(testRow, strip) <= worst(row, strip)) {
+                row.push(next);
+                remaining.shift();
+            } else {
+                break;
+            }
+        }
+
+        // Lay out this row
+        const rowArea = row.reduce((a, b) => a + b.area, 0);
+        if (isHorizontal) {
+            const rw = rowArea / h;
+            layoutRow(row, x, y, rw, h);
+            squarify(remaining, x + rw, y, w - rw, h);
+        } else {
+            const rh = rowArea / w;
+            layoutRow(row, x, y, w, rh);  // layoutRow needs transposing
+            // Redo as column
+            rects.length = rects.length - row.length; // remove just added
+            let cy2 = y;
+            row.forEach(r => {
+                const rh2 = (r.area / rowArea) * rh;
+                rects.push({ ...r, rx: x, ry: cy2, rw: w, rh: rh2 });
+                cy2 += rh2;
+            });
+            squarify(remaining, x, y + rh, w, h - rh);
+        }
     }
 
-    // Draw rectangles
-    rects.forEach(r=>{
-        const score=r.score;
-        const col = score>=74?'#00c853':score>=62?'#1b8a3d':score>=48?'#8B0000':score>=36?'#9b1b2a':'#6b0f1a';
-        ctx.fillStyle=col;
-        ctx.fillRect(r.rx+1, r.ry+1, r.rw-2, r.rh-2);
-        ctx.strokeStyle='#000';
-        ctx.lineWidth=1.5;
-        ctx.strokeRect(r.rx+1, r.ry+1, r.rw-2, r.rh-2);
+    squarify(items, 0, 0, W, H);
 
-        // Label
-        const fsize = r.rw>80&&r.rh>28 ? 11 : r.rw>50&&r.rh>20 ? 9 : 0;
-        if(fsize>0) {
-            ctx.fillStyle='#fff';
-            ctx.font=`800 ${fsize}px "JetBrains Mono",monospace`;
-            ctx.textAlign='center';
-            const label = r.name.length>12&&r.rw<100 ? r.name.substring(0,10)+'…' : r.name;
-            ctx.fillText(label, r.rx+r.rw/2, r.ry+r.rh/2+(r.rh>30?-4:0));
-            if(r.rh>30) {
-                ctx.font=`700 ${Math.max(7,fsize-2)}px "JetBrains Mono",monospace`;
-                ctx.fillStyle= score>=55?'#00ff88':'#ff6b85';
-                ctx.fillText(r.score, r.rx+r.rw/2, r.ry+r.rh/2+10);
-            }
+    // ── DRAW ────────────────────────────────────────────────
+    const PAD = 2;
+
+    rects.forEach(r => {
+        const sc = r.score;
+        // Vivid colours — visible on black, clearly differentiated
+        const bg = sc >= 74 ? '#00c853'   // strong buy  — vivid green
+                 : sc >= 62 ? '#00897b'   // buy         — teal
+                 : sc >= 48 ? '#e65100'   // neutral     — amber-orange
+                 : sc >= 36 ? '#c62828'   // reduce      — red
+                 :            '#6a1b9a';  // sell        — purple (not confused with neutral)
+
+        // Fill
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.roundRect(r.rx + PAD, r.ry + PAD, r.rw - PAD*2, r.rh - PAD*2, 4);
+        ctx.fill();
+
+        // Subtle inner highlight on top edge
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(r.rx + PAD, r.ry + PAD, r.rw - PAD*2, Math.min(4, r.rh * 0.15));
+
+        // Labels — only if rect is big enough
+        const cw = r.rw - PAD*2, ch = r.rh - PAD*2;
+        if (cw < 28 || ch < 16) return;
+
+        const cx = r.rx + r.rw / 2;
+        const cy = r.ry + r.rh / 2;
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (ch >= 36 && cw >= 50) {
+            // Name + score stacked
+            const nameSize = cw > 120 ? 11 : cw > 70 ? 9 : 8;
+            const name = r.name.length > 14 && cw < 100
+                ? r.name.replace('Consumer ', 'Cons. ').replace('Information Technology', 'Info Tech').substring(0, 13) + '…'
+                : r.name;
+            ctx.font = `700 ${nameSize}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fillText(name, cx, cy - 7);
+
+            const scoreSize = Math.min(nameSize + 1, 13);
+            ctx.font = `800 ${scoreSize}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = sc >= 62 ? '#b9f6ca' : sc >= 48 ? '#ffe0b2' : '#ffcdd2';
+            ctx.fillText(sc, cx, cy + 8);
+        } else if (ch >= 20 && cw >= 36) {
+            // Score only
+            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.35), 11);
+            ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fillText(sc, cx, cy);
         }
     });
 
-    // Click handler
-    cv.onclick = (e) => {
-        const rect = cv.getBoundingClientRect();
-        const mx = (e.clientX - rect.left), my = (e.clientY - rect.top);
-        const hit = rects.find(r => mx>=r.rx&&mx<=r.rx+r.rw&&my>=r.ry&&my<=r.ry+r.rh);
-        if(hit) sigFilter_sector(hit.name);
-    };
+    // ── CLICK / TAP ─────────────────────────────────────────
+    // Remove old listener by cloning
+    const cv2 = cv.cloneNode(false);
+    cv.parentNode.replaceChild(cv2, cv);
+    // Re-copy canvas content (not possible after replace — redraw on new canvas instead)
+    // Simpler: store rects on cv2 and add listener
+    cv2.width = cv.width; cv2.height = cv.height;
+    cv2.style.width = cv.style.width; cv2.style.height = cv.style.height;
+    const ctx2 = cv2.getContext('2d');
+    ctx2.scale(dpr, dpr);
+    // Redraw on new canvas
+    ctx2.clearRect(0, 0, W, H);
+    rects.forEach(r => {
+        const sc = r.score;
+        const bg = sc>=74?'#00c853':sc>=62?'#00897b':sc>=48?'#e65100':sc>=36?'#c62828':'#6a1b9a';
+        ctx2.fillStyle = bg;
+        ctx2.beginPath(); ctx2.roundRect(r.rx+PAD,r.ry+PAD,r.rw-PAD*2,r.rh-PAD*2,4); ctx2.fill();
+        ctx2.fillStyle='rgba(255,255,255,0.08)';
+        ctx2.fillRect(r.rx+PAD,r.ry+PAD,r.rw-PAD*2,Math.min(4,r.rh*0.15));
+        const cw=r.rw-PAD*2, ch=r.rh-PAD*2, cx=r.rx+r.rw/2, cy=r.ry+r.rh/2;
+        if(cw<28||ch<16) return;
+        ctx2.textAlign='center'; ctx2.textBaseline='middle';
+        if(ch>=36&&cw>=50){
+            const ns=cw>120?11:cw>70?9:8;
+            const nm=r.name.replace('Consumer ','Cons. ').replace('Information Technology','Info Tech');
+            const nl=nm.length>13&&cw<100?nm.substring(0,12)+'…':nm;
+            ctx2.font=`700 ${ns}px "JetBrains Mono",monospace`;
+            ctx2.fillStyle='rgba(255,255,255,0.95)';
+            ctx2.fillText(nl,cx,cy-7);
+            ctx2.font=`800 ${Math.min(ns+1,13)}px "JetBrains Mono",monospace`;
+            ctx2.fillStyle=sc>=62?'#b9f6ca':sc>=48?'#ffe0b2':'#ffcdd2';
+            ctx2.fillText(sc,cx,cy+8);
+        } else if(ch>=20&&cw>=36){
+            const sz=Math.min(Math.floor(Math.min(cw,ch)*0.35),11);
+            ctx2.font=`800 ${sz}px "JetBrains Mono",monospace`;
+            ctx2.fillStyle='rgba(255,255,255,0.9)';
+            ctx2.fillText(sc,cx,cy);
+        }
+    });
+
+    cv2.addEventListener('click', e => {
+        const rect = cv2.getBoundingClientRect();
+        // Correct for DPR in logical coords (rects are in logical px)
+        const mx = (e.clientX - rect.left) * (W / rect.width);
+        const my = (e.clientY - rect.top)  * (H / rect.height);
+        const hit = rects.find(r => mx>=r.rx && mx<=r.rx+r.rw && my>=r.ry && my<=r.ry+r.rh);
+        if (hit) sigFilter_sector(hit.name);
+    });
 }
 
 // ---------- RENDER SPREAD TAB ----------

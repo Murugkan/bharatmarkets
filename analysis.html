@@ -2188,14 +2188,8 @@ function setupChartInteraction(){
   if(!canvas) return;
   setupChartInteraction._initialized = true;
   const t={lastDist:0,isPanning:false,startX:0,startPan:0};
-  let rafId=0;
-  const go=()=>{
-    if(rafId) return;
-    rafId=requestAnimationFrame(()=>{
-      rafId=0;
-      if(currentStock) { drawCandlestick(currentStock); if(S.maVis.vol) drawVolume(currentStock); }
-    });
-  };
+  let lastT=0;
+  const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
 
   canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startPan=S.panOffset;},{passive:true});
