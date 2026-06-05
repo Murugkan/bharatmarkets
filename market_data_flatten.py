@@ -292,12 +292,10 @@ for TICKER in TICKERS_TO_PROCESS:
                             else:
                                 temp_periods[str(period)] = standardize_value(value)
                         
-                        # Map table_name to granularity
-                        # profit_loss = quarterly, balance_sheet/cash_flow/ratios = annual
-                        if table_name == 'profit_loss':
-                            granule = 'quarterly'
-                        else:
-                            granule = 'annual'
+                        # screener_fin is always annual consolidated data.
+                        # Screener's consolidated view only shows annual periods — no quarterly.
+                        # (Quarterly data comes from screener_raw:Quarterly Results instead.)
+                        granule = 'annual'
                         
                         # screener_fin = consolidated
                         consol = 'consolidated'
@@ -346,11 +344,13 @@ for TICKER in TICKERS_TO_PROCESS:
                                 except:
                                     pass
                             
-                            if months_seen == {3}:
+                            # A single month across all periods = annual data.
+                            # Covers Mar (Indian FY), Dec (calendar FY), Sep, Jun year-ends.
+                            if len(months_seen) == 1:
                                 granule = 'annual'
                             elif {3, 6, 9, 12} <= months_seen:
                                 granule = 'quarterly'
-                            elif months_seen == {3, 9}:
+                            elif months_seen == {3, 9} or months_seen == {6, 12}:
                                 granule = 'half_yearly'
                             else:
                                 granule = 'other'
@@ -487,9 +487,16 @@ for TICKER in TICKERS_TO_PROCESS:
         guidance = all_data.get('guidance', {}).get(TICKER, {})
         for category in ['guidance', 'insights']:
             try:
-                for k, v in guidance.get(category, {}).items():
-                    if k and k.strip():
-                        metrics[f"{k}|{category}"] = {'metric': k, 'section': category, 'source': 'guidance', 'value': v}
+                cat_data = guidance.get(category, {})
+                if isinstance(cat_data, dict):
+                    for k, v in cat_data.items():
+                        if k and k.strip():
+                            metrics[f"{k}|{category}"] = {'metric': k, 'section': category, 'source': 'guidance', 'value': v}
+                elif isinstance(cat_data, list):
+                    # List format: store each item indexed by position
+                    for i, item in enumerate(cat_data):
+                        k = f"{category}_{i}"
+                        metrics[f"{k}|{category}"] = {'metric': k, 'section': category, 'source': 'guidance', 'value': item}
             except Exception as e:
                 ticker_errors.append(f"guidance | {category} | {str(e)}")
                 logger.write_error(TICKER, 'guidance', category, str(e))
