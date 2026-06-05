@@ -9,12 +9,19 @@ jobs:
     timeout-minutes: 480
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+
+      - name: Install Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -q
+          sudo apt-get install -y google-chrome-stable
 
       - name: Install dependencies
         run: pip install -r fetch_financials_screener_requirements.txt
@@ -30,11 +37,16 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add data/screener_financials.json data/logs/
-          git commit -m "Update screener data - $(date)" || echo "No changes to commit"
-          git push
+          if git diff --quiet --cached; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Update screener data - $(date +'%Y-%m-%d %H:%M:%S')"
+          git pull --rebase origin main
+          git push origin main
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: results
