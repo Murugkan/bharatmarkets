@@ -1202,28 +1202,55 @@ def reorganize_by_period(bucketed: dict) -> dict:
 
 def reorganize_ratios_revenue(bucketed: dict) -> dict:
     """
-    Group revenue-related metrics under 'revenue' sub-object in ratios.
-    Remove originals to avoid scattering.
+    1. Unwrap Screener ratio time-series from [{_periods:{date:val},...}] to flat {date:val}.
+       Screener ratios have one source (standalone annual) — no consolidation split needed.
+       Use consolidated if available, otherwise standalone, otherwise first available.
+    2. Group Yahoo revenue sub-fields under 'revenue' sub-object.
+    3. Convert Yahoo TTM absolute INR scalars → Crores (divide by 1e7).
     """
     if "ratios" not in bucketed:
         return bucketed
-    
+
     ratios = bucketed["ratios"]
-    
-    revenue_keys = {
-        'total_revenue', 'revenue_per_share', 'revenue_growth'
+
+    # ── Fix 1: Screener ratio time-series unwrap ──────────────────────────────
+    SCREENER_RATIO_KEYS = {
+        'roce_pct', 'roe_pct', 'debtor_days', 'inventory_days',
+        'days_payable', 'cash_conversion_cycle', 'working_capital_days',
+        # legacy names (pre-rename) in case called before standardize_field_names
+        'ROCE_pct', 'ROE_pct', 'Debtor_Days', 'Inventory_Days',
+        'Days_Payable', 'Cash_Conversion_Cycle', 'Working_Capital_Days',
     }
-    
-    # Extract revenue metrics (using pop to remove originals)
+    for key in list(ratios.keys()):
+        if key not in SCREENER_RATIO_KEYS:
+            continue
+        val = ratios[key]
+        if not isinstance(val, list):
+            continue
+        # Merge all _periods dicts — prefer consolidated over standalone
+        # Priority: consolidated annual > standalone annual > any
+        merged = {}
+        priority = {'consolidated': 2, 'standalone': 1}
+        for item in val:
+            if isinstance(item, dict) and '_periods' in item:
+                p = item['_periods']
+                weight = priority.get(item.get('_consolidation', ''), 0)
+                for d, v in p.items():
+                    if v is None:
+                        continue
+                    if d not in merged or weight > merged[d][1]:
+                        merged[d] = (v, weight)
+        ratios[key] = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
+
+    # ── Fix 3: Group Yahoo revenue sub-fields under 'revenue' ─────────────────
+    revenue_keys = {'total_revenue', 'revenue_per_share', 'revenue_growth'}
     revenue_obj = {}
     for key in revenue_keys:
         if key in ratios:
             revenue_obj[key] = ratios.pop(key)
-    
-    # Add revenue object back if it has data
     if revenue_obj:
         ratios['revenue'] = revenue_obj
-    
+
     bucketed["ratios"] = ratios
     return bucketed
 
@@ -2193,6 +2220,312 @@ def _extract_yf_fin_sections(sections: dict) -> tuple:
     return yf_historical, yf_latest
 
 
+def standardize_field_names(bucketed: dict) -> dict:
+    """
+    Rename all fields to consistent, business-friendly names.
+    Eliminates Yahoo internal naming (regular_market_*, fifty_two_week_*,
+    held_pct_*, etc.), camelCase in ltp, and opaque abbreviations.
+    Runs as the final post-processing step so all reorganize passes are stable.
+    """
+
+    def rename_keys(obj: dict, mapping: dict) -> dict:
+        """Rename top-level keys of a dict using mapping. Preserves unmatched keys."""
+        return {mapping.get(k, k): v for k, v in obj.items()}
+
+    # ── company_details ──────────────────────────────────────────────────────
+    cd = bucketed.get('company_details', {})
+    if cd:
+        # Step 1: rename Screener sector/industry to screener_ prefix FIRST
+        cd = rename_keys(cd, {
+            'sector':   'screener_sector',
+            'industry': 'screener_industry',
+        })
+        # Step 2: rename Yahoo fields and everything else
+        cd = rename_keys(cd, {
+            'long_name':                 'company_name',
+            'short_name':                'display_name',
+            'long_business_summary':     'business_description',
+            'full_time_employees':       'employee_count',
+            'symbol_yahoo':              'yahoo_symbol',
+            'sector_yahoo':              'sector',
+            'industry_yahoo':            'industry',
+            'sector_disp':               'sector_label',
+            'industry_disp':             'industry_label',
+            'held_pct_insiders':         'insider_holding_pct',
+            'held_pct_institutions':     'institutional_holding_pct',
+            'float_shares':              'floating_shares',
+            'implied_shares_outstanding':'implied_shares',
+            'first_trade_date_ms':       'listing_date_ms',
+            'regular_market_time':       'last_trade_time',
+            'compensation_as_of_epoch':  'officer_compensation_date',
+            'name_change_date':          'name_changed_on',
+            'ir_website':                'investor_relations_url',
+            'quote_type':                'instrument_type',
+            'type_disp':                 'instrument_type_label',
+        })
+        # shareholding sub-objects
+        sh = cd.get('shareholding', {})
+        if isinstance(sh.get('ownership'), dict):
+            sh['ownership'] = rename_keys(sh['ownership'], {
+                'held_pct_insiders':    'insider_holding_pct',
+                'held_pct_institutions':'institutional_holding_pct',
+            })
+        if isinstance(sh.get('shares'), dict):
+            sh['shares'] = rename_keys(sh['shares'], {
+                'float_shares':               'floating_shares',
+                'implied_shares_outstanding': 'implied_shares',
+            })
+        bucketed['company_details'] = cd
+
+    # ── financials ───────────────────────────────────────────────────────────
+    fin = bucketed.get('financials', {})
+    if fin:
+        fin = rename_keys(fin, {
+            'CFO':                        'operating_cash_flow',
+            'CFI':                        'investing_cash_flow',
+            'CFF':                        'financing_cash_flow',
+            'CFO_over_OP':                'cash_conversion_ratio',
+            'CWIP':                       'capital_wip',
+            'OPM_pct':                    'operating_margin_pct',
+            'EPS_Rs':                     'eps',
+            'Equity_Capital':             'share_capital',
+            'Profit_before_tax':          'profit_before_tax',
+            'Tax_pct':                    'tax_rate_pct',
+            'Dividend_Payout_pct':        'dividend_payout_pct',
+            'Fixed_Assets':               'net_fixed_assets',
+            'Net_Cash_Flow':              'net_cash_flow',
+            'Financing_Profit':           'net_interest_income',
+            'Financing_Margin_pct':       'net_interest_margin_pct',
+            'Gross_NPA_pct':              'gross_npa_pct',
+            'Net_NPA_pct':                'net_npa_pct',
+            'yf_accounts_receivable':     'yf_receivables',
+            'yf_capital_lease_obligations':'yf_lease_obligations',
+            'yf_cash_and_equivalents':    'yf_cash',
+            'yf_cost_of_revenue':         'yf_cogs',
+            'yf_normalized_income':       'yf_normalized_profit',
+            'yf_net_tangible_assets':     'yf_tangible_assets',
+            'yf_unusual_items':           'yf_exceptional_items',
+            'yf_latest_CFO':              'yf_latest_operating_cash_flow',
+            'yf_latest_EPS_Rs':           'yf_latest_eps',
+            'yf_latest_Borrowings':       'yf_latest_borrowings',
+            'yf_latest_Free_Cash_Flow':   'yf_latest_fcf',
+            'yf_latest_Net_Profit':       'yf_latest_net_profit',
+            'yf_latest_Operating_Profit': 'yf_latest_ebit',
+            'yf_latest_Sales':            'yf_latest_revenue',
+            'yf_latest_Total_Assets':     'yf_latest_total_assets',
+            'yf_latest_Total_Liabilities':'yf_latest_total_liabilities',
+            'yf_latest_Depreciation':     'yf_latest_depreciation',
+            'yf_latest_Interest':         'yf_latest_interest',
+        })
+        bucketed['financials'] = fin
+
+    # ── ratios ───────────────────────────────────────────────────────────────
+    rat = bucketed.get('ratios', {})
+    if rat:
+        rat = rename_keys(rat, {
+            # Screener time-series: PascalCase → snake_case
+            'ROCE_pct':              'roce_pct',
+            'ROE_pct':               'roe_pct',
+            'Debtor_Days':           'debtor_days',
+            'Inventory_Days':        'inventory_days',
+            'Days_Payable':          'days_payable',
+            'Cash_Conversion_Cycle': 'cash_conversion_cycle',
+            'Working_Capital_Days':  'working_capital_days',
+            # Yahoo scalars
+            'ebitda_margins':            'ebitda_margin_pct',
+            'gross_margins':             'gross_margin_pct',
+            'operating_margins':         'operating_margin_pct',
+            'profit_margins':            'net_margin_pct',
+            'return_on_assets':          'roa_pct',
+            'return_on_equity':          'roe_pct',
+            'earnings_growth':           'earnings_growth_yoy',
+            'earnings_quarterly_growth': 'earnings_growth_qoq',
+            'free_cashflow':             'fcf_ttm',
+            'operating_cashflow':        'operating_cash_flow_ttm',
+            'gross_profits':             'gross_profit_ttm',
+            'net_income_to_common':      'net_profit_ttm',
+            'total_cash':                'cash_and_equivalents',
+            'total_cash_per_share':      'cash_per_share',
+            'debt_to_equity':            'debt_to_equity_ratio',
+        })
+        bucketed['ratios'] = rat
+
+    # ── Fix 2: Drop Yahoo TTM absolute scalars — unit-inconsistent (USD for some ─
+    # tickers) and duplicated by yf_*.{YYYY-MM-DD} time-series in financials.
+    rat = bucketed.get('ratios', {})
+    if rat:
+        DROP_TTM = {
+            'fcf_ttm', 'operating_cash_flow_ttm', 'gross_profit_ttm',
+            'net_profit_ttm', 'cash_and_equivalents', 'cash_per_share',
+        }
+        for k in DROP_TTM:
+            rat.pop(k, None)
+        # Also drop revenue sub-object's absolute values
+        rev = rat.get('revenue', {})
+        if isinstance(rev, dict):
+            rev.pop('total_revenue', None)
+            rev.pop('revenue_per_share', None)
+            if not rev:
+                rat.pop('revenue', None)
+        bucketed['ratios'] = rat
+
+    # ── valuation ────────────────────────────────────────────────────────────
+    val = bucketed.get('valuation', {})
+    if val:
+        val = rename_keys(val, {
+            'non_diluted_market_cap':  'basic_market_cap',
+            'yf_basic_eps':            'basic_eps_history',
+            'yf_diluted_eps':          'diluted_eps_history',
+            'yf_basic_shares':         'basic_shares_history',
+            'yf_diluted_shares':       'diluted_shares_history',
+            'yf_shares_outstanding':   'shares_outstanding_history',
+        })
+        # pe sub-fields
+        if isinstance(val.get('pe'), dict):
+            val['pe'] = rename_keys(val['pe'], {
+                'trailing_pe':       'pe_ttm',
+                'forward_pe':        'pe_forward',
+                'peg_ratio':         'peg',
+                'trailing_peg_ratio':'peg_ttm',
+                'price_to_sales_ttm':'price_to_sales',
+            })
+        # eps sub-fields
+        if isinstance(val.get('eps'), dict):
+            val['eps'] = rename_keys(val['eps'], {
+                'trailing_eps':           'eps_ttm',
+                'forward_eps':            'eps_forward',
+                'eps_ttm':                'eps_ttm',
+                'price_eps_current_year': 'pe_current_year',
+            })
+        bucketed['valuation'] = val
+
+    # ── price ────────────────────────────────────────────────────────────────
+    pr = bucketed.get('price', {})
+    if pr:
+        # ltp sub-fields: camelCase → snake_case
+        if isinstance(pr.get('ltp'), dict):
+            pr['ltp'] = rename_keys(pr['ltp'], {
+                'ltp':       'price',
+                'changePct': 'change_pct',
+                'prev':      'prev_close',
+                'vol':       'day_volume',
+                'w52h':      'week52_high',
+                'w52l':      'week52_low',
+            })
+        # 52_week sub-fields
+        if isinstance(pr.get('52_week'), dict):
+            pr['52_week'] = rename_keys(pr['52_week'], {
+                'fifty_two_week_high':      'high',
+                'fifty_two_week_low':       'low',
+                'fifty_two_week_change':    'change',
+                'fifty_two_week_change_pct':'change_pct',
+            })
+        # volume sub-fields
+        if isinstance(pr.get('volume'), dict):
+            pr['volume'] = rename_keys(pr['volume'], {
+                'volume':                    'day_volume',
+                'regular_market_volume':     'market_volume',
+                'average_volume':            'avg_volume',
+                'average_daily_volume_10d':  'avg_volume_10d',
+                'average_daily_volume_3mo':  'avg_volume_3mo',
+                'average_volume_10d':        'avg_volume_10d',
+            })
+        # top-level price fields
+        pr = rename_keys(pr, {
+            'current_price':                'close_price',
+            'previous_close':               'prev_close',
+            'regular_market_price':         'market_price',
+            'regular_market_change':        'price_change',
+            'regular_market_change_pct':    'price_change_pct',
+            'regular_market_day_high':      'day_high',
+            'regular_market_day_low':       'day_low',
+            'regular_market_day_range':     'day_range',
+            'regular_market_open':          'day_open',
+            'regular_market_previous_close':'regular_prev_close',
+            'fifty_day_avg':                'ma_50d',
+            'fifty_day_avg_change':         'ma_50d_diff',
+            'fifty_day_avg_change_pct':     'ma_50d_diff_pct',
+            'two_hundred_day_avg':          'ma_200d',
+            'two_hundred_day_avg_change':   'ma_200d_diff',
+            'two_hundred_day_avg_change_pct':'ma_200d_diff_pct',
+            'fifty_two_week_range':         'week52_range',
+            'fifty_two_week_high_change':   'week52_high_diff',
+            'fifty_two_week_high_change_pct':'week52_high_diff_pct',
+            'fifty_two_week_low_change':    'week52_low_diff',
+            'fifty_two_week_low_change_pct':'week52_low_diff_pct',
+            'history_6mo_1d':               'ohlcv_daily',
+            'history_1wk':                  'ohlcv_weekly',
+            'history_1mo':                  'ohlcv_monthly',
+        })
+        bucketed['price'] = pr
+
+    # ── websignals ───────────────────────────────────────────────────────────
+    ws = bucketed.get('websignals', {})
+    if ws:
+        ws = rename_keys(ws, {
+            'recommendation_key':       'analyst_rating',
+            'recommendation_mean':      'analyst_rating_score',
+            'average_analyst_rating':   'analyst_rating_label',
+            'number_of_analyst_opinions':'analyst_count',
+            'target_high_price':        'target_high',
+            'target_low_price':         'target_low',
+            'target_mean_price':        'target_mean',
+            'target_median_price':      'target_median',
+            'audit_risk':               'governance_audit_risk',
+            'board_risk':               'governance_board_risk',
+            'compensation_risk':        'governance_comp_risk',
+            'shareholder_rights_risk':  'governance_rights_risk',
+            'overall_risk':             'governance_overall_risk',
+            'governance_epoch_date':    'governance_data_date',
+            'earnings_timestamp':       'next_earnings_date',
+            'earnings_timestamp_start': 'earnings_date_start',
+            'earnings_timestamp_end':   'earnings_date_end',
+            'earnings_call_ts_start':   'earnings_call_start',
+            'earnings_call_ts_end':     'earnings_call_end',
+            'is_earnings_date_estimate':'earnings_date_estimated',
+            'sandp_52_week_change':     'index_52w_change',
+        })
+        bucketed['websignals'] = ws
+
+    # ── Fix 3: Drop duplicate price fields ───────────────────────────────────
+    pr = bucketed.get('price', {})
+    if pr:
+        # market_price duplicates close_price; regular_prev_close duplicates prev_close
+        for drop in ('market_price', 'regular_prev_close'):
+            pr.pop(drop, None)
+        bucketed['price'] = pr
+
+    # ── Fix 4: Drop company_details noise fields ──────────────────────────────
+    cd = bucketed.get('company_details', {})
+    if cd:
+        # Promote Yahoo isin/ticker as fallback if unified_symbols didn't provide them
+        if not cd.get('isin') and cd.get('isin_yahoo'):
+            cd['isin'] = cd['isin_yahoo']
+        if not cd.get('ticker') and cd.get('ticker_yahoo'):
+            cd['ticker'] = cd['ticker_yahoo']
+        NOISE = {
+            'exchange_timezone_name', 'exchange_timezone_short', 'full_exchange_name',
+            'market', 'market_state', 'last_trade_time', 'instrument_type_label',
+            'sector_label', 'industry_label', 'display_name', 'name_yahoo',
+            'ticker_yahoo', 'isin_yahoo', 'officer_compensation_date',
+            'prev_name', 'name_changed_on', 'fax', 'zip',
+            'last_fiscal_year_end', 'next_fiscal_year_end', 'most_recent_quarter',
+            'data_source',
+        }
+        for k in NOISE:
+            cd.pop(k, None)
+        bucketed['company_details'] = cd
+
+    # ── Fix 5: Drop yf_latest_* from financials — duplicates Screener latest ─
+    fin = bucketed.get('financials', {})
+    if fin:
+        for k in [k for k in list(fin.keys()) if k.startswith('yf_latest_')]:
+            fin.pop(k)
+        bucketed['financials'] = fin
+
+    return bucketed
+
+
 def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
@@ -2243,7 +2576,10 @@ def main():
             if 'derived_metrics' not in bucketed:
                 bucketed['derived_metrics'] = {}
             bucketed['derived_metrics']['ai_insights_guidance'] = guidance_data[symbol]
-        
+
+        # Final pass — standardise all field names to business-friendly names
+        bucketed = standardize_field_names(bucketed)
+
         output[symbol] = bucketed
 
         # Report any unmapped fields for visibility
@@ -2269,349 +2605,19 @@ def main():
             "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
 
-            # ── SCHEMA ────────────────────────────────────────────────────────────
-            # Each entry is the exact dot-path to access the field on a ticker object.
-            # {YYYY-MM-DD} = dict keyed by ISO date strings
-            # []           = list (OHLCV bars or shareholding time-series objects)
-            # Cr           = Indian Rupees in Crores
-            # INR_abs      = absolute INR (not Crores) — divide by 1e7 for Crores
-            # pct          = percentage as float (18.5 = 18.5%)
-            # frac         = fraction 0-1 (0.185 = 18.5%)
-            # epoch        = Unix timestamp (seconds)
+            # ── SCHEMA — generated at runtime from actual output ───────────────────
+            # Key   = exact dot-path to the field (as accessed in JS/Python)
+            # Value = unit: Cr | INR | INR_abs | pct | frac | ratio | int | epoch | str | []  | bars
+            # {YYYY-MM-DD} = dict keyed by ISO date string
+            # []           = list (shareholding time-series objects)
+            # bars         = list of OHLCV dicts {Date, Open, High, Low, Close, Volume}
+            # Cr           = Indian Rupees, Crores
+            # INR_abs      = absolute INR — divide by 1e7 for Crores (market_cap, EV etc.)
+            # pct          = percentage as float  (18.5 = 18.5%)
+            # frac         = fraction 0–1  (0.185 = 18.5%)
+            # epoch        = Unix timestamp seconds
             # ─────────────────────────────────────────────────────────────────────
-            "schema": {
-
-                "company_details": {
-                    # ── Identity ──────────────────────────────────────────────
-                    "ticker":                  "str",
-                    "name":                    "str",
-                    "isin":                    "str",
-                    "sector":                  "str  | Screener sector",
-                    "industry":                "str  | Screener industry",
-                    "sector_yahoo":            "str  | Yahoo sector",
-                    "industry_yahoo":          "str  | Yahoo industry",
-                    "type":                    "str  | Equity / ETF",
-                    "exchange":                "str  | NSE / BSE",
-                    "currency":                "str  | INR",
-                    "financial_currency":      "str  | INR or USD (ADRs)",
-                    "website":                 "str",
-                    "long_business_summary":   "str",
-                    "full_time_employees":     "int",
-                    "company_officers":        "[]   | [{name, title, age, ...}]",
-                    # ── Portfolio ─────────────────────────────────────────────
-                    "qty":                     "int  | shares held",
-                    "avg_cost":                "INR  | average cost price",
-                    # ── Shareholding time-series ───────────────────────────────
-                    # Each is a list of objects: [{_periods:{YYYY-MM-DD: pct_str}, _consolidation, _granule}]
-                    # Access: ticker['company_details']['promoters'][0]['_periods']['2026-03-01'] → '60.86%'
-                    "promoters":               "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
-                    "fiis":                    "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
-                    "diis":                    "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
-                    "government":              "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
-                    "public":                  "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
-                    "others":                  "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
-                    "no_of_shareholders":      "[]   | [{_periods:{YYYY-MM-DD: int}}]",
-                    # ── Share data ────────────────────────────────────────────
-                    "shares_outstanding":      "int",
-                    "float_shares":            "int",
-                    "implied_shares_outstanding": "int",
-                    "held_pct_insiders":       "frac",
-                    "held_pct_institutions":   "frac",
-                    # ── Dividends & splits ────────────────────────────────────
-                    "shareholding.dividends.dividend_rate":             "INR  | annual dividend/share",
-                    "shareholding.dividends.dividend_yield":            "frac",
-                    "shareholding.dividends.ex_dividend_date":          "epoch",
-                    "shareholding.dividends.five_year_avg_dividend_yield": "frac",
-                    "shareholding.dividends.payout_ratio":              "frac",
-                    "shareholding.dividends.trailing_annual_dividend_rate": "INR",
-                    "shareholding.dividends.trailing_annual_dividend_yield": "frac",
-                    "shareholding.stock_splits.last_split_date":        "epoch",
-                    "shareholding.stock_splits.last_split_factor":      "str  | e.g. '2:1'",
-                },
-
-                "financials": {
-                    # ── Access pattern ────────────────────────────────────────
-                    # ticker['financials'][METRIC][consolidation][granularity][YYYY-MM-DD] → Cr
-                    # consolidation : 'consolidated' | 'standalone'
-                    # granularity   : 'annual' | 'quarterly' | 'half_yearly'
-                    # ── P&L ──────────────────────────────────────────────────
-                    "Sales.consolidated.annual.{YYYY-MM-DD}":              "Cr",
-                    "Sales.consolidated.quarterly.{YYYY-MM-DD}":           "Cr",
-                    "Sales.standalone.annual.{YYYY-MM-DD}":                "Cr",
-                    "Sales.standalone.quarterly.{YYYY-MM-DD}":             "Cr",
-                    "Expenses.consolidated.annual.{YYYY-MM-DD}":           "Cr",
-                    "Expenses.consolidated.quarterly.{YYYY-MM-DD}":        "Cr",
-                    "Expenses.standalone.annual.{YYYY-MM-DD}":             "Cr",
-                    "Operating_Profit.consolidated.annual.{YYYY-MM-DD}":   "Cr",
-                    "Operating_Profit.consolidated.quarterly.{YYYY-MM-DD}":"Cr",
-                    "Operating_Profit.standalone.annual.{YYYY-MM-DD}":     "Cr",
-                    "OPM_pct.consolidated.annual.{YYYY-MM-DD}":            "str  | e.g. '20%'",
-                    "OPM_pct.consolidated.quarterly.{YYYY-MM-DD}":         "str",
-                    "Other_Income.consolidated.annual.{YYYY-MM-DD}":       "Cr",
-                    "Other_Income.consolidated.quarterly.{YYYY-MM-DD}":    "Cr",
-                    "Interest.consolidated.annual.{YYYY-MM-DD}":           "Cr",
-                    "Interest.consolidated.quarterly.{YYYY-MM-DD}":        "Cr",
-                    "Depreciation.consolidated.annual.{YYYY-MM-DD}":       "Cr",
-                    "Depreciation.consolidated.quarterly.{YYYY-MM-DD}":    "Cr",
-                    "Profit_before_tax.consolidated.annual.{YYYY-MM-DD}":  "Cr",
-                    "Profit_before_tax.consolidated.quarterly.{YYYY-MM-DD}":"Cr",
-                    "Tax_pct.consolidated.annual.{YYYY-MM-DD}":            "str  | e.g. '25%'",
-                    "Net_Profit.consolidated.annual.{YYYY-MM-DD}":         "Cr  | PRIMARY — use this",
-                    "Net_Profit.consolidated.quarterly.{YYYY-MM-DD}":      "Cr",
-                    "Net_Profit.standalone.annual.{YYYY-MM-DD}":           "Cr",
-                    "Net_Profit.standalone.quarterly.{YYYY-MM-DD}":        "Cr",
-                    "EPS_Rs.consolidated.annual.{YYYY-MM-DD}":             "INR | earnings per share",
-                    "EPS_Rs.consolidated.quarterly.{YYYY-MM-DD}":          "INR",
-                    "Dividend_Payout_pct.consolidated.annual.{YYYY-MM-DD}":"str",
-                    # ── Bank-specific P&L ──────────────────────────────────────
-                    "Financing_Profit.consolidated.annual.{YYYY-MM-DD}":   "Cr  | banks: NII proxy",
-                    "Financing_Profit.consolidated.quarterly.{YYYY-MM-DD}":"Cr",
-                    "Financing_Margin_pct.consolidated.annual.{YYYY-MM-DD}":"str | banks: NIM %",
-                    "Financing_Margin_pct.consolidated.quarterly.{YYYY-MM-DD}":"str",
-                    "Gross_NPA_pct.consolidated.quarterly.{YYYY-MM-DD}":   "str | banks only",
-                    "Net_NPA_pct.consolidated.quarterly.{YYYY-MM-DD}":     "str | banks only",
-                    # ── Balance Sheet ─────────────────────────────────────────
-                    "Equity_Capital.consolidated.annual.{YYYY-MM-DD}":     "Cr",
-                    "Reserves.consolidated.annual.{YYYY-MM-DD}":           "Cr",
-                    "Borrowings.consolidated.annual.{YYYY-MM-DD}":         "Cr  | debt (manufacturing/IT/NBFC)",
-                    "Borrowings.standalone.annual.{YYYY-MM-DD}":           "Cr",
-                    "Deposits.consolidated.annual.{YYYY-MM-DD}":           "Cr  | banks only",
-                    "Other_Liabilities.consolidated.annual.{YYYY-MM-DD}":  "Cr",
-                    "Total_Liabilities.consolidated.annual.{YYYY-MM-DD}":  "Cr",
-                    "Fixed_Assets.consolidated.annual.{YYYY-MM-DD}":       "Cr",
-                    "CWIP.consolidated.annual.{YYYY-MM-DD}":               "Cr",
-                    "Investments.consolidated.annual.{YYYY-MM-DD}":        "Cr",
-                    "Other_Assets.consolidated.annual.{YYYY-MM-DD}":       "Cr",
-                    "Total_Assets.consolidated.annual.{YYYY-MM-DD}":       "Cr",
-                    # ── Cash Flow ─────────────────────────────────────────────
-                    "CFO.consolidated.annual.{YYYY-MM-DD}":                "Cr  | operating cash flow",
-                    "CFO.standalone.annual.{YYYY-MM-DD}":                  "Cr",
-                    "CFI.consolidated.annual.{YYYY-MM-DD}":                "Cr  | investing cash flow",
-                    "CFF.consolidated.annual.{YYYY-MM-DD}":                "Cr  | financing cash flow",
-                    "Free_Cash_Flow.consolidated.annual.{YYYY-MM-DD}":     "Cr  | FCF = CFO − Capex",
-                    "Net_Cash_Flow.consolidated.annual.{YYYY-MM-DD}":      "Cr",
-                    "CFO_over_OP.consolidated.annual.{YYYY-MM-DD}":        "ratio | CFO / Operating Profit",
-                    # ── Yahoo gap-fill (older periods) ────────────────────────
-                    "yf_revenue.{YYYY-MM-DD}":                             "Cr  | Yahoo annual revenue",
-                    "yf_gross_profit.{YYYY-MM-DD}":                        "Cr",
-                    "yf_ebitda.{YYYY-MM-DD}":                              "Cr",
-                    "yf_operating_cash_flow.{YYYY-MM-DD}":                 "Cr",
-                    "yf_capex.{YYYY-MM-DD}":                               "Cr",
-                    "yf_free_cash_flow.{YYYY-MM-DD}":                      "Cr",
-                    "yf_invested_capital.{YYYY-MM-DD}":                    "Cr",
-                    "yf_working_capital.{YYYY-MM-DD}":                     "Cr",
-                    "yf_total_assets.{YYYY-MM-DD}":                        "Cr",
-                    "yf_accounts_receivable.{YYYY-MM-DD}":                 "Cr",
-                    "yf_cost_of_revenue.{YYYY-MM-DD}":                     "Cr",
-                    "yf_rd_expense.{YYYY-MM-DD}":                          "Cr",
-                    # ── Yahoo latest scalars ───────────────────────────────────
-                    "yf_latest_Sales":                                      "Cr  | TTM",
-                    "yf_latest_Net_Profit":                                 "Cr  | TTM",
-                    "yf_latest_Operating_Profit":                           "Cr  | TTM",
-                    "yf_latest_CFO":                                        "Cr  | TTM",
-                    "yf_latest_Free_Cash_Flow":                             "Cr  | TTM",
-                    "yf_latest_Borrowings":                                 "Cr  | TTM",
-                    "yf_latest_Total_Assets":                               "Cr  | TTM",
-                    "yf_latest_Total_Liabilities":                          "Cr  | TTM",
-                    "yf_latest_Depreciation":                               "Cr  | TTM",
-                    "yf_latest_Interest":                                    "Cr  | TTM",
-                    "yf_latest_EPS_Rs":                                     "INR | TTM",
-                },
-
-                "ratios": {
-                    # Screener ratios: dict {YYYY-MM-DD: value}
-                    # Access: ticker['ratios']['ROCE_pct']['2026-03-01'] → 18.5
-                    "ROCE_pct.{YYYY-MM-DD}":            "pct  | Return on Capital Employed — manufacturing/IT",
-                    "ROE_pct.{YYYY-MM-DD}":             "pct  | Return on Equity — banks/NBFCs",
-                    "Debtor_Days.{YYYY-MM-DD}":         "days",
-                    "Inventory_Days.{YYYY-MM-DD}":      "days",
-                    "Days_Payable.{YYYY-MM-DD}":        "days",
-                    "Cash_Conversion_Cycle.{YYYY-MM-DD}":"days",
-                    "Working_Capital_Days.{YYYY-MM-DD}":"days",
-                    # Yahoo scalars (TTM)
-                    "profit_margins":           "frac | net margin",
-                    "gross_margins":            "frac",
-                    "ebitda_margins":           "frac",
-                    "operating_margins":        "frac",
-                    "return_on_assets":         "frac",
-                    "return_on_equity":         "frac",
-                    "earnings_growth":          "frac | YoY",
-                    "earnings_quarterly_growth":"frac | QoQ",
-                    "revenue.total_revenue":    "Cr   | TTM",
-                    "revenue.revenue_per_share":"INR",
-                    "revenue.revenue_growth":   "frac | YoY",
-                    "debt_to_equity":           "ratio",
-                    "current_ratio":            "ratio",
-                    "quick_ratio":              "ratio",
-                    "total_cash":               "Cr",
-                    "total_cash_per_share":     "INR",
-                    "free_cashflow":            "Cr   | TTM",
-                    "operating_cashflow":       "Cr   | TTM",
-                    "gross_profits":            "Cr   | TTM",
-                    "net_income_to_common":     "Cr   | TTM",
-                },
-
-                "valuation": {
-                    # Access: ticker['valuation']['pe']['trailing_pe'] → 18.8
-                    "market_cap":               "INR_abs | divide by 1e7 for Crores",
-                    "non_diluted_market_cap":   "INR_abs",
-                    "enterprise_value":         "INR_abs",
-                    "ebitda":                   "INR_abs",
-                    "total_debt":               "INR_abs",
-                    "book_value":               "INR  | per share",
-                    "ev_to_revenue":            "ratio",
-                    "ev_to_ebitda":             "ratio",
-                    "pe.trailing_pe":           "ratio | P/E on TTM earnings",
-                    "pe.forward_pe":            "ratio | P/E on forward estimate",
-                    "pe.peg_ratio":             "ratio",
-                    "pe.trailing_peg_ratio":    "ratio",
-                    "pe.price_to_book":         "ratio",
-                    "pe.price_to_sales_ttm":    "ratio",
-                    "eps.trailing_eps":         "INR  | TTM EPS",
-                    "eps.forward_eps":          "INR  | forward EPS estimate",
-                    "eps.eps_ttm":              "INR",
-                    "eps.eps_forward":          "INR",
-                    "eps.eps_current_year":     "INR",
-                    "eps.price_eps_current_year":"ratio",
-                    "yf_diluted_eps.{YYYY-MM-DD}":      "INR  | annual diluted EPS time-series",
-                    "yf_basic_eps.{YYYY-MM-DD}":        "INR  | annual basic EPS time-series",
-                    "yf_diluted_shares.{YYYY-MM-DD}":   "int  | annual diluted share count",
-                    "yf_basic_shares.{YYYY-MM-DD}":     "int  | annual basic share count",
-                    "yf_shares_outstanding.{YYYY-MM-DD}":"int | annual shares outstanding",
-                },
-
-                "price": {
-                    # ── Live price (null in file, populated at runtime by fetchAndMergeLTP) ──
-                    "ltp.ltp":          "INR  | last traded price",
-                    "ltp.change":       "INR  | change from prev close",
-                    "ltp.changePct":    "pct  | change %",
-                    "ltp.open":         "INR",
-                    "ltp.high":         "INR  | day high",
-                    "ltp.low":          "INR  | day low",
-                    "ltp.prev":         "INR  | previous close",
-                    "ltp.vol":          "int  | day volume",
-                    "ltp.w52h":         "INR  | 52-week high",
-                    "ltp.w52l":         "INR  | 52-week low",
-                    "ltp.beta":         "ratio",
-                    # ── Yahoo current ──────────────────────────────────────────
-                    "current_price":                    "INR",
-                    "previous_close":                   "INR",
-                    "regular_market_price":             "INR",
-                    "regular_market_change":            "INR",
-                    "regular_market_change_pct":        "pct",
-                    "day_high":                         "INR",
-                    "day_low":                          "INR",
-                    "fifty_day_avg":                    "INR",
-                    "two_hundred_day_avg":              "INR",
-                    "fifty_day_avg_change":             "INR",
-                    "fifty_day_avg_change_pct":         "pct",
-                    "two_hundred_day_avg_change":       "INR",
-                    "two_hundred_day_avg_change_pct":   "pct",
-                    # ── 52-week ───────────────────────────────────────────────
-                    "52_week.fifty_two_week_high":              "INR",
-                    "52_week.fifty_two_week_low":               "INR",
-                    "52_week.fifty_two_week_change":            "INR",
-                    "52_week.fifty_two_week_change_pct":        "pct",
-                    "fifty_two_week_high_change":               "INR  | distance below 52w high",
-                    "fifty_two_week_high_change_pct":           "pct",
-                    "fifty_two_week_low_change":                "INR  | distance above 52w low",
-                    "fifty_two_week_low_change_pct":            "pct",
-                    # ── Volume ────────────────────────────────────────────────
-                    "volume.volume":                            "int",
-                    "volume.regular_market_volume":             "int",
-                    "volume.average_volume":                    "int",
-                    "volume.average_daily_volume_10d":          "int",
-                    "volume.average_daily_volume_3mo":          "int",
-                    # ── OHLCV history bars ────────────────────────────────────
-                    # Each is a list of {Date, Open, High, Low, Close, Volume} dicts (all str)
-                    "history_6mo_1d":   "[]   | daily bars, last 6 months (~124 bars)",
-                    "history_1wk":      "[]   | weekly bars, 10 years (~522 bars) — use for trend charts",
-                    "history_1mo":      "[]   | monthly bars, 10 years (~120 bars) — use for long-term charts",
-                },
-
-                "websignals": {
-                    # ── Analyst ───────────────────────────────────────────────
-                    "recommendation_key":           "str   | strong_buy / buy / hold / sell / strong_sell",
-                    "recommendation_mean":          "float | 1=strong_buy … 5=strong_sell",
-                    "average_analyst_rating":       "str",
-                    "number_of_analyst_opinions":   "int",
-                    "target_high_price":            "INR",
-                    "target_low_price":             "INR",
-                    "target_mean_price":            "INR  | consensus target",
-                    "target_median_price":          "INR",
-                    # ── Governance risk (ISS, 1-10, lower=less risk) ───────────
-                    "audit_risk":               "int  | 1-10",
-                    "board_risk":               "int  | 1-10",
-                    "compensation_risk":        "int  | 1-10",
-                    "shareholder_rights_risk":  "int  | 1-10",
-                    "overall_risk":             "int  | 1-10",
-                    # ── Earnings calendar ─────────────────────────────────────
-                    "earnings_timestamp":           "epoch",
-                    "earnings_timestamp_start":     "epoch",
-                    "earnings_timestamp_end":       "epoch",
-                    "earnings_call_ts_start":       "epoch",
-                    "earnings_call_ts_end":         "epoch",
-                    "is_earnings_date_estimate":    "bool",
-                    "sandp_52_week_change":         "pct  | S&P 500 52w change (benchmark)",
-                },
-
-                "derived_metrics": {
-                    # ── Calculated scores ──────────────────────────────────────
-                    "calculated_metrics.pe_ratio":          "ratio",
-                    "calculated_metrics.pe_score":          "0-100 | sector-relative",
-                    "calculated_metrics.price_to_book":     "ratio",
-                    "calculated_metrics.pb_score":          "0-100",
-                    "calculated_metrics.price_momentum_pct":"pct   | 52w return",
-                    "calculated_metrics.momentum_score":    "0-100",
-                    "calculated_metrics.fundamental_score": "0-100",
-                    "calculated_metrics.technical_score":   "0-100",
-                    "calculated_metrics.valuation_score":   "0-100",
-                    "calculated_metrics.sentiment_score":   "0-100",
-                    "calculated_metrics.composite_score":   "0-100 | weighted composite",
-                    "calculated_metrics.rating":            "str   | Buy/Accumulate/Hold/Reduce/Sell",
-                    "calculated_metrics.sector":            "str",
-                    "calculated_metrics.sector_weights.fundamental": "frac",
-                    "calculated_metrics.sector_weights.technical":   "frac",
-                    "calculated_metrics.sector_weights.valuation":   "frac",
-                    "calculated_metrics.sector_weights.sentiment":   "frac",
-                    # ── AI guidance (29 tickers with guidance.json) ───────────
-                    "ai_insights_guidance.guidance.quarter":                "str  | e.g. 'Q4 FY26'",
-                    "ai_insights_guidance.guidance.date":                   "str",
-                    "ai_insights_guidance.guidance.summary":                "str  | management commentary",
-                    "ai_insights_guidance.guidance.financial.revenue":      "str",
-                    "ai_insights_guidance.guidance.financial.margins":      "str",
-                    "ai_insights_guidance.guidance.financial.growth":       "str",
-                    "ai_insights_guidance.guidance.financial.capex":        "str",
-                    "ai_insights_guidance.guidance.business.products":      "str",
-                    "ai_insights_guidance.guidance.business.expansion":     "str",
-                    "ai_insights_guidance.guidance.segments.segment_outlook":"str",
-                    "ai_insights_guidance.guidance.segments.revenue_by_segment": "dict | {segment_name: pct_str}",
-                    "ai_insights_guidance.guidance.geography.expansion_plans":   "str",
-                    "ai_insights_guidance.guidance.geography.revenue_mix":       "dict | {region: pct_str}",
-                    "ai_insights_guidance.guidance.deals_and_pipeline.order_book.total_value": "str",
-                    "ai_insights_guidance.guidance.deals_and_pipeline.deal_pipeline_value":    "str",
-                    "ai_insights_guidance.guidance.capital_allocation.capex_detailed.total":   "str",
-                    "ai_insights_guidance.guidance.management.tone":        "str",
-                    "ai_insights_guidance.guidance.management.confidence":  "str",
-                    "ai_insights_guidance.guidance.investor_verdict":       "str",
-                    "ai_insights_guidance.guidance.analyst_dimensions.margin_quality":    "str",
-                    "ai_insights_guidance.guidance.analyst_dimensions.management_credibility": "str",
-                    "ai_insights_guidance.guidance.analyst_dimensions.risk_opportunity_scorecard.net_risk_reward": "str",
-                    "ai_insights_guidance.insights.thesis":                 "str",
-                    "ai_insights_guidance.insights.trigger":                "str  | near-term catalyst",
-                    "ai_insights_guidance.insights.recommendation":         "str  | Buy/Hold/Sell + reasoning",
-                    "ai_insights_guidance.insights.date":                   "str",
-                    "ai_insights_guidance.insights.sector_briefing.sector_name":    "str",
-                    "ai_insights_guidance.insights.sector_briefing.sector_outlook": "str",
-                    "ai_insights_guidance.insights.sector_briefing.sector_risks":   "str",
-                    "ai_insights_guidance.insights.sector_briefing.company_positioning.market_position": "str",
-                    "ai_insights_guidance.insights.analysis.profitability.signal":  "str",
-                    "ai_insights_guidance.insights.analysis.growth.signal":         "str",
-                    "ai_insights_guidance.insights.analysis.valuation.signal":      "str",
-                    "ai_insights_guidance.insights.analysis.moat.signal":           "str",
-                    "ai_insights_guidance.insights.analysis.cash_strength.signal":  "str",
-                },
-            }
+            "schema": _build_schema(output),
         }
     }
     
@@ -2631,6 +2637,153 @@ def main():
             logger.warning(f"  {sym}: {fields}")
     else:
         logger.info("✓ All fields mapped — _unmapped is empty")
+
+
+def _build_schema(output: dict) -> dict:
+    """
+    Generate _metadata.schema at runtime from the actual bucketed output.
+    Walks every field path across all tickers and infers the unit/type.
+    Always in sync with the real data — never stale.
+    """
+    UNIT_MAP = {
+        # financials — Cr
+        'Net_Profit':'Cr','Sales':'Cr','Expenses':'Cr','Operating_Profit':'Cr',
+        'Other_Income':'Cr','Interest':'Cr','Depreciation':'Cr',
+        'profit_before_tax':'Cr','share_capital':'Cr','Reserves':'Cr',
+        'Borrowings':'Cr','Deposits':'Cr','Other_Liabilities':'Cr',
+        'Total_Liabilities':'Cr','net_fixed_assets':'Cr','capital_wip':'Cr',
+        'Investments':'Cr','Other_Assets':'Cr','Total_Assets':'Cr',
+        'operating_cash_flow':'Cr','investing_cash_flow':'Cr',
+        'financing_cash_flow':'Cr','net_cash_flow':'Cr','Free_Cash_Flow':'Cr',
+        'net_interest_income':'Cr','yf_revenue':'Cr','yf_ebitda':'Cr',
+        'yf_gross_profit':'Cr','yf_capex':'Cr','yf_free_cash_flow':'Cr',
+        'yf_cash':'Cr','yf_cogs':'Cr','yf_operating_cash_flow':'Cr',
+        'yf_receivables':'Cr','yf_invested_capital':'Cr','yf_working_capital':'Cr',
+        'yf_lease_obligations':'Cr','yf_rd_expense':'Cr','yf_tangible_assets':'Cr',
+        'yf_exceptional_items':'Cr','yf_normalized_profit':'Cr',
+        'yf_latest_revenue':'Cr','yf_latest_net_profit':'Cr','yf_latest_ebit':'Cr',
+        'yf_latest_operating_cash_flow':'Cr','yf_latest_fcf':'Cr',
+        'yf_latest_borrowings':'Cr','yf_latest_total_assets':'Cr',
+        'yf_latest_total_liabilities':'Cr','yf_latest_depreciation':'Cr',
+        'yf_latest_interest':'Cr',
+        'fcf_ttm':'Cr','operating_cash_flow_ttm':'Cr','gross_profit_ttm':'Cr',
+        'net_profit_ttm':'Cr','cash_and_equivalents':'Cr',
+        # financials — INR per share
+        'eps':'INR','yf_latest_eps':'INR','cash_per_share':'INR','book_value':'INR',
+        # financials — pct
+        'operating_margin_pct':'pct','tax_rate_pct':'pct','dividend_payout_pct':'pct',
+        'net_interest_margin_pct':'pct','gross_npa_pct':'pct','net_npa_pct':'pct',
+        # financials — ratio
+        'cash_conversion_ratio':'ratio',
+        # ratios — days
+        'debtor_days':'days','inventory_days':'days','days_payable':'days',
+        'cash_conversion_cycle':'days','working_capital_days':'days',
+        # ratios — pct
+        'roce_pct':'pct','roe_pct':'pct','net_margin_pct':'pct',
+        'gross_margin_pct':'pct','ebitda_margin_pct':'pct','operating_margin_pct':'pct',
+        'roa_pct':'pct','insider_holding_pct':'pct','institutional_holding_pct':'pct',
+        # ratios — frac
+        'earnings_growth_yoy':'frac','earnings_growth_qoq':'frac',
+        'index_52w_change':'frac',
+        # ratios — ratio
+        'debt_to_equity_ratio':'ratio','current_ratio':'ratio','quick_ratio':'ratio',
+        # valuation — shares/eps history
+        'basic_eps_history':'INR','diluted_eps_history':'INR',
+        'basic_shares_history':'int','diluted_shares_history':'int',
+        'shares_outstanding_history':'int',
+        # company_details
+        'employee_count':'int','floating_shares':'int','implied_shares':'int',
+        'shares_outstanding':'int','government':'pct','others':'pct',
+        'promoters':'pct','fiis':'pct','diis':'pct','public':'pct',
+        'last_fiscal_year_end':'epoch','next_fiscal_year_end':'epoch',
+        'most_recent_quarter':'epoch',
+        # price
+        'high':'INR','low':'INR','beta':'ratio',
+        'all_time_high':'INR','all_time_low':'INR',
+        'ask':'INR','bid':'INR','ask_size':'int','bid_size':'int',
+        'avg_volume':'int','avg_volume_10d':'int','avg_volume_3mo':'int',
+        'market_volume':'int','week52_high_diff':'INR','week52_low_diff':'INR',
+        'enterprise_value':'INR_abs','ebitda':'INR_abs','total_debt':'INR_abs',
+        'market_cap':'INR_abs','basic_market_cap':'INR_abs',
+        # valuation — ratio
+        'pe_ttm':'ratio','pe_forward':'ratio','peg':'ratio','peg_ttm':'ratio',
+        'price_to_book':'ratio','price_to_sales':'ratio','pe_current_year':'ratio',
+        'ev_to_revenue':'ratio','ev_to_ebitda':'ratio',
+        # valuation — INR
+        'eps_ttm':'INR','eps_forward':'INR','eps_current_year':'INR',
+        # price — INR
+        'price':'INR','change':'INR','prev_close':'INR','week52_high':'INR',
+        'week52_low':'INR','close_price':'INR','market_price':'INR',
+        'day_high':'INR','day_low':'INR','day_open':'INR','price_change':'INR',
+        'ma_50d':'INR','ma_200d':'INR','ma_50d_diff':'INR','ma_200d_diff':'INR',
+        'target_high':'INR','target_low':'INR','target_mean':'INR','target_median':'INR',
+        # price — pct
+        'change_pct':'pct','price_change_pct':'pct',
+        'ma_50d_diff_pct':'pct','ma_200d_diff_pct':'pct',
+        'week52_high_diff_pct':'pct','week52_low_diff_pct':'pct',
+        # price — int
+        'day_volume':'int','market_volume':'int',
+        # websignals
+        'analyst_rating_score':'float 1-5','analyst_count':'int',
+        'governance_audit_risk':'int 1-10','governance_board_risk':'int 1-10',
+        'governance_comp_risk':'int 1-10','governance_rights_risk':'int 1-10',
+        'governance_overall_risk':'int 1-10',
+        'next_earnings_date':'epoch','earnings_date_start':'epoch',
+        'earnings_date_end':'epoch','earnings_call_start':'epoch',
+        'earnings_call_end':'epoch','listing_date_ms':'epoch',
+        'officer_compensation_date':'epoch',
+    }
+
+    def infer_unit(leaf: str, full_path: str, sample_val) -> str:
+        # For nested paths (e.g. Borrowings.consolidated.annual),
+        # look up by root field name first, then leaf key
+        root = full_path.split('.')[0]
+        for key in (root, leaf):
+            if key in UNIT_MAP:
+                return UNIT_MAP[key]
+        if leaf.endswith('_pct') or root.endswith('_pct'):
+            return 'pct'
+        if leaf.endswith('_ms') or 'timestamp' in leaf:
+            return 'epoch'
+        if isinstance(sample_val, float) and sample_val and 0 < abs(sample_val) < 1:
+            return 'frac'
+        return 'str'
+
+    buckets = ['company_details','financials','ratios','valuation','price','websignals','derived_metrics']
+    schema = {}
+    tickers = [k for k in output if k != '_metadata']
+    if not tickers:
+        return schema
+
+    for bucket in buckets:
+        paths: dict = {}
+
+        def recurse(obj, prefix, depth):
+            if not isinstance(obj, dict) or depth > 5:
+                return
+            for k, v in obj.items():
+                full = f'{prefix}.{k}' if prefix else k
+                if isinstance(v, dict):
+                    sample_keys = [sk for sk in list(v.keys())[:3] if isinstance(sk, str)]
+                    if sample_keys and all(len(sk) == 10 and '-' in sk for sk in sample_keys):
+                        sample_v = list(v.values())[0] if v else None
+                        paths[full + '.{YYYY-MM-DD}'] = infer_unit(k, full, sample_v)
+                    else:
+                        recurse(v, full, depth + 1)
+                elif isinstance(v, list):
+                    if v and isinstance(v[0], dict) and 'Date' in v[0]:
+                        paths[full + '[]'] = 'bars | {Date,Open,High,Low,Close,Volume}'
+                    else:
+                        paths[full + '[]'] = '[]'
+                else:
+                    paths[full] = infer_unit(k, full, v)
+
+        for t in tickers:
+            recurse(output[t].get(bucket, {}), '', 0)
+
+        schema[bucket] = dict(sorted(paths.items()))
+
+    return schema
 
 
 if __name__ == "__main__":

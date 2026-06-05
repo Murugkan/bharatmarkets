@@ -155,13 +155,19 @@ def parse_datetime_to_iso(date_str):
     return date_str
 
 def standardize_value(value):
-    """Convert numeric strings to float"""
+    """Convert numeric strings to float. Strips commas and % signs. Empty strings → None."""
     if isinstance(value, (int, float)):
         return value
     if isinstance(value, str):
+        cleaned = value.replace(',', '').strip()
+        if cleaned == '':
+            return None
+        # Strip trailing % — store as float (e.g. '68.51%' → 68.51, '20%' → 20.0)
+        if cleaned.endswith('%'):
+            cleaned = cleaned[:-1]
         try:
-            return float(value.replace(',', ''))
-        except:
+            return float(cleaned)
+        except (ValueError, TypeError):
             pass
     return value
 
