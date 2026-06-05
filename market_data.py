@@ -104,6 +104,10 @@ FIELD_MAP = {
     },
 
     # ── yahoofin_raw:info ─────────────────────────────────────────────────────
+    # Contains only fields that stay in the catch-all 'info' sub-section.
+    # Fields routed to sub-sections (valuation, analyst, margins, etc.) by
+    # market_data_flatten.py are handled by dedicated FIELD_MAP entries below —
+    # keeping them here would cause double-processing and bucket collisions.
     "yahoofin_raw:info": {
         # identity
         "shortName":             ("company_details", "short_name"),
@@ -136,27 +140,18 @@ FIELD_MAP = {
         "esgPopulated":          ("company_details", "esg_populated"),
         "nameChangeDate":        ("company_details", "name_change_date"),
         "prevName":              ("company_details", "prev_name"),
-        # valuation
-        "marketCap":                   ("valuation", "market_cap"),
-        "nonDilutedMarketCap":         ("valuation", "non_diluted_market_cap"),
-        "enterpriseValue":             ("valuation", "enterprise_value"),
-        "trailingPE":                  ("valuation", "trailing_pe"),
-        "forwardPE":                   ("valuation", "forward_pe"),
-        "pegRatio":                    ("valuation", "peg_ratio"),
-        "priceToBook":                 ("valuation", "price_to_book"),
-        "priceToSalesTrailing12Months":("valuation", "price_to_sales_ttm"),
-        "enterpriseToRevenue":         ("valuation", "ev_to_revenue"),
-        "enterpriseToEbitda":          ("valuation", "ev_to_ebitda"),
-        "ebitda":                      ("valuation", "ebitda"),
-        "totalDebt":                   ("valuation", "total_debt"),
-        "bookValue":                   ("valuation", "book_value"),
-        "trailingEps":                 ("valuation", "trailing_eps"),
-        "forwardEps":                  ("valuation", "forward_eps"),
-        "epsTrailingTwelveMonths":     ("valuation", "eps_ttm"),
-        "epsForward":                  ("valuation", "eps_forward"),
-        "epsCurrentYear":              ("valuation", "eps_current_year"),
-        "priceEpsCurrentYear":         ("valuation", "price_eps_current_year"),
-        "trailingPegRatio":            ("valuation", "trailing_peg_ratio"),
+        # valuation — point-in-time scalars that don't go to sub-sections
+        "marketCap":               ("valuation", "market_cap"),
+        "nonDilutedMarketCap":     ("valuation", "non_diluted_market_cap"),
+        "ebitda":                  ("valuation", "ebitda"),
+        "totalDebt":               ("valuation", "total_debt"),
+        "trailingEps":             ("valuation", "trailing_eps"),
+        "forwardEps":              ("valuation", "forward_eps"),
+        "epsTrailingTwelveMonths": ("valuation", "eps_ttm"),
+        "epsForward":              ("valuation", "eps_forward"),
+        "epsCurrentYear":          ("valuation", "eps_current_year"),
+        "priceEpsCurrentYear":     ("valuation", "price_eps_current_year"),
+        "trailingPegRatio":        ("valuation", "trailing_peg_ratio"),
         # price & trading
         "currentPrice":                  ("price", "current_price"),
         "previousClose":                 ("price", "previous_close"),
@@ -199,73 +194,28 @@ FIELD_MAP = {
         "allTimeHigh":                   ("price", "all_time_high"),
         "allTimeLow":                    ("price", "all_time_low"),
         "beta":                          ("price", "beta"),
-        # dividends & splits → company_details
-        "dividendRate":                  ("company_details", "dividend_rate"),
-        "dividendYield":                 ("company_details", "dividend_yield"),
-        "exDividendDate":                ("company_details", "ex_dividend_date"),
-        "payoutRatio":                   ("company_details", "payout_ratio"),
-        "trailingAnnualDividendRate":    ("company_details", "trailing_annual_dividend_rate"),
-        "trailingAnnualDividendYield":   ("company_details", "trailing_annual_dividend_yield"),
-        "lastDividendValue":             ("company_details", "last_dividend_value"),
-        "lastDividendDate":              ("company_details", "last_dividend_date"),
-        "fiveYearAvgDividendYield":      ("company_details", "five_year_avg_dividend_yield"),
-        "lastSplitDate":                 ("company_details", "last_split_date"),
-        "lastSplitFactor":               ("company_details", "last_split_factor"),
-        "heldPercentInsiders":           ("company_details", "held_pct_insiders"),
-        "heldPercentInstitutions":       ("company_details", "held_pct_institutions"),
-        "floatShares":                   ("company_details", "float_shares"),
-        "sharesOutstanding":             ("company_details", "shares_outstanding"),
-        "impliedSharesOutstanding":      ("company_details", "implied_shares_outstanding"),
-        # profitability & growth
-        "profitMargins":             ("ratios", "profit_margins"),
-        "grossMargins":              ("ratios", "gross_margins"),
-        "ebitdaMargins":             ("ratios", "ebitda_margins"),
-        "operatingMargins":          ("ratios", "operating_margins"),
-        "earningsGrowth":            ("ratios", "earnings_growth"),
-        "revenueGrowth":             ("ratios", "revenue_growth"),
-        "earningsQuarterlyGrowth":   ("ratios", "earnings_quarterly_growth"),
-        "revenuePerShare":           ("ratios", "revenue_per_share"),
-        "totalCash":                 ("ratios", "total_cash"),
-        "totalCashPerShare":         ("ratios", "total_cash_per_share"),
-        "debtToEquity":              ("ratios", "debt_to_equity"),
-        "currentRatio":              ("ratios", "current_ratio"),
-        "quickRatio":                ("ratios", "quick_ratio"),
-        "netIncomeToCommon":         ("ratios", "net_income_to_common"),
-        "grossProfits":              ("ratios", "gross_profits"),
-        "totalRevenue":              ("ratios", "total_revenue"),
-        "returnOnAssets":            ("ratios", "return_on_assets"),
-        "returnOnEquity":            ("ratios", "return_on_equity"),
-        "freeCashflow":              ("ratios", "free_cashflow"),
-        "operatingCashflow":         ("ratios", "operating_cashflow"),
-        # risk & governance
-        "auditRisk":             ("websignals", "audit_risk"),
-        "boardRisk":             ("websignals", "board_risk"),
-        "compensationRisk":      ("websignals", "compensation_risk"),
-        "shareHolderRightsRisk": ("websignals", "shareholder_rights_risk"),
-        "overallRisk":           ("websignals", "overall_risk"),
-        "governanceEpochDate":   ("websignals", "governance_epoch_date"),
-        # analyst consensus
-        "targetHighPrice":           ("websignals", "target_high_price"),
-        "targetLowPrice":            ("websignals", "target_low_price"),
-        "targetMeanPrice":           ("websignals", "target_mean_price"),
-        "targetMedianPrice":         ("websignals", "target_median_price"),
-        "recommendationMean":        ("websignals", "recommendation_mean"),
-        "recommendationKey":         ("websignals", "recommendation_key"),
-        "numberOfAnalystOpinions":   ("websignals", "number_of_analyst_opinions"),
-        "averageAnalystRating":      ("websignals", "average_analyst_rating"),
-        "SandP52WeekChange":         ("websignals", "sandp_52_week_change"),
-        # earnings calendar
-        "earningsTimestamp":          ("websignals", "earnings_timestamp"),
-        "earningsTimestampStart":     ("websignals", "earnings_timestamp_start"),
-        "earningsTimestampEnd":       ("websignals", "earnings_timestamp_end"),
-        "earningsCallTimestampStart": ("websignals", "earnings_call_ts_start"),
-        "earningsCallTimestampEnd":   ("websignals", "earnings_call_ts_end"),
-        "isEarningsDateEstimate":     ("websignals", "is_earnings_date_estimate"),
+        # dividends scalar fields not in :dividends sub-section
+        "lastDividendValue":   ("company_details", "last_dividend_value"),
+        "lastDividendDate":    ("company_details", "last_dividend_date"),
+        "lastSplitDate":       ("company_details", "last_split_date"),
+        "lastSplitFactor":     ("company_details", "last_split_factor"),
+        # other ratios not in sub-sections
+        "totalCash":           ("ratios", "total_cash"),
+        "netIncomeToCommon":   ("ratios", "net_income_to_common"),
+        "grossProfits":        ("ratios", "gross_profits"),
+        "totalRevenue":        ("ratios", "total_revenue"),
+        "freeCashflow":        ("ratios", "free_cashflow"),
+        "operatingCashflow":   ("ratios", "operating_cashflow"),
+        # analyst extras not in :analyst sub-section
+        "recommendationMean":  ("websignals", "recommendation_mean"),
+        "averageAnalystRating":("websignals", "average_analyst_rating"),
+        "SandP52WeekChange":   ("websignals", "sandp_52_week_change"),
+        "isEarningsDateEstimate": ("websignals", "is_earnings_date_estimate"),
+        # governance extra not in :risk_scores sub-section
+        "governanceEpochDate": ("websignals", "governance_epoch_date"),
         # exchange metadata
-        "exchange":                       ("company_details", "exchange"),
         "exchangeTimezoneName":           ("company_details", "exchange_timezone_name"),
         "exchangeTimezoneShortName":      ("company_details", "exchange_timezone_short"),
-        "gmtOffSetMilliseconds":          ("company_details", "gmt_offset_ms"),
         "market":                         ("company_details", "market"),
         "quoteSourceName":                ("company_details", "quote_source_name"),
         "marketState":                    ("company_details", "market_state"),
@@ -287,101 +237,101 @@ FIELD_MAP = {
         "compensationAsOfEpochDate":      ("company_details", "compensation_as_of_epoch"),
     },
 
-    # ── yahoofin_fin:latest ───────────────────────────────────────────────────
-    "yahoofin_fin:latest": {
-        # income statement
-        "revenue":            ("financials",  "revenue"),
-        "ebitda":             ("financials",  "ebitda"),
-        "ebit":               ("financials",  "ebit"),
-        "gross_profit":       ("financials",  "gross_profit"),
-        "operating_income":   ("financials",  "operating_income"),
-        "net_profit":         ("financials",  "net_profit"),
-        "normalized_income":  ("financials",  "normalized_income"),
-        "unusual_items":      ("financials",  "unusual_items"),
-        "tax_rate":           ("financials",  "tax_rate"),
-        "cost_of_revenue":    ("financials",  "cost_of_revenue"),
-        "operating_expenses": ("financials",  "operating_expenses"),
-        "rd_expense":         ("financials",  "rd_expense"),
-        "interest_income":    ("financials",  "interest_income"),
-        # balance sheet
-        "total_liabilities":         ("financials", "total_liabilities"),
-        "total_debt":                ("financials", "total_debt"),
-        "short_term_debt":           ("financials", "short_term_debt"),
-        "long_term_debt":            ("financials", "long_term_debt"),
-        "net_debt":                  ("financials", "net_debt"),
-        "capital_lease_obligations": ("financials", "capital_lease_obligations"),
-        "net_tangible_assets":       ("financials", "net_tangible_assets"),
-        "tangible_book_value":       ("financials", "tangible_book_value"),
-        "total_assets":              ("financials", "total_assets"),
-        "total_equity":              ("financials", "total_equity"),
-        "retained_earnings":         ("financials", "retained_earnings"),
-        "invested_capital":          ("financials", "invested_capital"),
-        "working_capital":           ("financials", "working_capital"),
-        "accounts_receivable":       ("financials", "accounts_receivable"),
-        "cash_and_equivalents":      ("financials", "cash_and_equivalents"),
-        "deposits":                  ("financials", "deposits"),
-        "advances":                  ("financials", "advances"),
-        "npa":                       ("financials", "npa"),
-        "minority_interest":         ("financials", "minority_interest"),
-        "total_capitalization":      ("financials", "total_capitalization"),
-        "fixed_assets":              ("financials", "fixed_assets"),
-        # cash flow
-        "operating_cash_flow": ("financials", "operating_cash_flow"),
-        "free_cash_flow":      ("financials", "free_cash_flow"),
-        "capex":               ("financials", "capex"),
-        "depreciation":        ("financials", "depreciation"),
-        "interest_expense":    ("financials", "interest_expense"),
-        # valuation
-        "diluted_eps":      ("valuation", "diluted_eps"),
-        "basic_eps":        ("valuation", "basic_eps"),
-        "diluted_shares":   ("valuation", "diluted_shares"),
-        "basic_shares":     ("valuation", "basic_shares"),
-        "shares_outstanding":("valuation","shares_outstanding_yf"),
+    # ── yahoofin_raw sub-sections (split from info by market_data_flatten.py) ─
+    # Each sub-section contains fields tagged by INFO_FIELD_GROUPS in flatten.
+    # These must NOT overlap with yahoofin_raw:info above.
+
+    "yahoofin_raw:valuation": {
+        "trailingPE":                   ("valuation", "trailing_pe"),
+        "forwardPE":                    ("valuation", "forward_pe"),
+        "pegRatio":                     ("valuation", "peg_ratio"),
+        "priceToBook":                  ("valuation", "price_to_book"),
+        "priceToSalesTrailing12Months": ("valuation", "price_to_sales_ttm"),
+        "enterpriseValue":              ("valuation", "enterprise_value"),
+        "enterpriseToRevenue":          ("valuation", "ev_to_revenue"),
+        "enterpriseToEbitda":           ("valuation", "ev_to_ebitda"),
     },
 
-    # ── yahoofin_fin:historical ───────────────────────────────────────────────
-    # Per-period snapshots from historical_periods (up to ~7 recent quarters).
-    # Same 31 fields as latest, stored as time-series keyed by ISO date.
-    # NOTE: Yahoo Finance API does not provide 10-year history via this endpoint.
-    # Max coverage is ~4–7 quarters (Sep 2024 → present). For longer history
-    # use screener_fin (consolidated, 7yr) or screener_raw (standalone, 12yr).
-    "yahoofin_fin:historical": {
-        # income statement
-        "net_profit":         ("financials",  "net_profit"),
-        "ebit":               ("financials",  "ebit"),
-        "operating_expenses": ("financials",  "operating_expenses"),
-        "operating_income":   ("financials",  "operating_income"),
-        "normalized_income":  ("financials",  "normalized_income"),
-        "unusual_items":      ("financials",  "unusual_items"),
-        "tax_rate":           ("financials",  "tax_rate"),
-        "interest_income":    ("financials",  "interest_income"),
-        "interest_expense":   ("financials",  "interest_expense"),
-        "depreciation":       ("financials",  "depreciation"),
-        # balance sheet
-        "total_assets":              ("financials", "total_assets"),
-        "total_liabilities":         ("financials", "total_liabilities"),
-        "total_equity":              ("financials", "total_equity"),
-        "retained_earnings":         ("financials", "retained_earnings"),
-        "tangible_book_value":       ("financials", "tangible_book_value"),
-        "invested_capital":          ("financials", "invested_capital"),
-        "total_debt":                ("financials", "total_debt"),
-        "net_debt":                  ("financials", "net_debt"),          # 50% populated
-        # short_term_debt — 100% null across all tickers, excluded
-        # operating_income — 98% null across all tickers, excluded
-        "long_term_debt":            ("financials", "long_term_debt"),
-        "capital_lease_obligations": ("financials", "capital_lease_obligations"),
-        "minority_interest":         ("financials", "minority_interest"), # 51% populated
-        "total_capitalization":      ("financials", "total_capitalization"),
-        "deposits":                  ("financials", "deposits"),
-        "advances":                  ("financials", "advances"),
-        "npa":                       ("financials", "npa"),
-        # per-share
-        "diluted_eps":       ("valuation", "diluted_eps"),
-        "basic_eps":         ("valuation", "basic_eps"),
-        "diluted_shares":    ("valuation", "diluted_shares"),
-        "basic_shares":      ("valuation", "basic_shares"),
-        "shares_outstanding":("valuation", "shares_outstanding_yf"),
+    "yahoofin_raw:analyst": {
+        "targetHighPrice":         ("websignals", "target_high_price"),
+        "targetLowPrice":          ("websignals", "target_low_price"),
+        "targetMeanPrice":         ("websignals", "target_mean_price"),
+        "targetMedianPrice":       ("websignals", "target_median_price"),
+        "recommendationKey":       ("websignals", "recommendation_key"),
+        "numberOfAnalystOpinions": ("websignals", "number_of_analyst_opinions"),
     },
+
+    "yahoofin_raw:margins": {
+        "profitMargins":    ("ratios", "profit_margins"),
+        "grossMargins":     ("ratios", "gross_margins"),
+        "ebitdaMargins":    ("ratios", "ebitda_margins"),
+        "operatingMargins": ("ratios", "operating_margins"),
+    },
+
+    "yahoofin_raw:growth": {
+        "earningsGrowth":          ("ratios", "earnings_growth"),
+        "revenueGrowth":           ("ratios", "revenue_growth"),
+        "earningsQuarterlyGrowth": ("ratios", "earnings_quarterly_growth"),
+    },
+
+    "yahoofin_raw:ratios": {
+        "returnOnAssets":  ("ratios", "return_on_assets"),
+        "returnOnEquity":  ("ratios", "return_on_equity"),
+        "debtToEquity":    ("ratios", "debt_to_equity"),
+        "quickRatio":      ("ratios", "quick_ratio"),
+        "currentRatio":    ("ratios", "current_ratio"),
+        "revenuePerShare": ("ratios", "revenue_per_share"),
+        "totalCashPerShare":("ratios","total_cash_per_share"),
+    },
+
+    "yahoofin_raw:share_data": {
+        "floatShares":              ("company_details", "float_shares"),
+        "sharesOutstanding":        ("company_details", "shares_outstanding"),
+        "heldPercentInsiders":      ("company_details", "held_pct_insiders"),
+        "heldPercentInstitutions":  ("company_details", "held_pct_institutions"),
+        "impliedSharesOutstanding": ("company_details", "implied_shares_outstanding"),
+        "bookValue":                ("valuation", "book_value"),
+    },
+
+    "yahoofin_raw:dividends": {
+        "dividendRate":              ("company_details", "dividend_rate"),
+        "dividendYield":             ("company_details", "dividend_yield"),
+        "exDividendDate":            ("company_details", "ex_dividend_date"),
+        "payoutRatio":               ("company_details", "payout_ratio"),
+        "fiveYearAvgDividendYield":  ("company_details", "five_year_avg_dividend_yield"),
+        "trailingAnnualDividendRate":("company_details", "trailing_annual_dividend_rate"),
+        "trailingAnnualDividendYield":("company_details","trailing_annual_dividend_yield"),
+    },
+
+    "yahoofin_raw:earnings_dates": {
+        "earningsTimestamp":          ("websignals", "earnings_timestamp"),
+        "earningsTimestampStart":     ("websignals", "earnings_timestamp_start"),
+        "earningsTimestampEnd":       ("websignals", "earnings_timestamp_end"),
+        "earningsCallTimestampStart": ("websignals", "earnings_call_ts_start"),
+        "earningsCallTimestampEnd":   ("websignals", "earnings_call_ts_end"),
+    },
+
+    "yahoofin_raw:risk_scores": {
+        "auditRisk":             ("websignals", "audit_risk"),
+        "boardRisk":             ("websignals", "board_risk"),
+        "compensationRisk":      ("websignals", "compensation_risk"),
+        "shareHolderRightsRisk": ("websignals", "shareholder_rights_risk"),
+        "overallRisk":           ("websignals", "overall_risk"),
+    },
+
+    # yahoofin_raw:metadata — top-level ticker/name/isin fields
+    "yahoofin_raw:metadata": {
+        "ticker": ("company_details", "ticker_yahoo"),
+        "name":   ("company_details", "name_yahoo"),
+        "isin":   ("company_details", "isin_yahoo"),
+    },
+
+    # ── yahoofin_fin:latest and yahoofin_fin:historical ──────────────────────
+    # NOT processed via FIELD_MAP — handled exclusively by merge_yahoo_into_screener()
+    # in main(). Keeping them here would cause double-processing:
+    #   bucket_symbol() → puts scalar (latest) and time-series (historical) into
+    #                      the same financials keys → scalar overwrites time-series.
+    # The merge layer is the single owner of all yahoofin_fin data.
 
     # ── screener_fin:profit_loss  (quarterly consolidated) ───────────────────
     "screener_fin:profit_loss": {
@@ -1867,7 +1817,231 @@ def extract_scalar_or_dict(value):
     
     return value
 
-def main():
+
+# ══════════════════════════════════════════════════════════════════════════════
+# YAHOO → SCREENER MERGE LAYER
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Architecture:
+#   screener_fin (consolidated, 12yr)  = PRIMARY timeline
+#   yahoofin_fin:historical (4-5yr)    = GAP-FILL only — same consolidation,
+#                                        /1e7 already applied in flatten
+#   yahoofin_fin:latest                = EXTEND if newer than Screener's last period
+#   Yahoo-exclusive fields              = ADD directly (EPS, capex, R&D etc.)
+#
+# Screener metric names (CamelCase e.g. Net_Profit) ↔ Yahoo field names (snake_case)
+# Mapping is one-directional: Yahoo fills Screener gaps, never overwrites.
+
+# Screener canonical key → Yahoo field name (for overlapping metrics)
+SCREENER_TO_YAHOO_OVERLAP = {
+    "Sales":             "revenue",
+    "Net_Profit":        "net_profit",
+    "Depreciation":      "depreciation",
+    "Interest":          "interest_expense",
+    "EPS_Rs":            "basic_eps",
+    "Operating_Profit":  "ebit",
+    "CFO":               "operating_cash_flow",
+    "Free_Cash_Flow":    "free_cash_flow",
+    # Balance sheet
+    "Total_Assets":      "total_assets",
+    "Total_Liabilities": "total_liabilities",
+    "Borrowing":         "total_debt",
+    "Borrowings":        "total_debt",
+}
+
+# Yahoo fields that have NO Screener equivalent — add directly to financials bucket
+YAHOO_EXCLUSIVE_FINANCIALS = {
+    "revenue":              "yf_revenue",
+    "cost_of_revenue":      "yf_cost_of_revenue",
+    "gross_profit":         "yf_gross_profit",
+    "ebitda":               "yf_ebitda",
+    "rd_expense":           "yf_rd_expense",
+    "operating_cash_flow":  "yf_operating_cash_flow",
+    "free_cash_flow":       "yf_free_cash_flow",
+    "capex":                "yf_capex",
+    "accounts_receivable":  "yf_accounts_receivable",
+    "cash_and_equivalents": "yf_cash_and_equivalents",
+    "net_tangible_assets":  "yf_net_tangible_assets",
+    "working_capital":      "yf_working_capital",
+    "invested_capital":     "yf_invested_capital",
+    "capital_lease_obligations": "yf_capital_lease_obligations",
+    "normalized_income":    "yf_normalized_income",
+    "unusual_items":        "yf_unusual_items",
+}
+
+# Yahoo per-share / share count fields — route to valuation bucket
+YAHOO_EXCLUSIVE_VALUATION = {
+    "diluted_eps":       "yf_diluted_eps",
+    "basic_eps":         "yf_basic_eps",
+    "diluted_shares":    "yf_diluted_shares",
+    "basic_shares":      "yf_basic_shares",
+    "shares_outstanding":"yf_shares_outstanding",
+}
+
+
+def _get_periods_dict(bucket_field):
+    """Extract {iso_date: value} from a bucketed field (handles both flat and nested)."""
+    if not isinstance(bucket_field, dict):
+        return {}
+    # Granularity-nested: {'annual': {'2024-03-31': v, ...}, ...}
+    if any(k in bucket_field for k in ('annual', 'quarterly', 'half_yearly', 'monthly', 'daily')):
+        return bucket_field.get('annual', {})
+    # Flat time-series: {'2024-03-31': v, ...}
+    keys = list(bucket_field.keys())
+    if keys and len(str(keys[0])) == 10 and '-' in str(keys[0]):
+        return bucket_field
+    return {}
+
+
+def _latest_period(periods_dict):
+    """Return the most recent ISO date key from a periods dict."""
+    if not periods_dict:
+        return None
+    return max(periods_dict.keys())
+
+
+def merge_yahoo_into_screener(bucketed: dict, yf_historical: dict, yf_latest: dict) -> dict:
+    """
+    Merge Yahoo Finance data into the already-bucketed Screener data.
+
+    Rules:
+    1. Screener consolidated = primary — never overwrite existing Screener periods.
+    2. Yahoo historical → fill gaps in Screener consolidated annual timeline.
+    3. Yahoo latest → add as most-recent point if its period is newer than Screener's last.
+    4. Yahoo-exclusive fields → add under yf_* keys in financials/valuation buckets.
+
+    Args:
+        bucketed     : output of bucket_symbol() + reorganize passes
+        yf_historical: {field_name: {iso_date: value_in_crores}} from yahoofin_fin:historical
+        yf_latest    : {field_name: value_in_crores} from yahoofin_fin:latest
+
+    Returns:
+        bucketed dict with Yahoo data merged in.
+    """
+    fin = bucketed.get('financials', {})
+    val = bucketed.get('valuation', {})
+
+    # ── 1 & 2: Gap-fill overlapping metrics ───────────────────────────────────
+    for screener_key, yahoo_field in SCREENER_TO_YAHOO_OVERLAP.items():
+        yf_periods = yf_historical.get(yahoo_field, {})
+        if not yf_periods:
+            continue
+
+        existing = fin.get(screener_key)
+        sr_periods = _get_periods_dict(existing) if existing else {}
+
+        filled = 0
+        for iso_date, yf_val in yf_periods.items():
+            if iso_date not in sr_periods and yf_val not in (None, ''):
+                sr_periods[iso_date] = yf_val
+                filled += 1
+
+        if filled and sr_periods:
+            # Write back — preserve existing nested structure or create flat
+            if isinstance(existing, dict) and 'annual' in existing:
+                existing['annual'].update(
+                    {d: v for d, v in yf_periods.items() if d not in existing['annual']}
+                )
+            else:
+                fin[screener_key] = dict(sorted(sr_periods.items(), reverse=True))
+
+    # ── 3: Extend with Yahoo latest if newer than Screener's last period ──────
+    for screener_key, yahoo_field in SCREENER_TO_YAHOO_OVERLAP.items():
+        latest_val = yf_latest.get(yahoo_field)
+        if latest_val in (None, ''):
+            continue
+
+        existing = fin.get(screener_key)
+        sr_periods = _get_periods_dict(existing) if existing else {}
+        sr_last = _latest_period(sr_periods)
+
+        # Yahoo latest doesn't carry an explicit date — use today's fiscal year end
+        # as a sentinel only if it's strictly newer than Screener's last period.
+        # We skip this if Screener already has data within the last 6 months.
+        from datetime import date
+        today = date.today().isoformat()
+        if sr_last and sr_last >= today[:7]:
+            continue  # Screener is already current
+        
+        # Tag as yf_latest_ prefixed key to avoid collision
+        yf_latest_key = f"yf_latest_{screener_key}"
+        fin[yf_latest_key] = latest_val
+
+    # ── 4a: Yahoo-exclusive financials (time-series) ──────────────────────────
+    for yahoo_field, output_key in YAHOO_EXCLUSIVE_FINANCIALS.items():
+        yf_periods = yf_historical.get(yahoo_field, {})
+        yf_lat = yf_latest.get(yahoo_field)
+
+        if yf_periods:
+            fin[output_key] = dict(sorted(
+                {d: v for d, v in yf_periods.items() if v not in (None, '')}.items(),
+                reverse=True
+            ))
+        elif yf_lat not in (None, ''):
+            fin[output_key] = yf_lat
+
+    # ── 4b: Yahoo-exclusive per-share / valuation fields ─────────────────────
+    for yahoo_field, output_key in YAHOO_EXCLUSIVE_VALUATION.items():
+        yf_periods = yf_historical.get(yahoo_field, {})
+        yf_lat = yf_latest.get(yahoo_field)
+
+        if yf_periods:
+            val[output_key] = dict(sorted(
+                {d: v for d, v in yf_periods.items() if v not in (None, '')}.items(),
+                reverse=True
+            ))
+        elif yf_lat not in (None, ''):
+            val[output_key] = yf_lat
+
+    bucketed['financials'] = fin
+    bucketed['valuation'] = val
+    return bucketed
+
+
+def _extract_yf_fin_sections(sections: dict) -> tuple:
+    """
+    Pull yahoofin_fin:historical and yahoofin_fin:latest out of the raw sections dict
+    before bucketing, so merge_yahoo_into_screener() has direct access.
+
+    Flatten output structure:
+      'yahoofin_fin:historical' → list of metric objects:
+          [{'metric': 'net_profit', 'periods': {'2024-03-31': 17390.0, ...}}, ...]
+      'yahoofin_fin:latest'     → flat dict:
+          {'net_profit': 17390.0, 'revenue': ..., ...}
+
+    Returns:
+        yf_historical : {field_name: {iso_date: value_in_crores}}
+        yf_latest     : {field_name: value_in_crores}
+    """
+    yf_historical = {}
+    yf_latest = {}
+
+    # --- historical ---
+    hist_section = sections.get('yahoofin_fin:historical', [])
+    if isinstance(hist_section, list):
+        for item in hist_section:
+            if not isinstance(item, dict):
+                continue
+            field = item.get('metric')
+            periods = item.get('periods', {})
+            if field and isinstance(periods, dict):
+                yf_historical[field] = {
+                    d: v for d, v in periods.items() if v not in (None, '')
+                }
+    elif isinstance(hist_section, dict):
+        for field, val in hist_section.items():
+            if isinstance(val, dict):
+                yf_historical[field] = {d: v for d, v in val.items() if v not in (None, '')}
+
+    # --- latest ---
+    # Flatten stores latest as a flat dict {field_name: scalar_value}
+    lat_section = sections.get('yahoofin_fin:latest', {})
+    if isinstance(lat_section, dict):
+        yf_latest = {k: v for k, v in lat_section.items() if v not in (None, '')}
+
+    return yf_historical, yf_latest
+
+
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
         sys.exit(1)
@@ -1891,17 +2065,26 @@ def main():
 
     for i, symbol in enumerate(symbols, 1):
         sections = raw[symbol].get("data", {})
+
+        # Extract Yahoo fin sections BEFORE bucketing (needed for merge)
+        yf_historical, yf_latest = _extract_yf_fin_sections(sections)
+
         bucketed = bucket_symbol(symbol, sections)
-        bucketed = reorganize_by_period(bucketed)  # Separate by period type
-        bucketed = clean_websignals(bucketed)  # Remove empty values from websignals
-        bucketed = clean_metadata_wrapper(bucketed)  # Remove _periods and _source
-        bucketed = reorganize_financials_debt(bucketed)  # Group debt metrics
-        bucketed = reorganize_ratios_revenue(bucketed)  # Group revenue metrics in ratios
-        bucketed = reorganize_valuation_eps_pe(bucketed)  # Group EPS & P/E in valuation
-        bucketed = reorganize_price_52w_volume(bucketed)  # Group 52-week & volume in price
-        bucketed = reorganize_identity_shareholding(bucketed)  # Group shareholding under company_details
-        bucketed = compute_derived_metrics(bucketed)  # Compute derived financial metrics
-        bucketed = reorganize_derived_metrics_guidance(bucketed)  # Move guidance to derived_metrics
+        bucketed = reorganize_by_period(bucketed)
+        bucketed = clean_websignals(bucketed)
+        bucketed = clean_metadata_wrapper(bucketed)
+        bucketed = reorganize_financials_debt(bucketed)
+        bucketed = reorganize_ratios_revenue(bucketed)
+        bucketed = reorganize_valuation_eps_pe(bucketed)
+        bucketed = reorganize_price_52w_volume(bucketed)
+        bucketed = reorganize_identity_shareholding(bucketed)
+
+        # Merge Yahoo data into Screener consolidated timeline
+        # Must run AFTER all reorganize passes so financials bucket is stable
+        bucketed = merge_yahoo_into_screener(bucketed, yf_historical, yf_latest)
+
+        bucketed = compute_derived_metrics(bucketed)
+        bucketed = reorganize_derived_metrics_guidance(bucketed)
         
         # Add guidance data from guidance.json
         if symbol in guidance_data:

@@ -392,21 +392,55 @@ for TICKER in TICKERS_TO_PROCESS:
                     logger.write_error(TICKER, 'screener_raw', section, str(e))
         
         # === YAHOOFIN FINANCIALS ===
+        # Yahoo financial values are in absolute INR (e.g. 173900000000).
+        # Screener values are in Crores (1 Crore = 1e7).
+        # Convert Yahoo → Crores by dividing by 1e7 so units are uniform.
+        # Yahoo financials = CONSOLIDATED view (matches screener_fin, not screener_raw).
+        #
+        # Fields that are NOT financial amounts (ratios, %, counts) must NOT be divided.
+        YAHOO_FIN_RATIO_FIELDS = {
+            'tax_rate', 'diluted_eps', 'basic_eps', 'diluted_shares', 'basic_shares',
+            'shares_outstanding', 'total_capitalization'
+        }
+        # Fields that are per-share or counts — store as-is (no Crore conversion)
+        YAHOO_FIN_PERUNIT_FIELDS = {
+            'diluted_eps', 'basic_eps', 'diluted_shares', 'basic_shares',
+            'shares_outstanding', 'tax_rate'
+        }
+
+        def yahoo_fin_value(k, v):
+            """Convert Yahoo financial value to Crores where applicable"""
+            if v is None or v == '':
+                return v
+            try:
+                fv = float(v)
+                if k in YAHOO_FIN_PERUNIT_FIELDS:
+                    return fv  # ratios/per-share — no conversion
+                return round(fv / 1e7, 2)  # absolute INR → Crores
+            except (TypeError, ValueError):
+                return v
+
         yf = all_data.get('yahoofin_fin', {}).get(TICKER, {})
         raw = yf.get('observations', [{}])[0].get('raw', {}) if yf.get('observations') else {}
+
+        # --- latest snapshot ---
         for k, v in raw.get('latest', {}).items():
             try:
-                if k and k.strip() and k not in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp']:
-                    metrics[f"{k}|latest"] = {'metric': k, 'section': 'latest', 'source': 'yahoofin_fin', 'value': standardize_value(v)}
+                if k and k.strip() and k not in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp', 'resolved_ticker', 'sector', 'status']:
+                    metrics[f"{k}|latest"] = {
+                        'metric': k,
+                        'section': 'latest',
+                        'source': 'yahoofin_fin',
+                        'consolidation': 'consolidated',
+                        'value': yahoo_fin_value(k, v)
+                    }
                 elif k in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp']:
                     ticker_rejections.append(f"yahoofin_fin | latest | Excluded metadata key: {k}")
             except Exception as e:
                 ticker_errors.append(f"yahoofin_fin | latest | {k} | {str(e)}")
                 logger.write_error(TICKER, 'yahoofin_fin', k, str(e))
-        
-        # historical_periods — list of {period, metric1, metric2, ...}
-        # Each item is one quarter/year snapshot. Build per-metric time-series
-        # so downstream gets trend data, not just the latest snapshot.
+
+        # --- historical_periods: build per-metric time-series (consolidated annual) ---
         for hp_item in raw.get('historical_periods', []):
             try:
                 period_date = hp_item.get('period')
@@ -422,9 +456,11 @@ for TICKER in TICKERS_TO_PROCESS:
                             'metric': k,
                             'section': 'historical',
                             'source': 'yahoofin_fin',
+                            'consolidation': 'consolidated',
+                            'granule': 'annual',
                             'periods': {}
                         }
-                    metrics[metric_key]['periods'][iso_date] = standardize_value(v)
+                    metrics[metric_key]['periods'][iso_date] = yahoo_fin_value(k, v)
             except Exception as e:
                 ticker_errors.append(f"yahoofin_fin | historical_periods | {str(e)}")
                 logger.write_error(TICKER, 'yahoofin_fin', 'historical_periods', str(e))
@@ -443,33 +479,78 @@ for TICKER in TICKERS_TO_PROCESS:
         if obs:
             raw = obs[0].get('raw', {})
             
-            # Load ALL 145 fields from info as raw data - NO grouping/categorization
-            # Match exact source field names (camelCase, no underscores)
+            # Yahoo info field sub-groups — tag each field with its category
+            # so market_data.py can route them to the correct bucket.
+            # Fields not in any group go to 'info' (catch-all).
+            INFO_FIELD_GROUPS = {
+                # valuation ratios
+                'trailingPE': 'valuation', 'forwardPE': 'valuation',
+                'priceToBook': 'valuation', 'enterpriseValue': 'valuation',
+                'enterpriseToRevenue': 'valuation', 'enterpriseToEbitda': 'valuation',
+                'pegRatio': 'valuation', 'priceToSalesTrailing12Months': 'valuation',
+                # analyst targets
+                'targetHighPrice': 'analyst', 'targetLowPrice': 'analyst',
+                'targetMeanPrice': 'analyst', 'targetMedianPrice': 'analyst',
+                'recommendationKey': 'analyst', 'numberOfAnalystOpinions': 'analyst',
+                # margins
+                'profitMargins': 'margins', 'grossMargins': 'margins',
+                'ebitdaMargins': 'margins', 'operatingMargins': 'margins',
+                # growth
+                'earningsGrowth': 'growth', 'revenueGrowth': 'growth',
+                'earningsQuarterlyGrowth': 'growth',
+                # financial ratios
+                'returnOnAssets': 'ratios', 'returnOnEquity': 'ratios',
+                'debtToEquity': 'ratios', 'quickRatio': 'ratios',
+                'currentRatio': 'ratios', 'revenuePerShare': 'ratios',
+                'totalCashPerShare': 'ratios',
+                # share data
+                'floatShares': 'share_data', 'sharesOutstanding': 'share_data',
+                'heldPercentInsiders': 'share_data', 'heldPercentInstitutions': 'share_data',
+                'impliedSharesOutstanding': 'share_data', 'bookValue': 'share_data',
+                # dividends
+                'dividendRate': 'dividends', 'dividendYield': 'dividends',
+                'exDividendDate': 'dividends', 'payoutRatio': 'dividends',
+                'fiveYearAvgDividendYield': 'dividends',
+                'trailingAnnualDividendRate': 'dividends',
+                'trailingAnnualDividendYield': 'dividends',
+                # earnings dates
+                'earningsTimestamp': 'earnings_dates',
+                'earningsTimestampStart': 'earnings_dates',
+                'earningsTimestampEnd': 'earnings_dates',
+                'earningsCallTimestampStart': 'earnings_dates',
+                'earningsCallTimestampEnd': 'earnings_dates',
+                # governance risk scores
+                'auditRisk': 'risk_scores', 'boardRisk': 'risk_scores',
+                'compensationRisk': 'risk_scores',
+                'shareHolderRightsRisk': 'risk_scores', 'overallRisk': 'risk_scores',
+            }
+            # Fields to skip entirely from info
+            INFO_SKIP_FIELDS = {
+                'industryKey', 'sectorKey', 'maxAge', 'executiveTeam',
+                'language', 'region', 'quoteSourceName', 'messageBoardId',
+                'esgPopulated', 'triggerable', 'customPriceAlertConfidence',
+                'cryptoTradeable', 'tradeable', 'sourceInterval',
+                'exchangeDataDelayedBy', 'gmtOffSetMilliseconds',
+                'hasPrePostMarketData', 'priceHint',
+            }
+
             for k, v in raw.get('info', {}).items():
                 try:
-                    if not k or not k.strip():
-                        ticker_rejections.append(f"yahoofin_raw | info | Empty field name")
+                    if not k or not k.strip() or k in INFO_SKIP_FIELDS:
+                        if k not in INFO_SKIP_FIELDS:
+                            ticker_rejections.append(f"yahoofin_raw | info | Empty field name")
                         continue
-                    
-                    # Skip system metadata keys only (not part of raw financial data)
-                    if k in ['industryKey', 'sectorKey', 'maxAge', 'executiveTeam']:
-                        ticker_rejections.append(f"yahoofin_raw | info | Excluded: {k}")
-                        continue
-                    
-                    # Store all fields under 'info' section - raw data as-is
-                    metric_key = f"{k}|info"
-                    
-                    # Keep all data types as-is (arrays, objects, scalars)
-                    if isinstance(v, list):
-                        metrics[metric_key] = {'metric': k, 'section': 'info', 'source': 'yahoofin_raw', 
-                                              'value': v}
-                    elif isinstance(v, dict):
-                        metrics[metric_key] = {'metric': k, 'section': 'info', 'source': 'yahoofin_raw', 
-                                              'value': v}
+
+                    sub_section = INFO_FIELD_GROUPS.get(k, 'info')
+                    metric_key = f"{k}|{sub_section}"
+
+                    if isinstance(v, (list, dict)):
+                        metrics[metric_key] = {'metric': k, 'section': sub_section,
+                                               'source': 'yahoofin_raw', 'value': v}
                     else:
-                        metrics[metric_key] = {'metric': k, 'section': 'info', 'source': 'yahoofin_raw', 
-                                              'value': standardize_value(v)}
-                
+                        metrics[metric_key] = {'metric': k, 'section': sub_section,
+                                               'source': 'yahoofin_raw',
+                                               'value': standardize_value(v)}
                 except Exception as e:
                     ticker_errors.append(f"yahoofin_raw | info | {k} | {str(e)}")
                     logger.write_error(TICKER, 'yahoofin_raw', k, str(e))
@@ -681,6 +762,7 @@ try:
                     "yahoofin_raw:history_1wk  (10yr weekly — canonical output key)",
                     "yahoofin_raw:history_1mo  (10yr monthly — canonical output key)",
                     "yahoofin_fin:latest",
+                    "yahoofin_fin:historical  (consolidated annual, /1e7 → Crores, gap-fills screener_fin)",
                     "guidance:guidance",
                     "guidance:insights",
                     "unified_symbols:metadata"
