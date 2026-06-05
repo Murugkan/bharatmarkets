@@ -2267,406 +2267,351 @@ def main():
             "generated_at": datetime.now().isoformat(),
             "total_tickers": total,
             "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
-            "data_sources": [
-                "screener_raw_data.json  — standalone HTML scrape (P&L, BS, CF, Ratios, Shareholding)",
-                "screener_financials.json — consolidated Selenium scrape (same tables + quarterly_results)",
-                "yahoofin_raw_data.json  — Yahoo info fields, sub-sections, OHLCV history",
-                "yahoofin_financials.json — Yahoo annual financial statements (up to 5yr)",
-                "guidance.json           — AI-extracted earnings guidance (29 tickers)",
-                "prices.json             — live LTP feed",
-                "unified-symbols.json    — ticker master (qty, avg_cost, isin, name)"
-            ],
+            "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
 
-            # ─── UNITS ───────────────────────────────────────────────────────────
-            "units": {
-                "financials":    "Indian Rupees in Crores (₹ Cr). Divide by 100 for ₹ Thousands Cr.",
-                "ratios":        "Percentages as floats (e.g. ROCE_pct=18.5 means 18.5%). Days as integers.",
-                "valuation":     "market_cap/enterprise_value in absolute INR (not Crores). PE/PB as floats.",
-                "price":         "INR per share. Volume in units. History OHLCV in INR.",
-                "shareholding":  "Percentage as string (e.g. '60.86%'). No. of Shareholders as integer.",
-                "websignals":    "Prices in INR. Timestamps as Unix epoch. Risks as integer 1-10.",
-                "dates":         "ISO 8601 YYYY-MM-DD. Screener uses month-start (2026-03-01). Yahoo uses period-end (2026-03-31)."
-            },
+            # ── SCHEMA ────────────────────────────────────────────────────────────
+            # Each entry is the exact dot-path to access the field on a ticker object.
+            # {YYYY-MM-DD} = dict keyed by ISO date strings
+            # []           = list (OHLCV bars or shareholding time-series objects)
+            # Cr           = Indian Rupees in Crores
+            # INR_abs      = absolute INR (not Crores) — divide by 1e7 for Crores
+            # pct          = percentage as float (18.5 = 18.5%)
+            # frac         = fraction 0-1 (0.185 = 18.5%)
+            # epoch        = Unix timestamp (seconds)
+            # ─────────────────────────────────────────────────────────────────────
+            "schema": {
 
-            # ─── BLUEPRINT ────────────────────────────────────────────────────────
-            "blueprint": {
-
-                # ── 1. COMPANY DETAILS ─────────────────────────────────────────
                 "company_details": {
-                    "description": "Identity, ownership, shareholding time-series, portfolio position",
-                    "access_pattern": "ticker['company_details']['field']",
-                    "fields": {
-                        "identity": {
-                            "ticker":              "NSE ticker symbol",
-                            "name":                "Company name",
-                            "isin":                "ISIN code",
-                            "sector":              "Screener sector",
-                            "industry":            "Screener industry",
-                            "sector_yahoo":        "Yahoo Finance sector",
-                            "industry_yahoo":      "Yahoo Finance industry",
-                            "type":                "Equity / ETF",
-                            "data_source":         "Source identifier",
-                            "long_business_summary": "Business description (Yahoo)",
-                            "full_time_employees": "Headcount (Yahoo)",
-                            "website":             "Company website",
-                            "exchange":            "NSE / BSE",
-                            "currency":            "INR",
-                            "financial_currency":  "Reporting currency (INR for most, USD for ADRs like INFY)"
-                        },
-                        "portfolio": {
-                            "qty":      "Shares held in portfolio",
-                            "avg_cost": "Average cost price (INR)"
-                        },
-                        "shareholding_time_series": {
-                            "description": "Each field is a list of objects [{_periods:{date:pct}, _consolidation, _granule}]",
-                            "access":      "ticker['company_details']['promoters'][0]['_periods']['2026-03-01'] → '60.86%'",
-                            "fields": {
-                                "promoters":          "Promoter holding % over time",
-                                "fiis":               "FII holding % over time",
-                                "diis":               "DII holding % over time",
-                                "government":         "Government holding % over time",
-                                "public":             "Public holding % over time",
-                                "others":             "Others holding % over time",
-                                "no_of_shareholders": "Number of shareholders over time"
-                            }
-                        },
-                        "yahoo_share_data": {
-                            "float_shares":              "Float shares",
-                            "shares_outstanding":        "Total shares outstanding",
-                            "held_pct_insiders":         "Insider holding fraction (0-1)",
-                            "held_pct_institutions":     "Institutional holding fraction (0-1)",
-                            "implied_shares_outstanding":"Implied shares",
-                            "dividend_rate":             "Annual dividend per share (INR)",
-                            "dividend_yield":            "Dividend yield fraction (0-1)",
-                            "ex_dividend_date":          "Ex-dividend date",
-                            "payout_ratio":              "Dividend payout ratio",
-                            "five_year_avg_dividend_yield": "5yr avg dividend yield",
-                            "trailing_annual_dividend_rate": "TTM dividend per share",
-                            "trailing_annual_dividend_yield": "TTM dividend yield",
-                            "last_split_date":           "Last stock split date",
-                            "last_split_factor":         "Split factor (e.g. '2:1')"
-                        }
-                    }
+                    # ── Identity ──────────────────────────────────────────────
+                    "ticker":                  "str",
+                    "name":                    "str",
+                    "isin":                    "str",
+                    "sector":                  "str  | Screener sector",
+                    "industry":                "str  | Screener industry",
+                    "sector_yahoo":            "str  | Yahoo sector",
+                    "industry_yahoo":          "str  | Yahoo industry",
+                    "type":                    "str  | Equity / ETF",
+                    "exchange":                "str  | NSE / BSE",
+                    "currency":                "str  | INR",
+                    "financial_currency":      "str  | INR or USD (ADRs)",
+                    "website":                 "str",
+                    "long_business_summary":   "str",
+                    "full_time_employees":     "int",
+                    "company_officers":        "[]   | [{name, title, age, ...}]",
+                    # ── Portfolio ─────────────────────────────────────────────
+                    "qty":                     "int  | shares held",
+                    "avg_cost":                "INR  | average cost price",
+                    # ── Shareholding time-series ───────────────────────────────
+                    # Each is a list of objects: [{_periods:{YYYY-MM-DD: pct_str}, _consolidation, _granule}]
+                    # Access: ticker['company_details']['promoters'][0]['_periods']['2026-03-01'] → '60.86%'
+                    "promoters":               "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
+                    "fiis":                    "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
+                    "diis":                    "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
+                    "government":              "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
+                    "public":                  "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
+                    "others":                  "[]   | [{_periods:{YYYY-MM-DD: pct_str}}]",
+                    "no_of_shareholders":      "[]   | [{_periods:{YYYY-MM-DD: int}}]",
+                    # ── Share data ────────────────────────────────────────────
+                    "shares_outstanding":      "int",
+                    "float_shares":            "int",
+                    "implied_shares_outstanding": "int",
+                    "held_pct_insiders":       "frac",
+                    "held_pct_institutions":   "frac",
+                    # ── Dividends & splits ────────────────────────────────────
+                    "shareholding.dividends.dividend_rate":             "INR  | annual dividend/share",
+                    "shareholding.dividends.dividend_yield":            "frac",
+                    "shareholding.dividends.ex_dividend_date":          "epoch",
+                    "shareholding.dividends.five_year_avg_dividend_yield": "frac",
+                    "shareholding.dividends.payout_ratio":              "frac",
+                    "shareholding.dividends.trailing_annual_dividend_rate": "INR",
+                    "shareholding.dividends.trailing_annual_dividend_yield": "frac",
+                    "shareholding.stock_splits.last_split_date":        "epoch",
+                    "shareholding.stock_splits.last_split_factor":      "str  | e.g. '2:1'",
                 },
 
-                # ── 2. FINANCIALS ──────────────────────────────────────────────
                 "financials": {
-                    "description": "P&L, Balance Sheet, Cash Flow time-series. Nested: field > consolidation > granularity > {date: value}",
-                    "access_pattern": "ticker['financials']['Net_Profit']['consolidated']['annual']['2026-03-01'] → 16652.0",
-                    "consolidation_levels": ["consolidated  (Screener /consolidated/ — 12yr)", "standalone  (Screener standalone page — 12yr)"],
-                    "granularity_levels":   ["annual  (year-end dates)", "quarterly  (quarter-end dates)", "half_yearly  (rare, 2 tickers)"],
-                    "date_note":            "Screener dates use month-start (2026-03-01). Yahoo gap-fill uses period-end (2026-03-31). Both may coexist in the same annual dict.",
-                    "p_and_l": {
-                        "Sales":              "Revenue / Net Sales (₹ Cr)",
-                        "Expenses":           "Total expenses (₹ Cr)",
-                        "Operating_Profit":   "EBIT proxy — Sales minus Expenses (₹ Cr)",
-                        "OPM_pct":            "Operating Profit Margin % (string, e.g. '20%')",
-                        "Other_Income":       "Non-operating income (₹ Cr)",
-                        "Interest":           "Interest expense (₹ Cr)",
-                        "Depreciation":       "D&A (₹ Cr)",
-                        "Profit_before_tax":  "PBT (₹ Cr)",
-                        "Tax_pct":            "Effective tax rate % (string)",
-                        "Net_Profit":         "PAT — Profit After Tax (₹ Cr)",
-                        "EPS_Rs":             "Earnings Per Share (₹)",
-                        "Dividend_Payout_pct":"Dividend payout as % of net profit (string)",
-                        "Financing_Profit":   "NBFC/Bank: Net Interest Income proxy (₹ Cr)",
-                        "Financing_Margin_pct":"NBFC/Bank: NIM % (string)",
-                        "Gross_NPA_pct":      "Bank: Gross NPA % (string)",
-                        "Net_NPA_pct":        "Bank: Net NPA % (string)"
-                    },
-                    "balance_sheet": {
-                        "Equity_Capital":     "Paid-up share capital (₹ Cr)",
-                        "Reserves":           "Retained earnings + reserves (₹ Cr)",
-                        "Borrowings":         "Total borrowings — manufacturing/FMCG (₹ Cr)",
-                        "Borrowing":          "Total borrowings — NBFC/bank variant (₹ Cr)",
-                        "Deposits":           "Customer deposits — banks only (₹ Cr)",
-                        "Other_Liabilities":  "Other liabilities (₹ Cr)",
-                        "Total_Liabilities":  "Total liabilities (₹ Cr)",
-                        "Fixed_Assets":       "Net block / PP&E (₹ Cr)",
-                        "CWIP":               "Capital work in progress (₹ Cr)",
-                        "Investments":        "Investments (₹ Cr)",
-                        "Other_Assets":       "Other assets (₹ Cr)",
-                        "Total_Assets":       "Total assets (₹ Cr)"
-                    },
-                    "cash_flow": {
-                        "CFO":            "Cash from Operating Activity (₹ Cr)",
-                        "CFI":            "Cash from Investing Activity (₹ Cr)",
-                        "CFF":            "Cash from Financing Activity (₹ Cr)",
-                        "Net_Cash_Flow":  "Net change in cash (₹ Cr)",
-                        "Free_Cash_Flow": "FCF = CFO − Capex (₹ Cr)",
-                        "CFO_over_OP":    "CFO / Operating Profit ratio"
-                    },
-                    "yahoo_gap_fill": {
-                        "description": "Yahoo annual financials gap-filling Screener (older periods). Prefixed yf_. Only for INR-reporting tickers.",
-                        "fields": ["yf_revenue", "yf_net_profit", "yf_ebitda", "yf_ebit",
-                                   "yf_gross_profit", "yf_capex", "yf_operating_cash_flow",
-                                   "yf_free_cash_flow", "yf_depreciation", "yf_interest_expense",
-                                   "yf_total_assets", "yf_total_liabilities", "yf_total_equity",
-                                   "yf_total_debt", "yf_net_debt", "yf_invested_capital",
-                                   "yf_diluted_eps", "yf_basic_eps", "yf_diluted_shares",
-                                   "yf_basic_shares", "yf_shares_outstanding",
-                                   "yf_latest_*  (scalar from most recent Yahoo annual period)"]
-                    }
+                    # ── Access pattern ────────────────────────────────────────
+                    # ticker['financials'][METRIC][consolidation][granularity][YYYY-MM-DD] → Cr
+                    # consolidation : 'consolidated' | 'standalone'
+                    # granularity   : 'annual' | 'quarterly' | 'half_yearly'
+                    # ── P&L ──────────────────────────────────────────────────
+                    "Sales.consolidated.annual.{YYYY-MM-DD}":              "Cr",
+                    "Sales.consolidated.quarterly.{YYYY-MM-DD}":           "Cr",
+                    "Sales.standalone.annual.{YYYY-MM-DD}":                "Cr",
+                    "Sales.standalone.quarterly.{YYYY-MM-DD}":             "Cr",
+                    "Expenses.consolidated.annual.{YYYY-MM-DD}":           "Cr",
+                    "Expenses.consolidated.quarterly.{YYYY-MM-DD}":        "Cr",
+                    "Expenses.standalone.annual.{YYYY-MM-DD}":             "Cr",
+                    "Operating_Profit.consolidated.annual.{YYYY-MM-DD}":   "Cr",
+                    "Operating_Profit.consolidated.quarterly.{YYYY-MM-DD}":"Cr",
+                    "Operating_Profit.standalone.annual.{YYYY-MM-DD}":     "Cr",
+                    "OPM_pct.consolidated.annual.{YYYY-MM-DD}":            "str  | e.g. '20%'",
+                    "OPM_pct.consolidated.quarterly.{YYYY-MM-DD}":         "str",
+                    "Other_Income.consolidated.annual.{YYYY-MM-DD}":       "Cr",
+                    "Other_Income.consolidated.quarterly.{YYYY-MM-DD}":    "Cr",
+                    "Interest.consolidated.annual.{YYYY-MM-DD}":           "Cr",
+                    "Interest.consolidated.quarterly.{YYYY-MM-DD}":        "Cr",
+                    "Depreciation.consolidated.annual.{YYYY-MM-DD}":       "Cr",
+                    "Depreciation.consolidated.quarterly.{YYYY-MM-DD}":    "Cr",
+                    "Profit_before_tax.consolidated.annual.{YYYY-MM-DD}":  "Cr",
+                    "Profit_before_tax.consolidated.quarterly.{YYYY-MM-DD}":"Cr",
+                    "Tax_pct.consolidated.annual.{YYYY-MM-DD}":            "str  | e.g. '25%'",
+                    "Net_Profit.consolidated.annual.{YYYY-MM-DD}":         "Cr  | PRIMARY — use this",
+                    "Net_Profit.consolidated.quarterly.{YYYY-MM-DD}":      "Cr",
+                    "Net_Profit.standalone.annual.{YYYY-MM-DD}":           "Cr",
+                    "Net_Profit.standalone.quarterly.{YYYY-MM-DD}":        "Cr",
+                    "EPS_Rs.consolidated.annual.{YYYY-MM-DD}":             "INR | earnings per share",
+                    "EPS_Rs.consolidated.quarterly.{YYYY-MM-DD}":          "INR",
+                    "Dividend_Payout_pct.consolidated.annual.{YYYY-MM-DD}":"str",
+                    # ── Bank-specific P&L ──────────────────────────────────────
+                    "Financing_Profit.consolidated.annual.{YYYY-MM-DD}":   "Cr  | banks: NII proxy",
+                    "Financing_Profit.consolidated.quarterly.{YYYY-MM-DD}":"Cr",
+                    "Financing_Margin_pct.consolidated.annual.{YYYY-MM-DD}":"str | banks: NIM %",
+                    "Financing_Margin_pct.consolidated.quarterly.{YYYY-MM-DD}":"str",
+                    "Gross_NPA_pct.consolidated.quarterly.{YYYY-MM-DD}":   "str | banks only",
+                    "Net_NPA_pct.consolidated.quarterly.{YYYY-MM-DD}":     "str | banks only",
+                    # ── Balance Sheet ─────────────────────────────────────────
+                    "Equity_Capital.consolidated.annual.{YYYY-MM-DD}":     "Cr",
+                    "Reserves.consolidated.annual.{YYYY-MM-DD}":           "Cr",
+                    "Borrowings.consolidated.annual.{YYYY-MM-DD}":         "Cr  | debt (manufacturing/IT/NBFC)",
+                    "Borrowings.standalone.annual.{YYYY-MM-DD}":           "Cr",
+                    "Deposits.consolidated.annual.{YYYY-MM-DD}":           "Cr  | banks only",
+                    "Other_Liabilities.consolidated.annual.{YYYY-MM-DD}":  "Cr",
+                    "Total_Liabilities.consolidated.annual.{YYYY-MM-DD}":  "Cr",
+                    "Fixed_Assets.consolidated.annual.{YYYY-MM-DD}":       "Cr",
+                    "CWIP.consolidated.annual.{YYYY-MM-DD}":               "Cr",
+                    "Investments.consolidated.annual.{YYYY-MM-DD}":        "Cr",
+                    "Other_Assets.consolidated.annual.{YYYY-MM-DD}":       "Cr",
+                    "Total_Assets.consolidated.annual.{YYYY-MM-DD}":       "Cr",
+                    # ── Cash Flow ─────────────────────────────────────────────
+                    "CFO.consolidated.annual.{YYYY-MM-DD}":                "Cr  | operating cash flow",
+                    "CFO.standalone.annual.{YYYY-MM-DD}":                  "Cr",
+                    "CFI.consolidated.annual.{YYYY-MM-DD}":                "Cr  | investing cash flow",
+                    "CFF.consolidated.annual.{YYYY-MM-DD}":                "Cr  | financing cash flow",
+                    "Free_Cash_Flow.consolidated.annual.{YYYY-MM-DD}":     "Cr  | FCF = CFO − Capex",
+                    "Net_Cash_Flow.consolidated.annual.{YYYY-MM-DD}":      "Cr",
+                    "CFO_over_OP.consolidated.annual.{YYYY-MM-DD}":        "ratio | CFO / Operating Profit",
+                    # ── Yahoo gap-fill (older periods) ────────────────────────
+                    "yf_revenue.{YYYY-MM-DD}":                             "Cr  | Yahoo annual revenue",
+                    "yf_gross_profit.{YYYY-MM-DD}":                        "Cr",
+                    "yf_ebitda.{YYYY-MM-DD}":                              "Cr",
+                    "yf_operating_cash_flow.{YYYY-MM-DD}":                 "Cr",
+                    "yf_capex.{YYYY-MM-DD}":                               "Cr",
+                    "yf_free_cash_flow.{YYYY-MM-DD}":                      "Cr",
+                    "yf_invested_capital.{YYYY-MM-DD}":                    "Cr",
+                    "yf_working_capital.{YYYY-MM-DD}":                     "Cr",
+                    "yf_total_assets.{YYYY-MM-DD}":                        "Cr",
+                    "yf_accounts_receivable.{YYYY-MM-DD}":                 "Cr",
+                    "yf_cost_of_revenue.{YYYY-MM-DD}":                     "Cr",
+                    "yf_rd_expense.{YYYY-MM-DD}":                          "Cr",
+                    # ── Yahoo latest scalars ───────────────────────────────────
+                    "yf_latest_Sales":                                      "Cr  | TTM",
+                    "yf_latest_Net_Profit":                                 "Cr  | TTM",
+                    "yf_latest_Operating_Profit":                           "Cr  | TTM",
+                    "yf_latest_CFO":                                        "Cr  | TTM",
+                    "yf_latest_Free_Cash_Flow":                             "Cr  | TTM",
+                    "yf_latest_Borrowings":                                 "Cr  | TTM",
+                    "yf_latest_Total_Assets":                               "Cr  | TTM",
+                    "yf_latest_Total_Liabilities":                          "Cr  | TTM",
+                    "yf_latest_Depreciation":                               "Cr  | TTM",
+                    "yf_latest_Interest":                                    "Cr  | TTM",
+                    "yf_latest_EPS_Rs":                                     "INR | TTM",
                 },
 
-                # ── 3. RATIOS ──────────────────────────────────────────────────
                 "ratios": {
-                    "description": "Financial ratios. Screener ratios are time-series dicts {date: value}. Yahoo ratios are scalars.",
-                    "access_pattern": "ticker['ratios']['ROCE_pct']['2026-03-01'] → 18.5  (Screener)  |  ticker['ratios']['profit_margins'] → 0.127  (Yahoo scalar)",
-                    "screener_time_series": {
-                        "ROCE_pct":              "Return on Capital Employed % — manufacturing/IT",
-                        "ROE_pct":               "Return on Equity % — banks/NBFCs",
-                        "Debtor_Days":           "Debtor collection days",
-                        "Inventory_Days":        "Inventory holding days",
-                        "Days_Payable":          "Payable days",
-                        "Cash_Conversion_Cycle": "DIO + DSO − DPO (days)",
-                        "Working_Capital_Days":  "Net working capital days"
-                    },
-                    "yahoo_scalars": {
-                        "profit_margins":          "Net margin (0-1)",
-                        "gross_margins":           "Gross margin (0-1)",
-                        "ebitda_margins":          "EBITDA margin (0-1)",
-                        "operating_margins":       "Operating margin (0-1)",
-                        "return_on_assets":        "ROA (0-1)",
-                        "return_on_equity":        "ROE (0-1)",
-                        "earnings_growth":         "YoY earnings growth (0-1)",
-                        "revenue_growth":          "YoY revenue growth (0-1)",
-                        "earnings_quarterly_growth": "QoQ earnings growth (0-1)",
-                        "debt_to_equity":          "D/E ratio",
-                        "current_ratio":           "Current ratio",
-                        "quick_ratio":             "Quick ratio",
-                        "revenue.total_revenue":   "TTM revenue (₹ Cr)",
-                        "revenue.revenue_per_share": "Revenue per share",
-                        "revenue.revenue_growth":  "Revenue growth",
-                        "total_cash":              "Cash & equivalents (₹ Cr)",
-                        "total_cash_per_share":    "Cash per share",
-                        "free_cashflow":           "TTM FCF (₹ Cr)",
-                        "operating_cashflow":      "TTM CFO (₹ Cr)",
-                        "gross_profits":           "TTM gross profit (₹ Cr)",
-                        "net_income_to_common":    "TTM net income (₹ Cr)"
-                    }
+                    # Screener ratios: dict {YYYY-MM-DD: value}
+                    # Access: ticker['ratios']['ROCE_pct']['2026-03-01'] → 18.5
+                    "ROCE_pct.{YYYY-MM-DD}":            "pct  | Return on Capital Employed — manufacturing/IT",
+                    "ROE_pct.{YYYY-MM-DD}":             "pct  | Return on Equity — banks/NBFCs",
+                    "Debtor_Days.{YYYY-MM-DD}":         "days",
+                    "Inventory_Days.{YYYY-MM-DD}":      "days",
+                    "Days_Payable.{YYYY-MM-DD}":        "days",
+                    "Cash_Conversion_Cycle.{YYYY-MM-DD}":"days",
+                    "Working_Capital_Days.{YYYY-MM-DD}":"days",
+                    # Yahoo scalars (TTM)
+                    "profit_margins":           "frac | net margin",
+                    "gross_margins":            "frac",
+                    "ebitda_margins":           "frac",
+                    "operating_margins":        "frac",
+                    "return_on_assets":         "frac",
+                    "return_on_equity":         "frac",
+                    "earnings_growth":          "frac | YoY",
+                    "earnings_quarterly_growth":"frac | QoQ",
+                    "revenue.total_revenue":    "Cr   | TTM",
+                    "revenue.revenue_per_share":"INR",
+                    "revenue.revenue_growth":   "frac | YoY",
+                    "debt_to_equity":           "ratio",
+                    "current_ratio":            "ratio",
+                    "quick_ratio":              "ratio",
+                    "total_cash":               "Cr",
+                    "total_cash_per_share":     "INR",
+                    "free_cashflow":            "Cr   | TTM",
+                    "operating_cashflow":       "Cr   | TTM",
+                    "gross_profits":            "Cr   | TTM",
+                    "net_income_to_common":     "Cr   | TTM",
                 },
 
-                # ── 4. VALUATION ───────────────────────────────────────────────
                 "valuation": {
-                    "description": "Market valuation metrics. Scalars from Yahoo live info.",
-                    "access_pattern": "ticker['valuation']['pe']['trailing_pe'] → 18.8  |  ticker['valuation']['market_cap'] → 3124216725504",
-                    "fields": {
-                        "market_cap":          "Market cap in absolute INR (not Crores). Divide by 1e7 for Crores.",
-                        "non_diluted_market_cap": "Market cap using basic shares",
-                        "enterprise_value":    "EV in absolute INR",
-                        "ebitda":              "EBITDA in absolute INR",
-                        "total_debt":          "Total debt in absolute INR",
-                        "book_value":          "Book value per share (INR)",
-                        "ev_to_revenue":       "EV/Revenue multiple",
-                        "ev_to_ebitda":        "EV/EBITDA multiple",
-                        "pe": {
-                            "trailing_pe":        "P/E on TTM earnings",
-                            "forward_pe":         "P/E on forward earnings estimate",
-                            "peg_ratio":          "PEG ratio",
-                            "trailing_peg_ratio": "PEG on trailing earnings",
-                            "price_to_book":      "P/B ratio",
-                            "price_to_sales_ttm": "P/S ratio (TTM)"
-                        },
-                        "eps": {
-                            "trailing_eps":          "TTM EPS (INR)",
-                            "forward_eps":           "Forward EPS estimate (INR)",
-                            "eps_ttm":               "TTM EPS (INR)",
-                            "eps_forward":           "Forward EPS (INR)",
-                            "eps_current_year":      "Current year EPS estimate (INR)",
-                            "price_eps_current_year":"P/E on current year EPS"
-                        },
-                        "yf_diluted_eps":   "Yahoo annual diluted EPS time-series {date: INR}",
-                        "yf_basic_eps":     "Yahoo annual basic EPS time-series {date: INR}",
-                        "yf_diluted_shares":"Yahoo annual diluted shares time-series {date: count}",
-                        "yf_basic_shares":  "Yahoo annual basic shares time-series {date: count}",
-                        "yf_shares_outstanding": "Yahoo annual shares outstanding time-series {date: count}"
-                    }
+                    # Access: ticker['valuation']['pe']['trailing_pe'] → 18.8
+                    "market_cap":               "INR_abs | divide by 1e7 for Crores",
+                    "non_diluted_market_cap":   "INR_abs",
+                    "enterprise_value":         "INR_abs",
+                    "ebitda":                   "INR_abs",
+                    "total_debt":               "INR_abs",
+                    "book_value":               "INR  | per share",
+                    "ev_to_revenue":            "ratio",
+                    "ev_to_ebitda":             "ratio",
+                    "pe.trailing_pe":           "ratio | P/E on TTM earnings",
+                    "pe.forward_pe":            "ratio | P/E on forward estimate",
+                    "pe.peg_ratio":             "ratio",
+                    "pe.trailing_peg_ratio":    "ratio",
+                    "pe.price_to_book":         "ratio",
+                    "pe.price_to_sales_ttm":    "ratio",
+                    "eps.trailing_eps":         "INR  | TTM EPS",
+                    "eps.forward_eps":          "INR  | forward EPS estimate",
+                    "eps.eps_ttm":              "INR",
+                    "eps.eps_forward":          "INR",
+                    "eps.eps_current_year":     "INR",
+                    "eps.price_eps_current_year":"ratio",
+                    "yf_diluted_eps.{YYYY-MM-DD}":      "INR  | annual diluted EPS time-series",
+                    "yf_basic_eps.{YYYY-MM-DD}":        "INR  | annual basic EPS time-series",
+                    "yf_diluted_shares.{YYYY-MM-DD}":   "int  | annual diluted share count",
+                    "yf_basic_shares.{YYYY-MM-DD}":     "int  | annual basic share count",
+                    "yf_shares_outstanding.{YYYY-MM-DD}":"int | annual shares outstanding",
                 },
 
-                # ── 5. PRICE ───────────────────────────────────────────────────
                 "price": {
-                    "description": "Current price, 52-week range, volume, and OHLCV history bars",
-                    "ltp": {
-                        "description": "Live price — populated at runtime by index.html fetchAndMergeLTP(). Null in stored file.",
-                        "access": "ticker['price']['ltp']['ltp'] → current price (INR)",
-                        "fields": {
-                            "ltp":       "Last Traded Price (INR)",
-                            "change":    "Change from prev close (INR)",
-                            "changePct": "Change % (float)",
-                            "open":      "Day open (INR)",
-                            "high":      "Day high (INR)",
-                            "low":       "Day low (INR)",
-                            "prev":      "Previous close (INR)",
-                            "vol":       "Day volume",
-                            "w52h":      "52-week high (INR)",
-                            "w52l":      "52-week low (INR)",
-                            "beta":      "Beta vs market"
-                        }
-                    },
-                    "current": {
-                        "current_price":               "Current price from Yahoo info (INR)",
-                        "previous_close":              "Previous close (INR)",
-                        "regular_market_price":        "Regular market price (INR)",
-                        "regular_market_change":       "Change (INR)",
-                        "regular_market_change_pct":   "Change % (float)",
-                        "day_high":                    "Day high (INR)",
-                        "day_low":                     "Day low (INR)",
-                        "fifty_day_avg":               "50-day moving average (INR)",
-                        "two_hundred_day_avg":         "200-day moving average (INR)"
-                    },
-                    "52_week": {
-                        "access": "ticker['price']['52_week']['fifty_two_week_high']",
-                        "fields": {
-                            "fifty_two_week_high":            "52-week high (INR)",
-                            "fifty_two_week_low":             "52-week low (INR)",
-                            "fifty_two_week_change":          "52-week change (INR)",
-                            "fifty_two_week_change_pct":      "52-week change % (float)",
-                            "fifty_two_week_high_change":     "Distance from 52w high (INR)",
-                            "fifty_two_week_low_change":      "Distance from 52w low (INR)",
-                            "fifty_two_week_high_change_pct": "% below 52w high",
-                            "fifty_two_week_low_change_pct":  "% above 52w low"
-                        }
-                    },
-                    "volume": {
-                        "volume":                     "Last day volume",
-                        "regular_market_volume":      "Regular market volume",
-                        "average_volume":             "Average volume",
-                        "average_daily_volume_10d":   "10-day average daily volume",
-                        "average_daily_volume_3mo":   "3-month average daily volume"
-                    },
-                    "history": {
-                        "description": "OHLCV bars. Each is a list of dicts.",
-                        "bar_format":  "{'Date': 'YYYY-MM-DD', 'Open': str, 'High': str, 'Low': str, 'Close': str, 'Volume': str}",
-                        "history_6mo_1d":  "Daily bars — last 6 months (~124 bars). Access: ticker['price']['history_6mo_1d'][0]['Close']",
-                        "history_1wk":     "Weekly bars — 10 years (~522 bars). Best for trend charts.",
-                        "history_1mo":     "Monthly bars — 10 years (~120 bars). Best for long-term charts."
-                    }
+                    # ── Live price (null in file, populated at runtime by fetchAndMergeLTP) ──
+                    "ltp.ltp":          "INR  | last traded price",
+                    "ltp.change":       "INR  | change from prev close",
+                    "ltp.changePct":    "pct  | change %",
+                    "ltp.open":         "INR",
+                    "ltp.high":         "INR  | day high",
+                    "ltp.low":          "INR  | day low",
+                    "ltp.prev":         "INR  | previous close",
+                    "ltp.vol":          "int  | day volume",
+                    "ltp.w52h":         "INR  | 52-week high",
+                    "ltp.w52l":         "INR  | 52-week low",
+                    "ltp.beta":         "ratio",
+                    # ── Yahoo current ──────────────────────────────────────────
+                    "current_price":                    "INR",
+                    "previous_close":                   "INR",
+                    "regular_market_price":             "INR",
+                    "regular_market_change":            "INR",
+                    "regular_market_change_pct":        "pct",
+                    "day_high":                         "INR",
+                    "day_low":                          "INR",
+                    "fifty_day_avg":                    "INR",
+                    "two_hundred_day_avg":              "INR",
+                    "fifty_day_avg_change":             "INR",
+                    "fifty_day_avg_change_pct":         "pct",
+                    "two_hundred_day_avg_change":       "INR",
+                    "two_hundred_day_avg_change_pct":   "pct",
+                    # ── 52-week ───────────────────────────────────────────────
+                    "52_week.fifty_two_week_high":              "INR",
+                    "52_week.fifty_two_week_low":               "INR",
+                    "52_week.fifty_two_week_change":            "INR",
+                    "52_week.fifty_two_week_change_pct":        "pct",
+                    "fifty_two_week_high_change":               "INR  | distance below 52w high",
+                    "fifty_two_week_high_change_pct":           "pct",
+                    "fifty_two_week_low_change":                "INR  | distance above 52w low",
+                    "fifty_two_week_low_change_pct":            "pct",
+                    # ── Volume ────────────────────────────────────────────────
+                    "volume.volume":                            "int",
+                    "volume.regular_market_volume":             "int",
+                    "volume.average_volume":                    "int",
+                    "volume.average_daily_volume_10d":          "int",
+                    "volume.average_daily_volume_3mo":          "int",
+                    # ── OHLCV history bars ────────────────────────────────────
+                    # Each is a list of {Date, Open, High, Low, Close, Volume} dicts (all str)
+                    "history_6mo_1d":   "[]   | daily bars, last 6 months (~124 bars)",
+                    "history_1wk":      "[]   | weekly bars, 10 years (~522 bars) — use for trend charts",
+                    "history_1mo":      "[]   | monthly bars, 10 years (~120 bars) — use for long-term charts",
                 },
 
-                # ── 6. WEBSIGNALS ──────────────────────────────────────────────
                 "websignals": {
-                    "description": "Analyst consensus, price targets, governance risk scores, earnings calendar",
-                    "access_pattern": "ticker['websignals']['target_mean_price'] → 1427.4",
-                    "analyst": {
-                        "recommendation_key":         "buy / hold / sell / strong_buy / strong_sell",
-                        "recommendation_mean":        "Mean analyst rating 1-5 (1=strong buy, 5=strong sell)",
-                        "average_analyst_rating":     "Text rating string",
-                        "number_of_analyst_opinions": "Count of analyst estimates",
-                        "target_high_price":          "Analyst high target (INR)",
-                        "target_low_price":           "Analyst low target (INR)",
-                        "target_mean_price":          "Consensus target (INR)",
-                        "target_median_price":        "Median target (INR)"
-                    },
-                    "governance_risk": {
-                        "description": "ISS governance risk scores 1-10 (lower=less risk). Only available for ~20 tickers.",
-                        "audit_risk":              "Audit committee risk 1-10",
-                        "board_risk":              "Board structure risk 1-10",
-                        "compensation_risk":       "Executive pay risk 1-10",
-                        "shareholder_rights_risk": "Shareholder rights risk 1-10",
-                        "overall_risk":            "Overall governance risk 1-10"
-                    },
-                    "earnings_calendar": {
-                        "earnings_timestamp":          "Next earnings date (Unix epoch)",
-                        "earnings_timestamp_start":    "Earnings date range start (Unix epoch)",
-                        "earnings_timestamp_end":      "Earnings date range end (Unix epoch)",
-                        "earnings_call_ts_start":      "Earnings call start (Unix epoch)",
-                        "earnings_call_ts_end":        "Earnings call end (Unix epoch)",
-                        "is_earnings_date_estimate":   "True if estimated date"
-                    },
-                    "other": {
-                        "sandp_52_week_change":   "S&P 500 52-week change (for benchmarking)",
-                        "governance_epoch_date":  "Governance data date"
-                    }
+                    # ── Analyst ───────────────────────────────────────────────
+                    "recommendation_key":           "str   | strong_buy / buy / hold / sell / strong_sell",
+                    "recommendation_mean":          "float | 1=strong_buy … 5=strong_sell",
+                    "average_analyst_rating":       "str",
+                    "number_of_analyst_opinions":   "int",
+                    "target_high_price":            "INR",
+                    "target_low_price":             "INR",
+                    "target_mean_price":            "INR  | consensus target",
+                    "target_median_price":          "INR",
+                    # ── Governance risk (ISS, 1-10, lower=less risk) ───────────
+                    "audit_risk":               "int  | 1-10",
+                    "board_risk":               "int  | 1-10",
+                    "compensation_risk":        "int  | 1-10",
+                    "shareholder_rights_risk":  "int  | 1-10",
+                    "overall_risk":             "int  | 1-10",
+                    # ── Earnings calendar ─────────────────────────────────────
+                    "earnings_timestamp":           "epoch",
+                    "earnings_timestamp_start":     "epoch",
+                    "earnings_timestamp_end":       "epoch",
+                    "earnings_call_ts_start":       "epoch",
+                    "earnings_call_ts_end":         "epoch",
+                    "is_earnings_date_estimate":    "bool",
+                    "sandp_52_week_change":         "pct  | S&P 500 52w change (benchmark)",
                 },
 
-                # ── 7. DERIVED METRICS ─────────────────────────────────────────
                 "derived_metrics": {
-                    "description": "Computed scores and AI guidance. Present for all tickers (scores) or 29 tickers (AI guidance).",
-                    "calculated_metrics": {
-                        "access":            "ticker['derived_metrics']['calculated_metrics']['pe_ratio']",
-                        "pe_ratio":          "Trailing P/E ratio",
-                        "pe_score":          "P/E score 0-100 (sector-relative)",
-                        "price_to_book":     "P/B ratio",
-                        "pb_score":          "P/B score 0-100",
-                        "price_momentum_pct":"Price momentum % (52w return)",
-                        "momentum_score":    "Momentum score 0-100",
-                        "fundamental_score": "Fundamental score 0-100 (ROE/ROCE/margins weighted)",
-                        "technical_score":   "Technical score 0-100 (momentum/volume weighted)",
-                        "valuation_score":   "Valuation score 0-100 (PE/PB relative to sector)",
-                        "sentiment_score":   "Analyst sentiment score 0-100",
-                        "composite_score":   "Weighted composite of all scores 0-100",
-                        "rating":            "Buy / Accumulate / Hold / Reduce / Sell",
-                        "sector":            "Sector classification used for scoring",
-                        "sector_weights":    "{'fundamental': w, 'technical': w, 'valuation': w, 'sentiment': w}"
-                    },
-                    "ai_insights_guidance": {
-                        "description": "AI-extracted from earnings call transcripts. Available for ~29 tickers with guidance.json data.",
-                        "access":      "ticker['derived_metrics']['ai_insights_guidance']['guidance']",
-                        "guidance": {
-                            "quarter":             "Quarter label (e.g. 'Q4 FY26')",
-                            "date":                "Earnings call date",
-                            "summary":             "Executive summary of management commentary",
-                            "financial":           "Financial guidance — revenue/margin/growth outlook",
-                            "business":            "Business outlook and strategic direction",
-                            "segments":            "Segment-wise performance and outlook",
-                            "geography":           "Geographic mix and growth",
-                            "customers":           "Key customer wins, losses, concentrations",
-                            "competitive_position":"Competitive landscape commentary",
-                            "operations":          "Operational metrics and efficiency",
-                            "capital_allocation":  "Capex, dividends, buyback plans",
-                            "management":          "Management changes and commentary",
-                            "deals_and_pipeline":  "Deal wins and order pipeline",
-                            "analyst_dimensions":  "Key themes from analyst Q&A",
-                            "investor_verdict":    "AI-synthesised investor verdict"
-                        },
-                        "insights": {
-                            "date":            "Analysis date",
-                            "thesis":          "Bull/bear thesis",
-                            "trigger":         "Near-term catalyst",
-                            "recommendation":  "Buy / Hold / Sell with reasoning",
-                            "sector_briefing": "Sector context",
-                            "analysis":        "Detailed fundamental analysis"
-                        }
-                    }
+                    # ── Calculated scores ──────────────────────────────────────
+                    "calculated_metrics.pe_ratio":          "ratio",
+                    "calculated_metrics.pe_score":          "0-100 | sector-relative",
+                    "calculated_metrics.price_to_book":     "ratio",
+                    "calculated_metrics.pb_score":          "0-100",
+                    "calculated_metrics.price_momentum_pct":"pct   | 52w return",
+                    "calculated_metrics.momentum_score":    "0-100",
+                    "calculated_metrics.fundamental_score": "0-100",
+                    "calculated_metrics.technical_score":   "0-100",
+                    "calculated_metrics.valuation_score":   "0-100",
+                    "calculated_metrics.sentiment_score":   "0-100",
+                    "calculated_metrics.composite_score":   "0-100 | weighted composite",
+                    "calculated_metrics.rating":            "str   | Buy/Accumulate/Hold/Reduce/Sell",
+                    "calculated_metrics.sector":            "str",
+                    "calculated_metrics.sector_weights.fundamental": "frac",
+                    "calculated_metrics.sector_weights.technical":   "frac",
+                    "calculated_metrics.sector_weights.valuation":   "frac",
+                    "calculated_metrics.sector_weights.sentiment":   "frac",
+                    # ── AI guidance (29 tickers with guidance.json) ───────────
+                    "ai_insights_guidance.guidance.quarter":                "str  | e.g. 'Q4 FY26'",
+                    "ai_insights_guidance.guidance.date":                   "str",
+                    "ai_insights_guidance.guidance.summary":                "str  | management commentary",
+                    "ai_insights_guidance.guidance.financial.revenue":      "str",
+                    "ai_insights_guidance.guidance.financial.margins":      "str",
+                    "ai_insights_guidance.guidance.financial.growth":       "str",
+                    "ai_insights_guidance.guidance.financial.capex":        "str",
+                    "ai_insights_guidance.guidance.business.products":      "str",
+                    "ai_insights_guidance.guidance.business.expansion":     "str",
+                    "ai_insights_guidance.guidance.segments.segment_outlook":"str",
+                    "ai_insights_guidance.guidance.segments.revenue_by_segment": "dict | {segment_name: pct_str}",
+                    "ai_insights_guidance.guidance.geography.expansion_plans":   "str",
+                    "ai_insights_guidance.guidance.geography.revenue_mix":       "dict | {region: pct_str}",
+                    "ai_insights_guidance.guidance.deals_and_pipeline.order_book.total_value": "str",
+                    "ai_insights_guidance.guidance.deals_and_pipeline.deal_pipeline_value":    "str",
+                    "ai_insights_guidance.guidance.capital_allocation.capex_detailed.total":   "str",
+                    "ai_insights_guidance.guidance.management.tone":        "str",
+                    "ai_insights_guidance.guidance.management.confidence":  "str",
+                    "ai_insights_guidance.guidance.investor_verdict":       "str",
+                    "ai_insights_guidance.guidance.analyst_dimensions.margin_quality":    "str",
+                    "ai_insights_guidance.guidance.analyst_dimensions.management_credibility": "str",
+                    "ai_insights_guidance.guidance.analyst_dimensions.risk_opportunity_scorecard.net_risk_reward": "str",
+                    "ai_insights_guidance.insights.thesis":                 "str",
+                    "ai_insights_guidance.insights.trigger":                "str  | near-term catalyst",
+                    "ai_insights_guidance.insights.recommendation":         "str  | Buy/Hold/Sell + reasoning",
+                    "ai_insights_guidance.insights.date":                   "str",
+                    "ai_insights_guidance.insights.sector_briefing.sector_name":    "str",
+                    "ai_insights_guidance.insights.sector_briefing.sector_outlook": "str",
+                    "ai_insights_guidance.insights.sector_briefing.sector_risks":   "str",
+                    "ai_insights_guidance.insights.sector_briefing.company_positioning.market_position": "str",
+                    "ai_insights_guidance.insights.analysis.profitability.signal":  "str",
+                    "ai_insights_guidance.insights.analysis.growth.signal":         "str",
+                    "ai_insights_guidance.insights.analysis.valuation.signal":      "str",
+                    "ai_insights_guidance.insights.analysis.moat.signal":           "str",
+                    "ai_insights_guidance.insights.analysis.cash_strength.signal":  "str",
                 },
-
-                # ── 8. KPIs ────────────────────────────────────────────────────
-                "kpis": {
-                    "description": "Company-specific KPIs from Screener Insights (paywalled). Empty dict for most tickers.",
-                    "access_pattern": "ticker['kpis']['Metric_Name']['2026-03-01'] → value"
-                }
-            },
-
-            # ─── UI ACCESS PATTERNS ──────────────────────────────────────────────
-            "ui_access_patterns": {
-                "latest_annual_net_profit":    "t['financials']['Net_Profit']['consolidated']['annual']  → sort keys desc → first value",
-                "quarterly_sales_chart":       "t['financials']['Sales']['standalone']['quarterly']  → sorted by date",
-                "12yr_revenue_trend":          "t['financials']['Sales']['consolidated']['annual']  → filter valid ISO dates → sort",
-                "promoter_holding_latest":     "t['company_details']['promoters'][0]['_periods']  → sort → last value",
-                "current_pe":                  "t['valuation']['pe']['trailing_pe']",
-                "market_cap_crores":           "t['valuation']['market_cap'] / 1e7",
-                "roce_latest":                 "t['ratios']['ROCE_pct']  → sort keys → last value  (dict for Screener, None if only Yahoo)",
-                "candlestick_weekly":          "t['price']['history_1wk']  → list of {Date,Open,High,Low,Close,Volume}",
-                "analyst_consensus":           "t['websignals']['recommendation_key']",
-                "upside_to_target":            "(t['websignals']['target_mean_price'] - ltp) / ltp * 100",
-                "composite_score":             "t['derived_metrics']['calculated_metrics']['composite_score']",
-                "guidance_summary":            "t['derived_metrics']['ai_insights_guidance']['guidance']['summary']",
-                "ltp_live":                    "t['price']['ltp']['ltp']  — null until fetchAndMergeLTP() is called"
-            },
-
-            # ─── KNOWN FIELD VARIANTS ────────────────────────────────────────────
-            "field_variants": {
-                "Borrowings_vs_Borrowing": "Manufacturing/IT use 'Borrowings', Banks/NBFCs use 'Borrowing' (singular). Check both.",
-                "Sales_vs_Revenue":        "Manufacturing use 'Sales', Banks use 'Revenue'. Both map to same P&L line.",
-                "ROCE_vs_ROE":             "Manufacturing/IT have ROCE_pct. Banks/NBFCs have ROE_pct only.",
-                "date_format_mixed":       "Screener dates are 2026-03-01 (month-start). Yahoo dates are 2026-03-31 (period-end). Both appear in same annual dict — use the latest by string sort.",
-                "malformed_dates":         "Rare: 'Mar 2016 9m' stub periods exist for 3 tickers (HCLTECH, REDTAPE, SAGILITY). Filter by len(date)==10 when iterating.",
-                "consolidated_vs_standalone": "Use consolidated for financial analysis. Standalone available as cross-check or for 10 PSU/standalone-only companies (BDL, DATAPATTNS, GRSE, HEBL, INDOTECH, INTERARCH, NETWEB, SHILCHAR, SUPRIYA, VOLTAMP)."
-            },
-
-            "unmapped_count":  sum(len(v) for v in unmapped_summary.values()),
-            "unmapped_tickers": list(unmapped_summary.keys()),
+            }
         }
     }
     
