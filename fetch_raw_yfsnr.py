@@ -452,6 +452,10 @@ def commit_to_git(log_file):
             logger.warning("  Git not available or not in a repo")
             return True
         
+        # Set identity (required in GitHub Actions runners)
+        subprocess.run(["git", "config", "user.email", "action@github.com"], check=False)
+        subprocess.run(["git", "config", "user.name", "GitHub Action"], check=False)
+        
         # Add files
         files = [
             "data/yahoofin_raw_data.json",
@@ -497,10 +501,14 @@ def commit_to_git(log_file):
         if result.returncode == 0:
             logger.info(f"  ✓ Committed: {msg}")
             
+            # Pull remote changes before pushing (prevents rejection from concurrent runs)
+            subprocess.run(["git", "pull", "--rebase", "origin", "main"],
+                         capture_output=True, check=False)
+            
             # Push to GitHub
             logger.info("\n  Pushing to GitHub...")
             push_result = subprocess.run(
-                ["git", "push", "origin", "HEAD:main"],
+                ["git", "push", "origin", "main"],
                 capture_output=True,
                 text=True,
                 check=False
