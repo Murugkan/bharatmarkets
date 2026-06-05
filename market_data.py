@@ -2042,6 +2042,7 @@ def _extract_yf_fin_sections(sections: dict) -> tuple:
     return yf_historical, yf_latest
 
 
+def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
         sys.exit(1)
