@@ -194,6 +194,33 @@ class ScreenerFinancialsScraper:
             'start_time': None,
             'end_time': None
         }
+        # Persistent browser — launched once, reused across all tickers.
+        # Recreated only if it crashes. Avoids 97× Chrome launch/quit overhead.
+        self._driver = None
+
+    def get_driver(self):
+        """Return the persistent driver, creating it if not alive."""
+        if self._driver is None:
+            self._driver = self.setup_browser()
+        return self._driver
+
+    def reset_driver(self):
+        """Quit and recreate the driver after a crash."""
+        try:
+            if self._driver:
+                self._driver.quit()
+        except Exception:
+            pass
+        self._driver = None
+
+    def teardown(self):
+        """Quit the browser at the end of the run."""
+        try:
+            if self._driver:
+                self._driver.quit()
+                self._driver = None
+        except Exception:
+            pass
     
     def load_symbols(self) -> List[str]:
         """Load stock symbols from unified-symbols.json"""
@@ -331,46 +358,40 @@ class ScreenerFinancialsScraper:
     
     def fetch_page(self, symbol: str) -> Optional[str]:
         """Fetch page HTML with retry logic and screener overrides"""
-        # Use screener override if available
         screener_symbol = self.symbol_map.get('screener_overrides', {}).get(symbol, symbol.lower())
         url = f"{Config.BASE_URL}/{screener_symbol}/consolidated/"
-        
+
         for attempt in range(Config.RETRY_ATTEMPTS):
             try:
-                driver = self.setup_browser()
+                driver = self.get_driver()
                 if not driver:
                     raise Exception("Browser setup failed")
-                
+
                 driver.set_page_load_timeout(Config.BROWSER_TIMEOUT)
                 driver.get(url)
-                
-                # Wait for tables to load
+
+                # Wait for P&L section — avoids early snapshot on redirect to standalone
+                # where shareholding renders before financial tables.
                 WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
-                    EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
+                    EC.presence_of_element_located((By.XPATH,
+                        "//h2[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'profit')]"
+                        "/following::table[contains(@class,'data-table')]"
+                    ))
                 )
-                
+
                 html = driver.page_source
-                driver.quit()
-                
                 time.sleep(Config.RATE_LIMIT_DELAY)
                 return html
-            
+
             except TimeoutException:
                 logger.debug(f"Timeout: {symbol} (attempt {attempt + 1})")
-                try:
-                    driver.quit()
-                except:
-                    pass
             except Exception as e:
                 logger.debug(f"Fetch error: {symbol} - {str(e)[:60]}")
-                try:
-                    driver.quit()
-                except:
-                    pass
-            
+                self.reset_driver()  # Recreate on crash
+
             if attempt < Config.RETRY_ATTEMPTS - 1:
                 time.sleep(Config.RETRY_DELAY)
-        
+
         return None
     
     def parse_table(self, table) -> Dict[str, Dict[str, str]]:
@@ -482,27 +503,27 @@ class ScreenerFinancialsScraper:
         """Fallback: fetch standalone (non-consolidated) page for tickers that lack a consolidated view"""
         screener_symbol = self.symbol_map.get('screener_overrides', {}).get(symbol, symbol.lower())
         url = f"{Config.BASE_URL}/{screener_symbol}/"  # no /consolidated/
-        
+
         for attempt in range(Config.RETRY_ATTEMPTS):
             try:
-                driver = self.setup_browser()
+                driver = self.get_driver()
                 if not driver:
                     raise Exception("Browser setup failed")
                 driver.set_page_load_timeout(Config.BROWSER_TIMEOUT)
                 driver.get(url)
+                # Wait for P&L section — same fix as fetch_page
                 WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
-                    EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
+                    EC.presence_of_element_located((By.XPATH,
+                        "//h2[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'profit')]"
+                        "/following::table[contains(@class,'data-table')]"
+                    ))
                 )
                 html = driver.page_source
-                driver.quit()
                 time.sleep(Config.RATE_LIMIT_DELAY)
                 return html
             except Exception as e:
                 logger.debug(f"Standalone fetch error: {symbol} - {str(e)[:60]}")
-                try:
-                    driver.quit()
-                except:
-                    pass
+                self.reset_driver()
             if attempt < Config.RETRY_ATTEMPTS - 1:
                 time.sleep(Config.RETRY_DELAY)
         return None
@@ -753,6 +774,9 @@ Examples:
     
     # Scrape
     scraper.scrape_all(symbols, resume=args.resume, limit=args.symbols)
+    
+    # Quit browser
+    scraper.teardown()
     
     # Save
     scraper.save_results()
