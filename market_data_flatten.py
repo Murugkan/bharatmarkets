@@ -122,16 +122,21 @@ TODAY = datetime.now().strftime('%Y-%m-%d')
 
 # ===== UTILITY FUNCTIONS =====
 def parse_period_to_iso(period_str):
-    """Convert period strings (Jun 2023, Mar 2026) to ISO 8601 (2023-06-01)"""
+    """Convert period strings (Jun 2023, Mar 2026) to ISO 8601 (2023-06-01).
+    Strips whitespace/newlines from Screener labels like 'Mar 2016\\n  9m'."""
     try:
-        parts = str(period_str).strip().split()
+        # Collapse all whitespace — handles multiline Screener labels like 'Mar 2016\n  9m'
+        clean = ' '.join(str(period_str).split())
+        # Only accept clean 2-word patterns (Mon YYYY); reject labels with extra tokens
+        parts = clean.split()
         if len(parts) == 2:
             months = {'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
                      'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'}
-            if parts[0] in months:
+            if parts[0] in months and parts[1].isdigit() and len(parts[1]) == 4:
                 return f"{parts[1]}-{months[parts[0]]}-01"
-            elif parts[1] in months:
+            elif parts[1] in months and parts[0].isdigit() and len(parts[0]) == 4:
                 return f"{parts[0]}-{months[parts[1]]}-01"
+        # More than 2 tokens (e.g. 'Mar 2016 9m') → reject as malformed
     except Exception as e:
         logger.write_error('UTIL', 'parse_period', period_str, f"Parse error: {str(e)}")
     return None

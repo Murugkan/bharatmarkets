@@ -256,18 +256,27 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         # DEBUG
         logger.debug(f"{ticker}: IS={is_stmt.shape if not is_stmt.empty else 'EMPTY'}, BS={bs.shape if not bs.empty else 'EMPTY'}, CF={cf.shape if not cf.empty else 'EMPTY'}")
         
-        # Process all available annual periods (yfinance returns up to 4 years)
-        max_periods = min(10, len(is_stmt.columns) if not is_stmt.empty else 0, 
-                         len(bs.columns) if not bs.empty else 0,
-                         len(cf.columns) if not cf.empty else 0)
+        # Process all available annual periods.
+        # Use income_stmt as the primary period reference (most complete).
+        # min() with CF would collapse to 0 for ETFs/NBFCs where CF is empty.
+        n_is = len(is_stmt.columns) if not is_stmt.empty else 0
+        n_bs = len(bs.columns) if not bs.empty else 0
+        n_cf = len(cf.columns) if not cf.empty else 0
         
-        # If no periods with all 3 dataframes, try with just IS+BS
-        if max_periods == 0:
-            max_periods = min(10, len(is_stmt.columns) if not is_stmt.empty else 0,
-                             len(bs.columns) if not bs.empty else 0)
+        # Primary: use the largest non-zero period count across IS/BS
+        max_periods = min(10, max(n_is, n_bs))
+        # Warn if CF is missing — cash flow fields will be blank for this ticker
+        if max_periods > 0 and n_cf == 0:
+            logger.debug(f"{ticker}: cashflow empty — CFO/capex/FCF will be blank")
         
         for col_idx in range(max_periods):
-            period_date = is_stmt.columns[col_idx] if not is_stmt.empty else bs.columns[col_idx]
+            # Get period date from first non-empty statement
+            if not is_stmt.empty and col_idx < n_is:
+                period_date = is_stmt.columns[col_idx]
+            elif not bs.empty and col_idx < n_bs:
+                period_date = bs.columns[col_idx]
+            else:
+                continue
             period_str = period_date.strftime('%Y-%m-%d')
             period_data = {"period": period_str}
             
@@ -324,7 +333,7 @@ def main():
     logger.info("="*80)
     
     fetch_config = load_json(Path('.fetch_config.json'))
-    FETCH_YAHOOF = fetch_config.get('yahoof', True)
+    FETCH_YAHOOF = fetch_config.get('yahoo', True)  # key is 'yahoo' in .fetch_config.json
     
     logger.info(f"\nProvider Configuration:")
     logger.info(f"  {'✓' if FETCH_YAHOOF else '✗'} YahooF Financial Metrics")

@@ -328,28 +328,28 @@ FIELD_MAP = {
 
     # ── yahoofin_fin:latest and yahoofin_fin:historical ──────────────────────
     # NOT processed via FIELD_MAP — handled exclusively by merge_yahoo_into_screener()
-    # in main(). Keeping them here would cause double-processing:
-    #   bucket_symbol() → puts scalar (latest) and time-series (historical) into
-    #                      the same financials keys → scalar overwrites time-series.
-    # The merge layer is the single owner of all yahoofin_fin data.
+    # in main(). Marking as __skip__ prevents them falling into _unmapped.
+    "yahoofin_fin:latest":           "__skip__",
+    "yahoofin_fin:historical":       "__skip__",
+    "yahoofin_fin:historical:annual":"__skip__",
 
     # ââ screener_fin:quarterly_results  (quarterly consolidated P&L) ââââââ
     "screener_fin:quarterly_results": {
-        "SalesÂ +":           ("financials", "Sales"),
+        "Sales +":           ("financials", "Sales"),
         "Sales +":             ("financials", "Sales"),
-        "RevenueÂ +":         ("financials", "Sales"),
+        "Revenue +":         ("financials", "Sales"),
         "Revenue +":           ("financials", "Sales"),
-        "ExpensesÂ +":        ("financials", "Expenses"),
+        "Expenses +":        ("financials", "Expenses"),
         "Expenses +":          ("financials", "Expenses"),
         "Operating Profit":    ("financials", "Operating_Profit"),
         "OPM %":               ("financials", "OPM_pct"),
-        "Other IncomeÂ +":    ("financials", "Other_Income"),
+        "Other Income +":    ("financials", "Other_Income"),
         "Other Income +":      ("financials", "Other_Income"),
         "Interest":            ("financials", "Interest"),
         "Depreciation":        ("financials", "Depreciation"),
         "Profit before tax":   ("financials", "Profit_before_tax"),
         "Tax %":               ("financials", "Tax_pct"),
-        "Net ProfitÂ +":      ("financials", "Net_Profit"),
+        "Net Profit +":      ("financials", "Net_Profit"),
         "Net Profit +":        ("financials", "Net_Profit"),
         "EPS in Rs":           ("financials", "EPS_Rs"),
         "Financing Profit":    ("financials", "Financing_Profit"),
@@ -360,21 +360,21 @@ FIELD_MAP = {
 
     # ââ screener_fin:profit_loss  (annual consolidated P&L, 12yr) ââââââââ
     "screener_fin:profit_loss": {
-        "RevenueÂ +":         ("financials", "Sales"),
+        "Revenue +":         ("financials", "Sales"),
         "Revenue +":           ("financials", "Sales"),
-        "SalesÂ +":           ("financials", "Sales"),
+        "Sales +":           ("financials", "Sales"),
         "Sales +":             ("financials", "Sales"),
-        "ExpensesÂ +":        ("financials", "Expenses"),
+        "Expenses +":        ("financials", "Expenses"),
         "Expenses +":          ("financials", "Expenses"),
         "Operating Profit":    ("financials", "Operating_Profit"),
         "OPM %":               ("financials", "OPM_pct"),
-        "Other IncomeÂ +":    ("financials", "Other_Income"),
+        "Other Income +":    ("financials", "Other_Income"),
         "Other Income +":      ("financials", "Other_Income"),
         "Interest":            ("financials", "Interest"),
         "Depreciation":        ("financials", "Depreciation"),
         "Profit before tax":   ("financials", "Profit_before_tax"),
         "Tax %":               ("financials", "Tax_pct"),
-        "Net ProfitÂ +":      ("financials", "Net_Profit"),
+        "Net Profit +":      ("financials", "Net_Profit"),
         "Net Profit +":        ("financials", "Net_Profit"),
         "EPS in Rs":           ("financials", "EPS_Rs"),
         "Dividend Payout %":   ("financials", "Dividend_Payout_pct"),
@@ -388,29 +388,29 @@ FIELD_MAP = {
     "screener_fin:balance_sheet": {
         "Equity Capital":          ("financials", "Equity_Capital"),
         "Reserves":                ("financials", "Reserves"),
-        "BorrowingsÂ +":        ("financials", "Borrowings"),
+        "Borrowings +":        ("financials", "Borrowings"),
         "Borrowings +":            ("financials", "Borrowings"),
         "Borrowing":               ("financials", "Borrowing"),
         "Deposits":                ("financials", "Deposits"),
-        "Other LiabilitiesÂ +": ("financials", "Other_Liabilities"),
+        "Other Liabilities +": ("financials", "Other_Liabilities"),
         "Other Liabilities +":     ("financials", "Other_Liabilities"),
         "Total Liabilities":       ("financials", "Total_Liabilities"),
-        "Fixed AssetsÂ +":      ("financials", "Fixed_Assets"),
+        "Fixed Assets +":      ("financials", "Fixed_Assets"),
         "Fixed Assets +":          ("financials", "Fixed_Assets"),
         "CWIP":                    ("financials", "CWIP"),
         "Investments":             ("financials", "Investments"),
-        "Other AssetsÂ +":      ("financials", "Other_Assets"),
+        "Other Assets +":      ("financials", "Other_Assets"),
         "Other Assets +":          ("financials", "Other_Assets"),
         "Total Assets":            ("financials", "Total_Assets"),
     },
 
     # ââ screener_fin:cash_flow  (annual consolidated CF, 12yr) ââââââââââ
     "screener_fin:cash_flow": {
-        "Cash from Operating ActivityÂ +": ("financials", "CFO"),
+        "Cash from Operating Activity +": ("financials", "CFO"),
         "Cash from Operating Activity +":   ("financials", "CFO"),
-        "Cash from Investing ActivityÂ +": ("financials", "CFI"),
+        "Cash from Investing Activity +": ("financials", "CFI"),
         "Cash from Investing Activity +":   ("financials", "CFI"),
-        "Cash from Financing ActivityÂ +": ("financials", "CFF"),
+        "Cash from Financing Activity +": ("financials", "CFF"),
         "Cash from Financing Activity +":   ("financials", "CFF"),
         "Net Cash Flow":                    ("financials", "Net_Cash_Flow"),
         "Free Cash Flow":                   ("financials", "Free_Cash_Flow"),
@@ -430,17 +430,17 @@ FIELD_MAP = {
 
     # ââ screener_fin:shareholding_pattern  (quarterly consolidated) ââââââ
     "screener_fin:shareholding_pattern": {
-        "PromotersÂ +":      ("company_details", "promoters"),
+        "Promoters +":      ("company_details", "promoters"),
         "Promoters +":         ("company_details", "promoters"),
-        "FIIsÂ +":           ("company_details", "fiis"),
+        "FIIs +":           ("company_details", "fiis"),
         "FIIs +":              ("company_details", "fiis"),
-        "DIIsÂ +":           ("company_details", "diis"),
+        "DIIs +":           ("company_details", "diis"),
         "DIIs +":              ("company_details", "diis"),
-        "GovernmentÂ +":     ("company_details", "government"),
+        "Government +":     ("company_details", "government"),
         "Government +":        ("company_details", "government"),
-        "PublicÂ +":         ("company_details", "public"),
+        "Public +":         ("company_details", "public"),
         "Public +":            ("company_details", "public"),
-        "OthersÂ +":         ("company_details", "others"),
+        "Others +":         ("company_details", "others"),
         "Others +":            ("company_details", "others"),
         "No. of Shareholders": ("company_details", "no_of_shareholders"),
     },
@@ -664,6 +664,10 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
         # ── section not in FIELD_MAP at all → entire section goes to _unmapped
         if sec_map is None:
             B["_unmapped"][sec_key] = deepcopy(records)
+            continue
+
+        # ── sections explicitly skipped (handled by merge layer or excluded) ──
+        if sec_map == "__skip__":
             continue
 
         # ── OHLCV history sections ─────────────────────────────────────────
@@ -1909,17 +1913,73 @@ YAHOO_EXCLUSIVE_VALUATION = {
 
 
 def _get_periods_dict(bucket_field):
-    """Extract {iso_date: value} from a bucketed field (handles both flat and nested)."""
+    """
+    Extract {iso_date: value} from a bucketed field.
+    Handles post-reorganize_by_period structure:
+      {consolidated: {annual: {date: val}, quarterly: {...}}, standalone: {...}}
+    Returns the consolidated.annual dict (primary timeline for gap-fill).
+    """
     if not isinstance(bucket_field, dict):
         return {}
-    # Granularity-nested: {'annual': {'2024-03-31': v, ...}, ...}
-    if any(k in bucket_field for k in ('annual', 'quarterly', 'half_yearly', 'monthly', 'daily')):
-        return bucket_field.get('annual', {})
+
+    # Post-reorganize: {consolidated: {annual: {...}}, standalone: {...}}
+    if 'consolidated' in bucket_field:
+        consol = bucket_field['consolidated']
+        if isinstance(consol, dict) and 'annual' in consol:
+            return consol['annual']
+        if isinstance(consol, dict):
+            # return first granularity available
+            for gran in ('annual', 'quarterly', 'half_yearly'):
+                if gran in consol:
+                    return consol[gran]
+
+    # Granularity-nested without consolidation wrapper: {annual: {...}}
+    granularity_keys = {'daily', 'monthly', 'quarterly', 'half_yearly', 'annual'}
+    if set(bucket_field.keys()).issubset(granularity_keys | {'_meta'}):
+        for gran in ('annual', 'half_yearly', 'quarterly', 'monthly', 'daily'):
+            if gran in bucket_field and isinstance(bucket_field[gran], dict):
+                return bucket_field[gran]
+
     # Flat time-series: {'2024-03-31': v, ...}
     keys = list(bucket_field.keys())
     if keys and len(str(keys[0])) == 10 and '-' in str(keys[0]):
         return bucket_field
+
     return {}
+
+
+def _set_periods_into_field(bucket_field, new_periods: dict):
+    """
+    Write gap-fill periods back into the correct sub-dict of a bucketed field.
+    Mirrors _get_periods_dict — writes into consolidated.annual if present.
+    Returns the (possibly modified) bucket_field.
+    """
+    if not isinstance(bucket_field, dict):
+        return bucket_field
+
+    if 'consolidated' in bucket_field:
+        consol = bucket_field['consolidated']
+        if isinstance(consol, dict) and 'annual' in consol:
+            consol['annual'].update(new_periods)
+            return bucket_field
+        if isinstance(consol, dict):
+            for gran in ('annual', 'quarterly', 'half_yearly'):
+                if gran in consol:
+                    consol[gran].update(new_periods)
+                    return bucket_field
+        bucket_field['consolidated'] = {'annual': new_periods}
+        return bucket_field
+
+    granularity_keys = {'daily', 'monthly', 'quarterly', 'half_yearly', 'annual'}
+    if set(bucket_field.keys()).issubset(granularity_keys | {'_meta'}):
+        for gran in ('annual', 'half_yearly', 'quarterly'):
+            if gran in bucket_field:
+                bucket_field[gran].update(new_periods)
+                return bucket_field
+
+    # Flat — update directly
+    bucket_field.update(new_periods)
+    return bucket_field
 
 
 def _latest_period(periods_dict):
@@ -1957,22 +2017,14 @@ def merge_yahoo_into_screener(bucketed: dict, yf_historical: dict, yf_latest: di
             continue
 
         existing = fin.get(screener_key)
-        sr_periods = _get_periods_dict(existing) if existing else {}
+        if existing is None:
+            continue  # Screener didn't have this field at all — skip, don't inject
 
-        filled = 0
-        for iso_date, yf_val in yf_periods.items():
-            if iso_date not in sr_periods and yf_val not in (None, ''):
-                sr_periods[iso_date] = yf_val
-                filled += 1
-
-        if filled and sr_periods:
-            # Write back — preserve existing nested structure or create flat
-            if isinstance(existing, dict) and 'annual' in existing:
-                existing['annual'].update(
-                    {d: v for d, v in yf_periods.items() if d not in existing['annual']}
-                )
-            else:
-                fin[screener_key] = dict(sorted(sr_periods.items(), reverse=True))
+        sr_periods = _get_periods_dict(existing)
+        gaps = {d: v for d, v in yf_periods.items()
+                if d not in sr_periods and v not in (None, '')}
+        if gaps:
+            fin[screener_key] = _set_periods_into_field(existing, gaps)
 
     # ── 3: Extend with Yahoo latest if newer than Screener's last period ──────
     for screener_key, yahoo_field in SCREENER_TO_YAHOO_OVERLAP.items():
@@ -1981,20 +2033,19 @@ def merge_yahoo_into_screener(bucketed: dict, yf_historical: dict, yf_latest: di
             continue
 
         existing = fin.get(screener_key)
-        sr_periods = _get_periods_dict(existing) if existing else {}
+        if existing is None:
+            continue
+
+        sr_periods = _get_periods_dict(existing)
         sr_last = _latest_period(sr_periods)
 
-        # Yahoo latest doesn't carry an explicit date — use today's fiscal year end
-        # as a sentinel only if it's strictly newer than Screener's last period.
-        # We skip this if Screener already has data within the last 6 months.
         from datetime import date
         today = date.today().isoformat()
         if sr_last and sr_last >= today[:7]:
             continue  # Screener is already current
-        
+
         # Tag as yf_latest_ prefixed key to avoid collision
-        yf_latest_key = f"yf_latest_{screener_key}"
-        fin[yf_latest_key] = latest_val
+        fin[f"yf_latest_{screener_key}"] = latest_val
 
     # ── 4a: Yahoo-exclusive financials (time-series) ──────────────────────────
     for yahoo_field, output_key in YAHOO_EXCLUSIVE_FINANCIALS.items():
