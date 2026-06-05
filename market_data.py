@@ -780,10 +780,20 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                     pass
                 else:
                     target_bucket, target_key = mapping
-                    # Wrap periods with source info
+                    # Wrap periods with source info.
+                    # yahoofin_fin:historical:annual is always consolidated annual —
+                    # tag explicitly so reorganize_by_period can deduplicate against Screener.
+                    _granule = r.get("granule")
+                    _consol  = r.get("consolidation")
+                    if not _granule and "historical:annual" in sec_key:
+                        _granule = "annual"
+                    if not _consol and sec_key.startswith("yahoofin_fin"):
+                        _consol = "consolidated"
                     periods_data = {
                         "_periods": r.get("periods", {}),
-                        "_source": sec_key
+                        "_source":  sec_key,
+                        "_granule": _granule,
+                        "_consolidation": _consol,
                     }
                     
                     # Check if metric exists
@@ -941,30 +951,31 @@ def detect_granularity_from_dates(periods_dict):
     if not months_seen:
         return None
     
-    # Determine granularity by month pattern
+    # Determine granularity by month pattern and date spacing
     months_sorted = sorted(months_seen)
-    
-    # Annual: only month 3 (March FY-end)
-    if months_seen == {3}:
+
+    # Check average gap between consecutive dates
+    if len(dates_list) >= 2:
+        dates_sorted = sorted(dates_list)
+        gaps_days = [(dates_sorted[i+1] - dates_sorted[i]).days
+                     for i in range(len(dates_sorted)-1)]
+        avg_gap = sum(gaps_days) / len(gaps_days)
+    else:
+        avg_gap = 400  # single date — assume annual
+
+    # Annual: dates ~12 months apart (avg gap > 270 days)
+    if avg_gap > 270:
         return 'annual'
-    
-    # Half-yearly: only months 3 and 9
-    if months_seen == {3, 9}:
+
+    # Half-yearly: dates ~6 months apart
+    if 120 < avg_gap <= 270:
         return 'half_yearly'
-    
-    # Quarterly: months 3,6,9,12 (or subset with quarter pattern)
-    if months_seen <= {3, 6, 9, 12} and len(months_seen) >= 2:
+
+    # Quarterly: dates ~3 months apart
+    if avg_gap <= 120:
         return 'quarterly'
-    
-    # Monthly: various months
-    if len(months_seen) > 1:
-        return 'monthly'
-    
-    # Daily: day varies
-    if 1 in days_seen and len(days_seen) > 1:
-        return 'daily'
-    
-    return 'monthly'  # Default
+
+    return 'annual'  # fallback
 
 
 def clean_websignals(bucketed: dict) -> dict:
@@ -1053,6 +1064,47 @@ def clean_metadata_wrapper(bucketed: dict) -> dict:
     return bucketed
 
 
+def clean_period_dates(date_dict: dict) -> dict:
+    """
+    Remove invalid period keys from a date→value dict:
+      - Non-ISO keys like 'TTM', multiline labels ('Mar 2016\\n  9m')
+      - Keys that are not exactly 10 chars of YYYY-MM-DD format
+    Returns a new dict with only valid ISO dates, sorted desc.
+    """
+    cleaned = {}
+    for d, v in date_dict.items():
+        d_str = str(d).strip()
+        # Must be exactly YYYY-MM-DD: 10 chars, positions 4 and 7 are hyphens
+        if len(d_str) == 10 and d_str[4] == '-' and d_str[7] == '-':
+            try:
+                int(d_str[:4]); int(d_str[5:7]); int(d_str[8:])
+                cleaned[d_str] = v
+            except ValueError:
+                pass
+    return dict(sorted(cleaned.items(), reverse=True))
+
+
+def merge_period_dicts(existing: dict, incoming: dict) -> dict:
+    """
+    Merge two period dicts, keeping Screener (month-start YYYY-MM-01) as
+    authoritative over Yahoo (period-end YYYY-MM-28/29/30/31) for the same
+    fiscal year-month.
+    Rule: if a YYYY-MM is already present in existing, skip the incoming
+    entry for that same YYYY-MM. Screener is written first so it wins.
+    """
+    if not existing:
+        return incoming
+    merged = dict(existing)
+    present_ym = {d[:7] for d in merged}
+    for d, v in incoming.items():
+        ym = d[:7]
+        if ym not in present_ym:
+            merged[d] = v
+            present_ym.add(ym)
+        # else: existing entry for this fiscal year-month wins — skip incoming
+    return dict(sorted(merged.items(), reverse=True))
+
+
 def reorganize_by_period(bucketed: dict) -> dict:
     """
     Normalize each metric in financials: separate by consolidation > granularity.
@@ -1086,16 +1138,19 @@ def reorganize_by_period(bucketed: dict) -> dict:
                         granule = detect_granularity_from_dates(periods_dict)
                     
                     if granule and isinstance(periods_dict, dict) and periods_dict:
-                        sorted_dates = sorted(periods_dict.keys(), reverse=True)
-                        date_dict = {k: periods_dict[k] for k in sorted_dates}
-                        
+                        date_dict = clean_period_dates(
+                            {k: periods_dict[k] for k in sorted(periods_dict.keys(), reverse=True)}
+                        )
+                        if not date_dict:
+                            continue
+
                         # Structure: consolidation > granule > dates
                         if consol:
                             if consol not in metrics_by_name[metric_key]:
                                 metrics_by_name[metric_key][consol] = {}
-                            metrics_by_name[metric_key][consol][granule] = date_dict
+                            existing = metrics_by_name[metric_key][consol].get(granule, {})
+                            metrics_by_name[metric_key][consol][granule] = merge_period_dicts(existing, date_dict)
                         else:
-                            # No consolidation info, put at granule level
                             if granule not in metrics_by_name[metric_key]:
                                 metrics_by_name[metric_key][granule] = {}
                             metrics_by_name[metric_key][granule]["_data"] = date_dict
@@ -1117,17 +1172,20 @@ def reorganize_by_period(bucketed: dict) -> dict:
                 if granule:
                     if metric_key not in metrics_by_name:
                         metrics_by_name[metric_key] = {}
-                    
-                    sorted_dates = sorted(periods_dict.keys(), reverse=True)
-                    date_dict = {k: periods_dict[k] for k in sorted_dates}
-                    
+
+                    date_dict = clean_period_dates(
+                        {k: periods_dict[k] for k in sorted(periods_dict.keys(), reverse=True)}
+                    )
+                    if not date_dict:
+                        continue
+
                     # Structure: consolidation > granule > dates
                     if consol:
                         if consol not in metrics_by_name[metric_key]:
                             metrics_by_name[metric_key][consol] = {}
-                        metrics_by_name[metric_key][consol][granule] = date_dict
+                        existing = metrics_by_name[metric_key][consol].get(granule, {})
+                        metrics_by_name[metric_key][consol][granule] = merge_period_dicts(existing, date_dict)
                     else:
-                        # No consolidation info, put at granule level
                         if granule not in metrics_by_name[metric_key]:
                             metrics_by_name[metric_key][granule] = {}
                         metrics_by_name[metric_key][granule]["_data"] = date_dict
@@ -1518,27 +1576,37 @@ def reorganize_price_52w_volume(bucketed: dict) -> dict:
 def reorganize_financials_debt(bucketed: dict) -> dict:
     """
     Group debt-related fields under 'debt' sub-object in financials.
-    Remove originals to avoid duplication.
+    Also normalises Borrowing (bank/NBFC variant) → Borrowings so UI
+    only ever needs to read one field name.
     """
     if "financials" not in bucketed:
         return bucketed
-    
+
     financials = bucketed["financials"]
-    
+
+    # ── Normalize Borrowing → Borrowings ──────────────────────────────────
+    # Banks/NBFCs use 'Borrowing' (singular), manufacturing uses 'Borrowings'.
+    # Merge into 'Borrowings' so UI reads one consistent field.
+    if "Borrowing" in financials and "Borrowings" not in financials:
+        financials["Borrowings"] = financials.pop("Borrowing")
+    elif "Borrowing" in financials and "Borrowings" in financials:
+        # Both present (shouldn't happen but guard anyway) — Borrowings wins
+        financials.pop("Borrowing")
+
     debt_keys = {
         'total_debt', 'net_debt', 'short_term_debt', 'long_term_debt', 'capital_lease_obligations'
     }
-    
+
     # Extract debt metrics (using pop to remove from financials)
     debt_obj = {}
     for key in debt_keys:
         if key in financials:
-            debt_obj[key] = financials.pop(key)  # Remove original after copying
-    
+            debt_obj[key] = financials.pop(key)
+
     # Add debt object back to financials if it has data
     if debt_obj:
         financials['debt'] = debt_obj
-    
+
     bucketed["financials"] = financials
     return bucketed
 
@@ -1952,6 +2020,8 @@ def _set_periods_into_field(bucket_field, new_periods: dict):
     """
     Write gap-fill periods back into the correct sub-dict of a bucketed field.
     Mirrors _get_periods_dict — writes into consolidated.annual if present.
+    Uses merge_period_dicts to ensure Screener dates (month-start YYYY-MM-01)
+    take precedence over Yahoo dates (period-end YYYY-MM-31) for the same fiscal year.
     Returns the (possibly modified) bucket_field.
     """
     if not isinstance(bucket_field, dict):
@@ -1960,12 +2030,12 @@ def _set_periods_into_field(bucket_field, new_periods: dict):
     if 'consolidated' in bucket_field:
         consol = bucket_field['consolidated']
         if isinstance(consol, dict) and 'annual' in consol:
-            consol['annual'].update(new_periods)
+            consol['annual'] = merge_period_dicts(consol['annual'], new_periods)
             return bucket_field
         if isinstance(consol, dict):
             for gran in ('annual', 'quarterly', 'half_yearly'):
                 if gran in consol:
-                    consol[gran].update(new_periods)
+                    consol[gran] = merge_period_dicts(consol[gran], new_periods)
                     return bucket_field
         bucket_field['consolidated'] = {'annual': new_periods}
         return bucket_field
@@ -1974,11 +2044,11 @@ def _set_periods_into_field(bucket_field, new_periods: dict):
     if set(bucket_field.keys()).issubset(granularity_keys | {'_meta'}):
         for gran in ('annual', 'half_yearly', 'quarterly'):
             if gran in bucket_field:
-                bucket_field[gran].update(new_periods)
+                bucket_field[gran] = merge_period_dicts(bucket_field[gran], new_periods)
                 return bucket_field
 
-    # Flat — update directly
-    bucket_field.update(new_periods)
+    # Flat — merge directly
+    bucket_field = merge_period_dicts(bucket_field, new_periods)
     return bucket_field
 
 
@@ -2198,59 +2268,405 @@ def main():
             "total_tickers": total,
             "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
             "data_sources": [
-                "screener_raw_data.json (97 tickers)",
-                "screener_financials.json (97 tickers)",
-                "yahoofin_raw_data.json (97 tickers)",
-                "yahoofin_financials.json (97 tickers)",
-                "guidance.json (29 tickers)",
-                "prices.json (98 tickers)",
-                "unified-symbols.json (97 tickers)"
+                "screener_raw_data.json  — standalone HTML scrape (P&L, BS, CF, Ratios, Shareholding)",
+                "screener_financials.json — consolidated Selenium scrape (same tables + quarterly_results)",
+                "yahoofin_raw_data.json  — Yahoo info fields, sub-sections, OHLCV history",
+                "yahoofin_financials.json — Yahoo annual financial statements (up to 5yr)",
+                "guidance.json           — AI-extracted earnings guidance (29 tickers)",
+                "prices.json             — live LTP feed",
+                "unified-symbols.json    — ticker master (qty, avg_cost, isin, name)"
             ],
-            "buckets": {
+
+            # ─── UNITS ───────────────────────────────────────────────────────────
+            "units": {
+                "financials":    "Indian Rupees in Crores (₹ Cr). Divide by 100 for ₹ Thousands Cr.",
+                "ratios":        "Percentages as floats (e.g. ROCE_pct=18.5 means 18.5%). Days as integers.",
+                "valuation":     "market_cap/enterprise_value in absolute INR (not Crores). PE/PB as floats.",
+                "price":         "INR per share. Volume in units. History OHLCV in INR.",
+                "shareholding":  "Percentage as string (e.g. '60.86%'). No. of Shareholders as integer.",
+                "websignals":    "Prices in INR. Timestamps as Unix epoch. Risks as integer 1-10.",
+                "dates":         "ISO 8601 YYYY-MM-DD. Screener uses month-start (2026-03-01). Yahoo uses period-end (2026-03-31)."
+            },
+
+            # ─── BLUEPRINT ────────────────────────────────────────────────────────
+            "blueprint": {
+
+                # ── 1. COMPANY DETAILS ─────────────────────────────────────────
                 "company_details": {
-                    "sub_sections": ["promoters", "fiis", "diis", "government", "public", "shareholding { pattern, shares, ownership, fiscal_dates, dividends, stock_splits }"],
-                    "description": "Company profile, ownership, shareholding pattern, dividends, stock splits"
+                    "description": "Identity, ownership, shareholding time-series, portfolio position",
+                    "access_pattern": "ticker['company_details']['field']",
+                    "fields": {
+                        "identity": {
+                            "ticker":              "NSE ticker symbol",
+                            "name":                "Company name",
+                            "isin":                "ISIN code",
+                            "sector":              "Screener sector",
+                            "industry":            "Screener industry",
+                            "sector_yahoo":        "Yahoo Finance sector",
+                            "industry_yahoo":      "Yahoo Finance industry",
+                            "type":                "Equity / ETF",
+                            "data_source":         "Source identifier",
+                            "long_business_summary": "Business description (Yahoo)",
+                            "full_time_employees": "Headcount (Yahoo)",
+                            "website":             "Company website",
+                            "exchange":            "NSE / BSE",
+                            "currency":            "INR",
+                            "financial_currency":  "Reporting currency (INR for most, USD for ADRs like INFY)"
+                        },
+                        "portfolio": {
+                            "qty":      "Shares held in portfolio",
+                            "avg_cost": "Average cost price (INR)"
+                        },
+                        "shareholding_time_series": {
+                            "description": "Each field is a list of objects [{_periods:{date:pct}, _consolidation, _granule}]",
+                            "access":      "ticker['company_details']['promoters'][0]['_periods']['2026-03-01'] → '60.86%'",
+                            "fields": {
+                                "promoters":          "Promoter holding % over time",
+                                "fiis":               "FII holding % over time",
+                                "diis":               "DII holding % over time",
+                                "government":         "Government holding % over time",
+                                "public":             "Public holding % over time",
+                                "others":             "Others holding % over time",
+                                "no_of_shareholders": "Number of shareholders over time"
+                            }
+                        },
+                        "yahoo_share_data": {
+                            "float_shares":              "Float shares",
+                            "shares_outstanding":        "Total shares outstanding",
+                            "held_pct_insiders":         "Insider holding fraction (0-1)",
+                            "held_pct_institutions":     "Institutional holding fraction (0-1)",
+                            "implied_shares_outstanding":"Implied shares",
+                            "dividend_rate":             "Annual dividend per share (INR)",
+                            "dividend_yield":            "Dividend yield fraction (0-1)",
+                            "ex_dividend_date":          "Ex-dividend date",
+                            "payout_ratio":              "Dividend payout ratio",
+                            "five_year_avg_dividend_yield": "5yr avg dividend yield",
+                            "trailing_annual_dividend_rate": "TTM dividend per share",
+                            "trailing_annual_dividend_yield": "TTM dividend yield",
+                            "last_split_date":           "Last stock split date",
+                            "last_split_factor":         "Split factor (e.g. '2:1')"
+                        }
+                    }
                 },
+
+                # ── 2. FINANCIALS ──────────────────────────────────────────────
                 "financials": {
-                    "sub_sections": ["Sales", "Revenue", "Expenses", "Operating_Profit", "Net_Profit", "Free_Cash_Flow", "Total_Debt", "Equity_Capital", "..."],
-                    "description": "Revenue, expenses, profitability, cash flows, debt metrics - with consolidated/standalone > quarterly/annual structure"
+                    "description": "P&L, Balance Sheet, Cash Flow time-series. Nested: field > consolidation > granularity > {date: value}",
+                    "access_pattern": "ticker['financials']['Net_Profit']['consolidated']['annual']['2026-03-01'] → 16652.0",
+                    "consolidation_levels": ["consolidated  (Screener /consolidated/ — 12yr)", "standalone  (Screener standalone page — 12yr)"],
+                    "granularity_levels":   ["annual  (year-end dates)", "quarterly  (quarter-end dates)", "half_yearly  (rare, 2 tickers)"],
+                    "date_note":            "Screener dates use month-start (2026-03-01). Yahoo gap-fill uses period-end (2026-03-31). Both may coexist in the same annual dict.",
+                    "p_and_l": {
+                        "Sales":              "Revenue / Net Sales (₹ Cr)",
+                        "Expenses":           "Total expenses (₹ Cr)",
+                        "Operating_Profit":   "EBIT proxy — Sales minus Expenses (₹ Cr)",
+                        "OPM_pct":            "Operating Profit Margin % (string, e.g. '20%')",
+                        "Other_Income":       "Non-operating income (₹ Cr)",
+                        "Interest":           "Interest expense (₹ Cr)",
+                        "Depreciation":       "D&A (₹ Cr)",
+                        "Profit_before_tax":  "PBT (₹ Cr)",
+                        "Tax_pct":            "Effective tax rate % (string)",
+                        "Net_Profit":         "PAT — Profit After Tax (₹ Cr)",
+                        "EPS_Rs":             "Earnings Per Share (₹)",
+                        "Dividend_Payout_pct":"Dividend payout as % of net profit (string)",
+                        "Financing_Profit":   "NBFC/Bank: Net Interest Income proxy (₹ Cr)",
+                        "Financing_Margin_pct":"NBFC/Bank: NIM % (string)",
+                        "Gross_NPA_pct":      "Bank: Gross NPA % (string)",
+                        "Net_NPA_pct":        "Bank: Net NPA % (string)"
+                    },
+                    "balance_sheet": {
+                        "Equity_Capital":     "Paid-up share capital (₹ Cr)",
+                        "Reserves":           "Retained earnings + reserves (₹ Cr)",
+                        "Borrowings":         "Total borrowings — manufacturing/FMCG (₹ Cr)",
+                        "Borrowing":          "Total borrowings — NBFC/bank variant (₹ Cr)",
+                        "Deposits":           "Customer deposits — banks only (₹ Cr)",
+                        "Other_Liabilities":  "Other liabilities (₹ Cr)",
+                        "Total_Liabilities":  "Total liabilities (₹ Cr)",
+                        "Fixed_Assets":       "Net block / PP&E (₹ Cr)",
+                        "CWIP":               "Capital work in progress (₹ Cr)",
+                        "Investments":        "Investments (₹ Cr)",
+                        "Other_Assets":       "Other assets (₹ Cr)",
+                        "Total_Assets":       "Total assets (₹ Cr)"
+                    },
+                    "cash_flow": {
+                        "CFO":            "Cash from Operating Activity (₹ Cr)",
+                        "CFI":            "Cash from Investing Activity (₹ Cr)",
+                        "CFF":            "Cash from Financing Activity (₹ Cr)",
+                        "Net_Cash_Flow":  "Net change in cash (₹ Cr)",
+                        "Free_Cash_Flow": "FCF = CFO − Capex (₹ Cr)",
+                        "CFO_over_OP":    "CFO / Operating Profit ratio"
+                    },
+                    "yahoo_gap_fill": {
+                        "description": "Yahoo annual financials gap-filling Screener (older periods). Prefixed yf_. Only for INR-reporting tickers.",
+                        "fields": ["yf_revenue", "yf_net_profit", "yf_ebitda", "yf_ebit",
+                                   "yf_gross_profit", "yf_capex", "yf_operating_cash_flow",
+                                   "yf_free_cash_flow", "yf_depreciation", "yf_interest_expense",
+                                   "yf_total_assets", "yf_total_liabilities", "yf_total_equity",
+                                   "yf_total_debt", "yf_net_debt", "yf_invested_capital",
+                                   "yf_diluted_eps", "yf_basic_eps", "yf_diluted_shares",
+                                   "yf_basic_shares", "yf_shares_outstanding",
+                                   "yf_latest_*  (scalar from most recent Yahoo annual period)"]
+                    }
                 },
+
+                # ── 3. RATIOS ──────────────────────────────────────────────────
                 "ratios": {
-                    "sub_sections": ["Return_on_Equity_pct", "Return_on_Assets_pct", "Net_Margin_pct", "Operating_Margin_pct", "..."],
-                    "description": "Financial ratios - profitability, efficiency, leverage"
+                    "description": "Financial ratios. Screener ratios are time-series dicts {date: value}. Yahoo ratios are scalars.",
+                    "access_pattern": "ticker['ratios']['ROCE_pct']['2026-03-01'] → 18.5  (Screener)  |  ticker['ratios']['profit_margins'] → 0.127  (Yahoo scalar)",
+                    "screener_time_series": {
+                        "ROCE_pct":              "Return on Capital Employed % — manufacturing/IT",
+                        "ROE_pct":               "Return on Equity % — banks/NBFCs",
+                        "Debtor_Days":           "Debtor collection days",
+                        "Inventory_Days":        "Inventory holding days",
+                        "Days_Payable":          "Payable days",
+                        "Cash_Conversion_Cycle": "DIO + DSO − DPO (days)",
+                        "Working_Capital_Days":  "Net working capital days"
+                    },
+                    "yahoo_scalars": {
+                        "profit_margins":          "Net margin (0-1)",
+                        "gross_margins":           "Gross margin (0-1)",
+                        "ebitda_margins":          "EBITDA margin (0-1)",
+                        "operating_margins":       "Operating margin (0-1)",
+                        "return_on_assets":        "ROA (0-1)",
+                        "return_on_equity":        "ROE (0-1)",
+                        "earnings_growth":         "YoY earnings growth (0-1)",
+                        "revenue_growth":          "YoY revenue growth (0-1)",
+                        "earnings_quarterly_growth": "QoQ earnings growth (0-1)",
+                        "debt_to_equity":          "D/E ratio",
+                        "current_ratio":           "Current ratio",
+                        "quick_ratio":             "Quick ratio",
+                        "revenue.total_revenue":   "TTM revenue (₹ Cr)",
+                        "revenue.revenue_per_share": "Revenue per share",
+                        "revenue.revenue_growth":  "Revenue growth",
+                        "total_cash":              "Cash & equivalents (₹ Cr)",
+                        "total_cash_per_share":    "Cash per share",
+                        "free_cashflow":           "TTM FCF (₹ Cr)",
+                        "operating_cashflow":      "TTM CFO (₹ Cr)",
+                        "gross_profits":           "TTM gross profit (₹ Cr)",
+                        "net_income_to_common":    "TTM net income (₹ Cr)"
+                    }
                 },
+
+                # ── 4. VALUATION ───────────────────────────────────────────────
                 "valuation": {
-                    "sub_sections": ["pe { trailing_pe, forward_pe, peg_ratio }", "eps { basic_eps, diluted_eps, trailing_eps, forward_eps, ... }", "enterprise_value", "market_cap", "price_to_book"],
-                    "description": "Valuation metrics grouped by PE and EPS sub-groups"
+                    "description": "Market valuation metrics. Scalars from Yahoo live info.",
+                    "access_pattern": "ticker['valuation']['pe']['trailing_pe'] → 18.8  |  ticker['valuation']['market_cap'] → 3124216725504",
+                    "fields": {
+                        "market_cap":          "Market cap in absolute INR (not Crores). Divide by 1e7 for Crores.",
+                        "non_diluted_market_cap": "Market cap using basic shares",
+                        "enterprise_value":    "EV in absolute INR",
+                        "ebitda":              "EBITDA in absolute INR",
+                        "total_debt":          "Total debt in absolute INR",
+                        "book_value":          "Book value per share (INR)",
+                        "ev_to_revenue":       "EV/Revenue multiple",
+                        "ev_to_ebitda":        "EV/EBITDA multiple",
+                        "pe": {
+                            "trailing_pe":        "P/E on TTM earnings",
+                            "forward_pe":         "P/E on forward earnings estimate",
+                            "peg_ratio":          "PEG ratio",
+                            "trailing_peg_ratio": "PEG on trailing earnings",
+                            "price_to_book":      "P/B ratio",
+                            "price_to_sales_ttm": "P/S ratio (TTM)"
+                        },
+                        "eps": {
+                            "trailing_eps":          "TTM EPS (INR)",
+                            "forward_eps":           "Forward EPS estimate (INR)",
+                            "eps_ttm":               "TTM EPS (INR)",
+                            "eps_forward":           "Forward EPS (INR)",
+                            "eps_current_year":      "Current year EPS estimate (INR)",
+                            "price_eps_current_year":"P/E on current year EPS"
+                        },
+                        "yf_diluted_eps":   "Yahoo annual diluted EPS time-series {date: INR}",
+                        "yf_basic_eps":     "Yahoo annual basic EPS time-series {date: INR}",
+                        "yf_diluted_shares":"Yahoo annual diluted shares time-series {date: count}",
+                        "yf_basic_shares":  "Yahoo annual basic shares time-series {date: count}",
+                        "yf_shares_outstanding": "Yahoo annual shares outstanding time-series {date: count}"
+                    }
                 },
+
+                # ── 5. PRICE ───────────────────────────────────────────────────
                 "price": {
-                    "sub_sections": ["current_price", "ltp", "52_week { high, low, change }", "volume { daily, average }", "history_6mo_1d", "history_1wk", "history_1mo"],
-                    "description": "Price data - current, 52-week range, volume, OHLCV history (history_1wk/history_1mo populated from 5yr or 10yr source, structure identical either way)"
+                    "description": "Current price, 52-week range, volume, and OHLCV history bars",
+                    "ltp": {
+                        "description": "Live price — populated at runtime by index.html fetchAndMergeLTP(). Null in stored file.",
+                        "access": "ticker['price']['ltp']['ltp'] → current price (INR)",
+                        "fields": {
+                            "ltp":       "Last Traded Price (INR)",
+                            "change":    "Change from prev close (INR)",
+                            "changePct": "Change % (float)",
+                            "open":      "Day open (INR)",
+                            "high":      "Day high (INR)",
+                            "low":       "Day low (INR)",
+                            "prev":      "Previous close (INR)",
+                            "vol":       "Day volume",
+                            "w52h":      "52-week high (INR)",
+                            "w52l":      "52-week low (INR)",
+                            "beta":      "Beta vs market"
+                        }
+                    },
+                    "current": {
+                        "current_price":               "Current price from Yahoo info (INR)",
+                        "previous_close":              "Previous close (INR)",
+                        "regular_market_price":        "Regular market price (INR)",
+                        "regular_market_change":       "Change (INR)",
+                        "regular_market_change_pct":   "Change % (float)",
+                        "day_high":                    "Day high (INR)",
+                        "day_low":                     "Day low (INR)",
+                        "fifty_day_avg":               "50-day moving average (INR)",
+                        "two_hundred_day_avg":         "200-day moving average (INR)"
+                    },
+                    "52_week": {
+                        "access": "ticker['price']['52_week']['fifty_two_week_high']",
+                        "fields": {
+                            "fifty_two_week_high":            "52-week high (INR)",
+                            "fifty_two_week_low":             "52-week low (INR)",
+                            "fifty_two_week_change":          "52-week change (INR)",
+                            "fifty_two_week_change_pct":      "52-week change % (float)",
+                            "fifty_two_week_high_change":     "Distance from 52w high (INR)",
+                            "fifty_two_week_low_change":      "Distance from 52w low (INR)",
+                            "fifty_two_week_high_change_pct": "% below 52w high",
+                            "fifty_two_week_low_change_pct":  "% above 52w low"
+                        }
+                    },
+                    "volume": {
+                        "volume":                     "Last day volume",
+                        "regular_market_volume":      "Regular market volume",
+                        "average_volume":             "Average volume",
+                        "average_daily_volume_10d":   "10-day average daily volume",
+                        "average_daily_volume_3mo":   "3-month average daily volume"
+                    },
+                    "history": {
+                        "description": "OHLCV bars. Each is a list of dicts.",
+                        "bar_format":  "{'Date': 'YYYY-MM-DD', 'Open': str, 'High': str, 'Low': str, 'Close': str, 'Volume': str}",
+                        "history_6mo_1d":  "Daily bars — last 6 months (~124 bars). Access: ticker['price']['history_6mo_1d'][0]['Close']",
+                        "history_1wk":     "Weekly bars — 10 years (~522 bars). Best for trend charts.",
+                        "history_1mo":     "Monthly bars — 10 years (~120 bars). Best for long-term charts."
+                    }
                 },
+
+                # ── 6. WEBSIGNALS ──────────────────────────────────────────────
                 "websignals": {
-                    "sub_sections": ["ai_insights_date", "recommendation_key", "recommendation_mean", "number_of_analyst_opinions", "target_high_price", "target_low_price", "raw_pdf_*"],
-                    "description": "Analyst sentiment, recommendations, price targets"
+                    "description": "Analyst consensus, price targets, governance risk scores, earnings calendar",
+                    "access_pattern": "ticker['websignals']['target_mean_price'] → 1427.4",
+                    "analyst": {
+                        "recommendation_key":         "buy / hold / sell / strong_buy / strong_sell",
+                        "recommendation_mean":        "Mean analyst rating 1-5 (1=strong buy, 5=strong sell)",
+                        "average_analyst_rating":     "Text rating string",
+                        "number_of_analyst_opinions": "Count of analyst estimates",
+                        "target_high_price":          "Analyst high target (INR)",
+                        "target_low_price":           "Analyst low target (INR)",
+                        "target_mean_price":          "Consensus target (INR)",
+                        "target_median_price":        "Median target (INR)"
+                    },
+                    "governance_risk": {
+                        "description": "ISS governance risk scores 1-10 (lower=less risk). Only available for ~20 tickers.",
+                        "audit_risk":              "Audit committee risk 1-10",
+                        "board_risk":              "Board structure risk 1-10",
+                        "compensation_risk":       "Executive pay risk 1-10",
+                        "shareholder_rights_risk": "Shareholder rights risk 1-10",
+                        "overall_risk":            "Overall governance risk 1-10"
+                    },
+                    "earnings_calendar": {
+                        "earnings_timestamp":          "Next earnings date (Unix epoch)",
+                        "earnings_timestamp_start":    "Earnings date range start (Unix epoch)",
+                        "earnings_timestamp_end":      "Earnings date range end (Unix epoch)",
+                        "earnings_call_ts_start":      "Earnings call start (Unix epoch)",
+                        "earnings_call_ts_end":        "Earnings call end (Unix epoch)",
+                        "is_earnings_date_estimate":   "True if estimated date"
+                    },
+                    "other": {
+                        "sandp_52_week_change":   "S&P 500 52-week change (for benchmarking)",
+                        "governance_epoch_date":  "Governance data date"
+                    }
                 },
-                "kpis": {
-                    "sub_sections": ["Capacity_Utilization_Factor", "Plant_Availability", "Power_Generation", "... (company-specific)"],
-                    "description": "Key performance indicators from screener_raw:Insights - varies by company"
-                },
+
+                # ── 7. DERIVED METRICS ─────────────────────────────────────────
                 "derived_metrics": {
-                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "ai_insights_guidance { guidance + insights }"],
-                    "description": "Computed metrics with sector weightage and AI insights"
+                    "description": "Computed scores and AI guidance. Present for all tickers (scores) or 29 tickers (AI guidance).",
+                    "calculated_metrics": {
+                        "access":            "ticker['derived_metrics']['calculated_metrics']['pe_ratio']",
+                        "pe_ratio":          "Trailing P/E ratio",
+                        "pe_score":          "P/E score 0-100 (sector-relative)",
+                        "price_to_book":     "P/B ratio",
+                        "pb_score":          "P/B score 0-100",
+                        "price_momentum_pct":"Price momentum % (52w return)",
+                        "momentum_score":    "Momentum score 0-100",
+                        "fundamental_score": "Fundamental score 0-100 (ROE/ROCE/margins weighted)",
+                        "technical_score":   "Technical score 0-100 (momentum/volume weighted)",
+                        "valuation_score":   "Valuation score 0-100 (PE/PB relative to sector)",
+                        "sentiment_score":   "Analyst sentiment score 0-100",
+                        "composite_score":   "Weighted composite of all scores 0-100",
+                        "rating":            "Buy / Accumulate / Hold / Reduce / Sell",
+                        "sector":            "Sector classification used for scoring",
+                        "sector_weights":    "{'fundamental': w, 'technical': w, 'valuation': w, 'sentiment': w}"
+                    },
+                    "ai_insights_guidance": {
+                        "description": "AI-extracted from earnings call transcripts. Available for ~29 tickers with guidance.json data.",
+                        "access":      "ticker['derived_metrics']['ai_insights_guidance']['guidance']",
+                        "guidance": {
+                            "quarter":             "Quarter label (e.g. 'Q4 FY26')",
+                            "date":                "Earnings call date",
+                            "summary":             "Executive summary of management commentary",
+                            "financial":           "Financial guidance — revenue/margin/growth outlook",
+                            "business":            "Business outlook and strategic direction",
+                            "segments":            "Segment-wise performance and outlook",
+                            "geography":           "Geographic mix and growth",
+                            "customers":           "Key customer wins, losses, concentrations",
+                            "competitive_position":"Competitive landscape commentary",
+                            "operations":          "Operational metrics and efficiency",
+                            "capital_allocation":  "Capex, dividends, buyback plans",
+                            "management":          "Management changes and commentary",
+                            "deals_and_pipeline":  "Deal wins and order pipeline",
+                            "analyst_dimensions":  "Key themes from analyst Q&A",
+                            "investor_verdict":    "AI-synthesised investor verdict"
+                        },
+                        "insights": {
+                            "date":            "Analysis date",
+                            "thesis":          "Bull/bear thesis",
+                            "trigger":         "Near-term catalyst",
+                            "recommendation":  "Buy / Hold / Sell with reasoning",
+                            "sector_briefing": "Sector context",
+                            "analysis":        "Detailed fundamental analysis"
+                        }
+                    }
                 },
-                "_unmapped": {
-                    "sub_sections": [],
-                    "description": "Fields that couldn't be mapped to any bucket (0 fields in this output)"
+
+                # ── 8. KPIs ────────────────────────────────────────────────────
+                "kpis": {
+                    "description": "Company-specific KPIs from Screener Insights (paywalled). Empty dict for most tickers.",
+                    "access_pattern": "ticker['kpis']['Metric_Name']['2026-03-01'] → value"
                 }
             },
-            "derived_metrics_structure": {
-                "calculated_metrics": "Sector-weighted financial scores (fundamental, technical, valuation, sentiment, composite) with rating",
-                "ai_insights_guidance": "AI-extracted guidance (15 topics) + insights (only for 29 tickers in guidance.json)"
+
+            # ─── UI ACCESS PATTERNS ──────────────────────────────────────────────
+            "ui_access_patterns": {
+                "latest_annual_net_profit":    "t['financials']['Net_Profit']['consolidated']['annual']  → sort keys desc → first value",
+                "quarterly_sales_chart":       "t['financials']['Sales']['standalone']['quarterly']  → sorted by date",
+                "12yr_revenue_trend":          "t['financials']['Sales']['consolidated']['annual']  → filter valid ISO dates → sort",
+                "promoter_holding_latest":     "t['company_details']['promoters'][0]['_periods']  → sort → last value",
+                "current_pe":                  "t['valuation']['pe']['trailing_pe']",
+                "market_cap_crores":           "t['valuation']['market_cap'] / 1e7",
+                "roce_latest":                 "t['ratios']['ROCE_pct']  → sort keys → last value  (dict for Screener, None if only Yahoo)",
+                "candlestick_weekly":          "t['price']['history_1wk']  → list of {Date,Open,High,Low,Close,Volume}",
+                "analyst_consensus":           "t['websignals']['recommendation_key']",
+                "upside_to_target":            "(t['websignals']['target_mean_price'] - ltp) / ltp * 100",
+                "composite_score":             "t['derived_metrics']['calculated_metrics']['composite_score']",
+                "guidance_summary":            "t['derived_metrics']['ai_insights_guidance']['guidance']['summary']",
+                "ltp_live":                    "t['price']['ltp']['ltp']  — null until fetchAndMergeLTP() is called"
             },
-            "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
+
+            # ─── KNOWN FIELD VARIANTS ────────────────────────────────────────────
+            "field_variants": {
+                "Borrowings_vs_Borrowing": "Manufacturing/IT use 'Borrowings', Banks/NBFCs use 'Borrowing' (singular). Check both.",
+                "Sales_vs_Revenue":        "Manufacturing use 'Sales', Banks use 'Revenue'. Both map to same P&L line.",
+                "ROCE_vs_ROE":             "Manufacturing/IT have ROCE_pct. Banks/NBFCs have ROE_pct only.",
+                "date_format_mixed":       "Screener dates are 2026-03-01 (month-start). Yahoo dates are 2026-03-31 (period-end). Both appear in same annual dict — use the latest by string sort.",
+                "malformed_dates":         "Rare: 'Mar 2016 9m' stub periods exist for 3 tickers (HCLTECH, REDTAPE, SAGILITY). Filter by len(date)==10 when iterating.",
+                "consolidated_vs_standalone": "Use consolidated for financial analysis. Standalone available as cross-check or for 10 PSU/standalone-only companies (BDL, DATAPATTNS, GRSE, HEBL, INDOTECH, INTERARCH, NETWEB, SHILCHAR, SUPRIYA, VOLTAMP)."
+            },
+
+            "unmapped_count":  sum(len(v) for v in unmapped_summary.values()),
             "unmapped_tickers": list(unmapped_summary.keys()),
-            "notes": "Each ticker has 9 buckets. Guidance presence depends on data availability."
         }
     }
     

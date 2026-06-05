@@ -301,10 +301,13 @@ for TICKER in TICKERS_TO_PROCESS:
                             else:
                                 temp_periods[str(period)] = standardize_value(value)
                         
-                        # screener_fin is always annual consolidated data.
-                        # Screener's consolidated view only shows annual periods — no quarterly.
-                        # (Quarterly data comes from screener_raw:Quarterly Results instead.)
-                        granule = 'annual'
+                        # screener_fin granularity: quarterly_results is quarterly,
+                        # all other sections (profit_loss, balance_sheet, cash_flow,
+                        # ratios, shareholding_pattern) are annual consolidated.
+                        if table_name == 'quarterly_results':
+                            granule = 'quarterly'
+                        else:
+                            granule = 'annual'
                         
                         # screener_fin = consolidated
                         consol = 'consolidated'
@@ -402,7 +405,40 @@ for TICKER in TICKERS_TO_PROCESS:
         # Convert Yahoo → Crores by dividing by 1e7 so units are uniform.
         # Yahoo financials = CONSOLIDATED view (matches screener_fin, not screener_raw).
         #
-        # Fields that are NOT financial amounts (ratios, %, counts) must NOT be divided.
+        # EXCEPTION: A few tickers (e.g. INFY) have Yahoo returning values in USD
+        # despite financialCurrency sometimes showing as USD for others too.
+        # Detect by ratio: if Yahoo revenue after /1e7 is >20x smaller than Screener Sales,
+        # the values are in a different currency — skip Yahoo fin gap-fill for this ticker.
+        def _get_screener_latest_sales():
+            """Get latest Screener consolidated annual Sales for sanity check."""
+            for key, m in metrics.items():
+                if m.get('metric') in ('Sales\xa0+', 'Sales +', 'Revenue\xa0+', 'Revenue +') \
+                        and m.get('consolidation') == 'consolidated' \
+                        and m.get('granule') == 'annual':
+                    periods = m.get('periods', {})
+                    valid = {d: v for d, v in periods.items() if len(d) == 10 and isinstance(v, (int, float))}
+                    if valid:
+                        return sorted(valid.values(), reverse=True)[0]
+            return None
+
+        SKIP_YF_FIN = False
+        yf = all_data.get('yahoofin_fin', {}).get(TICKER, {})
+        raw = yf.get('observations', [{}])[0].get('raw', {}) if yf.get('observations') else {}
+        yf_raw_revenue = None
+        for hp in raw.get('historical_periods', [])[:1]:
+            r = hp.get('revenue') or hp.get('net_profit')
+            if r:
+                try:
+                    yf_raw_revenue = float(r) / 1e7
+                except (TypeError, ValueError):
+                    pass
+        if yf_raw_revenue:
+            sc_sales = _get_screener_latest_sales()
+            if sc_sales and sc_sales > 0:
+                ratio = sc_sales / yf_raw_revenue
+                if ratio > 20:
+                    SKIP_YF_FIN = True
+                    logger.write(f"{TICKER} | Yahoo fin values appear to be in USD (ratio={ratio:.0f}x) — skipping gap-fill", 'WARN')
         YAHOO_FIN_RATIO_FIELDS = {
             'tax_rate', 'diluted_eps', 'basic_eps', 'diluted_shares', 'basic_shares',
             'shares_outstanding', 'total_capitalization'
@@ -425,50 +461,48 @@ for TICKER in TICKERS_TO_PROCESS:
             except (TypeError, ValueError):
                 return v
 
-        yf = all_data.get('yahoofin_fin', {}).get(TICKER, {})
-        raw = yf.get('observations', [{}])[0].get('raw', {}) if yf.get('observations') else {}
-
-        # --- latest snapshot ---
-        for k, v in raw.get('latest', {}).items():
-            try:
-                if k and k.strip() and k not in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp', 'resolved_ticker', 'sector', 'status']:
-                    metrics[f"{k}|latest"] = {
-                        'metric': k,
-                        'section': 'latest',
-                        'source': 'yahoofin_fin',
-                        'consolidation': 'consolidated',
-                        'value': yahoo_fin_value(k, v)
-                    }
-                elif k in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp']:
-                    ticker_rejections.append(f"yahoofin_fin | latest | Excluded metadata key: {k}")
-            except Exception as e:
-                ticker_errors.append(f"yahoofin_fin | latest | {k} | {str(e)}")
-                logger.write_error(TICKER, 'yahoofin_fin', k, str(e))
-
-        # --- historical_periods: build per-metric time-series (consolidated annual) ---
-        for hp_item in raw.get('historical_periods', []):
-            try:
-                period_date = hp_item.get('period')
-                if not period_date:
-                    continue
-                iso_date = parse_datetime_to_iso(str(period_date))
-                for k, v in hp_item.items():
-                    if k == 'period' or not k or not k.strip():
-                        continue
-                    metric_key = f"{k}|historical"
-                    if metric_key not in metrics:
-                        metrics[metric_key] = {
+        if not SKIP_YF_FIN:
+            # --- latest snapshot ---
+            for k, v in raw.get('latest', {}).items():
+                try:
+                    if k and k.strip() and k not in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp', 'resolved_ticker', 'sector', 'status']:
+                        metrics[f"{k}|latest"] = {
                             'metric': k,
-                            'section': 'historical',
+                            'section': 'latest',
                             'source': 'yahoofin_fin',
                             'consolidation': 'consolidated',
-                            'granule': 'annual',
-                            'periods': {}
+                            'value': yahoo_fin_value(k, v)
                         }
-                    metrics[metric_key]['periods'][iso_date] = yahoo_fin_value(k, v)
-            except Exception as e:
-                ticker_errors.append(f"yahoofin_fin | historical_periods | {str(e)}")
-                logger.write_error(TICKER, 'yahoofin_fin', 'historical_periods', str(e))
+                    elif k in ['industryKey', 'industryDisp', 'sectorKey', 'sectorDisp']:
+                        ticker_rejections.append(f"yahoofin_fin | latest | Excluded metadata key: {k}")
+                except Exception as e:
+                    ticker_errors.append(f"yahoofin_fin | latest | {k} | {str(e)}")
+                    logger.write_error(TICKER, 'yahoofin_fin', k, str(e))
+
+            # --- historical_periods: build per-metric time-series (consolidated annual) ---
+            for hp_item in raw.get('historical_periods', []):
+                try:
+                    period_date = hp_item.get('period')
+                    if not period_date:
+                        continue
+                    iso_date = parse_datetime_to_iso(str(period_date))
+                    for k, v in hp_item.items():
+                        if k == 'period' or not k or not k.strip():
+                            continue
+                        metric_key = f"{k}|historical"
+                        if metric_key not in metrics:
+                            metrics[metric_key] = {
+                                'metric': k,
+                                'section': 'historical',
+                                'source': 'yahoofin_fin',
+                                'consolidation': 'consolidated',
+                                'granule': 'annual',
+                                'periods': {}
+                            }
+                        metrics[metric_key]['periods'][iso_date] = yahoo_fin_value(k, v)
+                except Exception as e:
+                    ticker_errors.append(f"yahoofin_fin | historical_periods | {str(e)}")
+                    logger.write_error(TICKER, 'yahoofin_fin', 'historical_periods', str(e))
         
         # === YAHOOFIN RAW ===
         yr = all_data.get('yahoofin_raw', {}).get(TICKER, {})
