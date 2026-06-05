@@ -2293,32 +2293,72 @@ function classifyNews(t){
 
 function extractDomain(url){try{return new URL(url).hostname.replace(/^www\./,'').split('.')[0];}catch(_){return 'News';}}
 
-async function loadStockNews(sym,name){
-  const el=document.getElementById('stock-news-list');
-  if(!el)return;
-  try{
-    const query=encodeURIComponent(sym+' '+name+' NSE India stock');
-    const url='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://news.google.com/rss/search?q='+query+'&hl=en-IN&gl=IN&ceid=IN:en')+'&count=8';
-    const res=await fetch(url);
-    const d=await res.json();
-    const items=d.items||[];
-    if(!items.length){el.innerHTML=`<div class="u-pad14c">No recent news for ${sym}</div>`;return;}
-    el.innerHTML=items.map(item=>{
-      const{tag,imp}=classifyNews(item.title);
-      const src=item.source?.name||extractDomain(item.link)||'News';
-      return `<div class="news-item" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none">
+async function loadStockNews(sym, name){
+  const el = document.getElementById('stock-news-list');
+  if(!el) return;
+
+  // Try multiple RSS sources in order
+  const companyName = (name || sym).split(' ').slice(0,3).join(' ');
+  const q = encodeURIComponent(`"${sym}" OR "${companyName}" stock NSE`);
+
+  const sources = [
+    // Google News RSS via allorigins CORS proxy (fresher than rss2json)
+    `https://api.allorigins.win/get?url=${encodeURIComponent('https://news.google.com/rss/search?q='+q+'&hl=en-IN&gl=IN&ceid=IN:en')}`,
+    // Fallback: rss2json
+    `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent('https://news.google.com/rss/search?q='+q+'&hl=en-IN&gl=IN&ceid=IN:en')}&count=12&api_key=`,
+  ];
+
+  let items = [];
+
+  // Try allorigins first (returns raw XML)
+  try {
+    const res = await fetch(sources[0], {cache:'no-store'});
+    const d = await res.json();
+    const xml = d.contents || '';
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    const entries = doc.querySelectorAll('item');
+    items = Array.from(entries).slice(0, 12).map(item => ({
+      title: item.querySelector('title')?.textContent || '',
+      link:  item.querySelector('link')?.textContent || '',
+      pubDate: item.querySelector('pubDate')?.textContent || '',
+      source: { name: item.querySelector('source')?.textContent || '' }
+    })).filter(i => i.title);
+  } catch(_) {}
+
+  // Fallback to rss2json
+  if(!items.length) {
+    try {
+      const res = await fetch(sources[1], {cache:'no-store'});
+      const d = await res.json();
+      items = (d.items || []).slice(0, 12);
+    } catch(_) {}
+  }
+
+  if(!items.length) {
+    el.innerHTML = `<div class="u-pad14c">No recent news found for ${sym}. <a href="https://news.google.com/search?q=${encodeURIComponent(sym+' NSE stock')}" target="_blank" style="color:var(--ac)">Search Google News ↗</a></div>`;
+    return;
+  }
+
+  // Sort by date — most recent first
+  items.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+
+  el.innerHTML = items.map(item => {
+    const {tag, imp} = classifyNews(item.title);
+    const src = item.source?.name || extractDomain(item.link) || 'News';
+    const age = timeAgo(new Date(item.pubDate));
+    return `<a href="${item.link}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+      <div class="news-item" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none">
         <div class="news-src">
-          <span>${src}</span>
+          <span style="color:var(--ac);font-weight:700">${src}</span>
           <span class="imp-badge imp-${imp}">${imp==='H'?'HIGH':imp==='M'?'MED':'LOW'}</span>
           <span class="pill pill-bl" style="font-size:7px">${tag}</span>
-          <span>${timeAgo(new Date(item.pubDate))}</span>
+          <span>${age}</span>
         </div>
         <div class="news-title">${item.title}</div>
-      </div>`;
-    }).join('');
-  }catch(e){
-    el.innerHTML=`<div class="u-pad14c">Could not load news</div>`;
-  }
+      </div>
+    </a>`;
+  }).join('');
 }
 
 </script>
