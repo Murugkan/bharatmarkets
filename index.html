@@ -134,6 +134,12 @@
         .sig-wlabel { font-size:7px; color:#777; letter-spacing:0.04em; display:block; }
         .sig-wval { font-size:11px; font-weight:800; display:block; }
         .sig-section-title { font-size:8px; color:#888; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:6px; }
+        /* ── Compare tab ── */
+        .cmp-pick { padding:6px 13px; border-radius:6px; font-size:10px; font-weight:700; cursor:pointer; border:1px solid #2a2a2a; color:#555; background:#0d0d0d; user-select:none; transition:background .12s,border-color .12s,color .12s; letter-spacing:0.02em; }
+        .cmp-pick.sel { border-color:#00f2ff; color:#000; background:#00f2ff; box-shadow:0 0 6px rgba(0,242,255,0.35); }
+        .cmp-table { width:100%; border-collapse:collapse; font-size:9px; }
+        .cmp-table td { padding:6px 8px; border-bottom:1px solid #0d0d0d; vertical-align:middle; }
+        .cmp-table thead td { background:#070707; position:sticky; top:0; border-bottom:2px solid #222; z-index:1; }
     </style>
 </head>
 <body>
@@ -675,7 +681,7 @@ async function init() {
         const tx = db.transaction(STORE_NAME, 'readonly');
         MASTER = await new Promise((res, rej) => {
             const req = tx.objectStore(STORE_NAME).getAll();
-            req.onsuccess = e => res(e.target.result || []);
+            req.onsuccess = e => res((e.target.result || []).filter(s => s.ticker && s.ticker !== '_metadata'));
             req.onerror = () => rej(req.error);
         });
     } catch(e) {
@@ -3169,7 +3175,7 @@ function renderCompare() {
 
 function sigBoot() {
     buildSigMedians(MASTER);
-    SIG_ALL=MASTER.map(st=>sigComposite(st.ticker,st));
+    SIG_ALL=MASTER.filter(st=>st.ticker&&st.ticker!=='_metadata').map(st=>sigComposite(st.ticker,st));
     // Populate sector dropdowns (signals tab + rank tab)
     const sectors=[...new Set(SIG_ALL.map(x=>x.sector))].sort();
     const sel=document.getElementById('sig-sector-filter');
