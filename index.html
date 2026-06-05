@@ -196,7 +196,8 @@
                 <button class="sig-sort-btn" id="ss-sort-count" onclick="secSort('count')">#</button>
             </div>
         </div>
-        <div id="sec-bars" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+        <div id="sec-bars" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:12px;"></div>
+        <!-- Heatmap rendered inside sec-bars by renderSectorTab -->
     </div>
 
     <!-- SUB-TAB: Spread Analysis -->
@@ -1683,7 +1684,7 @@ function sigValuation(st) {
     const ws_=st.websignals||{};
     const pr=st.price||{};
     const scores={};
-    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||'Unknown';
+    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||st.sector||st.SECTOR||'—';
     const pe=sigToF(val.pe?.trailing_pe)||sigToF(val.pe?.forward_pe);
     const pb=sigToF(val.pe?.price_to_book);
     const evEb=sigToF(val.ev_to_ebitda);
@@ -1772,7 +1773,7 @@ function sigSentiment(st) {
 
 // ---------- COMPOSITE ----------
 function sigComposite(ticker, st) {
-    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||'Unknown';
+    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||st.sector||st.SECTOR||'—';
     const cfg=(SIG_SECTOR_CFG[sector]||SIG_SECTOR_CFG['_default']).w;
     const F=sigFundamental(st), T=sigTechnical(st), V=sigValuation(st), S=sigSentiment(st);
     const comp=Math.round(F.score*cfg.f + T.score*cfg.t + V.score*cfg.v + S.score*cfg.s);
@@ -2454,30 +2455,23 @@ function renderSectorTab() {
             ${cards.join('')}
         </div>`;
 
-    // Heatmap is in a SEPARATE div (id=sec-heatmap-wrap) outside sec-bars
-    // so innerHTML resets on sec-bars don't destroy the canvas
-    let hmWrap = document.getElementById('sec-heatmap-wrap');
-    if (!hmWrap) {
-        hmWrap = document.createElement('div');
-        hmWrap.id = 'sec-heatmap-wrap';
-        hmWrap.style.cssText = 'flex-shrink:0;padding:8px 12px 80px;border-top:1px solid #1a1a1a;';
-        hmWrap.innerHTML = `
-            <div style="font-size:8px;color:#666;letter-spacing:0.1em;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
-                <span>SIGNAL HEATMAP</span>
-                <span style="display:flex;gap:10px">
-                    <span style="color:#00c853">■ Strong Buy</span>
-                    <span style="color:#00897b">■ Buy</span>
-                    <span style="color:#e65100">■ Neutral</span>
-                    <span style="color:#c62828">■ Reduce</span>
-                    <span style="color:#6a1b9a">■ Sell</span>
+    // Heatmap canvas injected into sec-bars after cards
+    const secBarsEl = document.getElementById('sec-bars');
+    if(secBarsEl && !document.getElementById('sig-heatmap')) {
+        const hmDiv = document.createElement('div');
+        hmDiv.style.cssText = 'padding:0 10px 80px;';
+        hmDiv.innerHTML = `<div style="font-size:8px;color:#666;letter-spacing:0.1em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;padding-top:4px">
+                <span>SIGNAL HEATMAP — tap to filter</span>
+                <span style="display:flex;align-items:center;gap:5px">
+                    <span style="font-size:7px;color:#dc3220">Weak</span>
+                    <div style="width:56px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgb(220,50,20),rgb(220,160,20),rgb(100,210,70))"></div>
+                    <span style="font-size:7px;color:#64d246">Strong</span>
                 </span>
             </div>
             <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:8px;cursor:pointer;"></canvas>`;
-        // Insert after sec-bars in sc-sectors
-        const secBars = document.getElementById('sec-bars');
-        secBars.parentNode.insertBefore(hmWrap, secBars.nextSibling);
+        secBarsEl.appendChild(hmDiv);
     }
-    setTimeout(() => drawSigHeatmap(stats), 80);
+    setTimeout(() => drawSigHeatmap(stats), 150);
 }
 
 function sigFilter_sector(name) {
@@ -2503,45 +2497,73 @@ function drawSigHeatmap(stats) {
     if (!cv) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const W = Math.max(cv.parentElement.offsetWidth - 4, 200);
-    const H = Math.round(W * 0.65);  // 65% aspect ratio — not square, fits mobile
-
-    cv.width = W * dpr;
-    cv.height = H * dpr;
-    cv.style.width = W + 'px';
-    cv.style.height = H + 'px';
-
+    const W   = Math.max(cv.parentElement.offsetWidth - 4, 200);
+    const H   = Math.round(W * 0.62);
+    cv.width  = W * dpr;  cv.height  = H * dpr;
+    cv.style.width = W + 'px';  cv.style.height = H + 'px';
     const ctx = cv.getContext('2d');
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, W, H);
 
-    // ── SQUARIFIED TREEMAP ──────────────────────────────────
-    // Weight = count of tickers (proportional area)
-    const total = stats.reduce((a, s) => a + s.count, 0);
+    // ── COLOUR: continuous interpolation across actual score range ──
+    // Compute min/max from live data so colours spread across full range
+    const allScores = stats.map(s => s.score);
+    const sMin = Math.min(...allScores);
+    const sMax = Math.max(...allScores);
 
-    // Normalize to canvas area
+    function scoreToColor(score) {
+        // Normalise 0-1 within actual range (not fixed 0-100)
+        const t = sMax === sMin ? 0.5 : (score - sMin) / (sMax - sMin);
+        // Interpolate: red(0) → amber(0.35) → yellow-green(0.6) → green(1)
+        let r, g, b;
+        if (t < 0.35) {
+            // red → amber
+            const p = t / 0.35;
+            r = 220; g = Math.round(50 + p * 110); b = 20;
+        } else if (t < 0.65) {
+            // amber → yellow-green
+            const p = (t - 0.35) / 0.30;
+            r = Math.round(220 - p * 100); g = Math.round(160 + p * 60); b = 20;
+        } else {
+            // yellow-green → vivid green
+            const p = (t - 0.65) / 0.35;
+            r = Math.round(120 - p * 80); g = Math.round(220 + p * 35); b = Math.round(20 + p * 80);
+        }
+        return `rgb(${r},${g},${b})`;
+    }
+
+    // ── SQUARIFIED TREEMAP ──────────────────────────────────
+    const total = stats.reduce((a, s) => a + s.count, 0);
     const items = [...stats]
         .sort((a, b) => b.count - a.count)
         .map(s => ({ ...s, area: (s.count / total) * W * H }));
 
-    // Squarified algorithm: layout into rows minimising aspect ratio
     const rects = [];
 
-    function worst(row, w) {
-        const s = row.reduce((a, b) => a + b.area, 0);
-        const maxA = Math.max(...row.map(r => r.area));
-        const minA = Math.min(...row.map(r => r.area));
-        return Math.max((w * w * maxA) / (s * s), (s * s) / (w * w * minA));
+    function layoutStrip(row, x, y, w, h, horizontal) {
+        const rowArea = row.reduce((a, r) => a + r.area, 0);
+        let pos = horizontal ? x : y;
+        row.forEach(r => {
+            const span = (r.area / rowArea) * (horizontal ? w : h);
+            rects.push({
+                ...r,
+                rx: horizontal ? pos       : x,
+                ry: horizontal ? y         : pos,
+                rw: horizontal ? span      : w,
+                rh: horizontal ? h         : span
+            });
+            pos += span;
+        });
     }
 
-    function layoutRow(row, x, y, w, h) {
-        const s = row.reduce((a, b) => a + b.area, 0);
-        let cx = x;
-        row.forEach(r => {
-            const rw = (r.area / s) * w;
-            rects.push({ ...r, rx: cx, ry: y, rw, rh: h });
-            cx += rw;
-        });
+    function worstRatio(row, stripLen) {
+        const s = row.reduce((a, r) => a + r.area, 0);
+        const max = Math.max(...row.map(r => r.area));
+        const min = Math.min(...row.map(r => r.area));
+        return Math.max(
+            (stripLen * stripLen * max) / (s * s),
+            (s * s) / (stripLen * stripLen * min)
+        );
     }
 
     function squarify(items, x, y, w, h) {
@@ -2550,150 +2572,91 @@ function drawSigHeatmap(stats) {
             rects.push({ ...items[0], rx: x, ry: y, rw: w, rh: h });
             return;
         }
+        const horiz  = w >= h;
+        const strip  = horiz ? h : w;
+        let row      = [];
+        let rem      = items.slice();
 
-        let row = [];
-        let remaining = items.slice();
-        const isHorizontal = w >= h;
-        const strip = isHorizontal ? h : w;
-
-        while (remaining.length) {
-            const next = remaining[0];
-            const testRow = [...row, next];
-            if (row.length === 0 || worst(testRow, strip) <= worst(row, strip)) {
-                row.push(next);
-                remaining.shift();
+        while (rem.length) {
+            const candidate = [...row, rem[0]];
+            if (!row.length || worstRatio(candidate, strip) <= worstRatio(row, strip)) {
+                row.push(rem.shift());
             } else {
                 break;
             }
         }
 
-        // Lay out this row
-        const rowArea = row.reduce((a, b) => a + b.area, 0);
-        if (isHorizontal) {
-            const rw = rowArea / h;
-            layoutRow(row, x, y, rw, h);
-            squarify(remaining, x + rw, y, w - rw, h);
-        } else {
-            const rh = rowArea / w;
-            layoutRow(row, x, y, w, rh);  // layoutRow needs transposing
-            // Redo as column
-            rects.length = rects.length - row.length; // remove just added
-            let cy2 = y;
-            row.forEach(r => {
-                const rh2 = (r.area / rowArea) * rh;
-                rects.push({ ...r, rx: x, ry: cy2, rw: w, rh: rh2 });
-                cy2 += rh2;
-            });
-            squarify(remaining, x, y + rh, w, h - rh);
-        }
+        const rowArea  = row.reduce((a, r) => a + r.area, 0);
+        const stripW   = horiz ? rowArea / h : w;
+        const stripH   = horiz ? h           : rowArea / w;
+        layoutStrip(row, x, y, stripW, stripH, horiz);
+
+        if (horiz) squarify(rem, x + stripW, y, w - stripW, h);
+        else       squarify(rem, x, y + stripH, w, h - stripH);
     }
 
     squarify(items, 0, 0, W, H);
 
     // ── DRAW ────────────────────────────────────────────────
     const PAD = 2;
-
     rects.forEach(r => {
-        const sc = r.score;
-        // Vivid colours — visible on black, clearly differentiated
-        const bg = sc >= 74 ? '#00c853'   // strong buy  — vivid green
-                 : sc >= 62 ? '#00897b'   // buy         — teal
-                 : sc >= 48 ? '#e65100'   // neutral     — amber-orange
-                 : sc >= 36 ? '#c62828'   // reduce      — red
-                 :            '#6a1b9a';  // sell        — purple (not confused with neutral)
+        const col = scoreToColor(r.score);
+        const rx = r.rx + PAD, ry = r.ry + PAD,
+              rw = r.rw - PAD*2, rh = r.rh - PAD*2;
+        if (rw < 2 || rh < 2) return;
 
-        // Fill
-        ctx.fillStyle = bg;
+        ctx.fillStyle = col;
         ctx.beginPath();
-        ctx.roundRect(r.rx + PAD, r.ry + PAD, r.rw - PAD*2, r.rh - PAD*2, 4);
+        if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, 3);
+        else ctx.rect(rx, ry, rw, rh);
         ctx.fill();
 
-        // Subtle inner highlight on top edge
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.fillRect(r.rx + PAD, r.ry + PAD, r.rw - PAD*2, Math.min(4, r.rh * 0.15));
+        // Subtle top highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(rx, ry, rw, Math.min(3, rh * 0.12));
 
-        // Labels — only if rect is big enough
-        const cw = r.rw - PAD*2, ch = r.rh - PAD*2;
-        if (cw < 28 || ch < 16) return;
-
-        const cx = r.rx + r.rw / 2;
-        const cy = r.ry + r.rh / 2;
-
+        // Labels
+        const cw = rw, ch = rh;
+        if (cw < 30 || ch < 18) return;
+        const cx = r.rx + r.rw / 2, cy = r.ry + r.rh / 2;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        if (ch >= 36 && cw >= 50) {
-            // Name + score stacked
-            const nameSize = cw > 120 ? 11 : cw > 70 ? 9 : 8;
-            const name = r.name.length > 14 && cw < 100
-                ? r.name.replace('Consumer ', 'Cons. ').replace('Information Technology', 'Info Tech').substring(0, 13) + '…'
-                : r.name;
-            ctx.font = `700 ${nameSize}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = 'rgba(255,255,255,0.95)';
-            ctx.fillText(name, cx, cy - 7);
-
-            const scoreSize = Math.min(nameSize + 1, 13);
-            ctx.font = `800 ${scoreSize}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = sc >= 62 ? '#b9f6ca' : sc >= 48 ? '#ffe0b2' : '#ffcdd2';
-            ctx.fillText(sc, cx, cy + 8);
-        } else if (ch >= 20 && cw >= 36) {
-            // Score only
-            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.35), 11);
+        if (ch >= 38 && cw >= 52) {
+            // Name + score
+            const ns = cw > 130 ? 11 : cw > 80 ? 10 : 9;
+            let nm = r.name
+                .replace('Information Technology', 'Info Tech')
+                .replace('Consumer Discretionary', 'Cons. Discr.')
+                .replace('Consumer Staples', 'Cons. Staples');
+            if (nm.length > 14 && cw < 110) nm = nm.substring(0, 13) + '…';
+            ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.fillText(nm, cx, cy - 8);
+            ctx.font = `800 ${ns + 1}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(r.score, cx, cy + 8);
+        } else if (ch >= 22 && cw >= 32) {
+            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.3), 11);
             ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.fillText(sc, cx, cy);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(r.score, cx, cy);
         }
     });
 
-    // ── CLICK / TAP ─────────────────────────────────────────
-    // Remove old listener by cloning
-    const cv2 = cv.cloneNode(false);
-    cv.parentNode.replaceChild(cv2, cv);
-    // Re-copy canvas content (not possible after replace — redraw on new canvas instead)
-    // Simpler: store rects on cv2 and add listener
-    cv2.width = cv.width; cv2.height = cv.height;
-    cv2.style.width = cv.style.width; cv2.style.height = cv.style.height;
-    const ctx2 = cv2.getContext('2d');
-    ctx2.scale(dpr, dpr);
-    // Redraw on new canvas
-    ctx2.clearRect(0, 0, W, H);
-    rects.forEach(r => {
-        const sc = r.score;
-        const bg = sc>=74?'#00c853':sc>=62?'#00897b':sc>=48?'#e65100':sc>=36?'#c62828':'#6a1b9a';
-        ctx2.fillStyle = bg;
-        ctx2.beginPath(); ctx2.roundRect(r.rx+PAD,r.ry+PAD,r.rw-PAD*2,r.rh-PAD*2,4); ctx2.fill();
-        ctx2.fillStyle='rgba(255,255,255,0.08)';
-        ctx2.fillRect(r.rx+PAD,r.ry+PAD,r.rw-PAD*2,Math.min(4,r.rh*0.15));
-        const cw=r.rw-PAD*2, ch=r.rh-PAD*2, cx=r.rx+r.rw/2, cy=r.ry+r.rh/2;
-        if(cw<28||ch<16) return;
-        ctx2.textAlign='center'; ctx2.textBaseline='middle';
-        if(ch>=36&&cw>=50){
-            const ns=cw>120?11:cw>70?9:8;
-            const nm=r.name.replace('Consumer ','Cons. ').replace('Information Technology','Info Tech');
-            const nl=nm.length>13&&cw<100?nm.substring(0,12)+'…':nm;
-            ctx2.font=`700 ${ns}px "JetBrains Mono",monospace`;
-            ctx2.fillStyle='rgba(255,255,255,0.95)';
-            ctx2.fillText(nl,cx,cy-7);
-            ctx2.font=`800 ${Math.min(ns+1,13)}px "JetBrains Mono",monospace`;
-            ctx2.fillStyle=sc>=62?'#b9f6ca':sc>=48?'#ffe0b2':'#ffcdd2';
-            ctx2.fillText(sc,cx,cy+8);
-        } else if(ch>=20&&cw>=36){
-            const sz=Math.min(Math.floor(Math.min(cw,ch)*0.35),11);
-            ctx2.font=`800 ${sz}px "JetBrains Mono",monospace`;
-            ctx2.fillStyle='rgba(255,255,255,0.9)';
-            ctx2.fillText(sc,cx,cy);
-        }
-    });
-
-    cv2.addEventListener('click', e => {
-        const rect = cv2.getBoundingClientRect();
-        // Correct for DPR in logical coords (rects are in logical px)
-        const mx = (e.clientX - rect.left) * (W / rect.width);
-        const my = (e.clientY - rect.top)  * (H / rect.height);
-        const hit = rects.find(r => mx>=r.rx && mx<=r.rx+r.rw && my>=r.ry && my<=r.ry+r.rh);
+    // ── CLICK ───────────────────────────────────────────────
+    // Store rects on the element so handler always uses latest
+    cv._rects = rects;
+    cv._W = W; cv._H = H;
+    cv.onclick = e => {
+        const bound = cv.getBoundingClientRect();
+        const mx = (e.clientX - bound.left) * (cv._W / bound.width);
+        const my = (e.clientY - bound.top)  * (cv._H / bound.height);
+        const hit = cv._rects.find(r => mx >= r.rx && mx <= r.rx + r.rw && my >= r.ry && my <= r.ry + r.rh);
         if (hit) sigFilter_sector(hit.name);
-    });
+    };
 }
+
 
 // ---------- RENDER SPREAD TAB ----------
 function renderSpreadTab() {
