@@ -167,6 +167,7 @@
         <div class="sig-subtab" id="stab-spread" onclick="sigSubTab('spread')">📐 Spread</div>
         <div class="sig-subtab" id="stab-rank" onclick="sigSubTab('rank')">🏆 Rank</div>
         <div class="sig-subtab" id="stab-query" onclick="sigSubTab('query')">🔎 Query</div>
+        <div class="sig-subtab" id="stab-compare" onclick="sigSubTab('compare')">⚖️ Compare</div>
     </div>
 
     <!-- SUB-TAB: Signals (existing ticker list + detail) -->
@@ -283,6 +284,21 @@
 
     </div>
 
+    <!-- COMPARE TAB -->
+    <div class="sig-subtab-content" id="sc-compare">
+        <div style="flex-shrink:0;background:#060606;border-bottom:1px solid #222;padding:8px 12px;">
+            <div style="font-size:8px;color:#666;letter-spacing:0.1em;margin-bottom:6px">SELECT 2–4 STOCKS TO COMPARE</div>
+            <div id="cmp-picker" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+            <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+                <select class="sig-filter-select" id="cmp-sector-filter" onchange="cmpPopulatePicker()"><option value="">All Sectors</option></select>
+                <button class="qry-btn qry-btn-clr" onclick="cmpClearAll()" style="font-size:9px;padding:5px 10px;">✕ Clear</button>
+                <span id="cmp-count" style="font-size:8px;color:#555;margin-left:auto"></span>
+            </div>
+        </div>
+        <div id="cmp-results" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px;">
+            <div style="padding:40px 20px;text-align:center;color:#333;font-size:10px;">Select stocks above to compare</div>
+        </div>
+    </div>
 </div>
 
 <footer>
@@ -1482,6 +1498,7 @@ function showDebugAlert() {
 
 // ---------- SECTOR CONFIG ----------
 const SIG_SECTOR_CFG = {
+    // Uses company_details.sector taxonomy (12 sectors + ETF)
     "Financials":             { w: { f:0.30, t:0.20, v:0.28, s:0.22 } },
     "Information Technology": { w: { f:0.32, t:0.22, v:0.26, s:0.20 } },
     "Healthcare":             { w: { f:0.35, t:0.18, v:0.22, s:0.25 } },
@@ -1494,6 +1511,13 @@ const SIG_SECTOR_CFG = {
     "Utilities":              { w: { f:0.30, t:0.20, v:0.20, s:0.30 } },
     "Telecom":                { w: { f:0.30, t:0.22, v:0.28, s:0.20 } },
     "ETF":                    { w: { f:0.10, t:0.50, v:0.20, s:0.20 } },
+    // Yahoo taxonomy fallbacks (sector_disp / sector_yahoo)
+    "Technology":             { w: { f:0.32, t:0.22, v:0.26, s:0.20 } },
+    "Financial Services":     { w: { f:0.30, t:0.20, v:0.28, s:0.22 } },
+    "Basic Materials":        { w: { f:0.22, t:0.35, v:0.22, s:0.21 } },
+    "Consumer Cyclical":      { w: { f:0.30, t:0.25, v:0.28, s:0.17 } },
+    "Consumer Defensive":     { w: { f:0.38, t:0.15, v:0.30, s:0.17 } },
+    "Communication Services": { w: { f:0.30, t:0.22, v:0.28, s:0.20 } },
     "_default":               { w: { f:0.32, t:0.22, v:0.24, s:0.22 } }
 };
 
@@ -1537,17 +1561,18 @@ function sigTrend(series, hiGood=true) {
     return sigClamp(hiGood ? 50+ch*150 : 50-ch*150);
 }
 function sigScoreColor(s) {
-    return s>=74?'#00ff88':s>=62?'#69f0ae':s>=48?'#ffea00':s>=36?'#ff9100':'#ff4d6d';
+    // Thresholds tuned to actual score distribution (typically 40-65)
+    return s>=65?'#00ff88':s>=55?'#69f0ae':s>=46?'#ffea00':s>=37?'#ff9100':'#ff4d6d';
 }
 function sigRating(s) {
-    return s>=74?'STRONG BUY':s>=62?'BUY':s>=48?'NEUTRAL':s>=36?'REDUCE':'SELL';
+    return s>=65?'STRONG BUY':s>=55?'BUY':s>=46?'NEUTRAL':s>=37?'REDUCE':'SELL';
 }
 
 // ---------- SECTOR MEDIANS ----------
 function buildSigMedians(stocks) {
     const m = {};
     stocks.forEach(st => {
-        const sec = st.derived_metrics?.calculated_metrics?.sector || st.company_details?.sector || 'Unknown';
+        const sec = st.derived_metrics?.calculated_metrics?.sector || st.company_details?.sector || st.company_details?.sector_disp || '—';
         const pe = sigToF(st.valuation?.pe?.trailing_pe);
         if (pe && pe>0 && pe<200) { if(!m[sec]) m[sec]=[]; m[sec].push(pe); }
     });
@@ -1684,7 +1709,12 @@ function sigValuation(st) {
     const ws_=st.websignals||{};
     const pr=st.price||{};
     const scores={};
-    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||st.sector||st.SECTOR||'—';
+    const sector = st.company_details?.sector
+        || st.derived_metrics?.calculated_metrics?.sector
+        || st.company_details?.sector_disp
+        || st.company_details?.sector_yahoo
+        || st.company_details?.industry?.split(' ')[0]
+        || '—';
     const pe=sigToF(val.pe?.trailing_pe)||sigToF(val.pe?.forward_pe);
     const pb=sigToF(val.pe?.price_to_book);
     const evEb=sigToF(val.ev_to_ebitda);
@@ -1773,7 +1803,12 @@ function sigSentiment(st) {
 
 // ---------- COMPOSITE ----------
 function sigComposite(ticker, st) {
-    const sector=st.derived_metrics?.calculated_metrics?.sector||st.company_details?.sector||st.sector||st.SECTOR||'—';
+    const sector = st.company_details?.sector
+        || st.derived_metrics?.calculated_metrics?.sector
+        || st.company_details?.sector_disp
+        || st.company_details?.sector_yahoo
+        || st.company_details?.industry?.split(' ')[0]
+        || '—';
     const cfg=(SIG_SECTOR_CFG[sector]||SIG_SECTOR_CFG['_default']).w;
     const F=sigFundamental(st), T=sigTechnical(st), V=sigValuation(st), S=sigSentiment(st);
     const comp=Math.round(F.score*cfg.f + T.score*cfg.t + V.score*cfg.v + S.score*cfg.s);
@@ -2296,7 +2331,7 @@ let SIG_SUBTAB = 'signals';  // current sub-tab
 // ---------- SUB-TAB SWITCHER ----------
 function sigSubTab(tab) {
     SIG_SUBTAB = tab;
-    ['signals','sectors','spread','rank','query'].forEach(t => {
+    ['signals','sectors','spread','rank','query','compare'].forEach(t => {
         const tabEl = document.getElementById('stab-'+t);
         if(tabEl) tabEl.classList.toggle('active', t===tab);
         const el = document.getElementById('sc-'+t);
@@ -2312,6 +2347,7 @@ function sigSubTab(tab) {
     else if(tab==='spread') renderSpreadTab();
     else if(tab==='rank') renderRankTab();
     else if(tab==='query') initQueryTab();
+    else if(tab==='compare') initCompareTab();
 }
 
 // ---------- SECTOR AGGREGATION ----------
@@ -2319,7 +2355,7 @@ function buildSectorStats() {
     // Group SIG_ALL by sector, compute avg scores and rating distribution
     const map = {};
     SIG_ALL.forEach(sig => {
-        const sec = sig.sector || 'Unknown';
+        const sec = sig.sector || '—';
         if(!map[sec]) map[sec] = { tickers:[], scores:[], F:[], T:[], V:[], S:[], ratings:{} };
         map[sec].tickers.push(sig.ticker);
         map[sec].scores.push(sig.comp);
@@ -2856,6 +2892,279 @@ function renderRankTab() {
             <td><span style="font-size:7px;font-weight:800;color:${rCol}">${sig.rating.replace('STRONG ','S.')}</span></td>
         </tr>`;
     }).join('');
+}
+
+
+// ============================================================
+// COMPARE TAB — side-by-side analysis of 2-4 stocks
+// All data from MASTER (IndexedDB). Zero hardcoding.
+// ============================================================
+
+let CMP_SELECTED = [];   // array of ticker strings, max 4
+let CMP_SECTOR_F = '';
+
+// ── Comparison metric definitions ─────────────────────────
+// Each group: { title, metrics: [{label, fn, unit, higherBetter, fmt}] }
+const CMP_GROUPS = [
+    {
+        title: 'Signal Scores',
+        metrics: [
+            { label:'Composite', fn: (s,sig)=>sig?.comp, unit:'', hi:true },
+            { label:'Fundamental', fn: (s,sig)=>sig?.F?.score, unit:'', hi:true },
+            { label:'Technical',   fn: (s,sig)=>sig?.T?.score, unit:'', hi:true },
+            { label:'Valuation',   fn: (s,sig)=>sig?.V?.score, unit:'', hi:true },
+            { label:'Sentiment',   fn: (s,sig)=>sig?.S?.score, unit:'', hi:true },
+        ]
+    },
+    {
+        title: 'Valuation',
+        metrics: [
+            { label:'PE (TTM)',    fn: s=>_qN(s.valuation?.pe?.trailing_pe), unit:'x', hi:false },
+            { label:'PE (Fwd)',    fn: s=>_qN(s.valuation?.pe?.forward_pe),  unit:'x', hi:false },
+            { label:'P/B',         fn: s=>_qN(s.valuation?.pe?.price_to_book), unit:'x', hi:false },
+            { label:'EV/EBITDA',   fn: s=>_qN(s.valuation?.ev_to_ebitda), unit:'x', hi:false },
+            { label:'EV/Revenue',  fn: s=>_qN(s.valuation?.ev_to_revenue), unit:'x', hi:false },
+            { label:'EPS (TTM)',   fn: s=>_qN(s.valuation?.eps?.trailing_eps), unit:'₹', hi:true },
+            { label:'EPS (Fwd)',   fn: s=>_qN(s.valuation?.eps?.eps_forward), unit:'₹', hi:true },
+            { label:'Mkt Cap',     fn: s=>_qN(s.valuation?.market_cap), unit:'₹', hi:false, fmt:'cr' },
+        ]
+    },
+    {
+        title: 'Profitability',
+        metrics: [
+            { label:'ROCE%',         fn: s=>_qLD(s.ratios?.ROCE_pct), unit:'%', hi:true },
+            { label:'ROE%',          fn: s=>(_qN(s.ratios?.return_on_equity)||0)*100, unit:'%', hi:true },
+            { label:'ROA%',          fn: s=>(_qN(s.ratios?.return_on_assets)||0)*100, unit:'%', hi:true },
+            { label:'OPM%',          fn: s=>_qLD(s.financials?.OPM_pct?.consolidated?.annual)||_qLD(s.financials?.OPM_pct?.standalone?.annual), unit:'%', hi:true },
+            { label:'NPM%',          fn: s=>(_qN(s.ratios?.profit_margins)||0)*100, unit:'%', hi:true },
+            { label:'Gross Margin%', fn: s=>(_qN(s.ratios?.gross_margins)||0)*100, unit:'%', hi:true },
+            { label:'EBITDA Margin%',fn: s=>(_qN(s.ratios?.ebitda_margins)||0)*100, unit:'%', hi:true },
+        ]
+    },
+    {
+        title: 'Growth (Latest Annual)',
+        metrics: [
+            { label:'Sales ₹Cr',      fn: s=>_qLD(s.financials?.Sales?.consolidated?.annual)||_qLD(s.financials?.Sales?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'Net Profit ₹Cr', fn: s=>_qLD(s.financials?.Net_Profit?.consolidated?.annual)||_qLD(s.financials?.Net_Profit?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'CFO ₹Cr',        fn: s=>_qLD(s.financials?.CFO?.consolidated?.annual)||_qLD(s.financials?.CFO?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'FCF ₹Cr',        fn: s=>_qLD(s.financials?.Free_Cash_Flow?.consolidated?.annual)||_qLD(s.financials?.Free_Cash_Flow?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'EPS ₹',          fn: s=>_qLD(s.financials?.EPS_Rs?.consolidated?.annual)||_qLD(s.financials?.EPS_Rs?.standalone?.annual), unit:'₹', hi:true },
+            { label:'Sales CAGR 3Y%', fn: s=>{
+                const d=s.financials?.Sales?.consolidated?.annual||s.financials?.Sales?.standalone?.annual||{};
+                const k=Object.keys(d).sort(); if(k.length<4) return null;
+                const s3=_qN(d[k[k.length-4]]),s0=_qN(d[k[k.length-1]]);
+                return s3&&s0&&s3>0?(Math.pow(s0/s3,1/3)-1)*100:null;
+              }, unit:'%', hi:true },
+            { label:'NP CAGR 3Y%', fn: s=>{
+                const d=s.financials?.Net_Profit?.consolidated?.annual||s.financials?.Net_Profit?.standalone?.annual||{};
+                const k=Object.keys(d).sort(); if(k.length<4) return null;
+                const s3=_qN(d[k[k.length-4]]),s0=_qN(d[k[k.length-1]]);
+                return s3&&s0&&s3>0?(Math.pow(s0/s3,1/3)-1)*100:null;
+              }, unit:'%', hi:true },
+        ]
+    },
+    {
+        title: 'Balance Sheet & Efficiency',
+        metrics: [
+            { label:'D/E Ratio',       fn: s=>_qN(s.ratios?.debt_to_equity), unit:'x', hi:false },
+            { label:'Current Ratio',   fn: s=>_qN(s.ratios?.current_ratio), unit:'x', hi:true },
+            { label:'Quick Ratio',     fn: s=>_qN(s.ratios?.quick_ratio), unit:'x', hi:true },
+            { label:'Debtor Days',     fn: s=>_qLD(s.ratios?.Debtor_Days), unit:'d', hi:false },
+            { label:'Inventory Days',  fn: s=>_qLD(s.ratios?.Inventory_Days), unit:'d', hi:false },
+            { label:'Cash Conv Cycle', fn: s=>_qLD(s.ratios?.Cash_Conversion_Cycle), unit:'d', hi:false },
+            { label:'Working Cap Days',fn: s=>_qLD(s.ratios?.Working_Capital_Days), unit:'d', hi:false },
+        ]
+    },
+    {
+        title: 'Price & Momentum',
+        metrics: [
+            { label:'LTP',             fn: s=>_qN(s.price?.current_price), unit:'₹', hi:false },
+            { label:'vs 50DMA%',       fn: s=>{const c=_qN(s.price?.current_price),d=_qN(s.price?.fifty_day_avg);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
+            { label:'vs 200DMA%',      fn: s=>{const c=_qN(s.price?.current_price),d=_qN(s.price?.two_hundred_day_avg);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
+            { label:'52W Change%',     fn: s=>(_qN(s.price?.['52_week']?.fifty_two_week_change_pct)||0)*100, unit:'%', hi:true },
+            { label:'52W High',        fn: s=>_qN(s.price?.['52_week']?.fifty_two_week_high), unit:'₹', hi:false },
+            { label:'52W Low',         fn: s=>_qN(s.price?.['52_week']?.fifty_two_week_low), unit:'₹', hi:false },
+            { label:'Beta',            fn: s=>_qN(s.price?.ltp?.beta), unit:'', hi:false },
+        ]
+    },
+    {
+        title: 'Analyst & Governance',
+        metrics: [
+            { label:'Target Price',    fn: s=>_qN(s.websignals?.target_mean_price), unit:'₹', hi:true },
+            { label:'Upside%',         fn: s=>{const c=_qN(s.price?.current_price),t=_qN(s.websignals?.target_mean_price);return c&&t?(t-c)/c*100:null;}, unit:'%', hi:true },
+            { label:'# Analysts',      fn: s=>_qN(s.websignals?.number_of_analyst_opinions), unit:'', hi:true },
+            { label:'Rec Mean (1=SB)', fn: s=>_qN(s.websignals?.recommendation_mean), unit:'', hi:false },
+            { label:'Gov Risk (1-10)', fn: s=>_qN(s.websignals?.overall_risk), unit:'', hi:false },
+            { label:'Audit Risk',      fn: s=>_qN(s.websignals?.audit_risk), unit:'', hi:false },
+            { label:'Board Risk',      fn: s=>_qN(s.websignals?.board_risk), unit:'', hi:false },
+        ]
+    },
+    {
+        title: 'Shareholding (Latest)',
+        metrics: [
+            { label:'Promoter%',       fn: s=>_qLD(s.company_details?.shareholding?.pattern?.promoters), unit:'%', hi:true },
+            { label:'Promoter Δ 1Y',   fn: s=>{
+                const d=s.company_details?.shareholding?.pattern?.promoters||{};
+                const k=Object.keys(d).sort(); if(k.length<5) return null;
+                const lt=_qN(d[k[k.length-1]]),yr=_qN(d[k[k.length-5]]);
+                return lt!==null&&yr!==null?lt-yr:null;
+              }, unit:'pp', hi:true },
+            { label:'FII%',            fn: s=>_qLD(s.company_details?.shareholding?.pattern?.fiis), unit:'%', hi:true },
+            { label:'FII Δ 1Y',        fn: s=>{
+                const d=s.company_details?.shareholding?.pattern?.fiis||{};
+                const k=Object.keys(d).sort(); if(k.length<5) return null;
+                return _qN(d[k[k.length-1]])-_qN(d[k[k.length-5]]);
+              }, unit:'pp', hi:true },
+            { label:'DII%',            fn: s=>_qLD(s.company_details?.shareholding?.pattern?.diis), unit:'%', hi:true },
+            { label:'# Shareholders',  fn: s=>_qLD(s.company_details?.shareholding?.pattern?.no_of_shareholders), unit:'', hi:true, fmt:'k' },
+        ]
+    },
+    {
+        title: 'Portfolio (if held)',
+        metrics: [
+            { label:'Qty',             fn: s=>_qN(s.company_details?.qty), unit:'', hi:false },
+            { label:'Avg Cost',        fn: s=>_qN(s.company_details?.avg_cost), unit:'₹', hi:false },
+            { label:'Invested',        fn: s=>{const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost);return q&&a?q*a:null;}, unit:'₹', hi:false, fmt:'l' },
+            { label:'PnL ₹',           fn: s=>{const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.current_price);return q&&a&&l?(l-a)*q:null;}, unit:'₹', hi:true, fmt:'l' },
+            { label:'PnL%',            fn: s=>{const a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.current_price);return a&&l?(l-a)/a*100:null;}, unit:'%', hi:true },
+        ]
+    },
+];
+
+// ── Formatters ─────────────────────────────────────────────
+function cmpFmt(v, unit, fmt) {
+    if(v===null||v===undefined) return '—';
+    const abs = Math.abs(v);
+    if(fmt==='cr') return (abs>=10000?`₹${(v/100).toFixed(0)}Cr`:`₹${v.toFixed(0)}Cr`);
+    if(fmt==='l')  return abs>=100000?`₹${(v/100000).toFixed(1)}L`:`₹${v.toFixed(0)}`;
+    if(fmt==='k')  return abs>=1000?`${(v/1000).toFixed(0)}K`:`${v.toFixed(0)}`;
+    if(unit==='%') return `${v.toFixed(1)}%`;
+    if(unit==='x') return `${v.toFixed(2)}x`;
+    if(unit==='₹') return `₹${v.toFixed(abs>=1000?0:1)}`;
+    if(unit==='pp') return `${v>0?'+':''}${v.toFixed(1)}pp`;
+    if(unit==='d') return `${v.toFixed(0)}d`;
+    return `${Number.isInteger(v)?v:v.toFixed(1)}${unit}`;
+}
+
+// ── Picker ─────────────────────────────────────────────────
+function cmpPopulatePicker() {
+    CMP_SECTOR_F = document.getElementById('cmp-sector-filter')?.value || '';
+    let items = SIG_ALL.slice();
+    if(CMP_SECTOR_F) items = items.filter(s=>s.sector===CMP_SECTOR_F);
+    items.sort((a,b)=>a.ticker.localeCompare(b.ticker));
+
+    document.getElementById('cmp-picker').innerHTML = items.map(sig=>
+        `<span class="cmp-pick${CMP_SELECTED.includes(sig.ticker)?' sel':''}"
+            onclick="cmpToggle('${sig.ticker}')">${sig.ticker}</span>`
+    ).join('');
+    document.getElementById('cmp-count').textContent =
+        CMP_SELECTED.length ? `${CMP_SELECTED.length}/4 selected` : '';
+}
+
+function cmpToggle(ticker) {
+    if(CMP_SELECTED.includes(ticker)) {
+        CMP_SELECTED = CMP_SELECTED.filter(t=>t!==ticker);
+    } else if(CMP_SELECTED.length < 4) {
+        CMP_SELECTED.push(ticker);
+    }
+    cmpPopulatePicker();
+    if(CMP_SELECTED.length >= 2) renderCompare();
+    else document.getElementById('cmp-results').innerHTML =
+        '<div style="padding:30px;text-align:center;color:#333;font-size:10px">Select at least 2 stocks</div>';
+}
+
+function cmpClearAll() {
+    CMP_SELECTED = [];
+    cmpPopulatePicker();
+    document.getElementById('cmp-results').innerHTML =
+        '<div style="padding:40px 20px;text-align:center;color:#333;font-size:10px">Select stocks above to compare</div>';
+}
+
+function initCompareTab() {
+    // Populate sector filter
+    const sel = document.getElementById('cmp-sector-filter');
+    if(sel && sel.options.length <= 1) {
+        const secs = [...new Set(SIG_ALL.map(s=>s.sector))].sort();
+        secs.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+    }
+    cmpPopulatePicker();
+    if(CMP_SELECTED.length >= 2) renderCompare();
+}
+
+// ── Main render ────────────────────────────────────────────
+function renderCompare() {
+    const stocks = CMP_SELECTED.map(t=>MASTER.find(s=>s.ticker===t)).filter(Boolean);
+    const sigs   = CMP_SELECTED.map(t=>SIG_ALL.find(s=>s.ticker===t));
+    if(stocks.length < 2) return;
+    const n = stocks.length;
+
+    // Header row: ticker + sector + price
+    const headerCells = stocks.map((s,i)=>{
+        const sig = sigs[i];
+        const col = sig ? sigScoreColor(sig.comp) : '#aaa';
+        const cp  = _qN(s.price?.current_price);
+        return `<td style="text-align:center;padding:10px 8px;border-right:1px solid #1a1a1a;">
+            <div style="font-size:13px;font-weight:800;color:#f1f5f9">${s.ticker}</div>
+            <div style="font-size:8px;color:#555;margin-top:2px">${s.company_details?.sector||'—'}</div>
+            ${cp?`<div style="font-size:10px;color:#aaa;margin-top:3px">₹${cp.toLocaleString()}</div>`:''}
+            ${sig?`<div style="font-size:11px;font-weight:800;color:${col};margin-top:3px">${sig.comp} <span style="font-size:8px">${sig.rating}</span></div>`:''}
+        </td>`;
+    }).join('');
+
+    let html = `
+    <table class="cmp-table">
+        <thead><tr>
+            <td style="width:110px;background:#0a0a0a;padding:10px 8px;font-size:8px;color:#555;letter-spacing:0.08em;border-right:1px solid #1a1a1a;border-bottom:1px solid #222;">METRIC</td>
+            ${headerCells.replace(/border-right[^;]+;/g,'border-right:1px solid #1a1a1a;')}
+        </tr></thead>
+        <tbody>`;
+
+    CMP_GROUPS.forEach(group => {
+        // Group header
+        html += `<tr><td colspan="${n+1}" style="background:#050505;padding:6px 10px;font-size:8px;color:#555;letter-spacing:0.12em;text-transform:uppercase;border-bottom:1px solid #1a1a1a;border-top:2px solid #1a1a1a;">${group.title}</td></tr>`;
+
+        group.metrics.forEach(m => {
+            // Extract values for all stocks
+            const vals = stocks.map((s,i)=>{
+                try {
+                    return m.fn.length === 2 ? m.fn(s, sigs[i]) : m.fn(s);
+                } catch { return null; }
+            });
+
+            const validVals = vals.filter(v=>v!==null&&isFinite(v));
+            if(!validVals.length) return; // skip if no data at all
+
+            const best = m.hi ? Math.max(...validVals) : Math.min(...validVals);
+            const worst = m.hi ? Math.min(...validVals) : Math.max(...validVals);
+
+            // Bar scale for visual
+            const absMax = Math.max(...validVals.map(Math.abs), 0.001);
+
+            const cells = vals.map((v,i) => {
+                if(v===null||!isFinite(v)) return `<td style="text-align:right;padding:6px 10px;color:#333;border-right:1px solid #0d0d0d;">—</td>`;
+                const isBest  = validVals.length > 1 && v === best;
+                const isWorst = validVals.length > 1 && v === worst && best !== worst;
+                const col = isBest ? '#00ff88' : isWorst ? '#ff4d6d' : '#ccc';
+                const barW = Math.round(Math.abs(v)/absMax * 52);
+                const barCol = isBest ? '#00ff88' : isWorst ? '#ff4d6d' : '#444';
+                return `<td style="text-align:right;padding:5px 10px;border-right:1px solid #0d0d0d;">
+                    <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+                        <div style="width:${barW}px;height:3px;background:${barCol}66;border-radius:2px;flex-shrink:0"></div>
+                        <span style="font-size:10px;font-weight:${isBest||isWorst?'800':'400'};color:${col};white-space:nowrap">${cmpFmt(v,m.unit,m.fmt)}</span>
+                        ${isBest?'<span style="font-size:7px">↑</span>':isWorst?'<span style="font-size:7px;color:#ff4d6d">↓</span>':''}
+                    </div>
+                </td>`;
+            }).join('');
+
+            html += `<tr>
+                <td style="font-size:8px;color:#777;padding:6px 8px;border-right:1px solid #1a1a1a;white-space:nowrap">${m.label}</td>
+                ${cells}
+            </tr>`;
+        });
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('cmp-results').innerHTML = html;
 }
 
 function sigBoot() {
