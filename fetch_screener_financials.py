@@ -510,6 +510,7 @@ class ScreenerFinancialsScraper:
     def scrape_symbol(self, symbol: str) -> bool:
         """Scrape single symbol with retry using overrides and URL fallbacks"""
         html = self.fetch_page(symbol)
+        used_standalone = False
         
         # Fallback 1: try screener_override mapping
         if not html:
@@ -524,6 +525,7 @@ class ScreenerFinancialsScraper:
         if not html:
             html = self.fetch_page_standalone(symbol)
             if html:
+                used_standalone = True
                 logger.info(f"  STANDALONE: {symbol} — consolidated failed, standalone succeeded")
         
         if not html:
@@ -533,9 +535,35 @@ class ScreenerFinancialsScraper:
             return False
         
         data = self.extract_data(symbol, html)
+        
+        # Detect shareholding-only result — financial tables missing despite successful fetch.
+        # This happens when consolidated page times out → standalone succeeds but only
+        # has shareholding (financial tables need the 10yr button which standalone may miss).
+        # Retry consolidated once more with a longer wait.
+        if data and used_standalone:
+            tables = data.get('tables', {})
+            has_financials = any(k in tables for k in ('profit_loss', 'balance_sheet', 'cash_flow'))
+            if not has_financials:
+                logger.info(f"  RETRY-CONSOL: {symbol} — standalone got shareholding only, retrying consolidated")
+                html2 = self.fetch_page(symbol)
+                if html2:
+                    data2 = self.extract_data(symbol, html2)
+                    if data2:
+                        tables2 = data2.get('tables', {})
+                        if any(k in tables2 for k in ('profit_loss', 'balance_sheet', 'cash_flow')):
+                            # Merge: keep financial tables from consolidated, shareholding from standalone
+                            data2['tables']['shareholding_pattern'] = tables.get('shareholding_pattern', {})
+                            data = data2
+                            logger.info(f"  RETRY-CONSOL: {symbol} — consolidated retry succeeded")
+
         if data:
             self.scraped_data[symbol] = data
-            logger.info(f"✓ {symbol:12} | SUCCESS")
+            tables = data.get('tables', {})
+            has_fin = any(k in tables for k in ('profit_loss', 'balance_sheet', 'cash_flow'))
+            if not has_fin:
+                logger.warning(f"⚠ {symbol:12} | SHAREHOLDING ONLY — no financial tables")
+            else:
+                logger.info(f"✓ {symbol:12} | SUCCESS")
             self.stats['success'] += 1
             return True
         
