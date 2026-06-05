@@ -416,22 +416,46 @@ class ScreenerFinancialsScraper:
             h1 = soup.find('h1', class_='margin-0')
             company_name = h1.text.strip() if h1 else symbol
             
-            # Extract tables
+            # Extract tables — map by section heading text, not position.
+            # Positional mapping breaks when a section is absent (e.g. no Quarterly Results
+            # for ETFs/new listings), shifting all subsequent table assignments by one.
+            SECTION_MAP = {
+                'quarterly results':  'quarterly_results',
+                'profit & loss':      'profit_loss',
+                'balance sheet':      'balance_sheet',
+                'cash flows':         'cash_flow',
+                'cash flow':          'cash_flow',
+                'ratios':             'ratios',
+                'shareholding pattern': 'shareholding_pattern',
+            }
+            
             tables = soup.find_all('table', class_='data-table')
             table_data = {}
             
-            table_names = [
-                'quarterly_results',
-                'profit_loss',
-                'balance_sheet',
-                'cash_flow',
-                'ratios'
-            ]
-            
-            for i, table in enumerate(tables[:len(table_names)]):
+            for table in tables:
+                # Section heading is in the preceding <h2> sibling
+                heading_tag = table.find_previous(['h2', 'h3'])
+                if not heading_tag:
+                    continue
+                heading_text = heading_tag.get_text(strip=True).lower()
+                
+                # Match heading to canonical key
+                table_key = None
+                for pattern, key in SECTION_MAP.items():
+                    if pattern in heading_text:
+                        table_key = key
+                        break
+                
+                if not table_key:
+                    logger.debug(f"{symbol}: unrecognised table heading '{heading_text}' — skipped")
+                    continue
+                
                 parsed = self.parse_table(table)
                 if parsed:
-                    table_data[table_names[i]] = {
+                    # Exclude permanently-empty metrics
+                    for exclude in ['Raw PDF']:
+                        parsed.pop(exclude, None)
+                    table_data[table_key] = {
                         'status': 'SUCCESS',
                         'data': parsed,
                         'rows': len(parsed)
