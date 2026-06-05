@@ -936,7 +936,8 @@ function renderTab(tab) {
             <select id="chartRange" onchange="canvasSetChartRange(this.value)" style="background:var(--card);color:var(--tx1);border:1px solid var(--b1);border-radius:5px;padding:4px 6px;font-size:10px;font-family:var(--mono);cursor:pointer;outline:none">
               <option value="1M" ${S.chartRange==='1M'?'selected':''}>1M</option><option value="3M" ${S.chartRange==='3M'?'selected':''}>3M</option>
               <option value="6M" ${S.chartRange==='6M'?'selected':''}>6M</option><option value="1Y" ${S.chartRange==='1Y'?'selected':''}>1Y</option>
-              <option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
+              <option value="3Y" ${S.chartRange==='3Y'?'selected':''}>3Y</option><option value="5Y" ${S.chartRange==='5Y'?'selected':''}>5Y</option>
+              <option value="MAX" ${S.chartRange==='MAX'?'selected':''}>MAX</option>
             </select>
             <span style="flex:1"></span>
             <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
@@ -1354,7 +1355,7 @@ function getSlicedCandles(s, canvasWidth){
 
   // Apply period cutoff
   const now = new Date();
-  const days = {'1M':30,'3M':91,'6M':182,'1Y':365,'5Y':1825}[S.chartRange] || 365;
+  const days = {'1M':30,'3M':91,'6M':182,'1Y':365,'3Y':1095,'5Y':1825,'MAX':36500}[S.chartRange] || 365;
   const cutoff = new Date(now - days*864e5).toISOString().slice(0,10);
   let f = daily.filter(c => c.d >= cutoff);
   if (!f.length) f = daily.slice(-Math.max(20, Math.floor(daily.length * 0.25)));
