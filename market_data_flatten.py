@@ -279,6 +279,10 @@ for TICKER in TICKERS_TO_PROCESS:
             
         tables = sf.get('tables', {})
         for table_name, table_data in tables.items():
+            # Insights table is paywalled — all values are masked (xxx,xxx). Skip entirely.
+            if table_name == 'insights':
+                ticker_rejections.append(f"screener_fin | insights | Paywalled — excluded")
+                continue
             table_dict = table_data.get('data', {}) if isinstance(table_data, dict) and 'data' in table_data else table_data
             for metric_name, period_data in table_dict.items():
                 try:
@@ -316,11 +320,23 @@ for TICKER in TICKERS_TO_PROCESS:
         sr_obs = sr.get('observations', [{}])[0].get('raw', {})
         for table in sr_obs.get('tables', []):
             section = table.get('section', '')
+            
+            # Insights is paywalled — values are masked xxx,xxx strings. Skip entirely.
+            if section == 'Insights':
+                ticker_rejections.append(f"screener_raw | Insights | Paywalled — excluded")
+                continue
+            
             rows = table.get('rows', [])
             for row in rows[1:]:
                 try:
                     if row and row[0] and row[0].strip():
                         metric_name = row[0]
+                        
+                        # Raw PDF is always empty across all tickers — skip
+                        if metric_name == 'Raw PDF':
+                            ticker_rejections.append(f"screener_raw | {section} | Raw PDF — always empty, excluded")
+                            continue
+                        
                         # Collect periods first
                         temp_periods = {}
                         for col_idx in range(1, min(len(rows[0]), len(row))):
@@ -328,9 +344,13 @@ for TICKER in TICKERS_TO_PROCESS:
                             if iso:
                                 temp_periods[iso] = standardize_value(row[col_idx])
                         
-                        # Detect granularity from section name first, then from dates as fallback
+                        # Detect granularity from section name
                         if 'Quarterly' in section:
                             granule = 'quarterly'
+                        elif 'Half Yearly' in section:
+                            granule = 'half_yearly'
+                        elif 'Shareholding' in section:
+                            granule = 'quarterly'  # shareholding is reported quarterly
                         elif 'Profit' in section or 'Balance' in section or 'Cash' in section or 'Ratios' in section:
                             granule = 'annual'
                         else:

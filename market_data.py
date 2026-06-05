@@ -365,11 +365,12 @@ FIELD_MAP = {
         "tangible_book_value":       ("financials", "tangible_book_value"),
         "invested_capital":          ("financials", "invested_capital"),
         "total_debt":                ("financials", "total_debt"),
-        "net_debt":                  ("financials", "net_debt"),
-        "short_term_debt":           ("financials", "short_term_debt"),
+        "net_debt":                  ("financials", "net_debt"),          # 50% populated
+        # short_term_debt — 100% null across all tickers, excluded
+        # operating_income — 98% null across all tickers, excluded
         "long_term_debt":            ("financials", "long_term_debt"),
         "capital_lease_obligations": ("financials", "capital_lease_obligations"),
-        "minority_interest":         ("financials", "minority_interest"),
+        "minority_interest":         ("financials", "minority_interest"), # 51% populated
         "total_capitalization":      ("financials", "total_capitalization"),
         "deposits":                  ("financials", "deposits"),
         "advances":                  ("financials", "advances"),
@@ -555,9 +556,9 @@ FIELD_MAP = {
         "No. of Shareholders":("company_details", "no_of_shareholders"),
     },
 
-    # ── screener_raw:Insights  (all metrics → operational_kpis, varies per symbol)
-    # handled via __all_ts__ sentinel — no need to enumerate every KPI
-    "screener_raw:Insights": "__all_ts__",
+    # ── screener_raw:Insights  (PAYWALLED — all values masked as xxx,xxx) ──────
+    # Excluded from pipeline. Login required to see actual values on Screener.in.
+    # "screener_raw:Insights": "__exclude__",  # kept for reference, skipped in flatten
 
     # ── screener_raw:Half Yearly Results  (half-yearly standalone) ────────────
     "screener_raw:Half Yearly Results": {
