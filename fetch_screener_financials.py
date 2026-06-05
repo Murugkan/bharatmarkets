@@ -354,9 +354,14 @@ class ScreenerFinancialsScraper:
                 # One click expands all tables (P&L, BS, CF, Ratios) to 10 columns.
                 if Config.FETCH_10_YEARS:
                     try:
+                        # Screener.in renders the toggle as a <li> or <a> inside a
+                        # .inline-graph-buttons / .company-links bar — text varies slightly.
+                        # Try progressively broader selectors.
                         ten_year_btns = driver.find_elements(
                             By.XPATH,
-                            "//button[normalize-space()='10 Years'] | //a[normalize-space()='10 Years']"
+                            "//*[contains(translate(normalize-space(.), "
+                            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "
+                            "'10 year')]"
                         )
                         if ten_year_btns:
                             driver.execute_script("arguments[0].click();", ten_year_btns[0])
@@ -365,7 +370,10 @@ class ScreenerFinancialsScraper:
                                 EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
                             )
                         else:
-                            logger.warning(f"⚠ {symbol:12} | 10-year button not found — defaulting to 5yr view")
+                            # Debug: log all button/link text so we can identify the real label
+                            all_btns = driver.find_elements(By.XPATH, "//a | //button | //li")
+                            btn_texts = [b.text.strip() for b in all_btns if b.text.strip()]
+                            logger.warning(f"⚠ {symbol:12} | 10-year button not found. Page controls: {btn_texts[:30]}")
                     except Exception as btn_err:
                         logger.warning(f"⚠ {symbol:12} | 10-year click failed ({str(btn_err)[:60]}) — defaulting to 5yr view")
                 
