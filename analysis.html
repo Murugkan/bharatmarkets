@@ -2190,14 +2190,10 @@ function setupChartInteraction(){
   const t={lastDist:0,isPanning:false,startX:0,startPan:0};
   let rafId=0;
   const go=()=>{
-    if(rafId) return; // already queued
+    if(rafId) return;
     rafId=requestAnimationFrame(()=>{
       rafId=0;
-      if(currentStock) {
-        recalculateIndicators(currentStock); // no-op if cached, ensures s.sma20/50/ema200 exist
-        drawCandlestick(currentStock);
-        if(S.maVis.vol) drawVolume(currentStock);
-      }
+      if(currentStock) { drawCandlestick(currentStock); if(S.maVis.vol) drawVolume(currentStock); }
     });
   };
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
