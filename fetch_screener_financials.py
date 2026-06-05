@@ -122,9 +122,8 @@ class Config:
     HEADLESS_MODE = True
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     
-    # Always fetch 10-year history — uniform standard across all sources.
-    # Screener.in shows 5yr by default; clicking "10 Years" expands all tables.
-    FETCH_10_YEARS = True
+    # Screener.in /consolidated/ URL serves 10-year history by default.
+    # No button click needed — confirmed from live data (Mar 2015–Mar 2026).
     
     # Create directories on init
     @staticmethod
@@ -350,33 +349,6 @@ class ScreenerFinancialsScraper:
                     EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
                 )
                 
-                # Click "10 Years" toggle — Screener defaults to 5yr on page load.
-                # One click expands all tables (P&L, BS, CF, Ratios) to 10 columns.
-                if Config.FETCH_10_YEARS:
-                    try:
-                        # Screener.in renders the toggle as a <li> or <a> inside a
-                        # .inline-graph-buttons / .company-links bar — text varies slightly.
-                        # Try progressively broader selectors.
-                        ten_year_btns = driver.find_elements(
-                            By.XPATH,
-                            "//*[contains(translate(normalize-space(.), "
-                            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "
-                            "'10 year')]"
-                        )
-                        if ten_year_btns:
-                            driver.execute_script("arguments[0].click();", ten_year_btns[0])
-                            time.sleep(2)
-                            WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
-                                EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
-                            )
-                        else:
-                            # Debug: log all button/link text so we can identify the real label
-                            all_btns = driver.find_elements(By.XPATH, "//a | //button | //li")
-                            btn_texts = [b.text.strip() for b in all_btns if b.text.strip()]
-                            logger.warning(f"⚠ {symbol:12} | 10-year button not found. Page controls: {btn_texts[:30]}")
-                    except Exception as btn_err:
-                        logger.warning(f"⚠ {symbol:12} | 10-year click failed ({str(btn_err)[:60]}) — defaulting to 5yr view")
-                
                 html = driver.page_source
                 driver.quit()
                 
@@ -482,18 +454,53 @@ class ScreenerFinancialsScraper:
             )
             return None
     
+    def fetch_page_standalone(self, symbol: str) -> Optional[str]:
+        """Fallback: fetch standalone (non-consolidated) page for tickers that lack a consolidated view"""
+        screener_symbol = self.symbol_map.get('screener_overrides', {}).get(symbol, symbol.lower())
+        url = f"{Config.BASE_URL}/{screener_symbol}/"  # no /consolidated/
+        
+        for attempt in range(Config.RETRY_ATTEMPTS):
+            try:
+                driver = self.setup_browser()
+                if not driver:
+                    raise Exception("Browser setup failed")
+                driver.set_page_load_timeout(Config.BROWSER_TIMEOUT)
+                driver.get(url)
+                WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
+                    EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
+                )
+                html = driver.page_source
+                driver.quit()
+                time.sleep(Config.RATE_LIMIT_DELAY)
+                return html
+            except Exception as e:
+                logger.debug(f"Standalone fetch error: {symbol} - {str(e)[:60]}")
+                try:
+                    driver.quit()
+                except:
+                    pass
+            if attempt < Config.RETRY_ATTEMPTS - 1:
+                time.sleep(Config.RETRY_DELAY)
+        return None
+
     def scrape_symbol(self, symbol: str) -> bool:
-        """Scrape single symbol with retry using overrides"""
+        """Scrape single symbol with retry using overrides and URL fallbacks"""
         html = self.fetch_page(symbol)
+        
+        # Fallback 1: try screener_override mapping
         if not html:
-            # Try with override mapping if available
             override_symbol = self.symbol_map.get('overrides', {}).get(symbol)
             if override_symbol and override_symbol != symbol:
                 logger.info(f"  RETRY: {symbol} → {override_symbol}")
                 self.stats['retried'] += 1
-                # Extract just the ticker part (remove .NS/.BO suffix)
                 ticker = override_symbol.split('.')[0] if '.' in override_symbol else override_symbol
                 html = self.fetch_page(ticker)
+        
+        # Fallback 2: try standalone URL (some tickers only exist on standalone view)
+        if not html:
+            html = self.fetch_page_standalone(symbol)
+            if html:
+                logger.info(f"  STANDALONE: {symbol} — consolidated failed, standalone succeeded")
         
         if not html:
             logger.warning(f"✗ {symbol:12} | FETCH FAILED")
@@ -619,7 +626,7 @@ class ScreenerFinancialsScraper:
         print("=" * 80)
         print("EXECUTION SUMMARY")
         print("=" * 80)
-        print(f"History Mode:         10 Years (uniform standard)")
+        print(f"History:              10 Years (Screener /consolidated/ default)")
         print(f"Total Requested:      {self.stats['total']}")
         print(f"Successfully Scraped: {self.stats['success']} ✓")
         print(f"Failed:               {self.stats['failed']} ✗")
