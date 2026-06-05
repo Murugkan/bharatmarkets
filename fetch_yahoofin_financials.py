@@ -242,9 +242,12 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
     
     try:
         stock = yf.Ticker(resolved_ticker)
-        is_stmt = stock.quarterly_income_stmt
-        bs = stock.quarterly_balance_sheet
-        cf = stock.quarterly_cashflow
+        # Use annual statements for 10-year history.
+        # yfinance exposes up to 4 annual periods via income_stmt/balance_sheet/cashflow.
+        # quarterly_* variants only return ~4 recent quarters — not suitable for 10yr.
+        is_stmt = stock.income_stmt
+        bs = stock.balance_sheet
+        cf = stock.cashflow
         
         metrics_dict = get_sector_metrics(sector.lower())
         
@@ -253,14 +256,14 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         # DEBUG
         logger.debug(f"{ticker}: IS={is_stmt.shape if not is_stmt.empty else 'EMPTY'}, BS={bs.shape if not bs.empty else 'EMPTY'}, CF={cf.shape if not cf.empty else 'EMPTY'}")
         
-        # Process each quarter (up to 4)
-        max_periods = min(4, len(is_stmt.columns) if not is_stmt.empty else 0, 
+        # Process all available annual periods (yfinance returns up to 4 years)
+        max_periods = min(10, len(is_stmt.columns) if not is_stmt.empty else 0, 
                          len(bs.columns) if not bs.empty else 0,
                          len(cf.columns) if not cf.empty else 0)
         
         # If no periods with all 3 dataframes, try with just IS+BS
         if max_periods == 0:
-            max_periods = min(4, len(is_stmt.columns) if not is_stmt.empty else 0,
+            max_periods = min(10, len(is_stmt.columns) if not is_stmt.empty else 0,
                              len(bs.columns) if not bs.empty else 0)
         
         for col_idx in range(max_periods):

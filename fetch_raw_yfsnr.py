@@ -325,7 +325,7 @@ class Step1Tester:
 # FETCH LOGIC
 # ============================================================================
 
-def fetch_yahoo_payload(ticker, symbol_overrides, history_period="5y", history_intervals=None):
+def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_intervals=None):
     """
     Fetch Yahoo Finance info and price history for multiple intervals.
     
@@ -538,7 +538,7 @@ def main():
     fetch_config = load_json(Path('.fetch_config.json'))
     FETCH_YAHOO = fetch_config.get('yahoo', True)
     FETCH_SCREENER = fetch_config.get('screener', True)
-    HISTORY_PERIOD = fetch_config.get('history_period', '5y')
+    HISTORY_PERIOD = fetch_config.get('history_period', '10y')
     HISTORY_INTERVALS = fetch_config.get('history_intervals', ['1d', '1wk', '1mo'])
     SCREENER_TIMEOUT = fetch_config.get('screener_timeout', 30)
     SCREENER_RETRIES = fetch_config.get('screener_retries', 2)

@@ -122,6 +122,10 @@ class Config:
     HEADLESS_MODE = True
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     
+    # Always fetch 10-year history — uniform standard across all sources.
+    # Screener.in shows 5yr by default; clicking "10 Years" expands all tables.
+    FETCH_10_YEARS = True
+    
     # Create directories on init
     @staticmethod
     def init():
@@ -345,6 +349,25 @@ class ScreenerFinancialsScraper:
                 WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
                     EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
                 )
+                
+                # Click "10 Years" toggle — Screener defaults to 5yr on page load.
+                # One click expands all tables (P&L, BS, CF, Ratios) to 10 columns.
+                if Config.FETCH_10_YEARS:
+                    try:
+                        ten_year_btns = driver.find_elements(
+                            By.XPATH,
+                            "//button[normalize-space()='10 Years'] | //a[normalize-space()='10 Years']"
+                        )
+                        if ten_year_btns:
+                            driver.execute_script("arguments[0].click();", ten_year_btns[0])
+                            time.sleep(2)
+                            WebDriverWait(driver, Config.BROWSER_TIMEOUT).until(
+                                EC.presence_of_all_elements_located((By.CLASS_NAME, "data-table"))
+                            )
+                        else:
+                            logger.warning(f"⚠ {symbol:12} | 10-year button not found — defaulting to 5yr view")
+                    except Exception as btn_err:
+                        logger.warning(f"⚠ {symbol:12} | 10-year click failed ({str(btn_err)[:60]}) — defaulting to 5yr view")
                 
                 html = driver.page_source
                 driver.quit()
@@ -588,6 +611,7 @@ class ScreenerFinancialsScraper:
         print("=" * 80)
         print("EXECUTION SUMMARY")
         print("=" * 80)
+        print(f"History Mode:         10 Years (uniform standard)")
         print(f"Total Requested:      {self.stats['total']}")
         print(f"Successfully Scraped: {self.stats['success']} ✓")
         print(f"Failed:               {self.stats['failed']} ✗")
@@ -624,7 +648,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python fetch_financials_screener.py                 # Fetch all symbols
+  python fetch_financials_screener.py                 # Fetch all symbols, 10-year history
   python fetch_financials_screener.py --symbols 50    # Fetch first 50
   python fetch_financials_screener.py --resume        # Resume from last checkpoint
   python fetch_financials_screener.py --symbols 100 --resume
