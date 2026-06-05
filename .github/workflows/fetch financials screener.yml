@@ -1,0 +1,56 @@
+name: fetch_financials_screener (scraper)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch_screener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -q
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install dependencies
+        run: pip install -r fetch_financials_screener_requirements.txt
+
+      - name: Create directories
+        run: mkdir -p data/logs
+
+      - name: Run scraper
+        run: python fetch_screener_financials.py --symbols 99
+
+      - name: Commit results to repo
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add data/screener_financials.json data/logs/
+          if git diff --quiet --cached; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Update screener data - $(date +'%Y-%m-%d %H:%M:%S')"
+          git pull --rebase origin main
+          git push origin main
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: results
+          path: |
+            data/screener_financials.json
+            data/logs/
+          retention-days: 30
