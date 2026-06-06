@@ -303,36 +303,36 @@ async function loadPortfolioData(forceClear = false) {
 // Maps analysis.html field paths to IndexedDB stock object structure
 const fieldMapping = {
     // Price & Performance (from price object)
-    'ltp': ['price.ltp.ltp'],
-    'price': ['price.ltp.ltp'],
-    'changePct': ['price.ltp.changePct', 'price.regular_market_change_pct'],
-    'change': ['price.ltp.change', 'price.regular_market_change'],
-    'chg1d': ['price.ltp.change', 'price.regular_market_change'],
+    'ltp': ['price.ltp.price'],
+    'price': ['price.ltp.price'],
+    'changePct': ['price.ltp.change_pct', 'price.price_change_pct'],
+    'change': ['price.ltp.change', 'price.price_change'],
+    'chg1d': ['price.ltp.change', 'price.price_change'],
     
-    // Valuation (from valuation.pe and valuation.eps)
-    'trailing_pe': ['valuation.pe.trailing_pe'],
-    'pe': ['valuation.pe.trailing_pe'],
-    'forward_pe': ['valuation.pe.forward_pe'],
+    // Valuation (from valuation.pe.pe_ttm and valuation.eps.eps_ttm)
+    'trailing_pe': ['valuation.pe.pe_ttm'],
+    'pe': ['valuation.pe.pe_ttm'],
+    'forward_pe': ['valuation.pe.pe_forward'],
     'price_to_book': ['valuation.pe.price_to_book'],
     'pb': ['valuation.pe.price_to_book'],
-    'price_to_sales': ['valuation.pe.price_to_sales_ttm'],
-    'ev_to_ebitda': ['valuation.ev_to_ebitda'],
-    'ev_to_revenue': ['valuation.ev_to_revenue'],
-    'book_value': ['valuation.book_value'],
+    'price_to_sales': ['valuation.pe.price_to_sales'],
+    'ev_to_ebitda': ['valuation.pe.ev_to_ebitda'],
+    'ev_to_revenue': ['valuation.pe.ev_to_revenue'],
+    'book_value': ['valuation.market.book_value'],
     
-    // EPS Values (from valuation.eps)
-    'trailing_eps': ['valuation.eps.trailing_eps'],
+    // EPS Values (from valuation.eps.eps_ttm)
+    'trailing_eps': ['valuation.eps.eps_ttm'],
     'eps_ttm': ['valuation.eps.eps_ttm'],
-    'forward_eps': ['valuation.eps.forward_eps'],
-    'basic_eps': ['valuation.eps.basic_eps'],
-    'diluted_eps': ['valuation.eps.diluted_eps'],
+    'forward_eps': ['valuation.eps.eps_forward'],
+    'basic_eps': ['valuation.history.basic_eps'],
+    'diluted_eps': ['valuation.history.diluted_eps'],
     
     // Market Cap & Enterprise Value
-    'market_cap': ['valuation.market_cap'],
-    'mcap': ['valuation.market_cap'],
-    'enterprise_value': ['valuation.enterprise_value'],
-    'basic_shares': ['valuation.basic_shares'],
-    'diluted_shares': ['valuation.diluted_shares'],
+    'market_cap': ['valuation.market.market_cap'],
+    'mcap': ['valuation.market.market_cap'],
+    'enterprise_value': ['valuation.market.enterprise_value'],
+    'basic_shares': ['valuation.history.basic_shares'],
+    'diluted_shares': ['valuation.history.diluted_shares'],
 
     // Flat financial fields (from financials object)
     'ebitda': ['financials.ebitda'],
@@ -340,7 +340,7 @@ const fieldMapping = {
     'gross_profit': ['financials.gross_profit'],
     'net_profit_flat': ['financials.net_profit'],
     'revenue_flat': ['financials.revenue'],
-    'total_debt_flat': ['financials.debt.total_debt'],
+    'total_debt_flat': ['financials.borrowings'],
     'cash_and_equivalents': ['financials.cash_and_equivalents'],
     'accounts_receivable': ['financials.accounts_receivable'],
     'working_capital': ['financials.working_capital'],
@@ -349,96 +349,96 @@ const fieldMapping = {
     // ✅ COMPREHENSIVE FINANCIAL METRICS with user-selected source
     // Uses {accounting} = consolidated/standalone, {frequency} = annual/quarterly
     // Income Statement
-    'sales': ['financials.Sales.{accounting}.{frequency}'],
-    'revenue': ['financials.Sales.{accounting}.{frequency}'],
-    'net_profit': ['financials.Net_Profit.{accounting}.{frequency}'],
-    'net_income': ['financials.Net_Profit.{accounting}.{frequency}'],
-    'operating_profit': ['financials.Operating_Profit.{accounting}.{frequency}'],
-    'op': ['financials.Operating_Profit.{accounting}.{frequency}'],
-    'opm_pct': ['financials.OPM_pct.{accounting}.{frequency}'],
-    'operating_margin': ['financials.OPM_pct.{accounting}.{frequency}'],
-    'profit_before_tax': ['financials.Profit_before_tax.{accounting}.{frequency}'],
-    'pbt': ['financials.Profit_before_tax.{accounting}.annual'],
-    'tax_pct': ['financials.Tax_pct.{accounting}.{frequency}'],
-    'tax': ['financials.Tax_pct.{accounting}.annual'],
-    'eps': ['financials.EPS_Rs.{accounting}.{frequency}'],
-    'earnings_per_share': ['financials.EPS_Rs.{accounting}.annual'],
-    'depreciation': ['financials.Depreciation.{accounting}.{frequency}'],
-    'interest_expense': ['financials.Interest.{accounting}.{frequency}'],
-    'interest': ['financials.Interest.{accounting}.annual'],
-    'other_income': ['financials.Other_Income.{accounting}.{frequency}'],
-    'expenses': ['financials.Expenses.{accounting}.{frequency}'],
+    'sales': ['financials.revenue.{accounting}.{frequency}'],
+    'revenue': ['financials.revenue.{accounting}.{frequency}'],
+    'net_profit': ['financials.net_profit.{accounting}.{frequency}'],
+    'net_income': ['financials.net_profit.{accounting}.{frequency}'],
+    'operating_profit': ['financials.ebit.{accounting}.{frequency}'],
+    'op': ['financials.ebit.{accounting}.{frequency}'],
+    'opm_pct': ['financials.operating_margin_pct.{accounting}.{frequency}'],
+    'operating_margin': ['financials.operating_margin_pct.{accounting}.{frequency}'],
+    'profit_before_tax': ['financials.profit_before_tax.{accounting}.{frequency}'],
+    'pbt': ['financials.profit_before_tax.{accounting}.annual'],
+    'tax_pct': ['financials.tax_rate_pct.{accounting}.{frequency}'],
+    'tax': ['financials.tax_rate_pct.{accounting}.annual'],
+    'eps': ['financials.eps.{accounting}.{frequency}'],
+    'earnings_per_share': ['financials.eps.{accounting}.annual'],
+    'depreciation': ['financials.depreciation.{accounting}.{frequency}'],
+    'interest_expense': ['financials.interest.{accounting}.{frequency}'],
+    'interest': ['financials.interest.{accounting}.annual'],
+    'other_income': ['financials.other_income.{accounting}.{frequency}'],
+    'expenses': ['financials.expenses.{accounting}.{frequency}'],
     
     // Balance Sheet - Assets (annual only)
-    'total_assets': ['financials.Total_Assets.{accounting}.annual'],
-    'assets': ['financials.Total_Assets.{accounting}.annual'],
-    'fixed_assets': ['financials.Fixed_Assets.{accounting}.annual'],
-    'other_assets': ['financials.Other_Assets.{accounting}.annual'],
-    'investments': ['financials.Investments.{accounting}.annual'],
-    'cwip': ['financials.CWIP.{accounting}.annual'],
+    'total_assets': ['financials.total_assets.{accounting}.annual'],
+    'assets': ['financials.total_assets.{accounting}.annual'],
+    'fixed_assets': ['financials.net_fixed_assets.{accounting}.annual'],
+    'other_assets': ['financials.other_assets.{accounting}.annual'],
+    'investments': ['financials.investments.{accounting}.annual'],
+    'cwip': ['financials.capital_wip.{accounting}.annual'],
     
     // Balance Sheet - Liabilities (annual only)
-    'total_liabilities': ['financials.Total_Liabilities.{accounting}.annual'],
-    'liabilities': ['financials.Total_Liabilities.{accounting}.annual'],
-    'borrowings': ['financials.Borrowings.{accounting}.annual'],
-    'debt': ['financials.Borrowings.{accounting}.annual'],
-    'other_liabilities': ['financials.Other_Liabilities.{accounting}.annual'],
+    'total_liabilities': ['financials.total_liabilities.{accounting}.annual'],
+    'liabilities': ['financials.total_liabilities.{accounting}.annual'],
+    'borrowings': ['financials.borrowings.{accounting}.annual'],
+    'debt': ['financials.borrowings.{accounting}.annual'],
+    'other_liabilities': ['financials.other_liabilities.{accounting}.annual'],
     
     // Balance Sheet - Equity (annual only)
-    'equity_capital': ['financials.Equity_Capital.{accounting}.annual'],
-    'reserves': ['financials.Reserves.{accounting}.annual'],
+    'equity_capital': ['financials.share_capital.{accounting}.annual'],
+    'reserves': ['financials.reserves.{accounting}.annual'],
     
     // Cash Flow (annual only)
-    'cfo': ['financials.CFO.{accounting}.annual'],
-    'operating_cash_flow': ['financials.CFO.{accounting}.annual'],
-    'cfi': ['financials.CFI.{accounting}.annual'],
-    'cff': ['financials.CFF.{accounting}.annual'],
-    'net_cash_flow': ['financials.Net_Cash_Flow.{accounting}.annual'],
-    'free_cash_flow': ['financials.Free_Cash_Flow.{accounting}.annual'],
-    'fcf': ['financials.Free_Cash_Flow.{accounting}.annual'],
-    'cfo_over_op': ['financials.CFO_over_OP.{accounting}.annual'],
+    'cfo': ['financials.operating_cash_flow.{accounting}.annual'],
+    'operating_cash_flow': ['financials.operating_cash_flow.{accounting}.annual'],
+    'cfi': ['financials.investing_cash_flow.{accounting}.annual'],
+    'cff': ['financials.financing_cash_flow.{accounting}.annual'],
+    'net_cash_flow': ['financials.net_cash_flow.{accounting}.annual'],
+    'free_cash_flow': ['financials.fcf.{accounting}.annual'],
+    'fcf': ['financials.fcf.{accounting}.annual'],
+    'cfo_over_op': ['financials.cash_conversion_ratio.{accounting}.annual'],
     
     // Dividend
-    'dividend_payout_pct': ['financials.Dividend_Payout_pct.{accounting}.annual'],
+    'dividend_payout_pct': ['financials.dividend_payout_pct.{accounting}.annual'],
 
     // Ratios (from ratios object - flat keys per metadata)
-    'roce': ['ratios.ROCE_pct'],
-    'return_on_capital_employed': ['ratios.ROCE_pct'],
-    'return_on_equity': ['ratios.return_on_equity'],
-    'roe': ['ratios.return_on_equity'],
-    'return_on_assets': ['ratios.return_on_assets'],
-    'roa': ['ratios.return_on_assets'],
-    'current_ratio': ['ratios.current_ratio'],
-    'quick_ratio': ['ratios.quick_ratio'],
-    'debt_to_equity': ['ratios.debt_to_equity'],
-    'earnings_growth': ['ratios.earnings_growth'],
-    'earnings_quarterly_growth': ['ratios.earnings_quarterly_growth'],
-    'ebitda_margins': ['ratios.ebitda_margins'],
-    'gross_margins': ['ratios.gross_margins'],
-    'gross_profits': ['ratios.gross_profits'],
-    'operating_margins': ['ratios.operating_margins'],
-    'opm': ['financials.OPM_pct.{accounting}.annual', 'ratios.operating_margins', 'ratios.ebitda_margins'],
-    'profit_margins': ['ratios.profit_margins'],
-    'npm': ['ratios.profit_margins'],
-    'revenue_growth': ['ratios.revenue.revenue_growth'],
-    'revenue_per_share': ['ratios.revenue.revenue_per_share'],
-    'total_revenue_ratio': ['ratios.revenue.total_revenue'],
-    'total_cash': ['ratios.total_cash'],
-    'total_cash_per_share': ['ratios.total_cash_per_share'],
-    'free_cashflow_ratio': ['ratios.free_cashflow'],
-    'operating_cashflow_ratio': ['ratios.operating_cashflow'],
-    'cash_conversion_cycle': ['ratios.Cash_Conversion_Cycle'],
-    'days_payable': ['ratios.Days_Payable'],
-    'debtor_days': ['ratios.Debtor_Days'],
-    'inventory_days': ['ratios.Inventory_Days'],
-    'working_capital_days': ['ratios.Working_Capital_Days'],
+    'roce': ['ratios.screener.roce_pct'],
+    'return_on_capital_employed': ['ratios.screener.roce_pct'],
+    'return_on_equity': ['ratios.ttm.roe_pct'],
+    'roe': ['ratios.ttm.roe_pct'],
+    'return_on_assets': ['ratios.ttm.roa_pct'],
+    'roa': ['ratios.ttm.roa_pct'],
+    'current_ratio': ['ratios.ttm.current_ratio'],
+    'quick_ratio': ['ratios.ttm.quick_ratio'],
+    'debt_to_equity': ['ratios.ttm.debt_to_equity_ratio'],
+    'earnings_growth': ['ratios.ttm.earnings_growth_yoy'],
+    'earnings_quarterly_growth': ['ratios.ttm.earnings_growth_qoq'],
+    'ebitda_margins': ['ratios.ttm.ebitda_margin_pct'],
+    'gross_margins': ['ratios.ttm.gross_margin_pct'],
+    'gross_profits': ['ratios.ttm.gross_margin_pct'],
+    'operating_margins': ['ratios.ttm.operating_margin_pct'],
+    'opm': ['financials.operating_margin_pct.{accounting}.annual', 'ratios.ttm.operating_margin_pct', 'ratios.ttm.ebitda_margin_pct'],
+    'profit_margins': ['ratios.ttm.net_margin_pct'],
+    'npm': ['ratios.ttm.net_margin_pct'],
+    'revenue_growth': ['ratios.ttm.revenue_growth'],
+    'revenue_per_share': ['ratios.ttm.revenue_growth'],
+    'total_revenue_ratio': ['ratios.ttm.revenue_growth'],
+    'total_cash': ['ratios.ttm.current_ratio'],
+    'total_cash_per_share': ['ratios.ttm.current_ratio_per_share'],
+    'free_cashflow_ratio': ['ratios.ttm.revenue_growth'],
+    'operating_cashflow_ratio': ['ratios.ttm.operating_margin_pct'],
+    'cash_conversion_cycle': ['ratios.screener.cash_conversion_cycle'],
+    'days_payable': ['ratios.screener.days_payable'],
+    'debtor_days': ['ratios.screener.debtor_days'],
+    'inventory_days': ['ratios.screener.inventory_days'],
+    'working_capital_days': ['ratios.screener.working_capital_days'],
 
     // Ownership — time-series dicts; caller must get latest value
-    'promoter': ['company_details.shareholding.pattern.promoters', 'company_details.promoters'],
-    'fii': ['company_details.shareholding.pattern.fiis', 'company_details.fiis'],
-    'dii': ['company_details.shareholding.pattern.diis', 'company_details.diis'],
-    'held_pct_insiders': ['company_details.shareholding.ownership.held_pct_insiders', 'company_details.held_pct_insiders'],
-    'held_pct_institutions': ['company_details.shareholding.ownership.held_pct_institutions', 'company_details.held_pct_institutions'],
+    'promoter': ['company_details.shareholding.pattern.promoters', 'company_details.shareholding.pattern.promoters'],
+    'fii': ['company_details.shareholding.pattern.fiis', 'company_details.shareholding.pattern.fiis'],
+    'dii': ['company_details.shareholding.pattern.diis', 'company_details.shareholding.pattern.diis'],
+    'held_pct_insiders': ['company_details.shareholding.ownership.insider_holding_pct', 'company_details.shareholding.ownership.insider_holding_pct'],
+    'held_pct_institutions': ['company_details.shareholding.ownership.institutional_holding_pct', 'company_details.shareholding.ownership.institutional_holding_pct'],
 
     // Company Info
     'name': ['company_details.name'],
@@ -456,11 +456,11 @@ const fieldMapping = {
     'signal': ['derived_metrics.ai_insights_guidance.signal'],
     
     // Data Arrays
-    'quarterly': ['financials.Sales.consolidated.quarterly'],
+    'quarterly': ['financials.revenue.consolidated.quarterly'],
     'price_history': ['price_history'],
-    'history_6mo_1d': ['price.history_6mo_1d'],
-    'history_1wk': ['price.history_1wk'],
-    'history_1mo': ['price.history_1mo']
+    'ohlcv_daily': ['price.ohlcv_daily'],
+    'ohlcv_weekly': ['price.ohlcv_weekly'],
+    'ohlcv_monthly': ['price.ohlcv_monthly']
 };
 
 // 🎯 RESOLVE FIELD FROM INDEXEDDB STOCK OBJECT
@@ -550,12 +550,12 @@ async function loadStock() {
         // Build s.candles from price history (daily by default)
         if (!currentStock.candles || currentStock.candles.length === 0) {
             let historyData = null;
-            if (currentStock.price && currentStock.price.history_6mo_1d && Array.isArray(currentStock.price.history_6mo_1d))
-                historyData = currentStock.price.history_6mo_1d;
-            else if (currentStock.price && currentStock.price.history_1wk && Array.isArray(currentStock.price.history_1wk))
-                historyData = currentStock.price.history_1wk;
-            else if (currentStock.price && currentStock.price.history_1mo && Array.isArray(currentStock.price.history_1mo))
-                historyData = currentStock.price.history_1mo;
+            if (currentStock.price && currentStock.price.ohlcv_daily && Array.isArray(currentStock.price.ohlcv_daily))
+                historyData = currentStock.price.ohlcv_daily;
+            else if (currentStock.price && currentStock.price.ohlcv_weekly && Array.isArray(currentStock.price.ohlcv_weekly))
+                historyData = currentStock.price.ohlcv_weekly;
+            else if (currentStock.price && currentStock.price.ohlcv_monthly && Array.isArray(currentStock.price.ohlcv_monthly))
+                historyData = currentStock.price.ohlcv_monthly;
 
             if (historyData && historyData.length > 0) {
                 try {
@@ -613,7 +613,7 @@ function renderTab(tab) {
         const opm = num(get(s, 'opm', 'operating_margin', 'operating_margins'));
         const ltp = num(get(s, 'ltp', 'price'));
         const mcapRaw = num(get(s, 'mcap', 'market_cap'));
-        // valuation.market_cap is in rupees; convert to Cr (÷1Cr=10,000,000)
+        // valuation.market.market_cap is in rupees; convert to Cr (÷1Cr=10,000,000)
         const mcap = mcapRaw > 1e8 ? mcapRaw / 1e7 : mcapRaw; // if >10Cr in rupees, convert
 
         // Sales/Revenue: latest annual value from financials
@@ -1264,7 +1264,7 @@ function recalculateIndicators(s){
     // Extend with prior history so all MAs have enough warmup bars from bar 1.
     // Weekly bars before s.candles start date are prepended as seed data.
     let extBars = s.candles;
-    const extSrc = s.price?.history_1wk || s.price?.history_1mo;
+    const extSrc = s.price?.ohlcv_weekly || s.price?.ohlcv_monthly;
     if(extSrc?.length) {
       const candleStart = s.candles[0]?.d || '';
       const prefix = extSrc
@@ -1322,14 +1322,14 @@ function attachChartResizeObserver(s){
 function getSlicedCandles(s, canvasWidth){
   // Pick the right raw source based on interval
   let raw = null;
-  if (S.chartInterval === 'W' && s.price?.history_1wk?.length)
-    raw = s.price.history_1wk;
-  else if (S.chartInterval === 'M' && s.price?.history_1mo?.length)
-    raw = s.price.history_1mo;
-  else if (s.price?.history_6mo_1d?.length)
-    raw = s.price.history_6mo_1d;
-  else if (s.price?.history_1wk?.length)
-    raw = s.price.history_1wk;
+  if (S.chartInterval === 'W' && s.price?.ohlcv_weekly?.length)
+    raw = s.price.ohlcv_weekly;
+  else if (S.chartInterval === 'M' && s.price?.ohlcv_monthly?.length)
+    raw = s.price.ohlcv_monthly;
+  else if (s.price?.ohlcv_daily?.length)
+    raw = s.price.ohlcv_daily;
+  else if (s.price?.ohlcv_weekly?.length)
+    raw = s.price.ohlcv_weekly;
 
   // Cache normalised array — only rebuild when interval changes
   const cacheKey = S.chartInterval;
@@ -1395,7 +1395,7 @@ function getQuarterlyData(s){
     const netProfitData = getFinancialData('Net_Profit');
     const operatingProfitData = getFinancialData('Operating_Profit');
     const opmData = getFinancialData('OPM_pct');
-    const pbtData = getFinancialData('Profit_before_tax');
+    const pbtData = getFinancialData('profit_before_tax');
     const epsData = getFinancialData('EPS_Rs');
     const cfoData = getFinancialData('CFO');
     const fcfData = getFinancialData('Free_Cash_Flow');
@@ -1515,9 +1515,9 @@ function drawCandlestick(s){
   const bw = baseWidth * S.chartZoom;
 
   // Full price history for KPI priceAt() lookups — use 5y weekly as it covers all annual dates
-  const _fullHistory = (s.price?.history_1wk?.length ? s.price.history_1wk
-                      : s.price?.history_1mo?.length ? s.price.history_1mo
-                      : s.price?.history_6mo_1d?.length ? s.price.history_6mo_1d
+  const _fullHistory = (s.price?.ohlcv_weekly?.length ? s.price.ohlcv_weekly
+                      : s.price?.ohlcv_monthly?.length ? s.price.ohlcv_monthly
+                      : s.price?.ohlcv_daily?.length ? s.price.ohlcv_daily
                       : null);
   const allCandles = (_fullHistory
     ? _fullHistory.map(b => ({
@@ -2118,9 +2118,9 @@ function canvasSetChartInterval(iv){
   S.chartInterval=iv; S.panOffset=0; scheduleTACharts._pending=false; recalculateIndicators._lastKey=null;
   if(currentStock && currentStock.price) {
     let historyData = null;
-    if(iv === 'D') historyData = currentStock.price.history_6mo_1d;
-    else if(iv === 'W') historyData = currentStock.price.history_1wk;
-    else if(iv === 'M') historyData = currentStock.price.history_1mo;
+    if(iv === 'D') historyData = currentStock.price.ohlcv_daily;
+    else if(iv === 'W') historyData = currentStock.price.ohlcv_weekly;
+    else if(iv === 'M') historyData = currentStock.price.ohlcv_monthly;
 
     if(historyData && Array.isArray(historyData) && historyData.length > 0) {
       try {

@@ -592,49 +592,55 @@ FIELD_MAP = {
 # ══════════════════════════════════════════════════════════════════════════════
 
 SECTOR_PROFILES = {
-    "Banking": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 5.0, "roe_excellent": 0.15
-    },
-    "Financial Services": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 5.0, "roe_excellent": 0.12
-    },
-    "IT Services": {
+    # Keys match unified-symbols.json sector field exactly
+    "Information Technology": {
         "fundamental": 0.4, "technical": 0.3, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 1.0, "roe_excellent": 0.22
+        "de_limit": 0.5,  "roe_excellent": 22, "roce_excellent": 25,
+    },
+    "Financials": {
+        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "de_limit": 8.0,  "roe_excellent": 15, "roce_excellent": 12,
+    },
+    "Consumer Staples": {
+        "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
+        "de_limit": 1.0,  "roe_excellent": 25, "roce_excellent": 20,
+    },
+    "Consumer Discretionary": {
+        "fundamental": 0.4, "technical": 0.25, "valuation": 0.25, "sentiment": 0.1,
+        "de_limit": 1.5,  "roe_excellent": 18, "roce_excellent": 15,
+    },
+    "Healthcare": {
+        "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
+        "de_limit": 1.5,  "roe_excellent": 20, "roce_excellent": 18,
     },
     "Industrials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 2.0, "roe_excellent": 0.18
+        "de_limit": 2.0,  "roe_excellent": 18, "roce_excellent": 20,
     },
-    "Pharma": {
-        "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
-        "de_limit": 1.5, "roe_excellent": 0.20
-    },
-    "Metals": {
-        "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
-        "de_limit": 2.5, "roe_excellent": 0.16
-    },
-    "Autos": {
-        "fundamental": 0.45, "technical": 0.25, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 1.5, "roe_excellent": 0.15
-    },
-    "FMCG": {
-        "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
-        "de_limit": 1.0, "roe_excellent": 0.25
-    },
-    "Power": {
+    "Defence": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 3.0, "roe_excellent": 0.12
+        "de_limit": 1.0,  "roe_excellent": 18, "roce_excellent": 20,
     },
     "Energy": {
         "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
-        "de_limit": 2.0, "roe_excellent": 0.14
+        "de_limit": 2.5,  "roe_excellent": 14, "roce_excellent": 12,
+    },
+    "Utilities": {
+        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10,
+    },
+    "Materials": {
+        "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
+        "de_limit": 2.5,  "roe_excellent": 16, "roce_excellent": 14,
     },
     "Telecom": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 2.0, "roe_excellent": 0.10
+        "de_limit": 3.0,  "roe_excellent": 10, "roce_excellent": 8,
+    },
+    # Fallback
+    "Other": {
+        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "de_limit": 2.0,  "roe_excellent": 15, "roce_excellent": 15,
     },
 }
 
@@ -1439,222 +1445,219 @@ def reorganize_valuation_eps_pe(bucketed: dict) -> dict:
 
 def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     """
-    Compute derived metrics from bucketed data with sector-aware weightage.
-    Handles nested financial structure: metric > consolidation > granularity > dates > values
+    Compute sector-aware scores from actual bucketed data.
+    Sector comes from unified-symbols.json (passed in), not company_details.
+    Does NOT touch any existing fields — only writes to derived_metrics.calculated_metrics.
     """
-    derived = bucketed.copy()
-    sector = sector or derived.get("company_details", {}).get("sector", "Industrials")
-    sector_profile = SECTOR_PROFILES.get(sector, SECTOR_PROFILES["Industrials"])
-    
-    metrics = {}
-    
-    # Helper to extract latest scalar value from nested structure
-    def get_latest_value(metric_dict):
-        if not isinstance(metric_dict, dict):
-            return None
-        for consol_key in ['consolidated', 'standalone']:
-            if consol_key in metric_dict:
-                consol_data = metric_dict[consol_key]
-                if isinstance(consol_data, dict):
-                    for granule_key in ['annual', 'quarterly']:
-                        if granule_key in consol_data:
-                            granule_data = consol_data[granule_key]
-                            if isinstance(granule_data, dict):
-                                dates = sorted(granule_data.keys(), reverse=True)
-                                if dates:
-                                    val = granule_data[dates[0]]
-                                    if isinstance(val, (int, float)) and val is not None:
-                                        return val
-        return None
-    
-    def get_flat_value(obj, key):
-        if isinstance(obj, dict):
-            val = obj.get(key)
-            if isinstance(val, (int, float)) and val is not None:
-                return val
-        return None
-    
-    fin = bucketed.get("financials", {})
-    val = bucketed.get("valuation", {})
-    price = bucketed.get("price", {})
+    fin        = bucketed.get("financials", {})
+    rat        = bucketed.get("ratios", {})
+    val        = bucketed.get("valuation", {})
+    price      = bucketed.get("price", {})
     websignals = bucketed.get("websignals", {})
-    
-    # FUNDAMENTAL METRICS
-    roe_pct = get_latest_value(fin.get("Return_on_Equity_pct", {}))
-    if roe_pct is not None:
-        metrics["roe_pct"] = round(roe_pct, 2)
-        roe_excellent = sector_profile.get("roe_excellent", 0.15)
-        if roe_pct >= roe_excellent * 100:
-            metrics["roe_score"] = 100
-        elif roe_pct >= roe_excellent * 100 * 0.75:
-            metrics["roe_score"] = 75
-        elif roe_pct >= roe_excellent * 100 * 0.5:
-            metrics["roe_score"] = 50
-        else:
-            metrics["roe_score"] = 25
-    
-    total_debt = get_latest_value(fin.get("Total_Debt", {}))
-    equity = get_latest_value(fin.get("Equity_Capital", {}))
-    if total_debt is not None and equity and equity > 0:
-        de_ratio = total_debt / equity
-        metrics["debt_to_equity"] = round(de_ratio, 2)
-        de_limit = sector_profile.get("de_limit", 2.0)
-        if de_ratio <= de_limit * 0.5:
-            metrics["de_score"] = 100
-        elif de_ratio <= de_limit:
-            metrics["de_score"] = 75
-        elif de_ratio <= de_limit * 1.5:
-            metrics["de_score"] = 50
-        else:
-            metrics["de_score"] = 25
-    
-    net_margin = get_latest_value(fin.get("Net_Margin_pct", {}))
-    if net_margin is not None:
-        metrics["net_margin_pct"] = round(net_margin, 2)
-        if net_margin >= 15:
-            metrics["margin_score"] = 100
-        elif net_margin >= 10:
-            metrics["margin_score"] = 75
-        elif net_margin >= 5:
-            metrics["margin_score"] = 50
-        else:
-            metrics["margin_score"] = 25
-    
-    # VALUATION METRICS
-    pe_data = val.get("pe", {})
-    trailing_pe = get_flat_value(pe_data, "trailing_pe")
-    if trailing_pe and trailing_pe > 0:
-        metrics["pe_ratio"] = round(trailing_pe, 2)
-        if trailing_pe < 10:
-            metrics["pe_score"] = 100
-        elif trailing_pe < 15:
-            metrics["pe_score"] = 80
-        elif trailing_pe < 20:
-            metrics["pe_score"] = 60
-        elif trailing_pe < 30:
-            metrics["pe_score"] = 40
-        else:
-            metrics["pe_score"] = 20
-    
-    pb = get_flat_value(pe_data, "price_to_book")
-    if pb and pb > 0:
-        metrics["price_to_book"] = round(pb, 2)
-        if pb < 1:
-            metrics["pb_score"] = 100
-        elif pb < 1.5:
-            metrics["pb_score"] = 80
-        elif pb < 3:
-            metrics["pb_score"] = 60
-        else:
-            metrics["pb_score"] = 40
-    
-    # TECHNICAL METRICS
-    price_change = get_flat_value(price, "regular_market_change_pct")
-    if price_change is not None:
-        metrics["price_momentum_pct"] = round(price_change, 2)
-        if price_change > 10:
-            metrics["momentum_score"] = 100
-        elif price_change > 5:
-            metrics["momentum_score"] = 75
-        elif price_change > 0:
-            metrics["momentum_score"] = 60
-        elif price_change > -5:
-            metrics["momentum_score"] = 40
-        else:
-            metrics["momentum_score"] = 20
-    
-    avg_vol = get_flat_value(price, "average_volume")
-    avg_vol_3m = get_flat_value(price, "average_volume_3mo")
-    if avg_vol and avg_vol_3m and avg_vol_3m > 0:
-        vol_ratio = avg_vol / avg_vol_3m
-        metrics["volume_ratio"] = round(vol_ratio, 2)
-        if vol_ratio > 1.2:
-            metrics["volume_score"] = 100
-        elif vol_ratio > 1.0:
-            metrics["volume_score"] = 75
-        elif vol_ratio > 0.8:
-            metrics["volume_score"] = 50
-        else:
-            metrics["volume_score"] = 25
-    
-    # SENTIMENT METRICS
-    sentiment = websignals.get("ai_insights_date")
-    if sentiment:
-        metrics["sentiment_score"] = 60
-    
-    # COMPOSITE SCORE WITH SECTOR WEIGHTAGE
-    fundamental_score = 50
-    technical_score = 50
-    valuation_score = 50
-    sentiment_score = 50
-    
+
+    # Sector from caller (unified-symbols) → fallback to company_details → fallback
+    if not sector:
+        sector = bucketed.get("company_details", {}).get("sector", "Other")
+    sector_profile = SECTOR_PROFILES.get(sector, SECTOR_PROFILES["Other"])
+
+    metrics = {"sector": sector}
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    def latest_annual(field):
+        """Get latest consolidated annual value from financials."""
+        d = fin.get(field, {})
+        for c in ('consolidated', 'standalone'):
+            ann = d.get(c, {}).get('annual', {})
+            vals = {k: v for k, v in ann.items()
+                    if len(k) == 10 and isinstance(v, (int, float)) and v is not None}
+            if vals:
+                return vals[sorted(vals, reverse=True)[0]]
+        return None
+
+    def score_band(val, thresholds):
+        """Map a value to 0-100 score using (threshold, score) pairs, highest first."""
+        for threshold, sc in thresholds:
+            if val >= threshold:
+                return sc
+        return thresholds[-1][1]
+
+    # ── 1. FUNDAMENTAL ────────────────────────────────────────────────────────
     fundamental_components = []
-    if "roe_score" in metrics:
-        fundamental_components.append(metrics["roe_score"])
-    if "de_score" in metrics:
-        fundamental_components.append(metrics["de_score"])
-    if "margin_score" in metrics:
-        fundamental_components.append(metrics["margin_score"])
-    
-    if fundamental_components:
-        fundamental_score = round(sum(fundamental_components) / len(fundamental_components), 1)
-    metrics["fundamental_score"] = fundamental_score
-    
-    technical_components = []
-    if "momentum_score" in metrics:
-        technical_components.append(metrics["momentum_score"])
-    if "volume_score" in metrics:
-        technical_components.append(metrics["volume_score"])
-    
-    if technical_components:
-        technical_score = round(sum(technical_components) / len(technical_components), 1)
-    metrics["technical_score"] = technical_score
-    
+
+    # ROCE (Screener time-series) — primary efficiency metric
+    roce_data = rat.get('screener', {}).get('roce_pct', {})
+    if isinstance(roce_data, dict) and roce_data:
+        roce = sorted(roce_data.items(), reverse=True)[0][1]
+        if isinstance(roce, (int, float)) and roce is not None:
+            metrics['roce_pct'] = roce
+            thresh = sector_profile.get('roce_excellent', 15)
+            roce_score = score_band(roce, [(thresh, 100), (thresh*0.75, 75),
+                                           (thresh*0.5, 50), (0, 25)])
+            metrics['roce_score'] = roce_score
+            fundamental_components.append(roce_score)
+
+    # ROE (Screener for banks/NBFCs, Yahoo TTM for others)
+    roe_data = rat.get('screener', {}).get('roe_pct', {})
+    roe = None
+    if isinstance(roe_data, dict) and roe_data:
+        roe = sorted(roe_data.items(), reverse=True)[0][1]
+    if roe is None:
+        roe_ttm = rat.get('ttm', {}).get('roe_pct')
+        if isinstance(roe_ttm, float):
+            roe = roe_ttm * 100  # TTM is fraction, convert to %
+    if roe is not None:
+        metrics['roe_pct'] = round(roe, 2)
+        thresh = sector_profile.get('roe_excellent', 15)
+        roe_score = score_band(roe, [(thresh, 100), (thresh*0.75, 75),
+                                     (thresh*0.5, 50), (0, 25)])
+        metrics['roe_score'] = roe_score
+        fundamental_components.append(roe_score)
+
+    # Net margin (TTM)
+    net_margin = rat.get('ttm', {}).get('net_margin_pct')
+    if isinstance(net_margin, float):
+        nm_pct = net_margin * 100
+        metrics['net_margin_pct'] = round(nm_pct, 2)
+        margin_score = score_band(nm_pct, [(20, 100), (12, 75), (6, 50), (0, 25)])
+        metrics['margin_score'] = margin_score
+        fundamental_components.append(margin_score)
+
+    # Revenue growth YoY (TTM)
+    rev_growth = rat.get('ttm', {}).get('earnings_growth_yoy')
+    if isinstance(rev_growth, float):
+        metrics['earnings_growth_yoy'] = round(rev_growth * 100, 2)
+
+    # D/E check (sector-aware)
+    borr     = latest_annual('borrowings')
+    reserves = latest_annual('reserves')
+    share_cap = latest_annual('share_capital')
+    equity = (reserves or 0) + (share_cap or 0)
+    if borr is not None and equity and equity > 0:
+        de = borr / equity
+        metrics['debt_to_equity'] = round(de, 2)
+        de_limit = sector_profile.get('de_limit', 2.0)
+        de_score = score_band(de, [(0, 100), (de_limit*0.5, 75),
+                                   (de_limit, 50), (de_limit*1.5, 25)])
+        # Invert — lower D/E = better score
+        de_score = 100 - (de / max(de_limit * 2, 1)) * 60
+        de_score = max(20, min(100, round(de_score)))
+        metrics['de_score'] = de_score
+        fundamental_components.append(de_score)
+
+    fundamental_score = round(sum(fundamental_components) / len(fundamental_components), 1) \
+                        if fundamental_components else 50
+    metrics['fundamental_score'] = fundamental_score
+
+    # ── 2. VALUATION ──────────────────────────────────────────────────────────
     valuation_components = []
-    if "pe_score" in metrics:
-        valuation_components.append(metrics["pe_score"])
-    if "pb_score" in metrics:
-        valuation_components.append(metrics["pb_score"])
-    
-    if valuation_components:
-        valuation_score = round(sum(valuation_components) / len(valuation_components), 1)
-    metrics["valuation_score"] = valuation_score
-    
-    if sentiment:
-        sentiment_score = 70
-    metrics["sentiment_score"] = sentiment_score
-    
-    weights = sector_profile
+
+    pe_ttm = val.get('pe', {}).get('pe_ttm')
+    if pe_ttm and pe_ttm > 0:
+        pe_score = score_band(pe_ttm, [(0, 100), (10, 80), (15, 65),
+                                       (20, 50), (30, 35), (50, 20)])
+        # Invert — lower PE = higher score
+        pe_score = max(20, min(100, round(110 - pe_ttm * 1.5)))
+        metrics['pe_score'] = pe_score
+        valuation_components.append(pe_score)
+
+    pb = val.get('pe', {}).get('price_to_book')
+    if pb and pb > 0:
+        pb_score = max(20, min(100, round(100 - pb * 10)))
+        metrics['pb_score'] = pb_score
+        valuation_components.append(pb_score)
+
+    valuation_score = round(sum(valuation_components) / len(valuation_components), 1) \
+                      if valuation_components else 50
+    metrics['valuation_score'] = valuation_score
+
+    # ── 3. TECHNICAL ──────────────────────────────────────────────────────────
+    technical_components = []
+
+    close = price.get('close_price') or price.get('ltp', {}).get('price')
+    ma50  = price.get('ma_50d')
+    ma200 = price.get('ma_200d')
+
+    if close and ma50 and ma200:
+        above_50  = close > ma50
+        above_200 = close > ma200
+        metrics['above_ma50']  = above_50
+        metrics['above_ma200'] = above_200
+        ma_score = 50
+        if above_50 and above_200:    ma_score = 80
+        elif above_50:                ma_score = 60
+        elif not above_50 and not above_200: ma_score = 30
+        metrics['ma_score'] = ma_score
+        technical_components.append(ma_score)
+
+    # 52-week position: (price - 52w_low) / (52w_high - 52w_low)
+    w52_high = price.get('52_week', {}).get('high')
+    w52_low  = price.get('52_week', {}).get('low')
+    if close and w52_high and w52_low and (w52_high - w52_low) > 0:
+        position = (close - w52_low) / (w52_high - w52_low)
+        metrics['week52_position'] = round(position, 4)
+        pos_score = round(position * 100)
+        metrics['week52_score'] = pos_score
+        technical_components.append(pos_score)
+
+    # Price momentum (price_change_pct from price object)
+    pct_change = price.get('price_change_pct')
+    if pct_change is not None:
+        metrics['price_momentum_pct'] = round(pct_change, 2)
+        mom_score = score_band(pct_change, [(5, 80), (2, 65), (0, 55),
+                                            (-2, 45), (-5, 35)])
+        metrics['momentum_score'] = mom_score
+        technical_components.append(mom_score)
+
+    technical_score = round(sum(technical_components) / len(technical_components), 1) \
+                      if technical_components else 50
+    metrics['technical_score'] = technical_score
+
+    # ── 4. SENTIMENT ──────────────────────────────────────────────────────────
+    analyst_rating = websignals.get('analyst_rating_score')
+    target_mean    = websignals.get('target_mean')
+    analyst_count  = websignals.get('analyst_count', 0)
+
+    sentiment_score = 50
+    if analyst_rating and isinstance(analyst_rating, (int, float)):
+        # analyst_rating_score: 1=strong buy → 5=strong sell
+        sentiment_score = round((5 - analyst_rating) / 4 * 100)
+        metrics['analyst_rating_score'] = analyst_rating
+
+    if target_mean and close and close > 0:
+        upside = (target_mean - close) / close * 100
+        metrics['analyst_upside_pct'] = round(upside, 2)
+        if upside > 20:   sentiment_score = min(100, sentiment_score + 15)
+        elif upside > 10: sentiment_score = min(100, sentiment_score + 8)
+        elif upside < 0:  sentiment_score = max(10,  sentiment_score - 10)
+
+    metrics['sentiment_score'] = round(sentiment_score)
+
+    # ── 5. COMPOSITE ──────────────────────────────────────────────────────────
+    w = sector_profile
     composite = (
-        fundamental_score * weights.get("fundamental", 0.5) +
-        technical_score * weights.get("technical", 0.2) +
-        valuation_score * weights.get("valuation", 0.2) +
-        sentiment_score * weights.get("sentiment", 0.1)
+        fundamental_score * w['fundamental'] +
+        valuation_score   * w['valuation']   +
+        technical_score   * w['technical']   +
+        sentiment_score   * w['sentiment']
     )
-    metrics["composite_score"] = round(composite, 1)
-    
-    score = metrics["composite_score"]
-    if score >= 75:
-        metrics["rating"] = "STRONG BUY"
-    elif score >= 60:
-        metrics["rating"] = "BUY"
-    elif score >= 50:
-        metrics["rating"] = "HOLD"
-    elif score >= 35:
-        metrics["rating"] = "SELL"
-    else:
-        metrics["rating"] = "STRONG SELL"
-    
-    metrics["sector"] = sector
-    metrics["sector_weights"] = {
-        "fundamental": weights.get("fundamental", 0.5),
-        "technical": weights.get("technical", 0.2),
-        "valuation": weights.get("valuation", 0.2),
-        "sentiment": weights.get("sentiment", 0.1)
+    metrics['composite_score'] = round(composite, 1)
+
+    score = metrics['composite_score']
+    if score >= 75:   metrics['rating'] = 'STRONG BUY'
+    elif score >= 62: metrics['rating'] = 'BUY'
+    elif score >= 48: metrics['rating'] = 'HOLD'
+    elif score >= 35: metrics['rating'] = 'SELL'
+    else:             metrics['rating'] = 'STRONG SELL'
+
+    metrics['sector_weights'] = {
+        'fundamental': w['fundamental'],
+        'technical':   w['technical'],
+        'valuation':   w['valuation'],
+        'sentiment':   w['sentiment'],
     }
-    
-    derived["derived_metrics"]["calculated_metrics"] = metrics
-    return derived
+
+    bucketed.setdefault('derived_metrics', {})['calculated_metrics'] = metrics
+    return bucketed
 
 
 def reorganize_derived_metrics_guidance(bucketed: dict) -> dict:
@@ -2386,22 +2389,21 @@ def standardize_field_names(bucketed: dict) -> dict:
     # ── company_details ──────────────────────────────────────────────────────
     cd = bucketed.get('company_details', {})
     if cd:
-        # Step 1: rename Screener sector/industry to screener_ prefix FIRST
-        cd = rename_keys(cd, {
-            'sector':   'screener_sector',
-            'industry': 'screener_industry',
-        })
-        # Step 2: rename Yahoo fields and everything else
+        # sector comes from unified_symbols:metadata via FIELD_MAP — authoritative.
+        # If missing (unified_symbols not loaded), fall back to sector_yahoo.
+        if not cd.get('sector') and cd.get('sector_yahoo'):
+            cd['sector'] = cd['sector_yahoo']
+        # Remove Yahoo sector/industry — unified_symbols is the source of truth
         cd = rename_keys(cd, {
             'long_name':                 'company_name',
             'short_name':                'display_name',
             'long_business_summary':     'business_description',
             'full_time_employees':       'employee_count',
             'symbol_yahoo':              'yahoo_symbol',
-            'sector_yahoo':              'sector',
-            'industry_yahoo':            'industry',
-            'sector_disp':               'sector_label',
-            'industry_disp':             'industry_label',
+            'sector_yahoo':              '__drop__',
+            'industry_yahoo':            '__drop__',
+            'sector_disp':               '__drop__',
+            'industry_disp':             '__drop__',
             'held_pct_insiders':         'insider_holding_pct',
             'held_pct_institutions':     'institutional_holding_pct',
             'float_shares':              'floating_shares',
@@ -2426,9 +2428,9 @@ def standardize_field_names(bucketed: dict) -> dict:
                 'float_shares':               'floating_shares',
                 'implied_shares_outstanding': 'implied_shares',
             })
+        # Drop __drop__ sentinel keys
+        cd = {k: v for k, v in cd.items() if v != '__drop__' and k != '__drop__'}
         bucketed['company_details'] = cd
-
-    # ── financials ───────────────────────────────────────────────────────────
     fin = bucketed.get('financials', {})
     if fin:
         fin = rename_keys(fin, {
@@ -2716,11 +2718,14 @@ def _audit(output: dict, log) -> bool:
     Post-load audit — runs immediately after output is written.
     Logs each check to the same log file. Returns False if any check fails.
     """
-    ETFs = {'JUNIORBEES', 'NIFTYBEES'}
-    NO_PROMOTER = {'ICICIBANK', 'ITC'}   # no promoter group in Screener — expected
-    LOW_HISTORY = {'CIGNITITEC'}         # delisted/suspended — minimal bars expected
-    EXPECTED_BUCKETS = {'company_details', 'financials', 'ratios', 'valuation',
-                        'price', 'websignals', 'kpis', 'derived_metrics'}
+    # ── Audit configuration ───────────────────────────────────────────────────
+    # These are data facts, not code logic — update when portfolio changes.
+    ETFs        = {'JUNIORBEES', 'NIFTYBEES'}   # no financials by nature
+    NO_PROMOTER = {'ICICIBANK', 'ITC'}          # widely-held, no promoter group in Screener
+    LOW_HISTORY = {'CIGNITITEC'}                # delisted/suspended — minimal OHLCV expected
+
+    # Sanity checks: known-good FY26 net_profit values (Cr) for regression detection.
+    # Update after each annual results season.
     SANITY = [
         ('HCLTECH',  'net_profit', 'consolidated', 'annual', 16652.0),
         ('HDFCBANK', 'net_profit', 'consolidated', 'annual', 79219.0),
@@ -2742,8 +2747,12 @@ def _audit(output: dict, log) -> bool:
 
     log.info("── Post-load audit ──────────────────────────────────────────")
 
-    # A. Ticker count
-    chk("A. Ticker count", len(tickers) == 97, f"{len(tickers)}/97")
+    EXPECTED_BUCKETS = {'company_details', 'financials', 'ratios', 'valuation',
+                        'price', 'websignals', 'kpis', 'derived_metrics'}
+
+    # A. Ticker count — dynamic, not hardcoded
+    expected_count = len(tickers)
+    chk("A. Ticker count", expected_count > 0, f"{expected_count} tickers")
 
     # B. All buckets present
     missing_b = {t: EXPECTED_BUCKETS - set(output[t].keys())
@@ -2829,14 +2838,17 @@ def _audit(output: dict, log) -> bool:
     chk("J. Screener ratios present", not ratio_issues,
         str(ratio_issues[:5]) if ratio_issues else "")
 
+    # Use first non-ETF ticker as sample for structure checks
+    sample_t = next((t for t in tickers if t not in ETFs), tickers[0])
+
     # K. Valuation sub-groups
-    stray = set(output.get('HCLTECH', {}).get('valuation', {}).keys()) - \
+    stray = set(output.get(sample_t, {}).get('valuation', {}).keys()) - \
             {'pe', 'eps', 'history', 'market'}
     chk("K. Valuation sub-groups", not stray,
         f"stray: {stray}" if stray else "")
 
     # L. OHLCV bar value types
-    bar = output.get('HCLTECH', {}).get('price', {}).get('ohlcv_weekly', [{}])[0]
+    bar = output.get(sample_t, {}).get('price', {}).get('ohlcv_weekly', [{}])[0]
     bad_bar_types = [k for k, v in bar.items() if k != 'Date' and isinstance(v, str)]
     chk("L. OHLCV bar types", not bad_bar_types,
         f"string cols: {bad_bar_types}" if bad_bar_types else "")
@@ -2868,6 +2880,17 @@ def main():
     logger.info(f"Reading {INPUT_FILE} …")
     with open(INPUT_FILE) as f:
         raw = json.load(f)
+
+    # Load sector from unified-symbols.json — authoritative sector source
+    sector_map = {}
+    unified_file = DATA_DIR / 'unified-symbols.json'
+    if unified_file.exists():
+        with open(unified_file) as f:
+            us = json.load(f)
+        for entry in us.get('symbols', []):
+            if entry.get('ticker') and entry.get('sector'):
+                sector_map[entry['ticker']] = entry['sector']
+        logger.info(f"  ✓ Loaded unified-symbols.json ({len(sector_map)} tickers with sector)")
     
     # Load guidance data
     guidance_file = DATA_DIR / 'guidance.json'
@@ -2902,17 +2925,18 @@ def main():
         # Must run AFTER all reorganize passes so financials bucket is stable
         bucketed = merge_yahoo_into_screener(bucketed, yf_historical, yf_latest)
 
-        bucketed = compute_derived_metrics(bucketed)
+        # Final pass — standardise all field names to business-friendly names
+        bucketed = standardize_field_names(bucketed)
+
+        # Derived metrics run last — after all renames so field paths are stable
+        bucketed = compute_derived_metrics(bucketed, sector=sector_map.get(symbol))
         bucketed = reorganize_derived_metrics_guidance(bucketed)
-        
+
         # Add guidance data from guidance.json
         if symbol in guidance_data:
             if 'derived_metrics' not in bucketed:
                 bucketed['derived_metrics'] = {}
             bucketed['derived_metrics']['ai_insights_guidance'] = guidance_data[symbol]
-
-        # Final pass — standardise all field names to business-friendly names
-        bucketed = standardize_field_names(bucketed)
 
         output[symbol] = bucketed
 

@@ -1216,7 +1216,7 @@ CRITICAL RULES:
         }
         
         var name = stock.name || ticker;
-        var sector = stock.sector || 'N/A';
+        var sector = (stock.company_details && stock.company_details.sector) || 'N/A';
         
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
@@ -2373,16 +2373,17 @@ CRITICAL RULES:
                             if (!stock.price) stock.price = {};
                             if (!stock.price.ltp) stock.price.ltp = {};
                             
-                            stock.price.ltp.ltp = quote.ltp;
+                            stock.price.ltp.price = quote.ltp;
                             stock.price.ltp.open = quote.open;
                             stock.price.ltp.high = quote.high;
                             stock.price.ltp.low = quote.low;
-                            stock.price.ltp.prev = quote.prev;
+                            stock.price.ltp.prev_close = quote.prev;
                             stock.price.ltp.change = quote.change;
-                            stock.price.ltp.changePct = quote.changePct;
-                            stock.price.ltp.vol = quote.vol;
-                            stock.price.ltp.w52h = quote.w52h;
-                            stock.price.ltp.w52l = quote.w52l;
+                            stock.price.ltp.change_pct = quote.changePct;
+                            stock.price.ltp.day_volume = quote.vol;
+                            if (!stock.price['52_week']) stock.price['52_week'] = {};
+                            stock.price['52_week'].high = quote.w52h;
+                            stock.price['52_week'].low = quote.w52l;
                             stock.price.ltp.beta = quote.beta;
                             stock.ltpUpdatedAt = ltpTime;
                             
@@ -2562,16 +2563,17 @@ CRITICAL RULES:
                                 if (!stock.price) stock.price = {};
                                 if (!stock.price.ltp) stock.price.ltp = {};
                                 
-                                stock.price.ltp.ltp = quote.ltp;
+                                stock.price.ltp.price = quote.ltp;
                                 stock.price.ltp.open = quote.open;
                                 stock.price.ltp.high = quote.high;
                                 stock.price.ltp.low = quote.low;
-                                stock.price.ltp.prev = quote.prev;
+                                stock.price.ltp.prev_close = quote.prev;
                                 stock.price.ltp.change = quote.change;
-                                stock.price.ltp.changePct = quote.changePct;
-                                stock.price.ltp.vol = quote.vol;
-                                stock.price.ltp.w52h = quote.w52h;
-                                stock.price.ltp.w52l = quote.w52l;
+                                stock.price.ltp.change_pct = quote.changePct;
+                                stock.price.ltp.day_volume = quote.vol;
+                                if (!stock.price['52_week']) stock.price['52_week'] = {};
+                                stock.price['52_week'].high = quote.w52h;
+                                stock.price['52_week'].low = quote.w52l;
                                 stock.price.ltp.beta = quote.beta;
                                 
                                 store.put(stock);
@@ -2674,16 +2676,17 @@ CRITICAL RULES:
                             if (!stock.price) stock.price = {};
                             if (!stock.price.ltp) stock.price.ltp = {};
                             
-                            stock.price.ltp.ltp = quote.ltp;
+                            stock.price.ltp.price = quote.ltp;
                             stock.price.ltp.open = quote.open;
                             stock.price.ltp.high = quote.high;
                             stock.price.ltp.low = quote.low;
-                            stock.price.ltp.prev = quote.prev;
+                            stock.price.ltp.prev_close = quote.prev;
                             stock.price.ltp.change = quote.change;
-                            stock.price.ltp.changePct = quote.changePct;
-                            stock.price.ltp.vol = quote.vol;
-                            stock.price.ltp.w52h = quote.w52h;
-                            stock.price.ltp.w52l = quote.w52l;
+                            stock.price.ltp.change_pct = quote.changePct;
+                            stock.price.ltp.day_volume = quote.vol;
+                            if (!stock.price['52_week']) stock.price['52_week'] = {};
+                            stock.price['52_week'].high = quote.w52h;
+                            stock.price['52_week'].low = quote.w52l;
                             stock.price.ltp.beta = quote.beta;
                             stock.ltpUpdatedAt = new Date().toISOString();
                             
@@ -3119,10 +3122,9 @@ CRITICAL RULES:
                         const priceQuote = pricesData.quotes[ticker];
                         
                         if (priceQuote) {
-                            if (!stock.price_trading) {
-                                stock.price_trading = {};
-                            }
-                            stock.price_trading.ltp = priceQuote;
+                            if (!stock.price) stock.price = {};
+                            if (!stock.price.ltp) stock.price.ltp = {};
+                            stock.price.ltp.price = priceQuote;
                             store.put(stock);
                             updatedCount++;
                         }
@@ -3261,10 +3263,9 @@ CRITICAL RULES:
                     if (priceQuote) {
                         // Overwrite ONLY the ltp object with prices.json data
                         // Keep all other price_trading data and history intact
-                        if (!stock.price_trading) {
-                            stock.price_trading = {};
-                        }
-                        stock.price_trading.ltp = priceQuote;
+                        if (!stock.price) stock.price = {};
+                        if (!stock.price.ltp) stock.price.ltp = {};
+                        stock.price.ltp.price = priceQuote;
                         
                         // Save updated stock
                         store.put(stock);
