@@ -2158,56 +2158,44 @@ def extract_scalar_or_dict(value):
 # Used for gap-fill: for every financials field, if Yahoo has matching data
 # for periods Screener doesn't cover, fill silently.
 # Fields not in this map have no Yahoo equivalent and are Screener-only.
-OUTPUT_TO_YAHOO_FIELD = {
-    # Core P&L — overlap (Screener primary, Yahoo fills gaps)
-    'revenue':              'revenue',
-    'net_profit':           'net_profit',
-    'ebit':                 'ebit',
-    'depreciation':         'depreciation',
-    'interest':             'interest_expense',
-    'eps':                  'basic_eps',
-    'operating_cash_flow':  'operating_cash_flow',
-    'fcf':                  'free_cash_flow',
-    # Balance sheet — overlap
-    'total_assets':         'total_assets',
-    'total_liabilities':    'total_liabilities',
-    'borrowings':           'total_debt',
-    # Yahoo-exclusive (no Screener equivalent — Yahoo is only source)
-    'cost_of_revenue':      'cost_of_revenue',
-    'gross_profit':         'gross_profit',
-    'ebitda':               'ebitda',
-    'rd_expense':           'rd_expense',
-    'capex':                'capex',
-    'accounts_receivable':  'accounts_receivable',
-    'cash_and_equivalents': 'cash_and_equivalents',
-    'net_tangible_assets':  'net_tangible_assets',
-    'working_capital':      'working_capital',
-    'invested_capital':     'invested_capital',
-    'lease_obligations':    'capital_lease_obligations',
-    'normalized_profit':    'normalized_income',
-    'exceptional_items':    'unusual_items',
-    'operating_income':     'operating_income',
-    'tax_rate':             'tax_rate',
-    'net_debt':             'net_debt',
-    'long_term_debt':       'long_term_debt',
-    'short_term_debt':      'short_term_debt',
-    'minority_interest':    'minority_interest',
-    'total_capitalization': 'total_capitalization',
+# Yahoo-exclusive financials: fields Yahoo has that Screener never publishes.
+# Added directly to consolidated.annual — no gap-fill into Screener fields.
+YAHOO_EXCLUSIVE_FINANCIALS = {
+    'gross_profit':        'gross_profit',
+    'cost_of_revenue':     'cost_of_revenue',
+    'ebitda':              'ebitda',
+    'capex':               'capex',
+    'accounts_receivable': 'accounts_receivable',
+    'cash_and_equivalents':'cash_and_equivalents',
+    'net_tangible_assets': 'net_tangible_assets',
+    'working_capital':     'working_capital',
+    'invested_capital':    'invested_capital',
+    'lease_obligations':   'capital_lease_obligations',
+    'normalized_profit':   'normalized_income',
+    'exceptional_items':   'unusual_items',
+    'operating_income':    'operating_income',
+    'rd_expense':          'rd_expense',
+    'tax_rate':            'tax_rate',
+    'net_debt':            'net_debt',
+    'long_term_debt':      'long_term_debt',
+    'short_term_debt':     'short_term_debt',
+    'minority_interest':   'minority_interest',
+    'total_capitalization':'total_capitalization',
 }
 
-# Valuation history fields (per-share / share count)
+# Valuation history: EPS and share counts (per-share, no Screener equivalent)
 YAHOO_VALUATION_FIELDS = {
-    'diluted_eps':       'diluted_eps',
-    'basic_eps':         'basic_eps',
-    'diluted_shares':    'diluted_shares',
-    'basic_shares':      'basic_shares',
-    'shares_outstanding':'shares_outstanding',
+    'diluted_eps':        'diluted_eps',
+    'basic_eps':          'basic_eps',
+    'diluted_shares':     'diluted_shares',
+    'basic_shares':       'basic_shares',
+    'shares_outstanding': 'shares_outstanding',
 }
 
-# Legacy — kept for backward compat, superseded by OUTPUT_TO_YAHOO_FIELD
+# Legacy stubs
+OUTPUT_TO_YAHOO_FIELD  = {}
 SCREENER_TO_YAHOO_OVERLAP = {}
-YAHOO_EXCLUSIVE_FINANCIALS = {}
-YAHOO_EXCLUSIVE_VALUATION  = {}
+YAHOO_EXCLUSIVE_VALUATION = {}
 
 
 def _get_periods_dict(bucket_field):
@@ -2291,61 +2279,22 @@ def _latest_period(periods_dict):
 
 def merge_yahoo_into_screener(bucketed: dict, yf_historical: dict, yf_latest: dict) -> dict:
     """
-    Gap-fill financials with Yahoo data — universally, for all fields.
+    Add Yahoo-exclusive fields to financials and valuation.
 
-    Rule: one field, one place, one name.
-    - For every output field name in OUTPUT_TO_YAHOO_FIELD:
-        * If the field already exists in financials (from Screener) → fill only missing periods
-        * If it doesn't exist yet (Yahoo-exclusive) → create consolidated.annual structure
-    - Screener periods always win over Yahoo for the same fiscal year (month-start beats period-end)
-    - No source names leak into output — yf_* never appears
+    Policy: clean separation — Screener fields are never touched.
+    Yahoo adds only fields that Screener doesn't publish.
+    No gap-fill, no merging of the same metric from two sources.
     """
     fin = bucketed.get('financials', {})
     val = bucketed.get('valuation', {})
 
-    # Build a lookup from Yahoo field → current financials key (handles pre-rename PascalCase)
-    # e.g. 'net_profit' Yahoo field → 'Net_Profit' in fin (pre-rename)
-    # and 'net_profit' Yahoo field → 'net_profit' in fin (post-rename)
-    PRE_RENAME = {
-        'revenue':           ['Sales', 'Revenue', 'revenue'],
-        'net_profit':        ['Net_Profit', 'net_profit'],
-        'ebit':              ['Operating_Profit', 'ebit'],
-        'depreciation':      ['Depreciation', 'depreciation'],
-        'interest':          ['Interest', 'interest'],
-        'eps':               ['EPS_Rs', 'eps'],
-        'operating_cash_flow':['CFO', 'operating_cash_flow'],
-        'fcf':               ['Free_Cash_Flow', 'fcf'],
-        'total_assets':      ['Total_Assets', 'total_assets'],
-        'total_liabilities': ['Total_Liabilities', 'total_liabilities'],
-        'borrowings':        ['Borrowings', 'Borrowing', 'borrowings'],
-    }
-
-    def find_fin_key(output_key):
-        """Find the actual key in fin dict for this output field (handles pre/post rename)."""
+    # ── Yahoo-exclusive financials ─────────────────────────────────────────────
+    for output_key, yahoo_field in YAHOO_EXCLUSIVE_FINANCIALS.items():
         if output_key in fin:
-            return output_key
-        for alias in PRE_RENAME.get(output_key, []):
-            if alias in fin:
-                return alias
-        return None
-
-    # ── Financials: universal gap-fill ────────────────────────────────────────
-    for output_key, yahoo_field in OUTPUT_TO_YAHOO_FIELD.items():
+            continue  # Screener already has this field — don't touch
         yf_periods = {d: v for d, v in yf_historical.get(yahoo_field, {}).items()
                       if v not in (None, '')}
-        if not yf_periods:
-            continue
-
-        fin_key = find_fin_key(output_key)
-        if fin_key is not None:
-            # Field exists (Screener wrote it) — fill only date gaps
-            sr_periods = _get_periods_dict(fin[fin_key])
-            sc_ym = {d[:7] for d in sr_periods}
-            gaps = {d: v for d, v in yf_periods.items() if d[:7] not in sc_ym}
-            if gaps:
-                fin[fin_key] = _set_periods_into_field(fin[fin_key], gaps)
-        else:
-            # Yahoo-exclusive — no Screener equivalent — create consolidated.annual
+        if yf_periods:
             fin[output_key] = {
                 'consolidated': {
                     'annual': dict(sorted(yf_periods.items(), reverse=True))
