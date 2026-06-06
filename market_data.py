@@ -1069,15 +1069,22 @@ def clean_period_dates(date_dict: dict) -> dict:
     Remove invalid period keys from a date→value dict:
       - Non-ISO keys like 'TTM', multiline labels ('Mar 2016\\n  9m')
       - Keys that are not exactly 10 chars of YYYY-MM-DD format
+    Also converts any remaining string values (e.g. '20%', '90%') to float.
     Returns a new dict with only valid ISO dates, sorted desc.
     """
     cleaned = {}
     for d, v in date_dict.items():
         d_str = str(d).strip()
-        # Must be exactly YYYY-MM-DD: 10 chars, positions 4 and 7 are hyphens
         if len(d_str) == 10 and d_str[4] == '-' and d_str[7] == '-':
             try:
                 int(d_str[:4]); int(d_str[5:7]); int(d_str[8:])
+                # Strip % strings left over from older screener_financials.json fetches
+                if isinstance(v, str):
+                    s = v.strip().rstrip('%')
+                    try:
+                        v = float(s) if s else None
+                    except (ValueError, TypeError):
+                        v = None
                 cleaned[d_str] = v
             except ValueError:
                 pass
@@ -2373,6 +2380,42 @@ def standardize_field_names(bucketed: dict) -> dict:
     fin = bucketed.get('financials', {})
     if fin:
         fin = rename_keys(fin, {
+            # Screener P&L — PascalCase → snake_case
+            'Sales':              'revenue',
+            'Expenses':           'expenses',
+            'Operating_Profit':   'ebit',
+            'Other_Income':       'other_income',
+            'Interest':           'interest',
+            'Depreciation':       'depreciation',
+            'Net_Profit':         'net_profit',
+            'Free_Cash_Flow':     'fcf',
+            # Screener BS
+            'Borrowings':         'borrowings',
+            'Deposits':           'deposits',
+            'Reserves':           'reserves',
+            'Investments':        'investments',
+            'Other_Assets':       'other_assets',
+            'Other_Liabilities':  'other_liabilities',
+            'Total_Assets':       'total_assets',
+            'Total_Liabilities':  'total_liabilities',
+            # already renamed but guard anyway
+            'CFO':                'operating_cash_flow',
+            'CFI':                'investing_cash_flow',
+            'CFF':                'financing_cash_flow',
+            'CFO_over_OP':        'cash_conversion_ratio',
+            'CWIP':               'capital_wip',
+            'OPM_pct':            'operating_margin_pct',
+            'EPS_Rs':             'eps',
+            'Equity_Capital':     'share_capital',
+            'Profit_before_tax':  'profit_before_tax',
+            'Tax_pct':            'tax_rate_pct',
+            'Dividend_Payout_pct':'dividend_payout_pct',
+            'Fixed_Assets':       'net_fixed_assets',
+            'Net_Cash_Flow':      'net_cash_flow',
+            'Financing_Profit':   'net_interest_income',
+            'Financing_Margin_pct':'net_interest_margin_pct',
+            'Gross_NPA_pct':      'gross_npa_pct',
+            'Net_NPA_pct':        'net_npa_pct',
             'CFO':                        'operating_cash_flow',
             'CFI':                        'investing_cash_flow',
             'CFF':                        'financing_cash_flow',
@@ -2623,6 +2666,24 @@ def standardize_field_names(bucketed: dict) -> dict:
         dm.pop('pe_ratio', None)
         dm.pop('price_to_book', None)
 
+    # ── Round all floats to sensible precision ────────────────────────────────
+    # fractions (|val| < 2): 4dp  e.g. 0.3408 (margin), 0.6275 (holding pct)
+    # everything else:       2dp  e.g. 18.82 (PE), 16652.0 (Cr), 60.86 (%)
+    # large absolute values (|val| > 1e9): untouched (market_cap, EV — already ints)
+    def _round(obj):
+        if isinstance(obj, dict):
+            return {k: _round(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            if obj and isinstance(obj[0], dict) and 'Date' in obj[0]:
+                return obj  # OHLCV bars — string values, skip
+            return [_round(item) for item in obj]
+        elif isinstance(obj, float):
+            if abs(obj) > 1e9:
+                return obj  # INR absolute (market_cap etc.) — leave as-is
+            return round(obj, 4 if abs(obj) < 2 else 2)
+        return obj
+
+    bucketed = _round(bucketed)
     return bucketed
 
 
