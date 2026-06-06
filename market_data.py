@@ -1831,6 +1831,15 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
                             try: v = float(v.strip().rstrip('%'))
                             except: continue
                         merged[d] = (v, 1)
+            elif any(len(k) == 10 and '-' in k for k in list(val.keys())[:2]):
+                # Flat {date: scalar} — values are floats/ints not dicts (e.g. 0.0 promoters)
+                for d, v in val.items():
+                    if isinstance(v, str):
+                        try: v = float(v.strip().rstrip('%'))
+                        except: continue
+                    if v is None:
+                        continue
+                    merged[d] = (v, 1)
         elif isinstance(val, list):
             # Old _periods list format
             for item in val:
@@ -2702,6 +2711,155 @@ def standardize_field_names(bucketed: dict) -> dict:
     return bucketed
 
 
+def _audit(output: dict, log) -> bool:
+    """
+    Post-load audit — runs immediately after output is written.
+    Logs each check to the same log file. Returns False if any check fails.
+    """
+    ETFs = {'JUNIORBEES', 'NIFTYBEES'}
+    NO_PROMOTER = {'ICICIBANK', 'ITC'}   # no promoter group in Screener — expected
+    LOW_HISTORY = {'CIGNITITEC'}         # delisted/suspended — minimal bars expected
+    EXPECTED_BUCKETS = {'company_details', 'financials', 'ratios', 'valuation',
+                        'price', 'websignals', 'kpis', 'derived_metrics'}
+    SANITY = [
+        ('HCLTECH',  'net_profit', 'consolidated', 'annual', 16652.0),
+        ('HDFCBANK', 'net_profit', 'consolidated', 'annual', 79219.0),
+        ('INFY',     'net_profit', 'consolidated', 'annual', 29474.0),
+        ('ITC',      'net_profit', 'consolidated', 'annual', 21018.0),
+        ('BDL',      'net_profit', 'standalone',   'annual',   420.0),
+        ('HCLTECH',  'revenue',    'consolidated', 'annual', 130144.0),
+    ]
+
+    tickers = [k for k in output if k != '_metadata']
+    failures = []
+
+    def chk(label, ok, detail=''):
+        if ok:
+            log.info(f"  AUDIT ✓ {label}" + (f" | {detail}" if detail else ""))
+        else:
+            log.warning(f"  AUDIT ✗ {label}" + (f" | {detail}" if detail else ""))
+            failures.append(label)
+
+    log.info("── Post-load audit ──────────────────────────────────────────")
+
+    # A. Ticker count
+    chk("A. Ticker count", len(tickers) == 97, f"{len(tickers)}/97")
+
+    # B. All buckets present
+    missing_b = {t: EXPECTED_BUCKETS - set(output[t].keys())
+                 for t in tickers if EXPECTED_BUCKETS - set(output[t].keys())}
+    chk("B. All buckets present", not missing_b,
+        str(list(missing_b.items())[:3]) if missing_b else "")
+
+    # C. net_profit present for non-ETFs
+    np_issues = [t for t in tickers if t not in ETFs
+                 and not any(output[t]['financials'].get('net_profit', {})
+                             .get(c, {}).get('annual') for c in ('consolidated', 'standalone'))]
+    chk("C. net_profit present", not np_issues,
+        str(np_issues[:5]) if np_issues else "")
+
+    # D. OHLCV bars — skip tickers listed within last 6 months (short history expected)
+    import time
+    now_ms = time.time() * 1000
+    six_months_ms = 180 * 24 * 3600 * 1000
+    ohlcv_issues = []
+    for t in tickers:
+        if t in ETFs | LOW_HISTORY:
+            continue
+        listing_ms = output[t]['company_details'].get('listing_date_ms')
+        if listing_ms and (now_ms - listing_ms) < six_months_ms:
+            continue  # newly listed — short history is expected
+        pr = output[t]['price']
+        daily = len(pr.get('ohlcv_daily', []))
+        weekly = len(pr.get('ohlcv_weekly', []))
+        if daily < 50:
+            ohlcv_issues.append(f"{t}.ohlcv_daily:{daily}<50")
+        expected_weekly = max(int(daily / 5 * 0.8), 1)
+        if daily >= 50 and weekly < expected_weekly:
+            ohlcv_issues.append(f"{t}.ohlcv_weekly:{weekly}<{expected_weekly}")
+    chk("D. OHLCV min bars", not ohlcv_issues,
+        str(ohlcv_issues[:3]) if ohlcv_issues else "")
+
+    # E. Promoters present
+    sh_issues = [t for t in tickers if t not in ETFs | NO_PROMOTER
+                 and not output[t]['company_details']
+                         .get('shareholding', {}).get('pattern', {}).get('promoters')]
+    chk("E. Promoters present", not sh_issues,
+        str(sh_issues[:5]) if sh_issues else "")
+
+    # F. No _periods wrappers (sample 10 tickers)
+    def has_wrapper(obj):
+        if isinstance(obj, dict):
+            if '_periods' in obj: return True
+            return any(has_wrapper(v) for v in obj.values())
+        if isinstance(obj, list):
+            return any(has_wrapper(item) for item in obj[:2])
+        return False
+    wrapper_tickers = [t for t in tickers[:10] if has_wrapper(output[t])]
+    chk("F. No _periods wrappers", not wrapper_tickers,
+        str(wrapper_tickers) if wrapper_tickers else "")
+
+    # G. No string values in financials period dicts
+    str_count = sum(
+        1 for t in tickers
+        for field, val in output[t]['financials'].items()
+        if isinstance(val, dict)
+        for c, gd in val.items() if isinstance(gd, dict)
+        for g, p in gd.items() if isinstance(p, dict)
+        for v in p.values() if isinstance(v, str) and v
+    )
+    chk("G. No string values in financials", str_count == 0,
+        f"{str_count} found" if str_count else "")
+
+    # H. No PascalCase or yf_ field names in financials
+    bad_keys = {k for t in tickers[:10] for k in output[t]['financials']
+                if (k and k[0].isupper()) or k.startswith('yf_')}
+    chk("H. Clean field names (no PascalCase/yf_)", not bad_keys,
+        str(sorted(bad_keys)[:5]) if bad_keys else "")
+
+    # I. Zero unmapped fields
+    total_unmapped = sum(len(output[t].get('_unmapped', {})) for t in tickers)
+    chk("I. Zero unmapped fields", total_unmapped == 0,
+        f"{total_unmapped}" if total_unmapped else "")
+
+    # J. Screener ratios present (roce or roe)
+    ratio_issues = [t for t in tickers if t not in ETFs
+                    and not output[t]['ratios'].get('screener', {}).get('roce_pct')
+                    and not output[t]['ratios'].get('screener', {}).get('roe_pct')]
+    chk("J. Screener ratios present", not ratio_issues,
+        str(ratio_issues[:5]) if ratio_issues else "")
+
+    # K. Valuation sub-groups
+    stray = set(output.get('HCLTECH', {}).get('valuation', {}).keys()) - \
+            {'pe', 'eps', 'history', 'market'}
+    chk("K. Valuation sub-groups", not stray,
+        f"stray: {stray}" if stray else "")
+
+    # L. OHLCV bar value types
+    bar = output.get('HCLTECH', {}).get('price', {}).get('ohlcv_weekly', [{}])[0]
+    bad_bar_types = [k for k, v in bar.items() if k != 'Date' and isinstance(v, str)]
+    chk("L. OHLCV bar types", not bad_bar_types,
+        f"string cols: {bad_bar_types}" if bad_bar_types else "")
+
+    # M. Sanity values
+    sanity_failures = []
+    for t, field, consol, gran, expected in SANITY:
+        if t not in output:
+            continue
+        p = output[t]['financials'].get(field, {}).get(consol, {}).get(gran, {})
+        latest = sorted(p.items(), reverse=True)[0] if p else None
+        if not latest or latest[1] != expected:
+            sanity_failures.append(f"{t}.{field}={latest} exp={expected}")
+    chk("M. Sanity values", not sanity_failures,
+        str(sanity_failures) if sanity_failures else "")
+
+    total_checks = 13  # A through M
+    log.info(f"── Audit: {total_checks - len(failures)}/{total_checks} passed"
+             + (f" | {len(failures)} failed: {failures}" if failures else " | all clear"))
+
+    return len(failures) == 0
+
+
 def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
@@ -2813,6 +2971,13 @@ def main():
             logger.warning(f"  {sym}: {fields}")
     else:
         logger.info("✓ All fields mapped — _unmapped is empty")
+
+    # ── Post-load audit ────────────────────────────────────────────────────────
+    audit_passed = _audit(final_output, logger)
+    if not audit_passed:
+        logger.error("✗ AUDIT FAILED — review warnings above before deploying")
+        sys.exit(1)
+    logger.info("✓ AUDIT PASSED")
 
 
 def _build_schema(output: dict) -> dict:
