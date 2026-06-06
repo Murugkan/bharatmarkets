@@ -780,10 +780,20 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
                     pass
                 else:
                     target_bucket, target_key = mapping
-                    # Wrap periods with source info
+                    # Wrap periods with source info.
+                    # yahoofin_fin:historical:annual is always consolidated annual —
+                    # tag explicitly so reorganize_by_period can deduplicate against Screener.
+                    _granule = r.get("granule")
+                    _consol  = r.get("consolidation")
+                    if not _granule and "historical:annual" in sec_key:
+                        _granule = "annual"
+                    if not _consol and sec_key.startswith("yahoofin_fin"):
+                        _consol = "consolidated"
                     periods_data = {
                         "_periods": r.get("periods", {}),
-                        "_source": sec_key
+                        "_source":  sec_key,
+                        "_granule": _granule,
+                        "_consolidation": _consol,
                     }
                     
                     # Check if metric exists
@@ -941,30 +951,31 @@ def detect_granularity_from_dates(periods_dict):
     if not months_seen:
         return None
     
-    # Determine granularity by month pattern
+    # Determine granularity by month pattern and date spacing
     months_sorted = sorted(months_seen)
-    
-    # Annual: only month 3 (March FY-end)
-    if months_seen == {3}:
+
+    # Check average gap between consecutive dates
+    if len(dates_list) >= 2:
+        dates_sorted = sorted(dates_list)
+        gaps_days = [(dates_sorted[i+1] - dates_sorted[i]).days
+                     for i in range(len(dates_sorted)-1)]
+        avg_gap = sum(gaps_days) / len(gaps_days)
+    else:
+        avg_gap = 400  # single date — assume annual
+
+    # Annual: dates ~12 months apart (avg gap > 270 days)
+    if avg_gap > 270:
         return 'annual'
-    
-    # Half-yearly: only months 3 and 9
-    if months_seen == {3, 9}:
+
+    # Half-yearly: dates ~6 months apart
+    if 120 < avg_gap <= 270:
         return 'half_yearly'
-    
-    # Quarterly: months 3,6,9,12 (or subset with quarter pattern)
-    if months_seen <= {3, 6, 9, 12} and len(months_seen) >= 2:
+
+    # Quarterly: dates ~3 months apart
+    if avg_gap <= 120:
         return 'quarterly'
-    
-    # Monthly: various months
-    if len(months_seen) > 1:
-        return 'monthly'
-    
-    # Daily: day varies
-    if 1 in days_seen and len(days_seen) > 1:
-        return 'daily'
-    
-    return 'monthly'  # Default
+
+    return 'annual'  # fallback
 
 
 def clean_websignals(bucketed: dict) -> dict:
@@ -1053,6 +1064,47 @@ def clean_metadata_wrapper(bucketed: dict) -> dict:
     return bucketed
 
 
+def clean_period_dates(date_dict: dict) -> dict:
+    """
+    Remove invalid period keys from a date→value dict:
+      - Non-ISO keys like 'TTM', multiline labels ('Mar 2016\\n  9m')
+      - Keys that are not exactly 10 chars of YYYY-MM-DD format
+    Returns a new dict with only valid ISO dates, sorted desc.
+    """
+    cleaned = {}
+    for d, v in date_dict.items():
+        d_str = str(d).strip()
+        # Must be exactly YYYY-MM-DD: 10 chars, positions 4 and 7 are hyphens
+        if len(d_str) == 10 and d_str[4] == '-' and d_str[7] == '-':
+            try:
+                int(d_str[:4]); int(d_str[5:7]); int(d_str[8:])
+                cleaned[d_str] = v
+            except ValueError:
+                pass
+    return dict(sorted(cleaned.items(), reverse=True))
+
+
+def merge_period_dicts(existing: dict, incoming: dict) -> dict:
+    """
+    Merge two period dicts, keeping Screener (month-start YYYY-MM-01) as
+    authoritative over Yahoo (period-end YYYY-MM-28/29/30/31) for the same
+    fiscal year-month.
+    Rule: if a YYYY-MM is already present in existing, skip the incoming
+    entry for that same YYYY-MM. Screener is written first so it wins.
+    """
+    if not existing:
+        return incoming
+    merged = dict(existing)
+    present_ym = {d[:7] for d in merged}
+    for d, v in incoming.items():
+        ym = d[:7]
+        if ym not in present_ym:
+            merged[d] = v
+            present_ym.add(ym)
+        # else: existing entry for this fiscal year-month wins — skip incoming
+    return dict(sorted(merged.items(), reverse=True))
+
+
 def reorganize_by_period(bucketed: dict) -> dict:
     """
     Normalize each metric in financials: separate by consolidation > granularity.
@@ -1086,16 +1138,19 @@ def reorganize_by_period(bucketed: dict) -> dict:
                         granule = detect_granularity_from_dates(periods_dict)
                     
                     if granule and isinstance(periods_dict, dict) and periods_dict:
-                        sorted_dates = sorted(periods_dict.keys(), reverse=True)
-                        date_dict = {k: periods_dict[k] for k in sorted_dates}
-                        
+                        date_dict = clean_period_dates(
+                            {k: periods_dict[k] for k in sorted(periods_dict.keys(), reverse=True)}
+                        )
+                        if not date_dict:
+                            continue
+
                         # Structure: consolidation > granule > dates
                         if consol:
                             if consol not in metrics_by_name[metric_key]:
                                 metrics_by_name[metric_key][consol] = {}
-                            metrics_by_name[metric_key][consol][granule] = date_dict
+                            existing = metrics_by_name[metric_key][consol].get(granule, {})
+                            metrics_by_name[metric_key][consol][granule] = merge_period_dicts(existing, date_dict)
                         else:
-                            # No consolidation info, put at granule level
                             if granule not in metrics_by_name[metric_key]:
                                 metrics_by_name[metric_key][granule] = {}
                             metrics_by_name[metric_key][granule]["_data"] = date_dict
@@ -1117,17 +1172,20 @@ def reorganize_by_period(bucketed: dict) -> dict:
                 if granule:
                     if metric_key not in metrics_by_name:
                         metrics_by_name[metric_key] = {}
-                    
-                    sorted_dates = sorted(periods_dict.keys(), reverse=True)
-                    date_dict = {k: periods_dict[k] for k in sorted_dates}
-                    
+
+                    date_dict = clean_period_dates(
+                        {k: periods_dict[k] for k in sorted(periods_dict.keys(), reverse=True)}
+                    )
+                    if not date_dict:
+                        continue
+
                     # Structure: consolidation > granule > dates
                     if consol:
                         if consol not in metrics_by_name[metric_key]:
                             metrics_by_name[metric_key][consol] = {}
-                        metrics_by_name[metric_key][consol][granule] = date_dict
+                        existing = metrics_by_name[metric_key][consol].get(granule, {})
+                        metrics_by_name[metric_key][consol][granule] = merge_period_dicts(existing, date_dict)
                     else:
-                        # No consolidation info, put at granule level
                         if granule not in metrics_by_name[metric_key]:
                             metrics_by_name[metric_key][granule] = {}
                         metrics_by_name[metric_key][granule]["_data"] = date_dict
@@ -1144,71 +1202,162 @@ def reorganize_by_period(bucketed: dict) -> dict:
 
 def reorganize_ratios_revenue(bucketed: dict) -> dict:
     """
-    Group revenue-related metrics under 'revenue' sub-object in ratios.
-    Remove originals to avoid scattering.
+    Restructure ratios into two clear sub-groups:
+      screener: time-series {date: val} from Screener (12yr history)
+      ttm:      Yahoo TTM/latest scalars (single value, trailing 12 months)
+    The UI can then iterate screener for charts and read ttm for KPI cards
+    without checking field types.
     """
     if "ratios" not in bucketed:
         return bucketed
-    
+
     ratios = bucketed["ratios"]
-    
-    revenue_keys = {
-        'total_revenue', 'revenue_per_share', 'revenue_growth'
+
+    SCREENER_KEYS = {
+        'roce_pct', 'roe_pct', 'debtor_days', 'inventory_days',
+        'days_payable', 'cash_conversion_cycle', 'working_capital_days',
+        'ROCE_pct', 'ROE_pct', 'Debtor_Days', 'Inventory_Days',
+        'Days_Payable', 'Cash_Conversion_Cycle', 'Working_Capital_Days',
     }
-    
-    # Extract revenue metrics (using pop to remove originals)
-    revenue_obj = {}
-    for key in revenue_keys:
-        if key in ratios:
-            revenue_obj[key] = ratios.pop(key)
-    
-    # Add revenue object back if it has data
-    if revenue_obj:
-        ratios['revenue'] = revenue_obj
-    
-    bucketed["ratios"] = ratios
+
+    YAHOO_TTM_KEYS = {
+        'net_margin_pct', 'gross_margin_pct', 'ebitda_margin_pct', 'operating_margin_pct',
+        'roa_pct', 'roe_pct', 'earnings_growth_yoy', 'earnings_growth_qoq',
+        'debt_to_equity_ratio', 'current_ratio', 'quick_ratio',
+        'return_on_equity', 'return_on_assets',
+        # revenue sub-fields
+        'total_revenue', 'revenue_per_share', 'revenue_growth',
+    }
+
+    screener = {}
+    ttm = {}
+
+    for key in list(ratios.keys()):
+        val = ratios[key]
+
+        # ── Screener time-series: unwrap _periods list → flat {date: float} ──
+        if key in SCREENER_KEYS:
+            if isinstance(val, list):
+                merged = {}
+                priority = {'consolidated': 2, 'standalone': 1}
+                for item in val:
+                    if isinstance(item, dict) and '_periods' in item:
+                        weight = priority.get(item.get('_consolidation', ''), 0)
+                        for d, v in item['_periods'].items():
+                            if v is None:
+                                continue
+                            if isinstance(v, str):
+                                try:
+                                    v = float(v.strip().rstrip('%'))
+                                except (ValueError, TypeError):
+                                    continue
+                            if d not in merged or weight > merged[d][1]:
+                                merged[d] = (v, weight)
+                val = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
+            elif isinstance(val, dict) and not any(len(k) == 10 and '-' in k for k in list(val.keys())[:2]):
+                # Not a date-keyed dict — already a scalar, goes to ttm not screener
+                ttm[key] = val
+                continue
+            screener[key] = val
+
+        # ── Yahoo TTM scalars ─────────────────────────────────────────────────
+        elif key in YAHOO_TTM_KEYS or isinstance(val, (int, float, type(None))):
+            # Rename aliases
+            canon = {'return_on_equity': 'roe_pct', 'return_on_assets': 'roa_pct'}.get(key, key)
+            if canon not in screener:  # don't overwrite Screener time-series
+                ttm[canon] = val
+
+        # ── revenue sub-object → flatten into ttm ────────────────────────────
+        elif key == 'revenue' and isinstance(val, dict):
+            ttm['revenue_growth_yoy'] = val.get('revenue_growth')
+            ttm['revenue_per_share']  = val.get('revenue_per_share')
+
+        # Anything else stays flat (shouldn't happen)
+        else:
+            ttm[key] = val
+
+    # ROE_pct rename: if Screener has it under old name, move to screener.roe_pct
+    if 'ROE_pct' in screener:
+        screener['roe_pct'] = screener.pop('ROE_pct')
+    if 'ROCE_pct' in screener:
+        screener['roce_pct'] = screener.pop('ROCE_pct')
+
+    # If Yahoo roe_pct/roa_pct exists in ttm but Screener has it — drop from ttm
+    for k in ('roe_pct', 'roa_pct'):
+        if k in screener and k in ttm:
+            ttm.pop(k)
+
+    result = {}
+    if screener:
+        result['screener'] = screener
+    if ttm:
+        result['ttm'] = {k: v for k, v in ttm.items() if v is not None}
+
+    bucketed["ratios"] = result
     return bucketed
 
 
 def reorganize_valuation_eps_pe(bucketed: dict) -> dict:
     """
-    Group EPS and P/E metrics under separate sub-objects in valuation.
-    Remove original keys to avoid duplicates.
+    Reorganise valuation into functional sub-groups:
+      pe:      P/E and price multiples (scalars)
+      eps:     EPS estimates (scalars)
+      history: EPS and share count time-series {date: val}
+      market:  market_cap, enterprise_value, book_value (scalars)
+    No duplicates — each field appears exactly once.
     """
     if "valuation" not in bucketed:
         return bucketed
-    
-    valuation = bucketed["valuation"]
-    
-    eps_keys = {
-        'eps_ttm', 'eps_forward', 'eps_current_year', 'diluted_eps', 'basic_eps',
-        'trailing_eps', 'forward_eps', 'price_eps_current_year'
-    }
-    
-    pe_keys = {
-        'trailing_pe', 'forward_pe', 'peg_ratio', 'trailing_peg_ratio', 'price_to_book',
-        'price_to_sales_ttm', 'forward_peg_ratio'
-    }
-    
-    # Extract EPS metrics (and remove from top level)
-    eps_obj = {}
-    for key in eps_keys:
-        if key in valuation:
-            eps_obj[key] = valuation.pop(key)
-    
-    # Extract P/E metrics (and remove from top level)
-    pe_obj = {}
-    for key in pe_keys:
-        if key in valuation:
-            pe_obj[key] = valuation.pop(key)
-    
-    # Add sub-objects back
-    if eps_obj:
-        valuation['eps'] = eps_obj
-    if pe_obj:
-        valuation['pe'] = pe_obj
-    
-    bucketed["valuation"] = valuation
+
+    v = bucketed["valuation"]
+
+    # ── pe: price multiples ────────────────────────────────────────────────────
+    pe = {}
+    for old, new in [
+        ('trailing_pe','pe_ttm'), ('pe_ttm','pe_ttm'),
+        ('forward_pe','pe_forward'), ('pe_forward','pe_forward'),
+        ('peg_ratio','peg'), ('peg','peg'),
+        ('trailing_peg_ratio','peg_ttm'), ('peg_ttm','peg_ttm'),
+        ('price_to_book','price_to_book'),
+        ('price_to_sales_ttm','price_to_sales'), ('price_to_sales','price_to_sales'),
+        ('ev_to_revenue','ev_to_revenue'),
+        ('ev_to_ebitda','ev_to_ebitda'),
+    ]:
+        if old in v and new not in pe:
+            pe[new] = v.pop(old)
+        elif old in v:
+            v.pop(old)
+
+    # ── eps: per-share estimates ───────────────────────────────────────────────
+    eps = {}
+    for old, new in [
+        ('trailing_eps','eps_ttm'), ('eps_ttm','eps_ttm'),
+        ('forward_eps','eps_forward'), ('eps_forward','eps_forward'),
+        ('eps_current_year','eps_current_year'),
+        ('price_eps_current_year','pe_current_year'), ('pe_current_year','pe_current_year'),
+    ]:
+        if old in v and new not in eps:
+            eps[new] = v.pop(old)
+        elif old in v:
+            v.pop(old)
+
+    # NOTE: *_history time-series fields (yf_basic_eps, yf_diluted_eps etc.) arrive
+    # via merge_yahoo_into_screener which runs AFTER this function.
+    # They are grouped into valuation.history by standardize_field_names instead.
+
+    # ── market: cap and debt metrics ───────────────────────────────────────────
+    market = {}
+    for key in ['market_cap', 'basic_market_cap', 'non_diluted_market_cap',
+                'enterprise_value', 'ebitda', 'total_debt', 'book_value']:
+        if key in v:
+            canon = 'basic_market_cap' if key == 'non_diluted_market_cap' else key
+            market[canon] = v.pop(key)
+
+    if pe:      v['pe']      = pe
+    if eps:     v['eps']     = eps
+    if market:  v['market']  = market
+
+    bucketed["valuation"] = v
     return bucketed
 
 
@@ -1518,108 +1667,146 @@ def reorganize_price_52w_volume(bucketed: dict) -> dict:
 def reorganize_financials_debt(bucketed: dict) -> dict:
     """
     Group debt-related fields under 'debt' sub-object in financials.
-    Remove originals to avoid duplication.
+    Also normalises Borrowing (bank/NBFC variant) → Borrowings so UI
+    only ever needs to read one field name.
     """
     if "financials" not in bucketed:
         return bucketed
-    
+
     financials = bucketed["financials"]
-    
+
+    # ── Normalize Borrowing → Borrowings ──────────────────────────────────
+    # Banks/NBFCs use 'Borrowing' (singular), manufacturing uses 'Borrowings'.
+    # Merge into 'Borrowings' so UI reads one consistent field.
+    if "Borrowing" in financials and "Borrowings" not in financials:
+        financials["Borrowings"] = financials.pop("Borrowing")
+    elif "Borrowing" in financials and "Borrowings" in financials:
+        # Both present (shouldn't happen but guard anyway) — Borrowings wins
+        financials.pop("Borrowing")
+
     debt_keys = {
         'total_debt', 'net_debt', 'short_term_debt', 'long_term_debt', 'capital_lease_obligations'
     }
-    
+
     # Extract debt metrics (using pop to remove from financials)
     debt_obj = {}
     for key in debt_keys:
         if key in financials:
-            debt_obj[key] = financials.pop(key)  # Remove original after copying
-    
+            debt_obj[key] = financials.pop(key)
+
     # Add debt object back to financials if it has data
     if debt_obj:
         financials['debt'] = debt_obj
-    
+
     bucketed["financials"] = financials
     return bucketed
 
 
 def reorganize_identity_shareholding(bucketed: dict) -> dict:
     """
-    Group shareholding-related fields under 'shareholding' sub-object in identity.
-    Organizes into: shares, ownership, fiscal_dates, pattern, dividends.
+    Group shareholding fields under company_details.shareholding.
+    MOVE (pop) fields — no top-level duplicates.
+    Apply final renames inside sub-objects (runs before standardize_field_names).
+    Drop company_officers — too granular for portfolio analysis.
     """
     if "company_details" not in bucketed:
         return bucketed
-    
-    identity = bucketed["company_details"]
-    
-    # Extract shareholding data
-    shareholding_obj = {}
-    
-    # Shares sub-group
-    shares_obj = {}
-    for key in ['float_shares', 'shares_outstanding', 'implied_shares_outstanding']:
-        if key in identity:
-            shares_obj[key] = identity[key]
-    if shares_obj:
-        shareholding_obj['shares'] = shares_obj
-    
-    # Ownership sub-group
-    ownership_obj = {}
-    for key in ['held_pct_insiders', 'held_pct_institutions']:
-        if key in identity:
-            ownership_obj[key] = identity[key]
-    if ownership_obj:
-        shareholding_obj['ownership'] = ownership_obj
-    
-    # Fiscal dates sub-group
-    fiscal_obj = {}
-    for key in ['last_fiscal_year_end', 'next_fiscal_year_end', 'most_recent_quarter']:
-        if key in identity:
-            fiscal_obj[key] = identity[key]
-    if fiscal_obj:
-        shareholding_obj['fiscal_dates'] = fiscal_obj
-    
-    # Shareholding pattern sub-group
+
+    cd = bucketed["company_details"]
+
+    # ── Drop company_officers ─────────────────────────────────────────────────
+    cd.pop('company_officers', None)
+
+    # ── Shareholding pattern (time-series, MOVE from top level) ───────────────
     pattern_obj = {}
     for key in ['promoters', 'fiis', 'diis', 'public', 'government', 'others', 'no_of_shareholders']:
-        if key in identity:
-            val = identity[key]
-            # Simply extract _periods if available
-            if isinstance(val, dict) and '_periods' in val:
-                pattern_obj[key] = val.get('_periods', {})
-            else:
-                pattern_obj[key] = val
+        if key not in cd:
+            continue
+        val = cd.pop(key)
+        # Unwrap from [{_periods:{date:val}, _consolidation, _granule}, ...] list
+        # to flat {date: val} dict. Prefer consolidated over standalone.
+        if isinstance(val, list):
+            merged = {}
+            priority = {'consolidated': 2, 'standalone': 1}
+            for item in val:
+                if isinstance(item, dict) and '_periods' in item:
+                    weight = priority.get(item.get('_consolidation', ''), 0)
+                    for d, v in item['_periods'].items():
+                        if v is None:
+                            continue
+                        # Strip % strings
+                        if isinstance(v, str):
+                            try:
+                                v = float(v.strip().rstrip('%'))
+                            except (ValueError, TypeError):
+                                pass
+                        if d not in merged or weight > merged[d][1]:
+                            merged[d] = (v, weight)
+            pattern_obj[key] = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
+        elif isinstance(val, dict) and '_periods' in val:
+            pattern_obj[key] = val['_periods']
+        else:
+            pattern_obj[key] = val
+    
+    # ── Shares (MOVE from top level, apply renames) ────────────────────────────
+    shares_obj = {}
+    for old, new in [
+        ('float_shares',               'floating_shares'),
+        ('shares_outstanding',         'shares_outstanding'),
+        ('implied_shares_outstanding', 'implied_shares'),
+        ('implied_shares',             'implied_shares'),       # post-rename name
+        ('floating_shares',            'floating_shares'),      # post-rename name
+    ]:
+        if old in cd:
+            shares_obj[new] = cd.pop(old)
+    # Deduplicate (implied_shares may appear twice from both old+new names)
+    if shares_obj:
+        shares_obj = {k: v for k, v in shares_obj.items() if v is not None}
+
+    # ── Ownership (MOVE from top level, apply renames) ─────────────────────────
+    ownership_obj = {}
+    for old, new in [
+        ('held_pct_insiders',          'insider_holding_pct'),
+        ('held_pct_institutions',      'institutional_holding_pct'),
+        ('insider_holding_pct',        'insider_holding_pct'),        # post-rename
+        ('institutional_holding_pct',  'institutional_holding_pct'),  # post-rename
+    ]:
+        if old in cd:
+            ownership_obj[new] = cd.pop(old)
+    if ownership_obj:
+        ownership_obj = {k: v for k, v in ownership_obj.items() if v is not None}
+
+    # ── Dividends (MOVE) ───────────────────────────────────────────────────────
+    dividend_obj = {}
+    for key in ['dividend_rate', 'dividend_yield', 'ex_dividend_date', 'payout_ratio',
+                'trailing_annual_dividend_rate', 'trailing_annual_dividend_yield',
+                'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield']:
+        if key in cd:
+            dividend_obj[key] = cd.pop(key)
+
+    # ── Stock splits (MOVE) ───────────────────────────────────────────────────
+    split_obj = {}
+    for key in ['last_split_date', 'last_split_factor']:
+        if key in cd:
+            split_obj[key] = cd.pop(key)
+
+    # ── Assemble shareholding sub-object ─────────────────────────────────────
+    shareholding_obj = {}
     if pattern_obj:
         shareholding_obj['pattern'] = pattern_obj
-    
-    # Dividends sub-group
-    dividend_obj = {}
-    dividend_keys = {
-        'dividend_rate', 'dividend_yield', 'ex_dividend_date', 'payout_ratio',
-        'trailing_annual_dividend_rate', 'trailing_annual_dividend_yield',
-        'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield'
-    }
-    for key in dividend_keys:
-        if key in identity:
-            dividend_obj[key] = identity.pop(key)  # Remove from identity
+    if shares_obj:
+        shareholding_obj['shares'] = shares_obj
+    if ownership_obj:
+        shareholding_obj['ownership'] = ownership_obj
     if dividend_obj:
         shareholding_obj['dividends'] = dividend_obj
-    
-    # Stock Splits sub-group
-    split_obj = {}
-    split_keys = {'last_split_date', 'last_split_factor'}
-    for key in split_keys:
-        if key in identity:
-            split_obj[key] = identity.pop(key)  # Remove from identity
     if split_obj:
         shareholding_obj['stock_splits'] = split_obj
-    
-    # Add shareholding object back to identity
+
     if shareholding_obj:
-        identity['shareholding'] = shareholding_obj
-    
-    bucketed["company_details"] = identity
+        cd['shareholding'] = shareholding_obj
+
+    bucketed["company_details"] = cd
     return bucketed
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1913,17 +2100,75 @@ YAHOO_EXCLUSIVE_VALUATION = {
 
 
 def _get_periods_dict(bucket_field):
-    """Extract {iso_date: value} from a bucketed field (handles both flat and nested)."""
+    """
+    Extract {iso_date: value} from a bucketed field.
+    Handles post-reorganize_by_period structure:
+      {consolidated: {annual: {date: val}, quarterly: {...}}, standalone: {...}}
+    Returns the consolidated.annual dict (primary timeline for gap-fill).
+    """
     if not isinstance(bucket_field, dict):
         return {}
-    # Granularity-nested: {'annual': {'2024-03-31': v, ...}, ...}
-    if any(k in bucket_field for k in ('annual', 'quarterly', 'half_yearly', 'monthly', 'daily')):
-        return bucket_field.get('annual', {})
+
+    # Post-reorganize: {consolidated: {annual: {...}}, standalone: {...}}
+    if 'consolidated' in bucket_field:
+        consol = bucket_field['consolidated']
+        if isinstance(consol, dict) and 'annual' in consol:
+            return consol['annual']
+        if isinstance(consol, dict):
+            # return first granularity available
+            for gran in ('annual', 'quarterly', 'half_yearly'):
+                if gran in consol:
+                    return consol[gran]
+
+    # Granularity-nested without consolidation wrapper: {annual: {...}}
+    granularity_keys = {'daily', 'monthly', 'quarterly', 'half_yearly', 'annual'}
+    if set(bucket_field.keys()).issubset(granularity_keys | {'_meta'}):
+        for gran in ('annual', 'half_yearly', 'quarterly', 'monthly', 'daily'):
+            if gran in bucket_field and isinstance(bucket_field[gran], dict):
+                return bucket_field[gran]
+
     # Flat time-series: {'2024-03-31': v, ...}
     keys = list(bucket_field.keys())
     if keys and len(str(keys[0])) == 10 and '-' in str(keys[0]):
         return bucket_field
+
     return {}
+
+
+def _set_periods_into_field(bucket_field, new_periods: dict):
+    """
+    Write gap-fill periods back into the correct sub-dict of a bucketed field.
+    Mirrors _get_periods_dict — writes into consolidated.annual if present.
+    Uses merge_period_dicts to ensure Screener dates (month-start YYYY-MM-01)
+    take precedence over Yahoo dates (period-end YYYY-MM-31) for the same fiscal year.
+    Returns the (possibly modified) bucket_field.
+    """
+    if not isinstance(bucket_field, dict):
+        return bucket_field
+
+    if 'consolidated' in bucket_field:
+        consol = bucket_field['consolidated']
+        if isinstance(consol, dict) and 'annual' in consol:
+            consol['annual'] = merge_period_dicts(consol['annual'], new_periods)
+            return bucket_field
+        if isinstance(consol, dict):
+            for gran in ('annual', 'quarterly', 'half_yearly'):
+                if gran in consol:
+                    consol[gran] = merge_period_dicts(consol[gran], new_periods)
+                    return bucket_field
+        bucket_field['consolidated'] = {'annual': new_periods}
+        return bucket_field
+
+    granularity_keys = {'daily', 'monthly', 'quarterly', 'half_yearly', 'annual'}
+    if set(bucket_field.keys()).issubset(granularity_keys | {'_meta'}):
+        for gran in ('annual', 'half_yearly', 'quarterly'):
+            if gran in bucket_field:
+                bucket_field[gran] = merge_period_dicts(bucket_field[gran], new_periods)
+                return bucket_field
+
+    # Flat — merge directly
+    bucket_field = merge_period_dicts(bucket_field, new_periods)
+    return bucket_field
 
 
 def _latest_period(periods_dict):
@@ -1961,22 +2206,14 @@ def merge_yahoo_into_screener(bucketed: dict, yf_historical: dict, yf_latest: di
             continue
 
         existing = fin.get(screener_key)
-        sr_periods = _get_periods_dict(existing) if existing else {}
+        if existing is None:
+            continue  # Screener didn't have this field at all — skip, don't inject
 
-        filled = 0
-        for iso_date, yf_val in yf_periods.items():
-            if iso_date not in sr_periods and yf_val not in (None, ''):
-                sr_periods[iso_date] = yf_val
-                filled += 1
-
-        if filled and sr_periods:
-            # Write back — preserve existing nested structure or create flat
-            if isinstance(existing, dict) and 'annual' in existing:
-                existing['annual'].update(
-                    {d: v for d, v in yf_periods.items() if d not in existing['annual']}
-                )
-            else:
-                fin[screener_key] = dict(sorted(sr_periods.items(), reverse=True))
+        sr_periods = _get_periods_dict(existing)
+        gaps = {d: v for d, v in yf_periods.items()
+                if d not in sr_periods and v not in (None, '')}
+        if gaps:
+            fin[screener_key] = _set_periods_into_field(existing, gaps)
 
     # ── 3: Extend with Yahoo latest if newer than Screener's last period ──────
     for screener_key, yahoo_field in SCREENER_TO_YAHOO_OVERLAP.items():
@@ -1985,20 +2222,19 @@ def merge_yahoo_into_screener(bucketed: dict, yf_historical: dict, yf_latest: di
             continue
 
         existing = fin.get(screener_key)
-        sr_periods = _get_periods_dict(existing) if existing else {}
+        if existing is None:
+            continue
+
+        sr_periods = _get_periods_dict(existing)
         sr_last = _latest_period(sr_periods)
 
-        # Yahoo latest doesn't carry an explicit date — use today's fiscal year end
-        # as a sentinel only if it's strictly newer than Screener's last period.
-        # We skip this if Screener already has data within the last 6 months.
         from datetime import date
         today = date.today().isoformat()
         if sr_last and sr_last >= today[:7]:
             continue  # Screener is already current
-        
+
         # Tag as yf_latest_ prefixed key to avoid collision
-        yf_latest_key = f"yf_latest_{screener_key}"
-        fin[yf_latest_key] = latest_val
+        fin[f"yf_latest_{screener_key}"] = latest_val
 
     # ── 4a: Yahoo-exclusive financials (time-series) ──────────────────────────
     for yahoo_field, output_key in YAHOO_EXCLUSIVE_FINANCIALS.items():
@@ -2076,6 +2312,320 @@ def _extract_yf_fin_sections(sections: dict) -> tuple:
     return yf_historical, yf_latest
 
 
+def standardize_field_names(bucketed: dict) -> dict:
+    """
+    Rename all fields to consistent, business-friendly names.
+    Eliminates Yahoo internal naming (regular_market_*, fifty_two_week_*,
+    held_pct_*, etc.), camelCase in ltp, and opaque abbreviations.
+    Runs as the final post-processing step so all reorganize passes are stable.
+    """
+
+    def rename_keys(obj: dict, mapping: dict) -> dict:
+        """Rename top-level keys of a dict using mapping. Preserves unmatched keys."""
+        return {mapping.get(k, k): v for k, v in obj.items()}
+
+    # ── company_details ──────────────────────────────────────────────────────
+    cd = bucketed.get('company_details', {})
+    if cd:
+        # Step 1: rename Screener sector/industry to screener_ prefix FIRST
+        cd = rename_keys(cd, {
+            'sector':   'screener_sector',
+            'industry': 'screener_industry',
+        })
+        # Step 2: rename Yahoo fields and everything else
+        cd = rename_keys(cd, {
+            'long_name':                 'company_name',
+            'short_name':                'display_name',
+            'long_business_summary':     'business_description',
+            'full_time_employees':       'employee_count',
+            'symbol_yahoo':              'yahoo_symbol',
+            'sector_yahoo':              'sector',
+            'industry_yahoo':            'industry',
+            'sector_disp':               'sector_label',
+            'industry_disp':             'industry_label',
+            'held_pct_insiders':         'insider_holding_pct',
+            'held_pct_institutions':     'institutional_holding_pct',
+            'float_shares':              'floating_shares',
+            'implied_shares_outstanding':'implied_shares',
+            'first_trade_date_ms':       'listing_date_ms',
+            'regular_market_time':       'last_trade_time',
+            'compensation_as_of_epoch':  'officer_compensation_date',
+            'name_change_date':          'name_changed_on',
+            'ir_website':                'investor_relations_url',
+            'quote_type':                'instrument_type',
+            'type_disp':                 'instrument_type_label',
+        })
+        # shareholding sub-objects
+        sh = cd.get('shareholding', {})
+        if isinstance(sh.get('ownership'), dict):
+            sh['ownership'] = rename_keys(sh['ownership'], {
+                'held_pct_insiders':    'insider_holding_pct',
+                'held_pct_institutions':'institutional_holding_pct',
+            })
+        if isinstance(sh.get('shares'), dict):
+            sh['shares'] = rename_keys(sh['shares'], {
+                'float_shares':               'floating_shares',
+                'implied_shares_outstanding': 'implied_shares',
+            })
+        bucketed['company_details'] = cd
+
+    # ── financials ───────────────────────────────────────────────────────────
+    fin = bucketed.get('financials', {})
+    if fin:
+        fin = rename_keys(fin, {
+            'CFO':                        'operating_cash_flow',
+            'CFI':                        'investing_cash_flow',
+            'CFF':                        'financing_cash_flow',
+            'CFO_over_OP':                'cash_conversion_ratio',
+            'CWIP':                       'capital_wip',
+            'OPM_pct':                    'operating_margin_pct',
+            'EPS_Rs':                     'eps',
+            'Equity_Capital':             'share_capital',
+            'Profit_before_tax':          'profit_before_tax',
+            'Tax_pct':                    'tax_rate_pct',
+            'Dividend_Payout_pct':        'dividend_payout_pct',
+            'Fixed_Assets':               'net_fixed_assets',
+            'Net_Cash_Flow':              'net_cash_flow',
+            'Financing_Profit':           'net_interest_income',
+            'Financing_Margin_pct':       'net_interest_margin_pct',
+            'Gross_NPA_pct':              'gross_npa_pct',
+            'Net_NPA_pct':                'net_npa_pct',
+            'yf_accounts_receivable':     'yf_receivables',
+            'yf_capital_lease_obligations':'yf_lease_obligations',
+            'yf_cash_and_equivalents':    'yf_cash',
+            'yf_cost_of_revenue':         'yf_cogs',
+            'yf_normalized_income':       'yf_normalized_profit',
+            'yf_net_tangible_assets':     'yf_tangible_assets',
+            'yf_unusual_items':           'yf_exceptional_items',
+            'yf_latest_CFO':              'yf_latest_operating_cash_flow',
+            'yf_latest_EPS_Rs':           'yf_latest_eps',
+            'yf_latest_Borrowings':       'yf_latest_borrowings',
+            'yf_latest_Free_Cash_Flow':   'yf_latest_fcf',
+            'yf_latest_Net_Profit':       'yf_latest_net_profit',
+            'yf_latest_Operating_Profit': 'yf_latest_ebit',
+            'yf_latest_Sales':            'yf_latest_revenue',
+            'yf_latest_Total_Assets':     'yf_latest_total_assets',
+            'yf_latest_Total_Liabilities':'yf_latest_total_liabilities',
+            'yf_latest_Depreciation':     'yf_latest_depreciation',
+            'yf_latest_Interest':         'yf_latest_interest',
+        })
+        bucketed['financials'] = fin
+
+    # ── ratios ───────────────────────────────────────────────────────────────
+    # ratios is now {screener: {field: {date:val}}, ttm: {field: scalar}}
+    rat = bucketed.get('ratios', {})
+    if rat:
+        sc = rat.get('screener', {})
+        if sc:
+            sc = rename_keys(sc, {
+                'ROCE_pct': 'roce_pct', 'ROE_pct': 'roe_pct',
+                'Debtor_Days': 'debtor_days', 'Inventory_Days': 'inventory_days',
+                'Days_Payable': 'days_payable', 'Cash_Conversion_Cycle': 'cash_conversion_cycle',
+                'Working_Capital_Days': 'working_capital_days',
+            })
+            rat['screener'] = sc
+        ttm = rat.get('ttm', {})
+        if ttm:
+            ttm = rename_keys(ttm, {
+                'ebitda_margins':            'ebitda_margin_pct',
+                'gross_margins':             'gross_margin_pct',
+                'operating_margins':         'operating_margin_pct',
+                'profit_margins':            'net_margin_pct',
+                'return_on_assets':          'roa_pct',
+                'return_on_equity':          'roe_pct',
+                'earnings_growth':           'earnings_growth_yoy',
+                'earnings_quarterly_growth': 'earnings_growth_qoq',
+                'debt_to_equity':            'debt_to_equity_ratio',
+                # Drop Yahoo absolute scalars — unit-ambiguous
+                'free_cashflow':             '__drop__',
+                'operating_cashflow':        '__drop__',
+                'gross_profits':             '__drop__',
+                'net_income_to_common':      '__drop__',
+                'total_cash':                '__drop__',
+                'total_cash_per_share':      '__drop__',
+                'total_revenue':             '__drop__',
+                'revenue_per_share':         '__drop__',
+            })
+            rat['ttm'] = {k: v for k, v in ttm.items() if k != '__drop__' and v is not None}
+        bucketed['ratios'] = rat
+
+    # ── valuation ────────────────────────────────────────────────────────────
+    # reorganize_valuation_eps_pe already grouped pe/eps/market.
+    # Here we group history fields (arrive late via merge_yahoo_into_screener)
+    # and clean up any stray top-level fields.
+    val = bucketed.get('valuation', {})
+    if val:
+        # Rename stray pre-rename names
+        val = rename_keys(val, {
+            'non_diluted_market_cap': 'basic_market_cap',
+        })
+        # Move history time-series into valuation.history
+        history = val.get('history', {})
+        for old, new in [
+            ('yf_basic_eps',              'basic_eps'),
+            ('yf_diluted_eps',            'diluted_eps'),
+            ('yf_basic_shares',           'basic_shares'),
+            ('yf_diluted_shares',         'diluted_shares'),
+            ('yf_shares_outstanding',     'shares_outstanding'),
+            ('basic_eps_history',         'basic_eps'),
+            ('diluted_eps_history',       'diluted_eps'),
+            ('basic_shares_history',      'basic_shares'),
+            ('diluted_shares_history',    'diluted_shares'),
+            ('shares_outstanding_history','shares_outstanding'),
+        ]:
+            if old in val and new not in history:
+                history[new] = val.pop(old)
+            elif old in val:
+                val.pop(old)
+        if history:
+            val['history'] = history
+        # Move any stray market fields into valuation.market
+        market = val.get('market', {})
+        for key in ['market_cap', 'basic_market_cap', 'enterprise_value',
+                    'ebitda', 'total_debt', 'book_value']:
+            if key in val:
+                market[key] = val.pop(key)
+        if market:
+            val['market'] = market
+        bucketed['valuation'] = val
+
+    # ── price ────────────────────────────────────────────────────────────────
+    pr = bucketed.get('price', {})
+    if pr:
+        # ltp sub-fields: camelCase → snake_case
+        if isinstance(pr.get('ltp'), dict):
+            pr['ltp'] = rename_keys(pr['ltp'], {
+                'ltp':       'price',
+                'changePct': 'change_pct',
+                'prev':      'prev_close',
+                'vol':       'day_volume',
+                'w52h':      'week52_high',
+                'w52l':      'week52_low',
+            })
+        # 52_week sub-fields
+        if isinstance(pr.get('52_week'), dict):
+            pr['52_week'] = rename_keys(pr['52_week'], {
+                'fifty_two_week_high':      'high',
+                'fifty_two_week_low':       'low',
+                'fifty_two_week_change':    'change',
+                'fifty_two_week_change_pct':'change_pct',
+            })
+        # volume sub-fields
+        if isinstance(pr.get('volume'), dict):
+            pr['volume'] = rename_keys(pr['volume'], {
+                'volume':                    'day_volume',
+                'regular_market_volume':     'market_volume',
+                'average_volume':            'avg_volume',
+                'average_daily_volume_10d':  'avg_volume_10d',
+                'average_daily_volume_3mo':  'avg_volume_3mo',
+                'average_volume_10d':        'avg_volume_10d',
+            })
+        # top-level price fields
+        pr = rename_keys(pr, {
+            'current_price':                'close_price',
+            'previous_close':               'prev_close',
+            'regular_market_price':         'market_price',
+            'regular_market_change':        'price_change',
+            'regular_market_change_pct':    'price_change_pct',
+            'regular_market_day_high':      'day_high',
+            'regular_market_day_low':       'day_low',
+            'regular_market_day_range':     'day_range',
+            'regular_market_open':          'day_open',
+            'regular_market_previous_close':'regular_prev_close',
+            'fifty_day_avg':                'ma_50d',
+            'fifty_day_avg_change':         'ma_50d_diff',
+            'fifty_day_avg_change_pct':     'ma_50d_diff_pct',
+            'two_hundred_day_avg':          'ma_200d',
+            'two_hundred_day_avg_change':   'ma_200d_diff',
+            'two_hundred_day_avg_change_pct':'ma_200d_diff_pct',
+            'fifty_two_week_range':         'week52_range',
+            'fifty_two_week_high_change':   'week52_high_diff',
+            'fifty_two_week_high_change_pct':'week52_high_diff_pct',
+            'fifty_two_week_low_change':    'week52_low_diff',
+            'fifty_two_week_low_change_pct':'week52_low_diff_pct',
+            'history_6mo_1d':               'ohlcv_daily',
+            'history_1wk':                  'ohlcv_weekly',
+            'history_1mo':                  'ohlcv_monthly',
+        })
+        bucketed['price'] = pr
+
+    # ── websignals ───────────────────────────────────────────────────────────
+    ws = bucketed.get('websignals', {})
+    if ws:
+        ws = rename_keys(ws, {
+            'recommendation_key':       'analyst_rating',
+            'recommendation_mean':      'analyst_rating_score',
+            'average_analyst_rating':   'analyst_rating_label',
+            'number_of_analyst_opinions':'analyst_count',
+            'target_high_price':        'target_high',
+            'target_low_price':         'target_low',
+            'target_mean_price':        'target_mean',
+            'target_median_price':      'target_median',
+            'audit_risk':               'governance_audit_risk',
+            'board_risk':               'governance_board_risk',
+            'compensation_risk':        'governance_comp_risk',
+            'shareholder_rights_risk':  'governance_rights_risk',
+            'overall_risk':             'governance_overall_risk',
+            'governance_epoch_date':    'governance_data_date',
+            'earnings_timestamp':       'next_earnings_date',
+            'earnings_timestamp_start': 'earnings_date_start',
+            'earnings_timestamp_end':   'earnings_date_end',
+            'earnings_call_ts_start':   'earnings_call_start',
+            'earnings_call_ts_end':     'earnings_call_end',
+            'is_earnings_date_estimate':'earnings_date_estimated',
+            'sandp_52_week_change':     'index_52w_change',
+        })
+        bucketed['websignals'] = ws
+
+    # ── Fix 3: Drop duplicate price fields ───────────────────────────────────
+    pr = bucketed.get('price', {})
+    if pr:
+        # market_price duplicates close_price; regular_prev_close duplicates prev_close
+        for drop in ('market_price', 'regular_prev_close'):
+            pr.pop(drop, None)
+        # ltp.week52_high/low duplicate price.52_week.high/low
+        if isinstance(pr.get('ltp'), dict):
+            pr['ltp'].pop('week52_high', None)
+            pr['ltp'].pop('week52_low', None)
+        bucketed['price'] = pr
+
+    # ── Fix 4: Drop company_details noise fields ──────────────────────────────
+    cd = bucketed.get('company_details', {})
+    if cd:
+        # Promote Yahoo isin/ticker as fallback if unified_symbols didn't provide them
+        if not cd.get('isin') and cd.get('isin_yahoo'):
+            cd['isin'] = cd['isin_yahoo']
+        if not cd.get('ticker') and cd.get('ticker_yahoo'):
+            cd['ticker'] = cd['ticker_yahoo']
+        NOISE = {
+            'exchange_timezone_name', 'exchange_timezone_short', 'full_exchange_name',
+            'market', 'market_state', 'last_trade_time', 'instrument_type_label',
+            'sector_label', 'industry_label', 'display_name', 'name_yahoo',
+            'ticker_yahoo', 'isin_yahoo', 'officer_compensation_date',
+            'prev_name', 'name_changed_on', 'fax', 'zip',
+            'last_fiscal_year_end', 'next_fiscal_year_end', 'most_recent_quarter',
+            'data_source',
+        }
+        for k in NOISE:
+            cd.pop(k, None)
+        bucketed['company_details'] = cd
+
+    # ── Fix 5: Drop yf_latest_* from financials — duplicates Screener latest ─
+    fin = bucketed.get('financials', {})
+    if fin:
+        for k in [k for k in list(fin.keys()) if k.startswith('yf_latest_')]:
+            fin.pop(k)
+        bucketed['financials'] = fin
+
+    # ── Drop pe_ratio/price_to_book from derived_metrics — duplicates valuation ─
+    dm = bucketed.get('derived_metrics', {}).get('calculated_metrics', {})
+    if dm:
+        dm.pop('pe_ratio', None)
+        dm.pop('price_to_book', None)
+
+    return bucketed
+
+
 def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
@@ -2126,7 +2676,10 @@ def main():
             if 'derived_metrics' not in bucketed:
                 bucketed['derived_metrics'] = {}
             bucketed['derived_metrics']['ai_insights_guidance'] = guidance_data[symbol]
-        
+
+        # Final pass — standardise all field names to business-friendly names
+        bucketed = standardize_field_names(bucketed)
+
         output[symbol] = bucketed
 
         # Report any unmapped fields for visibility
@@ -2150,60 +2703,21 @@ def main():
             "generated_at": datetime.now().isoformat(),
             "total_tickers": total,
             "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
-            "data_sources": [
-                "screener_raw_data.json (97 tickers)",
-                "screener_financials.json (97 tickers)",
-                "yahoofin_raw_data.json (97 tickers)",
-                "yahoofin_financials.json (97 tickers)",
-                "guidance.json (29 tickers)",
-                "prices.json (98 tickers)",
-                "unified-symbols.json (97 tickers)"
-            ],
-            "buckets": {
-                "company_details": {
-                    "sub_sections": ["promoters", "fiis", "diis", "government", "public", "shareholding { pattern, shares, ownership, fiscal_dates, dividends, stock_splits }"],
-                    "description": "Company profile, ownership, shareholding pattern, dividends, stock splits"
-                },
-                "financials": {
-                    "sub_sections": ["Sales", "Revenue", "Expenses", "Operating_Profit", "Net_Profit", "Free_Cash_Flow", "Total_Debt", "Equity_Capital", "..."],
-                    "description": "Revenue, expenses, profitability, cash flows, debt metrics - with consolidated/standalone > quarterly/annual structure"
-                },
-                "ratios": {
-                    "sub_sections": ["Return_on_Equity_pct", "Return_on_Assets_pct", "Net_Margin_pct", "Operating_Margin_pct", "..."],
-                    "description": "Financial ratios - profitability, efficiency, leverage"
-                },
-                "valuation": {
-                    "sub_sections": ["pe { trailing_pe, forward_pe, peg_ratio }", "eps { basic_eps, diluted_eps, trailing_eps, forward_eps, ... }", "enterprise_value", "market_cap", "price_to_book"],
-                    "description": "Valuation metrics grouped by PE and EPS sub-groups"
-                },
-                "price": {
-                    "sub_sections": ["current_price", "ltp", "52_week { high, low, change }", "volume { daily, average }", "history_6mo_1d", "history_1wk", "history_1mo"],
-                    "description": "Price data - current, 52-week range, volume, OHLCV history (history_1wk/history_1mo populated from 5yr or 10yr source, structure identical either way)"
-                },
-                "websignals": {
-                    "sub_sections": ["ai_insights_date", "recommendation_key", "recommendation_mean", "number_of_analyst_opinions", "target_high_price", "target_low_price", "raw_pdf_*"],
-                    "description": "Analyst sentiment, recommendations, price targets"
-                },
-                "kpis": {
-                    "sub_sections": ["Capacity_Utilization_Factor", "Plant_Availability", "Power_Generation", "... (company-specific)"],
-                    "description": "Key performance indicators from screener_raw:Insights - varies by company"
-                },
-                "derived_metrics": {
-                    "sub_sections": ["calculated_metrics { scores, ratings, sector_weights }", "ai_insights_guidance { guidance + insights }"],
-                    "description": "Computed metrics with sector weightage and AI insights"
-                },
-                "_unmapped": {
-                    "sub_sections": [],
-                    "description": "Fields that couldn't be mapped to any bucket (0 fields in this output)"
-                }
-            },
-            "derived_metrics_structure": {
-                "calculated_metrics": "Sector-weighted financial scores (fundamental, technical, valuation, sentiment, composite) with rating",
-                "ai_insights_guidance": "AI-extracted guidance (15 topics) + insights (only for 29 tickers in guidance.json)"
-            },
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
-            "unmapped_tickers": list(unmapped_summary.keys()),
-            "notes": "Each ticker has 9 buckets. Guidance presence depends on data availability."
+
+            # ── SCHEMA — generated at runtime from actual output ───────────────────
+            # Key   = exact dot-path to the field (as accessed in JS/Python)
+            # Value = unit: Cr | INR | INR_abs | pct | frac | ratio | int | epoch | str | []  | bars
+            # {YYYY-MM-DD} = dict keyed by ISO date string
+            # []           = list (shareholding time-series objects)
+            # bars         = list of OHLCV dicts {Date, Open, High, Low, Close, Volume}
+            # Cr           = Indian Rupees, Crores
+            # INR_abs      = absolute INR — divide by 1e7 for Crores (market_cap, EV etc.)
+            # pct          = percentage as float  (18.5 = 18.5%)
+            # frac         = fraction 0–1  (0.185 = 18.5%)
+            # epoch        = Unix timestamp seconds
+            # ─────────────────────────────────────────────────────────────────────
+            "schema": _build_schema(output),
         }
     }
     
@@ -2223,6 +2737,153 @@ def main():
             logger.warning(f"  {sym}: {fields}")
     else:
         logger.info("✓ All fields mapped — _unmapped is empty")
+
+
+def _build_schema(output: dict) -> dict:
+    """
+    Generate _metadata.schema at runtime from the actual bucketed output.
+    Walks every field path across all tickers and infers the unit/type.
+    Always in sync with the real data — never stale.
+    """
+    UNIT_MAP = {
+        # financials — Cr
+        'Net_Profit':'Cr','Sales':'Cr','Expenses':'Cr','Operating_Profit':'Cr',
+        'Other_Income':'Cr','Interest':'Cr','Depreciation':'Cr',
+        'profit_before_tax':'Cr','share_capital':'Cr','Reserves':'Cr',
+        'Borrowings':'Cr','Deposits':'Cr','Other_Liabilities':'Cr',
+        'Total_Liabilities':'Cr','net_fixed_assets':'Cr','capital_wip':'Cr',
+        'Investments':'Cr','Other_Assets':'Cr','Total_Assets':'Cr',
+        'operating_cash_flow':'Cr','investing_cash_flow':'Cr',
+        'financing_cash_flow':'Cr','net_cash_flow':'Cr','Free_Cash_Flow':'Cr',
+        'net_interest_income':'Cr','yf_revenue':'Cr','yf_ebitda':'Cr',
+        'yf_gross_profit':'Cr','yf_capex':'Cr','yf_free_cash_flow':'Cr',
+        'yf_cash':'Cr','yf_cogs':'Cr','yf_operating_cash_flow':'Cr',
+        'yf_receivables':'Cr','yf_invested_capital':'Cr','yf_working_capital':'Cr',
+        'yf_lease_obligations':'Cr','yf_rd_expense':'Cr','yf_tangible_assets':'Cr',
+        'yf_exceptional_items':'Cr','yf_normalized_profit':'Cr',
+        'yf_latest_revenue':'Cr','yf_latest_net_profit':'Cr','yf_latest_ebit':'Cr',
+        'yf_latest_operating_cash_flow':'Cr','yf_latest_fcf':'Cr',
+        'yf_latest_borrowings':'Cr','yf_latest_total_assets':'Cr',
+        'yf_latest_total_liabilities':'Cr','yf_latest_depreciation':'Cr',
+        'yf_latest_interest':'Cr',
+        'fcf_ttm':'Cr','operating_cash_flow_ttm':'Cr','gross_profit_ttm':'Cr',
+        'net_profit_ttm':'Cr','cash_and_equivalents':'Cr',
+        # financials — INR per share
+        'eps':'INR','yf_latest_eps':'INR','cash_per_share':'INR','book_value':'INR',
+        # financials — pct
+        'operating_margin_pct':'pct','tax_rate_pct':'pct','dividend_payout_pct':'pct',
+        'net_interest_margin_pct':'pct','gross_npa_pct':'pct','net_npa_pct':'pct',
+        # financials — ratio
+        'cash_conversion_ratio':'ratio',
+        # ratios — days
+        'debtor_days':'days','inventory_days':'days','days_payable':'days',
+        'cash_conversion_cycle':'days','working_capital_days':'days',
+        # ratios — pct
+        'roce_pct':'pct','roe_pct':'pct','net_margin_pct':'pct',
+        'gross_margin_pct':'pct','ebitda_margin_pct':'pct','operating_margin_pct':'pct',
+        'roa_pct':'pct','insider_holding_pct':'pct','institutional_holding_pct':'pct',
+        # ratios — frac
+        'earnings_growth_yoy':'frac','earnings_growth_qoq':'frac',
+        'index_52w_change':'frac',
+        # ratios — ratio
+        'debt_to_equity_ratio':'ratio','current_ratio':'ratio','quick_ratio':'ratio',
+        # valuation — shares/eps history
+        'basic_eps_history':'INR','diluted_eps_history':'INR',
+        'basic_shares_history':'int','diluted_shares_history':'int',
+        'shares_outstanding_history':'int',
+        # company_details
+        'employee_count':'int','floating_shares':'int','implied_shares':'int',
+        'shares_outstanding':'int','government':'pct','others':'pct',
+        'promoters':'pct','fiis':'pct','diis':'pct','public':'pct',
+        'last_fiscal_year_end':'epoch','next_fiscal_year_end':'epoch',
+        'most_recent_quarter':'epoch',
+        # price
+        'high':'INR','low':'INR','beta':'ratio',
+        'all_time_high':'INR','all_time_low':'INR',
+        'ask':'INR','bid':'INR','ask_size':'int','bid_size':'int',
+        'avg_volume':'int','avg_volume_10d':'int','avg_volume_3mo':'int',
+        'market_volume':'int','week52_high_diff':'INR','week52_low_diff':'INR',
+        'enterprise_value':'INR_abs','ebitda':'INR_abs','total_debt':'INR_abs',
+        'market_cap':'INR_abs','basic_market_cap':'INR_abs',
+        # valuation — ratio
+        'pe_ttm':'ratio','pe_forward':'ratio','peg':'ratio','peg_ttm':'ratio',
+        'price_to_book':'ratio','price_to_sales':'ratio','pe_current_year':'ratio',
+        'ev_to_revenue':'ratio','ev_to_ebitda':'ratio',
+        # valuation — INR
+        'eps_ttm':'INR','eps_forward':'INR','eps_current_year':'INR',
+        # price — INR
+        'price':'INR','change':'INR','prev_close':'INR','week52_high':'INR',
+        'week52_low':'INR','close_price':'INR','market_price':'INR',
+        'day_high':'INR','day_low':'INR','day_open':'INR','price_change':'INR',
+        'ma_50d':'INR','ma_200d':'INR','ma_50d_diff':'INR','ma_200d_diff':'INR',
+        'target_high':'INR','target_low':'INR','target_mean':'INR','target_median':'INR',
+        # price — pct
+        'change_pct':'pct','price_change_pct':'pct',
+        'ma_50d_diff_pct':'pct','ma_200d_diff_pct':'pct',
+        'week52_high_diff_pct':'pct','week52_low_diff_pct':'pct',
+        # price — int
+        'day_volume':'int','market_volume':'int',
+        # websignals
+        'analyst_rating_score':'float 1-5','analyst_count':'int',
+        'governance_audit_risk':'int 1-10','governance_board_risk':'int 1-10',
+        'governance_comp_risk':'int 1-10','governance_rights_risk':'int 1-10',
+        'governance_overall_risk':'int 1-10',
+        'next_earnings_date':'epoch','earnings_date_start':'epoch',
+        'earnings_date_end':'epoch','earnings_call_start':'epoch',
+        'earnings_call_end':'epoch','listing_date_ms':'epoch',
+        'officer_compensation_date':'epoch',
+    }
+
+    def infer_unit(leaf: str, full_path: str, sample_val) -> str:
+        # For nested paths (e.g. Borrowings.consolidated.annual),
+        # look up by root field name first, then leaf key
+        root = full_path.split('.')[0]
+        for key in (root, leaf):
+            if key in UNIT_MAP:
+                return UNIT_MAP[key]
+        if leaf.endswith('_pct') or root.endswith('_pct'):
+            return 'pct'
+        if leaf.endswith('_ms') or 'timestamp' in leaf:
+            return 'epoch'
+        if isinstance(sample_val, float) and sample_val and 0 < abs(sample_val) < 1:
+            return 'frac'
+        return 'str'
+
+    buckets = ['company_details','financials','ratios','valuation','price','websignals','derived_metrics']
+    schema = {}
+    tickers = [k for k in output if k != '_metadata']
+    if not tickers:
+        return schema
+
+    for bucket in buckets:
+        paths: dict = {}
+
+        def recurse(obj, prefix, depth):
+            if not isinstance(obj, dict) or depth > 5:
+                return
+            for k, v in obj.items():
+                full = f'{prefix}.{k}' if prefix else k
+                if isinstance(v, dict):
+                    sample_keys = [sk for sk in list(v.keys())[:3] if isinstance(sk, str)]
+                    if sample_keys and all(len(sk) == 10 and '-' in sk for sk in sample_keys):
+                        sample_v = list(v.values())[0] if v else None
+                        paths[full + '.{YYYY-MM-DD}'] = infer_unit(k, full, sample_v)
+                    else:
+                        recurse(v, full, depth + 1)
+                elif isinstance(v, list):
+                    if v and isinstance(v[0], dict) and 'Date' in v[0]:
+                        paths[full + '[]'] = 'bars | {Date,Open,High,Low,Close,Volume}'
+                    else:
+                        paths[full + '[]'] = '[]'
+                else:
+                    paths[full] = infer_unit(k, full, v)
+
+        for t in tickers:
+            recurse(output[t].get(bucket, {}), '', 0)
+
+        schema[bucket] = dict(sorted(paths.items()))
+
+    return schema
 
 
 if __name__ == "__main__":
