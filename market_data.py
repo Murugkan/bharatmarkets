@@ -90,6 +90,12 @@ logger = logging.getLogger(__name__)
 
 FIELD_MAP = {
 
+    # ── Merged sections from flatten (one row per metric, all flavours inside) ─
+    # These replace the old screener_fin:*/screener_raw:* section entries.
+    "financials":   "__merged_financials__",
+    "ratios":       "__merged_ratios__",
+    "shareholding": "__merged_shareholding__",
+
     # ── unified_symbols:metadata ──────────────────────────────────────────────
     "unified_symbols:metadata": {
         "ticker":   ("company_details",  "ticker"),
@@ -670,28 +676,195 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
         if sec_map == "__skip__":
             continue
 
+        # ── Merged sections from flatten ───────────────────────────────────
+        # The merged format already has the clean nested structure:
+        # {metric, periods:{consol:{gran:{date:val}}}, sources:[...]}
+        # Write directly into the bucket — no _periods wrapper needed.
+        # The rename pass (standardize_field_names) handles field name mapping.
+        if sec_map in ("__merged_financials__", "__merged_ratios__", "__merged_shareholding__"):
+            target_bucket = {
+                "__merged_financials__":   "financials",
+                "__merged_ratios__":       "ratios",
+                "__merged_shareholding__": "company_details",
+            }[sec_map]
+
+            # Name normalisation map: Screener display name → output field name
+            # Covers all known Screener metric names from profit_loss, balance_sheet,
+            # cash_flow, ratios, shareholding_pattern sections.
+            NAME_MAP = {
+                # P&L
+                'Sales':                          'revenue',
+                'Revenue':                        'revenue',
+                'Expenses':                       'expenses',
+                'Operating Profit':               'ebit',
+                'OPM %':                          'operating_margin_pct',
+                'Other Income':                   'other_income',
+                'Interest':                       'interest',
+                'Depreciation':                   'depreciation',
+                'Profit before tax':              'profit_before_tax',
+                'Tax %':                          'tax_rate_pct',
+                'Net Profit':                     'net_profit',
+                'EPS in Rs':                      'eps',
+                'Dividend Payout %':              'dividend_payout_pct',
+                'Financing Profit':               'net_interest_income',
+                'Financing Margin %':             'net_interest_margin_pct',
+                # BS
+                'Equity Capital':                 'share_capital',
+                'Reserves':                       'reserves',
+                'Borrowings':                     'borrowings',
+                'Borrowing':                      'borrowings',
+                'Deposits':                       'deposits',
+                'Other Liabilities':              'other_liabilities',
+                'Total Liabilities':              'total_liabilities',
+                'Fixed Assets':                   'net_fixed_assets',
+                'CWIP':                           'capital_wip',
+                'Investments':                    'investments',
+                'Other Assets':                   'other_assets',
+                'Total Assets':                   'total_assets',
+                # CF
+                'Cash from Operating Activity':   'operating_cash_flow',
+                'Cash from Investing Activity':   'investing_cash_flow',
+                'Cash from Financing Activity':   'financing_cash_flow',
+                'Net Cash Flow':                  'net_cash_flow',
+                'Free Cash Flow':                 'fcf',
+                'CFO/OP':                         'cash_conversion_ratio',
+                # Ratios
+                'ROCE %':                         'roce_pct',
+                'ROE %':                          'roe_pct',
+                'Debtor Days':                    'debtor_days',
+                'Inventory Days':                 'inventory_days',
+                'Days Payable':                   'days_payable',
+                'Cash Conversion Cycle':          'cash_conversion_cycle',
+                'Working Capital Days':           'working_capital_days',
+                # Shareholding
+                'Promoters':                      'promoters',
+                'FIIs':                           'fiis',
+                'DIIs':                           'diis',
+                'Public':                         'public',
+                'Government':                     'government',
+                'Others':                         'others',
+                'No. of Shareholders':            'no_of_shareholders',
+                # Bank-specific
+                'Gross NPA %':                    'gross_npa_pct',
+                'Net NPA %':                      'net_npa_pct',
+            }
+
+            for row in (records if isinstance(records, list) else []):
+                if not isinstance(row, dict):
+                    continue
+                raw_name = row.get("metric", "").strip()
+                periods  = row.get("periods", {})
+                if not raw_name or not periods:
+                    continue
+
+                # Strip Screener's trailing \xa0+ and + decorators, then map to output name
+                stripped = raw_name.replace('\xa0+','').replace('\xa0','').replace('+','').strip()
+                field_name = NAME_MAP.get(stripped, stripped)
+
+                # Clean the period structure — filter malformed dates, strip % strings
+                def clean_periods(p):
+                    if not isinstance(p, dict):
+                        return {}
+                    cleaned = {}
+                    for d, v in p.items():
+                        if not (isinstance(d, str) and len(d) == 10 and d[4] == '-' and d[7] == '-'):
+                            continue
+                        if isinstance(v, str):
+                            try:
+                                v = float(v.strip().rstrip('%'))
+                            except (ValueError, TypeError):
+                                v = None
+                        cleaned[d] = v
+                    return dict(sorted(cleaned.items(), reverse=True))
+
+                # Build clean nested structure {consol: {gran: {date: val}}}
+                if isinstance(periods, dict):
+                    first = next(iter(periods.values()), None)
+                    if isinstance(first, dict):
+                        second = next(iter(first.values()), None)
+                        if isinstance(second, dict) and any(
+                            len(k) == 10 and '-' in k for k in list(second.keys())[:2]
+                        ):
+                            # 3-level: {consol: {gran: {date:val}}} — second keys are dates
+                            clean = {}
+                            for consol, gd in periods.items():
+                                if not isinstance(gd, dict):
+                                    continue
+                                clean[consol] = {}
+                                for gran, p in gd.items():
+                                    cp = clean_periods(p)
+                                    if cp:
+                                        clean[consol][gran] = cp
+                            if clean:
+                                B[target_bucket][field_name] = clean
+                        else:
+                            # 2-level: {consol: {date:val}} — wrap granularity as annual
+                            clean = {}
+                            for consol, p in periods.items():
+                                cp = clean_periods(p)
+                                if cp:
+                                    clean[consol] = {'annual': cp}
+                            if clean:
+                                B[target_bucket][field_name] = clean
+                    else:
+                        # Flat {date:val} — e.g. shareholding merged across consols
+                        cp = clean_periods(periods)
+                        if cp:
+                            B[target_bucket][field_name] = cp
+
+            continue
+
         # ── OHLCV history sections ─────────────────────────────────────────
         if sec_map == "__history__":
             hist_key = sec_key.split(":")[-1]   # e.g. history_6mo_1d
+
+            # New format: one metric per OHLCV column, each with periods={date: value}
+            # Reconstruct the OHLCV bar list: [{Date, Open, High, Low, Close, Volume}]
+            col_periods = {}  # col_name → {date: value}
             for r in (records if isinstance(records, list) else []):
                 if not isinstance(r, dict):
                     continue
-                if r.get("metric") == "LTP":
+                metric = r.get("metric", "")
+                if metric == "LTP":
                     B["price"]["ltp"] = r.get("data")
+                elif metric in ("open", "high", "low", "close", "volume") and r.get("periods"):
+                    col_periods[metric] = r["periods"]
+                # Legacy format: single item with 'values' array
                 elif r.get("values"):
-                    # Remove Dividends and Stock Splits columns from history
-                    # (these are already in company_details.shareholding.dividends)
                     cleaned_values = []
                     for record in r["values"]:
                         if isinstance(record, dict):
-                            # Make a copy and remove redundant columns
-                            clean_record = {k: v for k, v in record.items() 
-                                          if k not in ['Dividends', 'Stock Splits']}
+                            clean_record = {}
+                            for k, v in record.items():
+                                if k in ('Dividends', 'Stock Splits'):
+                                    continue
+                                if k == 'Date':
+                                    clean_record[k] = v
+                                elif k == 'Volume':
+                                    try: clean_record[k] = int(float(v))
+                                    except (ValueError, TypeError): clean_record[k] = v
+                                else:
+                                    try: clean_record[k] = round(float(v), 2)
+                                    except (ValueError, TypeError): clean_record[k] = v
                             cleaned_values.append(clean_record)
-                        else:
-                            cleaned_values.append(record)
-                    
-                    B["price"][hist_key] = cleaned_values
+                    if cleaned_values:
+                        B["price"][hist_key] = cleaned_values
+
+            # Reconstruct bar list from periods dicts
+            if col_periods:
+                all_dates = sorted(
+                    set(d for periods in col_periods.values() for d in periods),
+                    reverse=True
+                )
+                bars = []
+                for date in all_dates:
+                    bar = {"Date": date}
+                    for col, cap in [("open","Open"),("high","High"),("low","Low"),("close","Close"),("volume","Volume")]:
+                        v = col_periods.get(col, {}).get(date)
+                        if v is not None:
+                            bar[cap] = v
+                    bars.append(bar)
+                B["price"][hist_key] = bars
             continue
 
         # ── operational_kpis: all metrics as-is ───────────────────────────
@@ -1225,6 +1398,17 @@ def reorganize_ratios_revenue(bucketed: dict) -> dict:
         'days_payable', 'cash_conversion_cycle', 'working_capital_days',
         'ROCE_pct', 'ROE_pct', 'Debtor_Days', 'Inventory_Days',
         'Days_Payable', 'Cash_Conversion_Cycle', 'Working_Capital_Days',
+        # Raw Screener display names from merged format
+        'ROCE %', 'ROE %', 'Debtor Days', 'Inventory Days',
+        'Days Payable', 'Cash Conversion Cycle', 'Working Capital Days',
+    }
+
+    RATIO_NAME_MAP = {
+        'ROCE %': 'roce_pct', 'ROE %': 'roe_pct',
+        'Debtor Days': 'debtor_days', 'Inventory Days': 'inventory_days',
+        'Days Payable': 'days_payable', 'Cash Conversion Cycle': 'cash_conversion_cycle',
+        'Working Capital Days': 'working_capital_days',
+        'ROCE_pct': 'roce_pct', 'ROE_pct': 'roe_pct',
     }
 
     YAHOO_TTM_KEYS = {
@@ -1242,9 +1426,11 @@ def reorganize_ratios_revenue(bucketed: dict) -> dict:
     for key in list(ratios.keys()):
         val = ratios[key]
 
-        # ── Screener time-series: unwrap _periods list → flat {date: float} ──
+        # ── Screener time-series: unwrap _periods list OR clean merged format ──
         if key in SCREENER_KEYS:
+            canon = RATIO_NAME_MAP.get(key, key)
             if isinstance(val, list):
+                # Old _periods list format
                 merged = {}
                 priority = {'consolidated': 2, 'standalone': 1}
                 for item in val:
@@ -1260,12 +1446,39 @@ def reorganize_ratios_revenue(bucketed: dict) -> dict:
                                     continue
                             if d not in merged or weight > merged[d][1]:
                                 merged[d] = (v, weight)
-                val = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
-            elif isinstance(val, dict) and not any(len(k) == 10 and '-' in k for k in list(val.keys())[:2]):
-                # Not a date-keyed dict — already a scalar, goes to ttm not screener
-                ttm[key] = val
-                continue
-            screener[key] = val
+                flat = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
+            elif isinstance(val, dict):
+                first = next(iter(val.values()), None)
+                if isinstance(first, dict):
+                    second = next(iter(first.values()), None)
+                    if isinstance(second, dict) and any(
+                        len(k) == 10 and '-' in k for k in list(second.keys())[:2]
+                    ):
+                        # New merged 3-level format: {consol:{gran:{date:val}}}
+                        # Extract consolidated annual (prefer consolidated over standalone)
+                        priority = {'consolidated': 2, 'standalone': 1}
+                        merged = {}
+                        for consol, gd in val.items():
+                            if not isinstance(gd, dict):
+                                continue
+                            weight = priority.get(consol, 0)
+                            ann = gd.get('annual', {})
+                            for d, v in ann.items():
+                                if isinstance(v, str):
+                                    try: v = float(v.strip().rstrip('%'))
+                                    except: v = None
+                                if d not in merged or weight > merged[d][1]:
+                                    merged[d] = (v, weight)
+                        flat = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
+                    else:
+                        flat = val  # already flat {date:val}
+                else:
+                    flat = {}  # scalar — goes to ttm
+                    ttm[canon] = val
+                    continue
+            else:
+                flat = {}
+            screener[canon] = flat
 
         # ── Yahoo TTM scalars ─────────────────────────────────────────────────
         elif key in YAHOO_TTM_KEYS or isinstance(val, (int, float, type(None))):
@@ -1730,30 +1943,55 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
         if key not in cd:
             continue
         val = cd.pop(key)
-        # Unwrap from [{_periods:{date:val}, _consolidation, _granule}, ...] list
-        # to flat {date: val} dict. Prefer consolidated over standalone.
-        if isinstance(val, list):
-            merged = {}
-            priority = {'consolidated': 2, 'standalone': 1}
+
+        priority = {'consolidated': 2, 'standalone': 1}
+        merged = {}  # date → (value, weight)
+
+        if isinstance(val, dict) and val:
+            first = next(iter(val.values()), None)
+            if isinstance(first, dict):
+                second = next(iter(first.values()), None)
+                if isinstance(second, dict) and any(
+                    len(k) == 10 and '-' in k for k in list(second.keys())[:2]
+                ):
+                    # New merged 3-level: {consol: {gran: {date:val}}}
+                    for consol, gd in val.items():
+                        weight = priority.get(consol, 0)
+                        if not isinstance(gd, dict):
+                            continue
+                        for gran, p in gd.items():
+                            if not isinstance(p, dict):
+                                continue
+                            for d, v in p.items():
+                                if isinstance(v, str):
+                                    try: v = float(v.strip().rstrip('%'))
+                                    except: continue
+                                if d not in merged or weight > merged[d][1]:
+                                    merged[d] = (v, weight)
+                elif any(len(k) == 10 and '-' in k for k in list(val.keys())[:2]):
+                    # Already flat {date:val}
+                    for d, v in val.items():
+                        if isinstance(v, str):
+                            try: v = float(v.strip().rstrip('%'))
+                            except: continue
+                        merged[d] = (v, 1)
+        elif isinstance(val, list):
+            # Old _periods list format
             for item in val:
                 if isinstance(item, dict) and '_periods' in item:
                     weight = priority.get(item.get('_consolidation', ''), 0)
                     for d, v in item['_periods'].items():
                         if v is None:
                             continue
-                        # Strip % strings
                         if isinstance(v, str):
-                            try:
-                                v = float(v.strip().rstrip('%'))
-                            except (ValueError, TypeError):
-                                pass
+                            try: v = float(v.strip().rstrip('%'))
+                            except: continue
                         if d not in merged or weight > merged[d][1]:
                             merged[d] = (v, weight)
-            pattern_obj[key] = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
-        elif isinstance(val, dict) and '_periods' in val:
-            pattern_obj[key] = val['_periods']
-        else:
-            pattern_obj[key] = val
+
+        flat = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
+        if flat:
+            pattern_obj[key] = flat
     
     # ── Shares (MOVE from top level, apply renames) ────────────────────────────
     shares_obj = {}

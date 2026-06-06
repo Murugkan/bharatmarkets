@@ -611,20 +611,46 @@ for TICKER in TICKERS_TO_PROCESS:
                 'history_5y_1mo':  'history_1mo',
                 'history_10y_1mo': 'history_1mo',
             }
+            OHLCV_COLS = {
+                'Open':   'open',
+                'High':   'high',
+                'Low':    'low',
+                'Close':  'close',
+                'Volume': 'volume',
+            }
             for section_key, canonical_key in HISTORY_CANONICAL.items():
                 try:
                     history = raw.get(section_key, [])
-                    if history:
-                        standardized = standardize_array_dates(history)
-                        sorted_hist = sort_array_by_date(standardized)
-                        metrics[f"{canonical_key}|{canonical_key}"] = {
-                            'metric': f"{canonical_key}_data",
-                            'section': canonical_key,
-                            'source': 'yahoofin_raw',
-                            'data_type': 'array',
-                            'record_count': len(sorted_hist),
-                            'values': sorted_hist
-                        }
+                    if not history:
+                        continue
+                    standardized = standardize_array_dates(history)
+                    sorted_hist  = sort_array_by_date(standardized)
+
+                    # One metric row per OHLCV column — {date: value} periods dict
+                    for col, col_key in OHLCV_COLS.items():
+                        periods = {}
+                        for bar in sorted_hist:
+                            date = bar.get('Date', '')
+                            if not date or len(date) != 10:
+                                continue
+                            raw_val = bar.get(col)
+                            if raw_val is None:
+                                continue
+                            try:
+                                v = int(float(raw_val)) if col == 'Volume' else round(float(raw_val), 2)
+                            except (ValueError, TypeError):
+                                continue
+                            periods[date] = v
+                        if periods:
+                            mk = f"{canonical_key}|{col_key}"
+                            metrics[mk] = {
+                                'metric':        col_key,
+                                'section':       canonical_key,
+                                'source':        'yahoofin_raw',
+                                'granule':       'daily' if '1d' in canonical_key else 'weekly' if '1wk' in canonical_key else 'monthly',
+                                'consolidation': 'consolidated',
+                                'periods':       periods,
+                            }
                 except Exception as e:
                     ticker_errors.append(f"yahoofin_raw | {section_key} | {str(e)}")
                     logger.write_error(TICKER, 'yahoofin_raw', section_key, str(e))
@@ -658,84 +684,138 @@ for TICKER in TICKERS_TO_PROCESS:
             logger.write_error(TICKER, 'unified_symbols', 'symbols', str(e))
         
         # === TRANSFORM TO OUTPUT ===
-        # Restructure: section > consolidation > granularity > [list of metrics]
+        # One row per logical metric name. All flavours (consolidation, granularity,
+        # source) are merged into a single row:
+        #   {
+        #     "metric": "eps",
+        #     "periods": {
+        #       "consolidated": {"annual": {date:val}, "quarterly": {date:val}},
+        #       "standalone":   {"annual": {date:val}, "quarterly": {date:val}}
+        #     }
+        #   }
+        # Scalar fields (value only, no periods) stored as {metric: value} flat dict.
+        # History (OHLCV) stored as list of {metric, periods} rows per column.
+
+        # Group metrics by their canonical name (strip section/source prefix)
+        merged = {}   # canonical_name → merged row
+        scalars = {}  # section_key → {field: value}  (info, metadata, etc.)
+
         for key, obj in metrics.items():
-            source = obj.get('source', 'unknown')
+            source      = obj.get('source', 'unknown')
             section_name = obj['section']
-            granule = obj.get('granule', '')
-            consol = obj.get('consolidation', '')
-            
-            # Build hierarchical section key
-            if (source in ['screener_raw', 'screener_fin']) and consol and granule:
-                # For screener_raw/screener_fin with consolidation and granularity:
-                # source:SectionName > consolidation > granularity > [metrics]
-                section_key = f"{source}:{section_name}"
-                
-                # Ensure nested structure exists
-                if section_key not in output[TICKER]['data']:
-                    output[TICKER]['data'][section_key] = {}
-                
-                if consol not in output[TICKER]['data'][section_key]:
-                    output[TICKER]['data'][section_key][consol] = {}
-                
-                if granule not in output[TICKER]['data'][section_key][consol]:
-                    output[TICKER]['data'][section_key][consol][granule] = []
-                
-                # Add metric as list item
-                row = {
-                    'metric': obj['metric'],
-                    'source': source,
-                    'section': section_name,
-                    'granule': granule,
-                    'consolidation': consol,
-                    'data_type': 'time_series'
+            granule     = obj.get('granule', '')
+            consol      = obj.get('consolidation', '')
+            metric_name = obj['metric']
+
+            # ── Scalar (single value, no periods) ────────────────────────────
+            if 'value' in obj and 'periods' not in obj:
+                sec_key = f"{source}:{section_name}"
+                if sec_key not in scalars:
+                    scalars[sec_key] = {}
+                scalars[sec_key][metric_name] = obj['value']
+                continue
+
+            # ── Time-series (has periods) ─────────────────────────────────────
+            if not obj.get('periods'):
+                continue
+
+            periods_data = OrderedDict(sorted(obj['periods'].items(), reverse=True))
+
+            # Canonical key: normalise metric name — strip \xa0 (non-breaking space),
+            # trailing + decorators, and whitespace so all flavours merge into one row
+            canon = metric_name.replace('\xa0+','').replace('\xa0','').replace('+','').strip()
+
+            if canon not in merged:
+                merged[canon] = {
+                    'metric':  canon,
+                    'periods': {},
+                    'sources': set(),
                 }
-                if obj.get('periods'):
-                    row['periods'] = OrderedDict(sorted(obj['periods'].items(), reverse=True))
-                output[TICKER]['data'][section_key][consol][granule].append(row)
+
+            row = merged[canon]
+            row['sources'].add(source)
+
+            if consol and granule:
+                # Nested: periods[consolidation][granularity] = {date: val}
+                if consol not in row['periods']:
+                    row['periods'][consol] = {}
+                existing = row['periods'][consol].get(granule, {})
+                # Merge — Screener (month-start dates) wins over Yahoo period-end
+                from_ym = {d[:7] for d in existing}
+                for d, v in periods_data.items():
+                    if d[:7] not in from_ym:
+                        existing[d] = v
+                        from_ym.add(d[:7])
+                row['periods'][consol][granule] = dict(
+                    sorted(existing.items(), reverse=True)
+                )
             else:
-                # For other sections, use existing flat structure
-                # Only append granule suffix when it is actually present —
-                # history/info/metadata metrics have no granule and must match
-                # FIELD_MAP keys like "yahoofin_raw:history_6mo_1d" exactly.
-                if granule:
-                    section_key = f"{source}:{section_name}:{granule}"
+                # No consolidation — flat {date: val} (history OHLCV columns)
+                row['periods'].update(periods_data)
+
+        # Write merged rows to output — one list per logical section group
+        # Group by primary source for the section key
+        SECTION_MAP = {
+            # Screener financial sections → one section key
+            'Profit & Loss':         'financials',
+            'Balance Sheet':         'financials',
+            'Cash Flows':            'financials',
+            'Quarterly Results':     'financials',
+            'profit_loss':           'financials',
+            'balance_sheet':         'financials',
+            'cash_flow':             'financials',
+            'quarterly_results':     'financials',
+            'Ratios':                'ratios',
+            'ratios':                'ratios',
+            'Shareholding Pattern':  'shareholding',
+            'shareholding_pattern':  'shareholding',
+        }
+
+        # Build section_key → [rows] from merged
+        section_rows = {}
+        for canon, row in merged.items():
+            # Find original section name — search with normalised metric name
+            def _norm(s):
+                return s.replace('\xa0+','').replace('\xa0','').replace('+','').strip()
+            orig_obj = next(
+                (obj for k, obj in metrics.items() if _norm(obj.get('metric','')) == canon),
+                {}
+            )
+            orig_section = orig_obj.get('section', '')
+
+            # Determine output section bucket
+            if orig_section in SECTION_MAP:
+                sec_key = SECTION_MAP[orig_section]
+            elif 'history' in orig_section:
+                sec_key = f"yahoofin_raw:{orig_section}"
+            elif orig_section:
+                # Any other known source:section — but Screener financial sections
+                # should always be in SECTION_MAP. If not, route to financials as fallback.
+                first_source = next(iter(row['sources']), 'unknown')
+                if first_source in ('screener_fin', 'screener_raw'):
+                    sec_key = 'financials'
                 else:
-                    section_key = f"{source}:{section_name}"
-                
-                if section_key not in output[TICKER]['data']:
-                    if 'value' in obj and not isinstance(obj.get('values'), list):
-                        output[TICKER]['data'][section_key] = {}
-                    else:
-                        output[TICKER]['data'][section_key] = []
-                
-                if 'value' in obj:
-                    if not isinstance(output[TICKER]['data'][section_key], dict):
-                        output[TICKER]['data'][section_key] = {}
-                    output[TICKER]['data'][section_key][obj['metric']] = obj['value']
-                elif obj.get('data_type') == 'array':
-                    if not isinstance(output[TICKER]['data'][section_key], list):
-                        output[TICKER]['data'][section_key] = []
-                    row = {
-                        'metric': obj['metric'],
-                        'source': source,
-                        'section': section_name,
-                        'record_count': obj.get('record_count'),
-                        'values': obj.get('values', [])
-                    }
-                    output[TICKER]['data'][section_key].append(row)
-                else:
-                    if not isinstance(output[TICKER]['data'][section_key], list):
-                        output[TICKER]['data'][section_key] = []
-                    row = {
-                        'metric': obj['metric'],
-                        'source': source,
-                        'section': section_name,
-                        'data_type': 'time_series'
-                    }
-                    if obj.get('periods'):
-                        row['periods'] = OrderedDict(sorted(obj['periods'].items(), reverse=True))
-                    output[TICKER]['data'][section_key].append(row)
+                    sec_key = f"{first_source}:{orig_section}"
+            else:
+                sec_key = 'financials'  # fallback
+
+            if sec_key not in section_rows:
+                section_rows[sec_key] = []
+
+            out_row = {
+                'metric':  row['metric'],
+                'periods': row['periods'],
+                'sources': sorted(row['sources']),
+            }
+            section_rows[sec_key].append(out_row)
+
+        # Write scalars
+        for sec_key, fields in scalars.items():
+            output[TICKER]['data'][sec_key] = fields
+
+        # Write time-series rows
+        for sec_key, rows in section_rows.items():
+            output[TICKER]['data'][sec_key] = rows
         
         # === ADD LTP FROM PRICES ===
         prices_dict = all_data.get('prices', {})
