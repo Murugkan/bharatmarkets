@@ -503,8 +503,8 @@ const resolve = (obj, field) => {
         'DII%':['company_details.shareholding.pattern.diis','diis','DII%','diiHolding'], 
         'ATH%':['price.52_week.fifty_two_week_change_pct','price.52_week_change_pct','ath','ATH%','athPercent'], 
         '52W%':['price.52_week.fifty_two_week_change_pct','price.52_week_change_pct','52w','52W%','fiftyTwoWeekChangePercent'], 
-        'W52H':['price.price['52_week']?.high','w52h','W52H','fiftyTwoWeekHigh'],
-        'W52L':['price.price['52_week']?.low','w52l','W52L','fiftyTwoWeekLow'],
+        'W52H':['price.52_week.high','w52h','W52H','fiftyTwoWeekHigh'],
+        'W52L':['price.52_week.low','w52l','W52L','fiftyTwoWeekLow'],
         'OPEN':['price.ltp.open','open','OPEN'],
         'HIGH':['price.ltp.high','high','HIGH'],
         'LOW':['price.ltp.low','low','LOW'],
@@ -1693,8 +1693,8 @@ function sigTechnical(st) {
     const cp=sigToF(pr.current_price)||sigToF(pr.regular_market_price);
     const dma50=sigToF(pr.ma_50d);
     const dma200=sigToF(pr.ma_200d);
-    const w52h=sigToF(pr['52_week']?.fifty_two_week_high);
-    const w52l=sigToF(pr['52_week']?.fifty_two_week_low);
+    const w52h=sigToF(pr['52_week']?.high);
+    const w52l=sigToF(pr['52_week']?.low);
     const beta=sigToF(pr.ltp?.beta);
 
     // MA Trend
@@ -1706,7 +1706,7 @@ function sigTechnical(st) {
     // 52W Position
     let w52S=50;
     if(cp&&w52h&&w52l){ const rng=w52h-w52l; const pos=rng>0?(cp-w52l)/rng:0.5; w52S=pos>=0.75?80:pos>=0.55?65:pos>=0.35?50:pos>=0.20?38:28; }
-    const w52Pct=sigToF(pr['52_week']?.fifty_two_week_change_pct);
+    const w52Pct=sigToF(pr['52_week']?.change_pct);
     scores.w52 = {s:w52S, label:'52W Position', val:w52Pct!==null?(w52Pct*100).toFixed(1)+'% 52W':'N/A'};
 
     // Volume surge
@@ -1847,7 +1847,7 @@ function sigComposite(ticker, st) {
     const comp=Math.round(F.score*cfg.f + T.score*cfg.t + V.score*cfg.v + S.score*cfg.s);
     return { ticker, comp, rating:sigRating(comp), ratingColor:sigScoreColor(comp),
         sector, weights:cfg, name:st.company_details?.long_name||st.company_details?.short_name||ticker,
-        price:sigToF(st.price?.close_price||price?.ltp?.price),
+        price:sigToF(st.price?.close_price||st.price?.ltp?.price),
         F, T, V, S };
 }
 
@@ -1938,7 +1938,7 @@ function sigRenderDetail(ticker) {
     if(!st) return;
     const ws_=st.websignals||{};
     const ai=st.derived_metrics?.ai_insights_guidance||{};
-    const cp=sigToF(st.price?.close_price||price?.ltp?.price);
+    const cp=sigToF(st.price?.close_price||st.price?.ltp?.price);
     const tgt=sigToF(ws_.target_mean);
     const tgtLo=sigToF(ws_.target_low_price);
     const tgtHi=sigToF(ws_.target_high_price);
@@ -2037,7 +2037,7 @@ function sigRenderDetail(ticker) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div><div style="font-size:8px;color:#777">Sector Median PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sectorMedianPE?sectorMedianPE.toFixed(1)+'x':'N/A'}</div></div>
             <div><div style="font-size:8px;color:#777">Stock PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.valuation?.pe?.pe_ttm)?sigToF(st.valuation?.pe?.pe_ttm).toFixed(1)+'x':'N/A'}</div></div>
-            <div><div style="font-size:8px;color:#777">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price['52_week'].fifty_two_week_change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#777">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price['52_week'].change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
             <div><div style="font-size:8px;color:#777">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price.ltp.beta).toFixed(2):'N/A'}</div></div>
         </div>
     </div>`;
@@ -2124,7 +2124,7 @@ function showSignalView() {
 // Each entry: { label, group, unit, extractor(stock) -> number|null, fmt }
 const QRY_METRICS = [
     // ── PRICE & MARKET ──────────────────────────────────────
-    { label:'LTP',            group:'Price',      unit:'₹',   fn: s => _qN(s.price?.close_price||price?.ltp?.price) },
+    { label:'LTP',            group:'Price',      unit:'₹',   fn: s => _qN(s.price?.close_price||s.price?.ltp?.price) },
     { label:'Market Cap',     group:'Price',      unit:'₹Cr', fn: s => _qN(s.valuation?.market_cap) && _qN(s.valuation.market.market_cap)/1e7 },
     { label:'52W High',       group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.high) },
     { label:'52W Low',        group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.low) },
@@ -2132,8 +2132,8 @@ const QRY_METRICS = [
     { label:'ATH',            group:'Price',      unit:'₹',   fn: s => _qN(s.price?.all_time_high) },
     { label:'50 DMA',         group:'Price',      unit:'₹',   fn: s => _qN(s.price?.ma_50d) },
     { label:'200 DMA',        group:'Price',      unit:'₹',   fn: s => _qN(s.price?.ma_200d) },
-    { label:'vs 50DMA%',      group:'Price',      unit:'%',   fn: s => { const c=_qN(s.price?.close_price||price?.ltp?.price),d=_qN(s.price?.ma_50d); return c&&d?((c-d)/d*100):null; } },
-    { label:'vs 200DMA%',     group:'Price',      unit:'%',   fn: s => { const c=_qN(s.price?.close_price||price?.ltp?.price),d=_qN(s.price?.ma_200d); return c&&d?((c-d)/d*100):null; } },
+    { label:'vs 50DMA%',      group:'Price',      unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_50d); return c&&d?((c-d)/d*100):null; } },
+    { label:'vs 200DMA%',     group:'Price',      unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_200d); return c&&d?((c-d)/d*100):null; } },
     // ── VALUATION ────────────────────────────────────────────
     { label:'PE (TTM)',        group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.pe_ttm) },
     { label:'PE (Fwd)',        group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.pe_forward) },
@@ -2146,7 +2146,7 @@ const QRY_METRICS = [
     { label:'EPS (Fwd)',        group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_forward) },
     { label:'EPS (Basic)',      group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.history?.basic_eps) },
     { label:'Target Price',     group:'Valuation',  unit:'₹',   fn: s => _qN(s.websignals?.target_mean) },
-    { label:'Upside%',          group:'Valuation',  unit:'%',   fn: s => { const c=_qN(s.price?.close_price||price?.ltp?.price),t=_qN(s.websignals?.target_mean); return c&&t?((t-c)/c*100):null; } },
+    { label:'Upside%',          group:'Valuation',  unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean); return c&&t?((t-c)/c*100):null; } },
     // ── PROFITABILITY ────────────────────────────────────────
     { label:'ROCE%',            group:'Profitability', unit:'%', fn: s => _qLD(s.ratios?.screener?.roce_pct) },
     { label:'ROE%',             group:'Profitability', unit:'%', fn: s => _qLD(s.ratios?.ttm?.roe_pct) },
@@ -2191,8 +2191,8 @@ const QRY_METRICS = [
     { label:'Qty',              group:'Portfolio',  unit:'',    fn: s => _qN(s.company_details?.qty) },
     { label:'Avg Cost',         group:'Portfolio',  unit:'₹',   fn: s => _qN(s.company_details?.avg_cost) },
     { label:'Invested (₹)',     group:'Portfolio',  unit:'₹',   fn: s => { const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost); return q&&a?q*a:null; } },
-    { label:'PnL (₹)',          group:'Portfolio',  unit:'₹',   fn: s => { const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||price?.ltp?.price); return q&&a&&l?(l-a)*q:null; } },
-    { label:'PnL%',             group:'Portfolio',  unit:'%',   fn: s => { const a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||price?.ltp?.price); return a&&l?((l-a)/a*100):null; } },
+    { label:'PnL (₹)',          group:'Portfolio',  unit:'₹',   fn: s => { const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price); return q&&a&&l?(l-a)*q:null; } },
+    { label:'PnL%',             group:'Portfolio',  unit:'%',   fn: s => { const a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price); return a&&l?((l-a)/a*100):null; } },
 ];
 
 // ---- EXTRACTORS ----
@@ -3011,9 +3011,9 @@ const CMP_GROUPS = [
     {
         title: 'Price & Momentum',
         metrics: [
-            { label:'LTP',             fn: s=>_qN(s.price?.close_price||price?.ltp?.price), unit:'₹', hi:false },
-            { label:'vs 50DMA%',       fn: s=>{const c=_qN(s.price?.close_price||price?.ltp?.price),d=_qN(s.price?.ma_50d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
-            { label:'vs 200DMA%',      fn: s=>{const c=_qN(s.price?.close_price||price?.ltp?.price),d=_qN(s.price?.ma_200d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
+            { label:'LTP',             fn: s=>_qN(s.price?.close_price||s.price?.ltp?.price), unit:'₹', hi:false },
+            { label:'vs 50DMA%',       fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_50d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
+            { label:'vs 200DMA%',      fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_200d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
             { label:'52W Change%',     fn: s=>(_qN(s.price?.['52_week']?.change_pct)||0)*100, unit:'%', hi:true },
             { label:'52W High',        fn: s=>_qN(s.price?.['52_week']?.high), unit:'₹', hi:false },
             { label:'52W Low',         fn: s=>_qN(s.price?.['52_week']?.low), unit:'₹', hi:false },
@@ -3024,7 +3024,7 @@ const CMP_GROUPS = [
         title: 'Analyst & Governance',
         metrics: [
             { label:'Target Price',    fn: s=>_qN(s.websignals?.target_mean), unit:'₹', hi:true },
-            { label:'Upside%',         fn: s=>{const c=_qN(s.price?.close_price||price?.ltp?.price),t=_qN(s.websignals?.target_mean);return c&&t?(t-c)/c*100:null;}, unit:'%', hi:true },
+            { label:'Upside%',         fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean);return c&&t?(t-c)/c*100:null;}, unit:'%', hi:true },
             { label:'# Analysts',      fn: s=>_qN(s.websignals?.analyst_count), unit:'', hi:true },
             { label:'Rec Mean (1=SB)', fn: s=>_qN(s.websignals?.analyst_rating_score), unit:'', hi:false },
             { label:'Gov Risk (1-10)', fn: s=>_qN(s.websignals?.governance_overall_risk), unit:'', hi:false },
@@ -3058,8 +3058,8 @@ const CMP_GROUPS = [
             { label:'Qty',             fn: s=>_qN(s.company_details?.qty), unit:'', hi:false },
             { label:'Avg Cost',        fn: s=>_qN(s.company_details?.avg_cost), unit:'₹', hi:false },
             { label:'Invested',        fn: s=>{const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost);return q&&a?q*a:null;}, unit:'₹', hi:false, fmt:'l' },
-            { label:'PnL ₹',           fn: s=>{const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||price?.ltp?.price);return q&&a&&l?(l-a)*q:null;}, unit:'₹', hi:true, fmt:'l' },
-            { label:'PnL%',            fn: s=>{const a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||price?.ltp?.price);return a&&l?(l-a)/a*100:null;}, unit:'%', hi:true },
+            { label:'PnL ₹',           fn: s=>{const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price);return q&&a&&l?(l-a)*q:null;}, unit:'₹', hi:true, fmt:'l' },
+            { label:'PnL%',            fn: s=>{const a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price);return a&&l?(l-a)/a*100:null;}, unit:'%', hi:true },
         ]
     },
 ];
@@ -3180,7 +3180,7 @@ function renderCompare() {
     const headerCells = stocks.map((s,i)=>{
         const sig = sigs[i];
         const col = sig ? sigScoreColor(sig.comp) : '#aaa';
-        const cp  = _qN(s.price?.close_price||price?.ltp?.price);
+        const cp  = _qN(s.price?.close_price||s.price?.ltp?.price);
         return `<td style="text-align:center;padding:10px 8px;border-right:1px solid #1a1a1a;">
             <div style="font-size:13px;font-weight:800;color:#f1f5f9">${s.ticker}</div>
             <div style="font-size:8px;color:#555;margin-top:2px">${s.company_details?.sector||'—'}</div>
