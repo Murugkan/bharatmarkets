@@ -2154,50 +2154,60 @@ def extract_scalar_or_dict(value):
 # Mapping is one-directional: Yahoo fills Screener gaps, never overwrites.
 
 # Screener canonical key → Yahoo field name (for overlapping metrics)
-SCREENER_TO_YAHOO_OVERLAP = {
-    "Sales":             "revenue",
-    "Net_Profit":        "net_profit",
-    "Depreciation":      "depreciation",
-    "Interest":          "interest_expense",
-    "EPS_Rs":            "basic_eps",
-    "Operating_Profit":  "ebit",
-    "CFO":               "operating_cash_flow",
-    "Free_Cash_Flow":    "free_cash_flow",
-    # Balance sheet
-    "Total_Assets":      "total_assets",
-    "Total_Liabilities": "total_liabilities",
-    "Borrowing":         "total_debt",
-    "Borrowings":        "total_debt",
+# Unified map: output field name → Yahoo historical field name
+# Used for gap-fill: for every financials field, if Yahoo has matching data
+# for periods Screener doesn't cover, fill silently.
+# Fields not in this map have no Yahoo equivalent and are Screener-only.
+OUTPUT_TO_YAHOO_FIELD = {
+    # Core P&L — overlap (Screener primary, Yahoo fills gaps)
+    'revenue':              'revenue',
+    'net_profit':           'net_profit',
+    'ebit':                 'ebit',
+    'depreciation':         'depreciation',
+    'interest':             'interest_expense',
+    'eps':                  'basic_eps',
+    'operating_cash_flow':  'operating_cash_flow',
+    'fcf':                  'free_cash_flow',
+    # Balance sheet — overlap
+    'total_assets':         'total_assets',
+    'total_liabilities':    'total_liabilities',
+    'borrowings':           'total_debt',
+    # Yahoo-exclusive (no Screener equivalent — Yahoo is only source)
+    'cost_of_revenue':      'cost_of_revenue',
+    'gross_profit':         'gross_profit',
+    'ebitda':               'ebitda',
+    'rd_expense':           'rd_expense',
+    'capex':                'capex',
+    'accounts_receivable':  'accounts_receivable',
+    'cash_and_equivalents': 'cash_and_equivalents',
+    'net_tangible_assets':  'net_tangible_assets',
+    'working_capital':      'working_capital',
+    'invested_capital':     'invested_capital',
+    'lease_obligations':    'capital_lease_obligations',
+    'normalized_profit':    'normalized_income',
+    'exceptional_items':    'unusual_items',
+    'operating_income':     'operating_income',
+    'tax_rate':             'tax_rate',
+    'net_debt':             'net_debt',
+    'long_term_debt':       'long_term_debt',
+    'short_term_debt':      'short_term_debt',
+    'minority_interest':    'minority_interest',
+    'total_capitalization': 'total_capitalization',
 }
 
-# Yahoo fields that have NO Screener equivalent — add directly to financials bucket
-YAHOO_EXCLUSIVE_FINANCIALS = {
-    "revenue":              "yf_revenue",
-    "cost_of_revenue":      "yf_cost_of_revenue",
-    "gross_profit":         "yf_gross_profit",
-    "ebitda":               "yf_ebitda",
-    "rd_expense":           "yf_rd_expense",
-    "operating_cash_flow":  "yf_operating_cash_flow",
-    "free_cash_flow":       "yf_free_cash_flow",
-    "capex":                "yf_capex",
-    "accounts_receivable":  "yf_accounts_receivable",
-    "cash_and_equivalents": "yf_cash_and_equivalents",
-    "net_tangible_assets":  "yf_net_tangible_assets",
-    "working_capital":      "yf_working_capital",
-    "invested_capital":     "yf_invested_capital",
-    "capital_lease_obligations": "yf_capital_lease_obligations",
-    "normalized_income":    "yf_normalized_income",
-    "unusual_items":        "yf_unusual_items",
+# Valuation history fields (per-share / share count)
+YAHOO_VALUATION_FIELDS = {
+    'diluted_eps':       'diluted_eps',
+    'basic_eps':         'basic_eps',
+    'diluted_shares':    'diluted_shares',
+    'basic_shares':      'basic_shares',
+    'shares_outstanding':'shares_outstanding',
 }
 
-# Yahoo per-share / share count fields — route to valuation bucket
-YAHOO_EXCLUSIVE_VALUATION = {
-    "diluted_eps":       "yf_diluted_eps",
-    "basic_eps":         "yf_basic_eps",
-    "diluted_shares":    "yf_diluted_shares",
-    "basic_shares":      "yf_basic_shares",
-    "shares_outstanding":"yf_shares_outstanding",
-}
+# Legacy — kept for backward compat, superseded by OUTPUT_TO_YAHOO_FIELD
+SCREENER_TO_YAHOO_OVERLAP = {}
+YAHOO_EXCLUSIVE_FINANCIALS = {}
+YAHOO_EXCLUSIVE_VALUATION  = {}
 
 
 def _get_periods_dict(bucket_field):
@@ -2281,90 +2291,80 @@ def _latest_period(periods_dict):
 
 def merge_yahoo_into_screener(bucketed: dict, yf_historical: dict, yf_latest: dict) -> dict:
     """
-    Merge Yahoo Finance data into the already-bucketed Screener data.
+    Gap-fill financials with Yahoo data — universally, for all fields.
 
-    Rules:
-    1. Screener consolidated = primary — never overwrite existing Screener periods.
-    2. Yahoo historical → fill gaps in Screener consolidated annual timeline.
-    3. Yahoo latest → add as most-recent point if its period is newer than Screener's last.
-    4. Yahoo-exclusive fields → add under yf_* keys in financials/valuation buckets.
-
-    Args:
-        bucketed     : output of bucket_symbol() + reorganize passes
-        yf_historical: {field_name: {iso_date: value_in_crores}} from yahoofin_fin:historical
-        yf_latest    : {field_name: value_in_crores} from yahoofin_fin:latest
-
-    Returns:
-        bucketed dict with Yahoo data merged in.
+    Rule: one field, one place, one name.
+    - For every output field name in OUTPUT_TO_YAHOO_FIELD:
+        * If the field already exists in financials (from Screener) → fill only missing periods
+        * If it doesn't exist yet (Yahoo-exclusive) → create consolidated.annual structure
+    - Screener periods always win over Yahoo for the same fiscal year (month-start beats period-end)
+    - No source names leak into output — yf_* never appears
     """
     fin = bucketed.get('financials', {})
     val = bucketed.get('valuation', {})
 
-    # ── 1 & 2: Gap-fill overlapping metrics ───────────────────────────────────
-    for screener_key, yahoo_field in SCREENER_TO_YAHOO_OVERLAP.items():
-        yf_periods = yf_historical.get(yahoo_field, {})
+    # Build a lookup from Yahoo field → current financials key (handles pre-rename PascalCase)
+    # e.g. 'net_profit' Yahoo field → 'Net_Profit' in fin (pre-rename)
+    # and 'net_profit' Yahoo field → 'net_profit' in fin (post-rename)
+    PRE_RENAME = {
+        'revenue':           ['Sales', 'Revenue', 'revenue'],
+        'net_profit':        ['Net_Profit', 'net_profit'],
+        'ebit':              ['Operating_Profit', 'ebit'],
+        'depreciation':      ['Depreciation', 'depreciation'],
+        'interest':          ['Interest', 'interest'],
+        'eps':               ['EPS_Rs', 'eps'],
+        'operating_cash_flow':['CFO', 'operating_cash_flow'],
+        'fcf':               ['Free_Cash_Flow', 'fcf'],
+        'total_assets':      ['Total_Assets', 'total_assets'],
+        'total_liabilities': ['Total_Liabilities', 'total_liabilities'],
+        'borrowings':        ['Borrowings', 'Borrowing', 'borrowings'],
+    }
+
+    def find_fin_key(output_key):
+        """Find the actual key in fin dict for this output field (handles pre/post rename)."""
+        if output_key in fin:
+            return output_key
+        for alias in PRE_RENAME.get(output_key, []):
+            if alias in fin:
+                return alias
+        return None
+
+    # ── Financials: universal gap-fill ────────────────────────────────────────
+    for output_key, yahoo_field in OUTPUT_TO_YAHOO_FIELD.items():
+        yf_periods = {d: v for d, v in yf_historical.get(yahoo_field, {}).items()
+                      if v not in (None, '')}
         if not yf_periods:
             continue
 
-        existing = fin.get(screener_key)
-        if existing is None:
-            continue  # Screener didn't have this field at all — skip, don't inject
+        fin_key = find_fin_key(output_key)
+        if fin_key is not None:
+            # Field exists (Screener wrote it) — fill only date gaps
+            sr_periods = _get_periods_dict(fin[fin_key])
+            sc_ym = {d[:7] for d in sr_periods}
+            gaps = {d: v for d, v in yf_periods.items() if d[:7] not in sc_ym}
+            if gaps:
+                fin[fin_key] = _set_periods_into_field(fin[fin_key], gaps)
+        else:
+            # Yahoo-exclusive — no Screener equivalent — create consolidated.annual
+            fin[output_key] = {
+                'consolidated': {
+                    'annual': dict(sorted(yf_periods.items(), reverse=True))
+                }
+            }
 
-        sr_periods = _get_periods_dict(existing)
-        gaps = {d: v for d, v in yf_periods.items()
-                if d not in sr_periods and v not in (None, '')}
-        if gaps:
-            fin[screener_key] = _set_periods_into_field(existing, gaps)
-
-    # ── 3: Extend with Yahoo latest if newer than Screener's last period ──────
-    for screener_key, yahoo_field in SCREENER_TO_YAHOO_OVERLAP.items():
-        latest_val = yf_latest.get(yahoo_field)
-        if latest_val in (None, ''):
-            continue
-
-        existing = fin.get(screener_key)
-        if existing is None:
-            continue
-
-        sr_periods = _get_periods_dict(existing)
-        sr_last = _latest_period(sr_periods)
-
-        from datetime import date
-        today = date.today().isoformat()
-        if sr_last and sr_last >= today[:7]:
-            continue  # Screener is already current
-
-        # Tag as yf_latest_ prefixed key to avoid collision
-        fin[f"yf_latest_{screener_key}"] = latest_val
-
-    # ── 4a: Yahoo-exclusive financials (time-series) ──────────────────────────
-    for yahoo_field, output_key in YAHOO_EXCLUSIVE_FINANCIALS.items():
-        yf_periods = yf_historical.get(yahoo_field, {})
-        yf_lat = yf_latest.get(yahoo_field)
-
+    # ── Valuation history: EPS and share counts ───────────────────────────────
+    for output_key, yahoo_field in YAHOO_VALUATION_FIELDS.items():
+        yf_periods = {d: v for d, v in yf_historical.get(yahoo_field, {}).items()
+                      if v not in (None, '')}
         if yf_periods:
-            fin[output_key] = dict(sorted(
-                {d: v for d, v in yf_periods.items() if v not in (None, '')}.items(),
-                reverse=True
-            ))
-        elif yf_lat not in (None, ''):
-            fin[output_key] = yf_lat
+            val[output_key] = dict(sorted(yf_periods.items(), reverse=True))
 
-    # ── 4b: Yahoo-exclusive per-share / valuation fields ─────────────────────
-    for yahoo_field, output_key in YAHOO_EXCLUSIVE_VALUATION.items():
-        yf_periods = yf_historical.get(yahoo_field, {})
-        yf_lat = yf_latest.get(yahoo_field)
-
-        if yf_periods:
-            val[output_key] = dict(sorted(
-                {d: v for d, v in yf_periods.items() if v not in (None, '')}.items(),
-                reverse=True
-            ))
-        elif yf_lat not in (None, ''):
-            val[output_key] = yf_lat
+    # ── Drop any yf_* keys that slipped through ───────────────────────────────
+    for k in [k for k in list(fin.keys()) if k.startswith('yf_')]:
+        fin.pop(k)
 
     bucketed['financials'] = fin
-    bucketed['valuation'] = val
+    bucketed['valuation']  = val
     return bucketed
 
 
@@ -2475,77 +2475,43 @@ def standardize_field_names(bucketed: dict) -> dict:
     if fin:
         fin = rename_keys(fin, {
             # Screener P&L — PascalCase → snake_case
-            'Sales':              'revenue',
-            'Expenses':           'expenses',
-            'Operating_Profit':   'ebit',
-            'Other_Income':       'other_income',
-            'Interest':           'interest',
-            'Depreciation':       'depreciation',
-            'Net_Profit':         'net_profit',
-            'Free_Cash_Flow':     'fcf',
-            # Screener BS
-            'Borrowings':         'borrowings',
-            'Deposits':           'deposits',
-            'Reserves':           'reserves',
-            'Investments':        'investments',
-            'Other_Assets':       'other_assets',
-            'Other_Liabilities':  'other_liabilities',
-            'Total_Assets':       'total_assets',
-            'Total_Liabilities':  'total_liabilities',
-            # already renamed but guard anyway
-            'CFO':                'operating_cash_flow',
-            'CFI':                'investing_cash_flow',
-            'CFF':                'financing_cash_flow',
-            'CFO_over_OP':        'cash_conversion_ratio',
-            'CWIP':               'capital_wip',
-            'OPM_pct':            'operating_margin_pct',
-            'EPS_Rs':             'eps',
-            'Equity_Capital':     'share_capital',
-            'Profit_before_tax':  'profit_before_tax',
-            'Tax_pct':            'tax_rate_pct',
-            'Dividend_Payout_pct':'dividend_payout_pct',
-            'Fixed_Assets':       'net_fixed_assets',
-            'Net_Cash_Flow':      'net_cash_flow',
-            'Financing_Profit':   'net_interest_income',
+            'Sales':               'revenue',
+            'Expenses':            'expenses',
+            'Operating_Profit':    'ebit',
+            'Other_Income':        'other_income',
+            'Interest':            'interest',
+            'Depreciation':        'depreciation',
+            'Net_Profit':          'net_profit',
+            'Free_Cash_Flow':      'fcf',
+            'Borrowings':          'borrowings',
+            'Deposits':            'deposits',
+            'Reserves':            'reserves',
+            'Investments':         'investments',
+            'Other_Assets':        'other_assets',
+            'Other_Liabilities':   'other_liabilities',
+            'Total_Assets':        'total_assets',
+            'Total_Liabilities':   'total_liabilities',
+            'CFO':                 'operating_cash_flow',
+            'CFI':                 'investing_cash_flow',
+            'CFF':                 'financing_cash_flow',
+            'CFO_over_OP':         'cash_conversion_ratio',
+            'CWIP':                'capital_wip',
+            'OPM_pct':             'operating_margin_pct',
+            'EPS_Rs':              'eps',
+            'Equity_Capital':      'share_capital',
+            'Profit_before_tax':   'profit_before_tax',
+            'Tax_pct':             'tax_rate_pct',
+            'Dividend_Payout_pct': 'dividend_payout_pct',
+            'Fixed_Assets':        'net_fixed_assets',
+            'Net_Cash_Flow':       'net_cash_flow',
+            'Financing_Profit':    'net_interest_income',
             'Financing_Margin_pct':'net_interest_margin_pct',
-            'Gross_NPA_pct':      'gross_npa_pct',
-            'Net_NPA_pct':        'net_npa_pct',
-            'CFO':                        'operating_cash_flow',
-            'CFI':                        'investing_cash_flow',
-            'CFF':                        'financing_cash_flow',
-            'CFO_over_OP':                'cash_conversion_ratio',
-            'CWIP':                       'capital_wip',
-            'OPM_pct':                    'operating_margin_pct',
-            'EPS_Rs':                     'eps',
-            'Equity_Capital':             'share_capital',
-            'Profit_before_tax':          'profit_before_tax',
-            'Tax_pct':                    'tax_rate_pct',
-            'Dividend_Payout_pct':        'dividend_payout_pct',
-            'Fixed_Assets':               'net_fixed_assets',
-            'Net_Cash_Flow':              'net_cash_flow',
-            'Financing_Profit':           'net_interest_income',
-            'Financing_Margin_pct':       'net_interest_margin_pct',
-            'Gross_NPA_pct':              'gross_npa_pct',
-            'Net_NPA_pct':                'net_npa_pct',
-            'yf_accounts_receivable':     'yf_receivables',
-            'yf_capital_lease_obligations':'yf_lease_obligations',
-            'yf_cash_and_equivalents':    'yf_cash',
-            'yf_cost_of_revenue':         'yf_cogs',
-            'yf_normalized_income':       'yf_normalized_profit',
-            'yf_net_tangible_assets':     'yf_tangible_assets',
-            'yf_unusual_items':           'yf_exceptional_items',
-            'yf_latest_CFO':              'yf_latest_operating_cash_flow',
-            'yf_latest_EPS_Rs':           'yf_latest_eps',
-            'yf_latest_Borrowings':       'yf_latest_borrowings',
-            'yf_latest_Free_Cash_Flow':   'yf_latest_fcf',
-            'yf_latest_Net_Profit':       'yf_latest_net_profit',
-            'yf_latest_Operating_Profit': 'yf_latest_ebit',
-            'yf_latest_Sales':            'yf_latest_revenue',
-            'yf_latest_Total_Assets':     'yf_latest_total_assets',
-            'yf_latest_Total_Liabilities':'yf_latest_total_liabilities',
-            'yf_latest_Depreciation':     'yf_latest_depreciation',
-            'yf_latest_Interest':         'yf_latest_interest',
+            'Gross_NPA_pct':       'gross_npa_pct',
+            'Net_NPA_pct':         'net_npa_pct',
         })
+        # Drop any yf_latest_* and yf_ prefixed keys — all Yahoo data is now clean-named
+        for k in [k for k in list(fin.keys()) if k.startswith('yf_')]:
+            fin.pop(k)
         bucketed['financials'] = fin
 
     # ── ratios ───────────────────────────────────────────────────────────────
@@ -2599,15 +2565,21 @@ def standardize_field_names(bucketed: dict) -> dict:
         # Move history time-series into valuation.history
         history = val.get('history', {})
         for old, new in [
-            ('yf_basic_eps',              'basic_eps'),
-            ('yf_diluted_eps',            'diluted_eps'),
-            ('yf_basic_shares',           'basic_shares'),
-            ('yf_diluted_shares',         'diluted_shares'),
-            ('yf_shares_outstanding',     'shares_outstanding'),
-            ('basic_eps_history',         'basic_eps'),
-            ('diluted_eps_history',       'diluted_eps'),
-            ('basic_shares_history',      'basic_shares'),
-            ('diluted_shares_history',    'diluted_shares'),
+            ('basic_eps',              'basic_eps'),
+            ('diluted_eps',            'diluted_eps'),
+            ('basic_shares',           'basic_shares'),
+            ('diluted_shares',         'diluted_shares'),
+            ('shares_outstanding',     'shares_outstanding'),
+            # legacy yf_ names — remove if still present
+            ('yf_basic_eps',           'basic_eps'),
+            ('yf_diluted_eps',         'diluted_eps'),
+            ('yf_basic_shares',        'basic_shares'),
+            ('yf_diluted_shares',      'diluted_shares'),
+            ('yf_shares_outstanding',  'shares_outstanding'),
+            ('basic_eps_history',      'basic_eps'),
+            ('diluted_eps_history',    'diluted_eps'),
+            ('basic_shares_history',   'basic_shares'),
+            ('diluted_shares_history', 'diluted_shares'),
             ('shares_outstanding_history','shares_outstanding'),
         ]:
             if old in val and new not in history:
