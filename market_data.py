@@ -1227,22 +1227,45 @@ def reorganize_ratios_revenue(bucketed: dict) -> dict:
         val = ratios[key]
         if not isinstance(val, list):
             continue
-        # Merge all _periods dicts — prefer consolidated over standalone
-        # Priority: consolidated annual > standalone annual > any
+        # Merge all _periods: consolidated annual > standalone annual
         merged = {}
         priority = {'consolidated': 2, 'standalone': 1}
         for item in val:
             if isinstance(item, dict) and '_periods' in item:
-                p = item['_periods']
                 weight = priority.get(item.get('_consolidation', ''), 0)
-                for d, v in p.items():
+                for d, v in item['_periods'].items():
                     if v is None:
                         continue
                     if d not in merged or weight > merged[d][1]:
                         merged[d] = (v, weight)
         ratios[key] = {d: v for d, (v, _) in sorted(merged.items(), reverse=True)} if merged else {}
 
-    # ── Fix 3: Group Yahoo revenue sub-fields under 'revenue' ─────────────────
+        # Strip % strings left over from older screener_financials.json fetches
+        clean = {}
+        for d, v in (ratios[key].items() if isinstance(ratios[key], dict) else {}.items()):
+            if isinstance(v, str):
+                s = v.strip().rstrip('%')
+                try:
+                    v = float(s)
+                except (ValueError, TypeError):
+                    v = None
+            clean[d] = v
+        ratios[key] = clean
+
+    # Deduplicate Yahoo ratio scalar aliases:
+    # return_on_equity == roe_pct, return_on_assets == roa_pct
+    # Prefer Screener time-series dict over Yahoo scalar float
+    for old, new in [('return_on_equity', 'roe_pct'), ('return_on_assets', 'roa_pct')]:
+        if old in ratios:
+            existing = ratios.get(new)
+            if isinstance(existing, dict) and existing:
+                # Screener time-series exists — drop Yahoo scalar alias
+                ratios.pop(old)
+            elif existing is None:
+                ratios[new] = ratios.pop(old)
+            else:
+                # Both are scalars — keep new name, drop old
+                ratios.pop(old)
     revenue_keys = {'total_revenue', 'revenue_per_share', 'revenue_growth'}
     revenue_obj = {}
     for key in revenue_keys:
@@ -1257,42 +1280,65 @@ def reorganize_ratios_revenue(bucketed: dict) -> dict:
 
 def reorganize_valuation_eps_pe(bucketed: dict) -> dict:
     """
-    Group EPS and P/E metrics under separate sub-objects in valuation.
-    Remove original keys to avoid duplicates.
+    Group EPS and P/E metrics under sub-objects in valuation.
+    Deduplicates: eps_ttm/trailing_eps → eps_ttm, eps_forward/forward_eps → eps_forward.
+    Keeps pe_ttm/pe_forward in valuation.pe (source of truth).
+    derived_metrics.pe_ratio/price_to_book are dropped later as they duplicate valuation.
     """
     if "valuation" not in bucketed:
         return bucketed
-    
+
     valuation = bucketed["valuation"]
-    
-    eps_keys = {
-        'eps_ttm', 'eps_forward', 'eps_current_year', 'diluted_eps', 'basic_eps',
-        'trailing_eps', 'forward_eps', 'price_eps_current_year'
-    }
-    
-    pe_keys = {
-        'trailing_pe', 'forward_pe', 'peg_ratio', 'trailing_peg_ratio', 'price_to_book',
-        'price_to_sales_ttm', 'forward_peg_ratio'
-    }
-    
-    # Extract EPS metrics (and remove from top level)
+
+    # ── EPS sub-object ──────────────────────────────────────────────────────
+    # trailing_eps and eps_ttm are the same field — keep one
+    # forward_eps and eps_forward are the same field — keep one
     eps_obj = {}
-    for key in eps_keys:
+    # TTM EPS — prefer trailing_eps (Yahoo info name), fall back to eps_ttm
+    for key in ['trailing_eps', 'eps_ttm']:
         if key in valuation:
-            eps_obj[key] = valuation.pop(key)
-    
-    # Extract P/E metrics (and remove from top level)
+            eps_obj['eps_ttm'] = valuation.pop(key)
+            break
+    # Forward EPS — prefer eps_forward
+    for key in ['eps_forward', 'forward_eps']:
+        if key in valuation:
+            eps_obj['eps_forward'] = valuation.pop(key)
+            break
+    # Current year EPS
+    for key in ['eps_current_year']:
+        if key in valuation:
+            eps_obj['eps_current_year'] = valuation.pop(key)
+    # P/E on current year
+    for key in ['price_eps_current_year', 'pe_current_year']:
+        if key in valuation:
+            eps_obj['pe_current_year'] = valuation.pop(key)
+            break
+
+    # ── PE sub-object ───────────────────────────────────────────────────────
     pe_obj = {}
-    for key in pe_keys:
-        if key in valuation:
-            pe_obj[key] = valuation.pop(key)
-    
-    # Add sub-objects back
+    for old, new in [
+        ('trailing_pe',       'pe_ttm'),
+        ('pe_ttm',            'pe_ttm'),
+        ('forward_pe',        'pe_forward'),
+        ('pe_forward',        'pe_forward'),
+        ('peg_ratio',         'peg'),
+        ('peg',               'peg'),
+        ('trailing_peg_ratio','peg_ttm'),
+        ('peg_ttm',           'peg_ttm'),
+        ('price_to_book',     'price_to_book'),
+        ('price_to_sales_ttm','price_to_sales'),
+        ('price_to_sales',    'price_to_sales'),
+    ]:
+        if old in valuation and new not in pe_obj:
+            pe_obj[new] = valuation.pop(old)
+        elif old in valuation:
+            valuation.pop(old)  # duplicate key — already have it
+
     if eps_obj:
         valuation['eps'] = eps_obj
     if pe_obj:
         valuation['pe'] = pe_obj
-    
+
     bucketed["valuation"] = valuation
     return bucketed
 
@@ -1640,81 +1686,84 @@ def reorganize_financials_debt(bucketed: dict) -> dict:
 
 def reorganize_identity_shareholding(bucketed: dict) -> dict:
     """
-    Group shareholding-related fields under 'shareholding' sub-object in identity.
-    Organizes into: shares, ownership, fiscal_dates, pattern, dividends.
+    Group shareholding fields under company_details.shareholding.
+    MOVE (pop) fields — no top-level duplicates.
+    Apply final renames inside sub-objects (runs before standardize_field_names).
+    Drop company_officers — too granular for portfolio analysis.
     """
     if "company_details" not in bucketed:
         return bucketed
-    
-    identity = bucketed["company_details"]
-    
-    # Extract shareholding data
-    shareholding_obj = {}
-    
-    # Shares sub-group
-    shares_obj = {}
-    for key in ['float_shares', 'shares_outstanding', 'implied_shares_outstanding']:
-        if key in identity:
-            shares_obj[key] = identity[key]
-    if shares_obj:
-        shareholding_obj['shares'] = shares_obj
-    
-    # Ownership sub-group
-    ownership_obj = {}
-    for key in ['held_pct_insiders', 'held_pct_institutions']:
-        if key in identity:
-            ownership_obj[key] = identity[key]
-    if ownership_obj:
-        shareholding_obj['ownership'] = ownership_obj
-    
-    # Fiscal dates sub-group
-    fiscal_obj = {}
-    for key in ['last_fiscal_year_end', 'next_fiscal_year_end', 'most_recent_quarter']:
-        if key in identity:
-            fiscal_obj[key] = identity[key]
-    if fiscal_obj:
-        shareholding_obj['fiscal_dates'] = fiscal_obj
-    
-    # Shareholding pattern sub-group
+
+    cd = bucketed["company_details"]
+
+    # ── Drop company_officers ─────────────────────────────────────────────────
+    cd.pop('company_officers', None)
+
+    # ── Shareholding pattern (time-series, MOVE from top level) ───────────────
     pattern_obj = {}
     for key in ['promoters', 'fiis', 'diis', 'public', 'government', 'others', 'no_of_shareholders']:
-        if key in identity:
-            val = identity[key]
-            # Simply extract _periods if available
-            if isinstance(val, dict) and '_periods' in val:
-                pattern_obj[key] = val.get('_periods', {})
-            else:
-                pattern_obj[key] = val
+        if key in cd:
+            pattern_obj[key] = cd.pop(key)
+    
+    # ── Shares (MOVE from top level, apply renames) ────────────────────────────
+    shares_obj = {}
+    for old, new in [
+        ('float_shares',               'floating_shares'),
+        ('shares_outstanding',         'shares_outstanding'),
+        ('implied_shares_outstanding', 'implied_shares'),
+        ('implied_shares',             'implied_shares'),       # post-rename name
+        ('floating_shares',            'floating_shares'),      # post-rename name
+    ]:
+        if old in cd:
+            shares_obj[new] = cd.pop(old)
+    # Deduplicate (implied_shares may appear twice from both old+new names)
+    if shares_obj:
+        shares_obj = {k: v for k, v in shares_obj.items() if v is not None}
+
+    # ── Ownership (MOVE from top level, apply renames) ─────────────────────────
+    ownership_obj = {}
+    for old, new in [
+        ('held_pct_insiders',          'insider_holding_pct'),
+        ('held_pct_institutions',      'institutional_holding_pct'),
+        ('insider_holding_pct',        'insider_holding_pct'),        # post-rename
+        ('institutional_holding_pct',  'institutional_holding_pct'),  # post-rename
+    ]:
+        if old in cd:
+            ownership_obj[new] = cd.pop(old)
+    if ownership_obj:
+        ownership_obj = {k: v for k, v in ownership_obj.items() if v is not None}
+
+    # ── Dividends (MOVE) ───────────────────────────────────────────────────────
+    dividend_obj = {}
+    for key in ['dividend_rate', 'dividend_yield', 'ex_dividend_date', 'payout_ratio',
+                'trailing_annual_dividend_rate', 'trailing_annual_dividend_yield',
+                'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield']:
+        if key in cd:
+            dividend_obj[key] = cd.pop(key)
+
+    # ── Stock splits (MOVE) ───────────────────────────────────────────────────
+    split_obj = {}
+    for key in ['last_split_date', 'last_split_factor']:
+        if key in cd:
+            split_obj[key] = cd.pop(key)
+
+    # ── Assemble shareholding sub-object ─────────────────────────────────────
+    shareholding_obj = {}
     if pattern_obj:
         shareholding_obj['pattern'] = pattern_obj
-    
-    # Dividends sub-group
-    dividend_obj = {}
-    dividend_keys = {
-        'dividend_rate', 'dividend_yield', 'ex_dividend_date', 'payout_ratio',
-        'trailing_annual_dividend_rate', 'trailing_annual_dividend_yield',
-        'last_dividend_value', 'last_dividend_date', 'five_year_avg_dividend_yield'
-    }
-    for key in dividend_keys:
-        if key in identity:
-            dividend_obj[key] = identity.pop(key)  # Remove from identity
+    if shares_obj:
+        shareholding_obj['shares'] = shares_obj
+    if ownership_obj:
+        shareholding_obj['ownership'] = ownership_obj
     if dividend_obj:
         shareholding_obj['dividends'] = dividend_obj
-    
-    # Stock Splits sub-group
-    split_obj = {}
-    split_keys = {'last_split_date', 'last_split_factor'}
-    for key in split_keys:
-        if key in identity:
-            split_obj[key] = identity.pop(key)  # Remove from identity
     if split_obj:
         shareholding_obj['stock_splits'] = split_obj
-    
-    # Add shareholding object back to identity
+
     if shareholding_obj:
-        identity['shareholding'] = shareholding_obj
-    
-    bucketed["company_details"] = identity
+        cd['shareholding'] = shareholding_obj
+
+    bucketed["company_details"] = cd
     return bucketed
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2325,7 +2374,6 @@ def standardize_field_names(bucketed: dict) -> dict:
         rat = rename_keys(rat, {
             # Screener time-series: PascalCase → snake_case
             'ROCE_pct':              'roce_pct',
-            'ROE_pct':               'roe_pct',
             'Debtor_Days':           'debtor_days',
             'Inventory_Days':        'inventory_days',
             'Days_Payable':          'days_payable',
@@ -2348,9 +2396,17 @@ def standardize_field_names(bucketed: dict) -> dict:
             'total_cash_per_share':      'cash_per_share',
             'debt_to_equity':            'debt_to_equity_ratio',
         })
+        # ROE_pct (Screener time-series) vs roe_pct (Yahoo scalar) — time-series wins
+        if 'ROE_pct' in rat:
+            screener_roe = rat.pop('ROE_pct')
+            if isinstance(screener_roe, dict) and screener_roe:
+                rat['roe_pct'] = screener_roe  # overwrite Yahoo scalar with Screener dict
+            elif 'roe_pct' not in rat:
+                rat['roe_pct'] = screener_roe
+
         bucketed['ratios'] = rat
 
-    # ── Fix 2: Drop Yahoo TTM absolute scalars — unit-inconsistent (USD for some ─
+    # ── Fix 2: Drop Yahoo TTM absolute scalars — unit-inconsistent (USD for some
     # tickers) and duplicated by yf_*.{YYYY-MM-DD} time-series in financials.
     rat = bucketed.get('ratios', {})
     if rat:
@@ -2493,6 +2549,10 @@ def standardize_field_names(bucketed: dict) -> dict:
         # market_price duplicates close_price; regular_prev_close duplicates prev_close
         for drop in ('market_price', 'regular_prev_close'):
             pr.pop(drop, None)
+        # ltp.week52_high/low duplicate price.52_week.high/low
+        if isinstance(pr.get('ltp'), dict):
+            pr['ltp'].pop('week52_high', None)
+            pr['ltp'].pop('week52_low', None)
         bucketed['price'] = pr
 
     # ── Fix 4: Drop company_details noise fields ──────────────────────────────
@@ -2522,6 +2582,12 @@ def standardize_field_names(bucketed: dict) -> dict:
         for k in [k for k in list(fin.keys()) if k.startswith('yf_latest_')]:
             fin.pop(k)
         bucketed['financials'] = fin
+
+    # ── Drop pe_ratio/price_to_book from derived_metrics — duplicates valuation ─
+    dm = bucketed.get('derived_metrics', {}).get('calculated_metrics', {})
+    if dm:
+        dm.pop('pe_ratio', None)
+        dm.pop('price_to_book', None)
 
     return bucketed
 
