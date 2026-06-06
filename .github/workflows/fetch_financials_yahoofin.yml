@@ -14,6 +14,9 @@ on:
           - WARNING
           - ERROR
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   fetch-financials:
     runs-on: ubuntu-latest
@@ -21,12 +24,12 @@ jobs:
 
     steps:
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: "🐍 Setup Python"
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -62,7 +65,7 @@ jobs:
           else
             echo "✗ yahoofin_financials.json NOT FOUND"
           fi
-          
+
           echo ""
           echo "=== Checking Log Files ==="
           if [ -f data/logs/fetch_yahoofin_financials.log ]; then
@@ -73,16 +76,18 @@ jobs:
           else
             echo "✗ fetch_yahoofin_financials.log NOT FOUND"
           fi
-          
+
           echo ""
           echo "=== All data directory files ==="
           ls -lhR data/ 2>/dev/null || echo "No data directory"
 
-      - name: "🔐 Configure Git & Check Gitignore"
+      - name: "🔐 Configure Git & Check Status"
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+          git config core.autocrlf false
+          git config core.fileMode false
+
           echo "=== Checking .gitignore ==="
           if [ -f .gitignore ]; then
             echo "Contents of .gitignore:"
@@ -90,30 +95,33 @@ jobs:
           else
             echo "No .gitignore file found"
           fi
-          
+
           echo ""
           echo "=== Current git status ==="
           git status
 
       - name: "✅ Force-commit & Push"
         run: |
-          echo "Force-adding files (overriding .gitignore)..."
-          [ -f fetch_yahoofin_financials.py ] && git add -f fetch_yahoofin_financials.py || echo "⚠ yahoofin script not found"
-          
-          [ -f data/yahoofin_financials.json ] && git add -f data/yahoofin_financials.json || echo "⚠ yahoofin_financials.json not found"
-          [ -f data/logs/fetch_yahoofin_financials.log ] && git add -f data/logs/fetch_yahoofin_financials.log || echo "⚠ fetch_yahoofin_financials.log not found"
-          
+          echo "Force-adding files..."
+          [ -f fetch_yahoofin_financials.py ]              && git add -f fetch_yahoofin_financials.py              || echo "⚠ fetch_yahoofin_financials.py not found"
+          [ -f data/yahoofin_financials.json ]             && git add -f data/yahoofin_financials.json             || echo "⚠ yahoofin_financials.json not found"
+          [ -f data/logs/fetch_yahoofin_financials.log ]   && git add -f data/logs/fetch_yahoofin_financials.log   || echo "⚠ fetch_yahoofin_financials.log not found"
+          [ -f .fetch_config.json ]                        && git add -f .fetch_config.json                        || echo "⚠ .fetch_config.json not found"
+
           echo ""
-          echo "Git status after add..."
-          git status
-          
+          echo "=== Staged changes ==="
+          git diff --cached --stat
+
           echo ""
-          echo "Committing..."
-          git commit -m "chore: [FETCH] Financial Metrics - $(date +'%Y-%m-%d %H:%M:%S')" 2>&1 || echo "Nothing new to commit"
-          
-          echo ""
-          echo "Pushing..."
-          git push origin HEAD:main 2>&1 || echo "Push failed"
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit — skipping"
+          else
+            echo "Committing..."
+            git commit -m "chore: [FETCH] Financial Metrics - $(date +'%Y-%m-%d %H:%M:%S')"
+            echo ""
+            echo "Pushing..."
+            git push origin HEAD:main
+          fi
 
       - name: "📝 Summary"
         if: always()
