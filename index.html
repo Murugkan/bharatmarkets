@@ -467,84 +467,137 @@ const resolve = (obj, field) => {
     if (!field || typeof field !== 'string') return '—';
     
     const f = field.toUpperCase();
-    const mappings = { 
-        'SYM':['ticker','SYM','SYMBOL','TICKER'], 
-        'TICKER':['ticker','SYM','SYMBOL','TICKER'], 
-        'SIGNAL':['signal','SIGNAL','TECH_SIGNAL'],
-        'PNL':['pnl','PNL','P/L'], 
-        'PNL%':['pnlPct','PNL%','PNL_PCT'], 
-        '1D%':['price.ltp.change_pct','changePct','1D%','CHANGE_PCT','change_pct'], 
-        '1DG%':['price.ltp.change_pct','changePct','1DG%','CHANGE_PCT','change_pct'],
-        '1DCH':['price.ltp.change','change','1DCH','1D_CHANGE'],
-        '1DG':['1dGain','1D_GAIN','1DGAIN'],
-        '1D_GAIN':['1dGain','1D_GAIN','1DGAIN'],
-        'LTP':['price.ltp.price','ltp','LTP','current_price'], 
-        'QTY':['company_details.qty','qty','QTY','quantity'], 
-        'AVG':['company_details.avg_cost','avg_cost','avg','AVG','averageCost'], 
-        'INVESTED':['invested','INVESTED'], 
-        'POS':['pos','POS','positives'], 
-        'NEG':['neg','NEG','negatives'], 
-        'ROE%':['ratios.ttm.roe_pct','ratios.ttm.roe_pct','derived_metrics.calculated_metrics.roe_pct','roe','ROE%','ROE_PCT','roe_pct'], 
-        'ROCE%':['ratios.screener.roce_pct','ratios.screener.roce_pct','derived_metrics.calculated_metrics.roce_pct','roce','ROCE%','ROCE_PCT','roce_pct'], 
-        'OPM%':['ratios.ttm.operating_margin_pct','ratios.ttm.operating_margin_pct','operating_margin','OPM%','opm_pct','operatingMargin'], 
-        'NPM%':['ratios.ttm.net_margin_pct','derived_metrics.calculated_metrics.net_margin_pct','net_profit_margin','NPM%','npm_pct','netProfitMargin'], 
-        'PE':['valuation.pe.pe_ttm','valuation.pe','valuation.pe.pe_ttm','pe','PE','peRatio','trailing_pe'], 
-        'PB':['valuation.pe.price_to_book','valuation.pe.price_to_book','valuation.pe.price_to_book','pb','PB','pbRatio','priceToBook'], 
-        'BV':['valuation.market.book_value','book_value','BV','bookValue'],
-        'MCAP':['valuation.market.market_cap','valuation.market.market_cap','market_cap','MCAP','marketCap'], 
-        'SALES':['financials.revenue','financials.revenue','financials.revenue','sales','revenue','SALES','Sales','annual_sales'], 
-        'EBITDA':['ratios.ttm.ebitda_margin_pct','financials.ebitda','financials.ebitda','ebitda','EBITDA'], 
-        'CFO':['financials.operating_cash_flow','financials.operating_cash_flow','cash_flow_annual.operating_cash_flow','operating_cash_flow','CFO','cfo'], 
-        'NETCF':['financials.fcf','financials.fcf','cash_flow_annual.free_cash_flow','free_cash_flow','NETCF','fcf','FCF','netCashFlow'],
-        'EPS':['valuation.history.basic_eps','valuation.eps','valuation.eps.eps_ttm','eps','EPS','basicEps'], 
-        'FV':['valuation.market.book_value','face_value','FV','faceValue'],
-        'PROM%':['ratios.ttm.gross_margin_pct','derived_metrics.calculated_metrics.net_margin_pct','gross_margin','PROM%','prom_pct','grossMargin'], 
-        'FII%':['company_details.shareholding.pattern.fiis','fiis','FII%','fiiHolding'], 
-        'DII%':['company_details.shareholding.pattern.diis','diis','DII%','diiHolding'], 
-        'ATH%':['price.52_week.fifty_two_week_change_pct','price.52_week_change_pct','ath','ATH%','athPercent'], 
-        '52W%':['price.52_week.fifty_two_week_change_pct','price.52_week_change_pct','52w','52W%','fiftyTwoWeekChangePercent'], 
-        'W52H':['price.52_week.high','w52h','W52H','fiftyTwoWeekHigh'],
-        'W52L':['price.52_week.low','w52l','W52L','fiftyTwoWeekLow'],
-        'OPEN':['price.ltp.open','open','OPEN'],
-        'HIGH':['price.ltp.high','high','HIGH'],
-        'LOW':['price.ltp.low','low','LOW'],
-        'CHANGE':['price.ltp.change','change','CHANGE'],
-        'VOL':['price.ltp.day_volume','vol','VOL','VOLUME'],
-        'BETA':['price.ltp.beta','beta','BETA'],
-        'PREV':['price.ltp.prev_close','prev','PREV'],
-        'SECTOR':['company_details.industry','industry','sector','SECTOR','Sector'],
-        'NAME':['company_details.name','long_name','name','NAME'],
-        'CAPEX':['cash_flow_annual.capital_expenditure','capex','CAPEX','capital_expenditure'],
-        'FCF':['cash_flow_annual.free_cash_flow','free_cash_flow','fcf','FCF','freeCashFlow'],
-        'DIV_YIELD':['dividends_shareholding.dividend_yield','trailing_annual_dividend_yield','dividend_yield','div_yield','DIV_YIELD','dividendYield'],
-        'DEBT_EQ':['profitability_growth.debt_to_equity','balance_sheet_annual.debt_to_equity','debt_to_equity','debt_eq','DEBT_EQ','debt_equity','debtToEquity'],
-        'INT_COV':['efficiency_ratios.ttm.current_ratio','interest_coverage','INT_COV','INTEREST_COVERAGE'],
-        'P/S':['valuation.pe.price_to_sales','valuation.pe.price_to_sales','price_to_sales','P/S','PS','priceToSales'],
-        'EV/EBITDA':['valuation.market.enterprise_value','ev_to_ebitda','EV/EBITDA','EV_EBITDA','evToEbitda'],
-        'TAX_RATE':['income_statement_annual.effective_tax_rate','tax_rate_effective','TAX_RATE','tax_rate','effectiveTaxRate']
+    // Helper: get latest value from a time-series object {date: value, ...}
+    const _latest = (tsObj) => {
+        if (!tsObj || typeof tsObj !== 'object') return undefined;
+        const keys = Object.keys(tsObj).filter(k => /^\d{4}-\d{2}-\d{2}/.test(k)).sort();
+        if (!keys.length) return undefined;
+        const v = tsObj[keys[keys.length - 1]];
+        return (v !== null && v !== undefined) ? v : undefined;
     };
-    const targets = mappings[f] || [f];
-    for (let t of targets) {
-        // Handle nested paths like "price.ltp.price"
-        if (t.includes('.')) {
-            const parts = t.split('.');
-            let val = obj;
-            for (let part of parts) {
-                if (val && typeof val === 'object' && val[part] !== undefined) {
-                    val = val[part];
-                } else {
-                    val = undefined;
-                    break;
-                }
-            }
-            // Only return if value is not null/undefined
-            if (val !== undefined && val !== null) return val;
+    // Helper: get latest value from financials time-series (consolidated > standalone, annual)
+    const _fin = (node) => {
+        if (!node || typeof node !== 'object') return undefined;
+        const accounting = node.consolidated || node.standalone;
+        if (!accounting) return undefined;
+        const freq = accounting.annual || accounting.quarterly;
+        return _latest(freq);
+    };
+
+    const mappings = {
+        'SYM':           { paths: ['ticker'] },
+        'TICKER':        { paths: ['ticker'] },
+        'SIGNAL':        { paths: ['signal'] },
+        'PNL':           { paths: ['pnl'] },
+        'PNL%':          { paths: ['pnlPct'] },
+        '1D%':           { paths: ['price.ltp.change_pct'] },
+        '1DG%':          { paths: ['price.ltp.change_pct'] },
+        '1DCH':          { paths: ['price.ltp.change'] },
+        '1DG':           { paths: ['1dGain'] },
+        '1D_GAIN':       { paths: ['1dGain'] },
+        'LTP':           { paths: ['price.ltp.price'] },
+        'QTY':           { paths: ['company_details.qty', 'qty'] },
+        'AVG':           { paths: ['company_details.avg_cost', 'avg_cost', 'avg'] },
+        'INVESTED':      { paths: ['invested'] },
+        'POS':           { paths: ['pos'] },
+        'NEG':           { paths: ['neg'] },
+        // Margin fields: ratios.ttm values are fractions (0.137), multiply ×100 for display pct.
+        // Fallback to derived_metrics.calculated_metrics which are already in pct.
+        'ROE%':          { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.roe_pct;
+                            if (dm != null) return dm;
+                            const v = s?.ratios?.ttm?.roe_pct;
+                            return (v != null) ? v * 100 : undefined;
+                          }},
+        'ROCE%':         { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.roce_pct;
+                            if (dm != null) return dm;
+                            return _latest(s?.ratios?.screener?.roce_pct);
+                          }},
+        'OPM%':          { fn: s => {
+                            const v = s?.ratios?.ttm?.operating_margin_pct;
+                            return (v != null) ? v * 100 : undefined;
+                          }},
+        'NPM%':          { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.net_margin_pct;
+                            if (dm != null) return dm;
+                            const v = s?.ratios?.ttm?.net_margin_pct;
+                            return (v != null) ? v * 100 : undefined;
+                          }},
+        'PE':            { paths: ['valuation.pe.pe_ttm'] },
+        'PB':            { paths: ['valuation.pe.price_to_book'] },
+        'BV':            { paths: ['valuation.market.book_value'] },
+        'MCAP':          { paths: ['valuation.market.market_cap'] },
+        // EBITDA: valuation.market.ebitda is absolute INR; financials.ebitda is time-series fallback
+        'EBITDA':        { fn: s => s?.valuation?.market?.ebitda ?? _fin(s?.financials?.ebitda) },
+        'SALES':         { fn: s => _fin(s?.financials?.revenue) },
+        'CFO':           { fn: s => _fin(s?.financials?.operating_cash_flow) },
+        'NETCF':         { fn: s => _fin(s?.financials?.net_cash_flow) },
+        'FCF':           { fn: s => _fin(s?.financials?.fcf) },
+        'EPS':           { paths: ['valuation.eps.eps_ttm'] },
+        'FV':            { paths: ['valuation.market.book_value'] },  // no face_value in schema; BV is best proxy
+        'PROM%':         { fn: s => _latest(s?.company_details?.shareholding?.pattern?.promoters) },
+        'FII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.fiis) },
+        'DII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.diis) },
+        'ATH%':          { paths: ['price.52_week.change_pct'] },
+        '52W%':          { paths: ['price.52_week.change_pct'] },
+        'W52H':          { paths: ['price.52_week.high'] },
+        'W52L':          { paths: ['price.52_week.low'] },
+        'OPEN':          { paths: ['price.ltp.open'] },
+        'HIGH':          { paths: ['price.ltp.high'] },
+        'LOW':           { paths: ['price.ltp.low'] },
+        'CHANGE':        { paths: ['price.ltp.change'] },
+        'VOL':           { paths: ['price.ltp.day_volume'] },
+        'BETA':          { paths: ['price.ltp.beta'] },
+        'PREV':          { paths: ['price.ltp.prev_close'] },
+        'SECTOR':        { paths: ['company_details.sector'] },
+        'NAME':          { paths: ['company_details.name'] },
+        'CAPEX':         { fn: s => _fin(s?.financials?.capex) },
+        // DIV_YIELD: dividend_yield not present; use trailing_annual_dividend_yield
+        'DIV_YIELD':     { paths: ['company_details.shareholding.dividends.trailing_annual_dividend_yield'] },
+        'DEBT_EQ':       { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.debt_to_equity;
+                            if (dm != null) return dm;
+                            return s?.ratios?.ttm?.debt_to_equity_ratio;
+                          }},
+        'INT_COV':       { paths: ['ratios.ttm.current_ratio'] },
+        'P/S':           { paths: ['valuation.pe.price_to_sales'] },
+        'EV/EBITDA':     { paths: ['valuation.pe.ev_to_ebitda'] },
+        'TAX_RATE':      { fn: s => _fin(s?.financials?.tax_rate_pct) },
+    };
+
+    const entry = mappings[f];
+    if (entry) {
+        // fn-based resolution (time-series helpers)
+        if (entry.fn) {
+            try {
+                const v = entry.fn(obj);
+                if (v !== undefined && v !== null) return v;
+            } catch(e) {}
         }
-        // Direct field access
-        if (obj[t] !== undefined && obj[t] !== null) return obj[t];
-        const cleanT = t.replace('%', '');
-        if (obj[cleanT] !== undefined && obj[cleanT] !== null) return obj[cleanT];
+        // path-based resolution
+        if (entry.paths) {
+            for (let t of entry.paths) {
+                if (t.includes('.')) {
+                    const parts = t.split('.');
+                    let val = obj;
+                    for (let part of parts) {
+                        if (val && typeof val === 'object' && val[part] !== undefined) {
+                            val = val[part];
+                        } else { val = undefined; break; }
+                    }
+                    if (val !== undefined && val !== null && typeof val !== 'object') return val;
+                }
+                if (obj[t] !== undefined && obj[t] !== null) return obj[t];
+            }
+        }
+        return '—';
     }
+
+    // Fallback for unmapped fields: direct key lookup
+    if (obj[f] !== undefined && obj[f] !== null) return obj[f];
+    const cleanF = f.replace('%', '');
+    if (obj[cleanF] !== undefined && obj[cleanF] !== null) return obj[cleanF];
     return '—';
 };
 
