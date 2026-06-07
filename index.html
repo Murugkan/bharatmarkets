@@ -1,0 +1,3454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+    <title>Onyx | Pro Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; display:flex; flex-direction:column; height:100dvh; }
+        header { background:var(--s1); border-bottom:1px solid var(--b1); padding:8px; display:flex; justify-content:space-around; flex-shrink:0; }
+        .kpi-box { text-align:center; }
+        .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
+        .kpi-val { font-size:14px; font-weight:800; margin-top:1px; color:var(--bl); }
+        #bar-wrap { padding:8px; background:#0a0a0a; border-bottom:2px solid #00ff88; flex-shrink:0; }
+        #tape-bar { width:100%; height:20px; border-radius:4px; overflow:hidden; display:flex; background:#050505; }
+        .seg { height:100%; cursor:pointer; flex-shrink:0; border-right:1px solid rgba(0,255,136,0.3); transition: all 0.3s; filter: brightness(1); }
+        .seg.dimmed { opacity: 0.2; filter: brightness(0.5); }
+        #legend { display:flex; flex-wrap:wrap; gap:6px 12px; padding:10px; border-bottom:2px solid #00f2ff; background:#000; max-height:50px; overflow-y:auto; flex-shrink:0; }
+        .leg { display:flex; align-items:center; gap:6px; font-size:9px; color:#fff; cursor:pointer; font-weight:400; }
+        .leg.on { font-weight:800; }
+        .dot { width:8px; height:8px; border-radius:2px; }
+        .view { flex:1; overflow-y:auto; background:#000; -webkit-overflow-scrolling:touch; min-height:0; }
+        #app { overflow-x:auto; -webkit-overflow-scrolling:touch; min-height:100%; }
+        table { border-collapse:collapse; font-size:10px; white-space:nowrap; margin-bottom:80px; }
+        th { background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%); color:#aaa; padding:8px 6px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--bl); border-right:1px solid #1e1e1e; text-align:center; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; font-weight: 600; box-shadow: 0 2px 8px rgba(0, 242, 255, 0.1); transition: all 0.2s ease; }
+        th.active { color: var(--bl); font-weight: 700; text-shadow: 0 0 6px rgba(0, 242, 255, 0.5); }
+        td { padding:5px 6px; border-bottom:1px solid #444; border-right:1px solid #383838; }
+        tbody tr:nth-child(odd)  { background:#000; }
+        tbody tr:nth-child(even) { background:#1a1a1a; }
+        tbody tr:nth-child(odd)  .sticky { background:#000!important; }
+        tbody tr:nth-child(even) .sticky { background:#1a1a1a!important; }
+        .pos { background:rgba(0,255,136,0.05)!important; color:#00e87a!important; }
+        .neg { background:rgba(255,77,109,0.05)!important; color:#ff4d6d!important; }
+        .sig-buy        { color:#00ff88; font-weight:600; border:1px solid #00ff88; padding:2px 5px; border-radius:3px; font-size:9px; }
+        .sig-strong-buy { color:#00ff88; font-weight:600; border:1px solid #00ff88; padding:2px 5px; border-radius:3px; font-size:9px; background:rgba(0,255,136,0.10); }
+        .sig-hold       { color:#f59e0b; font-weight:600; border:1px solid #f59e0b; padding:2px 5px; border-radius:3px; font-size:9px; }
+        .sig-sell       { color:#ff4d6d; font-weight:600; border:1px solid #ff4d6d; padding:2px 5px; border-radius:3px; font-size:9px; }
+        .sig-strong-sell{ color:#ff4d6d; font-weight:600; border:1px solid #ff4d6d; padding:2px 5px; border-radius:3px; font-size:9px; background:rgba(255,77,109,0.10); }
+        #status { padding:40px; font-size:11px; color:var(--bl); text-align:center; position:absolute; width:100%; top:200px; }
+        #app { padding-bottom: 100px; }
+        footer { position: fixed; bottom: 0; width: 100%; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--b1); display: flex; justify-content: space-around; padding: 6px 0; padding-bottom: calc(6px + env(safe-area-inset-bottom)); z-index: 1000; flex-shrink:0; }
+        .nav-btn { text-decoration: none; color: #666; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; padding: 4px 0; transition: color 0.2s; }
+        .nav-btn svg { display: none; } #nav-signal svg { display: block; }
+        .nav-btn:hover { color: var(--bl); }
+        .nav-btn.active { color: var(--bl); font-weight: 800; }
+        .nav-label { font-size: 7px; margin-top: 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* ===== SIGNAL ENGINE STYLES ===== */
+        #signal-view { display:none; overflow:hidden; flex-direction:column; background:#000; flex:1; min-height:0; }
+        #signal-view.active { display:flex; }
+        .sig-layout { display:flex; flex:1; overflow-x:auto; overflow-y:hidden; min-height:0; -webkit-overflow-scrolling:touch; align-items:stretch; }
+        .sig-list { width:160px; min-width:160px; flex-shrink:0; border-right:1px solid #2a2a2a; overflow:hidden; position:relative; }
+        .sig-list-inner { position:absolute; top:0; left:0; right:0; will-change:transform; }
+        .sig-detail { flex:1; min-width:280px; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:12px; padding-bottom:100px; overscroll-behavior:contain; }        /* Signal sub-tabs */
+        .sig-subtab-bar { display:flex; background:#000; border-bottom:1px solid #222; flex-shrink:0; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+        .sig-subtab-bar::-webkit-scrollbar { display:none; }
+        .sig-subtab { padding:8px 14px; font-size:9px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#666; cursor:pointer; border-bottom:2px solid transparent; flex-shrink:0; white-space:nowrap; transition:all .2s; }
+        .sig-subtab.active { color:var(--bl); border-bottom-color:var(--bl); }
+        .sig-subtab-content { display:none; flex:1; overflow:hidden; flex-direction:column; min-height:0; }
+        .sig-subtab-content.active { display:flex; flex-direction:column; min-height:0; }
+        /* Sector analysis styles */
+        .sec-row { display:flex; align-items:center; gap:8px; padding:9px 12px; border-bottom:1px solid #111; }
+        .sec-name { width:110px; font-size:9px; color:#aaa; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .sec-bar-wrap { flex:1; height:14px; background:#111; border-radius:3px; overflow:hidden; position:relative; }
+        .sec-bar-fill { height:100%; border-radius:3px; position:absolute; top:0; }
+        .sec-pct { width:42px; font-size:9px; font-weight:800; text-align:right; flex-shrink:0; }
+        .sec-count { width:22px; font-size:8px; color:#444; text-align:right; flex-shrink:0; }
+        /* Spread / bubble */
+        .spread-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px; }
+        .spread-card { background:#0a0a0a; border:1px solid #222; border-radius:8px; padding:10px 12px; }
+        .spread-label { font-size:8px; color:#777; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:4px; }
+        .spread-val { font-size:18px; font-weight:800; }
+        .spread-sub { font-size:8px; color:#555; margin-top:2px; }
+        /* Rank table */
+        .rank-table { width:100%; border-collapse:collapse; font-size:9px; }
+        .rank-table th { background:#0a0a0a; color:#555; padding:6px 8px; text-align:left; border-bottom:1px solid #222; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; font-size:8px; position:sticky; top:0; }
+        .rank-table td { padding:7px 8px; border-bottom:1px solid #0d0d0d; color:#ccc; }
+        .rank-table tr:active { background:#0d0d0d; }
+        /* Heatmap canvas */
+        #sig-heatmap { width:100%; display:block; border-radius:6px; cursor:pointer; }
+        .hm-legend { display:flex; justify-content:flex-end; gap:10px; padding:6px 12px; font-size:8px; }
+        /* Query / Explorer tab */
+        .qry-pill-wrap { display:flex; flex-wrap:wrap; gap:5px; padding:10px 12px; }
+        .qry-pill { padding:4px 10px; border-radius:12px; font-size:9px; font-weight:700; letter-spacing:0.04em; cursor:pointer; border:1px solid #2a2a2a; color:#777; background:#0a0a0a; transition:all .15s; user-select:none; }
+        .qry-pill.sel { border-color:var(--bl); color:#000; background:var(--bl); }
+        .qry-pill.cat { border-color:#333; color:#555; background:transparent; pointer-events:none; font-size:8px; letter-spacing:0.1em; text-transform:uppercase; padding:4px 8px; margin-top:4px; }
+        .qry-controls { display:flex; gap:6px; padding:8px 12px; border-top:1px solid #1a1a1a; align-items:center; flex-wrap:wrap; }
+        .qry-sel { background:#111; border:1px solid #333; border-radius:4px; padding:5px 8px; font-size:9px; color:#ccc; font-family:inherit; outline:none; }
+        .qry-btn { padding:6px 14px; border-radius:4px; font-size:9px; font-weight:800; cursor:pointer; border:none; letter-spacing:0.06em; }
+        .qry-btn-run { background:var(--bl); color:#000; font-weight:800; padding:7px 18px; font-size:10px; letter-spacing:0.08em; border-radius:6px; }
+        .qry-btn-clr { background:#1a1a1a; color:#999; padding:7px 12px; font-size:10px; border-radius:6px; }
+        .qry-results { overflow-y:auto; -webkit-overflow-scrolling:touch; }
+        .qry-result-row { display:flex; align-items:center; gap:0; border-bottom:1px solid #0d0d0d; cursor:pointer; }
+        .qry-result-row:active { background:#0d0d0d; }
+        .qry-rank { width:28px; text-align:center; font-size:8px; color:#333; flex-shrink:0; padding:8px 0; }
+        .qry-ticker { width:72px; font-size:11px; font-weight:800; color:#e2e8f0; flex-shrink:0; padding:8px 0; }
+        .qry-sector { flex:1; font-size:8px; color:#555; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .qry-val-col { width:80px; text-align:right; font-size:11px; font-weight:800; padding:8px 12px 8px 0; flex-shrink:0; }
+        .qry-bar-col { width:60px; padding:8px 8px 8px 0; flex-shrink:0; }
+        .qry-bar-bg { height:4px; background:#1a1a1a; border-radius:2px; overflow:hidden; }
+        .qry-bar-fg { height:100%; border-radius:2px; }
+        .qry-empty { padding:40px 20px; text-align:center; color:#333; font-size:10px; line-height:1.8; }
+        .qry-stat-strip { display:flex; gap:0; border-bottom:1px solid #1a1a1a; flex-shrink:0; }
+        .qry-stat { flex:1; text-align:center; padding:7px 4px; border-right:1px solid #1a1a1a; }
+        .qry-stat:last-child { border-right:none; }
+        .qry-stat-label { font-size:7px; color:#444; text-transform:uppercase; letter-spacing:0.08em; }
+        .qry-stat-val { font-size:11px; font-weight:800; margin-top:2px; }
+        /* Signal spread scatter */
+        #sig-scatter { width:100%; display:block; }
+        #signal-view.active { display:flex; }
+        .sig-ticker-row { padding:8px 10px; border-bottom:1px solid #1a1a1a; cursor:pointer; transition:background 0.15s; }
+        .sig-ticker-row.selected { background:rgba(0,242,255,0.07); border-left:2px solid var(--bl); }
+        .sig-ticker-row:active { background:#111; }
+        .sig-bar-wrap { height:3px; background:#2a2a2a; border-radius:2px; overflow:hidden; margin-top:4px; }
+        .sig-bar-fill { height:100%; border-radius:2px; }
+        .sig-pill { display:inline-block; padding:1px 5px; border-radius:3px; font-size:8px; font-weight:800; letter-spacing:0.04em; }
+        .sig-gauge-wrap { position:relative; margin:0 auto 4px; width:180px; }
+        .sig-pillar-card { background:#0d0d0d; border:1px solid #2a2a2a; border-radius:8px; padding:10px; margin-bottom:8px; cursor:pointer; }
+        .sig-pillar-card.open { border-color:#333; }
+        .sig-sub-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
+        .sig-sub-label { font-size:8px; color:#aaa; width:72px; flex-shrink:0; }
+        .sig-sub-bar { flex:1; height:3px; background:#2a2a2a; border-radius:2px; overflow:hidden; }
+        .sig-sub-fill { height:100%; border-radius:2px; }
+        .sig-sub-score { width:20px; text-align:right; font-size:9px; color:#ccc; }
+        .sig-sub-val { width:52px; text-align:right; font-size:8px; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .sig-target-box { background:#0d0d0d; border:1px solid #1a2d1a; border-radius:8px; padding:10px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+        .sig-ctx-box { background:#0d0d0d; border:1px solid #2a2a2a; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
+        .sig-ai-box { background:#060f06; border:1px solid #1a3a1a; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
+        .sig-ai-dims { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; }
+        .sig-ai-dim { background:#111; border:1px solid #222; border-radius:4px; padding:6px 8px; }
+        .sig-header-bar { padding:8px 10px; background:#000; border-bottom:1px solid #222; display:flex; gap:6px; align-items:center; flex-shrink:0; }
+        .sig-filter-select { background:#111; border:1px solid #333; border-radius:4px; padding:4px 6px; font-size:9px; color:#ccc; font-family:inherit; outline:none; }
+        .sig-search { background:#111; border:1px solid #333; border-radius:4px; padding:4px 6px; font-size:9px; color:#fff; font-family:inherit; outline:none; width:55px; }
+        .sig-sort-btn { background:#111; border:1px solid #333; border-radius:4px; padding:4px 6px; font-size:9px; color:#bbb; font-family:inherit; cursor:pointer; }
+        .sig-sort-btn.active { border-color:var(--bl); color:var(--bl); background:#0a1a1f; }
+        .sig-weight-strip { display:flex; background:#000; border-bottom:1px solid #222; flex-shrink:0; }
+        .sig-weight-cell { flex:1; text-align:center; padding:5px 0; border-right:1px solid #1a1a1a; }
+        .sig-weight-cell:last-child { border-right:none; }
+        .sig-wlabel { font-size:7px; color:#aaa; letter-spacing:0.04em; display:block; }
+        .sig-wval { font-size:11px; font-weight:800; display:block; }
+        .sig-section-title { font-size:8px; color:#aaa; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:6px; }
+        /* ── Compare tab ── */
+        .cmp-pick { padding:5px 10px; border-radius:5px; font-size:10px; font-weight:700; cursor:pointer; border:1px solid #222; color:#666; background:#0d0d0d; user-select:none; transition:background .12s,border-color .12s,color .12s; }
+        .cmp-pick.sel { border-color:#00f2ff; color:#000; background:#00f2ff; box-shadow:0 0 6px rgba(0,242,255,0.35); }
+        .cmp-table { width:100%; border-collapse:collapse; font-size:9px; }
+        .cmp-table td { padding:6px 8px; border-bottom:1px solid #0d0d0d; vertical-align:middle; }
+        .cmp-table thead td { background:#070707; position:sticky; top:0; border-bottom:2px solid #222; z-index:1; }
+        /* Sector strip buttons */
+        .cmp-sec-btn { padding:4px 10px; border-radius:4px; font-size:9px; font-weight:700; cursor:pointer; border:1px solid #222; color:#555; background:#0a0a0a; white-space:nowrap; font-family:inherit; transition:all .15s; }
+        .cmp-sec-btn.active { border-color:#00f2ff; color:#00f2ff; background:#0a1a1f; }
+        /* Selected chip */
+        .cmp-chip { padding:3px 8px; border-radius:4px; font-size:9px; font-weight:800; background:#00f2ff; color:#000; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
+        .cmp-chip span { font-size:10px; opacity:0.7; }
+        /* Sector group header in picker */
+        .cmp-group-hdr { font-size:8px; color:#444; letter-spacing:0.12em; text-transform:uppercase; padding:8px 0 4px; width:100%; }
+        /* Picker grid */
+        #cmp-picker { display:flex; flex-wrap:wrap; gap:5px; padding:7px 10px; }
+        .cmp-group-hdr { width:100%; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="kpi-box"><div class="kpi-label">Portfolio</div><div class="kpi-val" id="k-pval">₹0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="k-inv">₹0</div></div>
+    <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
+    <div class="kpi-box"><div class="kpi-label">Today</div><div class="kpi-val" id="k-today" style="display:flex; align-items:center; gap:6px;"><span id="k-today-val">₹0</span><span style="color:#00ff88; font-size:9px; font-weight:bold;" id="k-today-pos">↑0</span><span style="color:#ff6b85; font-size:9px; font-weight:bold;" id="k-today-neg">↓0</span></div></div>
+    <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
+</header>
+
+<div id="bar-wrap"><div id="tape-bar"></div></div>
+<div id="legend"></div>
+<div id="view-mode-toggle" style="padding:8px 12px; background:#0a0a0a; border-bottom:1px solid #00ff88; display:flex; gap:6px; justify-content:flex-start; align-items:center;">
+    <input type="text" id="search-input" placeholder="🔍" maxlength="4" style="padding:6px 8px; background:#111; color:#fff; border:1px solid #00ff88; border-radius:4px; font-size:11px; width:50px; outline:none;" oninput="onSearchInput(this.value)">
+    <button onclick="toggleViewMode()" id="btn-toggle" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">PW</button>
+    <button onclick="toggleCategoryFilter()" id="btn-category" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">SPLT</button>
+    <button onclick="toggleReturnFilter()" id="btn-return" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">DG</button>
+    <button onclick="toggleRatingFilter()" id="btn-rating" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">RAT</button>
+    <button onclick="resetAll()" id="btn-all" style="padding:6px 10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">CLR</button>
+</div>
+<div id="status">Loading Pro Engine...</div>
+<div class="view" id="main-view"><div id="app"></div></div>
+
+<!-- ===== SIGNAL ENGINE VIEW ===== -->
+<div id="signal-view">
+    <!-- Sub-tab bar -->
+    <div class="sig-subtab-bar">
+        <div class="sig-subtab active" id="stab-signals" onclick="sigSubTab('signals')">⚡ Signals</div>
+        <div class="sig-subtab" id="stab-sectors" onclick="sigSubTab('sectors')">🗂 Sectors</div>
+        <div class="sig-subtab" id="stab-spread" onclick="sigSubTab('spread')">📐 Spread</div>
+        <div class="sig-subtab" id="stab-rank" onclick="sigSubTab('rank')">🏆 Rank</div>
+        <div class="sig-subtab" id="stab-query" onclick="sigSubTab('query')">🔎 Query</div>
+        <div class="sig-subtab" id="stab-compare" onclick="sigSubTab('compare')">⚖️ Compare</div>
+    </div>
+
+    <!-- SUB-TAB: Signals (existing ticker list + detail) -->
+    <div class="sig-subtab-content active" id="sc-signals" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
+        <div class="sig-header-bar" style="flex-shrink:0">
+            <input class="sig-search" id="sig-search" placeholder="&#128269; TKR" maxlength="8" oninput="sigFilter()">
+            <select class="sig-filter-select" id="sig-sector-filter" onchange="sigFilter()">
+                <option value="">All Sectors</option>
+            </select>
+            <button class="sig-sort-btn active" id="sig-sort-score" onclick="sigSort('score')">SCORE&#8595;</button>
+            <button class="sig-sort-btn" id="sig-sort-name" onclick="sigSort('name')">A&#8211;Z</button>
+            <button class="sig-sort-btn" id="sig-sort-sector" onclick="sigSort('sector')">SEC</button>
+        </div>
+        <div class="sig-layout" style="flex:1;min-height:0">
+            <div class="sig-list" id="sig-list"><div class="sig-list-inner" id="sig-list-inner"></div></div>
+            <div class="sig-detail" id="sig-detail"><div style="padding:40px 20px; text-align:center; color:#333; font-size:10px;">&#8592; Select a ticker</div></div>
+        </div>
+    </div>
+
+    <!-- SUB-TAB: Sector Analysis -->
+    <div class="sig-subtab-content" id="sc-sectors" style="display:none;flex-direction:column">
+        <div style="padding:10px 12px; border-bottom:1px solid #1a1a1a; background:#000; flex-shrink:0; display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:9px; color:#777; letter-spacing:0.1em">SECTOR SIGNAL AVERAGES</span>
+            <div style="display:flex; gap:6px;">
+                <button class="sig-sort-btn active" id="ss-sort-score" onclick="secSort('score')">SCORE</button>
+                <button class="sig-sort-btn" id="ss-sort-name" onclick="secSort('name')">A–Z</button>
+                <button class="sig-sort-btn" id="ss-sort-count" onclick="secSort('count')">#</button>
+            </div>
+        </div>
+        <div id="sec-bars" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:12px;"></div>
+        <!-- Heatmap rendered inside sec-bars by renderSectorTab -->
+    </div>
+
+    <!-- SUB-TAB: Spread Analysis -->
+    <div class="sig-subtab-content" id="sc-spread" style="display:none;flex-direction:column">
+        <div style="padding:8px 12px; border-bottom:1px solid #1a1a1a; background:#000; font-size:8px; color:#666; letter-spacing:0.1em; flex-shrink:0;">SIGNAL DISTRIBUTION ACROSS UNIVERSE</div>
+        <div id="spread-content" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:80px;"></div>
+    </div>
+
+    <!-- SUB-TAB: Rank Table -->
+    <div class="sig-subtab-content" id="sc-rank" style="display:none;flex-direction:column">
+        <div style="padding:8px 12px; border-bottom:1px solid #1a1a1a; background:#000; flex-shrink:0; display:flex; gap:6px; align-items:center;">
+            <span style="font-size:8px; color:#666; letter-spacing:0.1em">PILLAR RANK</span>
+            <select class="sig-filter-select" id="rank-pillar-sel" onchange="renderRankTab()" style="margin-left:auto">
+                <option value="comp">Composite</option>
+                <option value="F">Fundamental</option>
+                <option value="T">Technical</option>
+                <option value="V">Valuation</option>
+                <option value="S">Sentiment</option>
+            </select>
+            <select class="sig-filter-select" id="rank-sector-sel" onchange="renderRankTab()">
+                <option value="">All Sectors</option>
+            </select>
+        </div>
+        <div style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:80px;">
+            <table class="rank-table">
+                <thead><tr>
+                    <th style="cursor:default">#</th>
+                    <th style="cursor:pointer" onclick="rankSortBy('ticker')"><span id="rsh-ticker">Ticker</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('sector')"><span id="rsh-sector">Sector</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('comp')"><span id="rsh-comp">Score ▼</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('F')"><span id="rsh-F">F</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('T')"><span id="rsh-T">T</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('V')"><span id="rsh-V">V</span></th>
+                    <th style="cursor:pointer" onclick="rankSortBy('S')"><span id="rsh-S">S</span></th>
+                    <th>Rating</th>
+                </tr></thead>
+                <tbody id="rank-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- SUB-TAB: Query / Ad-hoc Explorer -->
+    <div class="sig-subtab-content" id="sc-query" style="display:none;flex-direction:column;overflow:hidden">
+
+        <!-- ROW 1: Controls bar (always visible) -->
+        <div style="flex-shrink:0;background:#060606;border-bottom:1px solid #222;padding:8px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <select class="qry-sel" id="qry-universe">
+                <option value="all">All Tickers</option>
+                <option value="portfolio">Portfolio Only</option>
+                <option value="watchlist">Watchlist Only</option>
+            </select>
+            <select class="qry-sel" id="qry-sort">
+                <option value="asc">Lowest ↑</option>
+                <option value="desc">Highest ↓</option>
+            </select>
+            <select class="qry-sel" id="qry-limit">
+                <option value="10">Top 10</option>
+                <option value="20">Top 20</option>
+                <option value="0">All</option>
+            </select>
+            <button class="qry-btn qry-btn-run" onclick="runQuery()">▶ RUN</button>
+            <button class="qry-btn qry-btn-clr" onclick="clearQuery()">✕ CLR</button>
+        </div>
+
+        <!-- ROW 2: Metric pills (fixed ~36vh, scrollable) -->
+        <div style="flex-shrink:0;height:36vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-bottom:2px solid #00f2ff;">
+            <div id="qry-pill-area" style="padding-bottom:6px;"></div>
+        </div>
+
+        <!-- ROW 3: Stats strip (hidden until RUN) -->
+        <div class="qry-stat-strip" id="qry-stats" style="display:none;flex-shrink:0;">
+            <div class="qry-stat"><div class="qry-stat-label">Min</div><div class="qry-stat-val" id="qs-min">—</div></div>
+            <div class="qry-stat"><div class="qry-stat-label">Max</div><div class="qry-stat-val" id="qs-max">—</div></div>
+            <div class="qry-stat"><div class="qry-stat-label">Median</div><div class="qry-stat-val" id="qs-med">—</div></div>
+            <div class="qry-stat"><div class="qry-stat-label">Mean</div><div class="qry-stat-val" id="qs-avg">—</div></div>
+            <div class="qry-stat"><div class="qry-stat-label">n</div><div class="qry-stat-val" id="qs-n">—</div></div>
+        </div>
+
+        <!-- ROW 4: Results (flex:1 = fills all remaining height) -->
+        <div class="qry-results" id="qry-results" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px;">
+            <div class="qry-empty">← Pick a metric &amp; tap ▶ RUN</div>
+        </div>
+
+    </div>
+
+    <!-- COMPARE TAB -->
+    <div class="sig-subtab-content" id="sc-compare">
+
+        <!-- ROW 1: Sector selector (single-line horizontal scroll) + CLR -->
+        <div style="flex-shrink:0;display:flex;align-items:center;gap:0;border-bottom:1px solid #1a1a1a;background:#050505;">
+            <div style="flex:1;display:flex;overflow-x:auto;gap:5px;padding:7px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+                <button id="cmp-sec-all" class="cmp-sec-btn active" data-sec="" onclick="cmpSetSector('')">All</button>
+                <span id="cmp-sec-btns" style="display:contents;"></span>
+            </div>
+            <div style="flex-shrink:0;display:flex;align-items:center;gap:6px;padding:7px 10px;border-left:1px solid #1a1a1a;">
+                <span id="cmp-count" style="font-size:9px;color:#555;font-weight:700;min-width:24px;text-align:center;"></span>
+                <button class="qry-btn qry-btn-clr" onclick="cmpClearAll()" style="font-size:9px;padding:4px 8px;">✕</button>
+            </div>
+        </div>
+
+        <!-- ROW 2: Selected chips (only shows when something selected) -->
+        <div id="cmp-chips-row" style="flex-shrink:0;display:none;padding:5px 10px;border-bottom:1px solid #1a1a1a;background:#080808;">
+            <div id="cmp-chips" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+        </div>
+
+        <!-- ROW 3: Ticker picker grid — compact, max 30vh -->
+        <div id="cmp-picker" style="flex-shrink:0;max-height:30vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-bottom:2px solid #00f2ff22;background:#030303;"></div>
+
+        <!-- ROW 4: Results — fills all remaining space -->
+        <div id="cmp-results" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px;">
+            <div style="padding:30px 20px;text-align:center;color:#333;font-size:10px;">
+                ↑ Pick sector · tap tickers · compare
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<footer>
+    <a href="index.html" class="nav-btn active" id="nav-portfolio" onclick="showMainView(); return false;"><span class="nav-label">Portfolio</span></a>
+    <a href="#" class="nav-btn" id="nav-signal" onclick="showSignalView(); return false;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 1px;">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span class="nav-label">Signal</span>
+    </a>
+    <a href="data.html" class="nav-btn"><span class="nav-label">Data</span></a>
+    <a href="analysis.html" class="nav-btn"><span class="nav-label">Analysis</span></a>
+    <a href="#" class="nav-btn" onclick="showDebugAlert(); return false;"><span class="nav-label">Debug</span></a>
+</footer>
+
+<script>
+/**
+ * BHARATMARKETS ONYX PRO TERMINAL
+ * Portfolio Manager & Analytics Dashboard
+ * 
+ * Version: 1.0 | Status: Production | Last Updated: May 3, 2026
+ * 
+ * CODE ORGANIZATION:
+ *   - Constants & Configuration (DB, Colors, Fields)
+ *   - Global State (MASTER, SECTORS, Filters, etc)
+ *   - Utility Functions (cleanNum, fmt, resolve, etc)
+ *   - Business Logic (enrichStock, getMetricColor, init)
+ *   - UI & Rendering (render function, table generation)
+ *   - Event Handlers (doSort, tap, toggle functions)
+ *   - Page Initialization
+ */
+
+// ===== CONSTANTS & CONFIGURATION =====
+const DB_NAME = 'raalanportfolio';
+const STORE_NAME = 'stocks';
+const DB_VERSION = 8;
+
+const PALETTE = [
+    '#00f2ff', '#7000ff', '#ff007a', '#ffb800', '#00ff88', '#007aff',
+    '#ff4d6d', '#f97316', '#a3e635', '#ec4899', '#8b5cf6', '#f43f5e'
+];
+
+const UI_FIELDS = [
+    '#', 'SECTOR', 'SIGNAL', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
+    'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'BV',
+    'EPS', 'FV', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'NETCF',
+    'CAPEX', 'FCF', 'DEBT_EQ', 'INT_COV', 'P/S', 'EV/EBITDA', 'TAX_RATE'
+];
+
+const TEXT_FIELDS = ['TICKER', 'SECTOR', 'SIGNAL'];
+
+// ===== GLOBAL STATE =====
+let MASTER = [];          // All stocks (portfolio + watchlist)
+let SECTORS = [];         // Unique sectors
+let COL = {};             // Sector -> Color mapping
+let filter = null;        // Current sector filter
+let sortCol = 'PNL';      // Current sort column
+let sortAsc = false;      // Sort direction (ascending/descending)
+let viewMode = 'all';     // View mode: 'all', 'portfolio', 'watchlist'
+let searchQuery = '';     // Search filter text
+let returnFilter = null;  // Return filter state
+let categoryFilter = null; // Category filter: 'equity', 'other', or null
+let ratingFilter = null;  // Rating filter: 'BUY', 'HOLD', 'SELL', or null
+
+// ===== UTILITY FUNCTIONS =====
+
+/**
+ * Convert value to number, handling various formats and edge cases
+ * Safely parses strings, handles '—' (dash), null, undefined
+ * @param {*} v - Value to convert (number, string, null, undefined, '—')
+ * @returns {number} Parsed number or 0 if invalid
+ */
+const cleanNum = (v) => {
+    if (typeof v === 'number') return v;
+    if (!v || v === '—') return 0;
+    const parsed = parseFloat(v.toString().replace(/[^\d.-]/g, '')) || 0;
+    return isNaN(parsed) ? 0 : parsed;
+};
+
+
+/**
+ * Check if a field should be sorted alphabetically (text) vs numerically
+ * @param {string} field - Field name to check
+ * @returns {boolean} True if field is text-based
+ */
+const isTextField = (field) => TEXT_FIELDS.includes(field);
+
+/**
+ * Format value for display based on field type
+ * Handles: K/L currency format, decimals, percentages
+ * Examples: 100000 → '1.0L', 1500 → '1.5k', 0.95 → '0.9%'
+ * @param {*} val - Raw value to format
+ * @param {string} field - Field name (determines format rules)
+ * @returns {string} Formatted display value
+ */
+const fmt = (val, field) => {
+    if (!field || typeof field !== 'string') return val;
+    
+    const n = cleanNum(val);
+    if (n === 0 && val === '—') return '—';
+    
+    const formatLargeNum = (num) => {
+        if (Math.abs(num) >= 100000) return (num / 100000).toFixed(1) + 'L';
+        if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'k';
+        return Math.round(num).toString();
+    };
+    
+    // LTP: 1 decimal with k format for large numbers
+    if (field === 'LTP') {
+        if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'k';
+        return n.toFixed(1);
+    }
+    
+    // MCAP: absolute INR → Cr (÷1e7)
+    if (field === 'MCAP') { const cr = n / 1e7; return (cr >= 1000 ? (cr/1000).toFixed(1)+'k' : Math.round(cr)) + ' Cr'; }
+    // EBITDA: absolute INR → L/k format
+    if (field === 'EBITDA') return formatLargeNum(n);
+    // SALES/CFO/NETCF/FCF/CAPEX: Screener Cr units → display with Cr suffix
+    if (['SALES', 'CFO', 'NETCF', 'FCF', 'CAPEX'].includes(field)) {
+        const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+        if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'k Cr';
+        return sign + Math.round(abs) + ' Cr';
+    }
+    if (['INVESTED', '1D_GAIN', '1DCH', 'PNL'].includes(field)) return formatLargeNum(n);
+    if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
+    if (['FV'].includes(field)) return Math.round(n).toString();
+    if (['PE', 'PB', 'EPS'].includes(field)) return n.toFixed(1); // 1 decimal for EPS
+    if (field.includes('%')) return n.toFixed(1) + '%';
+    return val;
+};
+
+/**
+ * Resolve field value from object using field mappings and aliases
+ * Maps common field names to actual object properties
+ * Examples: 'TICKER' resolves to 'ticker', 'SYM', 'SYMBOL', etc
+ * @param {Object} obj - Data object to search (null-checked)
+ * @param {string} field - Field name to resolve
+ * @returns {*} Field value from object or '—' if not found
+ */
+const resolve = (obj, field) => {
+    // Validation: check inputs
+    if (!obj || typeof obj !== 'object') return '—';
+    if (!field || typeof field !== 'string') return '—';
+    
+    const f = field.toUpperCase();
+    // Helper: get latest value from a time-series object {date: value, ...}
+    const _latest = (tsObj) => {
+        if (!tsObj || typeof tsObj !== 'object') return undefined;
+        const keys = Object.keys(tsObj).filter(k => /^\d{4}-\d{2}-\d{2}/.test(k)).sort();
+        if (!keys.length) return undefined;
+        const v = tsObj[keys[keys.length - 1]];
+        return (v !== null && v !== undefined) ? v : undefined;
+    };
+    // Helper: get latest value from financials time-series (consolidated > standalone, annual)
+    const _fin = (node) => {
+        if (!node || typeof node !== 'object') return undefined;
+        const accounting = node.consolidated || node.standalone;
+        if (!accounting) return undefined;
+        const freq = accounting.annual || accounting.quarterly;
+        return _latest(freq);
+    };
+
+    const mappings = {
+        'SYM':           { paths: ['ticker'] },
+        'TICKER':        { paths: ['ticker'] },
+        'SIGNAL':        { paths: ['derived_metrics.calculated_metrics.rating'] },
+        'PNL':           { paths: ['pnl'] },
+        'PNL%':          { paths: ['pnlPct'] },
+        '1D%':           { paths: ['price.price_change_pct'] },
+        '1DG%':          { paths: ['price.price_change_pct'] },
+        '1DCH':          { paths: ['price.price_change'] },
+        '1DG':           { paths: ['1dGain'] },
+        '1D_GAIN':       { paths: ['1dGain'] },
+        'LTP':           { paths: ['price.close_price'] },
+        'QTY':           { paths: ['company_details.qty', 'qty'] },
+        'AVG':           { paths: ['company_details.avg_cost', 'avg_cost', 'avg'] },
+        'INVESTED':      { paths: ['invested'] },
+        // Margin fields: ratios.ttm values are fractions (0.137), multiply ×100 for display pct.
+        // Fallback to derived_metrics.calculated_metrics which are already in pct.
+        'ROE%':          { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.roe_pct;
+                            if (dm != null) return dm;
+                            const v = s?.ratios?.ttm?.roe_pct;
+                            return (v != null) ? v * 100 : undefined;
+                          }},
+        'ROCE%':         { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.roce_pct;
+                            if (dm != null) return dm;
+                            return _latest(s?.ratios?.screener?.roce_pct);
+                          }},
+        'OPM%':          { fn: s => {
+                            const v = s?.ratios?.ttm?.operating_margin_pct;
+                            return (v != null) ? v * 100 : undefined;
+                          }},
+        'NPM%':          { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.net_margin_pct;
+                            if (dm != null) return dm;
+                            const v = s?.ratios?.ttm?.net_margin_pct;
+                            return (v != null) ? v * 100 : undefined;
+                          }},
+        'PE':            { paths: ['valuation.pe.pe_ttm'] },
+        'PB':            { paths: ['valuation.pe.price_to_book'] },
+        'BV':            { paths: ['valuation.market.book_value'] },
+        'MCAP':          { paths: ['valuation.market.market_cap'] },
+        // EBITDA: valuation.market.ebitda is absolute INR; financials.ebitda is time-series fallback
+        'EBITDA':        { fn: s => s?.valuation?.market?.ebitda ?? _fin(s?.financials?.ebitda) },
+        'SALES':         { fn: s => _fin(s?.financials?.revenue) },
+        'CFO':           { fn: s => _fin(s?.financials?.operating_cash_flow) },
+        'NETCF':         { fn: s => _fin(s?.financials?.net_cash_flow) },
+        'FCF':           { fn: s => _fin(s?.financials?.fcf) },
+        'EPS':           { paths: ['valuation.eps.eps_ttm'] },
+        'FV':            { paths: ['company_details.face_value'] },
+        'PROM%':         { fn: s => _latest(s?.company_details?.shareholding?.pattern?.promoters) },
+        'FII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.fiis) },
+        'DII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.diis) },
+        // ATH%: % below 52W high (week52_high_diff_pct is a fraction e.g. -0.049)
+        'ATH%':          { fn: s => { const v = s?.price?.week52_high_diff_pct; return v != null ? v * 100 : undefined; }},
+        // 52W%: % above 52W low (week52_low_diff_pct is a fraction e.g. 0.607)
+        '52W%':          { fn: s => { const v = s?.price?.week52_low_diff_pct; return v != null ? v * 100 : undefined; }},
+        'W52H':          { paths: ['price.52_week.high'] },
+        'W52L':          { paths: ['price.52_week.low'] },
+        'OPEN':          { paths: ['price.day_open'] },
+        'HIGH':          { paths: ['price.day_high'] },
+        'LOW':           { paths: ['price.day_low'] },
+        'CHANGE':        { paths: ['price.price_change'] },
+        'VOL':           { paths: ['price.volume.day_volume'] },
+        'BETA':          { paths: ['price.beta'] },
+        'PREV':          { paths: ['price.prev_close'] },
+        'SECTOR':        { paths: ['company_details.sector'] },
+        'NAME':          { paths: ['company_details.name'] },
+        'CAPEX':         { fn: s => _fin(s?.financials?.capex) },
+        // DIV_YIELD: dividend_yield not present; use trailing_annual_dividend_yield
+        'DEBT_EQ':       { fn: s => {
+                            const dm = s?.derived_metrics?.calculated_metrics?.debt_to_equity;
+                            if (dm != null) return dm;
+                            return s?.ratios?.ttm?.debt_to_equity_ratio;
+                          }},
+        'INT_COV':       { paths: ['ratios.ttm.current_ratio'] },
+        'P/S':           { paths: ['valuation.pe.price_to_sales'] },
+        'EV/EBITDA':     { paths: ['valuation.pe.ev_to_ebitda'] },
+        'TAX_RATE':      { fn: s => _fin(s?.financials?.tax_rate_pct) },
+    };
+
+    const entry = mappings[f];
+    if (entry) {
+        // fn-based resolution (time-series helpers)
+        if (entry.fn) {
+            try {
+                const v = entry.fn(obj);
+                if (v !== undefined && v !== null) return v;
+            } catch(e) {}
+        }
+        // path-based resolution
+        if (entry.paths) {
+            for (let t of entry.paths) {
+                if (t.includes('.')) {
+                    const parts = t.split('.');
+                    let val = obj;
+                    for (let part of parts) {
+                        if (val && typeof val === 'object' && val[part] !== undefined) {
+                            val = val[part];
+                        } else { val = undefined; break; }
+                    }
+                    if (val !== undefined && val !== null && typeof val !== 'object') return val;
+                }
+                if (obj[t] !== undefined && obj[t] !== null) return obj[t];
+            }
+        }
+        return '—';
+    }
+
+    // Fallback for unmapped fields: direct key lookup
+    if (obj[f] !== undefined && obj[f] !== null) return obj[f];
+    const cleanF = f.replace('%', '');
+    if (obj[cleanF] !== undefined && obj[cleanF] !== null) return obj[cleanF];
+    return '—';
+};
+
+/**
+ * Determine color class for field value based on professional thresholds
+ * Returns CSS class: ' pos' (green), ' neg' (red), or '' (neutral)
+ * Applies different logic for different metrics (LTP, PE, ROE, etc)
+ * @param {string} field - Field name
+ * @param {*} value - Field value to evaluate
+ * @param {Object} stock - Stock object for context (optional)
+ * @returns {string} CSS class for coloring (' pos', ' neg', or '')
+ */
+const getMetricColor = (field, value, stock) => {
+    const n = cleanNum(value);
+    if (n === 0 || value === '—') return '';
+
+    // LTP: colour by 1D%
+    if (field === 'LTP' && stock) {
+        const c = cleanNum(resolve(stock, '1D%'));
+        return c > 0 ? ' pos' : c < 0 ? ' neg' : '';
+    }
+
+    // AVG / INVESTED: green if LTP > avg (in profit)
+    if ((field === 'AVG' || field === 'INVESTED') && stock) {
+        const avg = cleanNum(resolve(stock, 'AVG'));
+        const ltp = cleanNum(resolve(stock, 'LTP'));
+        if (avg > 0 && ltp > 0) return ltp > avg ? ' pos' : ' neg';
+        return '';
+    }
+
+    // EPS: simply positive vs negative
+    if (field === 'EPS') return n > 0 ? ' pos' : ' neg';
+
+    // CFO: positive cash generation good, negative bad
+    if (field === 'CFO') return n > 0 ? ' pos' : ' neg';
+
+    // EBITDA: use EV/EBITDA field for context if available, else just pos/neg
+    if (field === 'EBITDA' && stock) {
+        if (n < 0) return ' neg';
+        const ev = cleanNum(resolve(stock, 'EV/EBITDA'));
+        if (ev > 0) return ev < 12 ? ' pos' : ev > 22 ? ' neg' : '';
+        return '';
+    }
+
+    // Direction-based: FII%, DII%, PROM% — green if latest > prev, red if latest < prev
+    if (['FII%', 'DII%', 'PROM%'].includes(field) && stock) {
+        const keyMap = { 'FII%': 'fiis', 'DII%': 'diis', 'PROM%': 'promoters' };
+        const ts = stock?.company_details?.shareholding?.pattern?.[keyMap[field]];
+        if (ts && typeof ts === 'object') {
+            const keys = Object.keys(ts).sort();
+            if (keys.length >= 2) {
+                const latest = ts[keys[keys.length - 1]];
+                const prev   = ts[keys[keys.length - 2]];
+                if (latest != null && prev != null) return latest > prev ? ' pos' : latest < prev ? ' neg' : '';
+            }
+        }
+        return '';
+    }
+
+    const thresholds = {
+        // Portfolio P&L
+        'PNL':      { green: n > 0,    red: n < 0 },
+        'PNL%':     { green: n > 0,    red: n < 0 },
+        // Price momentum
+        '1D%':      { green: n > 0,    red: n < 0 },
+        '1DCH':     { green: n > 0,    red: n < 0 },
+        '1D_GAIN':  { green: n > 0,    red: n < 0 },
+        // 52W position: % above 52W low — higher is stronger
+        '52W%':     { green: n > 50,   red: n < 15 },
+        // ATH%: % below 52W high (negative = below high)
+        'ATH%':     { green: n > -5,   red: n < -30 },
+        // Valuation
+        'PE':       { green: n > 0 && n < 15,  red: n > 30 },
+        'PB':       { green: n > 0 && n < 1.5, red: n > 4 },
+        'P/S':      { green: n < 2,    red: n > 6 },
+        'EV/EBITDA':{ green: n < 12,   red: n > 22 },
+        // Quality
+        'ROE%':     { green: n > 18,   red: n < 10 },
+        'ROCE%':    { green: n > 18,   red: n < 10 },
+        'OPM%':     { green: n > 15,   red: n < 8 },
+        'NPM%':     { green: n > 10,   red: n < 4 },
+        // Cash flow
+        'FCF':      { green: n > 0,    red: n < 0 },
+        'NETCF':    { green: n > 0,    red: n < 0 },
+        'CAPEX':    { green: n > 0,    red: n < 0 },
+        // Leverage
+        'DEBT_EQ':  { green: n < 1,    red: n > 3 },
+        'INT_COV':  { green: n > 3,    red: n < 1.5 },
+        // Tax: pct values (e.g. 28) — normal range 20–35%
+        'TAX_RATE': { green: n >= 20 && n <= 35, red: n < 10 || n > 45 },
+        // BV: neutral by default — no universal threshold
+        'BV':       { green: false,    red: false },
+        // MCAP/SALES/FV: informational only
+        'MCAP':     { green: false,    red: false },
+        'SALES':    { green: false,    red: false },
+        'FV':       { green: false,    red: false },
+    };
+
+    const t = thresholds[field];
+    if (!t) return '';
+    if (t.green) return ' pos';
+    if (t.red) return ' neg';
+    return '';
+};
+
+// ===== DATA INITIALIZATION =====
+
+/**
+ * Initialize portfolio data from IndexedDB
+ * Loads stock data, calculates metrics, populates UI
+ * Handles database errors gracefully with user feedback
+ * @returns {Promise<void>}
+ */
+async function init() {
+    const statusEl = document.getElementById('status');
+    const db = await new Promise(res => {
+        // Open without forcing version — let browser use whatever version exists
+        // This avoids race between onupgradeneeded commit and first transaction
+        const req = indexedDB.open(DB_NAME);
+        req.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains(STORE_NAME)) {
+                d.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+            }
+        };
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => res(null);
+    });
+    
+    if (!db) {
+        statusEl.innerHTML = "FAILED TO OPEN DATABASE<br>Check browser storage settings";
+        return;
+    }
+    
+    // Guard: store must exist before we transact
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+        statusEl.innerHTML = 'DATABASE EMPTY — Go to Data tab → 🚀 LOAD JSON';
+        console.warn('Store not found in DB — data not loaded yet');
+        return;
+    }
+
+    try {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        MASTER = await new Promise((res, rej) => {
+            const req = tx.objectStore(STORE_NAME).getAll();
+            req.onsuccess = e => res((e.target.result || []).filter(s => s.ticker && !s.ticker.startsWith('_')));
+            req.onerror = () => rej(req.error);
+        });
+    } catch(e) {
+        statusEl.innerHTML = 'ERROR READING DATABASE<br>' + e.message;
+        console.error('Error reading database:', e);
+        return;
+    }
+    
+    if (MASTER.length === 0) {
+        statusEl.innerHTML = "DATABASE EMPTY<br><br>📊 Go to Data tab → Click 🚀 LOAD JSON<br>(No authentication required)";
+        return;
+    }
+    
+    console.log('✅ Loaded ' + MASTER.length + ' stocks from IndexedDB');
+    console.log('First stock ticker:', MASTER[0].ticker);
+    console.log('First stock structure:', Object.keys(MASTER[0]).slice(0, 10));
+    
+    statusEl.style.display = "none";
+    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
+    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+    viewMode = 'all';  // Initialize with mixed portfolio+watchlist view
+    render();
+}
+
+/**
+ * Calculate and enrich stock with derived metrics
+ * Computes: INVESTED, PNL, PNL%, 1D_GAIN, ATH%, POS, NEG, SIGNAL
+ * Modifies stock object in-place with calculated fields
+ * @param {Object} stock - Stock object from MASTER array
+ * @returns {Object} Enriched stock object with all calculated fields
+ */
+/**
+ * Enrich stock with computed fields
+ * Calculates derived metrics: INVESTED, PNL, PNL%, 1D%, 1DCH, 1D_GAIN, ATH%, 52W%, POS, NEG, SIGNAL
+ */
+function enrichStock(stock) {
+    // Get LTP data from price.ltp or price.ltp
+    const ltpData = stock.price?.ltp || stock.price?.ltp || {};
+    
+    // Calculate INVESTED = QTY * AVG
+    const qty = cleanNum(resolve(stock, 'QTY'));
+    const avg = cleanNum(resolve(stock, 'AVG'));
+    if (qty && avg && !stock.invested) {
+        stock.invested = qty * avg;
+    }
+    
+    // Calculate PNL = (LTP - AVG) * QTY
+    const ltp = cleanNum(resolve(stock, 'LTP'));
+    if (qty && avg && ltp && !stock.pnl) {
+        stock.pnl = (ltp - avg) * qty;
+    }
+    
+    // Calculate PNL% = ((LTP - AVG) / AVG) * 100
+    if (avg && ltp && !stock.pnlPct) {
+        stock.pnlPct = ((ltp - avg) / avg) * 100;
+    }
+    
+    // ===== COMPUTE 1D% (changePct) from ltp.json =====
+    if (!stock['1dPct'] && ltpData.changePct !== undefined) {
+        stock['1dPct'] = cleanNum(ltpData.changePct);
+    }
+    
+    // ===== COMPUTE 1DCH (change) from ltp.json =====
+    if (!stock['1dChange'] && ltpData.change !== undefined) {
+        stock['1dChange'] = cleanNum(ltpData.change);
+    }
+    
+    // Calculate 1D_GAIN = CHANGE * QTY (absolute daily gain/loss: change per share × quantity)
+    const change = stock['1dChange'] || cleanNum(resolve(stock, '1DCH'));
+    if (qty && change && !stock['1dGain']) {
+        stock['1dGain'] = change * qty;
+    }
+    
+    // ===== COMPUTE 1DG (1D gain in rupees) = CHANGE * QTY =====
+    // Already computed above as 1dGain, but also store as 1dg for backwards compatibility
+    if (!stock['1dg'] && stock['1dGain']) {
+        stock['1dg'] = stock['1dGain'];
+    } else if (!stock['1dg'] && change && qty) {
+        stock['1dg'] = change * qty;
+    }
+    
+    // Calculate ATH% = ((LTP - 52W High) / 52W High) * 100
+    const w52h = cleanNum(resolve(stock, 'W52H'));
+    if (ltp && w52h && w52h > 0) {
+        stock.ath = ((ltp - w52h) / w52h) * 100;
+    }
+    
+    // Calculate 52W% = ((LTP - 52W Low) / 52W Low) * 100
+    const w52l = cleanNum(resolve(stock, 'W52L'));
+    if (ltp && w52l && w52l > 0) {
+        stock.w52 = ((ltp - w52l) / w52l) * 100;
+    }
+    
+    
+    return stock;
+}
+
+// ===== HELPER FUNCTIONS FOR RENDERING =====
+
+/**
+ * Calculate portfolio totals and metrics
+ * Computes: total PNL, invested, portfolio value, daily gains, sector weights
+ * @param {Array} stocks - Array of stock objects to analyze
+ * @returns {Object} Totals object with sums and metrics
+ */
+function calculateTotals(stocks) {
+    let sumPnl = 0, sumInv = 0, sumPVal = 0, sumToday = 0, sumLTP = 0, sum1dGain = 0;
+    let posCount = 0, negCount = 0, sectorWeights = {};
+    
+    stocks.forEach(stock => { 
+        const sector = resolve(stock, 'SECTOR') || 'OTHER';
+        const qty = cleanNum(resolve(stock, 'QTY'));
+        const ltp = cleanNum(resolve(stock, 'LTP'));
+        const changePct = cleanNum(resolve(stock, '1D%'));
+        
+        // Sum the SAME values displayed in table rows
+        sumPnl += cleanNum(resolve(stock, 'PNL'));
+        sumInv += cleanNum(resolve(stock, 'INVESTED'));
+        sumLTP += qty * ltp;
+        sumPVal += qty * ltp;
+        
+        // Sum 1D_GAIN (daily change)
+        sum1dGain += cleanNum(resolve(stock, '1D_GAIN'));
+        sumToday += cleanNum(resolve(stock, '1D_GAIN'));
+        
+        // Count positive and negative changes (portfolio stocks only)
+        if (qty > 0) {
+            if (changePct > 0) posCount++;
+            else if (changePct < 0) negCount++;
+        }
+        
+        // Sector weight calculation
+        const weight = Math.max(cleanNum(resolve(stock, 'MCAP')) || ltp, 1);
+        sectorWeights[sector] = (sectorWeights[sector] || 0) + weight; 
+    });
+    
+    return { sumPnl, sumInv, sumPVal, sumToday, sumLTP, sum1dGain, posCount, negCount, sectorWeights };
+}
+
+/**
+ * Update KPI display elements with calculated totals
+ * Updates: Portfolio Value, Invested, PNL, Daily Gain, Gainers/Losers count
+ * @param {Object} totals - Totals object from calculateTotals()
+ * @returns {void}
+ */
+function updateKPIDisplay(totals) {
+    const { sumPnl, sumInv, sumPVal, sumToday, posCount, negCount, sectorWeights } = totals;
+    
+    document.getElementById('k-pval').textContent = '₹' + (sumPVal/100000).toFixed(2) + 'L';
+    document.getElementById('k-inv').textContent = '₹' + (sumInv/100000).toFixed(2) + 'L';
+    
+    const pEl = document.getElementById('k-pnl');
+    pEl.textContent = '₹' + (sumPnl/100000).toFixed(2) + 'L';
+    pEl.style.color = sumPnl >= 0 ? 'var(--gr)' : 'var(--rd)';
+    
+    const tValEl = document.getElementById('k-today-val');
+    tValEl.textContent = '₹' + Math.abs(sumToday/100000).toFixed(2) + 'L';
+    tValEl.style.color = sumToday >= 0 ? 'var(--gr)' : 'var(--rd)';
+    
+    document.getElementById('k-today-pos').textContent = '↑' + posCount;
+    document.getElementById('k-today-neg').textContent = '↓' + negCount;
+    
+    // Update sector bars
+    const totalWeight = Object.values(sectorWeights).reduce((a, b) => a + b, 0);
+    const sortedSectors = SECTORS.slice().sort((a, b) => (sectorWeights[b] || 0) - (sectorWeights[a] || 0));
+    
+    document.getElementById('tape-bar').innerHTML = sortedSectors.map(sector => 
+        '<div class="seg' + (filter && filter !== sector ? ' dimmed' : '') + '" ' +
+        'style="flex-basis:' + ((sectorWeights[sector]/totalWeight)*100) + '%;background:' + COL[sector] + '" ' +
+        'onclick="tap(\'' + sector + '\')"></div>'
+    ).join('');
+    
+    document.getElementById('legend').innerHTML = (filter ? SECTORS.filter(s => s === filter) : SECTORS)
+        .map(sector => 
+            '<div class="leg ' + (filter === sector ? 'on' : '') + '" ' +
+            'onclick="tap(\'' + sector + '\')" ' +
+            'style="padding:4px 8px; border-radius:4px; transition:all .2s;">' +
+            '<div class="dot" style="background:' + COL[sector] + '"></div>' + sector + '</div>'
+        ).join('');
+}
+
+/**
+ * Apply all active filters to stocks array
+ * Filters by: sector, view mode (portfolio/watchlist), category (equity/other), search, return
+ * @param {Array} stocks - Array of all stocks
+ * @returns {Array} Filtered stocks array
+ */
+function applyFilters(stocks) {
+    let filtered = stocks.filter(s => s.ticker && !s.ticker.startsWith('_'));
+    
+    // Sector filter
+    if (filter) {
+        filtered = filtered.filter(stock => resolve(stock, 'SECTOR') === filter);
+    }
+    
+    // View mode filter (portfolio/watchlist)
+    if (viewMode === 'portfolio') {
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, 'QTY')) > 0);
+    } else if (viewMode === 'watchlist') {
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, 'QTY')) === 0 || resolve(stock, 'QTY') === '—');
+    }
+    
+    // Category filter (equity vs other)
+    if (categoryFilter === 'equity') {
+        filtered = filtered.filter(stock => {
+            const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
+            return isin.startsWith('INE');
+        });
+    } else if (categoryFilter === 'etf') {
+        filtered = filtered.filter(stock => {
+            const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
+            return isin.startsWith('INF');
+        });
+    } else if (categoryFilter === 'other') {
+        filtered = filtered.filter(stock => {
+            const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
+            return !isin.startsWith('INE') && !isin.startsWith('INF');
+        });
+    }
+    
+    // Search filter
+    if (searchQuery) {
+        filtered = filtered.filter(stock => 
+            resolve(stock, 'TICKER').toUpperCase().includes(searchQuery.toUpperCase())
+        );
+    }
+    
+    // Rating filter
+    if (ratingFilter) {
+        filtered = filtered.filter(stock => {
+            const r = (resolve(stock, 'SIGNAL') || '').toString().toUpperCase();
+            if (ratingFilter === 'BUY') return r === 'BUY' || r === 'STRONG BUY';
+            if (ratingFilter === 'HOLD') return r === 'HOLD';
+            if (ratingFilter === 'SELL') return r === 'SELL' || r === 'STRONG SELL';
+            return true;
+        });
+    }
+    
+    if (returnFilter === 'pos') {
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, '1D%')) > 0);
+    } else if (returnFilter === 'neg') {
+        filtered = filtered.filter(stock => cleanNum(resolve(stock, '1D%')) < 0);
+    }
+    
+    return filtered;
+}
+
+/**
+ * Sort stocks array by specified column
+ * Handles: text sorting (alphabetical) vs numeric sorting
+ * @param {Array} stocks - Array of stocks to sort
+ * @returns {Array} Sorted stocks array
+ */
+function sortStocks(stocks) {
+    const sorted = stocks.slice();
+    
+    sorted.sort((a, b) => {
+        let valueA = resolve(a, sortCol);
+        let valueB = resolve(b, sortCol);
+        
+        // Text fields: alphabetical sorting
+        if (isTextField(sortCol)) {
+            let strA = (valueA || '').toString().toUpperCase();
+            let strB = (valueB || '').toString().toUpperCase();
+            return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA);
+        }
+        
+        // Numeric fields: numeric sorting
+        let numA = cleanNum(valueA);
+        let numB = cleanNum(valueB);
+        return sortAsc ? numA - numB : numB - numA;
+    });
+    
+    return sorted;
+}
+
+/**
+ * Build table header HTML
+ * Includes column names, sort indicators, click handlers
+ * @returns {string} HTML for table header
+ */
+function buildTableHeader() {
+    let html = '<table><thead><tr>';
+    
+    UI_FIELDS.forEach(field => {
+        if (field === '#') {
+            html += '<th class="' + (field === 'TICKER' ? 'sticky' : '') + '"><sup></sup>#</th>';
+        } else {
+            let widthStyle = '';
+            if (field === 'SECTOR') widthStyle = 'style="max-width:85px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            else if (field === 'TICKER') widthStyle = 'style="max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+            
+            const displayName = {'INVESTED':'inv', '1D_GAIN':'1dg', '1D%':'1dg%'}[field] || field;
+            const sortIndicator = field === sortCol ? (sortAsc ? '▲' : '▼') : '';
+            
+            html += '<th onclick="doSort(\'' + field + '\')" ' +
+                    'class="' + (field === sortCol ? 'active' : '') + ' ' + (field === 'TICKER' ? 'sticky' : '') + '" ' +
+                    widthStyle + '>' +
+                    '<sup>' + sortIndicator + '</sup>' + displayName + '</th>';
+        }
+    });
+    
+    html += '</tr></thead><tbody>';
+    return html;
+}
+
+/**
+ * Build table body rows HTML
+ * Renders each stock with formatted values and color coding
+ * @param {Array} stocks - Array of stocks to render
+ * @returns {string} HTML for table rows
+ */
+function buildTableRows(stocks) {
+    let html = '';
+    
+    console.log('buildTableRows called with ' + stocks.length + ' stocks');
+    
+    if (stocks.length === 0) {
+        html += '<tr><td colspan="' + UI_FIELDS.length + '" style="text-align:center; padding:40px; color:#f00;">NO STOCKS TO DISPLAY - Check filters (sector=' + filter + ', searchQuery=' + searchQuery + ')</td></tr>';
+        return html;
+    }
+    
+    // Safety check: if all rows would be empty, show raw data for first 3 stocks
+    const testStock = stocks[0];
+    const testTicker = resolve(testStock, 'TICKER');
+    if (testTicker === '—') {
+        console.error('ERROR: resolve(TICKER) returned dash for first stock');
+        console.log('Stock keys:', Object.keys(testStock).slice(0, 10));
+        html += '<tr><td colspan="' + UI_FIELDS.length + '" style="text-align:center; padding:40px; color:#f00;">ERROR: Cannot resolve TICKER field. Stock has ' + Object.keys(testStock).length + ' fields</td></tr>';
+        return html;
+    }
+    
+    stocks.forEach((stock, index) => {
+        const ticker = resolve(stock, 'TICKER');
+        html += '<tr style="cursor:pointer;" onclick="window.location.href=\'analysis.html?drill=' + encodeURIComponent(ticker) + '\'">';
+        
+        UI_FIELDS.forEach(field => {
+            if (field === '#') {
+                html += '<td style="color:#666; text-align:center;">' + (index + 1) + '</td>';
+            } else {
+                const rawValue = resolve(stock, field);
+                const formattedValue = fmt(rawValue, field);
+                let cellClass = field === 'TICKER' ? 'sticky' : '';
+                let cellStyle = '';
+                
+                if (field === 'SECTOR') cellStyle = 'style="max-width:75px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                else if (field === 'TICKER') cellStyle = 'style="max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"';
+                
+                if (field === 'SIGNAL') {
+                    const sv = formattedValue.toString().toUpperCase();
+                    const cls = sv === 'STRONG BUY' ? 'sig-strong-buy'
+                              : sv === 'BUY'         ? 'sig-buy'
+                              : sv === 'HOLD'        ? 'sig-hold'
+                              : sv === 'STRONG SELL' ? 'sig-strong-sell'
+                              : sv === 'SELL'        ? 'sig-sell'
+                              : '';
+                    html += '<td class="' + cellClass + '" ' + cellStyle + '>' + (cls ? '<span class="' + cls + '">' + sv + '</span>' : sv) + '</td>';
+                } else {
+                    cellClass += getMetricColor(field, rawValue, stock);
+                    html += '<td class="' + cellClass + '" ' + cellStyle + '>' + formattedValue + '</td>';
+                }
+            }
+        });
+        
+        html += '</tr>';
+    });
+    
+    return html;
+}
+
+/**
+ * Build table footer HTML with totals
+ * Shows total PNL, Invested amount, Daily gain across all visible stocks
+ * @param {Object} totals - Totals object from calculateTotals()
+ * @returns {string} HTML for table footer
+ */
+function buildTableFooter(totals) {
+    const { sumPnl, sumInv, sum1dGain } = totals;
+    let html = '</tbody><tfoot><tr>';
+    
+    UI_FIELDS.forEach(field => {
+        let cellClass = field === 'TICKER' ? 'sticky' : '';
+        
+        if (field === '#') {
+            html += '<td style="color:#666;"></td>';
+        } else if (field === 'TICKER') {
+            html += '<td class="' + cellClass + '">TOTAL</td>';
+        } else if (field === 'PNL') {
+            html += '<td class="' + (sumPnl >= 0 ? 'pos' : 'neg') + '">' + fmt(sumPnl, 'PNL') + '</td>';
+        } else if (field === 'INVESTED') {
+            html += '<td>' + fmt(sumInv, 'INVESTED') + '</td>';
+        } else if (field === '1D_GAIN') {
+            html += '<td class="' + (sum1dGain >= 0 ? 'pos' : 'neg') + '">' + fmt(sum1dGain, '1D_GAIN') + '</td>';
+        } else {
+            html += '<td class="' + cellClass + '"></td>';
+        }
+    });
+    
+    html += '</tr></tfoot></table>';
+    return html;
+}
+
+// ===== UI & RENDERING =====
+
+/**
+ * Main render function - orchestrates table generation and display
+ * Calls helper functions for: filtering, sorting, calculating totals, building table
+ * Updates KPI display and renders table HTML
+ * Called after any filter/sort change or data update
+ * @returns {void}
+ */
+function render() {
+    // Enrich all stocks with calculated fields
+    MASTER.forEach(stock => enrichStock(stock));
+    
+    // Apply filters and sort
+    let filteredRows = applyFilters(MASTER);
+    filteredRows = sortStocks(filteredRows);
+    
+    console.log('Rendering ' + filteredRows.length + ' filtered stocks out of ' + MASTER.length);
+    
+    // Calculate totals from displayed table rows (not all master stocks)
+    const totals = calculateTotals(filteredRows);
+    updateKPIDisplay(totals);
+    
+    // Build and render table
+    let html = buildTableHeader();
+    html += buildTableRows(filteredRows);
+    html += buildTableFooter(totals);
+    
+    console.log('Generated HTML length:', html.length);
+    
+    if (!html || html.length < 50) {
+        console.error('ERROR: Generated HTML too short or empty. MASTER:', MASTER.length, 'Filtered:', filteredRows.length);
+        document.getElementById('app').innerHTML = '<div style="padding:20px; color:#f00;">ERROR: Table generation failed. Check console.</div>';
+        return;
+    }
+    
+    document.getElementById('app').innerHTML = html;
+}
+
+// ===== EVENT HANDLERS & CONTROLS =====
+
+/**
+ * Handle column sort clicks
+ * Toggles sort direction if same column clicked, resets to ascending for new column
+ * @param {string} fieldName - Field/column name to sort by
+ * @returns {void}
+ */
+function doSort(fieldName) {
+    if (sortCol === fieldName) sortAsc = !sortAsc;
+    else { sortCol = fieldName; sortAsc = false; }
+    render();
+}
+
+/**
+ * Handle sector filter toggle (tapping sector bar)
+ * Toggles between filtering to sector and showing all
+ * @param {string} sector - Sector name to filter
+ * @returns {void}
+ */
+function tap(sector) {
+    filter = filter === sector ? null : sector;
+    render();
+}
+
+/**
+ * Toggle view mode: All → Portfolio → Watchlist → All
+ * Updates button text and color, re-renders table
+ * @returns {void}
+ */
+function toggleViewMode() {
+    if (viewMode === 'all') {
+        viewMode = 'portfolio';
+        document.getElementById('btn-toggle').innerHTML = 'PT';
+        document.getElementById('btn-toggle').style.background = '#007aff';
+        document.getElementById('btn-toggle').style.color = '#fff';
+    } else if (viewMode === 'portfolio') {
+        viewMode = 'watchlist';
+        document.getElementById('btn-toggle').innerHTML = 'WA';
+        document.getElementById('btn-toggle').style.background = '#ff9500';
+        document.getElementById('btn-toggle').style.color = '#fff';
+    } else {
+        viewMode = 'all';
+        document.getElementById('btn-toggle').innerHTML = 'PW';
+        document.getElementById('btn-toggle').style.background = '#666';
+        document.getElementById('btn-toggle').style.color = '#fff';
+    }
+    document.getElementById('btn-all').style.background = '#666';
+    document.getElementById('btn-all').style.color = '#fff';
+    render();
+}
+
+/**
+ * Toggle return/daily gain filter: All → Gainers (↑) → Losers (↓) → All
+ * Shows stocks by daily return (1D_GAIN): positive, negative, or all
+ * @returns {void}
+ */
+function toggleReturnFilter() {
+    if (returnFilter === null) {
+        returnFilter = 'pos';  // Show only positive returns
+        document.getElementById('btn-return').innerHTML = '↑';
+        document.getElementById('btn-return').style.background = '#00ff88';
+        document.getElementById('btn-return').style.color = '#000';
+    } else if (returnFilter === 'pos') {
+        returnFilter = 'neg';  // Show only negative returns
+        document.getElementById('btn-return').innerHTML = '↓';
+        document.getElementById('btn-return').style.background = '#ff6b85';
+        document.getElementById('btn-return').style.color = '#fff';
+    } else {
+        returnFilter = null;  // Show all
+        document.getElementById('btn-return').innerHTML = 'DG';
+        document.getElementById('btn-return').style.background = '#666';
+        document.getElementById('btn-return').style.color = '#fff';
+    }
+    render();
+}
+
+/**
+ * Toggle category filter: All → Equity (INE) → Other (non-INE) → All
+ * Filters stocks by ISIN type: equity stocks vs mutual funds/bonds
+ * @returns {void}
+ */
+function toggleCategoryFilter() {
+    const btn = document.getElementById('btn-category');
+    if (categoryFilter === null) {
+        categoryFilter = 'equity';
+        btn.innerHTML = 'EQ'; btn.style.background = '#007aff'; btn.style.color = '#fff';
+    } else if (categoryFilter === 'equity') {
+        categoryFilter = 'etf';
+        btn.innerHTML = 'ETF'; btn.style.background = '#8b5cf6'; btn.style.color = '#fff';
+    } else if (categoryFilter === 'etf') {
+        categoryFilter = 'other';
+        btn.innerHTML = 'INS'; btn.style.background = '#ff9500'; btn.style.color = '#fff';
+    } else {
+        categoryFilter = null;
+        btn.innerHTML = 'SPLT'; btn.style.background = '#666'; btn.style.color = '#fff';
+    }
+    render();
+}
+
+/**
+ * Set view mode programmatically
+ * Used by "ALL" button to reset to all-stocks view
+ * @param {string} mode - View mode: 'all', 'portfolio', 'watchlist'
+ * @returns {void}
+ */
+function setViewMode(mode) {
+    viewMode = mode;
+    document.getElementById('btn-toggle').style.background = '#666';
+    document.getElementById('btn-toggle').style.color = '#fff';
+    document.getElementById('btn-all').style.background = mode === 'all' ? '#00ff88' : '#666';
+    document.getElementById('btn-all').style.color = mode === 'all' ? '#000' : '#fff';
+    render();
+}
+
+/**
+ * Handle search input changes
+ * Updates searchQuery and re-renders table with search filter applied
+ * @param {string} value - Search query text
+ * @returns {void}
+ */
+function onSearchInput(value) {
+    searchQuery = value;
+    render();
+}
+
+/**
+ * Reset all filters and view modes to defaults
+ * Clears: search, sector filter, view mode, return filter, category filter
+ * Resets all button styles to default
+ * @returns {void}
+ */
+function toggleRatingFilter() {
+    const btn = document.getElementById('btn-rating');
+    const cycle = [null, 'BUY', 'HOLD', 'SELL'];
+    const idx = cycle.indexOf(ratingFilter);
+    ratingFilter = cycle[(idx + 1) % cycle.length];
+    if (!ratingFilter) {
+        btn.innerHTML = 'RAT'; btn.style.background = '#666'; btn.style.color = '#fff';
+    } else if (ratingFilter === 'BUY') {
+        btn.innerHTML = 'BUY'; btn.style.background = '#00ff88'; btn.style.color = '#000';
+    } else if (ratingFilter === 'HOLD') {
+        btn.innerHTML = 'HOLD'; btn.style.background = '#f59e0b'; btn.style.color = '#000';
+    } else {
+        btn.innerHTML = 'SELL'; btn.style.background = '#ff4d6d'; btn.style.color = '#fff';
+    }
+    render();
+}
+
+function resetAll() {
+    filter = null;
+    sortCol = 'P/L';
+    sortAsc = false;
+    viewMode = 'all';
+    searchQuery = '';
+    returnFilter = null;
+    categoryFilter = null;
+    ratingFilter = null;
+    document.getElementById('search-input').value = '';
+    document.getElementById('btn-toggle').innerHTML = 'PW';
+    document.getElementById('btn-toggle').style.background = '#666';
+    document.getElementById('btn-toggle').style.color = '#fff';
+    document.getElementById('btn-category').innerHTML = 'SPLT';
+    document.getElementById('btn-category').style.background = '#666';
+    document.getElementById('btn-category').style.color = '#fff';
+    document.getElementById('btn-return').innerHTML = 'DG';
+    document.getElementById('btn-return').style.background = '#666';
+    document.getElementById('btn-return').style.color = '#fff';
+    document.getElementById('btn-rating').innerHTML = 'RAT';
+    document.getElementById('btn-rating').style.background = '#666';
+    document.getElementById('btn-rating').style.color = '#fff';
+    document.getElementById('btn-all').style.background = '#00ff88';
+    document.getElementById('btn-all').style.color = '#000';
+    render();
+}
+
+/**
+ * Sync engine - refresh data from IndexedDB
+ * Called by manual sync controls (if implemented)
+ * @returns {Promise<void>}
+ */
+function runEngineSync() {
+    console.log('🔄 Syncing data from IndexedDB...');
+    MASTER = [];  // Clear old data
+    const statusEl = document.getElementById('status');
+    if (!statusEl) {
+        console.error('Status element not found');
+        return;
+    }
+    statusEl.innerHTML = 'Syncing...';
+    statusEl.style.display = 'block';
+    
+    const req = indexedDB.open(DB_NAME); // no forced version
+
+    req.onupgradeneeded = function(e) {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE_NAME)) {
+            d.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+        }
+    };
+
+    req.onerror = function() {
+        statusEl.innerHTML = '⚠️ DB Error — reload page';
+        setTimeout(() => { statusEl.style.display = 'none'; }, 4000);
+    };
+
+    req.onsuccess = function(e) {
+        try {
+            const database = e.target.result;
+            // Guard BEFORE transaction — store may not exist yet
+            if (!database.objectStoreNames.contains(STORE_NAME)) {
+                statusEl.innerHTML = 'No data — go to Data tab → 🚀 LOAD JSON';
+                statusEl.style.color = '#ff9100';
+                setTimeout(() => { statusEl.style.display = 'none'; statusEl.style.color = ''; }, 5000);
+                return;
+            }
+            console.log('✅ DB opened: ' + database.name + ' v' + database.version);
+            const tx = database.transaction(STORE_NAME, 'readonly');
+            const getReq = tx.objectStore(STORE_NAME).getAll();
+            
+            getReq.onsuccess = function() {
+                MASTER = (getReq.result || []).filter(s => s.ticker && !s.ticker.startsWith('_'));
+                console.log('✅ Synced ' + MASTER.length + ' stocks from IndexedDB');
+                
+                // Log sample data
+                if (MASTER.length > 0) {
+                    const abcap = MASTER.find(s => s.ticker === 'ABCAPITAL');
+                    if (abcap) {
+                        const ltpVal = abcap.price && abcap.price.ltp && abcap.price.ltp.price ? abcap.price.ltp.price : '?';
+                        console.log('  📍 ABCAPITAL LTP from DB: ' + ltpVal);
+                    }
+                    console.log('  First stock:', MASTER[0].ticker, 'LTP:', MASTER[0].price?.ltp?.ltp || '?');
+                }
+                
+                if (MASTER.length > 0) {
+                    statusEl.style.display = 'none';
+                    SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
+                    console.log('✅ Sectors: ' + SECTORS.join(', '));
+                    SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
+                    console.log('⏳ Calling render()...');
+                    render();
+                    console.log('✅ Render complete');
+                } else {
+                    statusEl.innerHTML = 'DATABASE EMPTY';
+                    console.warn('No stocks in database');
+                }
+            };
+            
+            getReq.onerror = function() {
+                console.error('getAll error:', getReq.error);
+                statusEl.innerHTML = '❌ Sync failed';
+            };
+            
+            tx.onerror = function() {
+                console.error('Transaction error:', tx.error);
+                statusEl.innerHTML = '❌ Sync failed';
+            };
+        } catch(err) {
+            console.error('Sync exception:', err);
+            statusEl.innerHTML = '❌ Sync failed: ' + err.message;
+        }
+    };
+    
+    req.onerror = function() {
+        console.error('DB open error:', req.error);
+        statusEl.innerHTML = '❌ DB open failed';
+    };
+}
+
+// Initialize on page load
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+        init().catch(err => {
+            console.error('Page reload error:', err);
+        });
+    }
+});
+
+// Simple debug alert for iPhone
+function showDebugAlert() {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onsuccess = (e) => {
+        const db = e.target.result;
+        let m = '🐛 PORTFOLIO DEBUG\n\n';
+        m += `DB Name: ${db.name}\n`;
+        m += `DB Version (actual): ${db.version}\n`;
+        m += `Store Name (looking for): ${STORE_NAME}\n`;
+        m += `Available stores: ${Array.from(db.objectStoreNames).join(', ')}\n\n`;
+        
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+            m += '❌ Store does not exist!\n';
+            alert(m);
+            return;
+        }
+        
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const getAllReq = tx.objectStore(STORE_NAME).getAll();
+        
+        getAllReq.onsuccess = (e) => {
+            const stocks = e.target.result;
+            m += `📊 Total Records in DB: ${stocks.length}\n\n`;
+            
+            if (stocks.length === 0) {
+                m += '⚠️ Store is EMPTY!\n';
+                m += 'Data not saved to DB.';
+                alert(m);
+                return;
+            }
+            
+            const s = stocks[0];
+            m += `✅ First Record: ${s.ticker}\n`;
+            m += `Record fields: ${Object.keys(s).length}\n\n`;
+            
+            // Test resolve
+            m += '=== RESOLVE TEST (first stock) ===\n';
+            const testFields = ['TICKER', 'NAME', 'SECTOR', 'LTP', 'PE', 'QTY', 'AVG'];
+            testFields.forEach(f => {
+                const val = resolve(s, f);
+                m += `${f.padEnd(8)}: ${String(val).substring(0, 20)}\n`;
+            });
+            
+            m += '\n=== MASTER ARRAY ===\n';
+            m += `MASTER.length: ${MASTER.length}\n`;
+            
+            if (MASTER.length === 0) {
+                m += '❌ MASTER is EMPTY!\n';
+                m += 'Data loaded from DB but MASTER not populated';
+                alert(m);
+                return;
+            }
+            
+            m += `First stock: ${MASTER[0].ticker}\n\n`;
+            
+            m += '=== FILTER & RENDER TEST ===\n';
+            m += `viewMode: ${viewMode}\n`;
+            m += `filter (sector): ${filter || 'none'}\n`;
+            m += `searchQuery: ${searchQuery || 'none'}\n`;
+            m += `categoryFilter: ${categoryFilter || 'all'}\n\n`;
+            
+            const filtered = applyFilters(MASTER);
+            m += `After applyFilters: ${filtered.length} stocks\n`;
+            
+            if (filtered.length === 0) {
+                m += '❌ ALL FILTERED OUT!\n';
+                m += 'Check viewMode, sector filter, search query\n\n';
+            } else {
+                m += `✅ ${filtered.length} stocks passed filters\n\n`;
+                
+                m += '=== TABLE BUILD TEST ===\n';
+                const sorted = sortStocks(filtered);
+                const header = buildTableHeader();
+                const rows = buildTableRows(sorted);
+                const footer = buildTableFooter({sumPnl: 0, sumInv: 0, sum1dGain: 0});
+                const html = header + rows + footer;
+                
+                m += `Header bytes: ${header.length}\n`;
+                m += `Rows HTML bytes: ${rows.length}\n`;
+                m += `Footer bytes: ${footer.length}\n`;
+                m += `Total HTML: ${html.length}\n`;
+                
+                if (html.length < 500) {
+                    m += '\n❌ HTML TOO SHORT\n';
+                } else {
+                    m += '\n✅ HTML looks good\n';
+                }
+            }
+            
+            alert(m);
+        };
+        
+        getAllReq.onerror = (e) => {
+            m += '❌ Error reading store: ' + getAllReq.error;
+            alert(m);
+        };
+    };
+    
+    req.onerror = () => {
+        alert(`❌ Cannot open DB!\nDB: ${DB_NAME}\nVersion: ${DB_VERSION}`);
+    };
+}
+
+
+// ============================================================
+// SIGNAL ENGINE — injected into index.html
+// Reads from same IndexedDB (raalanportfolio / stocks)
+// ============================================================
+
+// ---------- SECTOR CONFIG ----------
+const SIG_SECTOR_CFG = {
+    // Uses company_details.sector taxonomy (12 sectors + ETF)
+    "Financials":             { w: { f:0.30, t:0.20, v:0.28, s:0.22 } },
+    "Information Technology": { w: { f:0.32, t:0.22, v:0.26, s:0.20 } },
+    "Healthcare":             { w: { f:0.35, t:0.18, v:0.22, s:0.25 } },
+    "Consumer Staples":       { w: { f:0.38, t:0.15, v:0.30, s:0.17 } },
+    "Consumer Discretionary": { w: { f:0.30, t:0.25, v:0.28, s:0.17 } },
+    "Industrials":            { w: { f:0.28, t:0.22, v:0.20, s:0.30 } },
+    "Defence":                { w: { f:0.28, t:0.20, v:0.18, s:0.34 } },
+    "Materials":              { w: { f:0.22, t:0.35, v:0.22, s:0.21 } },
+    "Energy":                 { w: { f:0.24, t:0.30, v:0.20, s:0.26 } },
+    "Utilities":              { w: { f:0.30, t:0.20, v:0.20, s:0.30 } },
+    "Telecom":                { w: { f:0.30, t:0.22, v:0.28, s:0.20 } },
+    "ETF":                    { w: { f:0.10, t:0.50, v:0.20, s:0.20 } },
+    // Yahoo taxonomy fallbacks (sector_disp / sector_yahoo)
+    "Technology":             { w: { f:0.32, t:0.22, v:0.26, s:0.20 } },
+    "Financial Services":     { w: { f:0.30, t:0.20, v:0.28, s:0.22 } },
+    "Basic Materials":        { w: { f:0.22, t:0.35, v:0.22, s:0.21 } },
+    "Consumer Cyclical":      { w: { f:0.30, t:0.25, v:0.28, s:0.17 } },
+    "Consumer Defensive":     { w: { f:0.38, t:0.15, v:0.30, s:0.17 } },
+    "Communication Services": { w: { f:0.30, t:0.22, v:0.28, s:0.20 } },
+    "_default":               { w: { f:0.32, t:0.22, v:0.24, s:0.22 } }
+};
+
+// ---------- SIGNAL STATE ----------
+let SIG_ALL = [];           // computed signals for all tickers
+let SIG_MEDIANS = {};       // sector PE medians
+let SIG_SELECTED = null;    // selected ticker
+let SIG_SORT = 'score';     // 'score'|'name'|'sector'
+let SIG_SECTOR_F = '';      // sector filter
+let SIG_SEARCH_F = '';      // search filter
+let SIG_OPEN_PILLARS = {};  // which pillar cards are expanded
+
+// ---------- MATH UTILS ----------
+function sigToF(v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    const s = String(v).replace('%','').replace(/,/g,'').trim();
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+}
+function sigClamp(v, mn=0, mx=100){ return Math.max(mn, Math.min(mx, v)); }
+function sigLatestDict(d) {
+    if (!d || typeof d !== 'object') return null;
+    const keys = Object.keys(d).sort();
+    return keys.length ? sigToF(d[keys[keys.length-1]]) : null;
+}
+function sigSeries(d) {
+    if (!d || typeof d !== 'object') return [];
+    return Object.entries(d).sort((a,b)=>a[0].localeCompare(b[0])).map(([dt,v])=>({dt, v:sigToF(v)}));
+}
+function sigTrend(series, hiGood=true) {
+    const vals = series.filter(x=>x.v!==null);
+    if (vals.length < 2) return 50;
+    const rec = vals.slice(-3).map(x=>x.v);
+    const old = vals.slice(-6,-3).map(x=>x.v);
+    if (!rec.length||!old.length) return 50;
+    const rAvg = rec.reduce((a,b)=>a+b,0)/rec.length;
+    const oAvg = old.reduce((a,b)=>a+b,0)/old.length;
+    if (oAvg===0) return 50;
+    const ch = (rAvg-oAvg)/Math.abs(oAvg);
+    return sigClamp(hiGood ? 50+ch*150 : 50-ch*150);
+}
+function sigScoreColor(s) {
+    // Thresholds tuned to actual score distribution (typically 40-65)
+    return s>=65?'#00ff88':s>=55?'#69f0ae':s>=46?'#ffea00':s>=37?'#ff9100':'#ff4d6d';
+}
+function sigRating(s) {
+    return s>=65?'STRONG BUY':s>=55?'BUY':s>=46?'NEUTRAL':s>=37?'REDUCE':'SELL';
+}
+
+// ---------- SECTOR MEDIANS ----------
+function buildSigMedians(stocks) {
+    const m = {};
+    stocks.forEach(st => {
+        const sec = st.derived_metrics?.calculated_metrics?.sector || st.company_details?.sector || st.company_details?.sector_disp || '—';
+        const pe = sigToF(st.valuation?.pe?.pe_ttm);
+        if (pe && pe>0 && pe<200) { if(!m[sec]) m[sec]=[]; m[sec].push(pe); }
+    });
+    const out = {};
+    Object.entries(m).forEach(([sec,arr])=>{
+        arr.sort((a,b)=>a-b);
+        out[sec] = arr[Math.floor(arr.length/2)];
+    });
+    SIG_MEDIANS = out;
+}
+
+// ---------- PILLAR 1: FUNDAMENTAL ----------
+function sigFundamental(st) {
+    const fin = st.financials||{};
+    const rat = st.ratios||{};
+    const scores = {};
+
+    // ROCE
+    const roceSeries = sigSeries(rat.screener?.roce_pct||{});
+    const roceVal = sigLatestDict(rat.screener?.roce_pct||{});
+    if(roceVal!==null){
+        const lvl = roceVal>=20?90:roceVal>=15?75:roceVal>=10?60:roceVal>=5?40:20;
+        scores.roce = {s:Math.round(lvl*0.6+sigTrend(roceSeries,true)*0.4), hasData:true, label:'ROCE', val:roceVal.toFixed(1)+'%'};
+    } else scores.roce = {hasData:false, label:'ROCE', val:'N/A'};
+
+    // Sales CAGR 3Y
+    const salesAnn = fin.revenue?.consolidated?.annual||fin.revenue?.standalone?.annual||{};
+    const salesSer = sigSeries(salesAnn);
+    let salesCAGR=null;
+    if(salesSer.length>=4){ const s3=salesSer[salesSer.length-4],s0=salesSer[salesSer.length-1]; if(s3.v&&s0.v&&s3.v>0) salesCAGR=(Math.pow(s0.v/s3.v,1/3)-1)*100; }
+    if(salesCAGR!==null){
+        scores.sales = {s:sigClamp(salesCAGR>=20?90:salesCAGR>=15?78:salesCAGR>=10?65:salesCAGR>=5?50:salesCAGR>=0?35:20), hasData:true, label:'Sales CAGR 3Y', val:salesCAGR.toFixed(1)+'%'};
+    } else scores.sales = {hasData:false, label:'Sales CAGR 3Y', val:'N/A'};
+
+    // OPM Trend
+    const opmQ = fin.operating_margin_pct?.consolidated?.quarterly||fin.operating_margin_pct?.standalone?.quarterly||{};
+    const opmA = fin.operating_margin_pct?.consolidated?.annual||fin.operating_margin_pct?.standalone?.annual||{};
+    const opmSer = sigSeries(Object.keys(opmQ).length?opmQ:opmA);
+    const opmVal = opmSer.length?opmSer[opmSer.length-1].v:null;
+    if(opmVal!==null){
+        const lvl=sigClamp(opmVal>=25?88:opmVal>=18?74:opmVal>=12?60:opmVal>=6?44:25);
+        scores.opm = {s:Math.round(lvl*0.55+sigTrend(opmSer,true)*0.45), hasData:true, label:'OPM Trend', val:opmVal.toFixed(1)+'%'};
+    } else scores.opm = {hasData:false, label:'OPM Trend', val:'N/A'};
+
+    // CFO Quality
+    const cfoOpD = fin.cash_conversion_ratio?.consolidated?.annual||fin.cash_conversion_ratio?.standalone?.annual||{};
+    const cfoOpSer = sigSeries(cfoOpD);
+    const cfoOpVal = sigLatestDict(cfoOpD);
+    if(cfoOpVal!==null){
+        const lvl=sigClamp(cfoOpVal>=90?90:cfoOpVal>=75?75:cfoOpVal>=60?60:cfoOpVal>=40?45:25);
+        scores.cfo = {s:Math.round(lvl*0.6+sigTrend(cfoOpSer,true)*0.4), hasData:true, label:'CFO Quality', val:cfoOpVal.toFixed(0)+'%'};
+    } else scores.cfo = {hasData:false, label:'CFO Quality', val:'N/A'};
+
+    // Debt Health
+    const borrSer = sigSeries(fin.borrowings?.consolidated?.annual||fin.borrowings?.standalone?.annual||{});
+    const deq = sigToF(rat.ttm?.debt_to_equity_ratio);
+    if(deq!==null){
+        const lvl=sigClamp(deq<=0.3?90:deq<=0.7?78:deq<=1.2?62:deq<=2.0?42:22);
+        scores.debt = {s:Math.round(lvl*0.65+sigTrend(borrSer,false)*0.35), hasData:true, label:'Debt Health', val:'D/E '+deq.toFixed(2)+'x'};
+    } else scores.debt = {hasData:false, label:'Debt Health', val:'N/A'};
+
+    // Interest Coverage (EBIT / Interest)
+    const ebitAnn = fin.ebit?.consolidated?.annual||fin.ebit?.standalone?.annual||{};
+    const intAnn  = fin.interest?.consolidated?.annual||fin.interest?.standalone?.annual||{};
+    const ebitLt  = sigLatestDict(ebitAnn), intLt = sigLatestDict(intAnn);
+    if(ebitLt!==null && intLt!==null && intLt>0){
+        const ic=ebitLt/intLt;
+        scores.ic = {s:sigClamp(ic>=10?90:ic>=6?78:ic>=3?62:ic>=1.5?44:20), hasData:true, label:'Interest Coverage', val:ic.toFixed(1)+'x'};
+    } else scores.ic = {hasData:false, label:'Interest Coverage', val:'N/A'};
+
+    // Profit Momentum (Q YoY)
+    const npQ = fin.net_profit?.consolidated?.quarterly||fin.net_profit?.standalone?.quarterly||{};
+    const npSer = sigSeries(npQ);
+    let npHasData=false, npS=0, npVal='N/A';
+    if(npSer.length>=5){ const lv=npSer[npSer.length-1].v,ya=npSer[npSer.length-5].v; if(lv!==null&&ya!==null&&ya>0){ npHasData=true; npS=Math.round(sigClamp(50+(lv-ya)/ya*120)); npVal=((lv-ya)/ya*100).toFixed(1)+'% YoY'; } }
+    scores.np = {s:npS, hasData:npHasData, label:'Profit Momentum', val:npVal};
+
+    // FCF Consistency
+    const fcfSer = sigSeries(fin.fcf?.consolidated?.annual||fin.fcf?.standalone?.annual||{});
+    if(fcfSer.length>=3){
+        const r3=fcfSer.slice(-3).map(x=>x.v).filter(v=>v!==null);
+        const pos=r3.filter(v=>v>0).length;
+        scores.fcf = {s:Math.round(sigClamp(pos===3?sigTrend(fcfSer,true)*0.6+35:pos===2?sigTrend(fcfSer,true)*0.4+25:25)), hasData:true, label:'FCF Consistency', val:pos+'/3 yrs +ve'};
+    } else scores.fcf = {hasData:false, label:'FCF Consistency', val:'N/A'};
+
+    const w={roce:0.20,sales:0.16,opm:0.16,cfo:0.12,debt:0.12,ic:0.10,np:0.08,fcf:0.06};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
+}
+
+// ---------- PILLAR 2: TECHNICAL ----------
+function sigTechnical(st) {
+    const pr = st.price||{};
+    const scores = {};
+    const cp=sigToF(pr.close_price);
+    const dma50=sigToF(pr.ma_50d);
+    const dma200=sigToF(pr.ma_200d);
+    const w52h=sigToF(pr['52_week']?.high);
+    const w52l=sigToF(pr['52_week']?.low);
+    const beta=sigToF(pr.beta);
+
+    // MA Trend
+    if(cp&&dma50&&dma200){
+        const a50=cp>dma50,a200=cp>dma200,gc=dma50>dma200;
+        const maS=a50&&a200&&gc?85:a50&&a200?72:a200&&!a50?55:!a50&&!a200&&!gc?22:40;
+        const dma50pct=((cp-dma50)/dma50*100).toFixed(1);
+        scores.ma = {s:maS, hasData:true, label:'MA Trend', val:(dma50pct>0?'+':'')+dma50pct+'% vs 50D'};
+    } else scores.ma = {hasData:false, label:'MA Trend', val:'N/A'};
+
+    // 52W Position
+    const w52Pct=sigToF(pr['52_week']?.change_pct);
+    if(cp&&w52h&&w52l){
+        const rng=w52h-w52l, pos=rng>0?(cp-w52l)/rng:0.5;
+        scores.w52 = {s:pos>=0.75?80:pos>=0.55?65:pos>=0.35?50:pos>=0.20?38:28, hasData:true, label:'52W Position', val:w52Pct!==null?w52Pct.toFixed(1)+'% 52W':'N/A'};
+    } else scores.w52 = {hasData:false, label:'52W Position', val:'N/A'};
+
+    // ATH Distance
+    const ath=sigToF(pr.all_time_high);
+    if(cp&&ath&&ath>0){
+        const athPct=(cp-ath)/ath*100;
+        scores.ath = {s:sigClamp(athPct>=-5?85:athPct>=-15?72:athPct>=-30?58:athPct>=-50?42:25), hasData:true, label:'ATH Distance', val:athPct.toFixed(1)+'% vs ATH'};
+    } else scores.ath = {hasData:false, label:'ATH Distance', val:'N/A'};
+
+    // Volume surge
+    const vol=sigToF(pr.volume?.day_volume||pr.volume?.market_volume);
+    const avgVol=sigToF(pr.volume?.avg_volume_3mo||pr.volume?.avg_volume);
+    if(vol&&avgVol&&avgVol>0){
+        const r=vol/avgVol;
+        scores.vol = {s:sigClamp(r>=2?85:r>=1.5?72:r>=1?55:r>=0.7?42:28), hasData:true, label:'Volume Signal', val:r.toFixed(1)+'x avg'};
+    } else scores.vol = {hasData:false, label:'Volume Signal', val:'N/A'};
+
+    // Price Momentum
+    const hist6=(pr.ohlcv_daily||[]).map(x=>sigToF(x.Close)).filter(v=>v!==null);
+    if(hist6.length>=20){
+        const lt=hist6[hist6.length-1],m20=hist6[hist6.length-21],m60=hist6.length>=61?hist6[hist6.length-61]:hist6[0];
+        if(lt&&m20){ const r20=(lt-m20)/m20,r60=m60?(lt-m60)/m60:r20;
+            scores.mom = {s:Math.round(sigClamp(50+(r20*0.6+r60*0.4)*200)), hasData:true, label:'Price Momentum', val:(r20*100).toFixed(1)+'% 20D'}; }
+        else scores.mom = {hasData:false, label:'Price Momentum', val:'N/A'};
+    } else scores.mom = {hasData:false, label:'Price Momentum', val:'N/A'};
+
+    // RSI
+    if(hist6.length>=14){
+        const changes=hist6.slice(-14).map((c,i,a)=>i>0?c-a[i-1]:0).slice(1);
+        const gains=changes.filter(c=>c>0).reduce((a,b)=>a+b,0)/13;
+        const losses=Math.abs(changes.filter(c=>c<0).reduce((a,b)=>a+b,0))/13;
+        const rsi=losses===0?100:100-100/(1+gains/losses);
+        const rsiS=rsi>70?60:rsi>55?72:rsi>45?55:rsi>30?65:78;
+        scores.rsi = {s:rsiS, hasData:true, label:'RSI Signal', val:rsi.toFixed(0)+' RSI'};
+    } else scores.rsi = {hasData:false, label:'RSI Signal', val:'N/A'};
+
+    // Beta
+    if(beta!==null){
+        scores.beta = {s:beta<=0.5?70:beta<=1?62:beta<=1.5?50:beta<=2?38:25, hasData:true, label:'Beta Risk', val:'β '+beta.toFixed(2)};
+    } else scores.beta = {hasData:false, label:'Beta Risk', val:'N/A'};
+
+    const w={ma:0.25,w52:0.18,ath:0.12,vol:0.13,mom:0.20,rsi:0.08,beta:0.04};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
+}
+
+// ---------- PILLAR 3: VALUATION ----------
+function sigValuation(st) {
+    const val=st.valuation||{};
+    const ws_=st.websignals||{};
+    const pr=st.price||{};
+    const scores={};
+    const sector = st.company_details?.sector
+        || st.derived_metrics?.calculated_metrics?.sector
+        || st.company_details?.sector_disp
+        || st.company_details?.sector_yahoo
+        || st.company_details?.industry?.split(' ')[0]
+        || '—';
+    const pe=sigToF(val.pe?.pe_ttm)||sigToF(val.pe?.pe_forward);
+    const pb=sigToF(val.pe?.price_to_book);
+    const evEb=sigToF(val.pe?.ev_to_ebitda);
+    const peg=sigToF(val.pe?.peg);
+    const ps=sigToF(val.pe?.price_to_sales);
+    const evRev=sigToF(val.pe?.ev_to_revenue);
+    const cp=sigToF(pr.close_price);
+    const tgt=sigToF(ws_.target_mean);
+    const divYield=sigToF(st.company_details?.shareholding?.dividends?.dividend_yield);
+
+    // PE vs sector
+    if(pe!==null&&pe>0){
+        const spe=SIG_MEDIANS[sector]||25;
+        scores.pe = {s:sigClamp(pe<=spe*0.6?88:pe<=spe*0.8?76:pe<=spe?62:pe<=spe*1.3?46:pe<=spe*1.7?32:18), hasData:true, label:'P/E vs Sector', val:pe.toFixed(1)+'x'};
+    } else scores.pe = {hasData:false, label:'P/E vs Sector', val:'N/A'};
+
+    // Price/Book
+    if(pb!==null&&pb>0){
+        scores.pb = {s:sigClamp(pb<=1?88:pb<=2?75:pb<=3.5?60:pb<=6?44:pb<=10?30:18), hasData:true, label:'Price/Book', val:pb.toFixed(2)+'x'};
+    } else scores.pb = {hasData:false, label:'Price/Book', val:'N/A'};
+
+    // EV/EBITDA
+    if(evEb!==null&&evEb>0){
+        scores.ev = {s:sigClamp(evEb<=8?88:evEb<=12?76:evEb<=18?62:evEb<=25?46:evEb<=35?30:18), hasData:true, label:'EV/EBITDA', val:evEb.toFixed(1)+'x'};
+    } else scores.ev = {hasData:false, label:'EV/EBITDA', val:'N/A'};
+
+    // PEG
+    if(peg!==null&&peg>0){
+        scores.peg = {s:sigClamp(peg<=0.5?90:peg<=1?78:peg<=1.5?62:peg<=2.5?44:25), hasData:true, label:'PEG Ratio', val:peg.toFixed(2)+'x'};
+    } else scores.peg = {hasData:false, label:'PEG Ratio', val:'N/A'};
+
+    // P/Sales
+    if(ps!==null&&ps>0){
+        scores.ps = {s:sigClamp(ps<=1?88:ps<=2?76:ps<=4?62:ps<=8?46:ps<=15?30:18), hasData:true, label:'Price/Sales', val:ps.toFixed(2)+'x'};
+    } else if(evRev!==null&&evRev>0){
+        scores.ps = {s:sigClamp(evRev<=1?88:evRev<=2?76:evRev<=4?62:evRev<=8?46:evRev<=15?30:18), hasData:true, label:'EV/Revenue', val:evRev.toFixed(2)+'x'};
+    } else scores.ps = {hasData:false, label:'Price/Sales', val:'N/A'};
+
+    // Analyst Upside
+    if(cp&&tgt){
+        const up=(tgt-cp)/cp*100;
+        scores.tgt = {s:sigClamp(up>=30?90:up>=20?78:up>=10?64:up>=0?50:up>=-10?38:22), hasData:true, label:'Analyst Upside', val:up.toFixed(1)+'% upside'};
+    } else scores.tgt = {hasData:false, label:'Analyst Upside', val:'N/A'};
+
+    // Dividend Yield
+    if(divYield!==null&&divYield>0){
+        scores.div = {s:sigClamp(divYield>=5?85:divYield>=3?72:divYield>=1.5?58:divYield>=0.5?44:30), hasData:true, label:'Dividend Yield', val:divYield.toFixed(2)+'%'};
+    } else scores.div = {hasData:false, label:'Dividend Yield', val:'N/A'};
+
+    const w={pe:0.28,pb:0.16,ev:0.20,peg:0.12,ps:0.10,tgt:0.10,div:0.04};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
+}
+
+// ---------- PILLAR 4: SENTIMENT ----------
+function sigSentiment(st) {
+    const cd=st.company_details||{};
+    const ws_=st.websignals||{};
+    const dm=st.derived_metrics||{};
+    const sh=cd.shareholding?.pattern||{};
+    const own=cd.shareholding?.ownership||{};
+    const scores={};
+
+    // Promoter trend
+    const promoSer=sigSeries(sh.promoters||{});
+    const promoLt=promoSer.length?promoSer[promoSer.length-1].v:null;
+    if(promoSer.length>=2&&promoLt!==null){
+        const pv=promoSer.length>=5?promoSer[promoSer.length-5].v:promoSer[0].v;
+        if(pv!==null){ const lvl=promoLt>=65?80:promoLt>=50?68:promoLt>=35?55:promoLt>=20?44:35; const dlta=promoLt-pv; const dS=dlta>2?88:dlta>0.5?72:dlta>-0.5?55:dlta>-2?38:22;
+            scores.prom = {s:Math.round(lvl*0.45+dS*0.55), hasData:true, label:'Promoter Trend', val:promoLt.toFixed(1)+'%'}; }
+        else scores.prom = {hasData:false, label:'Promoter Trend', val:'N/A'};
+    } else scores.prom = {hasData:false, label:'Promoter Trend', val:'N/A'};
+
+    // FII+DII flow
+    const fiiSer=sigSeries(sh.fiis||{}), diiSer=sigSeries(sh.diis||{});
+    const fiiLt=fiiSer.length?fiiSer[fiiSer.length-1].v:null;
+    if(fiiSer.length>=2||diiSer.length>=2){
+        scores.inst = {s:Math.round(sigTrend(fiiSer,true)*0.55+sigTrend(diiSer,true)*0.45), hasData:true, label:'FII+DII Flow', val:fiiLt!==null?'FII '+fiiLt.toFixed(1)+'%':'N/A'};
+    } else scores.inst = {hasData:false, label:'FII+DII Flow', val:'N/A'};
+
+    // Institutional holding level
+    const instPct=sigToF(own.institutional_holding_pct);
+    if(instPct!==null){
+        scores.instLvl = {s:sigClamp(instPct>=0.5?85:instPct>=0.35?72:instPct>=0.2?58:instPct>=0.1?44:30), hasData:true, label:'Inst. Holding', val:(instPct*100).toFixed(1)+'%'};
+    } else scores.instLvl = {hasData:false, label:'Inst. Holding', val:'N/A'};
+
+    // Analyst consensus
+    const recKey=ws_.analyst_rating||ws_.recommendation_key||'';
+    const recMean=sigToF(ws_.analyst_rating_score);
+    const nOp=sigToF(ws_.analyst_count)||0;
+    if(recMean!==null||( recKey&&recKey!=='none')){
+        let analystS=recMean!==null?sigClamp(recMean<=1.5?88:recMean<=2?74:recMean<=2.5?60:recMean<=3?46:recMean<=3.5?34:20):({'strong_buy':88,'buy':72,'hold':50,'underperform':34,'sell':18}[recKey]||50);
+        const conf=nOp>=15?1:nOp/15; analystS=Math.round(analystS*conf+50*(1-conf));
+        scores.analyst = {s:analystS, hasData:true, label:'Analyst Consensus', val:recKey&&recKey!=='none'?recKey.replace('_',' ').toUpperCase():'N/A'};
+    } else scores.analyst = {hasData:false, label:'Analyst Consensus', val:'N/A'};
+
+    // Governance — use sub-risks if available, else overall
+    const govAudit=sigToF(ws_.governance_audit_risk), govBoard=sigToF(ws_.governance_board_risk);
+    const govComp=sigToF(ws_.governance_comp_risk), govRights=sigToF(ws_.governance_rights_risk);
+    const govR=sigToF(ws_.governance_overall_risk);
+    const govSubs=[govAudit,govBoard,govComp,govRights].filter(v=>v!==null);
+    if(govSubs.length>0){
+        const avgRisk=govSubs.reduce((a,b)=>a+b,0)/govSubs.length;
+        scores.gov = {s:sigClamp(avgRisk<=2?82:avgRisk<=4?66:avgRisk<=6?50:avgRisk<=8?35:20), hasData:true, label:'Governance Risk', val:'Risk '+avgRisk.toFixed(1)+'/10'};
+    } else if(govR!==null){
+        scores.gov = {s:sigClamp(govR<=2?82:govR<=4?66:govR<=6?50:govR<=8?35:20), hasData:true, label:'Governance Risk', val:'Risk '+govR+'/10'};
+    } else scores.gov = {hasData:false, label:'Governance Risk', val:'N/A'};
+
+    // AI insights
+    const ai=dm.ai_insights_guidance||{};
+    if(ai.insights?.analysis){
+        const sm={'Positive':80,'Strong Positive':90,'Negative':25,'Strong Negative':15,'Neutral':52,'Caution':35};
+        const arr=Object.values(ai.insights.analysis).map(v=>sm[v?.signal]||50);
+        scores.ai = {s:Math.round(arr.reduce((a,b)=>a+b,0)/arr.length), hasData:true, label:'AI Guidance', val:ai.insights?.recommendation||'Signal'};
+    } else if(ai.guidance?.management?.confidence){
+        scores.ai = {s:ai.guidance.management.confidence==='HIGH'?72:ai.guidance.management.confidence==='LOW'?32:50, hasData:true, label:'AI Guidance', val:'Guidance'};
+    } else scores.ai = {hasData:false, label:'AI Guidance', val:'N/A'};
+
+    // Shareholder count trend
+    const shrSer=sigSeries(sh.no_of_shareholders||{});
+    const shrLt=shrSer.length?shrSer[shrSer.length-1].v:null;
+    if(shrSer.length>=2){
+        scores.shr = {s:sigTrend(shrSer,true), hasData:true, label:'Shareholder Count', val:shrLt!==null?(shrLt/1000).toFixed(1)+'K':'N/A'};
+    } else scores.shr = {hasData:false, label:'Shareholder Count', val:'N/A'};
+
+    const w={prom:0.22,inst:0.15,instLvl:0.08,analyst:0.22,gov:0.12,ai:0.15,shr:0.06};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
+}
+
+// ---------- COMPOSITE ----------
+function sigComposite(ticker, st) {
+    const sector = st.company_details?.sector
+        || st.derived_metrics?.calculated_metrics?.sector
+        || st.company_details?.sector_disp
+        || st.company_details?.sector_yahoo
+        || st.company_details?.industry?.split(' ')[0]
+        || '—';
+    const cfg=(SIG_SECTOR_CFG[sector]||SIG_SECTOR_CFG['_default']).w;
+    const F=sigFundamental(st), T=sigTechnical(st), V=sigValuation(st), S=sigSentiment(st);
+    const pillars=[['f',F],['t',T],['v',V],['s',S]];
+    let tS=0,tW=0;
+    for(const [k,p] of pillars){ if(p.score!==null){tS+=p.score*cfg[k];tW+=cfg[k];} }
+    const comp=tW>0?Math.round(tS/tW):null;
+    return { ticker, comp, rating:comp!==null?sigRating(comp):null, ratingColor:comp!==null?sigScoreColor(comp):'#666',
+        sector, weights:cfg, name:st.company_details?.long_name||st.company_details?.short_name||ticker,
+        price:sigToF(st.price?.close_price||st.price?.ltp?.price),
+        F, T, V, S };
+}
+
+// ---------- RENDER LIST ----------
+function sigRenderList() {
+    let items = SIG_ALL.slice();
+    if(SIG_SECTOR_F) items=items.filter(x=>x.sector===SIG_SECTOR_F);
+    if(SIG_SEARCH_F) items=items.filter(x=>x.ticker.includes(SIG_SEARCH_F)||x.name.toUpperCase().includes(SIG_SEARCH_F));
+    if(SIG_SORT==='name') items.sort((a,b)=>a.ticker.localeCompare(b.ticker));
+    else if(SIG_SORT==='sector') items.sort((a,b)=>a.sector.localeCompare(b.sector));
+    else items.sort((a,b)=>b.comp-a.comp);
+
+    const listEl=document.getElementById('sig-list-inner');
+    listEl.innerHTML=items.map(sig=>{
+        const isActive=SIG_SELECTED===sig.ticker;
+        const fc=sigScoreColor(sig.F.score), tc=sigScoreColor(sig.T.score), vc=sigScoreColor(sig.V.score), sc_=sigScoreColor(sig.S.score);
+        return `<div class="sig-ticker-row${isActive?' selected':''}" onclick="sigSelect('${sig.ticker}')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="font-size:12px;font-weight:800;color:#e2e8f0">${sig.ticker}</span>
+                <div style="display:flex;align-items:center;gap:5px;">
+                    <span style="font-size:12px;font-weight:800;color:${sig.ratingColor}">${sig.comp}</span>
+                    <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating.replace(' BUY','').replace('STRONG','STR')}</span>
+                </div>
+            </div>
+            <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${sig.comp}%;background:${sig.ratingColor}"></div></div>
+            <div style="display:flex;gap:8px;margin-top:5px;">
+                <span style="font-size:8px;color:${fc}">F${sig.F.score}</span>
+                <span style="font-size:8px;color:${tc}">T${sig.T.score}</span>
+                <span style="font-size:8px;color:${vc}">V${sig.V.score}</span>
+                <span style="font-size:8px;color:${sc_}">S${sig.S.score}</span>
+                <span style="font-size:8px;color:#4a5568;margin-left:auto">${sig.sector.substring(0,10)}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ---------- PILLAR CARD HTML ----------
+function sigPillarCard(key, label, icon, pillar, color) {
+    const openKey=key;
+    const isOpen=SIG_OPEN_PILLARS[openKey];
+    const allSubs=Object.entries(pillar.sub);
+    const validCount=allSubs.filter(([,v])=>v.hasData).length;
+    const totalCount=allSubs.length;
+    const subs=allSubs.map(([k,v])=>{
+        if(!v.hasData) return `
+        <div class="sig-sub-row" style="opacity:0.3">
+            <span class="sig-sub-label">${v.label}</span>
+            <div class="sig-sub-bar"></div>
+            <span class="sig-sub-score">—</span>
+            <span class="sig-sub-val">N/A</span>
+        </div>`;
+        return `
+        <div class="sig-sub-row">
+            <span class="sig-sub-label">${v.label}</span>
+            <div class="sig-sub-bar"><div class="sig-sub-fill" style="width:${v.s}%;background:${sigScoreColor(v.s)}"></div></div>
+            <span class="sig-sub-score">${v.s}</span>
+            <span class="sig-sub-val">${v.val}</span>
+        </div>`;
+    }).join('');
+    return `<div class="sig-pillar-card${isOpen?' open':''}" onclick="sigTogglePillar('${openKey}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:14px">${icon}</span>
+                <span style="font-size:9px;color:#bbb;text-transform:uppercase;letter-spacing:0.08em">${label}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:16px;font-weight:800;color:${color}">${pillar.score??'—'}<span style="font-size:8px;font-weight:400;color:#777;margin-left:3px">(${validCount}/${totalCount})</span></span>
+                <span style="font-size:9px;color:#888">${isOpen?'▲':'▼'}</span>
+            </div>
+        </div>
+        <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${pillar.score??0}%;background:${color}"></div></div>
+        ${isOpen?`<div style="border-top:1px solid #1a1a1a;margin-top:8px;padding-top:4px">${subs}</div>`:''}
+    </div>`;
+}
+
+// ---------- GAUGE SVG ----------
+function sigGaugeSVG(score) {
+    const ang=(score/100)*180-90;
+    const cx=100,cy=90,r=68;
+    const x1=cx-r,y1=cy,x2=cx+r,y2=cy;
+    return `<svg viewBox="0 0 200 105" style="width:100%;max-width:200px;margin:4px auto 0;display:block">
+        <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ff4d6d"/><stop offset="25%" stop-color="#ff9100"/><stop offset="50%" stop-color="#ffea00"/><stop offset="75%" stop-color="#69f0ae"/><stop offset="100%" stop-color="#00ff88"/></linearGradient></defs>
+        <path d="M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}" fill="none" stroke="url(#gg)" stroke-width="10" stroke-linecap="round"/>
+        <g transform="rotate(${ang},${cx},${cy})">
+            <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-r+6}" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="${cx}" cy="${cy}" r="4" fill="#222" stroke="#fff" stroke-width="1.5"/>
+        </g>
+        <text x="${cx}" y="${cy+18}" text-anchor="middle" fill="white" font-size="18" font-weight="800" font-family="JetBrains Mono,monospace">${score}</text>
+        <text x="22" y="102" fill="#ff4d6d" font-size="7" text-anchor="middle" font-family="JetBrains Mono,monospace">SELL</text>
+        <text x="100" y="102" fill="#ffea00" font-size="7" text-anchor="middle" font-family="JetBrains Mono,monospace">NEUTRAL</text>
+        <text x="178" y="102" fill="#00ff88" font-size="7" text-anchor="middle" font-family="JetBrains Mono,monospace">BUY</text>
+    </svg>`;
+}
+
+// ---------- RENDER DETAIL ----------
+function sigRenderDetail(ticker) {
+    const sig=SIG_ALL.find(x=>x.ticker===ticker);
+    if(!sig) return;
+    const st=MASTER.find(s=>s.ticker===ticker);
+    if(!st) return;
+    const ws_=st.websignals||{};
+    const ai=st.derived_metrics?.ai_insights_guidance||{};
+    const cp=sigToF(st.price?.close_price||st.price?.ltp?.price);
+    const tgt=sigToF(ws_.target_mean);
+    const tgtLo=sigToF(ws_.target_low_price);
+    const tgtHi=sigToF(ws_.target_high_price);
+    const nOp=sigToF(ws_.analyst_count);
+    const sectorMedianPE=SIG_MEDIANS[sig.sector];
+
+    let html=`
+    <!-- STOCK HEADER -->
+    <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+                <div style="font-size:20px;font-weight:800;color:#f8fafc">${ticker}</div>
+                <div style="font-size:9px;color:#aaa;margin-top:2px">${sig.name}</div>
+                <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+                    <span class="sig-pill" style="background:#1a1a1a;color:#aaa">${sig.sector}</span>
+                    ${cp?`<span style="font-size:12px;font-weight:700;color:#e2e8f0">₹${cp.toLocaleString()}</span>`:''}
+                </div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp}<span style="font-size:10px;font-weight:400;color:#777;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).length,0)})</span></div>
+                <div style="font-size:10px;font-weight:800;color:${sig.ratingColor};letter-spacing:0.06em">${sig.rating}</div>
+            </div>
+        </div>
+        <div style="margin:8px 0 4px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${sig.comp}%;background:${sig.ratingColor};border-radius:2px;transition:width 0.4s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:7px;color:#666;margin-bottom:4px">
+            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+        </div>
+    </div>
+
+    <!-- SECTOR WEIGHTS -->
+    <div class="sig-weight-strip" style="border:1px solid #1a1a1a;border-radius:6px;margin-bottom:10px;overflow:hidden">
+        ${['Fundamental','Technical','Valuation','Sentiment'].map((lbl,i)=>{
+            const keys=['f','t','v','s'];
+            const pkeys=['F','T','V','S'];
+            const w=sig.weights[keys[i]];
+            const sc=sig[pkeys[i]].score;
+            return `<div class="sig-weight-cell">
+                <span class="sig-wlabel">${lbl.substring(0,4).toUpperCase()}</span>
+                <span class="sig-wval" style="color:${sigScoreColor(sc)}">${(w*100).toFixed(0)}%</span>
+            </div>`;
+        }).join('')}
+    </div>`;
+
+    // ANALYST TARGET
+    if(cp && tgt) {
+        const upside=((tgt-cp)/cp*100);
+        const uColor=upside>=0?'#00ff88':'#ff4d6d';
+        html+=`<div class="sig-target-box">
+            <div>
+                <div class="sig-section-title">ANALYST TARGET</div>
+                <div style="font-size:13px;font-weight:700;color:#e2e8f0">₹${tgt.toFixed(0)} <span style="color:#aaa;font-size:10px">/ ₹${tgtLo?tgtLo.toFixed(0):'?'} – ₹${tgtHi?tgtHi.toFixed(0):'?'}</span></div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-size:18px;font-weight:800;color:${uColor}">${upside>=0?'+':''}${upside.toFixed(1)}%</div>
+                <div style="font-size:8px;color:#666">${nOp?nOp+' analysts':''}</div>
+            </div>
+        </div>`;
+    }
+
+    // PILLAR CARDS
+    html+=`<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+        ${sigPillarCard('F','Fundamental','📊',sig.F,'#00f2ff')}
+        ${sigPillarCard('T','Technical','📈',sig.T,'#7000ff')}
+        ${sigPillarCard('V','Valuation','⚖️',sig.V,'#00ff88')}
+        ${sigPillarCard('S','Sentiment','🧠',sig.S,'#ffb800')}
+    </div>`;
+
+    // AI THESIS
+    if(ai.insights?.thesis) {
+        const rec=ai.insights.recommendation||'';
+        const recColor={'BUY':'#00ff88','SELL':'#ff4d6d','HOLD':'#ffea00'}[rec]||'#aaa';
+        html+=`<div class="sig-ai-box">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <div class="sig-section-title">AI INVESTMENT THESIS</div>
+                ${rec?`<span class="sig-pill" style="background:${recColor}22;color:${recColor}">${rec}</span>`:''}
+            </div>
+            <div style="font-size:9px;color:#aaa;line-height:1.7">${ai.insights.thesis.substring(0,400)}${ai.insights.thesis.length>400?'…':''}</div>
+            ${ai.insights.trigger?`<div style="margin-top:8px;padding:6px 8px;background:#0a1a0a;border-left:2px solid #00ff88;font-size:9px;color:#7ac97a;line-height:1.6"><strong style="color:#00ff88">TRIGGER: </strong>${ai.insights.trigger.substring(0,250)}…</div>`:''}
+        </div>`;
+    }
+
+    // AI ANALYSIS DIMS
+    if(ai.insights?.analysis) {
+        const sigColorMap={'Positive':'#00ff88','Strong Positive':'#00ff88','Negative':'#ff4d6d','Strong Negative':'#ff4d6d','Neutral':'#ffea00','Caution':'#ff9100'};
+        html+=`<div class="sig-ctx-box" style="margin-bottom:8px">
+            <div class="sig-section-title">AI SIGNAL BREAKDOWN</div>
+            <div class="sig-ai-dims">
+                ${Object.entries(ai.insights.analysis).map(([dim,v])=>{
+                    const c=sigColorMap[v?.signal]||'#555';
+                    return `<div class="sig-ai-dim"><div style="font-size:8px;color:#aaa;text-transform:capitalize">${dim}</div><div style="font-size:9px;color:${c};font-weight:700;margin-top:2px">${v.signal||'—'}</div></div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    }
+
+    // SECTOR CONTEXT
+    html+=`<div class="sig-ctx-box">
+        <div class="sig-section-title">SECTOR CONTEXT — ${sig.sector}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><div style="font-size:8px;color:#aaa">Sector Median PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sectorMedianPE?sectorMedianPE.toFixed(1)+'x':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#aaa">Stock PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.valuation?.pe?.pe_ttm)?sigToF(st.valuation?.pe?.pe_ttm).toFixed(1)+'x':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#aaa">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price['52_week'].change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#aaa">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price.ltp.beta).toFixed(2):'N/A'}</div></div>
+        </div>
+    </div>`;
+
+    document.getElementById('sig-detail').innerHTML=html;
+}
+
+// ---------- EVENT HANDLERS ----------
+function sigSelect(ticker) {
+    SIG_SELECTED=ticker;
+    sigRenderList();
+    sigRenderDetail(ticker);
+}
+function sigTogglePillar(key) {
+    SIG_OPEN_PILLARS[key]=!SIG_OPEN_PILLARS[key];
+    if(SIG_SELECTED) sigRenderDetail(SIG_SELECTED);
+}
+function sigFilter() {
+    SIG_SEARCH_F=(document.getElementById('sig-search').value||'').toUpperCase();
+    SIG_SECTOR_F=document.getElementById('sig-sector-filter').value||'';
+    sigRenderList();
+    if(window._sigListResetScroll) window._sigListResetScroll();
+}
+function sigSort(by) {
+    SIG_SORT=by;
+    ['score','name','sector'].forEach(s=>{
+        const el=document.getElementById('sig-sort-'+s);
+        if(el){ el.classList.toggle('active',s===by); }
+    });
+    sigRenderList();
+    if(window._sigListResetScroll) window._sigListResetScroll();
+}
+
+// ---------- VIEW SWITCHING ----------
+function showMainView() {
+    document.getElementById('main-view').style.display='';
+    document.getElementById('signal-view').classList.remove('active');
+    document.getElementById('bar-wrap').style.display='';
+    document.getElementById('legend').style.display='';
+    document.getElementById('view-mode-toggle').style.display='';
+    document.querySelector('header').style.display='';
+    document.getElementById('nav-portfolio').classList.add('active');
+    document.getElementById('nav-signal').classList.remove('active');
+}
+
+function showSignalView() {
+    if(MASTER.length===0){ 
+        // Try to trigger a sync first before giving up
+        runEngineSync();
+        setTimeout(() => {
+            if(MASTER.length===0) {
+                alert('No data loaded. Go to Data tab → tap 🚀 LOAD JSON first.');
+            } else {
+                // Data loaded after sync — retry
+                showSignalView();
+            }
+        }, 1500);
+        return;
+    }
+    // hide portfolio UI
+    document.getElementById('main-view').style.display='none';
+    document.getElementById('bar-wrap').style.display='none';
+    document.getElementById('legend').style.display='none';
+    document.getElementById('view-mode-toggle').style.display='none';
+    document.querySelector('header').style.display='none';
+    document.getElementById('signal-view').classList.add('active');
+    document.getElementById('nav-portfolio').classList.remove('active');
+    document.getElementById('nav-signal').classList.add('active');
+
+    // Boot signal engine on first open
+    if(SIG_ALL.length===0) {
+        sigBoot();
+    } else {
+        // Re-render current sub-tab if already booted
+        if(SIG_SUBTAB==='sectors') renderSectorTab();
+    }
+}
+
+
+
+// ============================================================
+// QUERY / AD-HOC EXPLORER TAB
+// All data reads from MASTER (IndexedDB). Zero hardcoding.
+// ============================================================
+
+// ---- METRIC CATALOG ----
+// Each entry: { label, group, unit, extractor(stock) -> number|null, fmt }
+const QRY_METRICS = [
+    // ── PRICE & MARKET ──────────────────────────────────────
+    { label:'LTP',            group:'Price',      unit:'₹',   fn: s => _qN(s.price?.close_price||s.price?.ltp?.price) },
+    { label:'Market Cap',     group:'Price',      unit:'₹Cr', fn: s => _qN(s.valuation?.market_cap) && _qN(s.valuation.market.market_cap)/1e7 },
+    { label:'52W High',       group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.high) },
+    { label:'52W Low',        group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.low) },
+    { label:'52W Chg%',       group:'Price',      unit:'%',   fn: s => { const v=_qN(s.price?.['52_week']?.change_pct); return v!==null?v*100:null; } },
+    { label:'ATH',            group:'Price',      unit:'₹',   fn: s => _qN(s.price?.all_time_high) },
+    { label:'50 DMA',         group:'Price',      unit:'₹',   fn: s => _qN(s.price?.ma_50d) },
+    { label:'200 DMA',        group:'Price',      unit:'₹',   fn: s => _qN(s.price?.ma_200d) },
+    { label:'vs 50DMA%',      group:'Price',      unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_50d); return c&&d?((c-d)/d*100):null; } },
+    { label:'vs 200DMA%',     group:'Price',      unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_200d); return c&&d?((c-d)/d*100):null; } },
+    // ── VALUATION ────────────────────────────────────────────
+    { label:'PE (TTM)',        group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.pe_ttm) },
+    { label:'PE (Fwd)',        group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.pe_forward) },
+    { label:'PEG',             group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.peg) },
+    { label:'P/B',             group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.price_to_book) },
+    { label:'EV/EBITDA',       group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.ev_to_ebitda) },
+    { label:'EV/Revenue',      group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.ev_to_revenue) },
+    { label:'Book Value',      group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.market?.book_value) },
+    { label:'EPS (TTM)',        group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_ttm)||_qN(s.valuation?.eps?.eps_ttm) },
+    { label:'EPS (Fwd)',        group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_forward) },
+    { label:'EPS (Basic)',      group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.history?.basic_eps) },
+    { label:'Target Price',     group:'Valuation',  unit:'₹',   fn: s => _qN(s.websignals?.target_mean) },
+    { label:'Upside%',          group:'Valuation',  unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean); return c&&t?((t-c)/c*100):null; } },
+    // ── PROFITABILITY ────────────────────────────────────────
+    { label:'ROCE%',            group:'Profitability', unit:'%', fn: s => _qLD(s.ratios?.screener?.roce_pct) },
+    { label:'ROE%',             group:'Profitability', unit:'%', fn: s => _qLD(s.ratios?.ttm?.roe_pct) },
+    { label:'OPM%',             group:'Profitability', unit:'%', fn: s => _qLD(s.financials?.operating_margin_pct?.consolidated?.annual)||_qLD(s.financials?.operating_margin_pct?.standalone?.annual) },
+    { label:'NPM%',             group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.net_margin_pct) },
+    { label:'Gross Margin%',    group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.gross_margin_pct) },
+    { label:'EBITDA Margin%',   group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.ebitda_margin_pct) },
+    // ── FINANCIALS (latest annual) ───────────────────────────
+    { label:'Sales (Cr)',       group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.revenue?.consolidated?.annual)||_qLD(s.financials?.revenue?.standalone?.annual) },
+    { label:'Net Profit (Cr)',  group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.net_profit?.consolidated?.annual)||_qLD(s.financials?.net_profit?.standalone?.annual) },
+    { label:'CFO (Cr)',         group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.operating_cash_flow?.consolidated?.annual)||_qLD(s.financials?.operating_cash_flow?.standalone?.annual) },
+    { label:'FCF (Cr)',         group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.fcf?.consolidated?.annual)||_qLD(s.financials?.fcf?.standalone?.annual) },
+    { label:'Borrowings (Cr)',  group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.borrowings?.consolidated?.annual)||_qLD(s.financials?.borrowings?.standalone?.annual) },
+    { label:'CFO/OP%',          group:'Financials', unit:'%',   fn: s => _qLD(s.financials?.cash_conversion_ratio?.consolidated?.annual)||_qLD(s.financials?.cash_conversion_ratio?.standalone?.annual) },
+    { label:'Sales CAGR 3Y%',   group:'Financials', unit:'%',   fn: s => { const d=s.financials?.revenue?.consolidated?.annual||s.financials?.revenue?.standalone?.annual||{}; const keys=Object.keys(d).sort(); if(keys.length<4) return null; const s3=_qN(d[keys[keys.length-4]]),s0=_qN(d[keys[keys.length-1]]); return s3&&s0&&s3>0?(Math.pow(s0/s3,1/3)-1)*100:null; } },
+    // ── BALANCE SHEET ────────────────────────────────────────
+    { label:'D/E Ratio',        group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.debt_to_equity_ratio) },
+    { label:'Current Ratio',    group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.current_ratio) },
+    { label:'Quick Ratio',      group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.quick_ratio) },
+    { label:'Interest Coverage',group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.current_ratio) },
+    // ── EFFICIENCY ───────────────────────────────────────────
+    { label:'Debtor Days',      group:'Efficiency', unit:'d',   fn: s => _qLD(s.ratios?.screener?.debtor_days) },
+    { label:'Inventory Days',   group:'Efficiency', unit:'d',   fn: s => _qLD(s.ratios?.screener?.inventory_days) },
+    { label:'Cash Conv Cycle',  group:'Efficiency', unit:'d',   fn: s => _qLD(s.ratios?.screener?.cash_conversion_cycle) },
+    // ── SHAREHOLDING ─────────────────────────────────────────
+    { label:'Promoter%',        group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.promoters) },
+    { label:'FII%',             group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.fiis) },
+    { label:'DII%',             group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.diis) },
+    { label:'Public%',          group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.public) },
+    { label:'Promoter Δ (1Y)',  group:'Shareholding', unit:'pp', fn: s => { const d=s.company_details?.shareholding?.pattern?.promoters||{}; const k=Object.keys(d).sort(); if(k.length<5) return null; const lt=_qN(d[k[k.length-1]]),yr=_qN(d[k[k.length-5]]); return lt!==null&&yr!==null?lt-yr:null; } },
+    // ── ANALYST ──────────────────────────────────────────────
+    { label:'Analyst Count',    group:'Analyst',    unit:'',    fn: s => _qN(s.websignals?.analyst_count) },
+    { label:'Rec Mean (1=SB)',  group:'Analyst',    unit:'',    fn: s => _qN(s.websignals?.analyst_rating_score) },
+    { label:'Gov Risk (1-10)',  group:'Analyst',    unit:'',    fn: s => _qN(s.websignals?.governance_overall_risk) },
+    // ── SIGNAL SCORES ────────────────────────────────────────
+    { label:'Signal Score',     group:'Signal',     unit:'',    fn: s => { const sig=SIG_ALL.find(x=>x.ticker===s.ticker); return sig?sig.comp:null; } },
+    { label:'Fundamental Score',group:'Signal',     unit:'',    fn: s => { const sig=SIG_ALL.find(x=>x.ticker===s.ticker); return sig?sig.F.score:null; } },
+    { label:'Technical Score',  group:'Signal',     unit:'',    fn: s => { const sig=SIG_ALL.find(x=>x.ticker===s.ticker); return sig?sig.T.score:null; } },
+    { label:'Valuation Score',  group:'Signal',     unit:'',    fn: s => { const sig=SIG_ALL.find(x=>x.ticker===s.ticker); return sig?sig.V.score:null; } },
+    { label:'Sentiment Score',  group:'Signal',     unit:'',    fn: s => { const sig=SIG_ALL.find(x=>x.ticker===s.ticker); return sig?sig.S.score:null; } },
+    // ── PORTFOLIO ────────────────────────────────────────────
+    { label:'Qty',              group:'Portfolio',  unit:'',    fn: s => _qN(s.company_details?.qty) },
+    { label:'Avg Cost',         group:'Portfolio',  unit:'₹',   fn: s => _qN(s.company_details?.avg_cost) },
+    { label:'Invested (₹)',     group:'Portfolio',  unit:'₹',   fn: s => { const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost); return q&&a?q*a:null; } },
+    { label:'PnL (₹)',          group:'Portfolio',  unit:'₹',   fn: s => { const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price); return q&&a&&l?(l-a)*q:null; } },
+    { label:'PnL%',             group:'Portfolio',  unit:'%',   fn: s => { const a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price); return a&&l?((l-a)/a*100):null; } },
+];
+
+// ---- EXTRACTORS ----
+function _qN(v) {
+    if(v===null||v===undefined) return null;
+    if(typeof v==='number') return isNaN(v)?null:v;
+    const n=parseFloat(String(v).replace('%','').replace(/,/g,'').trim());
+    return isNaN(n)?null:n;
+}
+function _qLD(dict) {
+    // Latest value from a dated dict
+    if(!dict||typeof dict!=='object') return null;
+    const keys=Object.keys(dict).sort();
+    for(let i=keys.length-1;i>=0;i--){
+        const v=_qN(dict[keys[i]]);
+        if(v!==null) return v;
+    }
+    return null;
+}
+
+// ---- STATE ----
+let QRY_SELECTED = null;  // currently selected metric label
+let QRY_RESULTS  = [];    // last result set
+
+// ---- INIT PILL AREA ----
+function initQueryTab() {
+    const groups = {};
+    QRY_METRICS.forEach(m => { if(!groups[m.group]) groups[m.group]=[]; groups[m.group].push(m); });
+    const area = document.getElementById('qry-pill-area');
+    area.innerHTML = Object.entries(groups).map(([grp, metrics]) => `
+        <div class="qry-pill-wrap" style="padding-bottom:2px">
+            <span class="qry-pill cat">${grp}</span>
+            ${metrics.map(m => `<span class="qry-pill" id="qp-${m.label.replace(/[^a-zA-Z0-9]/g,'_')}" onclick="qrySelect('${m.label}')">${m.label}</span>`).join('')}
+        </div>`).join('');
+    // Reset
+    QRY_SELECTED=null;
+    QRY_RESULTS=[];
+}
+
+// ---- SELECT METRIC ----
+function qrySelect(label) {
+    // Deselect previous
+    if(QRY_SELECTED) {
+        const prev=document.getElementById('qp-'+QRY_SELECTED.replace(/[^a-zA-Z0-9]/g,'_'));
+        if(prev) prev.classList.remove('sel');
+    }
+    QRY_SELECTED=label;
+    const el=document.getElementById('qp-'+label.replace(/[^a-zA-Z0-9]/g,'_'));
+    if(el) el.classList.add('sel');
+}
+
+// ---- RUN QUERY ----
+function runQuery() {
+    if(!QRY_SELECTED) { document.getElementById('qry-results').innerHTML='<div class="qry-empty">Pick a metric first</div>'; return; }
+    const metric = QRY_METRICS.find(m=>m.label===QRY_SELECTED);
+    if(!metric) return;
+
+    const universe_sel = document.getElementById('qry-universe')?.value||'all';
+    const sort_dir     = document.getElementById('qry-sort')?.value||'asc';
+    const limit        = parseInt(document.getElementById('qry-limit')?.value||'10');
+
+    // Filter universe from MASTER
+    let stocks = MASTER.slice();
+    if(universe_sel==='portfolio') stocks=stocks.filter(s=>(_qN(s.company_details?.qty)||0)>0);
+    else if(universe_sel==='watchlist') stocks=stocks.filter(s=>(_qN(s.company_details?.qty)||0)===0);
+
+    // Extract values
+    let rows = stocks.map(s => {
+        const sector = s.derived_metrics?.calculated_metrics?.sector || s.company_details?.sector || '—';
+        let val = null;
+        try { val = metric.fn(s); } catch(e){}
+        return { ticker: s.ticker, sector, val };
+    }).filter(r=>r.val!==null && isFinite(r.val));
+
+    if(!rows.length) {
+        document.getElementById('qry-results').innerHTML=`<div class="qry-empty">No data found for <strong style="color:var(--bl)">${QRY_SELECTED}</strong><br>in selected universe</div>`;
+        document.getElementById('qry-stats').style.display='none';
+        return;
+    }
+
+    // Sort
+    rows.sort((a,b)=>sort_dir==='asc'?a.val-b.val:b.val-a.val);
+    QRY_RESULTS = rows;
+
+    // Stats
+    const vals = rows.map(r=>r.val);
+    const n=vals.length;
+    const sorted=[...vals].sort((a,b)=>a-b);
+    const mn=sorted[0], mx=sorted[n-1], med=sorted[Math.floor(n/2)], avg=vals.reduce((a,b)=>a+b,0)/n;
+
+    const fmtV = v => {
+        const u=metric.unit||'';
+        const abs=Math.abs(v);
+        if(u==='₹'&&abs>=1e7) return '₹'+(v/1e7).toFixed(1)+'Cr';
+        if(u==='₹'&&abs>=1e5) return '₹'+(v/1e5).toFixed(1)+'L';
+        if(u==='₹Cr') return '₹'+(v).toFixed(0)+'Cr';
+        if(u==='%') return v.toFixed(1)+'%';
+        if(u==='x') return v.toFixed(2)+'x';
+        if(Number.isInteger(v)||abs>=100) return v.toFixed(0)+(u?u:'');
+        return v.toFixed(1)+(u?u:'');
+    };
+
+    document.getElementById('qs-min').textContent=fmtV(mn);
+    document.getElementById('qs-max').textContent=fmtV(mx);
+    document.getElementById('qs-med').textContent=fmtV(med);
+    document.getElementById('qs-avg').textContent=fmtV(avg);
+    document.getElementById('qs-n').textContent=n;
+    document.getElementById('qry-stats').style.display='flex'; document.getElementById('qry-stats').style.flexShrink='0';
+
+    // Render rows
+    const display = limit>0 ? rows.slice(0,limit) : rows;
+    const absMax = Math.max(...vals.map(v=>Math.abs(v)));
+    const unit=metric.unit||'';
+
+    // Color logic by metric type
+    const isGoodHigh = !['PE (TTM)','PE (Fwd)','PEG','P/B','EV/EBITDA','D/E Ratio','Debtor Days','Inventory Days','Cash Conv Cycle','Borrowings (Cr)','Gov Risk (1-10)','Rec Mean (1=SB)'].includes(QRY_SELECTED);
+    const isGoodLow  = ['PE (TTM)','PE (Fwd)','PEG','P/B','EV/EBITDA','D/E Ratio','Debtor Days','Inventory Days','Cash Conv Cycle','Borrowings (Cr)','Gov Risk (1-10)','Rec Mean (1=SB)'].includes(QRY_SELECTED);
+
+    function rowColor(v, rank, total) {
+        const pct = (v-mn)/(mx-mn||1);
+        if(isGoodHigh) return pct>0.65?'#00ff88':pct>0.35?'#ffea00':'#ff4d6d';
+        if(isGoodLow)  return pct<0.35?'#00ff88':pct<0.65?'#ffea00':'#ff4d6d';
+        return '#aaa';
+    }
+
+    document.getElementById('qry-results').innerHTML = `
+        <div style="padding:6px 12px;font-size:8px;color:#555;letter-spacing:0.1em;border-bottom:1px solid #111;flex-shrink:0">
+            ${QRY_SELECTED} · ${metric.unit||''} · ${display.length} of ${n} results · ${sort_dir==='asc'?'LOWEST':'HIGHEST'} FIRST
+        </div>
+        ${display.map((r,i)=>{
+            const col=rowColor(r.val,i,display.length);
+            const barW=Math.round(Math.abs(r.val)/absMax*56);
+            const isNeg=r.val<0;
+            return `<div class="qry-result-row" onclick="sigSubTab('signals');sigSelect('${r.ticker}')">
+                <div class="qry-rank">${i+1}</div>
+                <div class="qry-ticker">${r.ticker}</div>
+                <div class="qry-sector">${r.sector}</div>
+                <div class="qry-bar-col">
+                    <div class="qry-bar-bg">
+                        <div class="qry-bar-fg" style="width:${barW}px;background:${col}88;${isNeg?'margin-left:auto':''}"></div>
+                    </div>
+                </div>
+                <div class="qry-val-col" style="color:${col}">${fmtV(r.val)}</div>
+            </div>`;
+        }).join('')}
+        ${rows.length>display.length?`<div style="padding:10px;text-align:center;font-size:9px;color:#444">+ ${rows.length-display.length} more — change limit to see all</div>`:''}`;
+}
+
+// ---- CLEAR ----
+function clearQuery() {
+    if(QRY_SELECTED) {
+        const el=document.getElementById('qp-'+QRY_SELECTED.replace(/[^a-zA-Z0-9]/g,'_'));
+        if(el) el.classList.remove('sel');
+    }
+    QRY_SELECTED=null;
+    QRY_RESULTS=[];
+    document.getElementById('qry-results').innerHTML='<div class="qry-empty">Pick a metric above<br>then tap ▶ RUN</div>';
+    document.getElementById('qry-stats').style.display='none';
+}
+
+// ============================================================
+// SIGNAL SUB-TABS: Sectors, Spread, Rank
+// All data flows from SIG_ALL (computed from MASTER/IndexedDB)
+// ============================================================
+
+let SEC_SORT = 'score';  // 'score'|'name'|'count'
+let SIG_SUBTAB = 'signals';  // current sub-tab
+
+// ---------- SUB-TAB SWITCHER ----------
+function sigSubTab(tab) {
+    SIG_SUBTAB = tab;
+    ['signals','sectors','spread','rank','query','compare'].forEach(t => {
+        const tabEl = document.getElementById('stab-'+t);
+        if(tabEl) tabEl.classList.toggle('active', t===tab);
+        const el = document.getElementById('sc-'+t);
+        if(!el) return;
+        if(t === tab) {
+            el.style.display = 'flex';
+            el.style.flexDirection = 'column';
+            el.style.flex = '1';
+            el.style.minHeight = '0';
+            el.style.overflow = 'hidden';
+        } else {
+            el.style.display = 'none';
+        }
+    });
+    if(tab==='sectors') renderSectorTab();
+    else if(tab==='spread') renderSpreadTab();
+    else if(tab==='rank') renderRankTab();
+    else if(tab==='query') initQueryTab();
+    else if(tab==='compare') initCompareTab();
+}
+
+// ---------- SECTOR AGGREGATION ----------
+function buildSectorStats() {
+    // Group SIG_ALL by sector, compute avg scores and rating distribution
+    const map = {};
+    SIG_ALL.forEach(sig => {
+        const sec = sig.sector || '—';
+        if(!map[sec]) map[sec] = { tickers:[], scores:[], F:[], T:[], V:[], S:[], ratings:{} };
+        map[sec].tickers.push(sig.ticker);
+        map[sec].scores.push(sig.comp);
+        map[sec].F.push(sig.F.score);
+        map[sec].T.push(sig.T.score);
+        map[sec].V.push(sig.V.score);
+        map[sec].S.push(sig.S.score);
+        map[sec].ratings[sig.rating] = (map[sec].ratings[sig.rating]||0)+1;
+    });
+    const avg = arr => Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
+    return Object.entries(map).map(([name, d]) => ({
+        name,
+        count: d.tickers.length,
+        tickers: d.tickers,
+        score: avg(d.scores),
+        F: avg(d.F), T: avg(d.T), V: avg(d.V), S: avg(d.S),
+        ratings: d.ratings,
+        buyCount: (d.ratings['STRONG BUY']||0)+(d.ratings['BUY']||0),
+        sellCount: (d.ratings['REDUCE']||0)+(d.ratings['SELL']||0),
+    }));
+}
+
+// ---------- RENDER SECTOR TAB ----------
+function renderSectorTab() {
+    if(!SIG_ALL.length) return;
+    let stats = buildSectorStats();
+    if(SEC_SORT==='score') stats.sort((a,b)=>b.score-a.score);
+    else if(SEC_SORT==='name') stats.sort((a,b)=>a.name.localeCompare(b.name));
+    else stats.sort((a,b)=>b.count-a.count);
+
+    // ---- SUMMARY STRIP ----
+    const universe = SIG_ALL.length;
+    const buyTotal = stats.reduce((a,s)=>a+s.buyCount,0);
+    const sellTotal = stats.reduce((a,s)=>a+s.sellCount,0);
+    const neutralTotal = universe - buyTotal - sellTotal;
+    const topSec = [...stats].sort((a,b)=>b.score-a.score)[0];
+    const weakSec = [...stats].sort((a,b)=>a.score-b.score)[0];
+
+    // ---- SECTOR CARDS ----
+    const cards = stats.map(s => {
+        const col = sigScoreColor(s.score);
+        const rating = sigRating(s.score);
+        // Mini arc SVG (semicircle gauge)
+        const angle = (s.score/100)*180;
+        const rad = angle * Math.PI/180;
+        const cx=36,cy=36,r=26;
+        const ex = cx + r*Math.cos(Math.PI - rad);
+        const ey = cy - r*Math.sin(rad);
+        const arcSVG = `<svg width="72" height="42" viewBox="0 0 72 42" style="display:block;margin:0 auto">
+            <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round"/>
+            <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round"/>
+            <text x="${cx}" y="${cy+2}" text-anchor="middle" fill="${col}" font-size="13" font-weight="800" font-family="JetBrains Mono,monospace">${s.score}</text>
+        </svg>`;
+
+        // Pillar mini bars (4 bars stacked)
+        const pillarBar = (label, val) => {
+            const pc = sigScoreColor(val);
+            return `<div style="display:flex;align-items:center;gap:3px;margin-bottom:2px">
+                <span style="font-size:7px;color:#555;width:8px">${label}</span>
+                <div style="flex:1;height:3px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+                    <div style="height:100%;width:${val}%;background:${pc}"></div>
+                </div>
+                <span style="font-size:7px;color:${pc};width:18px;text-align:right">${val}</span>
+            </div>`;
+        };
+
+        // Rating distribution dots
+        const buy = s.ratings['STRONG BUY']||0, obuy = s.ratings['BUY']||0;
+        const hold = s.ratings['NEUTRAL']||0;
+        const red = (s.ratings['REDUCE']||0)+(s.ratings['SELL']||0);
+        const dotBar = `<div style="display:flex;height:5px;border-radius:3px;overflow:hidden;gap:1px;margin-top:4px">
+            ${buy>0?`<div style="flex:${buy};background:#00ff88" title="Strong Buy: ${buy}"></div>`:''}
+            ${obuy>0?`<div style="flex:${obuy};background:#69f0ae" title="Buy: ${obuy}"></div>`:''}
+            ${hold>0?`<div style="flex:${hold};background:#ffea00" title="Neutral: ${hold}"></div>`:''}
+            ${red>0?`<div style="flex:${red};background:#ff4d6d" title="Sell/Reduce: ${red}"></div>`:''}
+        </div>`;
+
+        // Top ticker in sector by signal
+        const topTicker = SIG_ALL.filter(x=>x.sector===s.name).sort((a,b)=>b.comp-a.comp)[0];
+
+        return `<div onclick="sigFilter_sector('${s.name}')" style="background:#0a0a0a;border:1px solid ${col}33;border-top:2px solid ${col};border-radius:8px;padding:10px;cursor:pointer;transition:border-color .2s;display:flex;flex-direction:column;gap:4px">
+            ${arcSVG}
+            <div style="text-align:center;margin-top:2px">
+                <div style="font-size:9px;font-weight:800;color:#e2e8f0;line-height:1.2">${s.name}</div>
+                <div style="font-size:7px;color:${col};font-weight:700;letter-spacing:0.06em;margin-top:2px">${rating}</div>
+            </div>
+            <div style="margin-top:4px">
+                ${pillarBar('F',s.F)}${pillarBar('T',s.T)}${pillarBar('V',s.V)}${pillarBar('S',s.S)}
+            </div>
+            ${dotBar}
+            <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:8px">
+                <span style="color:#555">${s.count} stocks</span>
+                ${topTicker?`<span style="color:${sigScoreColor(topTicker.comp)};font-weight:700">${topTicker.ticker} ${topTicker.comp}</span>`:''}
+            </div>
+        </div>`;
+    });
+
+    document.getElementById('sec-bars').innerHTML = `
+        <!-- Summary strip -->
+        <div style="display:flex;gap:0;border-bottom:1px solid #1a1a1a;flex-shrink:0;margin-bottom:10px">
+            <div style="flex:1;padding:7px 10px;border-right:1px solid #1a1a1a;text-align:center">
+                <div style="font-size:7px;color:#555;letter-spacing:0.08em">SECTORS</div>
+                <div style="font-size:14px;font-weight:800;color:var(--bl)">${stats.length}</div>
+            </div>
+            <div style="flex:1;padding:7px 10px;border-right:1px solid #1a1a1a;text-align:center">
+                <div style="font-size:7px;color:#555">BUY</div>
+                <div style="font-size:14px;font-weight:800;color:#00ff88">${buyTotal}</div>
+            </div>
+            <div style="flex:1;padding:7px 10px;border-right:1px solid #1a1a1a;text-align:center">
+                <div style="font-size:7px;color:#555">NEUTRAL</div>
+                <div style="font-size:14px;font-weight:800;color:#ffea00">${neutralTotal}</div>
+            </div>
+            <div style="flex:1;padding:7px 10px;text-align:center">
+                <div style="font-size:7px;color:#555">SELL/RED</div>
+                <div style="font-size:14px;font-weight:800;color:#ff4d6d">${sellTotal}</div>
+            </div>
+        </div>
+        <!-- Best/Worst callout -->
+        <div style="display:flex;gap:8px;padding:0 10px 10px">
+            <div style="flex:1;background:#060f06;border:1px solid #1a3a1a;border-radius:6px;padding:8px;font-size:9px">
+                <div style="color:#555;font-size:7px;margin-bottom:3px">STRONGEST SECTOR</div>
+                <div style="color:#00ff88;font-weight:800">${topSec.name}</div>
+                <div style="color:#00ff88;font-size:11px;font-weight:800">${topSec.score}</div>
+            </div>
+            <div style="flex:1;background:#0f0606;border:1px solid #3a1a1a;border-radius:6px;padding:8px;font-size:9px">
+                <div style="color:#555;font-size:7px;margin-bottom:3px">WEAKEST SECTOR</div>
+                <div style="color:#ff4d6d;font-weight:800">${weakSec.name}</div>
+                <div style="color:#ff4d6d;font-size:11px;font-weight:800">${weakSec.score}</div>
+            </div>
+        </div>
+        <!-- Card grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 10px 12px">
+            ${cards.join('')}
+        </div>`;
+
+    // Heatmap canvas injected into sec-bars after cards
+    const secBarsEl = document.getElementById('sec-bars');
+    if(secBarsEl && !document.getElementById('sig-heatmap')) {
+        const hmDiv = document.createElement('div');
+        hmDiv.style.cssText = 'padding:0 10px 80px;';
+        hmDiv.innerHTML = `<div style="font-size:8px;color:#666;letter-spacing:0.1em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;padding-top:4px">
+                <span>SIGNAL HEATMAP — tap to filter</span>
+                <span style="display:flex;align-items:center;gap:5px">
+                    <span style="font-size:7px;color:#dc3220">Weak</span>
+                    <div style="width:56px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgb(220,50,20),rgb(220,160,20),rgb(100,210,70))"></div>
+                    <span style="font-size:7px;color:#64d246">Strong</span>
+                </span>
+            </div>
+            <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:8px;cursor:pointer;"></canvas>`;
+        secBarsEl.appendChild(hmDiv);
+    }
+    setTimeout(() => drawSigHeatmap(stats), 150);
+}
+
+function sigFilter_sector(name) {
+    // Switch to Signals tab with sector pre-filtered
+    document.getElementById('sig-sector-filter').value = name;
+    SIG_SECTOR_F = name;
+    sigSubTab('signals');
+    sigRenderList();
+}
+
+function secSort(by) {
+    SEC_SORT = by;
+    ['score','name','count'].forEach(k => {
+        const el=document.getElementById('ss-sort-'+k);
+        if(el) el.classList.toggle('active', k===by);
+    });
+    renderSectorTab();
+}
+
+// ---------- HEATMAP (canvas treemap) ----------
+function drawSigHeatmap(stats) {
+    const cv = document.getElementById('sig-heatmap');
+    if (!cv) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const W   = Math.max(cv.parentElement.offsetWidth - 4, 200);
+    const H   = Math.round(W * 0.62);
+    cv.width  = W * dpr;  cv.height  = H * dpr;
+    cv.style.width = W + 'px';  cv.style.height = H + 'px';
+    const ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    // ── COLOUR: continuous interpolation across actual score range ──
+    // Compute min/max from live data so colours spread across full range
+    const allScores = stats.map(s => s.score);
+    const sMin = Math.min(...allScores);
+    const sMax = Math.max(...allScores);
+
+    function scoreToColor(score) {
+        // Normalise 0-1 within actual range (not fixed 0-100)
+        const t = sMax === sMin ? 0.5 : (score - sMin) / (sMax - sMin);
+        // Interpolate: red(0) → amber(0.35) → yellow-green(0.6) → green(1)
+        let r, g, b;
+        if (t < 0.35) {
+            // red → amber
+            const p = t / 0.35;
+            r = 220; g = Math.round(50 + p * 110); b = 20;
+        } else if (t < 0.65) {
+            // amber → yellow-green
+            const p = (t - 0.35) / 0.30;
+            r = Math.round(220 - p * 100); g = Math.round(160 + p * 60); b = 20;
+        } else {
+            // yellow-green → vivid green
+            const p = (t - 0.65) / 0.35;
+            r = Math.round(120 - p * 80); g = Math.round(220 + p * 35); b = Math.round(20 + p * 80);
+        }
+        return `rgb(${r},${g},${b})`;
+    }
+
+    // ── SQUARIFIED TREEMAP ──────────────────────────────────
+    const total = stats.reduce((a, s) => a + s.count, 0);
+    const items = [...stats]
+        .sort((a, b) => b.count - a.count)
+        .map(s => ({ ...s, area: (s.count / total) * W * H }));
+
+    const rects = [];
+
+    function layoutStrip(row, x, y, w, h, horizontal) {
+        const rowArea = row.reduce((a, r) => a + r.area, 0);
+        let pos = horizontal ? x : y;
+        row.forEach(r => {
+            const span = (r.area / rowArea) * (horizontal ? w : h);
+            rects.push({
+                ...r,
+                rx: horizontal ? pos       : x,
+                ry: horizontal ? y         : pos,
+                rw: horizontal ? span      : w,
+                rh: horizontal ? h         : span
+            });
+            pos += span;
+        });
+    }
+
+    function worstRatio(row, stripLen) {
+        const s = row.reduce((a, r) => a + r.area, 0);
+        const max = Math.max(...row.map(r => r.area));
+        const min = Math.min(...row.map(r => r.area));
+        return Math.max(
+            (stripLen * stripLen * max) / (s * s),
+            (s * s) / (stripLen * stripLen * min)
+        );
+    }
+
+    function squarify(items, x, y, w, h) {
+        if (!items.length) return;
+        if (items.length === 1) {
+            rects.push({ ...items[0], rx: x, ry: y, rw: w, rh: h });
+            return;
+        }
+        const horiz  = w >= h;
+        const strip  = horiz ? h : w;
+        let row      = [];
+        let rem      = items.slice();
+
+        while (rem.length) {
+            const candidate = [...row, rem[0]];
+            if (!row.length || worstRatio(candidate, strip) <= worstRatio(row, strip)) {
+                row.push(rem.shift());
+            } else {
+                break;
+            }
+        }
+
+        const rowArea  = row.reduce((a, r) => a + r.area, 0);
+        const stripW   = horiz ? rowArea / h : w;
+        const stripH   = horiz ? h           : rowArea / w;
+        layoutStrip(row, x, y, stripW, stripH, horiz);
+
+        if (horiz) squarify(rem, x + stripW, y, w - stripW, h);
+        else       squarify(rem, x, y + stripH, w, h - stripH);
+    }
+
+    squarify(items, 0, 0, W, H);
+
+    // ── DRAW ────────────────────────────────────────────────
+    const PAD = 2;
+    rects.forEach(r => {
+        const col = scoreToColor(r.score);
+        const rx = r.rx + PAD, ry = r.ry + PAD,
+              rw = r.rw - PAD*2, rh = r.rh - PAD*2;
+        if (rw < 2 || rh < 2) return;
+
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, 3);
+        else ctx.rect(rx, ry, rw, rh);
+        ctx.fill();
+
+        // Subtle top highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(rx, ry, rw, Math.min(3, rh * 0.12));
+
+        // Labels
+        const cw = rw, ch = rh;
+        if (cw < 30 || ch < 18) return;
+        const cx = r.rx + r.rw / 2, cy = r.ry + r.rh / 2;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (ch >= 38 && cw >= 52) {
+            // Name + score
+            const ns = cw > 130 ? 11 : cw > 80 ? 10 : 9;
+            let nm = r.name
+                .replace('Information Technology', 'Info Tech')
+                .replace('Consumer Discretionary', 'Cons. Discr.')
+                .replace('Consumer Staples', 'Cons. Staples');
+            if (nm.length > 14 && cw < 110) nm = nm.substring(0, 13) + '…';
+            ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.fillText(nm, cx, cy - 8);
+            ctx.font = `800 ${ns + 1}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(r.score, cx, cy + 8);
+        } else if (ch >= 22 && cw >= 32) {
+            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.3), 11);
+            ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(r.score, cx, cy);
+        }
+    });
+
+    // ── CLICK ───────────────────────────────────────────────
+    // Store rects on the element so handler always uses latest
+    cv._rects = rects;
+    cv._W = W; cv._H = H;
+    cv.onclick = e => {
+        const bound = cv.getBoundingClientRect();
+        const mx = (e.clientX - bound.left) * (cv._W / bound.width);
+        const my = (e.clientY - bound.top)  * (cv._H / bound.height);
+        const hit = cv._rects.find(r => mx >= r.rx && mx <= r.rx + r.rw && my >= r.ry && my <= r.ry + r.rh);
+        if (hit) sigFilter_sector(hit.name);
+    };
+}
+
+
+// ---------- RENDER SPREAD TAB ----------
+function renderSpreadTab() {
+    if(!SIG_ALL.length) return;
+    const scores = SIG_ALL.map(s=>s.comp);
+    const n = scores.length;
+    const sorted = [...scores].sort((a,b)=>a-b);
+    const mean = Math.round(scores.reduce((a,b)=>a+b,0)/n);
+    const median = sorted[Math.floor(n/2)];
+    const std = Math.round(Math.sqrt(scores.reduce((a,b)=>a+Math.pow(b-mean,2),0)/n));
+    const q1 = sorted[Math.floor(n*0.25)];
+    const q3 = sorted[Math.floor(n*0.75)];
+
+    const ratingCounts = {'STRONG BUY':0,'BUY':0,'NEUTRAL':0,'REDUCE':0,'SELL':0};
+    SIG_ALL.forEach(s=>{ if(ratingCounts[s.rating]!==undefined) ratingCounts[s.rating]++; });
+
+    const pillars = ['F','T','V','S'];
+    const pillarNames = {F:'Fundamental',T:'Technical',V:'Valuation',S:'Sentiment'};
+    const pillarAvg = {};
+    pillars.forEach(p => { pillarAvg[p] = Math.round(SIG_ALL.reduce((a,s)=>a+s[p].score,0)/n); });
+
+    // Histogram data (bins of 5)
+    const bins = Array.from({length:20},(_,i)=>({lo:i*5, hi:(i+1)*5, count:0}));
+    scores.forEach(s=>{ const bi=Math.min(19,Math.floor(s/5)); bins[bi].count++; });
+    const maxBin = Math.max(...bins.map(b=>b.count));
+
+    document.getElementById('spread-content').innerHTML = `
+    <!-- Stats strip -->
+    <div class="spread-grid">
+        <div class="spread-card"><div class="spread-label">Universe</div><div class="spread-val" style="color:var(--bl)">${n}</div><div class="spread-sub">tickers scored</div></div>
+        <div class="spread-card"><div class="spread-label">Mean Score</div><div class="spread-val" style="color:${sigScoreColor(mean)}">${mean}</div><div class="spread-sub">${sigRating(mean)}</div></div>
+        <div class="spread-card"><div class="spread-label">Median</div><div class="spread-val" style="color:${sigScoreColor(median)}">${median}</div><div class="spread-sub">Q1=${q1} Q3=${q3}</div></div>
+        <div class="spread-card"><div class="spread-label">Std Dev</div><div class="spread-val" style="color:#aaa">±${std}</div><div class="spread-sub">signal spread</div></div>
+    </div>
+
+    <!-- Rating distribution bar -->
+    <div style="padding:10px 12px; margin:0 10px 10px; background:#0a0a0a; border:1px solid #222; border-radius:8px;">
+        <div class="spread-label" style="margin-bottom:8px">RATING DISTRIBUTION</div>
+        <div style="display:flex; height:28px; border-radius:4px; overflow:hidden; gap:1px">
+            ${Object.entries(ratingCounts).map(([r,cnt])=>{
+                const pct=(cnt/n*100).toFixed(1);
+                const col={'STRONG BUY':'#00ff88','BUY':'#69f0ae','NEUTRAL':'#ffea00','REDUCE':'#ff9100','SELL':'#ff4d6d'}[r];
+                return cnt>0?`<div style="flex:${cnt};background:${col};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#000;min-width:1px" title="${r}: ${cnt}">${pct}%</div>`:'';
+            }).join('')}
+        </div>
+        <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap">
+            ${Object.entries(ratingCounts).map(([r,cnt])=>{
+                const col={'STRONG BUY':'#00ff88','BUY':'#69f0ae','NEUTRAL':'#ffea00','REDUCE':'#ff9100','SELL':'#ff4d6d'}[r];
+                return `<span style="font-size:8px;color:${col}">${r.replace('STRONG ','STR ')}: <strong>${cnt}</strong></span>`;
+            }).join('')}
+        </div>
+    </div>
+
+    <!-- Histogram -->
+    <div style="padding:10px 12px; margin:0 10px 10px; background:#0a0a0a; border:1px solid #222; border-radius:8px;">
+        <div class="spread-label" style="margin-bottom:8px">SCORE HISTOGRAM</div>
+        <div style="display:flex; align-items:flex-end; gap:2px; height:60px">
+            ${bins.map((b,i)=>{
+                const h = maxBin>0 ? Math.round(b.count/maxBin*58) : 0;
+                const midScore = b.lo+2;
+                const col = sigScoreColor(midScore);
+                return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px" title="${b.lo}-${b.hi}: ${b.count}">
+                    <div style="width:100%;height:${h}px;background:${col}55;border-top:1px solid ${col};border-radius:1px 1px 0 0"></div>
+                </div>`;
+            }).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:7px;color:#444;margin-top:3px"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+    </div>
+
+    <!-- Pillar averages -->
+    <div style="padding:10px 12px; margin:0 10px 10px; background:#0a0a0a; border:1px solid #222; border-radius:8px;">
+        <div class="spread-label" style="margin-bottom:10px">PILLAR AVERAGES (ALL ${n} TICKERS)</div>
+        ${pillars.map(p=>{
+            const avg=pillarAvg[p]; const col=sigScoreColor(avg);
+            return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+                <div style="width:80px;font-size:9px;color:#aaa">${pillarNames[p]}</div>
+                <div style="flex:1;height:12px;background:#111;border-radius:3px;overflow:hidden">
+                    <div style="height:100%;width:${avg}%;background:${col}66;border-right:2px solid ${col}"></div>
+                </div>
+                <div style="width:28px;font-size:10px;font-weight:800;color:${col};text-align:right">${avg}</div>
+            </div>`;
+        }).join('')}
+    </div>
+
+    <!-- Top/Bottom 5 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 10px 10px">
+        <div style="background:#060f06;border:1px solid #1a3a1a;border-radius:8px;padding:10px">
+            <div style="font-size:8px;color:#00ff88;font-weight:800;margin-bottom:8px;letter-spacing:0.08em">TOP 5 SIGNALS</div>
+            ${[...SIG_ALL].sort((a,b)=>b.comp-a.comp).slice(0,5).map((s,i)=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #0a1a0a;cursor:pointer" onclick="sigSubTab('signals');sigSelect('${s.ticker}')">
+                <span style="font-size:8px;color:#555;width:12px">${i+1}</span>
+                <span style="font-size:10px;font-weight:800;color:#e2e8f0;flex:1">${s.ticker}</span>
+                <span style="font-size:10px;font-weight:800;color:${sigScoreColor(s.comp)}">${s.comp}</span>
+            </div>`).join('')}
+        </div>
+        <div style="background:#0f0606;border:1px solid #3a1a1a;border-radius:8px;padding:10px">
+            <div style="font-size:8px;color:#ff4d6d;font-weight:800;margin-bottom:8px;letter-spacing:0.08em">BOTTOM 5 SIGNALS</div>
+            ${[...SIG_ALL].sort((a,b)=>a.comp-b.comp).slice(0,5).map((s,i)=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #1a0a0a;cursor:pointer" onclick="sigSubTab('signals');sigSelect('${s.ticker}')">
+                <span style="font-size:8px;color:#555;width:12px">${i+1}</span>
+                <span style="font-size:10px;font-weight:800;color:#e2e8f0;flex:1">${s.ticker}</span>
+                <span style="font-size:10px;font-weight:800;color:${sigScoreColor(s.comp)}">${s.comp}</span>
+            </div>`).join('')}
+        </div>
+    </div>
+
+    <!-- Portfolio vs Universe -->
+    <div style="padding:10px 12px; margin:0 10px 10px; background:#0a0a0a; border:1px solid #222; border-radius:8px;">
+        <div class="spread-label" style="margin-bottom:8px">PORTFOLIO vs WATCHLIST</div>
+        ${(()=>{
+            const portfolio = SIG_ALL.filter(s=>{ const st=MASTER.find(m=>m.ticker===s.ticker); return (st?.company_details?.qty||0)>0; });
+            const watchlist = SIG_ALL.filter(s=>{ const st=MASTER.find(m=>m.ticker===s.ticker); return (st?.company_details?.qty||0)===0; });
+            const pavg = portfolio.length ? Math.round(portfolio.reduce((a,s)=>a+s.comp,0)/portfolio.length) : 0;
+            const wavg = watchlist.length ? Math.round(watchlist.reduce((a,s)=>a+s.comp,0)/watchlist.length) : 0;
+            return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div style="text-align:center">
+                    <div style="font-size:8px;color:#aaa">Portfolio (${portfolio.length})</div>
+                    <div style="font-size:22px;font-weight:800;color:${sigScoreColor(pavg)};margin:4px 0">${pavg||'—'}</div>
+                    <div style="font-size:8px;color:#555">${pavg?sigRating(pavg):''}</div>
+                </div>
+                <div style="text-align:center">
+                    <div style="font-size:8px;color:#aaa">Watchlist (${watchlist.length})</div>
+                    <div style="font-size:22px;font-weight:800;color:${sigScoreColor(wavg)};margin:4px 0">${wavg||'—'}</div>
+                    <div style="font-size:8px;color:#555">${wavg?sigRating(wavg):''}</div>
+                </div>
+            </div>`;
+        })()}
+    </div>`;
+}
+
+// ---------- RENDER RANK TAB ----------
+// Rank table sort state
+let RANK_SORT_COL = 'comp';
+let RANK_SORT_DIR = 'desc';
+
+function rankSortBy(col) {
+    if(RANK_SORT_COL === col) {
+        RANK_SORT_DIR = RANK_SORT_DIR === 'desc' ? 'asc' : 'desc';
+    } else {
+        RANK_SORT_COL = col;
+        RANK_SORT_DIR = col === 'ticker' || col === 'sector' ? 'asc' : 'desc';
+    }
+    // Update header indicators
+    ['ticker','sector','comp','F','T','V','S'].forEach(k => {
+        const el = document.getElementById('rsh-'+k);
+        if(!el) return;
+        const base = {ticker:'Ticker',sector:'Sector',comp:'Score',F:'F',T:'T',V:'V',S:'S'}[k];
+        const arrow = RANK_SORT_COL===k ? (RANK_SORT_DIR==='asc'?' ↑':' ↓') : '';
+        el.textContent = base + arrow;
+        el.style.color = RANK_SORT_COL===k ? 'var(--bl)' : '';
+    });
+    renderRankTab();
+}
+
+function renderRankTab() {
+    if(!SIG_ALL.length) return;
+    const pillar = document.getElementById('rank-pillar-sel')?.value || 'comp';
+    const sector = document.getElementById('rank-sector-sel')?.value || '';
+
+    // Populate sector dropdown
+    const secSel = document.getElementById('rank-sector-sel');
+    if(secSel && secSel.options.length <= 1) {
+        const secs = [...new Set(SIG_ALL.map(s=>s.sector))].sort();
+        secs.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; secSel.appendChild(o); });
+        if(sector) secSel.value = sector;
+    }
+
+    let items = SIG_ALL.slice();
+    if(sector) items = items.filter(s=>s.sector===sector);
+
+    const getScore = s => pillar==='comp' ? s.comp : s[pillar]?.score || 0;
+    // Use sort state from header clicks; pillar dropdown still sets initial column
+    const sortCol = RANK_SORT_COL;
+    const sortDir = RANK_SORT_DIR;
+    items.sort((a,b)=>{
+        let av, bv;
+        if(sortCol==='ticker') { av=a.ticker; bv=b.ticker; return sortDir==='asc'?av.localeCompare(bv):bv.localeCompare(av); }
+        if(sortCol==='sector') { av=a.sector; bv=b.sector; return sortDir==='asc'?av.localeCompare(bv):bv.localeCompare(av); }
+        if(sortCol==='comp') { av=a.comp; bv=b.comp; }
+        else { av=a[sortCol]?.score||0; bv=b[sortCol]?.score||0; }
+        return sortDir==='asc'?av-bv:bv-av;
+    });
+
+    document.getElementById('rank-tbody').innerHTML = items.map((sig,i)=>{
+        const sc = getScore(sig);
+        const col = sigScoreColor(sc);
+        const rCol = {'STRONG BUY':'#00ff88','BUY':'#69f0ae','NEUTRAL':'#ffea00','REDUCE':'#ff9100','SELL':'#ff4d6d'}[sig.rating]||'#aaa';
+        return `<tr style="cursor:pointer" onclick="sigSubTab('signals');sigSelect('${sig.ticker}')">
+            <td style="color:#444;font-size:8px">${i+1}</td>
+            <td style="font-weight:800;color:#e2e8f0">${sig.ticker}</td>
+            <td style="color:#666;font-size:8px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sig.sector.substring(0,12)}</td>
+            <td style="font-weight:800;color:${col}">${sc}</td>
+            <td style="color:${sigScoreColor(sig.F.score)}">${sig.F.score}</td>
+            <td style="color:${sigScoreColor(sig.T.score)}">${sig.T.score}</td>
+            <td style="color:${sigScoreColor(sig.V.score)}">${sig.V.score}</td>
+            <td style="color:${sigScoreColor(sig.S.score)}">${sig.S.score}</td>
+            <td><span style="font-size:7px;font-weight:800;color:${rCol}">${sig.rating.replace('STRONG ','S.')}</span></td>
+        </tr>`;
+    }).join('');
+}
+
+
+// ============================================================
+// COMPARE TAB — side-by-side analysis of 2-4 stocks
+// All data from MASTER (IndexedDB). Zero hardcoding.
+// ============================================================
+
+let CMP_SELECTED = [];   // array of ticker strings, max 4
+let CMP_SECTOR_F = '';
+
+// ── Comparison metric definitions ─────────────────────────
+// Each group: { title, metrics: [{label, fn, unit, higherBetter, fmt}] }
+const CMP_GROUPS = [
+    {
+        title: 'Signal Scores',
+        metrics: [
+            { label:'Composite', fn: (s,sig)=>sig?.comp, unit:'', hi:true },
+            { label:'Fundamental', fn: (s,sig)=>sig?.F?.score, unit:'', hi:true },
+            { label:'Technical',   fn: (s,sig)=>sig?.T?.score, unit:'', hi:true },
+            { label:'Valuation',   fn: (s,sig)=>sig?.V?.score, unit:'', hi:true },
+            { label:'Sentiment',   fn: (s,sig)=>sig?.S?.score, unit:'', hi:true },
+        ]
+    },
+    {
+        title: 'Valuation',
+        metrics: [
+            { label:'PE (TTM)',    fn: s=>_qN(s.valuation?.pe?.pe_ttm), unit:'x', hi:false },
+            { label:'PE (Fwd)',    fn: s=>_qN(s.valuation?.pe?.pe_forward),  unit:'x', hi:false },
+            { label:'P/B',         fn: s=>_qN(s.valuation?.pe?.price_to_book), unit:'x', hi:false },
+            { label:'EV/EBITDA',   fn: s=>_qN(s.valuation?.pe?.ev_to_ebitda), unit:'x', hi:false },
+            { label:'EV/Revenue',  fn: s=>_qN(s.valuation?.pe?.ev_to_revenue), unit:'x', hi:false },
+            { label:'EPS (TTM)',   fn: s=>_qN(s.valuation?.eps?.eps_ttm), unit:'₹', hi:true },
+            { label:'EPS (Fwd)',   fn: s=>_qN(s.valuation?.eps?.eps_forward), unit:'₹', hi:true },
+            { label:'Mkt Cap',     fn: s=>_qN(s.valuation?.market_cap), unit:'₹', hi:false, fmt:'cr' },
+        ]
+    },
+    {
+        title: 'Profitability',
+        metrics: [
+            { label:'ROCE%',         fn: s=>_qLD(s.ratios?.screener?.roce_pct), unit:'%', hi:true },
+            { label:'ROE%',          fn: s=>(_qN(s.ratios?.return_on_equity)||0)*100, unit:'%', hi:true },
+            { label:'ROA%',          fn: s=>(_qN(s.ratios?.return_on_assets)||0)*100, unit:'%', hi:true },
+            { label:'OPM%',          fn: s=>_qLD(s.financials?.operating_margin_pct?.consolidated?.annual)||_qLD(s.financials?.operating_margin_pct?.standalone?.annual), unit:'%', hi:true },
+            { label:'NPM%',          fn: s=>(_qN(s.ratios?.ttm?.net_margin_pct)||0)*100, unit:'%', hi:true },
+            { label:'Gross Margin%', fn: s=>(_qN(s.ratios?.ttm?.gross_margin_pct)||0)*100, unit:'%', hi:true },
+            { label:'EBITDA Margin%',fn: s=>(_qN(s.ratios?.ttm?.ebitda_margin_pct)||0)*100, unit:'%', hi:true },
+        ]
+    },
+    {
+        title: 'Growth (Latest Annual)',
+        metrics: [
+            { label:'Sales ₹Cr',      fn: s=>_qLD(s.financials?.revenue?.consolidated?.annual)||_qLD(s.financials?.revenue?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'Net Profit ₹Cr', fn: s=>_qLD(s.financials?.net_profit?.consolidated?.annual)||_qLD(s.financials?.net_profit?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'CFO ₹Cr',        fn: s=>_qLD(s.financials?.operating_cash_flow?.consolidated?.annual)||_qLD(s.financials?.operating_cash_flow?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'FCF ₹Cr',        fn: s=>_qLD(s.financials?.fcf?.consolidated?.annual)||_qLD(s.financials?.fcf?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
+            { label:'EPS ₹',          fn: s=>_qLD(s.financials?.EPS_Rs?.consolidated?.annual)||_qLD(s.financials?.EPS_Rs?.standalone?.annual), unit:'₹', hi:true },
+            { label:'Sales CAGR 3Y%', fn: s=>{
+                const d=s.financials?.revenue?.consolidated?.annual||s.financials?.revenue?.standalone?.annual||{};
+                const k=Object.keys(d).sort(); if(k.length<4) return null;
+                const s3=_qN(d[k[k.length-4]]),s0=_qN(d[k[k.length-1]]);
+                return s3&&s0&&s3>0?(Math.pow(s0/s3,1/3)-1)*100:null;
+              }, unit:'%', hi:true },
+            { label:'NP CAGR 3Y%', fn: s=>{
+                const d=s.financials?.net_profit?.consolidated?.annual||s.financials?.net_profit?.standalone?.annual||{};
+                const k=Object.keys(d).sort(); if(k.length<4) return null;
+                const s3=_qN(d[k[k.length-4]]),s0=_qN(d[k[k.length-1]]);
+                return s3&&s0&&s3>0?(Math.pow(s0/s3,1/3)-1)*100:null;
+              }, unit:'%', hi:true },
+        ]
+    },
+    {
+        title: 'Balance Sheet & Efficiency',
+        metrics: [
+            { label:'D/E Ratio',       fn: s=>_qN(s.ratios?.ttm?.debt_to_equity_ratio), unit:'x', hi:false },
+            { label:'Current Ratio',   fn: s=>_qN(s.ratios?.ttm?.current_ratio), unit:'x', hi:true },
+            { label:'Quick Ratio',     fn: s=>_qN(s.ratios?.ttm?.quick_ratio), unit:'x', hi:true },
+            { label:'Debtor Days',     fn: s=>_qLD(s.ratios?.screener?.debtor_days), unit:'d', hi:false },
+            { label:'Inventory Days',  fn: s=>_qLD(s.ratios?.screener?.inventory_days), unit:'d', hi:false },
+            { label:'Cash Conv Cycle', fn: s=>_qLD(s.ratios?.screener?.cash_conversion_cycle), unit:'d', hi:false },
+            { label:'Working Cap Days',fn: s=>_qLD(s.ratios?.Working_Capital_Days), unit:'d', hi:false },
+        ]
+    },
+    {
+        title: 'Price & Momentum',
+        metrics: [
+            { label:'LTP',             fn: s=>_qN(s.price?.close_price||s.price?.ltp?.price), unit:'₹', hi:false },
+            { label:'vs 50DMA%',       fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_50d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
+            { label:'vs 200DMA%',      fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_200d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
+            { label:'52W Change%',     fn: s=>(_qN(s.price?.['52_week']?.change_pct)||0)*100, unit:'%', hi:true },
+            { label:'52W High',        fn: s=>_qN(s.price?.['52_week']?.high), unit:'₹', hi:false },
+            { label:'52W Low',         fn: s=>_qN(s.price?.['52_week']?.low), unit:'₹', hi:false },
+            { label:'Beta',            fn: s=>_qN(s.price?.ltp?.beta), unit:'', hi:false },
+        ]
+    },
+    {
+        title: 'Analyst & Governance',
+        metrics: [
+            { label:'Target Price',    fn: s=>_qN(s.websignals?.target_mean), unit:'₹', hi:true },
+            { label:'Upside%',         fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean);return c&&t?(t-c)/c*100:null;}, unit:'%', hi:true },
+            { label:'# Analysts',      fn: s=>_qN(s.websignals?.analyst_count), unit:'', hi:true },
+            { label:'Rec Mean (1=SB)', fn: s=>_qN(s.websignals?.analyst_rating_score), unit:'', hi:false },
+            { label:'Gov Risk (1-10)', fn: s=>_qN(s.websignals?.governance_overall_risk), unit:'', hi:false },
+            { label:'Audit Risk',      fn: s=>_qN(s.websignals?.audit_risk), unit:'', hi:false },
+            { label:'Board Risk',      fn: s=>_qN(s.websignals?.board_risk), unit:'', hi:false },
+        ]
+    },
+    {
+        title: 'Shareholding (Latest)',
+        metrics: [
+            { label:'Promoter%',       fn: s=>_qLD(s.company_details?.shareholding?.pattern?.promoters), unit:'%', hi:true },
+            { label:'Promoter Δ 1Y',   fn: s=>{
+                const d=s.company_details?.shareholding?.pattern?.promoters||{};
+                const k=Object.keys(d).sort(); if(k.length<5) return null;
+                const lt=_qN(d[k[k.length-1]]),yr=_qN(d[k[k.length-5]]);
+                return lt!==null&&yr!==null?lt-yr:null;
+              }, unit:'pp', hi:true },
+            { label:'FII%',            fn: s=>_qLD(s.company_details?.shareholding?.pattern?.fiis), unit:'%', hi:true },
+            { label:'FII Δ 1Y',        fn: s=>{
+                const d=s.company_details?.shareholding?.pattern?.fiis||{};
+                const k=Object.keys(d).sort(); if(k.length<5) return null;
+                return _qN(d[k[k.length-1]])-_qN(d[k[k.length-5]]);
+              }, unit:'pp', hi:true },
+            { label:'DII%',            fn: s=>_qLD(s.company_details?.shareholding?.pattern?.diis), unit:'%', hi:true },
+            { label:'# Shareholders',  fn: s=>_qLD(s.company_details?.shareholding?.pattern?.no_of_shareholders), unit:'', hi:true, fmt:'k' },
+        ]
+    },
+    {
+        title: 'Portfolio (if held)',
+        metrics: [
+            { label:'Qty',             fn: s=>_qN(s.company_details?.qty), unit:'', hi:false },
+            { label:'Avg Cost',        fn: s=>_qN(s.company_details?.avg_cost), unit:'₹', hi:false },
+            { label:'Invested',        fn: s=>{const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost);return q&&a?q*a:null;}, unit:'₹', hi:false, fmt:'l' },
+            { label:'PnL ₹',           fn: s=>{const q=_qN(s.company_details?.qty),a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price);return q&&a&&l?(l-a)*q:null;}, unit:'₹', hi:true, fmt:'l' },
+            { label:'PnL%',            fn: s=>{const a=_qN(s.company_details?.avg_cost),l=_qN(s.price?.close_price||s.price?.ltp?.price);return a&&l?(l-a)/a*100:null;}, unit:'%', hi:true },
+        ]
+    },
+];
+
+// ── Formatters ─────────────────────────────────────────────
+function cmpFmt(v, unit, fmt) {
+    if(v===null||v===undefined) return '—';
+    const abs = Math.abs(v);
+    if(fmt==='cr') return (abs>=10000?`₹${(v/100).toFixed(0)}Cr`:`₹${v.toFixed(0)}Cr`);
+    if(fmt==='l')  return abs>=100000?`₹${(v/100000).toFixed(1)}L`:`₹${v.toFixed(0)}`;
+    if(fmt==='k')  return abs>=1000?`${(v/1000).toFixed(0)}K`:`${v.toFixed(0)}`;
+    if(unit==='%') return `${v.toFixed(1)}%`;
+    if(unit==='x') return `${v.toFixed(2)}x`;
+    if(unit==='₹') return `₹${v.toFixed(abs>=1000?0:1)}`;
+    if(unit==='pp') return `${v>0?'+':''}${v.toFixed(1)}pp`;
+    if(unit==='d') return `${v.toFixed(0)}d`;
+    return `${Number.isInteger(v)?v:v.toFixed(1)}${unit}`;
+}
+
+// ── Picker ─────────────────────────────────────────────────
+function cmpSetSector(sec) {
+    CMP_SECTOR_F = sec;
+    document.querySelectorAll('.cmp-sec-btn').forEach(btn => {
+        btn.classList.toggle('active', (btn.dataset.sec ?? btn.textContent.trim() === 'All' ? '' : btn.dataset.sec) === sec
+            || (sec === '' && btn.id === 'cmp-sec-all'));
+    });
+    cmpRenderPicker();
+}
+
+function cmpRenderPicker() {
+    let items = SIG_ALL.filter(s => s.ticker && !s.ticker.startsWith('_'));
+    if(CMP_SECTOR_F) items = items.filter(s => s.sector === CMP_SECTOR_F);
+
+    // Group by sector
+    const grouped = {};
+    items.forEach(s => {
+        const sec = s.sector || '—';
+        if(!grouped[sec]) grouped[sec] = [];
+        grouped[sec].push(s);
+    });
+    Object.values(grouped).forEach(arr => arr.sort((a,b)=>a.ticker.localeCompare(b.ticker)));
+
+    const sectors = Object.keys(grouped).sort();
+    const showHeaders = !CMP_SECTOR_F && sectors.length > 1;
+
+    const picker = document.getElementById('cmp-picker');
+    picker.innerHTML = sectors.map(sec => {
+        const tickers = grouped[sec].map(sig =>
+            `<span class="cmp-pick${CMP_SELECTED.includes(sig.ticker)?' sel':''}"
+                onclick="cmpToggle('${sig.ticker}')">${sig.ticker}</span>`
+        ).join('');
+        return (showHeaders ? `<div class="cmp-group-hdr">${sec}</div>` : '') + tickers;
+    }).join('');
+}
+
+function cmpRenderChips() {
+    const chips = document.getElementById('cmp-chips');
+    const chipsRow = document.getElementById('cmp-chips-row');
+    const count = document.getElementById('cmp-count');
+    chips.innerHTML = CMP_SELECTED.map(t =>
+        `<span class="cmp-chip" onclick="cmpToggle('${t}')">${t} <span style="opacity:0.6">×</span></span>`
+    ).join('');
+    count.textContent = CMP_SELECTED.length ? `${CMP_SELECTED.length}/4` : '';
+    if(chipsRow) chipsRow.style.display = CMP_SELECTED.length ? '' : 'none';
+}
+
+function cmpPopulatePicker() {
+    cmpRenderPicker();
+    cmpRenderChips();
+}
+
+function cmpToggle(ticker) {
+    if(CMP_SELECTED.includes(ticker)) {
+        CMP_SELECTED = CMP_SELECTED.filter(t=>t!==ticker);
+    } else if(CMP_SELECTED.length < 4) {
+        CMP_SELECTED.push(ticker);
+    }
+    cmpRenderPicker();
+    cmpRenderChips();
+    if(CMP_SELECTED.length >= 2) renderCompare();
+    else document.getElementById('cmp-results').innerHTML =
+        '<div style="padding:30px 20px;text-align:center;color:#333;font-size:10px">Select 2–4 stocks above</div>';
+}
+
+function cmpClearAll() {
+    CMP_SELECTED = [];
+    cmpRenderPicker();
+    cmpRenderChips();
+    document.getElementById('cmp-results').innerHTML =
+        '<div style="padding:30px 20px;text-align:center;color:#333;font-size:10px">Select 2–4 stocks above<br>then compare</div>';
+}
+
+function initCompareTab() {
+    const secBtns = document.getElementById('cmp-sec-btns');
+    if(secBtns && !secBtns.innerHTML.trim()) {
+        const secs = [...new Set(SIG_ALL.filter(s=>s.ticker&&!s.ticker.startsWith('_')).map(s=>s.sector))].sort();
+        secBtns.innerHTML = secs.map(s =>
+            `<button class="cmp-sec-btn" data-sec="${s}" onclick="cmpSetSector('${s}')">${s}</button>`
+        ).join('');
+        document.getElementById('cmp-sec-all').dataset.sec = '';
+    }
+    // Reset to All
+    CMP_SECTOR_F = '';
+    document.querySelectorAll('.cmp-sec-btn').forEach(b=>b.classList.toggle('active', b.id==='cmp-sec-all'));
+    cmpRenderPicker();
+    cmpRenderChips();
+    if(CMP_SELECTED.length >= 2) renderCompare();
+}
+
+// ── Main render ────────────────────────────────────────────
+function renderCompare() {
+    const stocks = CMP_SELECTED.map(t=>MASTER.find(s=>s.ticker===t)).filter(Boolean);
+    const sigs   = CMP_SELECTED.map(t=>SIG_ALL.find(s=>s.ticker===t));
+    if(stocks.length < 2) return;
+    const n = stocks.length;
+
+    // Header row: ticker + sector + price
+    const headerCells = stocks.map((s,i)=>{
+        const sig = sigs[i];
+        const col = sig ? sigScoreColor(sig.comp) : '#aaa';
+        const cp  = _qN(s.price?.close_price||s.price?.ltp?.price);
+        return `<td style="text-align:center;padding:10px 8px;border-right:1px solid #1a1a1a;">
+            <div style="font-size:13px;font-weight:800;color:#f1f5f9">${s.ticker}</div>
+            <div style="font-size:8px;color:#555;margin-top:2px">${s.company_details?.sector||'—'}</div>
+            ${cp?`<div style="font-size:10px;color:#aaa;margin-top:3px">₹${cp.toLocaleString()}</div>`:''}
+            ${sig?`<div style="font-size:11px;font-weight:800;color:${col};margin-top:3px">${sig.comp} <span style="font-size:8px">${sig.rating}</span></div>`:''}
+        </td>`;
+    }).join('');
+
+    let html = `
+    <table class="cmp-table">
+        <thead><tr>
+            <td style="width:110px;background:#0a0a0a;padding:10px 8px;font-size:8px;color:#555;letter-spacing:0.08em;border-right:1px solid #1a1a1a;border-bottom:1px solid #222;">METRIC</td>
+            ${headerCells.replace(/border-right[^;]+;/g,'border-right:1px solid #1a1a1a;')}
+        </tr></thead>
+        <tbody>`;
+
+    CMP_GROUPS.forEach(group => {
+        // Group header
+        html += `<tr><td colspan="${n+1}" style="background:#050505;padding:6px 10px;font-size:8px;color:#555;letter-spacing:0.12em;text-transform:uppercase;border-bottom:1px solid #1a1a1a;border-top:2px solid #1a1a1a;">${group.title}</td></tr>`;
+
+        group.metrics.forEach(m => {
+            // Extract values for all stocks
+            const vals = stocks.map((s,i)=>{
+                try {
+                    return m.fn.length === 2 ? m.fn(s, sigs[i]) : m.fn(s);
+                } catch { return null; }
+            });
+
+            const validVals = vals.filter(v=>v!==null&&isFinite(v));
+            if(!validVals.length) return; // skip if no data at all
+
+            const best = m.hi ? Math.max(...validVals) : Math.min(...validVals);
+            const worst = m.hi ? Math.min(...validVals) : Math.max(...validVals);
+
+            // Bar scale for visual
+            const absMax = Math.max(...validVals.map(Math.abs), 0.001);
+
+            const cells = vals.map((v,i) => {
+                if(v===null||!isFinite(v)) return `<td style="text-align:right;padding:6px 10px;color:#333;border-right:1px solid #0d0d0d;">—</td>`;
+                const isBest  = validVals.length > 1 && v === best;
+                const isWorst = validVals.length > 1 && v === worst && best !== worst;
+                const col = isBest ? '#00ff88' : isWorst ? '#ff4d6d' : '#ccc';
+                const barW = Math.round(Math.abs(v)/absMax * 52);
+                const barCol = isBest ? '#00ff88' : isWorst ? '#ff4d6d' : '#444';
+                return `<td style="text-align:right;padding:5px 10px;border-right:1px solid #0d0d0d;">
+                    <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+                        <div style="width:${barW}px;height:3px;background:${barCol}66;border-radius:2px;flex-shrink:0"></div>
+                        <span style="font-size:10px;font-weight:${isBest||isWorst?'800':'400'};color:${col};white-space:nowrap">${cmpFmt(v,m.unit,m.fmt)}</span>
+                        ${isBest?'<span style="font-size:7px">↑</span>':isWorst?'<span style="font-size:7px;color:#ff4d6d">↓</span>':''}
+                    </div>
+                </td>`;
+            }).join('');
+
+            html += `<tr>
+                <td style="font-size:8px;color:#777;padding:6px 8px;border-right:1px solid #1a1a1a;white-space:nowrap">${m.label}</td>
+                ${cells}
+            </tr>`;
+        });
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('cmp-results').innerHTML = html;
+}
+
+function sigBoot() {
+    buildSigMedians(MASTER);
+    SIG_ALL=MASTER.filter(st=>st.ticker&&!st.ticker.startsWith('_')).map(st=>sigComposite(st.ticker,st));
+    // Populate sector dropdowns (signals tab + rank tab)
+    const sectors=[...new Set(SIG_ALL.map(x=>x.sector))].sort();
+    const sel=document.getElementById('sig-sector-filter');
+    sel.innerHTML='<option value="">All Sectors</option>'+sectors.map(s=>`<option value="${s}">${s}</option>`).join('');
+    const rsel=document.getElementById('rank-sector-sel');
+    if(rsel) rsel.innerHTML='<option value="">All Sectors</option>'+sectors.map(s=>`<option value="${s}">${s}</option>`).join('');
+    sigRenderList();
+    renderRankTab();
+    if(SIG_ALL.length){ const top=[...SIG_ALL].sort((a,b)=>b.comp-a.comp)[0]; sigSelect(top.ticker); }
+    initSigListScroll();
+}
+
+function initSigListScroll() {
+    const L  = document.getElementById('sig-list');
+    const LI = document.getElementById('sig-list-inner');
+    let curY=0, startY=0, startCurY=0;
+    L.addEventListener('touchstart', e=>{
+        startY    = e.touches[0].clientY;
+        startCurY = curY;
+    }, {passive:true});
+    L.addEventListener('touchmove', e=>{
+        const dy   = e.touches[0].clientY - startY;
+        const maxUp = -(LI.offsetHeight - L.offsetHeight);
+        curY = Math.min(0, Math.max(maxUp, startCurY + dy));
+        LI.style.transform = `translateY(${curY}px)`;
+    }, {passive:true});
+    // Reset scroll position after re-render
+    window._sigListResetScroll = ()=>{ curY=0; LI.style.transform='translateY(0px)'; };
+}
+
+
+// Initialize on first page load
+init().catch(err => {
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.innerHTML = 'ERROR: Failed to load portfolio<br>' + (err.message || 'Unknown error');
+        statusEl.style.display = 'block';
+    }
+    console.error('Initialization error:', err);
+});
+</script>
+
+</body>
+</html>
