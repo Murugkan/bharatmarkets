@@ -335,7 +335,7 @@ const fieldMapping = {
     'diluted_shares': ['valuation.history.diluted_shares'],
 
     // Flat financial fields (from financials object)
-    'ebitda': ['financials.ebitda'],
+    'ebitda': ['valuation.market.ebitda'],
     'ebit': ['financials.ebit'],
     'gross_profit': ['financials.gross_profit'],
     'net_profit_flat': ['financials.net_profit'],
@@ -404,8 +404,8 @@ const fieldMapping = {
     // Ratios (from ratios object - flat keys per metadata)
     'roce': ['ratios.screener.roce_pct'],
     'return_on_capital_employed': ['ratios.screener.roce_pct'],
-    'return_on_equity': ['ratios.ttm.roe_pct'],
-    'roe': ['ratios.ttm.roe_pct'],
+    'return_on_equity': ['derived_metrics.calculated_metrics.roe_pct', 'ratios.ttm.roe_pct'],
+    'roe': ['derived_metrics.calculated_metrics.roe_pct', 'ratios.ttm.roe_pct'],
     'return_on_assets': ['ratios.ttm.roa_pct'],
     'roa': ['ratios.ttm.roa_pct'],
     'current_ratio': ['ratios.ttm.current_ratio'],
@@ -1390,19 +1390,19 @@ function getQuarterlyData(s){
       return f[fieldName][accounting][frequency] || {};
     };
     
-    // ✅ Map ALL financial metrics with CORRECT field names from market_data.json
-    const salesData = getFinancialData('Sales');
-    const netProfitData = getFinancialData('Net_Profit');
-    const operatingProfitData = getFinancialData('Operating_Profit');
-    const opmData = getFinancialData('OPM_pct');
+    // Field names matching actual market_data.json financials keys
+    const salesData = getFinancialData('revenue');
+    const netProfitData = getFinancialData('net_profit');
+    const operatingProfitData = getFinancialData('ebit');
+    const opmData = getFinancialData('operating_margin_pct');
     const pbtData = getFinancialData('profit_before_tax');
-    const epsData = getFinancialData('EPS_Rs');
-    const cfoData = getFinancialData('CFO');
-    const fcfData = getFinancialData('Free_Cash_Flow');
-    const ncfData = getFinancialData('Net_Cash_Flow');
-    const assetsData = getFinancialData('Total_Assets');
-    const borrowingsData = getFinancialData('Borrowings');
-    const interestData = getFinancialData('Interest');
+    const epsData = getFinancialData('eps');
+    const cfoData = getFinancialData('operating_cash_flow');
+    const fcfData = getFinancialData('fcf');
+    const ncfData = getFinancialData('net_cash_flow');
+    const assetsData = getFinancialData('total_assets');
+    const borrowingsData = getFinancialData('borrowings');
+    const interestData = getFinancialData('interest');
     
     // Get all unique dates
     const allDates = new Set([
