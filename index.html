@@ -50,11 +50,11 @@
         /* ===== SIGNAL ENGINE STYLES ===== */
         #signal-view { display:none; overflow:hidden; flex-direction:column; background:#000; flex:1; min-height:0; }
         #signal-view.active { display:flex; }
-        .sig-layout { display:flex; flex:1; overflow-x:auto; overflow-y:hidden; min-height:0; -webkit-overflow-scrolling:touch; }
-        .sig-list { width:160px; min-width:160px; flex-shrink:0; border-right:1px solid #2a2a2a; overflow:hidden; position:relative; }
-        .sig-list-inner { position:absolute; top:0; left:0; right:0; will-change:transform; }
-        .sig-detail { width:360px; min-width:360px; flex-shrink:0; overflow:hidden; -webkit-overflow-scrolling:touch; padding:0; }
-        .sig-detail-inner { padding:12px; padding-bottom:100px; will-change:transform; position:relative; }        /* Signal sub-tabs */
+        .sig-layout { position:fixed; left:0; right:0; bottom:60px; display:flex; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; background:#000; }
+        .sig-list { width:160px; min-width:160px; flex-shrink:0; border-right:1px solid #2a2a2a; overflow-y:scroll; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
+        .sig-list-inner { }
+        .sig-detail { width:360px; min-width:360px; flex-shrink:0; overflow-y:scroll; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:12px; padding-bottom:40px; }
+        .sig-detail-inner { }        /* Signal sub-tabs */
         .sig-subtab-bar { display:flex; background:#000; border-bottom:1px solid #222; flex-shrink:0; overflow-x:auto; -webkit-overflow-scrolling:touch; }
         .sig-subtab-bar::-webkit-scrollbar { display:none; }
         .sig-subtab { padding:8px 14px; font-size:9px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#666; cursor:pointer; border-bottom:2px solid transparent; flex-shrink:0; white-space:nowrap; transition:all .2s; }
@@ -208,8 +208,8 @@
             <button class="sig-sort-btn" id="sig-sort-sector" onclick="sigSort('sector')">SEC</button>
         </div>
         <div class="sig-layout" id="sig-layout" style="flex:1;min-height:0">
-            <div class="sig-list" id="sig-list"><div class="sig-list-inner" id="sig-list-inner"></div></div>
-            <div class="sig-detail" id="sig-detail"><div class="sig-detail-inner" id="sig-detail-inner"><div style="padding:40px 20px; text-align:center; color:#333; font-size:10px;">&#8592; Select a ticker</div></div></div>
+            <div class="sig-list" id="sig-list"></div>
+            <div class="sig-detail" id="sig-detail"><div style="padding:40px 20px;text-align:center;color:#333;font-size:10px;">&#8592; Select a ticker</div></div>
         </div>
     </div>
 
@@ -1998,7 +1998,7 @@ function sigRenderList() {
     else if(SIG_SORT==='sector') items.sort((a,b)=>a.sector.localeCompare(b.sector));
     else items.sort((a,b)=>b.comp-a.comp);
 
-    const listEl=document.getElementById('sig-list-inner');
+    const listEl=document.getElementById('sig-list');
     listEl.innerHTML=items.map(sig=>{
         const isActive=SIG_SELECTED===sig.ticker;
         const fc=sigScoreColor(sig.F.score), tc=sigScoreColor(sig.T.score), vc=sigScoreColor(sig.V.score), sc_=sigScoreColor(sig.S.score);
@@ -2197,7 +2197,7 @@ function sigRenderDetail(ticker) {
         </div>
     </div>`;
 
-    document.getElementById('sig-detail-inner').innerHTML=html;
+    document.getElementById('sig-detail').innerHTML=html;
 }
 
 // ---------- EVENT HANDLERS ----------
@@ -2205,10 +2205,8 @@ function sigSelect(ticker) {
     SIG_SELECTED=ticker;
     sigRenderList();
     sigRenderDetail(ticker);
-    // Reset right pane scroll to top
-    const RI=document.getElementById('sig-detail-inner');
-    if(RI){ RI.style.transform='translateY(0px)'; }
-    if(window._sigListResetScroll) window._sigListResetScroll();
+    const r=document.getElementById('sig-detail');
+    if(r) r.scrollTop=0;
 }
 function sigTogglePillar(key) {
     SIG_OPEN_PILLARS[key]=!SIG_OPEN_PILLARS[key];
@@ -3426,88 +3424,18 @@ function sigBoot() {
 }
 
 function initSigListScroll() {
-    const layout = document.getElementById('sig-layout');
-    const L  = document.getElementById('sig-list');
-    const LI = document.getElementById('sig-list-inner');
-    const R  = document.getElementById('sig-detail');
-    const RI = document.getElementById('sig-detail-inner');
-
-    let curLY=0, curRY=0;
-    let startX=0, startY=0;
-    let startCurLY=0, startCurRY=0, startScrollX=0;
-    let isHoriz=null, touchOnLeft=false;
-    let lastY=0, lastX=0, lastT=0;
-    let velX=0, velY=0;
-    let rafId=null;
-
-    function clamp(v, min, max){ return Math.min(max, Math.max(min, v)); }
-    function maxUpL(){ return -(LI.offsetHeight - L.offsetHeight); }
-    function maxUpR(){ return -(RI.offsetHeight - R.offsetHeight); }
-    function maxScrollX(){ return layout.scrollWidth - layout.offsetWidth; }
-
-    function applyL(y){ curLY=clamp(y,maxUpL(),0); LI.style.transform=`translateY(${curLY}px)`; }
-    function applyR(y){ curRY=clamp(y,maxUpR(),0); RI.style.transform=`translateY(${curRY}px)`; }
-    function applyH(x){ layout.scrollLeft=clamp(x,0,maxScrollX()); }
-
-    function momentum() {
-        velX *= 0.93; velY *= 0.93;
-        if(isHoriz) {
-            applyH(layout.scrollLeft - velX);
-        } else if(touchOnLeft) {
-            applyL(curLY + velY);
-        } else {
-            applyR(curRY + velY);
-        }
-        if(Math.abs(isHoriz ? velX : velY) > 0.5) {
-            rafId = requestAnimationFrame(momentum);
-        }
+    // Set sig-layout top to sit exactly below the header bar
+    const hbar = document.querySelector('.sig-header-bar');
+    const subtab = document.querySelector('.sig-subtab-bar');
+    if(hbar && subtab) {
+        const top = subtab.offsetHeight + hbar.offsetHeight;
+        document.getElementById('sig-layout').style.top = top + 'px';
     }
-
-    layout.addEventListener('touchstart', e=>{
-        cancelAnimationFrame(rafId);
-        const t = e.touches[0];
-        startX=t.clientX; startY=t.clientY;
-        lastX=t.clientX; lastY=t.clientY; lastT=Date.now();
-        startCurLY=curLY; startCurRY=curRY;
-        startScrollX=layout.scrollLeft;
-        isHoriz=null; velX=0; velY=0;
-        touchOnLeft = L.contains(e.target) || LI.contains(e.target);
-    }, {passive:true});
-
-    layout.addEventListener('touchmove', e=>{
-        const t  = e.touches[0];
-        const dx = t.clientX - startX;
-        const dy = t.clientY - startY;
-        const now = Date.now();
-        const dt  = now - lastT || 1;
-
-        // Track velocity (px/ms)
-        velX = (lastX - t.clientX) / dt * 16;
-        velY = (lastY - t.clientY) / dt * 16;
-        lastX=t.clientX; lastY=t.clientY; lastT=now;
-
-        if(isHoriz===null && (Math.abs(dx)>5 || Math.abs(dy)>5)){
-            isHoriz = Math.abs(dx) > Math.abs(dy);
-        }
-        if(isHoriz===null) return;
-
-        if(isHoriz){
-            applyH(startScrollX - dx);
-        } else if(touchOnLeft){
-            applyL(startCurLY + dy);
-        } else {
-            applyR(startCurRY + dy);
-        }
-    }, {passive:true});
-
-    layout.addEventListener('touchend', ()=>{
-        rafId = requestAnimationFrame(momentum);
-    }, {passive:true});
-
     window._sigListResetScroll = ()=>{
-        cancelAnimationFrame(rafId);
-        curLY=0; LI.style.transform='translateY(0px)';
-        curRY=0; RI.style.transform='translateY(0px)';
+        const l = document.getElementById('sig-list');
+        const r = document.getElementById('sig-detail');
+        if(l) l.scrollTop = 0;
+        if(r) r.scrollTop = 0;
     };
 }
 
