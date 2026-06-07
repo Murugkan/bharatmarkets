@@ -657,6 +657,21 @@ const getMetricColor = (field, value, stock) => {
         return '';
     }
 
+    // Direction-based: FII%, DII%, PROM% — green if latest > prev, red if latest < prev
+    if (['FII%', 'DII%', 'PROM%'].includes(field) && stock) {
+        const keyMap = { 'FII%': 'fiis', 'DII%': 'diis', 'PROM%': 'promoters' };
+        const ts = stock?.company_details?.shareholding?.pattern?.[keyMap[field]];
+        if (ts && typeof ts === 'object') {
+            const keys = Object.keys(ts).sort();
+            if (keys.length >= 2) {
+                const latest = ts[keys[keys.length - 1]];
+                const prev   = ts[keys[keys.length - 2]];
+                if (latest != null && prev != null) return latest > prev ? ' pos' : latest < prev ? ' neg' : '';
+            }
+        }
+        return '';
+    }
+
     const thresholds = {
         // Portfolio P&L
         'PNL':      { green: n > 0,    red: n < 0 },
@@ -683,10 +698,6 @@ const getMetricColor = (field, value, stock) => {
         'FCF':      { green: n > 0,    red: n < 0 },
         'NETCF':    { green: n > 0,    red: n < 0 },
         'CAPEX':    { green: n > 0,    red: n < 0 },
-        // Ownership
-        'PROM%':    { green: n > 50,   red: n < 35 },
-        'FII%':     { green: n > 15,   red: n < 5 },
-        'DII%':     { green: n > 10,   red: n < 3 },
         // Leverage
         'DEBT_EQ':  { green: n < 1,    red: n > 3 },
         'INT_COV':  { green: n > 3,    red: n < 1.5 },
