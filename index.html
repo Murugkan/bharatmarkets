@@ -3432,46 +3432,80 @@ function initSigListScroll() {
     const R  = document.getElementById('sig-detail');
     const RI = document.getElementById('sig-detail-inner');
 
+    let curLY=0, curRY=0;
     let startX=0, startY=0;
     let startCurLY=0, startCurRY=0, startScrollX=0;
-    let curLY=0, curRY=0;
     let isHoriz=null, touchOnLeft=false;
+    let lastY=0, lastX=0, lastT=0;
+    let velX=0, velY=0;
+    let rafId=null;
+
+    function clamp(v, min, max){ return Math.min(max, Math.max(min, v)); }
+    function maxUpL(){ return -(LI.offsetHeight - L.offsetHeight); }
+    function maxUpR(){ return -(RI.offsetHeight - R.offsetHeight); }
+    function maxScrollX(){ return layout.scrollWidth - layout.offsetWidth; }
+
+    function applyL(y){ curLY=clamp(y,maxUpL(),0); LI.style.transform=`translateY(${curLY}px)`; }
+    function applyR(y){ curRY=clamp(y,maxUpR(),0); RI.style.transform=`translateY(${curRY}px)`; }
+    function applyH(x){ layout.scrollLeft=clamp(x,0,maxScrollX()); }
+
+    function momentum() {
+        velX *= 0.93; velY *= 0.93;
+        if(isHoriz) {
+            applyH(layout.scrollLeft - velX);
+        } else if(touchOnLeft) {
+            applyL(curLY + velY);
+        } else {
+            applyR(curRY + velY);
+        }
+        if(Math.abs(isHoriz ? velX : velY) > 0.5) {
+            rafId = requestAnimationFrame(momentum);
+        }
+    }
 
     layout.addEventListener('touchstart', e=>{
+        cancelAnimationFrame(rafId);
         const t = e.touches[0];
-        startX = t.clientX;
-        startY = t.clientY;
-        startCurLY = curLY;
-        startCurRY = curRY;
-        startScrollX = layout.scrollLeft;
-        isHoriz = null;
-        touchOnLeft = L.contains(e.target);
+        startX=t.clientX; startY=t.clientY;
+        lastX=t.clientX; lastY=t.clientY; lastT=Date.now();
+        startCurLY=curLY; startCurRY=curRY;
+        startScrollX=layout.scrollLeft;
+        isHoriz=null; velX=0; velY=0;
+        touchOnLeft = L.contains(e.target) || LI.contains(e.target);
     }, {passive:true});
 
     layout.addEventListener('touchmove', e=>{
-        const t = e.touches[0];
+        const t  = e.touches[0];
         const dx = t.clientX - startX;
         const dy = t.clientY - startY;
+        const now = Date.now();
+        const dt  = now - lastT || 1;
 
-        if (isHoriz === null && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+        // Track velocity (px/ms)
+        velX = (lastX - t.clientX) / dt * 16;
+        velY = (lastY - t.clientY) / dt * 16;
+        lastX=t.clientX; lastY=t.clientY; lastT=now;
+
+        if(isHoriz===null && (Math.abs(dx)>5 || Math.abs(dy)>5)){
             isHoriz = Math.abs(dx) > Math.abs(dy);
         }
-        if (isHoriz === null) return;
+        if(isHoriz===null) return;
 
-        if (isHoriz) {
-            layout.scrollLeft = startScrollX - dx;
-        } else if (touchOnLeft) {
-            const maxUp = -(LI.offsetHeight - L.offsetHeight);
-            curLY = Math.min(0, Math.max(maxUp, startCurLY + dy));
-            LI.style.transform = `translateY(${curLY}px)`;
+        if(isHoriz){
+            applyH(startScrollX - dx);
+        } else if(touchOnLeft){
+            applyL(startCurLY + dy);
         } else {
-            const maxUp = -(RI.offsetHeight - R.offsetHeight);
-            curRY = Math.min(0, Math.max(maxUp, startCurRY + dy));
-            RI.style.transform = `translateY(${curRY}px)`;
+            applyR(startCurRY + dy);
         }
     }, {passive:true});
 
+    layout.addEventListener('touchend', ()=>{
+        rafId = requestAnimationFrame(momentum);
+    }, {passive:true});
+
     window._sigListResetScroll = ()=>{
+        cancelAnimationFrame(rafId);
         curLY=0; LI.style.transform='translateY(0px)';
         curRY=0; RI.style.transform='translateY(0px)';
     };
