@@ -437,6 +437,17 @@ class ScreenerFinancialsScraper:
             # Company name
             h1 = soup.find('h1', class_='margin-0')
             company_name = h1.text.strip() if h1 else symbol
+
+            # Face Value — from top ratios list
+            face_value = None
+            top_ratios = soup.find(id='top-ratios')
+            if top_ratios:
+                for li in top_ratios.find_all('li'):
+                    label = li.find('span', class_='name')
+                    value = li.find('span', class_='number')
+                    if label and value and 'face value' in label.text.strip().lower():
+                        face_value = value.text.strip()
+                        break
             
             # Extract tables — map by section heading text, not position.
             # Positional mapping breaks when a section is absent (e.g. no Quarterly Results
@@ -486,6 +497,7 @@ class ScreenerFinancialsScraper:
             return {
                 'symbol': symbol,
                 'company_name': company_name,
+                'face_value': face_value,
                 'timestamp': datetime.now().isoformat(),
                 'tables': table_data,
                 'status': 'SUCCESS'
@@ -664,6 +676,7 @@ class ScreenerFinancialsScraper:
                 row = {
                     'symbol': symbol,
                     'company_name': data.get('company_name', ''),
+                    'face_value': data.get('face_value', ''),
                     'timestamp': data.get('timestamp', '')
                 }
                 
