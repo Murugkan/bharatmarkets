@@ -25,11 +25,11 @@
         table { width:100%; border-collapse:collapse; font-size:10px; white-space:nowrap; margin-bottom:80px; }
         th { background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%); color:#aaa; padding:8px 6px; position:sticky; top:0; z-index:10; border-bottom:2px solid var(--bl); text-align:center; cursor: pointer; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; font-weight: 600; box-shadow: 0 2px 8px rgba(0, 242, 255, 0.1); transition: all 0.2s ease; }
         th.active { color: var(--bl); font-weight: 700; text-shadow: 0 0 6px rgba(0, 242, 255, 0.5); }
-        td { padding:6px; border-bottom:1px solid #111; }
+        td { padding:6px; border-bottom:1px solid #111; border-left:2px solid transparent; }
         tfoot td { background: var(--s1); font-weight: 800; color: var(--tx); border-top: 2px solid var(--b1); }
         .sticky { position:sticky; left:0; background:#0a0a0a!important; z-index:5; border-right:1px solid var(--b1); color:var(--bl)!important; }
-        .pos { background:#00ff88!important; color:#000!important; }
-        .neg { background:#ff6b85!important; color:#fff!important; }
+        .pos { background:rgba(0,255,136,0.08)!important; color:#00ff88!important; }
+        .neg { background:rgba(255,77,109,0.08)!important; color:#ff4d6d!important; }
         .sig-buy        { color:#00ff88; font-weight:800; border:1px solid #00ff88; padding:2px 4px; border-radius:2px; font-size:9px; }
         .sig-strong-buy { color:#00ff88; font-weight:800; border:2px solid #00ff88; padding:2px 4px; border-radius:2px; font-size:9px; background:rgba(0,255,136,0.12); }
         .sig-hold       { color:#f59e0b; font-weight:800; border:1px solid #f59e0b; padding:2px 4px; border-radius:2px; font-size:9px; }
@@ -173,6 +173,7 @@
     <button onclick="toggleViewMode()" id="btn-toggle" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">PW</button>
     <button onclick="toggleCategoryFilter()" id="btn-category" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">SPLT</button>
     <button onclick="toggleReturnFilter()" id="btn-return" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">DG</button>
+    <button onclick="toggleRatingFilter()" id="btn-rating" style="padding:6px 10px; background:#666; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:10px; cursor:pointer;">RAT</button>
     <button onclick="resetAll()" id="btn-all" style="padding:6px 10px; background:#00ff88; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">CLR</button>
 </div>
 <div id="status">Loading Pro Engine...</div>
@@ -397,6 +398,7 @@ let viewMode = 'all';     // View mode: 'all', 'portfolio', 'watchlist'
 let searchQuery = '';     // Search filter text
 let returnFilter = null;  // Return filter state
 let categoryFilter = null; // Category filter: 'equity', 'other', or null
+let ratingFilter = null;  // Rating filter: 'BUY', 'HOLD', 'SELL', or null
 
 // ===== UTILITY FUNCTIONS =====
 
@@ -932,7 +934,7 @@ function updateKPIDisplay(totals) {
  * @returns {Array} Filtered stocks array
  */
 function applyFilters(stocks) {
-    let filtered = stocks.slice();
+    let filtered = stocks.filter(s => s.ticker && s.ticker !== '_metadata');
     
     // Sector filter
     if (filter) {
@@ -966,7 +968,17 @@ function applyFilters(stocks) {
         );
     }
     
-    // Return filter (positive/negative 1D%)
+    // Rating filter
+    if (ratingFilter) {
+        filtered = filtered.filter(stock => {
+            const r = (resolve(stock, 'SIGNAL') || '').toString().toUpperCase();
+            if (ratingFilter === 'BUY') return r === 'BUY' || r === 'STRONG BUY';
+            if (ratingFilter === 'HOLD') return r === 'HOLD';
+            if (ratingFilter === 'SELL') return r === 'SELL' || r === 'STRONG SELL';
+            return true;
+        });
+    }
+    
     if (returnFilter === 'pos') {
         filtered = filtered.filter(stock => cleanNum(resolve(stock, '1D%')) > 0);
     } else if (returnFilter === 'neg') {
@@ -1304,6 +1316,23 @@ function onSearchInput(value) {
  * Resets all button styles to default
  * @returns {void}
  */
+function toggleRatingFilter() {
+    const btn = document.getElementById('btn-rating');
+    const cycle = [null, 'BUY', 'HOLD', 'SELL'];
+    const idx = cycle.indexOf(ratingFilter);
+    ratingFilter = cycle[(idx + 1) % cycle.length];
+    if (!ratingFilter) {
+        btn.innerHTML = 'RAT'; btn.style.background = '#666'; btn.style.color = '#fff';
+    } else if (ratingFilter === 'BUY') {
+        btn.innerHTML = 'BUY'; btn.style.background = '#00ff88'; btn.style.color = '#000';
+    } else if (ratingFilter === 'HOLD') {
+        btn.innerHTML = 'HOLD'; btn.style.background = '#f59e0b'; btn.style.color = '#000';
+    } else {
+        btn.innerHTML = 'SELL'; btn.style.background = '#ff4d6d'; btn.style.color = '#fff';
+    }
+    render();
+}
+
 function resetAll() {
     filter = null;
     sortCol = 'P/L';
@@ -1312,6 +1341,7 @@ function resetAll() {
     searchQuery = '';
     returnFilter = null;
     categoryFilter = null;
+    ratingFilter = null;
     document.getElementById('search-input').value = '';
     document.getElementById('btn-toggle').innerHTML = 'PW';
     document.getElementById('btn-toggle').style.background = '#666';
@@ -1322,6 +1352,9 @@ function resetAll() {
     document.getElementById('btn-return').innerHTML = 'DG';
     document.getElementById('btn-return').style.background = '#666';
     document.getElementById('btn-return').style.color = '#fff';
+    document.getElementById('btn-rating').innerHTML = 'RAT';
+    document.getElementById('btn-rating').style.background = '#666';
+    document.getElementById('btn-rating').style.color = '#fff';
     document.getElementById('btn-all').style.background = '#00ff88';
     document.getElementById('btn-all').style.color = '#000';
     render();
