@@ -375,10 +375,10 @@ const PALETTE = [
 ];
 
 const UI_FIELDS = [
-    '#', 'SECTOR', 'SIGNAL', 'POS', 'NEG', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
+    '#', 'SECTOR', 'SIGNAL', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
     'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'BV',
     'EPS', 'FV', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'NETCF',
-    'CAPEX', 'FCF', 'DIV_YIELD', 'DEBT_EQ', 'INT_COV', 'P/S', 'EV/EBITDA', 'TAX_RATE'
+    'CAPEX', 'FCF', 'DEBT_EQ', 'INT_COV', 'P/S', 'EV/EBITDA', 'TAX_RATE'
 ];
 
 const TEXT_FIELDS = ['TICKER', 'SECTOR', 'SIGNAL'];
@@ -444,8 +444,10 @@ const fmt = (val, field) => {
         return n.toFixed(1);
     }
     
-    // MCAP/EBITDA: absolute INR → L/k format
-    if (['MCAP', 'EBITDA'].includes(field)) return formatLargeNum(n);
+    // MCAP: absolute INR → Cr (÷1e7)
+    if (field === 'MCAP') { const cr = n / 1e7; return (cr >= 1000 ? (cr/1000).toFixed(1)+'k' : Math.round(cr)) + ' Cr'; }
+    // EBITDA: absolute INR → L/k format
+    if (field === 'EBITDA') return formatLargeNum(n);
     // SALES/CFO/NETCF/FCF/CAPEX: Screener Cr units → display with Cr suffix
     if (['SALES', 'CFO', 'NETCF', 'FCF', 'CAPEX'].includes(field)) {
         const abs = Math.abs(n), sign = n < 0 ? '-' : '';
@@ -494,20 +496,18 @@ const resolve = (obj, field) => {
     const mappings = {
         'SYM':           { paths: ['ticker'] },
         'TICKER':        { paths: ['ticker'] },
-        'SIGNAL':        { paths: ['signal'] },
+        'SIGNAL':        { paths: ['derived_metrics.calculated_metrics.rating'] },
         'PNL':           { paths: ['pnl'] },
         'PNL%':          { paths: ['pnlPct'] },
-        '1D%':           { paths: ['price.ltp.change_pct'] },
-        '1DG%':          { paths: ['price.ltp.change_pct'] },
-        '1DCH':          { paths: ['price.ltp.change'] },
+        '1D%':           { paths: ['price.price_change_pct'] },
+        '1DG%':          { paths: ['price.price_change_pct'] },
+        '1DCH':          { paths: ['price.price_change'] },
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
-        'LTP':           { paths: ['price.ltp.price'] },
+        'LTP':           { paths: ['price.close_price'] },
         'QTY':           { paths: ['company_details.qty', 'qty'] },
         'AVG':           { paths: ['company_details.avg_cost', 'avg_cost', 'avg'] },
         'INVESTED':      { paths: ['invested'] },
-        'POS':           { paths: ['pos'] },
-        'NEG':           { paths: ['neg'] },
         // Margin fields: ratios.ttm values are fractions (0.137), multiply ×100 for display pct.
         // Fallback to derived_metrics.calculated_metrics which are already in pct.
         'ROE%':          { fn: s => {
@@ -552,18 +552,17 @@ const resolve = (obj, field) => {
         '52W%':          { fn: s => { const v = s?.price?.week52_low_diff_pct; return v != null ? v * 100 : undefined; }},
         'W52H':          { paths: ['price.52_week.high'] },
         'W52L':          { paths: ['price.52_week.low'] },
-        'OPEN':          { paths: ['price.ltp.open'] },
-        'HIGH':          { paths: ['price.ltp.high'] },
-        'LOW':           { paths: ['price.ltp.low'] },
-        'CHANGE':        { paths: ['price.ltp.change'] },
-        'VOL':           { paths: ['price.ltp.day_volume'] },
-        'BETA':          { paths: ['price.ltp.beta'] },
-        'PREV':          { paths: ['price.ltp.prev_close'] },
+        'OPEN':          { paths: ['price.day_open'] },
+        'HIGH':          { paths: ['price.day_high'] },
+        'LOW':           { paths: ['price.day_low'] },
+        'CHANGE':        { paths: ['price.price_change'] },
+        'VOL':           { paths: ['price.volume.day_volume'] },
+        'BETA':          { paths: ['price.beta'] },
+        'PREV':          { paths: ['price.prev_close'] },
         'SECTOR':        { paths: ['company_details.sector'] },
         'NAME':          { paths: ['company_details.name'] },
         'CAPEX':         { fn: s => _fin(s?.financials?.capex) },
         // DIV_YIELD: dividend_yield not present; use trailing_annual_dividend_yield
-        'DIV_YIELD':     { paths: ['company_details.shareholding.dividends.trailing_annual_dividend_yield'] },
         'DEBT_EQ':       { fn: s => {
                             const dm = s?.derived_metrics?.calculated_metrics?.debt_to_equity;
                             if (dm != null) return dm;
@@ -715,7 +714,6 @@ const getMetricColor = (field, value, stock) => {
         'CAPEX': { green: n > 0, red: n < 0 },  // Positive capex is investment
         'FCF': { green: n > 0, red: n < 0 },  // Positive FCF is good
         'NETCF': { green: n > 0, red: n < 0 },  // ✨ NEW v4.8: Positive Net CF is good
-        'DIV_YIELD': { green: n > 2, red: n < 1 },  // >2% good, <1% not very generous
         'DEBT_EQ': { green: n < 0.5, red: n > 2 },  // Low debt is good, high is risky
         'INT_COV': { green: n > 5, red: n < 2 },  // >5x safe, <2x risky
         'P/S': { green: n < 2, red: n > 5 },  // <2 cheap, >5 expensive
@@ -864,36 +862,6 @@ function enrichStock(stock) {
         stock.w52 = ((ltp - w52l) / w52l) * 100;
     }
     
-    // Calculate POS & NEG based on 8 metrics with thresholds (only if not already set)
-    if (!stock.pos || !stock.neg) {
-        let pos = 0, neg = 0;
-        
-        const checkMetric = (field, goodFn, badFn) => {
-            const v = cleanNum(resolve(stock, field));
-            if (v === 0) return;
-            if (goodFn(v)) pos++;
-            else if (badFn(v)) neg++;
-        };
-        
-        // Check 8 key metrics
-        checkMetric('ROE%', v => v > 15, v => v < 8);
-        checkMetric('PE', v => v > 0 && v < 18, v => v > 35);
-        checkMetric('OPM%', v => v > 15, v => v > 0 && v < 8);
-        checkMetric('NPM%', v => v > 10, v => v > 0 && v < 5);
-        checkMetric('PROM%', v => v > 50, v => v > 0 && v < 35);
-        checkMetric('1D%', v => v > 1, v => v < -1);
-        checkMetric('ATH%', v => v > -10, v => v < -20);
-        checkMetric('PB', v => v > 0 && v < 0.5, v => v > 1.5);  // Using PB as proxy for debt_eq
-        
-        stock.pos = pos;
-        stock.neg = neg;
-        
-        // Compute SIGNAL based on net = pos - neg
-        const net = pos - neg;
-        if (!stock.signal) {
-            stock.signal = net >= 3 ? 'BUY' : net <= -3 ? 'SELL' : 'HOLD';
-        }
-    }
     
     return stock;
 }
