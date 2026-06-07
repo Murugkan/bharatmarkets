@@ -444,7 +444,14 @@ const fmt = (val, field) => {
         return n.toFixed(1);
     }
     
-    if (['MCAP', 'EBITDA', 'SALES', 'CFO', 'NETCF'].includes(field)) return formatLargeNum(n);
+    // MCAP/EBITDA: absolute INR → L/k format
+    if (['MCAP', 'EBITDA'].includes(field)) return formatLargeNum(n);
+    // SALES/CFO/NETCF/FCF/CAPEX: Screener Cr units → display with Cr suffix
+    if (['SALES', 'CFO', 'NETCF', 'FCF', 'CAPEX'].includes(field)) {
+        const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+        if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'k Cr';
+        return sign + Math.round(abs) + ' Cr';
+    }
     if (['INVESTED', '1D_GAIN', '1DCH', 'PNL'].includes(field)) return formatLargeNum(n);
     if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
     if (['FV'].includes(field)) return Math.round(n).toString();
