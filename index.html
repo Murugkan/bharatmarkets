@@ -783,6 +783,13 @@ async function init() {
     SECTORS = [...new Set(MASTER.map(s => resolve(s, 'SECTOR') || 'OTHER'))].sort();
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
     viewMode = 'all';  // Initialize with mixed portfolio+watchlist view
+
+    // Fetch sector indices (non-blocking)
+    fetch('data/sector_indices.json')
+        .then(r => r.json())
+        .then(d => { SECTOR_INDICES = d.sectors || {}; console.log('✅ Sector indices loaded'); })
+        .catch(e => console.warn('⚠ sector_indices.json not found:', e));
+
     render();
 }
 
@@ -1623,6 +1630,7 @@ let SIG_SORT = 'score';     // 'score'|'name'|'sector'
 let SIG_SECTOR_F = '';      // sector filter
 let SIG_SEARCH_F = '';      // search filter
 let SIG_OPEN_PILLARS = {};  // which pillar cards are expanded
+let SECTOR_INDICES = {};    // sector index 52W performance from sector_indices.json
 
 // ---------- MATH UTILS ----------
 function sigToF(v) {
@@ -2898,14 +2906,11 @@ function renderSectorPanel(sectorName, stats) {
     const sectorTickers = MASTER.filter(s => s.company_details?.sector === sectorName);
     const s = stats.find(x => x.name === sectorName);
 
-    // Market 52W per ticker
-    const mktMap = {};
-    sectorTickers.forEach(st => {
-        const v = st.price?.['52_week']?.change_pct;
-        if (v != null) mktMap[st.ticker] = v;
-    });
-    const mktVals = Object.values(mktMap);
-    const mktAvg = mktVals.length ? mktVals.reduce((a,b)=>a+b,0)/mktVals.length : null;
+    // Sector index benchmark from sector_indices.json
+    const idxData = SECTOR_INDICES[sectorName] || {};
+    const idxChg  = idxData.change_52w_pct ?? null;
+    const idxName = idxData.name || 'Sector Index';
+    const idxSym  = idxData.symbol || '';
 
     // Portfolio P&L per ticker (held only)
     const portMap = {};
@@ -2915,19 +2920,30 @@ function renderSectorPanel(sectorName, stats) {
         if (close && cost && cost > 0) portMap[st.ticker] = (close - cost) / cost * 100;
     });
     const portVals = Object.values(portMap);
-    const portAvg = portVals.length ? portVals.reduce((a,b)=>a+b,0)/portVals.length : null;
+    const portAvg  = portVals.length ? portVals.reduce((a,b)=>a+b,0)/portVals.length : null;
+
+    // Peer avg 52W (all tickers in sector)
+    const peerVals = sectorTickers.map(st => st.price?.['52_week']?.change_pct).filter(v => v != null);
+    const peerAvg  = peerVals.length ? peerVals.reduce((a,b)=>a+b,0)/peerVals.length : null;
 
     const col  = v => v == null ? '#666' : v >= 0 ? '#00ff88' : '#ff4d6d';
     const fmt  = v => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-    const diff = (p, m) => p != null && m != null ? p - m : null;
+    const dff  = (p, m) => p != null && m != null ? p - m : null;
 
-    // All tickers across both sides
-    const allTickers = [...new Set([...Object.keys(portMap), ...Object.keys(mktMap)])].sort();
+    const dIdx  = dff(portAvg, idxChg);
+    const dPeer = dff(portAvg, peerAvg);
+
+    // Per-ticker rows: portfolio P&L vs peer 52W
+    const allTickers = [...new Set([
+        ...Object.keys(portMap),
+        ...sectorTickers.map(st => st.ticker)
+    ])].sort();
 
     const rows = allTickers.map(t => {
         const p = portMap[t] ?? null;
-        const m = mktMap[t] ?? null;
-        const d = diff(p, m);
+        const st = sectorTickers.find(x => x.ticker === t);
+        const m = st?.price?.['52_week']?.change_pct ?? null;
+        const d = dff(p, m);
         return `<tr style="border-bottom:1px solid #1a1a1a">
             <td style="padding:5px 4px;font-size:10px;color:#ddd;white-space:nowrap">${t}</td>
             <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(p)};text-align:right">${fmt(p)}</td>
@@ -2936,42 +2952,50 @@ function renderSectorPanel(sectorName, stats) {
         </tr>`;
     }).join('');
 
-    const dAvg = diff(portAvg, mktAvg);
-
     panel.style.display = 'block';
     panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <div style="font-size:11px;font-weight:800;color:#00f2ff;letter-spacing:0.08em">${sectorName.toUpperCase()}</div>
             <div style="font-size:9px;color:#bbb;cursor:pointer;padding:2px 8px;border:1px solid #333;border-radius:4px" onclick="document.getElementById('sec-panel').style.display='none'">✕</div>
         </div>
-        <!-- Summary row -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;margin-bottom:8px;overflow:hidden">
+        <!-- Row 1: Absolute values — Portfolio | Index | Peer Universe -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px 8px 0 0;overflow:hidden;border-bottom:none">
             <div style="padding:8px 6px;border-right:1px solid #2a2a2a">
-                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">TICKER</div>
-                <div style="font-size:9px;color:#ddd">${portVals.length} held</div>
-            </div>
-            <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:right">
                 <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">PORTFOLIO</div>
                 <div style="font-size:14px;font-weight:800;color:${col(portAvg)}">${fmt(portAvg)}</div>
+                <div style="font-size:8px;color:#bbb;margin-top:2px">${portVals.length} held</div>
             </div>
-            <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:right">
-                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">MARKET 52W</div>
-                <div style="font-size:14px;font-weight:800;color:${col(mktAvg)}">${fmt(mktAvg)}</div>
+            <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:center">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()}</div>
+                <div style="font-size:14px;font-weight:800;color:${col(idxChg)}">${fmt(idxChg)}</div>
+                <div style="font-size:8px;color:#bbb;margin-top:2px">${idxSym}</div>
             </div>
             <div style="padding:8px 6px;text-align:right">
-                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">DIFF</div>
-                <div style="font-size:14px;font-weight:800;color:${col(dAvg)}">${dAvg!=null?(dAvg>=0?'+':'')+dAvg.toFixed(1)+'%':'—'}</div>
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">PEER UNIVERSE</div>
+                <div style="font-size:14px;font-weight:800;color:${col(peerAvg)}">${fmt(peerAvg)}</div>
+                <div style="font-size:8px;color:#bbb;margin-top:2px">${peerVals.length} stocks 52W</div>
             </div>
         </div>
-        ${s?`<div style="font-size:9px;color:#bbb;margin-bottom:8px">Signal Score: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
+        <!-- Row 2: Diffs — vs Index (alpha) | vs Peers -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:0 0 8px 8px;overflow:hidden;margin-bottom:6px">
+            <div style="padding:6px 8px;border-right:1px solid #2a2a2a">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">vs INDEX (ALPHA)</div>
+                <div style="font-size:16px;font-weight:800;color:${col(dIdx)}">${dIdx!=null?(dIdx>=0?'+':'')+dIdx.toFixed(1)+'%':'—'}</div>
+            </div>
+            <div style="padding:6px 8px;text-align:right">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">vs PEER UNIVERSE</div>
+                <div style="font-size:16px;font-weight:800;color:${col(dPeer)}">${dPeer!=null?(dPeer>=0?'+':'')+dPeer.toFixed(1)+'%':'—'}</div>
+            </div>
+        </div>
+        ${s?`<div style="font-size:9px;color:#bbb;margin-bottom:8px">Signal: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
         <!-- Per-ticker table -->
         <div style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden">
             <table style="width:100%;border-collapse:collapse">
                 <thead>
                     <tr style="border-bottom:1px solid #2a2a2a;background:#111">
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">PORTFOLIO</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">MKT 52W</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">MY P&L</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">PEER 52W</th>
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">DIFF</th>
                     </tr>
                 </thead>
