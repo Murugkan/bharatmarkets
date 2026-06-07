@@ -47,7 +47,8 @@
         .nav-label { font-size: 7px; margin-top: 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* ===== SIGNAL ENGINE STYLES ===== */
-        #signal-view { display:none; overflow:hidden; flex-direction:column; background:#000; height:calc(100dvh - 65px); }
+        #signal-view { display:none; overflow:hidden; flex-direction:column; background:#000; flex:1; min-height:0; }
+        #signal-view.active { display:flex; }
         .sig-layout { display:flex; flex:1; overflow-x:auto; overflow-y:hidden; min-height:0; -webkit-overflow-scrolling:touch; }
         .sig-list { width:160px; min-width:160px; flex-shrink:0; border-right:1px solid #2a2a2a; overflow-y:auto; overflow-x:hidden; height:100%; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
         .sig-detail { flex:1; min-width:280px; overflow-y:auto; overflow-x:hidden; height:100%; -webkit-overflow-scrolling:touch; padding:12px; padding-bottom:100px; overscroll-behavior:contain; }        /* Signal sub-tabs */
@@ -2224,10 +2225,10 @@ function sigSort(by) {
 function showMainView() {
     document.getElementById('main-view').style.display='';
     document.getElementById('signal-view').classList.remove('active');
-    // also hide the toolbar that is only for portfolio
     document.getElementById('bar-wrap').style.display='';
     document.getElementById('legend').style.display='';
     document.getElementById('view-mode-toggle').style.display='';
+    document.querySelector('header').style.display='';
     document.getElementById('nav-portfolio').classList.add('active');
     document.getElementById('nav-signal').classList.remove('active');
 }
@@ -2251,6 +2252,7 @@ function showSignalView() {
     document.getElementById('bar-wrap').style.display='none';
     document.getElementById('legend').style.display='none';
     document.getElementById('view-mode-toggle').style.display='none';
+    document.querySelector('header').style.display='none';
     document.getElementById('signal-view').classList.add('active');
     document.getElementById('nav-portfolio').classList.remove('active');
     document.getElementById('nav-signal').classList.add('active');
