@@ -542,12 +542,14 @@ const resolve = (obj, field) => {
         'NETCF':         { fn: s => _fin(s?.financials?.net_cash_flow) },
         'FCF':           { fn: s => _fin(s?.financials?.fcf) },
         'EPS':           { paths: ['valuation.eps.eps_ttm'] },
-        'FV':            { paths: ['valuation.market.book_value'] },  // no face_value in schema; BV is best proxy
+        'FV':            { paths: ['company_details.face_value'] },
         'PROM%':         { fn: s => _latest(s?.company_details?.shareholding?.pattern?.promoters) },
         'FII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.fiis) },
         'DII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.diis) },
-        'ATH%':          { paths: ['price.52_week.change_pct'] },
-        '52W%':          { paths: ['price.52_week.change_pct'] },
+        // ATH%: % below 52W high (week52_high_diff_pct is a fraction e.g. -0.049)
+        'ATH%':          { fn: s => { const v = s?.price?.week52_high_diff_pct; return v != null ? v * 100 : undefined; }},
+        // 52W%: % above 52W low (week52_low_diff_pct is a fraction e.g. 0.607)
+        '52W%':          { fn: s => { const v = s?.price?.week52_low_diff_pct; return v != null ? v * 100 : undefined; }},
         'W52H':          { paths: ['price.52_week.high'] },
         'W52L':          { paths: ['price.52_week.low'] },
         'OPEN':          { paths: ['price.ltp.open'] },
