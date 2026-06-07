@@ -1692,7 +1692,7 @@ function sigFundamental(st) {
     scores.roce = {s:roceS, label:'ROCE', val:roceVal!==null?roceVal.toFixed(1)+'%':'N/A'};
 
     // Sales CAGR 3Y
-    const salesAnn = fin.Sales?.consolidated?.annual || fin.Sales?.standalone?.annual || {};
+    const salesAnn = fin.revenue?.consolidated?.annual || fin.revenue?.standalone?.annual || {};
     const salesSer = sigSeries(salesAnn);
     let salesS=50, salesCAGR=null;
     if (salesSer.length>=4) {
@@ -1720,8 +1720,8 @@ function sigFundamental(st) {
     scores.cfo = {s:cfoS, label:'CFO Quality', val:cfoOpVal!==null?cfoOpVal.toFixed(0)+'%':'N/A'};
 
     // Debt Health
-    const borrSer = sigSeries(fin.Borrowings?.consolidated?.annual||fin.Borrowings?.standalone?.annual||{});
-    const deq = sigToF(rat.debt_to_equity);
+    const borrSer = sigSeries(fin.borrowings?.consolidated?.annual||fin.borrowings?.standalone?.annual||{});
+    const deq = sigToF(rat.ttm?.debt_to_equity_ratio);
     let debtS=50;
     if(deq!==null){ const lvl=sigClamp(deq<=0.3?90:deq<=0.7?78:deq<=1.2?62:deq<=2.0?42:22); debtS=Math.round(lvl*0.65+sigTrend(borrSer,false)*0.35); }
     scores.debt = {s:debtS, label:'Debt Health', val:deq!==null?'D/E '+deq.toFixed(2)+'x':'N/A'};
@@ -1748,12 +1748,12 @@ function sigFundamental(st) {
 function sigTechnical(st) {
     const pr = st.price||{};
     const scores = {};
-    const cp=sigToF(pr.current_price)||sigToF(pr.regular_market_price);
+    const cp=sigToF(pr.close_price);
     const dma50=sigToF(pr.ma_50d);
     const dma200=sigToF(pr.ma_200d);
     const w52h=sigToF(pr['52_week']?.high);
     const w52l=sigToF(pr['52_week']?.low);
-    const beta=sigToF(pr.ltp?.beta);
+    const beta=sigToF(pr.beta);
 
     // MA Trend
     let maS=50;
@@ -1765,11 +1765,11 @@ function sigTechnical(st) {
     let w52S=50;
     if(cp&&w52h&&w52l){ const rng=w52h-w52l; const pos=rng>0?(cp-w52l)/rng:0.5; w52S=pos>=0.75?80:pos>=0.55?65:pos>=0.35?50:pos>=0.20?38:28; }
     const w52Pct=sigToF(pr['52_week']?.change_pct);
-    scores.w52 = {s:w52S, label:'52W Position', val:w52Pct!==null?(w52Pct*100).toFixed(1)+'% 52W':'N/A'};
+    scores.w52 = {s:w52S, label:'52W Position', val:w52Pct!==null?w52Pct.toFixed(1)+'% 52W':'N/A'};
 
     // Volume surge
-    const vol=sigToF(pr.volume?.regular_market_volume||pr.volume?.volume);
-    const avgVol=sigToF(pr.volume?.average_daily_volume_3mo||pr.volume?.average_volume);
+    const vol=sigToF(pr.volume?.day_volume||pr.volume?.market_volume);
+    const avgVol=sigToF(pr.volume?.avg_volume_3mo||pr.volume?.avg_volume);
     let volS=50;
     if(vol&&avgVol&&avgVol>0){ const r=vol/avgVol; volS=sigClamp(r>=2?85:r>=1.5?72:r>=1?55:r>=0.7?42:28); }
     scores.vol = {s:volS, label:'Volume Signal', val:vol&&avgVol?((vol/avgVol).toFixed(1))+'x avg':'N/A'};
@@ -1808,7 +1808,7 @@ function sigValuation(st) {
         || '—';
     const pe=sigToF(val.pe?.pe_ttm)||sigToF(val.pe?.pe_forward);
     const pb=sigToF(val.pe?.price_to_book);
-    const evEb=sigToF(val.ev_to_ebitda);
+    const evEb=sigToF(val.pe?.ev_to_ebitda);
     const peg=sigToF(val.pe?.peg);
     const cp=sigToF(pr.current_price);
     const tgt=sigToF(ws_.target_mean);
@@ -1860,14 +1860,14 @@ function sigSentiment(st) {
     scores.inst = {s:instS, label:'FII+DII Flow', val:fiiLt!==null?'FII '+fiiLt.toFixed(1)+'%':'N/A'};
 
     // Analyst rec
-    const recKey=ws_.recommendation_key||'';
+    const recKey=ws_.analyst_rating||ws_.recommendation_key||'';
     const recMean=sigToF(ws_.analyst_rating_score);
     let analystS=50;
     if(recMean!==null){ analystS=sigClamp(recMean<=1.5?88:recMean<=2?74:recMean<=2.5?60:recMean<=3?46:recMean<=3.5?34:20); }
     else { const rm={'strong_buy':88,'buy':72,'hold':50,'underperform':34,'sell':18,'none':50}; analystS=rm[recKey]||50; }
     const nOp=sigToF(ws_.analyst_count)||0;
     const conf=nOp>=15?1:nOp/15; analystS=Math.round(analystS*conf+50*(1-conf));
-    scores.analyst = {s:analystS, label:'Analyst Consensus', val:recKey?recKey.replace('_',' ').toUpperCase():'N/A'};
+    scores.analyst = {s:analystS, label:'Analyst Consensus', val:recKey&&recKey!=='none'?recKey.replace('_',' ').toUpperCase():'N/A'};
 
     // Governance risk
     const govR=sigToF(ws_.governance_overall_risk);
@@ -1884,8 +1884,9 @@ function sigSentiment(st) {
 
     // Shareholder count
     const shrSer=sigSeries(sh.no_of_shareholders||{});
+    const shrLt=shrSer.length?shrSer[shrSer.length-1].v:null;
     let shrS=shrSer.length>=2?sigTrend(shrSer,true):55;
-    scores.shr = {s:shrS, label:'Shareholder Count', val:'Trend'};
+    scores.shr = {s:shrS, label:'Shareholder Count', val:shrLt!==null?(shrLt/1000).toFixed(1)+'K':'N/A'};
 
     const w={prom:0.25,inst:0.20,analyst:0.25,gov:0.10,ai:0.15,shr:0.05};
     const total=Object.entries(w).reduce((acc,[k,wt])=>acc+(scores[k]?.s||50)*wt,0);
