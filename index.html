@@ -745,7 +745,7 @@ async function init() {
         const tx = db.transaction(STORE_NAME, 'readonly');
         MASTER = await new Promise((res, rej) => {
             const req = tx.objectStore(STORE_NAME).getAll();
-            req.onsuccess = e => res((e.target.result || []).filter(s => s.ticker && s.ticker !== '_metadata'));
+            req.onsuccess = e => res((e.target.result || []).filter(s => s.ticker && !s.ticker.startsWith('_')));
             req.onerror = () => rej(req.error);
         });
     } catch(e) {
@@ -934,7 +934,7 @@ function updateKPIDisplay(totals) {
  * @returns {Array} Filtered stocks array
  */
 function applyFilters(stocks) {
-    let filtered = stocks.filter(s => s.ticker && s.ticker !== '_metadata');
+    let filtered = stocks.filter(s => s.ticker && !s.ticker.startsWith('_'));
     
     // Sector filter
     if (filter) {
@@ -951,13 +951,18 @@ function applyFilters(stocks) {
     // Category filter (equity vs other)
     if (categoryFilter === 'equity') {
         filtered = filtered.filter(stock => {
-            const isin = (stock.isin || '').toUpperCase();
+            const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
             return isin.startsWith('INE');
+        });
+    } else if (categoryFilter === 'etf') {
+        filtered = filtered.filter(stock => {
+            const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
+            return isin.startsWith('INF');
         });
     } else if (categoryFilter === 'other') {
         filtered = filtered.filter(stock => {
-            const isin = (stock.isin || '').toUpperCase();
-            return !isin.startsWith('INE');
+            const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
+            return !isin.startsWith('INE') && !isin.startsWith('INF');
         });
     }
     
@@ -1265,21 +1270,19 @@ function toggleReturnFilter() {
  * @returns {void}
  */
 function toggleCategoryFilter() {
+    const btn = document.getElementById('btn-category');
     if (categoryFilter === null) {
-        categoryFilter = 'equity';  // Show only equities (INE)
-        document.getElementById('btn-category').innerHTML = 'EQ';
-        document.getElementById('btn-category').style.background = '#007aff';
-        document.getElementById('btn-category').style.color = '#fff';
+        categoryFilter = 'equity';
+        btn.innerHTML = 'EQ'; btn.style.background = '#007aff'; btn.style.color = '#fff';
     } else if (categoryFilter === 'equity') {
-        categoryFilter = 'other';  // Show only non-equities (non-INE)
-        document.getElementById('btn-category').innerHTML = 'INS';
-        document.getElementById('btn-category').style.background = '#ff9500';
-        document.getElementById('btn-category').style.color = '#fff';
+        categoryFilter = 'etf';
+        btn.innerHTML = 'ETF'; btn.style.background = '#8b5cf6'; btn.style.color = '#fff';
+    } else if (categoryFilter === 'etf') {
+        categoryFilter = 'other';
+        btn.innerHTML = 'INS'; btn.style.background = '#ff9500'; btn.style.color = '#fff';
     } else {
-        categoryFilter = null;  // Show all
-        document.getElementById('btn-category').innerHTML = 'SPLT';
-        document.getElementById('btn-category').style.background = '#666';
-        document.getElementById('btn-category').style.color = '#fff';
+        categoryFilter = null;
+        btn.innerHTML = 'SPLT'; btn.style.background = '#666'; btn.style.color = '#fff';
     }
     render();
 }
@@ -1405,7 +1408,7 @@ function runEngineSync() {
             const getReq = tx.objectStore(STORE_NAME).getAll();
             
             getReq.onsuccess = function() {
-                MASTER = (getReq.result || []).filter(s => s.ticker && s.ticker !== '_metadata');
+                MASTER = (getReq.result || []).filter(s => s.ticker && !s.ticker.startsWith('_'));
                 console.log('✅ Synced ' + MASTER.length + ' stocks from IndexedDB');
                 
                 // Log sample data
@@ -3132,7 +3135,7 @@ function cmpSetSector(sec) {
 }
 
 function cmpRenderPicker() {
-    let items = SIG_ALL.filter(s => s.ticker !== '_metadata');
+    let items = SIG_ALL.filter(s => s.ticker && !s.ticker.startsWith('_'));
     if(CMP_SECTOR_F) items = items.filter(s => s.sector === CMP_SECTOR_F);
 
     // Group by sector
@@ -3197,7 +3200,7 @@ function cmpClearAll() {
 function initCompareTab() {
     const secBtns = document.getElementById('cmp-sec-btns');
     if(secBtns && !secBtns.innerHTML.trim()) {
-        const secs = [...new Set(SIG_ALL.filter(s=>s.ticker!=='_metadata').map(s=>s.sector))].sort();
+        const secs = [...new Set(SIG_ALL.filter(s=>s.ticker&&!s.ticker.startsWith('_')).map(s=>s.sector))].sort();
         secBtns.innerHTML = secs.map(s =>
             `<button class="cmp-sec-btn" data-sec="${s}" onclick="cmpSetSector('${s}')">${s}</button>`
         ).join('');
@@ -3289,7 +3292,7 @@ function renderCompare() {
 
 function sigBoot() {
     buildSigMedians(MASTER);
-    SIG_ALL=MASTER.filter(st=>st.ticker&&st.ticker!=='_metadata').map(st=>sigComposite(st.ticker,st));
+    SIG_ALL=MASTER.filter(st=>st.ticker&&!st.ticker.startsWith('_')).map(st=>sigComposite(st.ticker,st));
     // Populate sector dropdowns (signals tab + rank tab)
     const sectors=[...new Set(SIG_ALL.map(x=>x.sector))].sort();
     const sel=document.getElementById('sig-sector-filter');
