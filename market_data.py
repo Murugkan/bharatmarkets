@@ -1560,8 +1560,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
 
     pe_ttm = val.get('pe', {}).get('pe_ttm')
     if pe_ttm and pe_ttm > 0:
-        pe_score = score_band(pe_ttm, [(0, 100), (10, 80), (15, 65),
-                                       (20, 50), (30, 35), (50, 20)])
+        metrics['pe_ratio'] = round(pe_ttm, 2)
         # Invert — lower PE = higher score
         pe_score = max(20, min(100, round(110 - pe_ttm * 1.5)))
         metrics['pe_score'] = pe_score
@@ -1569,6 +1568,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
 
     pb = val.get('pe', {}).get('price_to_book')
     if pb and pb > 0:
+        metrics['pb_ratio'] = round(pb, 2)
         pb_score = max(20, min(100, round(100 - pb * 10)))
         metrics['pb_score'] = pb_score
         valuation_components.append(pb_score)
@@ -1650,10 +1650,10 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     metrics['composite_score'] = round(composite, 1)
 
     score = metrics['composite_score']
-    if score >= 75:   metrics['rating'] = 'STRONG BUY'
-    elif score >= 62: metrics['rating'] = 'BUY'
-    elif score >= 48: metrics['rating'] = 'HOLD'
-    elif score >= 35: metrics['rating'] = 'SELL'
+    if score >= 80:   metrics['rating'] = 'STRONG BUY'
+    elif score >= 67: metrics['rating'] = 'BUY'
+    elif score >= 53: metrics['rating'] = 'HOLD'
+    elif score >= 40: metrics['rating'] = 'SELL'
     else:             metrics['rating'] = 'STRONG SELL'
 
     metrics['sector_weights'] = {
