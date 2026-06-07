@@ -2895,76 +2895,88 @@ function renderSectorPanel(sectorName, stats) {
     const panel = document.getElementById('sec-panel');
     if (!panel) return;
 
-    // Market: avg 52W change of all tickers in sector
     const sectorTickers = MASTER.filter(s => s.company_details?.sector === sectorName);
-    const mkt52w = sectorTickers
-        .map(s => s.price?.['52_week']?.change_pct)
-        .filter(v => v != null);
-    const mktAvg = mkt52w.length ? mkt52w.reduce((a,b)=>a+b,0)/mkt52w.length : null;
-
-    // Portfolio: only tickers we hold (qty > 0)
-    const held = sectorTickers.filter(s => {
-        const qty = s.company_details?.qty;
-        return qty && qty > 0;
-    });
-    const portRows = held.map(s => {
-        const close = sigToF(s.price?.close_price);
-        const cost  = sigToF(s.company_details?.avg_cost);
-        const pnl   = (close && cost && cost > 0) ? (close - cost) / cost * 100 : null;
-        return { ticker: s.ticker, pnl, close, cost };
-    }).filter(r => r.pnl !== null);
-    const portAvg = portRows.length ? portRows.reduce((a,r)=>a+r.pnl,0)/portRows.length : null;
-
-    const col = s => s >= 0 ? '#00ff88' : '#ff4d6d';
-    const fmt = v => v == null ? 'N/A' : (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-
-    const statRow = (sectorObj) => {
-        if (!sectorObj) return '';
-        const s = stats.find(x => x.name === sectorName);
-        return s ? `<div style="font-size:9px;color:#bbb;margin-top:6px">Signal Score: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score}</span></div>` : '';
-    };
-
-    // Portfolio ticker list
-    const tickerList = portRows.map(r =>
-        `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;font-size:10px">
-            <span style="color:#ddd">${r.ticker}</span>
-            <span style="color:${col(r.pnl)};font-weight:700">${fmt(r.pnl)}</span>
-        </div>`
-    ).join('');
-
     const s = stats.find(x => x.name === sectorName);
+
+    // Market 52W per ticker
+    const mktMap = {};
+    sectorTickers.forEach(st => {
+        const v = st.price?.['52_week']?.change_pct;
+        if (v != null) mktMap[st.ticker] = v;
+    });
+    const mktVals = Object.values(mktMap);
+    const mktAvg = mktVals.length ? mktVals.reduce((a,b)=>a+b,0)/mktVals.length : null;
+
+    // Portfolio P&L per ticker (held only)
+    const portMap = {};
+    sectorTickers.filter(st => (st.company_details?.qty||0) > 0).forEach(st => {
+        const close = sigToF(st.price?.close_price);
+        const cost  = sigToF(st.company_details?.avg_cost);
+        if (close && cost && cost > 0) portMap[st.ticker] = (close - cost) / cost * 100;
+    });
+    const portVals = Object.values(portMap);
+    const portAvg = portVals.length ? portVals.reduce((a,b)=>a+b,0)/portVals.length : null;
+
+    const col  = v => v == null ? '#666' : v >= 0 ? '#00ff88' : '#ff4d6d';
+    const fmt  = v => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+    const diff = (p, m) => p != null && m != null ? p - m : null;
+
+    // All tickers across both sides
+    const allTickers = [...new Set([...Object.keys(portMap), ...Object.keys(mktMap)])].sort();
+
+    const rows = allTickers.map(t => {
+        const p = portMap[t] ?? null;
+        const m = mktMap[t] ?? null;
+        const d = diff(p, m);
+        return `<tr style="border-bottom:1px solid #1a1a1a">
+            <td style="padding:5px 4px;font-size:10px;color:#ddd;white-space:nowrap">${t}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(p)};text-align:right">${fmt(p)}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(m)};text-align:right">${fmt(m)}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(d)};text-align:right">${d!=null?(d>=0?'+':'')+d.toFixed(1)+'%':'—'}</td>
+        </tr>`;
+    }).join('');
+
+    const dAvg = diff(portAvg, mktAvg);
 
     panel.style.display = 'block';
     panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div style="font-size:10px;font-weight:800;color:#00f2ff;letter-spacing:0.08em">${sectorName.toUpperCase()}</div>
-            <div style="font-size:9px;color:#bbb;cursor:pointer;padding:2px 8px;border:1px solid #333;border-radius:4px" onclick="document.getElementById('sec-panel').style.display='none'">✕ close</div>
+            <div style="font-size:11px;font-weight:800;color:#00f2ff;letter-spacing:0.08em">${sectorName.toUpperCase()}</div>
+            <div style="font-size:9px;color:#bbb;cursor:pointer;padding:2px 8px;border:1px solid #333;border-radius:4px" onclick="document.getElementById('sec-panel').style.display='none'">✕</div>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-            <!-- Portfolio performance -->
-            <div style="flex:1;background:#0a0f0a;border:1px solid #1a3a1a;border-radius:8px;padding:10px">
-                <div style="font-size:8px;color:#bbb;letter-spacing:0.08em;margin-bottom:6px">YOUR PORTFOLIO</div>
-                <div style="font-size:28px;font-weight:800;color:${portAvg!=null?col(portAvg):'#666'}">${fmt(portAvg)}</div>
-                <div style="font-size:8px;color:#bbb;margin-top:4px">${portRows.length} holdings avg P&L</div>
-                ${s?`<div style="margin-top:8px;font-size:9px;color:#bbb">Signal: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
-                <div style="margin-top:8px;border-top:1px solid #1a3a1a;padding-top:8px">${tickerList||'<div style="color:#666;font-size:9px">No holdings</div>'}</div>
+        <!-- Summary row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;margin-bottom:8px;overflow:hidden">
+            <div style="padding:8px 6px;border-right:1px solid #2a2a2a">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">TICKER</div>
+                <div style="font-size:9px;color:#ddd">${portVals.length} held</div>
             </div>
-            <!-- Market performance -->
-            <div style="flex:1;background:#0a0a0f;border:1px solid #1a1a3a;border-radius:8px;padding:10px">
-                <div style="font-size:8px;color:#bbb;letter-spacing:0.08em;margin-bottom:6px">SECTOR MARKET</div>
-                <div style="font-size:28px;font-weight:800;color:${mktAvg!=null?col(mktAvg):'#666'}">${fmt(mktAvg)}</div>
-                <div style="font-size:8px;color:#bbb;margin-top:4px">${mkt52w.length} stocks 52W avg</div>
-                <div style="margin-top:8px;border-top:1px solid #1a1a3a;padding-top:8px">
-                    ${sectorTickers.map(s=>{
-                        const v = s.price?.['52_week']?.change_pct;
-                        if(v==null) return '';
-                        return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;font-size:10px">
-                            <span style="color:#ddd">${s.ticker}</span>
-                            <span style="color:${col(v)};font-weight:700">${fmt(v)}</span>
-                        </div>`;
-                    }).join('')}
-                </div>
+            <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:right">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">PORTFOLIO</div>
+                <div style="font-size:14px;font-weight:800;color:${col(portAvg)}">${fmt(portAvg)}</div>
             </div>
+            <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:right">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">MARKET 52W</div>
+                <div style="font-size:14px;font-weight:800;color:${col(mktAvg)}">${fmt(mktAvg)}</div>
+            </div>
+            <div style="padding:8px 6px;text-align:right">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">DIFF</div>
+                <div style="font-size:14px;font-weight:800;color:${col(dAvg)}">${dAvg!=null?(dAvg>=0?'+':'')+dAvg.toFixed(1)+'%':'—'}</div>
+            </div>
+        </div>
+        ${s?`<div style="font-size:9px;color:#bbb;margin-bottom:8px">Signal Score: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
+        <!-- Per-ticker table -->
+        <div style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+                <thead>
+                    <tr style="border-bottom:1px solid #2a2a2a;background:#111">
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">PORTFOLIO</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">MKT 52W</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">DIFF</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
         </div>`;
 }
 
