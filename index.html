@@ -2632,7 +2632,7 @@ function renderSectorTab() {
         // Top ticker in sector by signal
         const topTicker = SIG_ALL.filter(x=>x.sector===s.name).sort((a,b)=>b.comp-a.comp)[0];
 
-        return `<div onclick="sigFilter_sector('${s.name}')" style="background:#0a0a0a;border:1px solid ${col}33;border-top:2px solid ${col};border-radius:8px;padding:10px;cursor:pointer;transition:border-color .2s;display:flex;flex-direction:column;gap:4px">
+        return `<div data-sector="${s.name}" onclick="sigFilter_sector('${s.name}')" style="background:#0a0a0a;border:1px solid ${col}33;border-top:2px solid ${col};border-radius:8px;padding:10px;cursor:pointer;transition:border-color .2s,opacity .2s,outline .2s;display:flex;flex-direction:column;gap:4px">
             ${arcSVG}
             <div style="text-align:center;margin-top:2px">
                 <div style="font-size:9px;font-weight:800;color:#e2e8f0;line-height:1.2">${s.name}</div>
@@ -2662,6 +2662,8 @@ function renderSectorTab() {
             </div>
             <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:8px;cursor:pointer;"></canvas>
         </div>
+        <!-- Sector comparison panel (shown on heatmap click) -->
+        <div id="sec-panel" style="display:none;padding:0 10px 10px;"></div>
         <!-- Summary strip -->
         <div style="display:flex;gap:0;border-bottom:1px solid #1a1a1a;flex-shrink:0;margin-bottom:10px">
             <div style="flex:1;padding:7px 10px;border-right:1px solid #1a1a1a;text-align:center">
@@ -2876,17 +2878,97 @@ function drawSigHeatmap(stats) {
     // Store rects on the element so handler always uses latest
     cv._rects = rects;
     cv._W = W; cv._H = H;
+    cv._stats = stats;
     cv.onclick = e => {
         const bound = cv.getBoundingClientRect();
         const mx = (e.clientX - bound.left) * (cv._W / bound.width);
         const my = (e.clientY - bound.top)  * (cv._H / bound.height);
         const hit = cv._rects.find(r => mx >= r.rx && mx <= r.rx + r.rw && my >= r.ry && my <= r.ry + r.rh);
-        if (hit) sigFilter_sector(hit.name);
+        if (!hit) return;
+        renderSectorPanel(hit.name, cv._stats);
     };
 }
 
 
-// ---------- RENDER SPREAD TAB ----------
+// ---------- SECTOR COMPARISON PANEL ----------
+function renderSectorPanel(sectorName, stats) {
+    const panel = document.getElementById('sec-panel');
+    if (!panel) return;
+
+    // Market: avg 52W change of all tickers in sector
+    const sectorTickers = MASTER.filter(s => s.company_details?.sector === sectorName);
+    const mkt52w = sectorTickers
+        .map(s => s.price?.['52_week']?.change_pct)
+        .filter(v => v != null);
+    const mktAvg = mkt52w.length ? mkt52w.reduce((a,b)=>a+b,0)/mkt52w.length : null;
+
+    // Portfolio: only tickers we hold (qty > 0)
+    const held = sectorTickers.filter(s => {
+        const qty = s.company_details?.qty;
+        return qty && qty > 0;
+    });
+    const portRows = held.map(s => {
+        const close = sigToF(s.price?.close_price);
+        const cost  = sigToF(s.company_details?.avg_cost);
+        const pnl   = (close && cost && cost > 0) ? (close - cost) / cost * 100 : null;
+        return { ticker: s.ticker, pnl, close, cost };
+    }).filter(r => r.pnl !== null);
+    const portAvg = portRows.length ? portRows.reduce((a,r)=>a+r.pnl,0)/portRows.length : null;
+
+    const col = s => s >= 0 ? '#00ff88' : '#ff4d6d';
+    const fmt = v => v == null ? 'N/A' : (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+
+    const statRow = (sectorObj) => {
+        if (!sectorObj) return '';
+        const s = stats.find(x => x.name === sectorName);
+        return s ? `<div style="font-size:9px;color:#bbb;margin-top:6px">Signal Score: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score}</span></div>` : '';
+    };
+
+    // Portfolio ticker list
+    const tickerList = portRows.map(r =>
+        `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;font-size:10px">
+            <span style="color:#ddd">${r.ticker}</span>
+            <span style="color:${col(r.pnl)};font-weight:700">${fmt(r.pnl)}</span>
+        </div>`
+    ).join('');
+
+    const s = stats.find(x => x.name === sectorName);
+
+    panel.style.display = 'block';
+    panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:800;color:#00f2ff;letter-spacing:0.08em">${sectorName.toUpperCase()}</div>
+            <div style="font-size:9px;color:#bbb;cursor:pointer;padding:2px 8px;border:1px solid #333;border-radius:4px" onclick="document.getElementById('sec-panel').style.display='none'">✕ close</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+            <!-- Portfolio performance -->
+            <div style="flex:1;background:#0a0f0a;border:1px solid #1a3a1a;border-radius:8px;padding:10px">
+                <div style="font-size:8px;color:#bbb;letter-spacing:0.08em;margin-bottom:6px">YOUR PORTFOLIO</div>
+                <div style="font-size:28px;font-weight:800;color:${portAvg!=null?col(portAvg):'#666'}">${fmt(portAvg)}</div>
+                <div style="font-size:8px;color:#bbb;margin-top:4px">${portRows.length} holdings avg P&L</div>
+                ${s?`<div style="margin-top:8px;font-size:9px;color:#bbb">Signal: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
+                <div style="margin-top:8px;border-top:1px solid #1a3a1a;padding-top:8px">${tickerList||'<div style="color:#666;font-size:9px">No holdings</div>'}</div>
+            </div>
+            <!-- Market performance -->
+            <div style="flex:1;background:#0a0a0f;border:1px solid #1a1a3a;border-radius:8px;padding:10px">
+                <div style="font-size:8px;color:#bbb;letter-spacing:0.08em;margin-bottom:6px">SECTOR MARKET</div>
+                <div style="font-size:28px;font-weight:800;color:${mktAvg!=null?col(mktAvg):'#666'}">${fmt(mktAvg)}</div>
+                <div style="font-size:8px;color:#bbb;margin-top:4px">${mkt52w.length} stocks 52W avg</div>
+                <div style="margin-top:8px;border-top:1px solid #1a1a3a;padding-top:8px">
+                    ${sectorTickers.map(s=>{
+                        const v = s.price?.['52_week']?.change_pct;
+                        if(v==null) return '';
+                        return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1a1a1a;font-size:10px">
+                            <span style="color:#ddd">${s.ticker}</span>
+                            <span style="color:${col(v)};font-weight:700">${fmt(v)}</span>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>
+        </div>`;
+}
+
+
 function renderSpreadTab() {
     if(!SIG_ALL.length) return;
     const scores = SIG_ALL.map(s=>s.comp);
