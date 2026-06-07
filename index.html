@@ -1684,64 +1684,74 @@ function sigFundamental(st) {
     // ROCE
     const roceSeries = sigSeries(rat.screener?.roce_pct||{});
     const roceVal = sigLatestDict(rat.screener?.roce_pct||{});
-    let roceS = 50;
-    if (roceVal!==null) {
+    if(roceVal!==null){
         const lvl = roceVal>=20?90:roceVal>=15?75:roceVal>=10?60:roceVal>=5?40:20;
-        roceS = Math.round(lvl*0.6 + sigTrend(roceSeries,true)*0.4);
-    }
-    scores.roce = {s:roceS, label:'ROCE', val:roceVal!==null?roceVal.toFixed(1)+'%':'N/A'};
+        scores.roce = {s:Math.round(lvl*0.6+sigTrend(roceSeries,true)*0.4), hasData:true, label:'ROCE', val:roceVal.toFixed(1)+'%'};
+    } else scores.roce = {hasData:false, label:'ROCE', val:'N/A'};
 
     // Sales CAGR 3Y
-    const salesAnn = fin.revenue?.consolidated?.annual || fin.revenue?.standalone?.annual || {};
+    const salesAnn = fin.revenue?.consolidated?.annual||fin.revenue?.standalone?.annual||{};
     const salesSer = sigSeries(salesAnn);
-    let salesS=50, salesCAGR=null;
-    if (salesSer.length>=4) {
-        const s3=salesSer[salesSer.length-4], s0=salesSer[salesSer.length-1];
-        if(s3.v&&s0.v&&s3.v>0){ salesCAGR=(Math.pow(s0.v/s3.v,1/3)-1)*100; salesS=sigClamp(salesCAGR>=20?90:salesCAGR>=15?78:salesCAGR>=10?65:salesCAGR>=5?50:salesCAGR>=0?35:20); }
-    }
-    scores.sales = {s:salesS, label:'Sales CAGR 3Y', val:salesCAGR!==null?salesCAGR.toFixed(1)+'%':'N/A'};
+    let salesCAGR=null;
+    if(salesSer.length>=4){ const s3=salesSer[salesSer.length-4],s0=salesSer[salesSer.length-1]; if(s3.v&&s0.v&&s3.v>0) salesCAGR=(Math.pow(s0.v/s3.v,1/3)-1)*100; }
+    if(salesCAGR!==null){
+        scores.sales = {s:sigClamp(salesCAGR>=20?90:salesCAGR>=15?78:salesCAGR>=10?65:salesCAGR>=5?50:salesCAGR>=0?35:20), hasData:true, label:'Sales CAGR 3Y', val:salesCAGR.toFixed(1)+'%'};
+    } else scores.sales = {hasData:false, label:'Sales CAGR 3Y', val:'N/A'};
 
-    // OPM trend
-    const opmQ = fin.operating_margin_pct?.consolidated?.quarterly || fin.operating_margin_pct?.standalone?.quarterly || {};
-    const opmA = fin.operating_margin_pct?.consolidated?.annual || fin.operating_margin_pct?.standalone?.annual || {};
+    // OPM Trend
+    const opmQ = fin.operating_margin_pct?.consolidated?.quarterly||fin.operating_margin_pct?.standalone?.quarterly||{};
+    const opmA = fin.operating_margin_pct?.consolidated?.annual||fin.operating_margin_pct?.standalone?.annual||{};
     const opmSer = sigSeries(Object.keys(opmQ).length?opmQ:opmA);
     const opmVal = opmSer.length?opmSer[opmSer.length-1].v:null;
-    let opmS=50;
-    if(opmVal!==null){ const lvl=sigClamp(opmVal>=25?88:opmVal>=18?74:opmVal>=12?60:opmVal>=6?44:25); opmS=Math.round(lvl*0.55+sigTrend(opmSer,true)*0.45); }
-    scores.opm = {s:opmS, label:'OPM Trend', val:opmVal!==null?opmVal.toFixed(1)+'%':'N/A'};
+    if(opmVal!==null){
+        const lvl=sigClamp(opmVal>=25?88:opmVal>=18?74:opmVal>=12?60:opmVal>=6?44:25);
+        scores.opm = {s:Math.round(lvl*0.55+sigTrend(opmSer,true)*0.45), hasData:true, label:'OPM Trend', val:opmVal.toFixed(1)+'%'};
+    } else scores.opm = {hasData:false, label:'OPM Trend', val:'N/A'};
 
     // CFO Quality
-    const cfoOpD = fin.cash_conversion_ratio?.consolidated?.annual || fin.cash_conversion_ratio?.standalone?.annual || {};
+    const cfoOpD = fin.cash_conversion_ratio?.consolidated?.annual||fin.cash_conversion_ratio?.standalone?.annual||{};
     const cfoOpSer = sigSeries(cfoOpD);
     const cfoOpVal = sigLatestDict(cfoOpD);
-    let cfoS=50;
-    if(cfoOpVal!==null){ let lvl=sigClamp(cfoOpVal>=90?90:cfoOpVal>=75?75:cfoOpVal>=60?60:cfoOpVal>=40?45:25); cfoS=Math.round(lvl*0.6+sigTrend(cfoOpSer,true)*0.4); }
-    else { const ocf=sigToF(rat.operating_cashflow); if(ocf!==null) cfoS=ocf>0?65:35; }
-    scores.cfo = {s:cfoS, label:'CFO Quality', val:cfoOpVal!==null?cfoOpVal.toFixed(0)+'%':'N/A'};
+    if(cfoOpVal!==null){
+        const lvl=sigClamp(cfoOpVal>=90?90:cfoOpVal>=75?75:cfoOpVal>=60?60:cfoOpVal>=40?45:25);
+        scores.cfo = {s:Math.round(lvl*0.6+sigTrend(cfoOpSer,true)*0.4), hasData:true, label:'CFO Quality', val:cfoOpVal.toFixed(0)+'%'};
+    } else scores.cfo = {hasData:false, label:'CFO Quality', val:'N/A'};
 
     // Debt Health
     const borrSer = sigSeries(fin.borrowings?.consolidated?.annual||fin.borrowings?.standalone?.annual||{});
     const deq = sigToF(rat.ttm?.debt_to_equity_ratio);
-    let debtS=50;
-    if(deq!==null){ const lvl=sigClamp(deq<=0.3?90:deq<=0.7?78:deq<=1.2?62:deq<=2.0?42:22); debtS=Math.round(lvl*0.65+sigTrend(borrSer,false)*0.35); }
-    scores.debt = {s:debtS, label:'Debt Health', val:deq!==null?'D/E '+deq.toFixed(2)+'x':'N/A'};
+    if(deq!==null){
+        const lvl=sigClamp(deq<=0.3?90:deq<=0.7?78:deq<=1.2?62:deq<=2.0?42:22);
+        scores.debt = {s:Math.round(lvl*0.65+sigTrend(borrSer,false)*0.35), hasData:true, label:'Debt Health', val:'D/E '+deq.toFixed(2)+'x'};
+    } else scores.debt = {hasData:false, label:'Debt Health', val:'N/A'};
 
-    // Net Profit momentum (Q YoY)
-    const npQ = fin.net_profit?.consolidated?.quarterly || fin.net_profit?.standalone?.quarterly || {};
+    // Interest Coverage (EBIT / Interest)
+    const ebitAnn = fin.ebit?.consolidated?.annual||fin.ebit?.standalone?.annual||{};
+    const intAnn  = fin.interest?.consolidated?.annual||fin.interest?.standalone?.annual||{};
+    const ebitLt  = sigLatestDict(ebitAnn), intLt = sigLatestDict(intAnn);
+    if(ebitLt!==null && intLt!==null && intLt>0){
+        const ic=ebitLt/intLt;
+        scores.ic = {s:sigClamp(ic>=10?90:ic>=6?78:ic>=3?62:ic>=1.5?44:20), hasData:true, label:'Interest Coverage', val:ic.toFixed(1)+'x'};
+    } else scores.ic = {hasData:false, label:'Interest Coverage', val:'N/A'};
+
+    // Profit Momentum (Q YoY)
+    const npQ = fin.net_profit?.consolidated?.quarterly||fin.net_profit?.standalone?.quarterly||{};
     const npSer = sigSeries(npQ);
-    let npS=50;
-    if(npSer.length>=5){ const lv=npSer[npSer.length-1].v, ya=npSer[npSer.length-5].v; if(lv&&ya&&ya>0) npS=sigClamp(50+(lv-ya)/ya*120); }
-    scores.np = {s:Math.round(npS), label:'Profit Momentum', val:'Q YoY'};
+    let npHasData=false, npS=0, npVal='N/A';
+    if(npSer.length>=5){ const lv=npSer[npSer.length-1].v,ya=npSer[npSer.length-5].v; if(lv!==null&&ya!==null&&ya>0){ npHasData=true; npS=Math.round(sigClamp(50+(lv-ya)/ya*120)); npVal=((lv-ya)/ya*100).toFixed(1)+'% YoY'; } }
+    scores.np = {s:npS, hasData:npHasData, label:'Profit Momentum', val:npVal};
 
     // FCF Consistency
     const fcfSer = sigSeries(fin.fcf?.consolidated?.annual||fin.fcf?.standalone?.annual||{});
-    let fcfS=50;
-    if(fcfSer.length>=3){ const r3=fcfSer.slice(-3).map(x=>x.v).filter(v=>v!==null); const pos=r3.filter(v=>v>0).length; fcfS=sigClamp(pos===3?sigTrend(fcfSer,true)*0.6+35:pos===2?sigTrend(fcfSer,true)*0.4+25:25); }
-    scores.fcf = {s:Math.round(fcfS), label:'FCF Consistency', val:'3Y check'};
+    if(fcfSer.length>=3){
+        const r3=fcfSer.slice(-3).map(x=>x.v).filter(v=>v!==null);
+        const pos=r3.filter(v=>v>0).length;
+        scores.fcf = {s:Math.round(sigClamp(pos===3?sigTrend(fcfSer,true)*0.6+35:pos===2?sigTrend(fcfSer,true)*0.4+25:25)), hasData:true, label:'FCF Consistency', val:pos+'/3 yrs +ve'};
+    } else scores.fcf = {hasData:false, label:'FCF Consistency', val:'N/A'};
 
-    const ws={roce:0.22,sales:0.18,opm:0.18,cfo:0.14,debt:0.14,np:0.08,fcf:0.06};
-    const total=Object.entries(ws).reduce((acc,[k,w])=>acc+(scores[k]?.s||50)*w,0);
-    return {score:Math.round(total), sub:scores};
+    const w={roce:0.20,sales:0.16,opm:0.16,cfo:0.12,debt:0.12,ic:0.10,np:0.08,fcf:0.06};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
 }
 
 // ---------- PILLAR 2: TECHNICAL ----------
@@ -1756,42 +1766,62 @@ function sigTechnical(st) {
     const beta=sigToF(pr.beta);
 
     // MA Trend
-    let maS=50;
-    if(cp&&dma50&&dma200){ const a50=cp>dma50,a200=cp>dma200,gc=dma50>dma200; maS=a50&&a200&&gc?85:a50&&a200?72:a200&&!a50?55:!a50&&!a200&&!gc?22:40; }
-    const dma50pct=cp&&dma50?((cp-dma50)/dma50*100).toFixed(1):null;
-    scores.ma = {s:maS, label:'MA Trend', val:dma50pct!==null?(dma50pct>0?'+':'')+dma50pct+'% vs 50D':'N/A'};
+    if(cp&&dma50&&dma200){
+        const a50=cp>dma50,a200=cp>dma200,gc=dma50>dma200;
+        const maS=a50&&a200&&gc?85:a50&&a200?72:a200&&!a50?55:!a50&&!a200&&!gc?22:40;
+        const dma50pct=((cp-dma50)/dma50*100).toFixed(1);
+        scores.ma = {s:maS, hasData:true, label:'MA Trend', val:(dma50pct>0?'+':'')+dma50pct+'% vs 50D'};
+    } else scores.ma = {hasData:false, label:'MA Trend', val:'N/A'};
 
     // 52W Position
-    let w52S=50;
-    if(cp&&w52h&&w52l){ const rng=w52h-w52l; const pos=rng>0?(cp-w52l)/rng:0.5; w52S=pos>=0.75?80:pos>=0.55?65:pos>=0.35?50:pos>=0.20?38:28; }
     const w52Pct=sigToF(pr['52_week']?.change_pct);
-    scores.w52 = {s:w52S, label:'52W Position', val:w52Pct!==null?w52Pct.toFixed(1)+'% 52W':'N/A'};
+    if(cp&&w52h&&w52l){
+        const rng=w52h-w52l, pos=rng>0?(cp-w52l)/rng:0.5;
+        scores.w52 = {s:pos>=0.75?80:pos>=0.55?65:pos>=0.35?50:pos>=0.20?38:28, hasData:true, label:'52W Position', val:w52Pct!==null?w52Pct.toFixed(1)+'% 52W':'N/A'};
+    } else scores.w52 = {hasData:false, label:'52W Position', val:'N/A'};
+
+    // ATH Distance
+    const ath=sigToF(pr.all_time_high);
+    if(cp&&ath&&ath>0){
+        const athPct=(cp-ath)/ath*100;
+        scores.ath = {s:sigClamp(athPct>=-5?85:athPct>=-15?72:athPct>=-30?58:athPct>=-50?42:25), hasData:true, label:'ATH Distance', val:athPct.toFixed(1)+'% vs ATH'};
+    } else scores.ath = {hasData:false, label:'ATH Distance', val:'N/A'};
 
     // Volume surge
     const vol=sigToF(pr.volume?.day_volume||pr.volume?.market_volume);
     const avgVol=sigToF(pr.volume?.avg_volume_3mo||pr.volume?.avg_volume);
-    let volS=50;
-    if(vol&&avgVol&&avgVol>0){ const r=vol/avgVol; volS=sigClamp(r>=2?85:r>=1.5?72:r>=1?55:r>=0.7?42:28); }
-    scores.vol = {s:volS, label:'Volume Signal', val:vol&&avgVol?((vol/avgVol).toFixed(1))+'x avg':'N/A'};
+    if(vol&&avgVol&&avgVol>0){
+        const r=vol/avgVol;
+        scores.vol = {s:sigClamp(r>=2?85:r>=1.5?72:r>=1?55:r>=0.7?42:28), hasData:true, label:'Volume Signal', val:r.toFixed(1)+'x avg'};
+    } else scores.vol = {hasData:false, label:'Volume Signal', val:'N/A'};
 
-    // Momentum from 6mo daily
+    // Price Momentum
     const hist6=(pr.ohlcv_daily||[]).map(x=>sigToF(x.Close)).filter(v=>v!==null);
-    let momS=50;
-    if(hist6.length>=20){ const lt=hist6[hist6.length-1],m20=hist6[hist6.length-21],m60=hist6.length>=61?hist6[hist6.length-61]:hist6[0]; if(lt&&m20){ const r20=(lt-m20)/m20,r60=m60?(lt-m60)/m60:r20; momS=sigClamp(50+(r20*0.6+r60*0.4)*200); } }
-    scores.mom = {s:Math.round(momS), label:'Price Momentum', val:'20/60D ret'};
+    if(hist6.length>=20){
+        const lt=hist6[hist6.length-1],m20=hist6[hist6.length-21],m60=hist6.length>=61?hist6[hist6.length-61]:hist6[0];
+        if(lt&&m20){ const r20=(lt-m20)/m20,r60=m60?(lt-m60)/m60:r20;
+            scores.mom = {s:Math.round(sigClamp(50+(r20*0.6+r60*0.4)*200)), hasData:true, label:'Price Momentum', val:(r20*100).toFixed(1)+'% 20D'}; }
+        else scores.mom = {hasData:false, label:'Price Momentum', val:'N/A'};
+    } else scores.mom = {hasData:false, label:'Price Momentum', val:'N/A'};
 
-    // RSI proxy
-    let rsiS=50;
-    if(hist6.length>=14){ const changes=hist6.slice(-14).map((c,i,a)=>i>0?c-a[i-1]:0).slice(1); const gains=changes.filter(c=>c>0).reduce((a,b)=>a+b,0)/13; const losses=Math.abs(changes.filter(c=>c<0).reduce((a,b)=>a+b,0))/13; if(losses===0) rsiS=85; else { const rsi=100-100/(1+gains/losses); rsiS=rsi>70?60:rsi>55?72:rsi>45?55:rsi>30?65:78; } }
-    scores.rsi = {s:rsiS, label:'RSI Signal', val:'14D'};
+    // RSI
+    if(hist6.length>=14){
+        const changes=hist6.slice(-14).map((c,i,a)=>i>0?c-a[i-1]:0).slice(1);
+        const gains=changes.filter(c=>c>0).reduce((a,b)=>a+b,0)/13;
+        const losses=Math.abs(changes.filter(c=>c<0).reduce((a,b)=>a+b,0))/13;
+        const rsi=losses===0?100:100-100/(1+gains/losses);
+        const rsiS=rsi>70?60:rsi>55?72:rsi>45?55:rsi>30?65:78;
+        scores.rsi = {s:rsiS, hasData:true, label:'RSI Signal', val:rsi.toFixed(0)+' RSI'};
+    } else scores.rsi = {hasData:false, label:'RSI Signal', val:'N/A'};
 
     // Beta
-    let betaS=beta!==null?(beta<=0.5?70:beta<=1?62:beta<=1.5?50:beta<=2?38:25):55;
-    scores.beta = {s:betaS, label:'Beta Risk', val:beta!==null?'β '+beta.toFixed(2):'N/A'};
+    if(beta!==null){
+        scores.beta = {s:beta<=0.5?70:beta<=1?62:beta<=1.5?50:beta<=2?38:25, hasData:true, label:'Beta Risk', val:'β '+beta.toFixed(2)};
+    } else scores.beta = {hasData:false, label:'Beta Risk', val:'N/A'};
 
-    const ws={ma:0.28,w52:0.20,vol:0.15,mom:0.22,rsi:0.10,beta:0.05};
-    const total=Object.entries(ws).reduce((acc,[k,w])=>acc+(scores[k]?.s||50)*w,0);
-    return {score:Math.round(total), sub:scores};
+    const w={ma:0.25,w52:0.18,ath:0.12,vol:0.13,mom:0.20,rsi:0.08,beta:0.04};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
 }
 
 // ---------- PILLAR 3: VALUATION ----------
@@ -1810,31 +1840,54 @@ function sigValuation(st) {
     const pb=sigToF(val.pe?.price_to_book);
     const evEb=sigToF(val.pe?.ev_to_ebitda);
     const peg=sigToF(val.pe?.peg);
-    const cp=sigToF(pr.current_price);
+    const ps=sigToF(val.pe?.price_to_sales);
+    const evRev=sigToF(val.pe?.ev_to_revenue);
+    const cp=sigToF(pr.close_price);
     const tgt=sigToF(ws_.target_mean);
+    const divYield=sigToF(st.company_details?.shareholding?.dividends?.dividend_yield);
 
     // PE vs sector
-    const spe=SIG_MEDIANS[sector]||25;
-    let peS=pe!==null&&pe>0?sigClamp(pe<=spe*0.6?88:pe<=spe*0.8?76:pe<=spe?62:pe<=spe*1.3?46:pe<=spe*1.7?32:18):45;
-    scores.pe = {s:peS, label:'P/E vs Sector', val:pe!==null?pe.toFixed(1)+'x':'N/A'};
+    if(pe!==null&&pe>0){
+        const spe=SIG_MEDIANS[sector]||25;
+        scores.pe = {s:sigClamp(pe<=spe*0.6?88:pe<=spe*0.8?76:pe<=spe?62:pe<=spe*1.3?46:pe<=spe*1.7?32:18), hasData:true, label:'P/E vs Sector', val:pe.toFixed(1)+'x'};
+    } else scores.pe = {hasData:false, label:'P/E vs Sector', val:'N/A'};
 
-    let pbS=pb!==null&&pb>0?sigClamp(pb<=1?88:pb<=2?75:pb<=3.5?60:pb<=6?44:pb<=10?30:18):50;
-    scores.pb = {s:pbS, label:'Price/Book', val:pb!==null?pb.toFixed(2)+'x':'N/A'};
+    // Price/Book
+    if(pb!==null&&pb>0){
+        scores.pb = {s:sigClamp(pb<=1?88:pb<=2?75:pb<=3.5?60:pb<=6?44:pb<=10?30:18), hasData:true, label:'Price/Book', val:pb.toFixed(2)+'x'};
+    } else scores.pb = {hasData:false, label:'Price/Book', val:'N/A'};
 
-    let evS=evEb!==null&&evEb>0?sigClamp(evEb<=8?88:evEb<=12?76:evEb<=18?62:evEb<=25?46:evEb<=35?30:18):50;
-    scores.ev = {s:evS, label:'EV/EBITDA', val:evEb!==null?evEb.toFixed(1)+'x':'N/A'};
+    // EV/EBITDA
+    if(evEb!==null&&evEb>0){
+        scores.ev = {s:sigClamp(evEb<=8?88:evEb<=12?76:evEb<=18?62:evEb<=25?46:evEb<=35?30:18), hasData:true, label:'EV/EBITDA', val:evEb.toFixed(1)+'x'};
+    } else scores.ev = {hasData:false, label:'EV/EBITDA', val:'N/A'};
 
-    let pegS=peg!==null&&peg>0?sigClamp(peg<=0.5?90:peg<=1?78:peg<=1.5?62:peg<=2.5?44:25):50;
-    scores.peg = {s:pegS, label:'PEG Ratio', val:peg!==null?peg.toFixed(2)+'x':'N/A'};
+    // PEG
+    if(peg!==null&&peg>0){
+        scores.peg = {s:sigClamp(peg<=0.5?90:peg<=1?78:peg<=1.5?62:peg<=2.5?44:25), hasData:true, label:'PEG Ratio', val:peg.toFixed(2)+'x'};
+    } else scores.peg = {hasData:false, label:'PEG Ratio', val:'N/A'};
 
-    let tgtS=50;
-    if(cp&&tgt){ const up=(tgt-cp)/cp*100; tgtS=sigClamp(up>=30?90:up>=20?78:up>=10?64:up>=0?50:up>=-10?38:22); }
-    const upV=cp&&tgt?((tgt-cp)/cp*100).toFixed(1)+'% upside':'N/A';
-    scores.tgt = {s:tgtS, label:'Analyst Upside', val:upV};
+    // P/Sales
+    if(ps!==null&&ps>0){
+        scores.ps = {s:sigClamp(ps<=1?88:ps<=2?76:ps<=4?62:ps<=8?46:ps<=15?30:18), hasData:true, label:'Price/Sales', val:ps.toFixed(2)+'x'};
+    } else if(evRev!==null&&evRev>0){
+        scores.ps = {s:sigClamp(evRev<=1?88:evRev<=2?76:evRev<=4?62:evRev<=8?46:evRev<=15?30:18), hasData:true, label:'EV/Revenue', val:evRev.toFixed(2)+'x'};
+    } else scores.ps = {hasData:false, label:'Price/Sales', val:'N/A'};
 
-    const w={pe:0.30,pb:0.18,ev:0.22,peg:0.14,tgt:0.16};
-    const total=Object.entries(w).reduce((acc,[k,wt])=>acc+(scores[k]?.s||50)*wt,0);
-    return {score:Math.round(total), sub:scores};
+    // Analyst Upside
+    if(cp&&tgt){
+        const up=(tgt-cp)/cp*100;
+        scores.tgt = {s:sigClamp(up>=30?90:up>=20?78:up>=10?64:up>=0?50:up>=-10?38:22), hasData:true, label:'Analyst Upside', val:up.toFixed(1)+'% upside'};
+    } else scores.tgt = {hasData:false, label:'Analyst Upside', val:'N/A'};
+
+    // Dividend Yield
+    if(divYield!==null&&divYield>0){
+        scores.div = {s:sigClamp(divYield>=5?85:divYield>=3?72:divYield>=1.5?58:divYield>=0.5?44:30), hasData:true, label:'Dividend Yield', val:divYield.toFixed(2)+'%'};
+    } else scores.div = {hasData:false, label:'Dividend Yield', val:'N/A'};
+
+    const w={pe:0.28,pb:0.16,ev:0.20,peg:0.12,ps:0.10,tgt:0.10,div:0.04};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
 }
 
 // ---------- PILLAR 4: SENTIMENT ----------
@@ -1843,54 +1896,74 @@ function sigSentiment(st) {
     const ws_=st.websignals||{};
     const dm=st.derived_metrics||{};
     const sh=cd.shareholding?.pattern||{};
+    const own=cd.shareholding?.ownership||{};
     const scores={};
 
     // Promoter trend
     const promoSer=sigSeries(sh.promoters||{});
-    let promoterS=50;
-    if(promoSer.length>=2){ const lt=promoSer[promoSer.length-1].v, pv=promoSer.length>=5?promoSer[promoSer.length-5].v:promoSer[0].v; if(lt!==null&&pv!==null){ const lvl=lt>=65?80:lt>=50?68:lt>=35?55:lt>=20?44:35; const dlta=lt-pv; const dS=dlta>2?88:dlta>0.5?72:dlta>-0.5?55:dlta>-2?38:22; promoterS=Math.round(lvl*0.45+dS*0.55); } }
     const promoLt=promoSer.length?promoSer[promoSer.length-1].v:null;
-    scores.prom = {s:promoterS, label:'Promoter Trend', val:promoLt!==null?promoLt.toFixed(1)+'%':'N/A'};
+    if(promoSer.length>=2&&promoLt!==null){
+        const pv=promoSer.length>=5?promoSer[promoSer.length-5].v:promoSer[0].v;
+        if(pv!==null){ const lvl=promoLt>=65?80:promoLt>=50?68:promoLt>=35?55:promoLt>=20?44:35; const dlta=promoLt-pv; const dS=dlta>2?88:dlta>0.5?72:dlta>-0.5?55:dlta>-2?38:22;
+            scores.prom = {s:Math.round(lvl*0.45+dS*0.55), hasData:true, label:'Promoter Trend', val:promoLt.toFixed(1)+'%'}; }
+        else scores.prom = {hasData:false, label:'Promoter Trend', val:'N/A'};
+    } else scores.prom = {hasData:false, label:'Promoter Trend', val:'N/A'};
 
-    // FII+DII
+    // FII+DII flow
     const fiiSer=sigSeries(sh.fiis||{}), diiSer=sigSeries(sh.diis||{});
-    let instS=50;
-    if(fiiSer.length>=2||diiSer.length>=2){ instS=Math.round(sigTrend(fiiSer,true)*0.55+sigTrend(diiSer,true)*0.45); }
     const fiiLt=fiiSer.length?fiiSer[fiiSer.length-1].v:null;
-    scores.inst = {s:instS, label:'FII+DII Flow', val:fiiLt!==null?'FII '+fiiLt.toFixed(1)+'%':'N/A'};
+    if(fiiSer.length>=2||diiSer.length>=2){
+        scores.inst = {s:Math.round(sigTrend(fiiSer,true)*0.55+sigTrend(diiSer,true)*0.45), hasData:true, label:'FII+DII Flow', val:fiiLt!==null?'FII '+fiiLt.toFixed(1)+'%':'N/A'};
+    } else scores.inst = {hasData:false, label:'FII+DII Flow', val:'N/A'};
 
-    // Analyst rec
+    // Institutional holding level
+    const instPct=sigToF(own.institutional_holding_pct);
+    if(instPct!==null){
+        scores.instLvl = {s:sigClamp(instPct>=0.5?85:instPct>=0.35?72:instPct>=0.2?58:instPct>=0.1?44:30), hasData:true, label:'Inst. Holding', val:(instPct*100).toFixed(1)+'%'};
+    } else scores.instLvl = {hasData:false, label:'Inst. Holding', val:'N/A'};
+
+    // Analyst consensus
     const recKey=ws_.analyst_rating||ws_.recommendation_key||'';
     const recMean=sigToF(ws_.analyst_rating_score);
-    let analystS=50;
-    if(recMean!==null){ analystS=sigClamp(recMean<=1.5?88:recMean<=2?74:recMean<=2.5?60:recMean<=3?46:recMean<=3.5?34:20); }
-    else { const rm={'strong_buy':88,'buy':72,'hold':50,'underperform':34,'sell':18,'none':50}; analystS=rm[recKey]||50; }
     const nOp=sigToF(ws_.analyst_count)||0;
-    const conf=nOp>=15?1:nOp/15; analystS=Math.round(analystS*conf+50*(1-conf));
-    scores.analyst = {s:analystS, label:'Analyst Consensus', val:recKey&&recKey!=='none'?recKey.replace('_',' ').toUpperCase():'N/A'};
+    if(recMean!==null||( recKey&&recKey!=='none')){
+        let analystS=recMean!==null?sigClamp(recMean<=1.5?88:recMean<=2?74:recMean<=2.5?60:recMean<=3?46:recMean<=3.5?34:20):({'strong_buy':88,'buy':72,'hold':50,'underperform':34,'sell':18}[recKey]||50);
+        const conf=nOp>=15?1:nOp/15; analystS=Math.round(analystS*conf+50*(1-conf));
+        scores.analyst = {s:analystS, hasData:true, label:'Analyst Consensus', val:recKey&&recKey!=='none'?recKey.replace('_',' ').toUpperCase():'N/A'};
+    } else scores.analyst = {hasData:false, label:'Analyst Consensus', val:'N/A'};
 
-    // Governance risk
+    // Governance — use sub-risks if available, else overall
+    const govAudit=sigToF(ws_.governance_audit_risk), govBoard=sigToF(ws_.governance_board_risk);
+    const govComp=sigToF(ws_.governance_comp_risk), govRights=sigToF(ws_.governance_rights_risk);
     const govR=sigToF(ws_.governance_overall_risk);
-    let govS=govR!==null?sigClamp(govR<=2?82:govR<=4?66:govR<=6?50:govR<=8?35:20):60;
-    scores.gov = {s:govS, label:'Governance Risk', val:govR!==null?'Risk '+govR+'/10':'N/A'};
+    const govSubs=[govAudit,govBoard,govComp,govRights].filter(v=>v!==null);
+    if(govSubs.length>0){
+        const avgRisk=govSubs.reduce((a,b)=>a+b,0)/govSubs.length;
+        scores.gov = {s:sigClamp(avgRisk<=2?82:avgRisk<=4?66:avgRisk<=6?50:avgRisk<=8?35:20), hasData:true, label:'Governance Risk', val:'Risk '+avgRisk.toFixed(1)+'/10'};
+    } else if(govR!==null){
+        scores.gov = {s:sigClamp(govR<=2?82:govR<=4?66:govR<=6?50:govR<=8?35:20), hasData:true, label:'Governance Risk', val:'Risk '+govR+'/10'};
+    } else scores.gov = {hasData:false, label:'Governance Risk', val:'N/A'};
 
     // AI insights
     const ai=dm.ai_insights_guidance||{};
-    let aiS=50;
-    if(ai.insights?.analysis){ const sm={'Positive':80,'Strong Positive':90,'Negative':25,'Strong Negative':15,'Neutral':52,'Caution':35}; const arr=Object.values(ai.insights.analysis).map(v=>sm[v?.signal]||50); if(arr.length) aiS=Math.round(arr.reduce((a,b)=>a+b,0)/arr.length); }
-    else if(ai.guidance?.management?.confidence==='HIGH') aiS=72;
-    else if(ai.guidance?.management?.confidence==='LOW') aiS=32;
-    scores.ai = {s:aiS, label:'AI Guidance', val:ai.insights?.recommendation||(ai.guidance?'Guidance':'No data')};
+    if(ai.insights?.analysis){
+        const sm={'Positive':80,'Strong Positive':90,'Negative':25,'Strong Negative':15,'Neutral':52,'Caution':35};
+        const arr=Object.values(ai.insights.analysis).map(v=>sm[v?.signal]||50);
+        scores.ai = {s:Math.round(arr.reduce((a,b)=>a+b,0)/arr.length), hasData:true, label:'AI Guidance', val:ai.insights?.recommendation||'Signal'};
+    } else if(ai.guidance?.management?.confidence){
+        scores.ai = {s:ai.guidance.management.confidence==='HIGH'?72:ai.guidance.management.confidence==='LOW'?32:50, hasData:true, label:'AI Guidance', val:'Guidance'};
+    } else scores.ai = {hasData:false, label:'AI Guidance', val:'N/A'};
 
-    // Shareholder count
+    // Shareholder count trend
     const shrSer=sigSeries(sh.no_of_shareholders||{});
     const shrLt=shrSer.length?shrSer[shrSer.length-1].v:null;
-    let shrS=shrSer.length>=2?sigTrend(shrSer,true):55;
-    scores.shr = {s:shrS, label:'Shareholder Count', val:shrLt!==null?(shrLt/1000).toFixed(1)+'K':'N/A'};
+    if(shrSer.length>=2){
+        scores.shr = {s:sigTrend(shrSer,true), hasData:true, label:'Shareholder Count', val:shrLt!==null?(shrLt/1000).toFixed(1)+'K':'N/A'};
+    } else scores.shr = {hasData:false, label:'Shareholder Count', val:'N/A'};
 
-    const w={prom:0.25,inst:0.20,analyst:0.25,gov:0.10,ai:0.15,shr:0.05};
-    const total=Object.entries(w).reduce((acc,[k,wt])=>acc+(scores[k]?.s||50)*wt,0);
-    return {score:Math.round(total), sub:scores};
+    const w={prom:0.22,inst:0.15,instLvl:0.08,analyst:0.22,gov:0.12,ai:0.15,shr:0.06};
+    let tS=0,tW=0; for(const [k,wt] of Object.entries(w)) if(scores[k]?.hasData){tS+=scores[k].s*wt;tW+=wt;}
+    return {score:tW>0?Math.round(tS/tW):null, sub:scores};
 }
 
 // ---------- COMPOSITE ----------
@@ -1903,8 +1976,11 @@ function sigComposite(ticker, st) {
         || '—';
     const cfg=(SIG_SECTOR_CFG[sector]||SIG_SECTOR_CFG['_default']).w;
     const F=sigFundamental(st), T=sigTechnical(st), V=sigValuation(st), S=sigSentiment(st);
-    const comp=Math.round(F.score*cfg.f + T.score*cfg.t + V.score*cfg.v + S.score*cfg.s);
-    return { ticker, comp, rating:sigRating(comp), ratingColor:sigScoreColor(comp),
+    const pillars=[['f',F],['t',T],['v',V],['s',S]];
+    let tS=0,tW=0;
+    for(const [k,p] of pillars){ if(p.score!==null){tS+=p.score*cfg[k];tW+=cfg[k];} }
+    const comp=tW>0?Math.round(tS/tW):null;
+    return { ticker, comp, rating:comp!==null?sigRating(comp):null, ratingColor:comp!==null?sigScoreColor(comp):'#666',
         sector, weights:cfg, name:st.company_details?.long_name||st.company_details?.short_name||ticker,
         price:sigToF(st.price?.close_price||st.price?.ltp?.price),
         F, T, V, S };
@@ -1947,25 +2023,37 @@ function sigRenderList() {
 function sigPillarCard(key, label, icon, pillar, color) {
     const openKey=key;
     const isOpen=SIG_OPEN_PILLARS[openKey];
-    const subs=Object.entries(pillar.sub).map(([k,v])=>`
+    const allSubs=Object.entries(pillar.sub);
+    const validCount=allSubs.filter(([,v])=>v.hasData).length;
+    const totalCount=allSubs.length;
+    const subs=allSubs.map(([k,v])=>{
+        if(!v.hasData) return `
+        <div class="sig-sub-row" style="opacity:0.3">
+            <span class="sig-sub-label">${v.label}</span>
+            <div class="sig-sub-bar"></div>
+            <span class="sig-sub-score">—</span>
+            <span class="sig-sub-val">N/A</span>
+        </div>`;
+        return `
         <div class="sig-sub-row">
             <span class="sig-sub-label">${v.label}</span>
             <div class="sig-sub-bar"><div class="sig-sub-fill" style="width:${v.s}%;background:${sigScoreColor(v.s)}"></div></div>
             <span class="sig-sub-score">${v.s}</span>
             <span class="sig-sub-val">${v.val}</span>
-        </div>`).join('');
+        </div>`;
+    }).join('');
     return `<div class="sig-pillar-card${isOpen?' open':''}" onclick="sigTogglePillar('${openKey}')">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
             <div style="display:flex;align-items:center;gap:6px;">
                 <span style="font-size:14px">${icon}</span>
                 <span style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.08em">${label}</span>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:16px;font-weight:800;color:${color}">${pillar.score}</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:16px;font-weight:800;color:${color}">${pillar.score??'—'}<span style="font-size:8px;font-weight:400;color:#555;margin-left:3px">(${validCount}/${totalCount})</span></span>
                 <span style="font-size:9px;color:#666">${isOpen?'▲':'▼'}</span>
             </div>
         </div>
-        <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${pillar.score}%;background:${color}"></div></div>
+        <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${pillar.score??0}%;background:${color}"></div></div>
         ${isOpen?`<div style="border-top:1px solid #1a1a1a;margin-top:8px;padding-top:4px">${subs}</div>`:''}
     </div>`;
 }
@@ -2017,11 +2105,16 @@ function sigRenderDetail(ticker) {
                 </div>
             </div>
             <div style="text-align:right">
-                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp}</div>
+                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp}<span style="font-size:10px;font-weight:400;color:#555;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).length,0)})</span></div>
                 <div style="font-size:10px;font-weight:800;color:${sig.ratingColor};letter-spacing:0.06em">${sig.rating}</div>
             </div>
         </div>
-        ${sigGaugeSVG(sig.comp)}
+        <div style="margin:8px 0 4px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${sig.comp}%;background:${sig.ratingColor};border-radius:2px;transition:width 0.4s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:7px;color:#444;margin-bottom:4px">
+            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+        </div>
     </div>
 
     <!-- SECTOR WEIGHTS -->
