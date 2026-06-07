@@ -8,7 +8,7 @@
     <style>
         :root { --bg:#000; --s1:#0a0a0a; --b1:#222; --bl:#00f2ff; --gr:#00ff88; --rd:#ff4d6d; --tx:#fff; }
         *{box-sizing:border-box;margin:0;padding:0;}
-        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; display:flex; flex-direction:column; height:100vh; }
+        body { background:var(--bg); color:var(--tx); font-family:'JetBrains Mono',monospace; overflow:hidden; -webkit-text-size-adjust:100%; display:flex; flex-direction:column; height:100dvh; }
         header { background:var(--s1); border-bottom:1px solid var(--b1); padding:8px; display:flex; justify-content:space-around; flex-shrink:0; }
         .kpi-box { text-align:center; }
         .kpi-label { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:1px; }
@@ -47,11 +47,13 @@
         .nav-label { font-size: 7px; margin-top: 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* ===== SIGNAL ENGINE STYLES ===== */
-        #signal-view { display:none; overflow:hidden; flex-direction:column; background:#000; height:calc(100vh - 65px); }
-        /* Signal sub-tabs */
+        #signal-view { display:none; overflow:hidden; flex-direction:column; background:#000; height:calc(100dvh - 65px); }
+        .sig-layout { display:flex; flex:1; overflow:auto; min-height:0; -webkit-overflow-scrolling:touch; }
+        .sig-list { width:160px; min-width:160px; flex-shrink:0; border-right:1px solid #2a2a2a; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+        .sig-detail { flex:1; min-width:280px; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; padding-bottom:100px; overscroll-behavior:contain; }        /* Signal sub-tabs */
         .sig-subtab-bar { display:flex; background:#000; border-bottom:1px solid #222; flex-shrink:0; overflow-x:auto; -webkit-overflow-scrolling:touch; }
         .sig-subtab-bar::-webkit-scrollbar { display:none; }
-        .sig-subtab { padding:8px 14px; font-size:9px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#444; cursor:pointer; border-bottom:2px solid transparent; flex-shrink:0; white-space:nowrap; transition:all .2s; }
+        .sig-subtab { padding:8px 14px; font-size:9px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#666; cursor:pointer; border-bottom:2px solid transparent; flex-shrink:0; white-space:nowrap; transition:all .2s; }
         .sig-subtab.active { color:var(--bl); border-bottom-color:var(--bl); }
         .sig-subtab-content { display:none; flex:1; overflow:hidden; flex-direction:column; }
         .sig-subtab-content.active { display:flex; flex-direction:column; }
@@ -105,9 +107,6 @@
         /* Signal spread scatter */
         #sig-scatter { width:100%; display:block; }
         #signal-view.active { display:flex; }
-        .sig-layout { display:flex; flex:1; overflow:hidden; }
-        .sig-list { width:160px; flex-shrink:0; border-right:1px solid #2a2a2a; overflow-y:auto; -webkit-overflow-scrolling:touch; }
-        .sig-detail { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; }
         .sig-ticker-row { padding:8px 10px; border-bottom:1px solid #1a1a1a; cursor:pointer; transition:background 0.15s; }
         .sig-ticker-row.selected { background:rgba(0,242,255,0.07); border-left:2px solid var(--bl); }
         .sig-ticker-row:active { background:#111; }
@@ -118,11 +117,11 @@
         .sig-pillar-card { background:#0d0d0d; border:1px solid #2a2a2a; border-radius:8px; padding:10px; margin-bottom:8px; cursor:pointer; }
         .sig-pillar-card.open { border-color:#333; }
         .sig-sub-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
-        .sig-sub-label { font-size:8px; color:#888; width:72px; flex-shrink:0; }
+        .sig-sub-label { font-size:8px; color:#aaa; width:72px; flex-shrink:0; }
         .sig-sub-bar { flex:1; height:3px; background:#2a2a2a; border-radius:2px; overflow:hidden; }
         .sig-sub-fill { height:100%; border-radius:2px; }
-        .sig-sub-score { width:20px; text-align:right; font-size:9px; color:#777; }
-        .sig-sub-val { width:52px; text-align:right; font-size:8px; color:#888; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .sig-sub-score { width:20px; text-align:right; font-size:9px; color:#ccc; }
+        .sig-sub-val { width:52px; text-align:right; font-size:8px; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .sig-target-box { background:#0d0d0d; border:1px solid #1a2d1a; border-radius:8px; padding:10px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
         .sig-ctx-box { background:#0d0d0d; border:1px solid #2a2a2a; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
         .sig-ai-box { background:#060f06; border:1px solid #1a3a1a; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
@@ -136,9 +135,9 @@
         .sig-weight-strip { display:flex; background:#000; border-bottom:1px solid #222; flex-shrink:0; }
         .sig-weight-cell { flex:1; text-align:center; padding:5px 0; border-right:1px solid #1a1a1a; }
         .sig-weight-cell:last-child { border-right:none; }
-        .sig-wlabel { font-size:7px; color:#777; letter-spacing:0.04em; display:block; }
+        .sig-wlabel { font-size:7px; color:#aaa; letter-spacing:0.04em; display:block; }
         .sig-wval { font-size:11px; font-weight:800; display:block; }
-        .sig-section-title { font-size:8px; color:#888; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:6px; }
+        .sig-section-title { font-size:8px; color:#aaa; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:6px; }
         /* ── Compare tab ── */
         .cmp-pick { padding:5px 10px; border-radius:5px; font-size:10px; font-weight:700; cursor:pointer; border:1px solid #222; color:#666; background:#0d0d0d; user-select:none; transition:background .12s,border-color .12s,color .12s; }
         .cmp-pick.sel { border-color:#00f2ff; color:#000; background:#00f2ff; box-shadow:0 0 6px rgba(0,242,255,0.35); }
@@ -2046,11 +2045,11 @@ function sigPillarCard(key, label, icon, pillar, color) {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
             <div style="display:flex;align-items:center;gap:6px;">
                 <span style="font-size:14px">${icon}</span>
-                <span style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.08em">${label}</span>
+                <span style="font-size:9px;color:#bbb;text-transform:uppercase;letter-spacing:0.08em">${label}</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:16px;font-weight:800;color:${color}">${pillar.score??'—'}<span style="font-size:8px;font-weight:400;color:#555;margin-left:3px">(${validCount}/${totalCount})</span></span>
-                <span style="font-size:9px;color:#666">${isOpen?'▲':'▼'}</span>
+                <span style="font-size:16px;font-weight:800;color:${color}">${pillar.score??'—'}<span style="font-size:8px;font-weight:400;color:#777;margin-left:3px">(${validCount}/${totalCount})</span></span>
+                <span style="font-size:9px;color:#888">${isOpen?'▲':'▼'}</span>
             </div>
         </div>
         <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${pillar.score??0}%;background:${color}"></div></div>
@@ -2098,21 +2097,21 @@ function sigRenderDetail(ticker) {
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
             <div>
                 <div style="font-size:20px;font-weight:800;color:#f8fafc">${ticker}</div>
-                <div style="font-size:9px;color:#888;margin-top:2px">${sig.name}</div>
+                <div style="font-size:9px;color:#aaa;margin-top:2px">${sig.name}</div>
                 <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
                     <span class="sig-pill" style="background:#1a1a1a;color:#aaa">${sig.sector}</span>
                     ${cp?`<span style="font-size:12px;font-weight:700;color:#e2e8f0">₹${cp.toLocaleString()}</span>`:''}
                 </div>
             </div>
             <div style="text-align:right">
-                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp}<span style="font-size:10px;font-weight:400;color:#555;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).length,0)})</span></div>
+                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp}<span style="font-size:10px;font-weight:400;color:#777;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).length,0)})</span></div>
                 <div style="font-size:10px;font-weight:800;color:${sig.ratingColor};letter-spacing:0.06em">${sig.rating}</div>
             </div>
         </div>
         <div style="margin:8px 0 4px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
             <div style="height:100%;width:${sig.comp}%;background:${sig.ratingColor};border-radius:2px;transition:width 0.4s ease"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:7px;color:#444;margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between;font-size:7px;color:#666;margin-bottom:4px">
             <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
         </div>
     </div>
@@ -2138,7 +2137,7 @@ function sigRenderDetail(ticker) {
         html+=`<div class="sig-target-box">
             <div>
                 <div class="sig-section-title">ANALYST TARGET</div>
-                <div style="font-size:13px;font-weight:700;color:#e2e8f0">₹${tgt.toFixed(0)} <span style="color:#777;font-size:10px">/ ₹${tgtLo?tgtLo.toFixed(0):'?'} – ₹${tgtHi?tgtHi.toFixed(0):'?'}</span></div>
+                <div style="font-size:13px;font-weight:700;color:#e2e8f0">₹${tgt.toFixed(0)} <span style="color:#aaa;font-size:10px">/ ₹${tgtLo?tgtLo.toFixed(0):'?'} – ₹${tgtHi?tgtHi.toFixed(0):'?'}</span></div>
             </div>
             <div style="text-align:right">
                 <div style="font-size:18px;font-weight:800;color:${uColor}">${upside>=0?'+':''}${upside.toFixed(1)}%</div>
@@ -2177,7 +2176,7 @@ function sigRenderDetail(ticker) {
             <div class="sig-ai-dims">
                 ${Object.entries(ai.insights.analysis).map(([dim,v])=>{
                     const c=sigColorMap[v?.signal]||'#555';
-                    return `<div class="sig-ai-dim"><div style="font-size:8px;color:#777;text-transform:capitalize">${dim}</div><div style="font-size:9px;color:${c};font-weight:700;margin-top:2px">${v.signal||'—'}</div></div>`;
+                    return `<div class="sig-ai-dim"><div style="font-size:8px;color:#aaa;text-transform:capitalize">${dim}</div><div style="font-size:9px;color:${c};font-weight:700;margin-top:2px">${v.signal||'—'}</div></div>`;
                 }).join('')}
             </div>
         </div>`;
@@ -2187,10 +2186,10 @@ function sigRenderDetail(ticker) {
     html+=`<div class="sig-ctx-box">
         <div class="sig-section-title">SECTOR CONTEXT — ${sig.sector}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div><div style="font-size:8px;color:#777">Sector Median PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sectorMedianPE?sectorMedianPE.toFixed(1)+'x':'N/A'}</div></div>
-            <div><div style="font-size:8px;color:#777">Stock PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.valuation?.pe?.pe_ttm)?sigToF(st.valuation?.pe?.pe_ttm).toFixed(1)+'x':'N/A'}</div></div>
-            <div><div style="font-size:8px;color:#777">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price['52_week'].change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
-            <div><div style="font-size:8px;color:#777">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price.ltp.beta).toFixed(2):'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#aaa">Sector Median PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sectorMedianPE?sectorMedianPE.toFixed(1)+'x':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#aaa">Stock PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.valuation?.pe?.pe_ttm)?sigToF(st.valuation?.pe?.pe_ttm).toFixed(1)+'x':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#aaa">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price['52_week'].change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#aaa">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price.ltp.beta).toFixed(2):'N/A'}</div></div>
         </div>
     </div>`;
 
@@ -2994,12 +2993,12 @@ function renderSpreadTab() {
             const wavg = watchlist.length ? Math.round(watchlist.reduce((a,s)=>a+s.comp,0)/watchlist.length) : 0;
             return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                 <div style="text-align:center">
-                    <div style="font-size:8px;color:#777">Portfolio (${portfolio.length})</div>
+                    <div style="font-size:8px;color:#aaa">Portfolio (${portfolio.length})</div>
                     <div style="font-size:22px;font-weight:800;color:${sigScoreColor(pavg)};margin:4px 0">${pavg||'—'}</div>
                     <div style="font-size:8px;color:#555">${pavg?sigRating(pavg):''}</div>
                 </div>
                 <div style="text-align:center">
-                    <div style="font-size:8px;color:#777">Watchlist (${watchlist.length})</div>
+                    <div style="font-size:8px;color:#aaa">Watchlist (${watchlist.length})</div>
                     <div style="font-size:22px;font-weight:800;color:${sigScoreColor(wavg)};margin:4px 0">${wavg||'—'}</div>
                     <div style="font-size:8px;color:#555">${wavg?sigRating(wavg):''}</div>
                 </div>
