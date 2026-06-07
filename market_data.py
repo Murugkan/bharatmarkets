@@ -564,6 +564,11 @@ FIELD_MAP = {
     # "guidance:guidance": { ... guidance fields ... },
     # "guidance:insights": { ... insight fields ... },
 
+    # ── screener_fin:screener_fin_meta  (top-level scalars from screener_financials.json) ──
+    "screener_fin:screener_fin_meta": {
+        "face_value": ("company_details", "face_value"),
+    },
+
     # ── yahoofin_raw:history_*  (OHLCV) ──────────────────────────────────────
     # Canonical keys — market_data_flatten.py normalises 5yr and 10yr source
     # variants to these same names, so output structure is always identical.
@@ -756,7 +761,9 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
             continue
 
         # ── screener_raw & screener_fin sections with consolidation > granularity hierarchy ──
-        if (sec_key.startswith("screener_raw:") or sec_key.startswith("screener_fin:")) and isinstance(records, dict):
+        if (sec_key.startswith("screener_raw:") or sec_key.startswith("screener_fin:")) \
+                and sec_key != "screener_fin:screener_fin_meta" \
+                and isinstance(records, dict):
             # New structure: section > consolidation > granularity > [metrics]
             for consol, granule_dict in records.items():
                 if isinstance(granule_dict, dict):
@@ -3060,6 +3067,7 @@ def _build_schema(output: dict) -> dict:
         'employee_count':'int','floating_shares':'int','implied_shares':'int',
         'shares_outstanding':'int','government':'pct','others':'pct',
         'promoters':'pct','fiis':'pct','diis':'pct','public':'pct',
+        'face_value':'INR',
         'last_fiscal_year_end':'epoch','next_fiscal_year_end':'epoch',
         'most_recent_quarter':'epoch',
         # price

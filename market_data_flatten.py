@@ -329,6 +329,17 @@ for TICKER in TICKERS_TO_PROCESS:
                     ticker_errors.append(f"screener_fin | {table_name} | {metric_name} | {str(e)}")
                     logger.write_error(TICKER, 'screener_fin', metric_name, str(e))
         
+        # === SCREENER FINANCIALS — scalar fields ===
+        # face_value is a top-level scalar on each ticker (not inside tables)
+        fv = sf.get('face_value')
+        if fv is not None and fv != '':
+            metrics['face_value|screener_fin_meta'] = {
+                'metric': 'face_value',
+                'section': 'screener_fin_meta',
+                'source': 'screener_fin',
+                'value': standardize_value(fv)
+            }
+
         # === SCREENER RAW ===
         sr = all_data.get('screener_raw', {}).get(TICKER, {})
         sr_obs = sr.get('observations', [{}])[0].get('raw', {})
