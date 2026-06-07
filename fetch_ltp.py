@@ -331,9 +331,9 @@ SECTOR_INDEX_MAP = {
     "Materials":              ("^CNXMETAL",  "Nifty Metal"),
     "Energy":                 ("^CNXENERGY", "Nifty Energy"),
     "Industrials":            ("^CNXINFRA",  "Nifty Infra"),
-    "Utilities":              ("^CNXINFRA",  "Nifty Infra"),
-    "Defence":                ("^CNXDEFENCE","Nifty Defence"),
-    "Telecom":                ("^CNXINFRA",  "Nifty Infra"),
+    "Utilities":              ("^CNXPSE",    "Nifty PSE"),
+    "Defence":                ("NIFTYINDDEFENCE.NS", "Nifty India Defence"),
+    "Telecom":                ("^CNXPSE",    "Nifty PSE"),
     "ETF":                    ("^NSEI",      "Nifty 50"),
 }
 
