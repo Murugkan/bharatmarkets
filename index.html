@@ -53,7 +53,8 @@
         .sig-layout { display:flex; flex:1; overflow-x:auto; overflow-y:hidden; min-height:0; -webkit-overflow-scrolling:touch; }
         .sig-list { width:160px; min-width:160px; flex-shrink:0; border-right:1px solid #2a2a2a; overflow:hidden; position:relative; }
         .sig-list-inner { position:absolute; top:0; left:0; right:0; will-change:transform; }
-        .sig-detail { width:360px; min-width:360px; flex-shrink:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:12px; padding-bottom:100px; }        /* Signal sub-tabs */
+        .sig-detail { width:360px; min-width:360px; flex-shrink:0; overflow:hidden; -webkit-overflow-scrolling:touch; padding:0; }
+        .sig-detail-inner { padding:12px; padding-bottom:100px; will-change:transform; position:relative; }        /* Signal sub-tabs */
         .sig-subtab-bar { display:flex; background:#000; border-bottom:1px solid #222; flex-shrink:0; overflow-x:auto; -webkit-overflow-scrolling:touch; }
         .sig-subtab-bar::-webkit-scrollbar { display:none; }
         .sig-subtab { padding:8px 14px; font-size:9px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#666; cursor:pointer; border-bottom:2px solid transparent; flex-shrink:0; white-space:nowrap; transition:all .2s; }
@@ -208,7 +209,7 @@
         </div>
         <div class="sig-layout" id="sig-layout" style="flex:1;min-height:0">
             <div class="sig-list" id="sig-list"><div class="sig-list-inner" id="sig-list-inner"></div></div>
-            <div class="sig-detail" id="sig-detail"><div style="padding:40px 20px; text-align:center; color:#333; font-size:10px;">&#8592; Select a ticker</div></div>
+            <div class="sig-detail" id="sig-detail"><div class="sig-detail-inner" id="sig-detail-inner"><div style="padding:40px 20px; text-align:center; color:#333; font-size:10px;">&#8592; Select a ticker</div></div></div>
         </div>
     </div>
 
@@ -2196,7 +2197,7 @@ function sigRenderDetail(ticker) {
         </div>
     </div>`;
 
-    document.getElementById('sig-detail').innerHTML=html;
+    document.getElementById('sig-detail-inner').innerHTML=html;
 }
 
 // ---------- EVENT HANDLERS ----------
@@ -2204,6 +2205,10 @@ function sigSelect(ticker) {
     SIG_SELECTED=ticker;
     sigRenderList();
     sigRenderDetail(ticker);
+    // Reset right pane scroll to top
+    const RI=document.getElementById('sig-detail-inner');
+    if(RI){ RI.style.transform='translateY(0px)'; }
+    if(window._sigListResetScroll) window._sigListResetScroll();
 }
 function sigTogglePillar(key) {
     SIG_OPEN_PILLARS[key]=!SIG_OPEN_PILLARS[key];
@@ -3421,52 +3426,55 @@ function sigBoot() {
 }
 
 function initSigListScroll() {
-    const layout = document.getElementById('sig-layout') || document.querySelector('.sig-layout');
+    const layout = document.getElementById('sig-layout');
     const L  = document.getElementById('sig-list');
     const LI = document.getElementById('sig-list-inner');
     const R  = document.getElementById('sig-detail');
+    const RI = document.getElementById('sig-detail-inner');
 
-    let startX=0, startY=0, startCurY=0, startScrollX=0;
-    let curY=0, isHoriz=null;
+    let startX=0, startY=0;
+    let startCurLY=0, startCurRY=0, startScrollX=0;
+    let curLY=0, curRY=0;
+    let isHoriz=null, touchOnLeft=false;
 
-    function onStart(e) {
+    layout.addEventListener('touchstart', e=>{
         const t = e.touches[0];
         startX = t.clientX;
         startY = t.clientY;
-        startCurY = curY;
+        startCurLY = curLY;
+        startCurRY = curRY;
         startScrollX = layout.scrollLeft;
         isHoriz = null;
-    }
+        touchOnLeft = L.contains(e.target);
+    }, {passive:true});
 
-    function onMove(e) {
+    layout.addEventListener('touchmove', e=>{
         const t = e.touches[0];
         const dx = t.clientX - startX;
         const dy = t.clientY - startY;
 
-        // Determine direction on first significant move
-        if (isHoriz === null && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        if (isHoriz === null && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
             isHoriz = Math.abs(dx) > Math.abs(dy);
         }
         if (isHoriz === null) return;
 
         if (isHoriz) {
-            // Horizontal — scroll both panes together via layout.scrollLeft
             layout.scrollLeft = startScrollX - dx;
-        } else if (L.contains(e.target) || LI.contains(e.target)) {
-            // Vertical on left pane — JS scroll
+        } else if (touchOnLeft) {
             const maxUp = -(LI.offsetHeight - L.offsetHeight);
-            curY = Math.min(0, Math.max(maxUp, startCurY + dy));
-            LI.style.transform = `translateY(${curY}px)`;
+            curLY = Math.min(0, Math.max(maxUp, startCurLY + dy));
+            LI.style.transform = `translateY(${curLY}px)`;
+        } else {
+            const maxUp = -(RI.offsetHeight - R.offsetHeight);
+            curRY = Math.min(0, Math.max(maxUp, startCurRY + dy));
+            RI.style.transform = `translateY(${curRY}px)`;
         }
-        // Vertical on right pane — native CSS scroll handles it
-    }
+    }, {passive:true});
 
-    // Attach to the whole layout so swipe anywhere works
-    layout.addEventListener('touchstart', onStart, {passive:true});
-    layout.addEventListener('touchmove',  onMove,  {passive:true});
-
-    // Reset left pane scroll on re-render
-    window._sigListResetScroll = ()=>{ curY=0; LI.style.transform='translateY(0px)'; };
+    window._sigListResetScroll = ()=>{
+        curLY=0; LI.style.transform='translateY(0px)';
+        curRY=0; RI.style.transform='translateY(0px)';
+    };
 }
 
 
