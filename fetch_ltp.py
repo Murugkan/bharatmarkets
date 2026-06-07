@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 SYMBOLS_FILE   = "data/unified-symbols.json"
 SYMBOL_MAP_FILE= "data/symbol_map.json"
 LTP_FILE       = "data/ltp.json"
+SECTOR_IDX_FILE= "data/sector_indices.json"
 
 # ── Load shared symbol map ─────────────────────────────────────────────
 def load_symbol_map():
@@ -319,6 +320,64 @@ def build_quote(sym, info, hist):
     }
 
 
+
+# ── Sector Index Symbols (Yahoo Finance) ──────────────────────────────────────
+SECTOR_INDEX_MAP = {
+    "Information Technology": ("^CNXIT",     "Nifty IT"),
+    "Financials":             ("^NSEBANK",   "Nifty Bank"),
+    "Healthcare":             ("^CNXPHARMA", "Nifty Pharma"),
+    "Consumer Staples":       ("^CNXFMCG",  "Nifty FMCG"),
+    "Consumer Discretionary": ("^CNXAUTO",  "Nifty Auto"),
+    "Materials":              ("^CNXMETAL",  "Nifty Metal"),
+    "Energy":                 ("^CNXENERGY", "Nifty Energy"),
+    "Industrials":            ("^CNXINFRA",  "Nifty Infra"),
+    "Utilities":              ("^CNXINFRA",  "Nifty Infra"),
+    "Defence":                ("^CNXDEFENCE","Nifty Defence"),
+    "Telecom":                ("^CNXINFRA",  "Nifty Infra"),
+    "ETF":                    ("^NSEI",      "Nifty 50"),
+}
+
+def fetch_sector_indices():
+    print(f"\n📊 Fetching sector indices…")
+    results = {}
+    seen = {}  # cache — avoid re-fetching same symbol
+
+    for sector, (symbol, name) in SECTOR_INDEX_MAP.items():
+        if symbol in seen:
+            results[sector] = {**seen[symbol], "symbol": symbol, "name": name}
+            print(f"  ↩ {sector:<30} {symbol} (cached)")
+            continue
+        try:
+            t = yf.Ticker(symbol)
+            hist = t.history(period="1y", interval="1wk", auto_adjust=True)
+            if hist is None or hist.empty:
+                raise ValueError("empty history")
+            closes = hist["Close"].dropna()
+            start_px = float(closes.iloc[0])
+            end_px   = float(closes.iloc[-1])
+            chg_pct  = round((end_px - start_px) / start_px * 100, 2)
+            as_of    = closes.index[-1].strftime("%Y-%m-%d")
+            entry = {
+                "symbol":         symbol,
+                "name":           name,
+                "price":          round(end_px, 2),
+                "change_52w_pct": chg_pct,
+                "as_of":          as_of,
+            }
+            seen[symbol] = entry
+            results[sector] = entry
+            print(f"  ✓ {sector:<30} {symbol}  {chg_pct:+.1f}%")
+        except Exception as e:
+            print(f"  ✗ {sector:<30} {symbol}  {e}")
+            results[sector] = {"symbol": symbol, "name": name}
+        time.sleep(0.3)
+
+    Path(SECTOR_IDX_FILE).write_text(
+        json.dumps({"updated": now_utc().isoformat(), "sectors": results}, indent=2))
+    ok = sum(1 for v in results.values() if "change_52w_pct" in v)
+    print(f"  → {ok}/{len(results)} fetched → {SECTOR_IDX_FILE}")
+
+
 def main():
     # Purge old data
     Path(LTP_FILE).write_text("")
@@ -526,6 +585,8 @@ def main():
             "quotes": quotes
         }, separators=(",",":")))
     
+    fetch_sector_indices()
+
     elapsed = (now_utc() - start_time).total_seconds()
     print(f"\n{'='*50}")
     print(f"✅ SUMMARY")
