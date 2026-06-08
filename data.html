@@ -794,6 +794,8 @@
             } else if (s.name === 'ltp.json') {
                 // LTP JSON: trigger workflow to fetch fresh data from Yahoo Finance
                 loadButton = `<button onclick="triggerLTPWorkflowOnly()" style="padding:4px 8px; font-size:8px;">⚡</button>`;
+            } else if (s.name === 'sector_indices.json') {
+                loadButton = `<button onclick="fetchSectorIndicesOnly()" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
             } else {
                 // Market data and other files: direct fetch
                 loadButton = `<button onclick="dataLoad('${s.name}')" style="padding:4px 8px; font-size:8px;">⬇️</button>`;
@@ -945,7 +947,7 @@
                         getAllReq.onsuccess = () => {
                             const allRecords = getAllReq.result || [];
                             // Filter out _METADATA_ record - only keep actual stocks
-                            masterData = allRecords.filter(record => record.ticker !== '_METADATA_');
+                            masterData = allRecords.filter(record => !record.ticker.startsWith('_'));
                             log(`✅ Loaded ${masterData.length} stocks from IndexedDB (${allRecords.length} total records)`);
                             resolve();
                         };
@@ -2419,7 +2421,8 @@ CRITICAL RULES:
                             stock.price.ltp.low = quote.low;
                             stock.price.ltp.prev_close = quote.prev;
                             stock.price.ltp.change = quote.change;
-                            stock.price.ltp.change_pct = quote.changePct;
+                            stock.price.ltp.changePct = quote.changePct;        // camelCase — used by signals
+                            stock.price.ltp.change_pct = quote.changePct;       // snake_case — consistency
                             stock.price.ltp.day_volume = quote.vol;
                             if (!stock.price['52_week']) stock.price['52_week'] = {};
                             stock.price['52_week'].high = quote.w52h;
@@ -2461,15 +2464,28 @@ CRITICAL RULES:
                     logSuccess('LTP merged', `${mergedCount} stocks`);
                     logSuccess('Complete data load finished');
                     updateStatusButton('✅ Loaded (' + mergedCount + ' prices)');
-                    showToast('✅ Fresh data loaded! Refresh to see updates.', 'success');
                     
-                    // Update timestamp for ltp.json
                     dataUpdatedTimes['ltp.json'] = ltpTime;
                     dataUpdatedTimes['data/ltp.json'] = ltpTime;
                     
-                    db.close();
+                    db.close();  // Close before opening new connection
+
+                    // Auto-fetch sector_indices into DB
+                    const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
+                    fetch(siUrl)
+                        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                        .then(si => {
+                            saveSectorIndicesToDB(si);
+                            logSuccess('Sector indices loaded');
+                            showToast('✅ Fresh data loaded! Refresh to see updates.', 'success');
+                        })
+                        .catch(e => {
+                            logWarning(`Sector indices skipped: ${e}`);
+                            showToast('✅ Fresh data loaded! Refresh to see updates.', 'success');
+                        });
+
                     renderSymbols();
-                    renderDataSources(); // Refresh the sources table with new timestamp
+                    renderDataSources();
                     resolve();
                 };
                 
@@ -2552,6 +2568,25 @@ CRITICAL RULES:
     }
     
     
+    function fetchSectorIndicesOnly() {
+        logFetch('sector_indices.json');
+        updateStatusButton('⏳ Fetching Sector Indices');
+        const url = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
+        fetch(url)
+            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+            .then(data => {
+                saveSectorIndicesToDB(data);
+                updateStatusButton('✅ Sector Indices Updated');
+                showToast('✅ Sector indices saved to DB', 'success');
+                renderDataSources();
+            })
+            .catch(err => {
+                logError('Fetching sector_indices.json', err);
+                updateStatusButton('❌ Error');
+                showToast(`❌ Error: ${err}`, 'error');
+            });
+    }
+
     function fetchAndMergeLTPOnly() {
         logFetch('ltp.json');
         updateStatusButton('⏳ Fetching LTP');
@@ -2609,7 +2644,8 @@ CRITICAL RULES:
                                 stock.price.ltp.low = quote.low;
                                 stock.price.ltp.prev_close = quote.prev;
                                 stock.price.ltp.change = quote.change;
-                                stock.price.ltp.change_pct = quote.changePct;
+                                stock.price.ltp.changePct = quote.changePct;        // camelCase — used by signals
+                                stock.price.ltp.change_pct = quote.changePct;       // snake_case — consistency
                                 stock.price.ltp.day_volume = quote.vol;
                                 if (!stock.price['52_week']) stock.price['52_week'] = {};
                                 stock.price['52_week'].high = quote.w52h;
@@ -2650,11 +2686,24 @@ CRITICAL RULES:
                     tx.oncomplete = function() {
                         logSuccess('LTP updated', `${updatedCount} stocks`);
                         updateStatusButton('✅ LTP Updated');
-                        showToast(`Updated ${updatedCount} stocks. Refresh index.html to see prices.`, 'success');
-                        
-                        db.close();
+                        db.close();  // Close first before opening new connection
+
+                        // Auto-fetch sector_indices.json into DB after DB is closed
+                        const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
+                        fetch(siUrl)
+                            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                            .then(si => {
+                                saveSectorIndicesToDB(si);
+                                logSuccess('Sector indices updated');
+                                showToast(`✅ Updated ${updatedCount} stocks + sector indices`, 'success');
+                            })
+                            .catch(e => {
+                                logWarning(`Sector indices fetch skipped: ${e}`);
+                                showToast(`✅ Updated ${updatedCount} stocks`, 'success');
+                            });
+
                         renderSymbols();
-                        renderDataSources(); // Refresh the sources table with new timestamp
+                        renderDataSources();
                     };
                     
                     tx.onerror = function() {

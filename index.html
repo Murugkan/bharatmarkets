@@ -2761,21 +2761,18 @@ function drawSigHeatmap(stats) {
     const sMax = Math.max(...allScores);
 
     function scoreToColor(score) {
-        // Normalise 0-1 within actual range (not fixed 0-100)
-        const t = sMax === sMin ? 0.5 : (score - sMin) / (sMax - sMin);
-        // Interpolate: red(0) → amber(0.35) → yellow-green(0.6) → green(1)
+        // Absolute thresholds aligned to rating bands (not relative to range)
+        // <40=red, 40-53=orange, 53-67=yellow-green, 67-80=green, >80=vivid green
+        const t = Math.max(0, Math.min(1, (score - 35) / 50)); // 35→0, 85→1
         let r, g, b;
-        if (t < 0.35) {
-            // red → amber
-            const p = t / 0.35;
+        if (t < 0.30) {
+            const p = t / 0.30;
             r = 220; g = Math.round(50 + p * 110); b = 20;
-        } else if (t < 0.65) {
-            // amber → yellow-green
-            const p = (t - 0.35) / 0.30;
+        } else if (t < 0.60) {
+            const p = (t - 0.30) / 0.30;
             r = Math.round(220 - p * 100); g = Math.round(160 + p * 60); b = 20;
         } else {
-            // yellow-green → vivid green
-            const p = (t - 0.65) / 0.35;
+            const p = (t - 0.60) / 0.40;
             r = Math.round(120 - p * 80); g = Math.round(220 + p * 35); b = Math.round(20 + p * 80);
         }
         return `rgb(${r},${g},${b})`;
@@ -2953,13 +2950,18 @@ function renderSectorPanel(sectorName, stats) {
     const rows = allTickers.map(t => {
         const p = portMap[t] ?? null;
         const st = sectorTickers.find(x => x.ticker === t);
-        const oneDPct = sigToF(st?.price?.ltp?.changePct ?? st?.price?.price_change_pct) ?? null;
-        const dIdxRow = dff(p, idxChg);
+        const stock1d  = sigToF(st?.price?.ltp?.changePct ?? st?.price?.price_change_pct);
+        const stock52w = st?.price?.['52_week']?.change_pct ?? null;
+        const diff1d   = dff(stock1d,  idxData.change_1d_pct  ?? null);
+        const diff52w  = dff(stock52w, idxChg);
         return `<tr style="border-bottom:1px solid #1a1a1a">
             <td style="padding:5px 4px;font-size:10px;color:#ddd;white-space:nowrap">${t}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(oneDPct)};text-align:right">${fmt(oneDPct)}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(stock1d)};text-align:right">${fmt(stock1d)}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(idxData.change_1d_pct??null)};text-align:right">${fmt(idxData.change_1d_pct??null)}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(diff1d)};text-align:right">${diff1d!=null?(diff1d>=0?'+':'')+diff1d.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(stock52w)};text-align:right;border-left:1px solid #1a1a1a">${fmt(stock52w)}</td>
             <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(idxChg)};text-align:right">${fmt(idxChg)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(dIdxRow)};text-align:right">${dIdxRow!=null?(dIdxRow>=0?'+':'')+dIdxRow.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(diff52w)};text-align:right">${diff52w!=null?(diff52w>=0?'+':'')+diff52w.toFixed(1)+'%':'—'}</td>
         </tr>`;
     }).join('');
 
@@ -3005,9 +3007,12 @@ function renderSectorPanel(sectorName, stats) {
                 <thead>
                     <tr style="border-bottom:1px solid #2a2a2a;background:#111">
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">1D%</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">IDX 52W</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">DIFF</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">1D%</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">IDX 1D</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">DIFF</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;border-left:1px solid #2a2a2a">52W%</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">IDX 52W</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">DIFF</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
