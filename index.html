@@ -2943,12 +2943,14 @@ function renderSectorPanel(sectorName, stats) {
         const p = portMap[t] ?? null;
         const st = sectorTickers.find(x => x.ticker === t);
         const m = st?.price?.['52_week']?.change_pct ?? null;
-        const d = dff(p, m);
+        const dPeerRow = dff(p, m);
+        const dIdxRow  = dff(p, idxChg);
         return `<tr style="border-bottom:1px solid #1a1a1a">
             <td style="padding:5px 4px;font-size:10px;color:#ddd;white-space:nowrap">${t}</td>
             <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(p)};text-align:right">${fmt(p)}</td>
             <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(m)};text-align:right">${fmt(m)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(d)};text-align:right">${d!=null?(d>=0?'+':'')+d.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(dPeerRow)};text-align:right">${dPeerRow!=null?(dPeerRow>=0?'+':'')+dPeerRow.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(dIdxRow)};text-align:right">${dIdxRow!=null?(dIdxRow>=0?'+':'')+dIdxRow.toFixed(1)+'%':'—'}</td>
         </tr>`;
     }).join('');
 
@@ -2996,7 +2998,8 @@ function renderSectorPanel(sectorName, stats) {
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">MY P&L</th>
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">PEER 52W</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">DIFF</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">vs PEER</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">vs IDX</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
