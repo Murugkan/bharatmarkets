@@ -349,24 +349,38 @@ def fetch_sector_indices():
             continue
         try:
             t = yf.Ticker(symbol)
-            hist = t.history(period="1y", interval="1wk", auto_adjust=True)
-            if hist is None or hist.empty:
-                raise ValueError("empty history")
-            closes = hist["Close"].dropna()
-            start_px = float(closes.iloc[0])
-            end_px   = float(closes.iloc[-1])
-            chg_pct  = round((end_px - start_px) / start_px * 100, 2)
-            as_of    = closes.index[-1].strftime("%Y-%m-%d")
+
+            # 52W change — weekly history
+            hist_w = t.history(period="1y", interval="1wk", auto_adjust=True)
+            if hist_w is None or hist_w.empty:
+                raise ValueError("empty weekly history")
+            closes_w = hist_w["Close"].dropna()
+            start_px  = float(closes_w.iloc[0])
+            end_px    = float(closes_w.iloc[-1])
+            chg_52w   = round((end_px - start_px) / start_px * 100, 2)
+            as_of     = closes_w.index[-1].strftime("%Y-%m-%d")
+
+            # 1D change — daily history (last 5 days for safety)
+            hist_d = t.history(period="5d", interval="1d", auto_adjust=True)
+            chg_1d = None
+            if hist_d is not None and len(hist_d) >= 2:
+                closes_d = hist_d["Close"].dropna()
+                prev_px  = float(closes_d.iloc[-2])
+                last_px  = float(closes_d.iloc[-1])
+                if prev_px > 0:
+                    chg_1d = round((last_px - prev_px) / prev_px * 100, 2)
+
             entry = {
                 "symbol":         symbol,
                 "name":           name,
                 "price":          round(end_px, 2),
-                "change_52w_pct": chg_pct,
+                "change_52w_pct": chg_52w,
+                "change_1d_pct":  chg_1d,
                 "as_of":          as_of,
             }
             seen[symbol] = entry
             results[sector] = entry
-            print(f"  ✓ {sector:<30} {symbol}  {chg_pct:+.1f}%")
+            print(f"  ✓ {sector:<30} {symbol}  52W:{chg_52w:+.1f}%  1D:{chg_1d:+.2f}%" if chg_1d is not None else f"  ✓ {sector:<30} {symbol}  52W:{chg_52w:+.1f}%")
         except Exception as e:
             print(f"  ✗ {sector:<30} {symbol}  {e}")
             results[sector] = {"symbol": symbol, "name": name}
