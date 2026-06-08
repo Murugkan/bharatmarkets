@@ -2869,19 +2869,27 @@ function drawSigHeatmap(stats) {
         ctx.textBaseline = 'middle';
 
         if (ch >= 38 && cw >= 52) {
-            // Name + score
             const ns = cw > 130 ? 11 : cw > 80 ? 10 : 9;
             let nm = r.name
                 .replace('Information Technology', 'Info Tech')
                 .replace('Consumer Discretionary', 'Cons. Discr.')
                 .replace('Consumer Staples', 'Cons. Staples');
             if (nm.length > 14 && cw < 110) nm = nm.substring(0, 13) + '…';
+
+            const idx1d = SECTOR_INDICES[r.name]?.change_1d_pct ?? null;
+            const idx1dStr = idx1d !== null ? (idx1d >= 0 ? '+' : '') + idx1d.toFixed(1) + '%' : '';
+
             ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
             ctx.fillStyle = 'rgba(255,255,255,0.92)';
-            ctx.fillText(nm, cx, cy - 8);
-            ctx.font = `800 ${ns + 1}px "JetBrains Mono",monospace`;
+            ctx.fillText(nm, cx, cy - 10);
+            ctx.font = `800 ${ns + 2}px "JetBrains Mono",monospace`;
             ctx.fillStyle = '#fff';
-            ctx.fillText(r.score, cx, cy + 8);
+            ctx.fillText(r.score, cx, cy + 4);
+            if (idx1dStr && ch >= 52) {
+                ctx.font = `600 ${ns - 1}px "JetBrains Mono",monospace`;
+                ctx.fillStyle = idx1d >= 0 ? 'rgba(0,255,136,0.9)' : 'rgba(255,77,109,0.9)';
+                ctx.fillText(idx1dStr, cx, cy + 17);
+            }
         } else if (ch >= 22 && cw >= 32) {
             const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.3), 11);
             ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
@@ -2948,20 +2956,17 @@ function renderSectorPanel(sectorName, stats) {
     ])].sort();
 
     const rows = allTickers.map(t => {
-        const p = portMap[t] ?? null;
         const st = sectorTickers.find(x => x.ticker === t);
-        const stock1d  = sigToF(st?.price?.ltp?.changePct ?? st?.price?.price_change_pct);
+        const stock1d  = sigToF(st?.price?.ltp?.changePct ?? st?.price?.ltp?.change_pct);
         const stock52w = st?.price?.['52_week']?.change_pct ?? null;
-        const diff1d   = dff(stock1d,  idxData.change_1d_pct  ?? null);
+        const diff1d   = dff(stock1d,  idxData.change_1d_pct ?? null);
         const diff52w  = dff(stock52w, idxChg);
         return `<tr style="border-bottom:1px solid #1a1a1a">
             <td style="padding:5px 4px;font-size:10px;color:#ddd;white-space:nowrap">${t}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(stock1d)};text-align:right">${fmt(stock1d)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(idxData.change_1d_pct??null)};text-align:right">${fmt(idxData.change_1d_pct??null)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(diff1d)};text-align:right">${diff1d!=null?(diff1d>=0?'+':'')+diff1d.toFixed(1)+'%':'—'}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(stock52w)};text-align:right;border-left:1px solid #1a1a1a">${fmt(stock52w)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(idxChg)};text-align:right">${fmt(idxChg)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(diff52w)};text-align:right">${diff52w!=null?(diff52w>=0?'+':'')+diff52w.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:11px;font-weight:700;color:${col(stock1d)};text-align:right">${fmt(stock1d)}</td>
+            <td style="padding:5px 4px;font-size:11px;font-weight:800;color:${col(diff1d)};text-align:right">${diff1d!=null?(diff1d>=0?'+':'')+diff1d.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:11px;font-weight:700;color:${col(stock52w)};text-align:right;border-left:1px solid #222">${fmt(stock52w)}</td>
+            <td style="padding:5px 4px;font-size:11px;font-weight:800;color:${col(diff52w)};text-align:right">${diff52w!=null?(diff52w>=0?'+':'')+diff52w.toFixed(1)+'%':'—'}</td>
         </tr>`;
     }).join('');
 
@@ -2971,7 +2976,7 @@ function renderSectorPanel(sectorName, stats) {
             <div style="font-size:11px;font-weight:800;color:#00f2ff;letter-spacing:0.08em">${sectorName.toUpperCase()}</div>
             <div style="font-size:9px;color:#bbb;cursor:pointer;padding:2px 8px;border:1px solid #333;border-radius:4px" onclick="document.getElementById('sec-panel').style.display='none'">✕</div>
         </div>
-        <!-- Row 1: Absolute values — Portfolio | Index | Peer Universe -->
+        <!-- Row 1: Absolute values — Portfolio | Index 52W | Peer Universe -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px 8px 0 0;overflow:hidden;border-bottom:none">
             <div style="padding:8px 6px;border-right:1px solid #2a2a2a">
                 <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">PORTFOLIO</div>
@@ -2979,9 +2984,9 @@ function renderSectorPanel(sectorName, stats) {
                 <div style="font-size:8px;color:#bbb;margin-top:2px">${portVals.length} held</div>
             </div>
             <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:center">
-                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()}</div>
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()} 52W</div>
                 <div style="font-size:14px;font-weight:800;color:${col(idxChg)}">${fmt(idxChg)}</div>
-                <div style="font-size:8px;color:${col(idxData.change_1d_pct??null)};margin-top:2px">${idxData.change_1d_pct!=null?(idxData.change_1d_pct>=0?'+':'')+idxData.change_1d_pct.toFixed(2)+'% today':''}  ${idxSym}</div>
+                <div style="font-size:8px;color:#bbb;margin-top:2px">${idxSym}</div>
             </div>
             <div style="padding:8px 6px;text-align:right">
                 <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">PEER UNIVERSE</div>
@@ -2989,14 +2994,29 @@ function renderSectorPanel(sectorName, stats) {
                 <div style="font-size:8px;color:#bbb;margin-top:2px">${peerVals.length} stocks 52W</div>
             </div>
         </div>
+        <!-- Row 1b: Index 1D -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-top:1px solid #1a1a1a;overflow:hidden;border-bottom:none">
+            <div style="padding:6px 6px;border-right:1px solid #2a2a2a">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">TODAY</div>
+                <div style="font-size:14px;font-weight:800;color:#666">—</div>
+            </div>
+            <div style="padding:6px 6px;border-right:1px solid #2a2a2a;text-align:center">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()} 1D</div>
+                <div style="font-size:14px;font-weight:800;color:${col(idxData.change_1d_pct??null)}">${idxData.change_1d_pct!=null?(idxData.change_1d_pct>=0?'+':'')+idxData.change_1d_pct.toFixed(2)+'%':'—'}</div>
+            </div>
+            <div style="padding:6px 6px;text-align:right">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">&nbsp;</div>
+                <div style="font-size:14px;font-weight:800;color:#666">—</div>
+            </div>
+        </div>
         <!-- Row 2: Diffs — vs Index (alpha) | vs Peers -->
         <div style="display:grid;grid-template-columns:1fr 1fr;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:0 0 8px 8px;overflow:hidden;margin-bottom:6px">
             <div style="padding:6px 8px;border-right:1px solid #2a2a2a">
-                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">vs INDEX (ALPHA)</div>
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">ALPHA vs INDEX</div>
                 <div style="font-size:16px;font-weight:800;color:${col(dIdx)}">${dIdx!=null?(dIdx>=0?'+':'')+dIdx.toFixed(1)+'%':'—'}</div>
             </div>
             <div style="padding:6px 8px;text-align:right">
-                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">vs PEER UNIVERSE</div>
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">ALPHA vs PEERS</div>
                 <div style="font-size:16px;font-weight:800;color:${col(dPeer)}">${dPeer!=null?(dPeer>=0?'+':'')+dPeer.toFixed(1)+'%':'—'}</div>
             </div>
         </div>
@@ -3008,11 +3028,9 @@ function renderSectorPanel(sectorName, stats) {
                     <tr style="border-bottom:1px solid #2a2a2a;background:#111">
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">1D%</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">IDX 1D</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">DIFF</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">vs IDX</th>
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;border-left:1px solid #2a2a2a">52W%</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">IDX 52W</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">DIFF</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">vs IDX</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
