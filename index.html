@@ -784,11 +784,22 @@ async function init() {
     SECTORS.forEach((s, i) => COL[s] = PALETTE[i % PALETTE.length]);
     viewMode = 'all';  // Initialize with mixed portfolio+watchlist view
 
-    // Fetch sector indices (non-blocking)
-    fetch('data/sector_indices.json')
-        .then(r => r.json())
-        .then(d => { SECTOR_INDICES = d.sectors || {}; console.log('✅ Sector indices loaded'); })
-        .catch(e => console.warn('⚠ sector_indices.json not found:', e));
+    // Load sector indices from IndexedDB
+    const idb = indexedDB.open('raalanportfolio');
+    idb.onsuccess = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('stocks')) { db.close(); return; }
+        const tx = db.transaction('stocks', 'readonly');
+        const store = tx.objectStore('stocks');
+        const req = store.get('_SECTOR_INDICES_');
+        req.onsuccess = () => {
+            if (req.result?.sectors) {
+                SECTOR_INDICES = req.result.sectors;
+                console.log('✅ Sector indices loaded from IndexedDB');
+            }
+            db.close();
+        };
+    };
 
     render();
 }

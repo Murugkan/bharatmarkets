@@ -478,7 +478,8 @@
             ltp: 'data/ltp.json',
             guidance: 'guidance.json',
             macro: 'macro_data.json',
-            market_data: 'data/market_data.json'
+            market_data: 'data/market_data.json',
+            sector_indices: 'data/sector_indices.json'
         }
     };
     
@@ -487,7 +488,8 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'ltp.json', path: GITHUB_CONFIG.PATHS.ltp },
-        { name: 'market_data.json', path: GITHUB_CONFIG.PATHS.market_data }
+        { name: 'market_data.json', path: GITHUB_CONFIG.PATHS.market_data },
+        { name: 'sector_indices.json', path: GITHUB_CONFIG.PATHS.sector_indices }
     ];
 
     async function fetchGitHubData(filePath) {
@@ -760,6 +762,8 @@
                 count = metadata.ltp_count || '—';
             } else if (s.name === 'unified-symbols.json') {
                 count = metadata.symbols_count || '—';
+            } else if (s.name === 'sector_indices.json') {
+                count = metadata.sector_indices_count || '—';
             }
             
             // Get timestamp from metadata
@@ -768,6 +772,8 @@
                 jsonTime = metadata.market_data_generated_at || '—';
             } else if (s.name === 'ltp.json') {
                 jsonTime = metadata.ltp_updated_at || '—';
+            } else if (s.name === 'sector_indices.json') {
+                jsonTime = metadata.sector_indices_updated_at || '—';
             }
             
             // Convert ISO to IST (UTC+5:30)
@@ -829,6 +835,8 @@
             githubUrl = `${RAW_GITHUB_URL}/data/ltp.json`;
         } else if (source === 'market_data.json') {
             githubUrl = `${RAW_GITHUB_URL}/data/market_data.json`;
+        } else if (source === 'sector_indices.json') {
+            githubUrl = `${RAW_GITHUB_URL}/data/sector_indices.json`;
         }
         
         if (!githubUrl) {
@@ -853,10 +861,16 @@
                     if (data.quotes) count = Object.keys(data.quotes).length;
                     else if (data.symbols) count = data.symbols.length;
                     else if (data.stocks) count = Object.keys(data.stocks).length;
+                    else if (data.sectors) count = Object.keys(data.sectors).length;
                     else if (Array.isArray(data)) count = data.length;
                     
                     log(`📊 Retrieved ${count} records from ${source}`);
                     showToast(`✅ Fetched ${source} (${count} records)`);
+
+                    // Save sector_indices into IndexedDB as _SECTOR_INDICES_ record
+                    if (source === 'sector_indices.json') {
+                        saveSectorIndicesToDB(data);
+                    }
                 } else {
                     log(`❌ Fetch returned empty data`);
                     showToast('❌ No data received');
@@ -866,6 +880,32 @@
                 log(`❌ Fetch failed: ${err.message}`);
                 showToast(`❌ Error: ${err.message}`);
             });
+    }
+
+    function saveSectorIndicesToDB(data) {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = (e) => {
+            const db = e.target.result;
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const sectors = data.sectors || data;
+            const updated = data.updated || new Date().toISOString();
+            // Save sector indices record
+            store.put({ ticker: '_SECTOR_INDICES_', sectors, updated });
+            // Update metadata record
+            const metaGet = store.get('_METADATA_');
+            metaGet.onsuccess = () => {
+                const meta = metaGet.result || { ticker: '_METADATA_' };
+                meta.sector_indices_count  = Object.keys(sectors).length;
+                meta.sector_indices_updated_at = updated;
+                store.put(meta);
+            };
+            tx.oncomplete = () => {
+                log('✅ Sector indices saved to IndexedDB');
+                showToast('✅ Sector indices saved');
+                db.close();
+            };
+        };
     }
 
     async function loadFromIndexedDB() {
