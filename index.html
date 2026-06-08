@@ -2942,14 +2942,12 @@ function renderSectorPanel(sectorName, stats) {
     const rows = allTickers.map(t => {
         const p = portMap[t] ?? null;
         const st = sectorTickers.find(x => x.ticker === t);
-        const m = st?.price?.['52_week']?.change_pct ?? null;
-        const dPeerRow = dff(p, m);
-        const dIdxRow  = dff(p, idxChg);
+        const oneDPct = sigToF(st?.price?.ltp?.changePct ?? st?.price?.price_change_pct) ?? null;
+        const dIdxRow = dff(p, idxChg);
         return `<tr style="border-bottom:1px solid #1a1a1a">
             <td style="padding:5px 4px;font-size:10px;color:#ddd;white-space:nowrap">${t}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(p)};text-align:right">${fmt(p)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(m)};text-align:right">${fmt(m)}</td>
-            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(dPeerRow)};text-align:right">${dPeerRow!=null?(dPeerRow>=0?'+':'')+dPeerRow.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(oneDPct)};text-align:right">${fmt(oneDPct)}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(idxChg)};text-align:right">${fmt(idxChg)}</td>
             <td style="padding:5px 4px;font-size:10px;font-weight:800;color:${col(dIdxRow)};text-align:right">${dIdxRow!=null?(dIdxRow>=0?'+':'')+dIdxRow.toFixed(1)+'%':'—'}</td>
         </tr>`;
     }).join('');
@@ -2996,10 +2994,9 @@ function renderSectorPanel(sectorName, stats) {
                 <thead>
                     <tr style="border-bottom:1px solid #2a2a2a;background:#111">
                         <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">MY P&L</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">PEER 52W</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">vs PEER</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">vs IDX</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">1D%</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">IDX 52W</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;letter-spacing:0.06em">DIFF</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
