@@ -350,7 +350,7 @@
         <!-- ACTION BUTTONS -->
         <div class="inline-buttons">
             <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00ff88 0%, #00dd66 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>DATA LOAD</button>
-            <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>LTP LOAD<br><span style="font-size:9px; font-weight:normal;">Live</span></button>
+            <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #f59e0b 0%, #f87316 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>LIVE LOAD</button>
             <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH <span id="dbCountBox" style="font-weight:800; margin-left:4px;">0|0</span></button>
         </div>
 
@@ -2514,28 +2514,16 @@ CRITICAL RULES:
                         }
                     });
                     
-                    // Update metadata with LTP timestamp and count
+                    // Read-modify-write: preserve ALL existing fields, only update LTP fields
                     const getMetadataReq = store.get('_METADATA_');
                     getMetadataReq.onsuccess = function() {
-                        const existingMetadata = getMetadataReq.result || {};
-                        
-                        const metadata = {
-                            ticker: '_METADATA_',
-                            market_data_generated_at: existingMetadata.market_data_generated_at,
-                            market_data_count: existingMetadata.market_data_count,
-                            ltp_updated_at: ltpTime,
-                            ltp_count: mergedCount
-                        };
-                        store.put(metadata);
+                        const meta = getMetadataReq.result || { ticker: '_METADATA_' };
+                        meta.ltp_updated_at = ltpTime;
+                        meta.ltp_count = mergedCount;
+                        store.put(meta);
                     };
                     getMetadataReq.onerror = function() {
-                        // If metadata doesn't exist, create it
-                        const metadata = {
-                            ticker: '_METADATA_',
-                            ltp_updated_at: ltpTime,
-                            ltp_count: mergedCount
-                        };
-                        store.put(metadata);
+                        store.put({ ticker: '_METADATA_', ltp_updated_at: ltpTime, ltp_count: mergedCount });
                     };
                 };
                 
@@ -2561,7 +2549,7 @@ CRITICAL RULES:
     }
     
     function updateLTPFromGitHub() {
-        logInfo('LTP LOAD: Fetching and merging latest LTP data');
+        logInfo('LIVE LOAD: Fetching LTP + sector indices');
         updateStatusButton('⏳ Fetching LTP');
         
         // Just fetch and merge - no workflow trigger needed
@@ -2632,12 +2620,12 @@ CRITICAL RULES:
         const url = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
         fetch(url)
             .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-            .then(data => {
-                saveSectorIndicesToDB(data);
+            .then(data => saveSectorIndicesToDB(data, () => {
+                // Render only after DB transaction commits
                 updateStatusButton('✅ Sector Indices Updated');
-                showToast('✅ Sector indices saved to DB', 'success');
                 renderDataSources();
-            })
+                showToast('✅ Sector indices saved to DB', 'success');
+            }))
             .catch(err => {
                 logError('Fetching sector_indices.json', err);
                 updateStatusButton('❌ Error');
@@ -2873,85 +2861,6 @@ CRITICAL RULES:
     }
     
     // New dedicated function to refresh LTP only (quick refresh without reloading fundamentals)
-    async function refreshLTPOnly() {
-        log('⚡ QUICK REFRESH: Updating LTP prices only...');
-        updateStatusButton('⏳ Refreshing prices');
-        
-        try {
-            const cacheBuster = Date.now(); // Random timestamp to bypass all caches
-            const response = await fetch(`prices.json?t=${cacheBuster}`, {
-                cache: 'no-store', // Force no-cache
-                headers: {
-                    'pragma': 'no-cache',
-                    'cache-control': 'no-cache'
-                }
-            });
-            
-            if (!response.ok) {
-                log('⚠️ prices.json not found');
-                updateStatusButton('❌ Not found');
-                return;
-            }
-            
-            const pricesData = await response.json();
-            if (!pricesData.quotes) {
-                log('❌ Invalid prices.json');
-                updateStatusButton('❌ Invalid');
-                return;
-            }
-            
-            log('📦 Merging ' + Object.keys(pricesData.quotes).length + ' price quotes');
-            
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
-            request.onsuccess = function() {
-                const db = request.result;
-                const tx = db.transaction(STORE_NAME, 'readwrite');
-                const store = tx.objectStore(STORE_NAME);
-                const getAllReq = store.getAll();
-                
-                let updatedCount = 0;
-                
-                getAllReq.onsuccess = function() {
-                    const stocks = getAllReq.result;
-                    stocks.forEach(function(stock) {
-                        const ticker = stock.ticker;
-                        const priceQuote = pricesData.quotes[ticker];
-                        
-                        if (priceQuote) {
-                            if (!stock.price) stock.price = {};
-                            if (!stock.price.ltp) stock.price.ltp = {};
-                            stock.price.ltp.price = priceQuote;
-                            store.put(stock);
-                            updatedCount++;
-                        }
-                    });
-                };
-                
-                tx.oncomplete = function() {
-                    log(`✅ Updated ${updatedCount} stocks`);
-                    updateStatusButton('✅ LTP Updated');
-                    showToast(`✅ Updated ${updatedCount} prices. Refresh index.html to see changes.`, 'success');
-                    // Trigger re-render if possible
-                    renderSymbols();
-                };
-                
-                tx.onerror = function() {
-                    log('❌ Transaction error');
-                    updateStatusButton('❌ Error');
-                };
-            };
-            
-            request.onerror = function() {
-                log('❌ DB Error');
-                updateStatusButton('❌ DB Error');
-            };
-            
-        } catch(err) {
-            log('❌ Error: ' + err.message);
-            updateStatusButton('❌ Error');
-        }
-    }
-        
 
     function updateHeader() {
         // Get stock count from masterData
