@@ -376,7 +376,8 @@
 // ===== CONSTANTS & CONFIGURATION =====
 const DB_NAME = 'raalanportfolio';
 const STORE_NAME = 'stocks';
-const DB_VERSION = 8;
+// Sync with data.html — DB_VERSION is bumped there on each DATA LOAD
+let DB_VERSION = parseInt(localStorage.getItem('db_version') || '8', 10);
 
 const PALETTE = [
     '#00f2ff', '#7000ff', '#ff007a', '#ffb800', '#00ff88', '#007aff',
@@ -732,16 +733,22 @@ const getMetricColor = (field, value, stock) => {
 async function init() {
     const statusEl = document.getElementById('status');
     const db = await new Promise(res => {
-        // Open without forcing version — let browser use whatever version exists
-        // This avoids race between onupgradeneeded commit and first transaction
-        const req = indexedDB.open(DB_NAME);
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = e => {
             const d = e.target.result;
             if (!d.objectStoreNames.contains(STORE_NAME)) {
                 d.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
             }
         };
-        req.onsuccess = () => res(req.result);
+        req.onsuccess = () => {
+            const database = req.result;
+            // CRITICAL: yield connection when data.html bumps DB version (DATA LOAD)
+            database.onversionchange = () => {
+                database.close();
+                console.log('ℹ️ DB version changed — connection released for data.html');
+            };
+            res(database);
+        };
         req.onerror = () => res(null);
     });
     
@@ -785,7 +792,7 @@ async function init() {
     viewMode = 'all';  // Initialize with mixed portfolio+watchlist view
 
     // Load sector indices from IndexedDB
-    const idb = indexedDB.open('raalanportfolio');
+    const idb = indexedDB.open(DB_NAME, DB_VERSION);
     idb.onsuccess = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('stocks')) { db.close(); return; }
@@ -1413,7 +1420,7 @@ function runEngineSync() {
     statusEl.innerHTML = 'Syncing...';
     statusEl.style.display = 'block';
     
-    const req = indexedDB.open(DB_NAME); // no forced version
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
 
     req.onupgradeneeded = function(e) {
         const d = e.target.result;
@@ -1430,6 +1437,8 @@ function runEngineSync() {
     req.onsuccess = function(e) {
         try {
             const database = e.target.result;
+            // Yield when data.html bumps version
+            database.onversionchange = () => { database.close(); };
             // Guard BEFORE transaction — store may not exist yet
             if (!database.objectStoreNames.contains(STORE_NAME)) {
                 statusEl.innerHTML = 'No data — go to Data tab → 🚀 LOAD JSON';
@@ -1452,7 +1461,7 @@ function runEngineSync() {
                         const ltpVal = abcap.price && abcap.price.ltp && abcap.price.ltp.price ? abcap.price.ltp.price : '?';
                         console.log('  📍 ABCAPITAL LTP from DB: ' + ltpVal);
                     }
-                    console.log('  First stock:', MASTER[0].ticker, 'LTP:', MASTER[0].price?.ltp?.ltp || '?');
+                    console.log('  First stock:', MASTER[0].ticker, 'LTP:', MASTER[0].price?.ltp?.price || '?');
                 }
                 
                 if (MASTER.length > 0) {

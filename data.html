@@ -2237,11 +2237,12 @@ CRITICAL RULES:
             showToast('❌ DB delete failed — close other tabs and retry');
         };
 
-        // onblocked fires when another tab has the DB open
+        // onblocked fires when index.html holds the DB open.
+        // index.html now has onversionchange → db.close(), so the block resolves automatically.
+        // Just log and wait — onsuccess will fire once the other tab releases.
         delReq.onblocked = function() {
-            logWarning('DB delete blocked — close other tabs and retry');
-            updateStatusButton('⚠️ DB Blocked');
-            showToast('⚠️ Close other tabs, then retry DATA LOAD');
+            logWarning('DB delete blocked — waiting for other tabs to release...');
+            updateStatusButton('⏳ Waiting for DB release');
         };
     }
     
