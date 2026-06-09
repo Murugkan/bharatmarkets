@@ -2830,8 +2830,10 @@ function drawSigHeatmap(stats) {
     // ── DRAW ────────────────────────────────────────────────
     const PAD = 2;
     rects.forEach(r => {
-        // Colour by sector avg daily change % (all stocks, not just portfolio)
-        const col = r.avgChg !== null && r.avgChg !== undefined ? oneDPctColor(r.avgChg) : '#222';
+        // Colour by sector index 1D% (matches the % shown in label); fallback to stock avg
+        const _idx1dCol = SECTOR_INDICES[r.name]?.change_1d_pct ?? null;
+        const _colSrc   = _idx1dCol !== null ? _idx1dCol : r.avgChg;
+        const col       = _colSrc !== null ? oneDPctColor(_colSrc) : '#222';
         const rx = r.rx + PAD, ry = r.ry + PAD,
               rw = r.rw - PAD*2, rh = r.rh - PAD*2;
         if (rw < 2 || rh < 2) return;
@@ -2857,26 +2859,38 @@ function drawSigHeatmap(stats) {
         const idx1dStr = idx1d !== null ? (idx1d >= 0 ? '+' : '') + idx1d.toFixed(1) + '%' : null;
         const has1d = idx1dStr !== null;
 
-        if (ch >= 50 && cw >= 45) {
-            // Full: name + score + 1D%
+        // Sector mcap in lakhs
+        const mcapL = r.weight >= 1e5 ? (r.weight / 1e5).toFixed(0) + 'L'
+                    : r.weight >= 1e3 ? (r.weight / 1e3).toFixed(0) + 'k'
+                    : null;
+
+        if (ch >= 60 && cw >= 45) {
+            // Full: name + mcap + score + 1D%
             const ns = cw > 130 ? 11 : cw > 80 ? 10 : 9;
             let nm = r.name
                 .replace('Information Technology', 'Info Tech')
                 .replace('Consumer Discretionary', 'Cons. Discr.')
                 .replace('Consumer Staples', 'Cons. Staples');
             if (nm.length > 14 && cw < 110) nm = nm.substring(0, 13) + '…';
-            const lineH = has1d ? ch / 4 : ch / 3;
-            ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.fillText(nm, cx, cy - lineH);
-            ctx.font = `800 ${ns + 2}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = '#fff';
-            ctx.fillText(r.score, cx, cy + (has1d ? 0 : lineH * 0.3));
-            if (has1d) {
-                ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
-                ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                ctx.fillText(idx1dStr, cx, cy + lineH);
-            }
+            const lines = [nm, mcapL, String(r.score), has1d ? idx1dStr : null].filter(Boolean);
+            const lineH = ch / (lines.length + 1);
+            lines.forEach((txt, i) => {
+                const yPos = cy - (lines.length - 1) / 2 * lineH + i * lineH;
+                if (i === 0) {
+                    ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
+                    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+                } else if (txt === String(r.score)) {
+                    ctx.font = `800 ${ns + 2}px "JetBrains Mono",monospace`;
+                    ctx.fillStyle = '#fff';
+                } else if (txt === mcapL) {
+                    ctx.font = `600 ${ns - 1}px "JetBrains Mono",monospace`;
+                    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+                } else {
+                    ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
+                    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                }
+                ctx.fillText(txt, cx, yPos);
+            });
         } else if (ch >= 28 && cw >= 32) {
             // Medium: score + 1D%
             const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.28), 11);
@@ -2927,19 +2941,42 @@ function renderSectorPanel(sectorName, stats) {
     const idxName = idxData.name || 'Sector Index';
     const idxSym  = idxData.symbol || '';
 
-    // Portfolio P&L per ticker (held only)
-    const portMap = {};
-    sectorTickers.filter(st => (st.company_details?.qty||0) > 0).forEach(st => {
-        const close = sigToF(st.price?.close_price);
-        const cost  = sigToF(st.company_details?.avg_cost);
-        if (close && cost && cost > 0) portMap[st.ticker] = (close - cost) / cost * 100;
-    });
-    const portVals = Object.values(portMap);
-    const portAvg  = portVals.length ? portVals.reduce((a,b)=>a+b,0)/portVals.length : null;
+    // Portfolio held stocks
+    const heldStocks = sectorTickers.filter(st => (st.company_details?.qty||0) > 0);
 
-    // Peer avg 52W (all tickers in sector)
-    const peerVals = sectorTickers.map(st => st.price?.['52_week']?.change_pct).filter(v => v != null);
-    const peerAvg  = peerVals.length ? peerVals.reduce((a,b)=>a+b,0)/peerVals.length : null;
+    // Portfolio invested & current value (using ltp.price)
+    let portInvested = 0, portCurrent = 0;
+    const port1dVals = [], port52wVals = [];
+    heldStocks.forEach(st => {
+        const qty  = st.company_details?.qty || 0;
+        const avg  = sigToF(st.company_details?.avg_cost) || 0;
+        const ltp  = sigToF(st.price?.ltp?.price) || 0;
+        const chg1d  = sigToF(st.price?.ltp?.changePct);
+        const chg52w = st.price?.['52_week']?.change_pct ?? null;
+        portInvested += qty * avg;
+        portCurrent  += qty * ltp;
+        if (chg1d  != null) port1dVals.push(chg1d);
+        if (chg52w != null) port52wVals.push(chg52w);
+    });
+    const portAvg1d  = port1dVals.length  ? port1dVals.reduce((a,b)=>a+b,0)/port1dVals.length   : null;
+    const portAvg52w = port52wVals.length ? port52wVals.reduce((a,b)=>a+b,0)/port52wVals.length : null;
+    // Legacy portAvg for vs-idx diff
+    const portAvg = portAvg52w;
+
+    // Peer universe (all sector tickers)
+    let peerInvested = 0, peerCurrent = 0;
+    const peerVals = [];
+    sectorTickers.forEach(st => {
+        const qty  = st.company_details?.qty || 0;
+        const avg  = sigToF(st.company_details?.avg_cost) || 0;
+        const ltp  = sigToF(st.price?.ltp?.price) || 0;
+        const chg52w = st.price?.['52_week']?.change_pct ?? null;
+        if (qty > 0) { peerInvested += qty * avg; peerCurrent += qty * ltp; }
+        if (chg52w != null) peerVals.push(chg52w);
+    });
+    const peerAvg = peerVals.length ? peerVals.reduce((a,b)=>a+b,0)/peerVals.length : null;
+
+    const fmtL = v => v <= 0 ? '—' : v >= 1e7 ? '₹'+(v/1e7).toFixed(1)+'Cr' : '₹'+(v/1e5).toFixed(1)+'L';
 
     const col  = v => v == null ? '#666' : v >= 0 ? '#00ff88' : '#ff4d6d';
     const fmt  = v => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
@@ -2978,19 +3015,23 @@ function renderSectorPanel(sectorName, stats) {
         <!-- Row 1: Portfolio | Index (52W + 1D) | Peer Universe -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;margin-bottom:6px">
             <div style="padding:8px 6px;border-right:1px solid #2a2a2a">
-                <div style="font-size:7px;color:#fff;letter-spacing:0.06em;margin-bottom:3px">PORTFOLIO</div>
-                <div style="font-size:14px;font-weight:800;color:${col(portAvg)}">${fmt(portAvg)}</div>
-                <div style="font-size:8px;color:#fff;margin-top:2px">${portVals.length} held</div>
+                <div style="font-size:7px;color:#aaa;letter-spacing:0.06em;margin-bottom:3px">PORTFOLIO</div>
+                <div style="font-size:11px;font-weight:800;color:#00f2ff">${fmtL(portCurrent)}</div>
+                <div style="font-size:9px;color:#666;margin-top:1px">inv ${fmtL(portInvested)}</div>
+                <div style="font-size:10px;font-weight:700;color:${col(portAvg1d)};margin-top:3px">${fmt(portAvg1d)} <span style="font-size:8px;color:#aaa">1D</span></div>
+                <div style="font-size:9px;font-weight:600;color:${col(portAvg52w)};margin-top:1px">${fmt(portAvg52w)} <span style="font-size:8px;color:#aaa">52W</span></div>
             </div>
             <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:center">
-                <div style="font-size:7px;color:#fff;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()}</div>
-                <div style="font-size:14px;font-weight:800;color:${col(idxChg)}">${fmt(idxChg)} <span style="font-size:9px;font-weight:600;color:#aaa">52W</span></div>
-                <div style="font-size:13px;font-weight:800;color:${col(idxData.change_1d_pct??null)};margin-top:2px">${idxData.change_1d_pct!=null?(idxData.change_1d_pct>=0?'+':'')+idxData.change_1d_pct.toFixed(2)+'%':'—'} <span style="font-size:9px;font-weight:600;color:#aaa">1D</span></div>
+                <div style="font-size:7px;color:#aaa;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()}</div>
+                <div style="font-size:14px;font-weight:800;color:${col(idxData.change_1d_pct??null)}">${idxData.change_1d_pct!=null?(idxData.change_1d_pct>=0?'+':'')+idxData.change_1d_pct.toFixed(2)+'%':'—'} <span style="font-size:9px;font-weight:600;color:#aaa">1D</span></div>
+                <div style="font-size:11px;font-weight:700;color:${col(idxChg)};margin-top:3px">${fmt(idxChg)} <span style="font-size:9px;font-weight:600;color:#aaa">52W</span></div>
             </div>
             <div style="padding:8px 6px;text-align:right">
-                <div style="font-size:7px;color:#fff;letter-spacing:0.06em;margin-bottom:3px">PEER UNIVERSE</div>
-                <div style="font-size:14px;font-weight:800;color:${col(peerAvg)}">${fmt(peerAvg)}</div>
-                <div style="font-size:8px;color:#fff;margin-top:2px">${peerVals.length} stocks 52W</div>
+                <div style="font-size:7px;color:#aaa;letter-spacing:0.06em;margin-bottom:3px">PEER UNIVERSE</div>
+                <div style="font-size:11px;font-weight:800;color:#00f2ff">${fmtL(peerCurrent)}</div>
+                <div style="font-size:9px;color:#666;margin-top:1px">inv ${fmtL(peerInvested)}</div>
+                <div style="font-size:10px;font-weight:700;color:${col(peerAvg)};margin-top:3px">${fmt(peerAvg)} <span style="font-size:8px;color:#aaa">52W</span></div>
+                <div style="font-size:9px;color:#555;margin-top:1px">${sectorTickers.length} stocks</div>
             </div>
         </div>
         ${s?`<div style="font-size:9px;color:#fff;margin-bottom:8px">Signal: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
