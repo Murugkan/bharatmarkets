@@ -2672,11 +2672,11 @@ function renderSectorTab() {
         <!-- Heatmap at top -->
         <div id="hm-wrap" style="padding:10px 10px 6px;">
             <div style="font-size:8px;color:#ddd;letter-spacing:0.1em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-                <span>SIGNAL HEATMAP — tap to filter</span>
+                <span>PORTFOLIO 1D% BY SECTOR — tap to compare</span>
                 <span style="display:flex;align-items:center;gap:5px">
-                    <span style="font-size:7px;color:#dc3220">Weak</span>
-                    <div style="width:56px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgb(220,50,20),rgb(220,160,20),rgb(100,210,70))"></div>
-                    <span style="font-size:7px;color:#64d246">Strong</span>
+                    <span style="font-size:7px;color:#e03020">-3%</span>
+                    <div style="width:56px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgb(220,20,20),rgb(80,80,80),rgb(20,255,80))"></div>
+                    <span style="font-size:7px;color:#00ff88">+3%</span>
                 </span>
             </div>
             <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:8px;cursor:pointer;"></canvas>
@@ -2720,7 +2720,7 @@ function renderSectorTab() {
             ${cards.join('')}
         </div>`;
 
-    setTimeout(() => drawSigHeatmap(stats), 150);
+    setTimeout(() => { try { drawSigHeatmap(stats); } catch(e) { console.error('drawSigHeatmap error:', e); } }, 150);
 }
 
 function sigFilter_sector(name) {
@@ -2741,6 +2741,19 @@ function secSort(by) {
 }
 
 // ---------- HEATMAP (canvas treemap) ----------
+function oneDPctColor(pct) {
+    // Colour by 1D% — red for negative, green for positive
+    // ±3% = full saturation
+    const t = Math.max(-1, Math.min(1, pct / 3));
+    if (t < 0) {
+        const p = -t;
+        return `rgb(${Math.round(180 + p*40)},${Math.round(30 - p*10)},${Math.round(30 - p*10)})`;
+    } else {
+        const p = t;
+        return `rgb(${Math.round(20 - p*10)},${Math.round(160 + p*95)},${Math.round(50 + p*30)})`;
+    }
+}
+
 function drawSigHeatmap(stats) {
     const cv = document.getElementById('sig-heatmap');
     if (!cv) return;
@@ -2761,29 +2774,19 @@ function drawSigHeatmap(stats) {
     const sMax = Math.max(...allScores);
 
     function scoreToColor(score) {
-        // Anchored to rating bands: <40=red, 40-53=orange, 53-67=amber/yellow, 67-80=green, >80=vivid green
-        const t = Math.max(0, Math.min(1, (score - 35) / 50));
+        // Absolute thresholds aligned to rating bands (not relative to range)
+        // <40=red, 40-53=orange, 53-67=yellow-green, 67-80=green, >80=vivid green
+        const t = Math.max(0, Math.min(1, (score - 35) / 50)); // 35→0, 85→1
         let r, g, b;
-        if (t < 0.18) {
-            // red — STRONG SELL (<44)
-            const p = t / 0.18;
-            r = 220; g = Math.round(30 + p * 60); b = 20;
-        } else if (t < 0.38) {
-            // orange — SELL (44-54)
-            const p = (t - 0.18) / 0.20;
-            r = 220; g = Math.round(90 + p * 80); b = 20;
-        } else if (t < 0.58) {
-            // amber/yellow — HOLD (54-64)
-            const p = (t - 0.38) / 0.20;
-            r = Math.round(215 - p * 40); g = Math.round(170 + p * 50); b = 20;
-        } else if (t < 0.78) {
-            // yellow-green → green — BUY (64-74)
-            const p = (t - 0.58) / 0.20;
-            r = Math.round(175 - p * 120); g = Math.round(220 + p * 15); b = Math.round(20 + p * 50);
+        if (t < 0.30) {
+            const p = t / 0.30;
+            r = 220; g = Math.round(50 + p * 110); b = 20;
+        } else if (t < 0.60) {
+            const p = (t - 0.30) / 0.30;
+            r = Math.round(220 - p * 100); g = Math.round(160 + p * 60); b = 20;
         } else {
-            // vivid green — STRONG BUY (>74)
-            const p = (t - 0.78) / 0.22;
-            r = Math.round(55 - p * 20); g = Math.round(235 + p * 20); b = Math.round(70 + p * 50);
+            const p = (t - 0.60) / 0.40;
+            r = Math.round(120 - p * 80); g = Math.round(220 + p * 35); b = Math.round(20 + p * 80);
         }
         return `rgb(${r},${g},${b})`;
     }
@@ -2856,7 +2859,11 @@ function drawSigHeatmap(stats) {
     // ── DRAW ────────────────────────────────────────────────
     const PAD = 2;
     rects.forEach(r => {
-        const col = scoreToColor(r.score);
+        // Portfolio avg 1D% for this sector
+        const secStocks = (typeof MASTER !== 'undefined' ? MASTER : []).filter(s => s.company_details?.sector === r.name && (s.company_details?.qty||0) > 0);
+        const vals = secStocks.map(s => sigToF(s.price?.ltp?.changePct ?? s.price?.ltp?.change_pct)).filter(v => v !== null);
+        const port1d = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+        const col = port1d !== null ? oneDPctColor(port1d) : '#222';
         const rx = r.rx + PAD, ry = r.ry + PAD,
               rw = r.rw - PAD*2, rh = r.rh - PAD*2;
         if (rw < 2 || rh < 2) return;
