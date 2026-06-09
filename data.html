@@ -829,59 +829,25 @@
     }
 
     function fetchUpdated(source) {
-        // Map source to correct GitHub path
-        let githubUrl = '';
-        if (source === 'unified-symbols.json') {
-            githubUrl = `${RAW_GITHUB_URL}/unified-symbols.json`;
-        } else if (source === 'ltp.json') {
-            githubUrl = `${RAW_GITHUB_URL}/data/ltp.json`;
-        } else if (source === 'market_data.json') {
-            githubUrl = `${RAW_GITHUB_URL}/data/market_data.json`;
-        } else if (source === 'sector_indices.json') {
-            githubUrl = `${RAW_GITHUB_URL}/data/sector_indices.json`;
-        }
-        
-        if (!githubUrl) {
-            log(`❌ Unknown source: ${source}`);
+        if (source === 'market_data.json') {
+            // Full save + metadata write + LTP merge
+            log(`📥 Fetching market_data.json from GitHub...`);
+            updateStatusButton('⏳ Loading Data Files');
+            loadMarketDataFromGitHub();
             return;
         }
-        
-        log(`📥 Fetching ${source} from GitHub...`);
-        const cacheBuster = '?cache=' + Date.now();
-        
-        fetch(githubUrl + cacheBuster)
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
-            .then(data => {
-                if (data) {
-                    log(`✅ ${source} fetched successfully!`);
-                    let count = 0;
-                    
-                    // Count records
-                    if (data.quotes) count = Object.keys(data.quotes).length;
-                    else if (data.symbols) count = data.symbols.length;
-                    else if (data.stocks) count = Object.keys(data.stocks).length;
-                    else if (data.sectors) count = Object.keys(data.sectors).length;
-                    else if (Array.isArray(data)) count = data.length;
-                    
-                    log(`📊 Retrieved ${count} records from ${source}`);
-                    showToast(`✅ Fetched ${source} (${count} records)`);
 
-                    // Save sector_indices into IndexedDB as _SECTOR_INDICES_ record
-                    if (source === 'sector_indices.json') {
-                        saveSectorIndicesToDB(data);
-                    }
-                } else {
-                    log(`❌ Fetch returned empty data`);
-                    showToast('❌ No data received');
-                }
-            })
-            .catch(err => {
-                log(`❌ Fetch failed: ${err.message}`);
-                showToast(`❌ Error: ${err.message}`);
-            });
+        if (source === 'sector_indices.json') {
+            fetchSectorIndicesOnly();
+            return;
+        }
+
+        if (source === 'ltp.json') {
+            updateLTPFromGitHub();
+            return;
+        }
+
+        log(`❌ Unknown source: ${source}`);
     }
 
     function saveSectorIndicesToDB(data) {
@@ -2834,242 +2800,6 @@ CRITICAL RULES:
     }
     */
     
-    // LOAD MARKET DATA JSON - AUTO INDEXDB MAPPING
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    
-    // Fetch prices.json and merge with IndexedDB stocks
-    async function fetchAndMergePrices(db) {
-        try {
-            const response = await fetch('prices.json');
-            if (guidanceResponse) {
-                guidanceFileData = guidanceResponse;
-                log('✅ Fetched guidance.json');
-            }
-        } catch (e) {
-            log(`⚠️ Could not fetch guidance.json: ${e.message}`);
-        }
-        
-        let symbolsData = results[0];
-        let symbolsList = null;
-        
-        if (Array.isArray(symbolsData)) {
-            symbolsList = symbolsData;
-        } else if (symbolsData && symbolsData.symbols && Array.isArray(symbolsData.symbols)) {
-            symbolsList = symbolsData.symbols;
-        } else if (symbolsData && symbolsData.stocks && Array.isArray(symbolsData.stocks)) {
-            symbolsList = symbolsData.stocks;
-        } else if (symbolsData && symbolsData.data && Array.isArray(symbolsData.data)) {
-            symbolsList = symbolsData.data;
-        } else if (symbolsData && typeof symbolsData === 'object') {
-            symbolsList = Object.values(symbolsData).filter(item => typeof item === 'object' && item !== null && !Array.isArray(item) && item.ticker);
-        }
-        
-        // Debug: Check symbol structure
-        if (symbolsList && symbolsList.length > 0) {
-            const firstSym = symbolsList[0];
-            if (firstSym.ltp !== undefined || firstSym.prev !== undefined) {
-                log(`⚠️ ISSUE: Symbol has price fields! ltp=${firstSym.ltp}, prev=${firstSym.prev}`);
-            }
-        }
-        
-        if (!symbolsList || symbolsList.length === 0) {
-            log('❌ Could not parse symbols data');
-            updateStatusButton('❌ Failed');
-            return;
-        }
-        
-        const pricesData = results[1] || {};
-        const fundamentalsData = results[2] || {};
-        
-        log('📦 Parsing results...');
-        
-        // Extract guidance data and timestamps
-        if (guidanceFileData && typeof guidanceFileData === 'object') {
-            Object.keys(guidanceFileData).forEach(ticker => {
-                if (ticker !== '_metadata' && guidanceFileData[ticker]) {
-                    guidanceData[ticker] = guidanceFileData[ticker];
-                    
-                    
-                    if (guidanceFileData[ticker].guidance) {
-                    }
-                    
-                    if (guidanceFileData[ticker].insights) {
-                    }
-                    
-                    // Store ISO timestamp from guidance.date (now using 'date' field instead of 'updated')
-                    if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.date) {
-                        var dateStr = guidanceFileData[ticker].guidance.date;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        concallTimestamps[ticker] = isoDate;
-                    }
-                    // Fallback to old 'updated' field if it exists
-                    else if (guidanceFileData[ticker].guidance && guidanceFileData[ticker].guidance.updated) {
-                        var dateStr = guidanceFileData[ticker].guidance.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        concallTimestamps[ticker] = isoDate;
-                    }
-                    
-                    // Store ISO timestamp from insights.date (now using 'date' field instead of 'updated')
-                    if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.date) {
-                        var dateStr = guidanceFileData[ticker].insights.date;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        insightsTimestamps[ticker] = isoDate;
-                    }
-                    // Fallback to old 'updated' field if it exists
-                    else if (guidanceFileData[ticker].insights && guidanceFileData[ticker].insights.updated) {
-                        var dateStr = guidanceFileData[ticker].insights.updated;
-                        var isoDate = convertDDMMYYtoISO(dateStr);
-                        insightsTimestamps[ticker] = isoDate;
-                    }
-                }
-            });
-            log(`📌 Guidance loaded: ${Object.keys(guidanceData).length} stocks`);
-        }
-            saveGuidanceToStorage();
-            log(`💾 Saved timestamps to localStorage`);
-        
-        let priceMap = {};
-        if (pricesData.quotes && typeof pricesData.quotes === 'object' && !Array.isArray(pricesData.quotes)) {
-            priceMap = pricesData.quotes;
-            log('✅ Found prices in "quotes" wrapper');
-        } else {
-            priceMap = Object.keys(pricesData).some(k => k === k.toUpperCase()) ? pricesData : {};
-        }
-        
-        let fundMap = {};
-        if (fundamentalsData.stocks && typeof fundamentalsData.stocks === 'object' && !Array.isArray(fundamentalsData.stocks)) {
-            fundMap = fundamentalsData.stocks;
-            log('✅ Found fundamentals in "stocks" wrapper');
-        } else {
-            fundMap = Object.keys(fundamentalsData).some(k => k === k.toUpperCase()) ? fundamentalsData : {};
-        }
-        
-        let mergedStocks = [];
-        let priceMatches = 0, fundMatches = 0;
-        
-        symbolsList.forEach(symbol => {
-            const ticker = symbol.ticker || symbol.TICKER || symbol.name;
-            if (!ticker) return;
-            
-            const priceData = priceMap[ticker];
-            const fundData = fundMap[ticker];
-            const guidData = guidanceData[ticker] || null;
-            
-            if (priceData) priceMatches++;
-            if (fundData) fundMatches++;
-            
-            const merged = {
-                ...symbol,
-                ...(fundData || {}),
-                ...(priceData || {}),
-                ticker: symbol.ticker || ticker,
-                qty: symbol.qty,
-                avg: symbol.avg,
-                name: symbol.name,
-                guidance: guidData ? guidData.guidance : null,
-                insights: guidData ? guidData.insights : null
-            };
-            
-            mergedStocks.push(merged);
-        });
-        
-        log(`✅ Merged data from all sources: ${mergedStocks.length} records enriched`);
-        log(`📊 Price matches: ${priceMatches}/${symbolsList.length} | Fund matches: ${fundMatches}/${symbolsList.length}`);
-        
-        if (priceMatches === 0) log('⚠️ WARNING: No price data matched!');
-        if (fundMatches === 0) log('⚠️ WARNING: No fundamentals data matched!');
-        
-        // Open DB without incrementing version - handle store deletion properly
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        req.onupgradeneeded = (e) => {
-            var db = e.target.result;
-            try {
-                if (db.objectStoreNames.contains(STORE_NAME)) {
-                    db.deleteObjectStore(STORE_NAME);
-                }
-                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
-                log('✅ Object store created');
-            } catch(err) {
-                log(`⚠️ Upgrade error: ${err.message}`);
-            }
-        };
-        
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            try {
-                log('📥 Saving 91 stocks to IndexedDB...');
-                
-                // Clear old data first
-                var clearTx = db.transaction(STORE_NAME, 'readwrite');
-                var clearStore = clearTx.objectStore(STORE_NAME);
-                clearStore.clear();
-                
-                clearTx.oncomplete = () => {
-                    // Now save new data
-                    masterData = mergedStocks;
-                    // Use the actual unified-symbols.json updated timestamp
-                    const symbolsUpdateTime = dataUpdatedTimes['unified-symbols.json'] || new Date().toISOString();
-                    let savedCount = 0;
-                    
-                    // Process stocks sequentially with promise chain
-                    function saveNext(index) {
-                        if (index >= mergedStocks.length) {
-                            log(`✅ Saved ${savedCount}/${mergedStocks.length} records to IndexedDB`);
-                            updateHeader();
-                            renderSymbols();
-                            renderDataSources();
-                            
-                            // ✅ Clean summary
-                            log(`\n📋 LOAD SUMMARY:`);
-                            log(`  ✅ Files: 4 loaded fresh from GitHub`);
-                            log(`  ✅ Stocks: ${mergedStocks.length} merged`);
-                            const guidanceCount = Object.keys(guidanceData).length;
-                            log(`  ✅ Guidance: ${guidanceCount} stocks with management data`);
-                            log(`  ✅ Database: IndexedDB updated`);
-                            log(`  ✅ Status: Ready for analysis\n`);
-                            
-                            updateStatusButton('✅ Ready');
-                            showToast('✅ Load complete!');
-                            return;
-                        }
-                        
-                        var transaction = db.transaction(STORE_NAME, 'readwrite');
-                        var store = transaction.objectStore(STORE_NAME);
-                        var stock = mergedStocks[index];
-                        stock.updated = symbolsUpdateTime;
-                        
-                        var putReq = store.put(stock);
-                        putReq.onsuccess = () => {
-                            savedCount++;
-                            saveNext(index + 1);
-                        };
-                        putReq.onerror = () => {
-                            log(`⚠️ Failed to save ${stock.ticker}`);
-                            saveNext(index + 1);
-                        };
-                    }
-                    
-                    saveNext(0);
-                };
-                
-                clearTx.onerror = () => {
-                    log(`⚠️ Error clearing store`);
-                };
-                
-            } catch (err) {
-                log(`❌ Error: ${err.message}`);
-                updateStatusButton('❌ Error');
-                showToast(`❌ Error: ${err.message}`);
-            }
-        };
-        
-        req.onerror = () => {
-            log(`⚠️ Could not open IndexedDB: ${req.error}`);
-            updateStatusButton('⚠️ Error');
-        };
-    }
-    
     function convertDDMMYYtoISO(dateStr) {
         try {
             // Handle multiple formats
@@ -3095,7 +2825,7 @@ CRITICAL RULES:
     }
 
     function reloadAuto() {
-        log('🔄 REFRESH: Clearing browser cache & merging fresh LTP data...');
+        log('🔄 REFRESH: Merging fresh LTP data...');
         updateStatusButton('⏳ Refreshing');
         
         // Clear all service worker caches
@@ -3108,22 +2838,9 @@ CRITICAL RULES:
             });
         }
         
-        // Clear localStorage if needed (except PAT)
-        const pat = localStorage.getItem('github_pat');
-        const savedKeys = {};
-        ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData'].forEach(key => {
-            const val = localStorage.getItem(key);
-            if (val) savedKeys[key] = val;
-        });
-        localStorage.clear();
-        Object.keys(savedKeys).forEach(key => {
-            localStorage.setItem(key, savedKeys[key]);
-        });
-        
-        log('✅ Cache cleared');
         log('📥 Fetching fresh ltp.json from GitHub...');
         
-        // Fetch fresh ltp.json and merge
+        // Fetch fresh ltp.json, merge into IndexedDB, then re-render in place (no page reload)
         const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
         const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
@@ -3134,34 +2851,28 @@ CRITICAL RULES:
             })
             .then(json => {
                 if (!json.quotes) {
-                    log('⚠️ ltp.json not available, reloading without price update');
-                    setTimeout(() => {
-                        location.reload(true);
-                    }, 500);
-                    return;
+                    log('⚠️ ltp.json not available, refreshing display from cache');
+                    return loadFromIndexedDB();
                 }
-                
                 log('⏳ Merging ' + Object.keys(json.quotes).length + ' fresh prices...');
-                return mergeLTPIntoDB(json);  // Pass full JSON with updated timestamp
+                return mergeLTPIntoDB(json);
             })
+            .then(() => loadFromIndexedDB())
             .then(() => {
-                log('✅ Fresh data merged successfully');
-                log('🔄 Reloading page...');
                 updateStatusButton('✅ Refreshed');
-                
-                // Reload page after a brief delay
-                setTimeout(() => {
-                    location.reload(true);
-                }, 500);
+                renderDataSources();
+                renderSymbols();
+                updateHeader();
+                log('✅ Refresh complete');
             })
             .catch(err => {
-                log(`⚠️ Error fetching ltp.json: ${err.message}`);
-                log('💡 Reloading page anyway...');
+                log(`⚠️ Refresh error: ${err.message} — re-rendering from cache`);
                 updateStatusButton('⚠️ Partial Refresh');
-                
-                setTimeout(() => {
-                    location.reload(true);
-                }, 500);
+                loadFromIndexedDB().then(() => {
+                    renderDataSources();
+                    renderSymbols();
+                    updateHeader();
+                });
             });
     }
     
@@ -3308,98 +3019,6 @@ CRITICAL RULES:
         }
     })();
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // LOAD MARKET DATA JSON - AUTO INDEXDB MAPPING
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    
-    // Fetch prices.json and merge with IndexedDB stocks
-    async function fetchAndMergePrices(db) {
-        try {
-            // Add cache buster to force fresh fetch of prices
-            const cacheBuster = '?t=' + Date.now();
-            const response = await fetch('prices.json' + cacheBuster);
-            if (!response.ok) {
-                log('⚠️ prices.json not found - skipping price update');
-                finishLoading();
-                return;
-            }
-            
-            const pricesData = await response.json();
-            if (!pricesData.quotes || typeof pricesData.quotes !== 'object') {
-                log('❌ Invalid prices.json format');
-                finishLoading();
-                return;
-            }
-            
-            log('📦 Processing ' + Object.keys(pricesData.quotes).length + ' price quotes');
-            
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            const store = tx.objectStore(STORE_NAME);
-            
-            let updatedCount = 0;
-            let notFoundCount = 0;
-            
-            // Get all stocks from IndexDB first
-            const getAllReq = store.getAll();
-            
-            getAllReq.onsuccess = function() {
-                const stocks = getAllReq.result;
-                
-                stocks.forEach(function(stock) {
-                    const ticker = stock.ticker;
-                    const priceQuote = pricesData.quotes[ticker];
-                    
-                    if (priceQuote) {
-                        // Overwrite ONLY the ltp object with prices.json data
-                        // Keep all other price_trading data and history intact
-                        if (!stock.price) stock.price = {};
-                        if (!stock.price.ltp) stock.price.ltp = {};
-                        stock.price.ltp.price = priceQuote;
-                        
-                        // Save updated stock
-                        store.put(stock);
-                        updatedCount++;
-                    } else {
-                        notFoundCount++;
-                    }
-                });
-                
-                log('✅ Updated ' + updatedCount + ' stocks with real-time prices');
-                if (notFoundCount > 0) {
-                    log('⚠️ ' + notFoundCount + ' stocks not found in prices.json');
-                }
-            };
-            
-            getAllReq.onerror = function() {
-                log('❌ Error reading stocks from IndexDB');
-                // Don't reload on error during read - let transaction complete
-            };
-            
-            // CRITICAL: Wait for transaction to complete before reloading page
-            tx.oncomplete = function() {
-                log('✅ Transaction committed - all writes saved');
-                finishLoading();
-            };
-            
-            tx.onerror = function() {
-                log('❌ Transaction error during price merge');
-                finishLoading();
-            };
-            
-        } catch (err) {
-            log('❌ Error fetching prices.json: ' + err.message);
-            finishLoading();
-        }
-    }
-    
-    function finishLoading() {
-        showToast('Successfully loaded with real-time prices!');
-        log('🔄 Reloading page to display data...');
-        setTimeout(function() {
-            location.reload();
-        }, 1000);
-    }
-    
     function loadMarketDataJSON(file) {
         if (!file) return;
         
@@ -3407,7 +3026,6 @@ CRITICAL RULES:
         
         reader.onload = function(e) {
             try {
-                // Safety fix: Replace NaN/Infinity with null before parsing
                 let text = e.target.result;
                 text = text.replace(/:\s*NaN/g, ': null');
                 text = text.replace(/:\s*Infinity/g, ': null');
@@ -3415,25 +3033,19 @@ CRITICAL RULES:
                 
                 const json = JSON.parse(text);
                 
-                // Detect format: stocks array OR ticker-keyed object
                 let stocks_to_process = [];
-                let detected_format = '';
                 
                 if (json.stocks && Array.isArray(json.stocks)) {
-                    // Old format: { stocks: [...] }
                     stocks_to_process = json.stocks;
-                    detected_format = 'array';
                     log('📋 Detected format: stocks array');
                 } else if (typeof json === 'object' && Object.keys(json).length > 0 && !json.stocks) {
-                    // New format: { TICKER: {...}, TICKER2: {...} }
                     stocks_to_process = Object.entries(json).map(function([ticker, data]) {
                         data.ticker = ticker;
                         return data;
                     });
-                    detected_format = 'ticker-keyed';
                     log('📋 Detected format: ticker-keyed object');
                 } else {
-                    log('❌ Invalid market_data.json format - neither stocks array nor ticker-keyed object');
+                    log('❌ Invalid market_data.json format');
                     showToast('Invalid JSON format', 'error');
                     updateStatusButton('❌ Error');
                     return;
@@ -3463,10 +3075,8 @@ CRITICAL RULES:
                     log('✅ DB opened: ' + db.name + ' v' + db.version);
                     log('✅ Store names: ' + Array.from(db.objectStoreNames).join(', '));
                     
-                    // CRITICAL: Verify store exists
                     if (!db.objectStoreNames.contains(STORE_NAME)) {
                         log('❌ CRITICAL ERROR: Store "' + STORE_NAME + '" does not exist!');
-                        log('Available stores: ' + Array.from(db.objectStoreNames).join(', '));
                         updateStatusButton('❌ Store Error');
                         return;
                     }
@@ -3479,10 +3089,9 @@ CRITICAL RULES:
                     let savedCount = 0;
                     let skippedCount = 0;
                     let guidanceCount = 0;
+                    let putErrorCount = 0;
                     
                     log('⏳ Starting PUT operations...');
-                    
-                    let putErrorCount = 0;
                     
                     stocks_to_process.forEach(function(stock) {
                         const ticker = stock.ticker || stock.symbol;
@@ -3505,16 +3114,10 @@ CRITICAL RULES:
                         
                         try {
                             const putReq = store.put(record);
-                            
-                            putReq.onsuccess = function() {
-                                // Silently succeed
-                            };
-                            
                             putReq.onerror = function() {
                                 log('❌ PUT ERROR for ' + ticker + ': ' + (putReq.error ? putReq.error.message : 'Unknown'));
                                 putErrorCount++;
                             };
-                            
                             savedCount++;
                         } catch(err) {
                             log('❌ EXCEPTION putting ' + ticker + ': ' + err.message);
@@ -3522,26 +3125,35 @@ CRITICAL RULES:
                         }
                     });
                     
+                    // Write metadata record
+                    const generatedAt = json._metadata?.generated_at || new Date().toISOString();
+                    const metadata = {
+                        ticker: '_METADATA_',
+                        market_data_generated_at: generatedAt,
+                        market_data_count: savedCount,
+                        tickers_with_guidance: guidanceCount,
+                        ltp_updated_at: null,
+                        ltp_count: null
+                    };
+                    store.put(metadata);
+                    
                     log('✅ Queued ' + savedCount + ' PUT operations');
-                    if (putErrorCount > 0) {
-                        log('❌ PUT ERRORS: ' + putErrorCount);
-                    }
+                    if (putErrorCount > 0) log('❌ PUT ERRORS: ' + putErrorCount);
                     
                     tx.oncomplete = function() {
-                        log('✅ TRANSACTION COMMITTED - all writes complete');
-                        log('✅ Loaded ' + savedCount + ' stocks to IndexedDB');
-                        if (guidanceCount > 0) {
-                            log('📋 Guidance/Insights: ' + guidanceCount + ' stocks');
-                        }
-                        if (skippedCount > 0) {
-                            log('⚠️ Skipped ' + skippedCount + ' invalid records');
-                        }
+                        log('✅ TRANSACTION COMMITTED — ' + savedCount + ' stocks saved');
+                        if (guidanceCount > 0) log('📋 Guidance: ' + guidanceCount + ' stocks');
+                        if (skippedCount > 0) log('⚠️ Skipped ' + skippedCount + ' invalid records');
                         
                         updateStatusButton('✅ Loaded (' + savedCount + ')');
+                        db.close();
                         
-                        // Now fetch and merge ltp.json (latest prices)
-                        log('⚡ Fetching ltp.json for latest prices...');
-                        fetchAndMergeLTP(db);
+                        loadFromIndexedDB().then(() => {
+                            renderDataSources();
+                            renderSymbols();
+                            updateHeader();
+                            showToast('✅ Data loaded!');
+                        });
                     };
                     
                     tx.onerror = function(err) {
@@ -3571,10 +3183,7 @@ CRITICAL RULES:
         
         reader.readAsText(file);
     }
-    
-    // ========================================================================
-    // DEBUG FUNCTION - Uses existing log window
-    
+
 </script>
 
 </body>
