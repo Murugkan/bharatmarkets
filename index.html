@@ -376,8 +376,7 @@
 // ===== CONSTANTS & CONFIGURATION =====
 const DB_NAME = 'raalanportfolio';
 const STORE_NAME = 'stocks';
-// Sync with data.html — DB_VERSION is bumped there on each DATA LOAD
-let DB_VERSION = parseInt(localStorage.getItem('db_version') || '8', 10);
+const DB_VERSION = 8;
 
 const PALETTE = [
     '#00f2ff', '#7000ff', '#ff007a', '#ffb800', '#00ff88', '#007aff',
@@ -510,43 +509,23 @@ const resolve = (obj, field) => {
         'SIGNAL':        { paths: ['derived_metrics.calculated_metrics.rating'] },
         'PNL':           { paths: ['pnl'] },
         'PNL%':          { paths: ['pnlPct'] },
-        '1D%':           { paths: ['price.price_change_pct'] },
-        '1DG%':          { paths: ['price.price_change_pct'] },
-        '1DCH':          { paths: ['price.price_change'] },
+        '1D%':           { paths: ['price.ltp.changePct'] },
+        '1DG%':          { paths: ['price.ltp.changePct'] },
+        '1DCH':          { paths: ['price.ltp.change'] },
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
-        'LTP':           { paths: ['price.close_price'] },
-        'QTY':           { paths: ['company_details.qty', 'qty'] },
-        'AVG':           { paths: ['company_details.avg_cost', 'avg_cost', 'avg'] },
+        'LTP':           { paths: ['price.ltp.price'] },
+        'QTY':           { paths: ['company_details.qty'] },
+        'AVG':           { paths: ['company_details.avg_cost'] },
         'INVESTED':      { paths: ['invested'] },
-        // Margin fields: ratios.ttm values are fractions (0.137), multiply ×100 for display pct.
-        // Fallback to derived_metrics.calculated_metrics which are already in pct.
-        'ROE%':          { fn: s => {
-                            const dm = s?.derived_metrics?.calculated_metrics?.roe_pct;
-                            if (dm != null) return dm;
-                            const v = s?.ratios?.ttm?.roe_pct;
-                            return (v != null) ? v * 100 : undefined;
-                          }},
-        'ROCE%':         { fn: s => {
-                            const dm = s?.derived_metrics?.calculated_metrics?.roce_pct;
-                            if (dm != null) return dm;
-                            return _latest(s?.ratios?.screener?.roce_pct);
-                          }},
-        'OPM%':          { fn: s => {
-                            const v = s?.ratios?.ttm?.operating_margin_pct;
-                            return (v != null) ? v * 100 : undefined;
-                          }},
-        'NPM%':          { fn: s => {
-                            const dm = s?.derived_metrics?.calculated_metrics?.net_margin_pct;
-                            if (dm != null) return dm;
-                            const v = s?.ratios?.ttm?.net_margin_pct;
-                            return (v != null) ? v * 100 : undefined;
-                          }},
+        'ROE%':          { fn: s => { const v = s?.ratios?.ttm?.roe_pct; return v != null ? v * 100 : undefined; }},
+        'ROCE%':         { fn: s => _latest(s?.ratios?.screener?.roce_pct) },
+        'OPM%':          { fn: s => { const v = s?.ratios?.ttm?.operating_margin_pct; return v != null ? v * 100 : undefined; }},
+        'NPM%':          { fn: s => { const v = s?.ratios?.ttm?.net_margin_pct; return v != null ? v * 100 : undefined; }},
         'PE':            { paths: ['valuation.pe.pe_ttm'] },
         'PB':            { paths: ['valuation.pe.price_to_book'] },
         'BV':            { paths: ['valuation.market.book_value'] },
         'MCAP':          { paths: ['valuation.market.market_cap'] },
-        // EBITDA: valuation.market.ebitda is absolute INR; financials.ebitda is time-series fallback
         'EBITDA':        { fn: s => s?.valuation?.market?.ebitda ?? _fin(s?.financials?.ebitda) },
         'SALES':         { fn: s => _fin(s?.financials?.revenue) },
         'CFO':           { fn: s => _fin(s?.financials?.operating_cash_flow) },
@@ -557,28 +536,21 @@ const resolve = (obj, field) => {
         'PROM%':         { fn: s => _latest(s?.company_details?.shareholding?.pattern?.promoters) },
         'FII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.fiis) },
         'DII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.diis) },
-        // ATH%: % below 52W high (week52_high_diff_pct is a fraction e.g. -0.049)
         'ATH%':          { fn: s => { const v = s?.price?.week52_high_diff_pct; return v != null ? v * 100 : undefined; }},
-        // 52W%: % above 52W low (week52_low_diff_pct is a fraction e.g. 0.607)
         '52W%':          { fn: s => { const v = s?.price?.week52_low_diff_pct; return v != null ? v * 100 : undefined; }},
         'W52H':          { paths: ['price.52_week.high'] },
         'W52L':          { paths: ['price.52_week.low'] },
-        'OPEN':          { paths: ['price.day_open'] },
-        'HIGH':          { paths: ['price.day_high'] },
-        'LOW':           { paths: ['price.day_low'] },
-        'CHANGE':        { paths: ['price.price_change'] },
-        'VOL':           { paths: ['price.volume.day_volume'] },
-        'BETA':          { paths: ['price.beta'] },
-        'PREV':          { paths: ['price.prev_close'] },
+        'OPEN':          { paths: ['price.ltp.open'] },
+        'HIGH':          { paths: ['price.ltp.high'] },
+        'LOW':           { paths: ['price.ltp.low'] },
+        'CHANGE':        { paths: ['price.ltp.change'] },
+        'VOL':           { paths: ['price.ltp.day_volume'] },
+        'BETA':          { paths: ['price.ltp.beta'] },
+        'PREV':          { paths: ['price.ltp.prev_close'] },
         'SECTOR':        { paths: ['company_details.sector'] },
         'NAME':          { paths: ['company_details.name'] },
         'CAPEX':         { fn: s => _fin(s?.financials?.capex) },
-        // DIV_YIELD: dividend_yield not present; use trailing_annual_dividend_yield
-        'DEBT_EQ':       { fn: s => {
-                            const dm = s?.derived_metrics?.calculated_metrics?.debt_to_equity;
-                            if (dm != null) return dm;
-                            return s?.ratios?.ttm?.debt_to_equity_ratio;
-                          }},
+        'DEBT_EQ':       { paths: ['ratios.ttm.debt_to_equity_ratio'] },
         'INT_COV':       { paths: ['ratios.ttm.current_ratio'] },
         'P/S':           { paths: ['valuation.pe.price_to_sales'] },
         'EV/EBITDA':     { paths: ['valuation.pe.ev_to_ebitda'] },
@@ -733,22 +705,16 @@ const getMetricColor = (field, value, stock) => {
 async function init() {
     const statusEl = document.getElementById('status');
     const db = await new Promise(res => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        // Open without forcing version — let browser use whatever version exists
+        // This avoids race between onupgradeneeded commit and first transaction
+        const req = indexedDB.open(DB_NAME);
         req.onupgradeneeded = e => {
             const d = e.target.result;
             if (!d.objectStoreNames.contains(STORE_NAME)) {
                 d.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
             }
         };
-        req.onsuccess = () => {
-            const database = req.result;
-            // CRITICAL: yield connection when data.html bumps DB version (DATA LOAD)
-            database.onversionchange = () => {
-                database.close();
-                console.log('ℹ️ DB connection released — data.html will reload the page');
-            };
-            res(database);
-        };
+        req.onsuccess = () => res(req.result);
         req.onerror = () => res(null);
     });
     
@@ -792,7 +758,7 @@ async function init() {
     viewMode = 'all';  // Initialize with mixed portfolio+watchlist view
 
     // Load sector indices from IndexedDB
-    const idb = indexedDB.open(DB_NAME, DB_VERSION);
+    const idb = indexedDB.open('raalanportfolio');
     idb.onsuccess = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('stocks')) { db.close(); return; }
@@ -823,50 +789,15 @@ async function init() {
  * Calculates derived metrics: INVESTED, PNL, PNL%, 1D%, 1DCH, 1D_GAIN, ATH%, 52W%, POS, NEG, SIGNAL
  */
 function enrichStock(stock) {
-    // Get LTP data from price.ltp or price.ltp
-    const ltpData = stock.price?.ltp || stock.price?.ltp || {};
-    
-    // Calculate INVESTED = QTY * AVG
     const qty = cleanNum(resolve(stock, 'QTY'));
     const avg = cleanNum(resolve(stock, 'AVG'));
-    if (qty && avg && !stock.invested) {
-        stock.invested = qty * avg;
-    }
-    
-    // Calculate PNL = (LTP - AVG) * QTY
     const ltp = cleanNum(resolve(stock, 'LTP'));
-    if (qty && avg && ltp && !stock.pnl) {
-        stock.pnl = (ltp - avg) * qty;
-    }
-    
-    // Calculate PNL% = ((LTP - AVG) / AVG) * 100
-    if (avg && ltp && !stock.pnlPct) {
-        stock.pnlPct = ((ltp - avg) / avg) * 100;
-    }
-    
-    // ===== COMPUTE 1D% (changePct) from ltp.json =====
-    if (!stock['1dPct'] && ltpData.changePct !== undefined) {
-        stock['1dPct'] = cleanNum(ltpData.changePct);
-    }
-    
-    // ===== COMPUTE 1DCH (change) from ltp.json =====
-    if (!stock['1dChange'] && ltpData.change !== undefined) {
-        stock['1dChange'] = cleanNum(ltpData.change);
-    }
-    
-    // Calculate 1D_GAIN = CHANGE * QTY (absolute daily gain/loss: change per share × quantity)
-    const change = stock['1dChange'] || cleanNum(resolve(stock, '1DCH'));
-    if (qty && change && !stock['1dGain']) {
-        stock['1dGain'] = change * qty;
-    }
-    
-    // ===== COMPUTE 1DG (1D gain in rupees) = CHANGE * QTY =====
-    // Already computed above as 1dGain, but also store as 1dg for backwards compatibility
-    if (!stock['1dg'] && stock['1dGain']) {
-        stock['1dg'] = stock['1dGain'];
-    } else if (!stock['1dg'] && change && qty) {
-        stock['1dg'] = change * qty;
-    }
+    const change = cleanNum(resolve(stock, '1DCH'));
+
+    if (qty && avg)              stock.invested = qty * avg;
+    if (qty && avg && ltp)       stock.pnl      = (ltp - avg) * qty;
+    if (avg && ltp)              stock.pnlPct   = ((ltp - avg) / avg) * 100;
+    if (qty && change)           stock['1dGain'] = change * qty;
     
     // Calculate ATH% = ((LTP - 52W High) / 52W High) * 100
     const w52h = cleanNum(resolve(stock, 'W52H'));
@@ -1411,8 +1342,6 @@ function resetAll() {
  */
 function runEngineSync() {
     console.log('🔄 Syncing data from IndexedDB...');
-    // Always pick up latest DB_VERSION — data.html may have bumped it
-    DB_VERSION = parseInt(localStorage.getItem('db_version') || DB_VERSION, 10);
     MASTER = [];  // Clear old data
     const statusEl = document.getElementById('status');
     if (!statusEl) {
@@ -1422,7 +1351,7 @@ function runEngineSync() {
     statusEl.innerHTML = 'Syncing...';
     statusEl.style.display = 'block';
     
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const req = indexedDB.open(DB_NAME); // no forced version
 
     req.onupgradeneeded = function(e) {
         const d = e.target.result;
@@ -1439,10 +1368,6 @@ function runEngineSync() {
     req.onsuccess = function(e) {
         try {
             const database = e.target.result;
-            // Yield when data.html bumps version
-            database.onversionchange = () => {
-                database.close();
-            };
             // Guard BEFORE transaction — store may not exist yet
             if (!database.objectStoreNames.contains(STORE_NAME)) {
                 statusEl.innerHTML = 'No data — go to Data tab → 🚀 LOAD JSON';
@@ -1465,7 +1390,7 @@ function runEngineSync() {
                         const ltpVal = abcap.price && abcap.price.ltp && abcap.price.ltp.price ? abcap.price.ltp.price : '?';
                         console.log('  📍 ABCAPITAL LTP from DB: ' + ltpVal);
                     }
-                    console.log('  First stock:', MASTER[0].ticker, 'LTP:', MASTER[0].price?.ltp?.price || '?');
+                    console.log('  First stock:', MASTER[0].ticker, 'LTP:', MASTER[0].price?.ltp?.ltp || '?');
                 }
                 
                 if (MASTER.length > 0) {
