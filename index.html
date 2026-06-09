@@ -745,7 +745,11 @@ async function init() {
             // CRITICAL: yield connection when data.html bumps DB version (DATA LOAD)
             database.onversionchange = () => {
                 database.close();
-                console.log('ℹ️ DB version changed — connection released for data.html');
+                console.log('ℹ️ DB version changed by data.html — reloading fresh data...');
+                // Re-sync DB_VERSION from localStorage (data.html bumped it)
+                DB_VERSION = parseInt(localStorage.getItem('db_version') || DB_VERSION, 10);
+                // Wait briefly for data.html to finish writing, then re-read
+                setTimeout(() => runEngineSync(), 800);
             };
             res(database);
         };
@@ -1411,6 +1415,8 @@ function resetAll() {
  */
 function runEngineSync() {
     console.log('🔄 Syncing data from IndexedDB...');
+    // Always pick up latest DB_VERSION — data.html may have bumped it
+    DB_VERSION = parseInt(localStorage.getItem('db_version') || DB_VERSION, 10);
     MASTER = [];  // Clear old data
     const statusEl = document.getElementById('status');
     if (!statusEl) {
@@ -1438,7 +1444,11 @@ function runEngineSync() {
         try {
             const database = e.target.result;
             // Yield when data.html bumps version
-            database.onversionchange = () => { database.close(); };
+            database.onversionchange = () => {
+                database.close();
+                DB_VERSION = parseInt(localStorage.getItem('db_version') || DB_VERSION, 10);
+                setTimeout(() => runEngineSync(), 800);
+            };
             // Guard BEFORE transaction — store may not exist yet
             if (!database.objectStoreNames.contains(STORE_NAME)) {
                 statusEl.innerHTML = 'No data — go to Data tab → 🚀 LOAD JSON';
