@@ -456,8 +456,9 @@
 
 <script>
     const DB_NAME = 'raalanportfolio';
-    const DB_VERSION = 8;
     const STORE_NAME = 'stocks';
+    // DB_VERSION stored in localStorage; DATA LOAD bumps it to force fresh schema
+    let DB_VERSION = parseInt(localStorage.getItem('db_version') || '8', 10);
 
     let masterData = [];
     let sourceData = {};
@@ -850,29 +851,48 @@
         log(`❌ Unknown source: ${source}`);
     }
 
-    function saveSectorIndicesToDB(data) {
+    function saveSectorIndicesToDB(data, onDone) {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+            }
+        };
         req.onsuccess = (e) => {
             const db = e.target.result;
             const tx = db.transaction(STORE_NAME, 'readwrite');
             const store = tx.objectStore(STORE_NAME);
             const sectors = data.sectors || data;
             const updated = data.updated || new Date().toISOString();
-            // Save sector indices record
+            const sectorCount = Object.keys(sectors).length;
+
+            // 1. Save sector indices data record
             store.put({ ticker: '_SECTOR_INDICES_', sectors, updated });
-            // Update metadata record
+
+            // 2. Read-modify-write metadata atomically within the SAME transaction
             const metaGet = store.get('_METADATA_');
             metaGet.onsuccess = () => {
                 const meta = metaGet.result || { ticker: '_METADATA_' };
-                meta.sector_indices_count  = Object.keys(sectors).length;
+                meta.sector_indices_count = sectorCount;
                 meta.sector_indices_updated_at = updated;
                 store.put(meta);
             };
+
             tx.oncomplete = () => {
-                log('✅ Sector indices saved to IndexedDB');
-                showToast('✅ Sector indices saved');
+                log(`✅ Sector indices saved › ${sectorCount} sectors`);
                 db.close();
+                if (typeof onDone === 'function') onDone();
             };
+            tx.onerror = () => {
+                log('❌ Sector indices transaction error');
+                db.close();
+                if (typeof onDone === 'function') onDone();
+            };
+        };
+        req.onerror = () => {
+            log('❌ Sector indices DB open error');
+            if (typeof onDone === 'function') onDone();
         };
     }
 
@@ -2164,28 +2184,54 @@ CRITICAL RULES:
     }
 
     function loadAllData() {
-        logInfo('DATA LOAD: Starting complete data refresh');
+        logInfo('DATA LOAD: Full refresh — clearing DB + caches');
         updateStatusButton('⏳ Starting Fresh Load');
-        
-        // Clear existing data first
-        logInfo('Clearing existing database');
+
+        // 1. Bump DB_VERSION so the next open triggers onupgradeneeded (fresh schema)
+        DB_VERSION = DB_VERSION + 1;
+        localStorage.setItem('db_version', String(DB_VERSION));
+        log(`📦 DB version bumped to ${DB_VERSION}`);
+
+        // 2. Clear service-worker caches
+        if ('caches' in window) {
+            caches.keys().then(names => names.forEach(n => {
+                caches.delete(n);
+                log(`🧹 SW cache cleared: ${n}`);
+            }));
+        }
+
+        // 3. Clear localStorage except PAT, guidance timestamps, and logs
+        const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs', 'db_version'];
+        const saved = {};
+        keep.forEach(k => { const v = localStorage.getItem(k); if (v !== null) saved[k] = v; });
+        localStorage.clear();
+        Object.entries(saved).forEach(([k, v]) => localStorage.setItem(k, v));
+        log('🧹 localStorage cleared (PAT + guidance preserved)');
+
+        // 4. Delete and recreate IndexedDB
         clearDatabaseAndRefresh();
     }
-    
+
     function clearDatabaseAndRefresh() {
-        const request = indexedDB.deleteDatabase(DB_NAME);
-        
-        request.onsuccess = function() {
-            logSuccess('Database cleared');
-            logFetch('GitHub');
-            updateStatusButton('⏳ Loading Data Files');
-            
+        const delReq = indexedDB.deleteDatabase(DB_NAME);
+
+        delReq.onsuccess = function() {
+            logSuccess('IndexedDB deleted');
+            updateStatusButton('⏳ Loading market_data.json');
             loadMarketDataFromGitHub();
         };
-        
-        request.onerror = function() {
-            logError('Failed to clear database');
-            updateStatusButton('❌ Clear Error');
+
+        delReq.onerror = function() {
+            logError('Failed to delete database — trying anyway');
+            updateStatusButton('⏳ Loading market_data.json');
+            loadMarketDataFromGitHub();
+        };
+
+        // onblocked fires when another tab has the DB open
+        delReq.onblocked = function() {
+            logWarning('DB delete blocked — close other tabs and retry');
+            updateStatusButton('⚠️ DB Blocked');
+            showToast('⚠️ Close other tabs, then retry DATA LOAD');
         };
     }
     
@@ -2247,6 +2293,62 @@ CRITICAL RULES:
                 logFetch('ltp.json for latest prices');
                 return loadLTPFromGitHub();
             })
+            .then(() => {
+                // Fetch unified-symbols.json to record count in _METADATA_
+                logFetch('unified-symbols.json (count)');
+                const cb = Math.random().toString(36).slice(2) + Date.now();
+                return fetch(`${RAW_GITHUB_URL}/unified-symbols.json?v=${cb}`)
+                    .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                    .then(sym => {
+                        const count = sym.symbols ? sym.symbols.length
+                                    : (Array.isArray(sym) ? sym.length : 0);
+                        // Persist symbols_count into _METADATA_
+                        return new Promise((res) => {
+                            const req = indexedDB.open(DB_NAME, DB_VERSION);
+                            req.onupgradeneeded = (e) => {
+                                if (!e.target.result.objectStoreNames.contains(STORE_NAME))
+                                    e.target.result.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                            };
+                            req.onsuccess = (e) => {
+                                const db = e.target.result;
+                                const tx = db.transaction(STORE_NAME, 'readwrite');
+                                const store = tx.objectStore(STORE_NAME);
+                                const mg = store.get('_METADATA_');
+                                mg.onsuccess = () => {
+                                    const meta = mg.result || { ticker: '_METADATA_' };
+                                    meta.symbols_count = count;
+                                    meta.symbols_updated_at = sym.updated || new Date().toISOString();
+                                    store.put(meta);
+                                };
+                                tx.oncomplete = () => { db.close(); logSuccess('symbols count', count); res(); };
+                                tx.onerror   = () => { db.close(); res(); };
+                            };
+                            req.onerror = () => res();
+                        });
+                    })
+                    .catch(e => logWarning('unified-symbols count skipped', e));
+            })
+            .then(() => {
+                // Fetch sector_indices last; re-render only after it commits
+                return new Promise((res) => {
+                    logFetch('sector_indices.json');
+                    const cb = Math.random().toString(36).slice(2) + Date.now();
+                    fetch(`${RAW_GITHUB_URL}/data/sector_indices.json?v=${cb}`)
+                        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                        .then(si => saveSectorIndicesToDB(si, res))
+                        .catch(e => { logWarning('sector_indices skipped', e); res(); });
+                });
+            })
+            .then(() => loadFromIndexedDB())
+            .then(() => {
+                masterData = masterData; // already set by loadFromIndexedDB
+                updateStatusButton('✅ Loaded');
+                renderDataSources();
+                renderSymbols();
+                updateHeader();
+                showToast('✅ Data load complete!');
+                logSuccess('DATA LOAD complete');
+            })
             .catch(err => {
                 logError('Loading market_data.json', err.message);
                 updateStatusButton('❌ Load Error');
@@ -2284,23 +2386,29 @@ CRITICAL RULES:
                     savedCount++;
                 });
                 
-                // Store metadata in a special record
-                const metadata = {
-                    ticker: '_METADATA_',
-                    market_data_generated_at: generatedAt || new Date().toISOString(),
-                    market_data_count: savedCount,
-                    tickers_with_guidance: guidanceCount || 0,  // Store guidance count
-                    ltp_updated_at: null,  // Will be updated when LTP loads
-                    ltp_count: null
+                // Read existing metadata first so we don't clobber symbols/sector fields
+                const mgReq = store.get('_METADATA_');
+                mgReq.onsuccess = function() {
+                    const existing = mgReq.result || { ticker: '_METADATA_' };
+                    const metadata = {
+                        ticker: '_METADATA_',
+                        market_data_generated_at: generatedAt || new Date().toISOString(),
+                        market_data_count: savedCount,
+                        tickers_with_guidance: guidanceCount || 0,
+                        ltp_updated_at: null,
+                        ltp_count: null,
+                        // Preserve these — they'll be filled by later steps in the chain
+                        symbols_count: existing.symbols_count || null,
+                        symbols_updated_at: existing.symbols_updated_at || null,
+                        sector_indices_count: existing.sector_indices_count || null,
+                        sector_indices_updated_at: existing.sector_indices_updated_at || null
+                    };
+                    store.put(metadata);
                 };
-                store.put(metadata);
-                
+
                 tx.oncomplete = function() {
                     logSuccess('Saved to IndexedDB', `${savedCount} stocks`);
-                    if (guidanceCount) {
-                        logUpdate('guidance count', guidanceCount);
-                    }
-                    
+                    if (guidanceCount) logUpdate('guidance count', guidanceCount);
                     db.close();
                     resolve();
                 };
@@ -2361,6 +2469,11 @@ CRITICAL RULES:
             }
             
             const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+            request.onupgradeneeded = function(e) {
+                if (!e.target.result.objectStoreNames.contains(STORE_NAME))
+                    e.target.result.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+            };
             
             request.onsuccess = function(ev) {
                 const db = ev.target.result;
@@ -2428,30 +2541,9 @@ CRITICAL RULES:
                 
                 tx.oncomplete = function() {
                     logSuccess('LTP merged', `${mergedCount} stocks`);
-                    logSuccess('Complete data load finished');
-                    updateStatusButton('✅ Loaded (' + mergedCount + ' prices)');
-                    
                     dataUpdatedTimes['ltp.json'] = ltpTime;
                     dataUpdatedTimes['data/ltp.json'] = ltpTime;
-                    
-                    db.close();  // Close before opening new connection
-
-                    // Auto-fetch sector_indices into DB
-                    const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
-                    fetch(siUrl)
-                        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-                        .then(si => {
-                            saveSectorIndicesToDB(si);
-                            logSuccess('Sector indices loaded');
-                            showToast('✅ Fresh data loaded! Refresh to see updates.', 'success');
-                        })
-                        .catch(e => {
-                            logWarning(`Sector indices skipped: ${e}`);
-                            showToast('✅ Fresh data loaded! Refresh to see updates.', 'success');
-                        });
-
-                    renderSymbols();
-                    renderDataSources();
+                    db.close();
                     resolve();
                 };
                 
@@ -2585,100 +2677,89 @@ CRITICAL RULES:
                 
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
                 
+                request.onupgradeneeded = function(e) {
+                    if (!e.target.result.objectStoreNames.contains(STORE_NAME))
+                        e.target.result.createObjectStore(STORE_NAME, { keyPath: 'ticker' });
+                };
+
                 request.onsuccess = function() {
                     const db = request.result;
                     const tx = db.transaction(STORE_NAME, 'readwrite');
                     const store = tx.objectStore(STORE_NAME);
                     let updatedCount = 0;
-                    
+
                     const getAllReq = store.getAll();
-                    
+
                     getAllReq.onsuccess = function() {
                         const stocks = getAllReq.result;
-                        
+
                         stocks.forEach(function(stock) {
                             const ticker = stock.ticker;
+                            if (ticker.startsWith('_')) return;
                             const quote = json.quotes[ticker];
-                            
+
                             if (quote) {
                                 if (!stock.price) stock.price = {};
                                 if (!stock.price.ltp) stock.price.ltp = {};
-                                
-                                stock.price.ltp.price = quote.ltp;
-                                stock.price.ltp.open = quote.open;
-                                stock.price.ltp.high = quote.high;
-                                stock.price.ltp.low = quote.low;
+
+                                stock.price.ltp.price      = quote.ltp;
+                                stock.price.ltp.open       = quote.open;
+                                stock.price.ltp.high       = quote.high;
+                                stock.price.ltp.low        = quote.low;
                                 stock.price.ltp.prev_close = quote.prev;
-                                stock.price.ltp.change = quote.change;
-                                stock.price.ltp.changePct = quote.changePct;        // camelCase — used by signals
-                                stock.price.ltp.change_pct = quote.changePct;       // snake_case — consistency
+                                stock.price.ltp.change     = quote.change;
+                                stock.price.ltp.changePct  = quote.changePct;
+                                stock.price.ltp.change_pct = quote.changePct;
                                 stock.price.ltp.day_volume = quote.vol;
+                                stock.price.ltp.beta       = quote.beta;
                                 if (!stock.price['52_week']) stock.price['52_week'] = {};
                                 stock.price['52_week'].high = quote.w52h;
-                                stock.price['52_week'].low = quote.w52l;
-                                stock.price.ltp.beta = quote.beta;
-                                
+                                stock.price['52_week'].low  = quote.w52l;
+
                                 store.put(stock);
                                 updatedCount++;
                             }
                         });
-                        
-                        // Now update metadata BEFORE transaction completes
-                        const getMetadataReq = store.get('_METADATA_');
-                        getMetadataReq.onsuccess = function() {
-                            const existingMetadata = getMetadataReq.result || {};
-                            
-                            // Merge: update LTP fields, preserve market_data fields
-                            const metadata = {
-                                ticker: '_METADATA_',
-                                market_data_generated_at: existingMetadata.market_data_generated_at,
-                                market_data_count: existingMetadata.market_data_count,
-                                ltp_updated_at: ltpUpdatedTime,
-                                ltp_count: updatedCount
-                            };
-                            store.put(metadata);
-                            logUpdate('metadata', `ltp_updated_at + ${updatedCount} count`);
-                        };
-                        getMetadataReq.onerror = function() {
-                            const metadata = {
-                                ticker: '_METADATA_',
-                                ltp_updated_at: ltpUpdatedTime,
-                                ltp_count: updatedCount
-                            };
-                            store.put(metadata);
+
+                        // Atomic metadata update within same transaction
+                        const mgReq = store.get('_METADATA_');
+                        mgReq.onsuccess = function() {
+                            const meta = mgReq.result || { ticker: '_METADATA_' };
+                            meta.ltp_updated_at = ltpUpdatedTime;
+                            meta.ltp_count = updatedCount;
+                            store.put(meta);
                         };
                     };
-                    
+
                     tx.oncomplete = function() {
                         logSuccess('LTP updated', `${updatedCount} stocks`);
-                        updateStatusButton('✅ LTP Updated');
-                        db.close();  // Close first before opening new connection
+                        db.close();
 
-                        // Auto-fetch sector_indices.json into DB after DB is closed
+                        // Fetch sector_indices, wait for commit, then re-render
                         const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
                         fetch(siUrl)
                             .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-                            .then(si => {
-                                saveSectorIndicesToDB(si);
-                                logSuccess('Sector indices updated');
-                                showToast(`✅ Updated ${updatedCount} stocks + sector indices`, 'success');
-                            })
-                            .catch(e => {
-                                logWarning(`Sector indices fetch skipped: ${e}`);
-                                showToast(`✅ Updated ${updatedCount} stocks`, 'success');
-                            });
+                            .then(si => saveSectorIndicesToDB(si, afterLTPDone))
+                            .catch(e => { logWarning('sector_indices skipped', e); afterLTPDone(); });
 
-                        renderSymbols();
-                        renderDataSources();
+                        function afterLTPDone() {
+                            loadFromIndexedDB().then(() => {
+                                updateStatusButton('✅ LTP Updated');
+                                renderDataSources();
+                                renderSymbols();
+                                updateHeader();
+                                showToast(`✅ LTP + sector indices updated`);
+                            });
+                        }
                     };
-                    
+
                     tx.onerror = function() {
-                        logError('Transaction failed');
+                        logError('LTP transaction failed');
                         updateStatusButton('❌ Error');
                         db.close();
                     };
                 };
-                
+
                 request.onerror = function() {
                     logError('Failed to open database');
                     updateStatusButton('❌ DB Error');
@@ -2691,100 +2772,7 @@ CRITICAL RULES:
             });
     }
     
-    function fetchAndMergeLTP(db) {
-        log('⚡ Fetching ltp.json from GitHub...');
-        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
-        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
-        
-        fetch(ltpUrl)
-            .then(r => {
-                if (!r.ok) throw new Error(`ltp.json fetch failed: HTTP ${r.status}`);
-                return r.json();
-            })
-            .then(json => {
-                if (!json.quotes) {
-                    log('⚠️ ltp.json not available or invalid, skipping LTP merge');
-                    updateStatusButton('✅ Loaded (no LTP)');
-                    return;
-                }
-                
-                log(`⏳ Merging ${Object.keys(json.quotes).length} LTP quotes...`);
-                // Show sample of what's in GitHub ltp.json
-                if (json.quotes['ABCAPITAL']) {
-                    log(`  🔍 ABCAPITAL from ltp.json: LTP=${json.quotes['ABCAPITAL'].ltp}, Change=${json.quotes['ABCAPITAL'].change}`);
-                }
-                
-                const tx = db.transaction(STORE_NAME, 'readwrite');
-                const store = tx.objectStore(STORE_NAME);
-                const getAllReq = store.getAll();
-                
-                let mergedCount = 0;
-                
-                getAllReq.onsuccess = function() {
-                    const stocks = getAllReq.result;
-                    
-                    stocks.forEach(function(stock) {
-                        const ticker = stock.ticker;
-                        const quote = json.quotes[ticker];
-                        
-                        if (quote) {
-                            if (!stock.price) stock.price = {};
-                            if (!stock.price.ltp) stock.price.ltp = {};
-                            
-                            stock.price.ltp.price = quote.ltp;
-                            stock.price.ltp.open = quote.open;
-                            stock.price.ltp.high = quote.high;
-                            stock.price.ltp.low = quote.low;
-                            stock.price.ltp.prev_close = quote.prev;
-                            stock.price.ltp.change = quote.change;
-                            stock.price.ltp.change_pct = quote.changePct;
-                            stock.price.ltp.day_volume = quote.vol;
-                            if (!stock.price['52_week']) stock.price['52_week'] = {};
-                            stock.price['52_week'].high = quote.w52h;
-                            stock.price['52_week'].low = quote.w52l;
-                            stock.price.ltp.beta = quote.beta;
-                            stock.ltpUpdatedAt = new Date().toISOString();
-                            
-                            // Log sample stocks including ABCAPITAL
-                            if (ticker === 'ABCAPITAL' || mergedCount < 3) {
-                                log(`  📍 ${ticker}: LTP=${quote.ltp}, Change=${quote.change}, ChangePct=${quote.changePct}%`);
-                            }
-                            
-                            // CRITICAL FIX: Actually write the updated stock record back to DB
-                            const putReq = store.put(stock);
-                            putReq.onsuccess = function() {
-                                mergedCount++;
-                            };
-                            putReq.onerror = function() {
-                                log(`  ❌ Error writing ${ticker}: ${putReq.error.message}`);
-                            };
-                        }
-                    });
-                };
-                
-                getAllReq.onerror = function() {
-                    log('❌ Error reading stocks from DB');
-                };
-                
-                // CRITICAL FIX: Move tx.oncomplete OUTSIDE getAllReq.onsuccess so it waits for ALL puts to complete
-                tx.oncomplete = function() {
-                    log(`✅ LTP merged for ${mergedCount} stocks`);
-                    updateStatusButton('✅ Loaded');
-                    renderSymbols();
-                };
-                
-                tx.onerror = function() {
-                    log('❌ Transaction error during LTP merge');
-                    updateStatusButton('✅ Loaded (with errors)');
-                };
-            })
-            .catch(err => {
-                log(`⚠️ Could not fetch ltp.json: ${err.message}`);
-                updateStatusButton('✅ Loaded (no LTP)');
-                renderSymbols();
-            });
-    }
-    
+
     /* ========================================================================
        OLD GITHUB LOADING FLOW - NO LONGER USED
        market_data.json now contains everything (prices, fundamentals, guidance)
@@ -2852,11 +2840,19 @@ CRITICAL RULES:
             .then(json => {
                 if (!json.quotes) {
                     log('⚠️ ltp.json not available, refreshing display from cache');
-                    return loadFromIndexedDB();
+                    return Promise.resolve();
                 }
                 log('⏳ Merging ' + Object.keys(json.quotes).length + ' fresh prices...');
                 return mergeLTPIntoDB(json);
             })
+            .then(() => new Promise((res) => {
+                // Fetch sector_indices and wait for its DB commit before rendering
+                const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
+                fetch(siUrl)
+                    .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                    .then(si => saveSectorIndicesToDB(si, res))
+                    .catch(e => { logWarning('sector_indices skipped', e); res(); });
+            }))
             .then(() => loadFromIndexedDB())
             .then(() => {
                 updateStatusButton('✅ Refreshed');
