@@ -486,14 +486,58 @@
     
     const RAW_GITHUB_URL = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}`;
 
-    // Centralized GitHub CDN fetch — bypasses CDN cache (query strings alone don't work on raw.githubusercontent.com)
-    function ghFetch(path) {
-        const cb = Date.now() + '_' + Math.random().toString(36).slice(2);
-        const url = path.startsWith('http') ? path : `${RAW_GITHUB_URL}/${path}`;
-        const sep = url.includes('?') ? '&' : '?';
-        // cache:'no-store' bypasses browser cache; _cb= busts GitHub CDN (query string on path)
-        // Do NOT add Cache-Control/Pragma headers — forbidden on cross-origin requests, causes fetch to fail
-        return fetch(`${url}${sep}_cb=${cb}`, { cache: 'no-store' });
+    // Fetch via GitHub Contents API — always bypasses CDN, never cached.
+    // Returns a promise resolving to a Response-like object with .json() and .text() methods.
+    // filePath: repo-relative path e.g. 'data/ltp.json' or full raw URL (path extracted automatically)
+    function ghFetch(filePath) {
+        // Extract repo-relative path if a full raw URL was passed
+        const repoBase = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}/`;
+        if (filePath.startsWith(repoBase)) {
+            filePath = filePath.slice(repoBase.length);
+        }
+        // Strip any existing query string
+        filePath = filePath.split('?')[0];
+
+        const pat = localStorage.getItem('github_pat');
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${filePath}?ref=${GITHUB_CONFIG.BRANCH}`;
+        const headers = { 'Accept': 'application/vnd.github.v3+json' };
+        if (pat) headers['Authorization'] = `token ${pat}`;
+
+        return fetch(apiUrl, { cache: 'no-store', headers })
+            .then(r => {
+                if (!r.ok) return Promise.reject(`GitHub API HTTP ${r.status} for ${filePath}`);
+                return r.json();
+            })
+            .then(apiResp => {
+                // Contents API returns base64-encoded content
+                if (apiResp.encoding === 'base64') {
+                    // base64 decode — handle chunked content field (GitHub wraps at 60 chars)
+                    const raw = atob(apiResp.content.replace(/\n/g, ''));
+                    // Return Response-like object
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: () => {
+                            let text = raw;
+                            text = text.replace(/:\s*NaN/g, ': null');
+                            text = text.replace(/:\s*Infinity/g, ': null');
+                            text = text.replace(/:\s*-Infinity/g, ': null');
+                            return Promise.resolve(JSON.parse(text));
+                        },
+                        text: () => Promise.resolve(raw)
+                    };
+                }
+                // download_url fallback for large files (>1MB, API returns no content)
+                if (apiResp.download_url) {
+                    log(`📡 Large file ${filePath} — fetching via download_url`);
+                    return fetch(apiResp.download_url, { cache: 'no-store' })
+                        .then(r2 => {
+                            if (!r2.ok) return Promise.reject(`download_url HTTP ${r2.status}`);
+                            return r2;
+                        });
+                }
+                return Promise.reject(`Unexpected GitHub API response for ${filePath}`);
+            });
     }
     
     const DATA_SOURCES = [
@@ -1890,7 +1934,7 @@ CRITICAL RULES:
         };
         
         // 4. Delete from unified-symbols.json on GitHub
-        ghFetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
+        ghFetch('unified-symbols.json')
             .then(r => r.json())
             .then(data => {
                 let symbols = data.symbols || Object.values(data);
@@ -1901,7 +1945,7 @@ CRITICAL RULES:
             .catch(e => log(`⚠️ Symbol update failed: ${e.message}`));
         
         // 5. Delete from guidance.json on GitHub
-        ghFetch(`${RAW_GITHUB_URL}/guidance.json`)
+        ghFetch('guidance.json')
             .then(r => r.json())
             .then(data => {
                 delete data[ticker];
@@ -2020,7 +2064,7 @@ CRITICAL RULES:
         const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
         
         // Fetch current file first
-        ghFetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
+        ghFetch('unified-symbols.json')
             .then(r => r.json())
             .then(currentData => {
                 let symbols = currentData.symbols || [];
@@ -2225,20 +2269,14 @@ CRITICAL RULES:
     
     function loadMarketDataFromGitHub() {
         logFetch('market_data.json');
-        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
-        const marketDataUrl = `${RAW_GITHUB_URL}/data/market_data.json?v=${cacheBuster}`;
-        
-        ghFetch(marketDataUrl)
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.text();
-            })
+        ghFetch('data/market_data.json')
+            .then(r => r.text())
             .then(text => {
-                // Safety: Replace NaN/Infinity with null
+                // Safety: Replace NaN/Infinity with null (also done inside ghFetch but belt+suspenders)
                 text = text.replace(/:\s*NaN/g, ': null');
                 text = text.replace(/:\s*Infinity/g, ': null');
                 text = text.replace(/:\s*-Infinity/g, ': null');
-                
+
                 const json = JSON.parse(text);
                 
                 // Extract metadata timestamp
@@ -2285,8 +2323,8 @@ CRITICAL RULES:
                 // Fetch unified-symbols.json to record count in _METADATA_
                 logFetch('unified-symbols.json (count)');
                 const cb = Math.random().toString(36).slice(2) + Date.now();
-                return ghFetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
-                    .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                return ghFetch('unified-symbols.json')
+                    .then(r => r.json())
                     .then(sym => {
                         const count = sym.symbols ? sym.symbols.length
                                     : (Array.isArray(sym) ? sym.length : 0);
@@ -2321,8 +2359,8 @@ CRITICAL RULES:
                 return new Promise((res) => {
                     logFetch('sector_indices.json');
                     const cb = Math.random().toString(36).slice(2) + Date.now();
-                    ghFetch(`${RAW_GITHUB_URL}/data/sector_indices.json`)
-                        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                    ghFetch('data/sector_indices.json')
+                        .then(r => r.json())
                         .then(si => saveSectorIndicesToDB(si, res))
                         .catch(e => { logWarning('sector_indices skipped', e); res(); });
                 });
@@ -2427,14 +2465,8 @@ CRITICAL RULES:
     function loadLTPFromGitHub() {
         return new Promise((resolve, reject) => {
             logFetch('ltp.json');
-            const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
-            const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
-            
-            ghFetch(ltpUrl)
-                .then(r => {
-                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                    return r.json();
-                })
+            ghFetch('data/ltp.json')
+                .then(r => r.json())
                 .then(json => {
                     if (!json.quotes) {
                         logWarning('ltp.json not available, continuing without live prices');
@@ -2615,9 +2647,8 @@ CRITICAL RULES:
     function fetchSectorIndicesOnly() {
         logFetch('sector_indices.json');
         updateStatusButton('⏳ Fetching Sector Indices');
-        const url = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
-        ghFetch(url)
-            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+        ghFetch('data/sector_indices.json')
+            .then(r => r.json())
             .then(data => saveSectorIndicesToDB(data, () => {
                 // Render only after DB transaction commits
                 updateStatusButton('✅ Sector Indices Updated');
@@ -2635,14 +2666,8 @@ CRITICAL RULES:
         logFetch('ltp.json');
         updateStatusButton('⏳ Fetching LTP');
         
-        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
-        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
-        
-        ghFetch(ltpUrl)
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
+        ghFetch('data/ltp.json')
+            .then(r => r.json())
             .then(json => {
                 if (!json.quotes) {
                     logError('Invalid LTP JSON', 'missing quotes');
@@ -2722,9 +2747,8 @@ CRITICAL RULES:
                         db.close();
 
                         // Fetch sector_indices, wait for commit, then re-render
-                        const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
-                        ghFetch(siUrl)
-                            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                        ghFetch('data/sector_indices.json')
+                            .then(r => r.json())
                             .then(si => saveSectorIndicesToDB(si, afterLTPDone))
                             .catch(e => { logWarning('sector_indices skipped', e); afterLTPDone(); });
 
@@ -2797,13 +2821,8 @@ CRITICAL RULES:
         log('🔄 REFRESH: Fetching fresh LTP + sector indices...');
         updateStatusButton('⏳ Refreshing');
 
-        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json`;
-
-        ghFetch(ltpUrl)
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
+        ghFetch('data/ltp.json')
+            .then(r => r.json())
             .then(json => {
                 if (!json.quotes) {
                     log('⚠️ ltp.json empty — reloading from cache');
@@ -2813,8 +2832,8 @@ CRITICAL RULES:
                 return mergeLTPIntoDB(json);
             })
             .then(() => new Promise((res) => {
-                ghFetch(`${RAW_GITHUB_URL}/data/sector_indices.json`)
-                    .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+                ghFetch('data/sector_indices.json')
+                    .then(r => r.json())
                     .then(si => saveSectorIndicesToDB(si, res))
                     .catch(e => { logWarning('sector_indices skipped', e); res(); });
             }))
