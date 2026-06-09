@@ -2367,6 +2367,18 @@ CRITICAL RULES:
             })
             .then(() => loadFromIndexedDB())
             .then(() => {
+                // Debug: log ABCAPITAL live price fields from DB
+                const abcap = masterData.find(s => s.ticker === 'ABCAPITAL');
+                if (abcap) {
+                    const ltp   = abcap.price?.ltp?.price      ?? '—';
+                    const ch    = abcap.price?.ltp?.change      ?? '—';
+                    const chPct = abcap.price?.ltp?.changePct   ?? abcap.price?.ltp?.change_pct ?? '—';
+                    const qty   = abcap.company_details?.qty    ?? 0;
+                    const dg    = (qty && ch !== '—') ? (qty * ch).toFixed(2) : '—';
+                    log(`🔍 ABCAPITAL › LTP:${ltp} | 1DCH:${ch} | 1D%:${chPct} | 1DG:${dg}`);
+                } else {
+                    log('🔍 ABCAPITAL not found in masterData');
+                }
                 logSuccess('DATA LOAD complete — clearing caches and reloading');
                 updateStatusButton('✅ Loaded — reloading...');
 
