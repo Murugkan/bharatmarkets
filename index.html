@@ -2866,56 +2866,65 @@ function drawSigHeatmap(stats) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const idx1d = SECTOR_INDICES[r.name]?.change_1d_pct ?? null;
-        const idx1dStr = idx1d !== null ? (idx1d >= 0 ? '+' : '') + idx1d.toFixed(1) + '%' : null;
-        const has1d = idx1dStr !== null;
+        // Portfolio 1D% for this sector (matches box colour)
+        const port1dVal = r.portAvg1d;
+        const port1dStr = port1dVal !== null && port1dVal !== undefined
+            ? (port1dVal >= 0 ? '+' : '') + port1dVal.toFixed(1) + '%' : null;
 
-        // Sector mcap in lakhs
-        const mcapL = r.weight >= 1e5 ? (r.weight / 1e5).toFixed(0) + 'L'
-                    : r.weight >= 1e3 ? (r.weight / 1e3).toFixed(0) + 'k'
-                    : null;
+        // Mcap label: weight is market_cap in rupees from DB
+        // Format: ≥1Cr show XCr, ≥1L show XL, else blank
+        const _w = r.weight;
+        const mcapStr = _w >= 1e7 ? Math.round(_w/1e7) + 'Cr'
+                      : _w >= 1e5 ? Math.round(_w/1e5) + 'L'
+                      : null;
 
-        if (ch >= 60 && cw >= 45) {
-            // Full: name + mcap + score + 1D%
-            const ns = cw > 130 ? 11 : cw > 80 ? 10 : 9;
-            let nm = r.name
-                .replace('Information Technology', 'Info Tech')
-                .replace('Consumer Discretionary', 'Cons. Discr.')
-                .replace('Consumer Staples', 'Cons. Staples');
-            if (nm.length > 14 && cw < 110) nm = nm.substring(0, 13) + '…';
-            const lines = [nm, mcapL, String(r.score), has1d ? idx1dStr : null].filter(Boolean);
+        const ns = cw > 130 ? 11 : cw > 80 ? 10 : 9;
+        let nm = r.name
+            .replace('Information Technology', 'Info Tech')
+            .replace('Consumer Discretionary', 'Cons. Disc')
+            .replace('Consumer Staples', 'Cons. Stpl');
+
+        if (ch >= 55 && cw >= 50) {
+            // Full: name + mcap + score + portfolio 1D%
+            if (nm.length > 12 && cw < 100) nm = nm.substring(0, 11) + '…';
+            const lines = [nm, mcapStr, String(r.score), port1dStr].filter(Boolean);
             const lineH = ch / (lines.length + 1);
             lines.forEach((txt, i) => {
                 const yPos = cy - (lines.length - 1) / 2 * lineH + i * lineH;
-                if (i === 0) {
+                if (txt === nm) {
                     ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
-                    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+                    ctx.fillStyle = 'rgba(255,255,255,0.8)';
                 } else if (txt === String(r.score)) {
                     ctx.font = `800 ${ns + 2}px "JetBrains Mono",monospace`;
                     ctx.fillStyle = '#fff';
-                } else if (txt === mcapL) {
-                    ctx.font = `600 ${ns - 1}px "JetBrains Mono",monospace`;
-                    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+                } else if (txt === mcapStr) {
+                    ctx.font = `500 ${ns - 1}px "JetBrains Mono",monospace`;
+                    ctx.fillStyle = 'rgba(255,255,255,0.45)';
                 } else {
+                    // 1D%
                     ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
-                    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                    ctx.fillStyle = 'rgba(255,255,255,0.95)';
                 }
                 ctx.fillText(txt, cx, yPos);
             });
-        } else if (ch >= 28 && cw >= 32) {
-            // Medium: score + 1D%
-            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.28), 11);
-            ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = '#fff';
-            ctx.fillText(r.score, cx, has1d ? cy - sz * 0.6 : cy);
-            if (has1d) {
-                ctx.font = `600 ${sz - 1}px "JetBrains Mono",monospace`;
-                ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                ctx.fillText(idx1dStr, cx, cy + sz * 0.8);
-            }
-        } else if (ch >= 14 && cw >= 20) {
+        } else if (ch >= 36 && cw >= 36) {
+            // Medium: name (if fits) + score + 1D%
+            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.22), 11);
+            const lines = [];
+            if (cw >= 55) lines.push(nm.length > 10 ? nm.substring(0,9)+'…' : nm);
+            lines.push(String(r.score));
+            if (port1dStr) lines.push(port1dStr);
+            const lh = ch / (lines.length + 1);
+            lines.forEach((txt, i) => {
+                const yp = cy - (lines.length - 1) / 2 * lh + i * lh;
+                ctx.font = txt === String(r.score) ? `800 ${sz+1}px "JetBrains Mono",monospace`
+                                                    : `600 ${sz}px "JetBrains Mono",monospace`;
+                ctx.fillStyle = '#fff';
+                ctx.fillText(txt, cx, yp);
+            });
+        } else if (ch >= 18 && cw >= 24) {
             // Small: score only
-            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.35), 10);
+            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.38), 10);
             ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
             ctx.fillStyle = '#fff';
             ctx.fillText(r.score, cx, cy);
@@ -3007,17 +3016,30 @@ function renderSectorPanel(sectorName, stats) {
         .sort((a, b) => (heldSet.has(b) ? 1 : 0) - (heldSet.has(a) ? 1 : 0) || a.localeCompare(b));
 
     const rows = allTickers.map(t => {
-        const st = sectorTickers.find(x => x.ticker === t);
+        const st      = sectorTickers.find(x => x.ticker === t);
+        const isHeld  = heldSet.has(t);
+        const qty     = st?.company_details?.qty || 0;
+        const avg     = sigToF(st?.company_details?.avg_cost) || 0;
+        const ltp     = sigToF(st?.price?.ltp?.price) || 0;
         const stock1d  = sigToF(st?.price?.ltp?.changePct ?? st?.price?.ltp?.change_pct);
         const stock52w = st?.price?.['52_week']?.change_pct ?? null;
         const diff1d   = dff(stock1d,  idxData.change_1d_pct ?? null);
         const diff52w  = dff(stock52w, idxChg);
-        return `<tr style="border-bottom:1px solid #1a1a1a">
-            <td style="padding:5px 4px;font-size:10px;color:#ddd;white-space:nowrap">${t}</td>
+        // Portfolio column: 1D gain + 52W P&L% for held, blank for watchlist
+        const portPnlPct  = (isHeld && avg > 0 && ltp > 0) ? ((ltp - avg) / avg * 100) : null;
+        const port1dGain  = (isHeld && qty && stock1d != null) ? (stock1d * qty * ltp / 100) : null;
+        const portCol1d   = port1dGain !== null ? `${port1dGain >= 0 ? '+' : ''}₹${Math.abs(port1dGain) >= 1e5 ? (Math.abs(port1dGain)/1e5).toFixed(1)+'L' : Math.round(Math.abs(port1dGain))}` : '—';
+        const portCol52w  = portPnlPct !== null ? fmt(portPnlPct) : '—';
+        return `<tr style="border-bottom:1px solid #1a1a1a${isHeld ? ';background:#0a1008' : ''}">
+            <td style="padding:5px 4px;font-size:10px;color:${isHeld?'#fff':'#888'};white-space:nowrap;font-weight:${isHeld?'700':'400'}">${t}</td>
             <td style="padding:5px 4px;font-size:11px;font-weight:700;color:${col(stock1d)};text-align:right">${fmt(stock1d)}</td>
-            <td style="padding:5px 4px;font-size:11px;font-weight:800;color:${col(diff1d)};text-align:right">${diff1d!=null?(diff1d>=0?'+':'')+diff1d.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(diff1d)};text-align:right">${diff1d!=null?(diff1d>=0?'+':'')+diff1d.toFixed(1)+'%':'—'}</td>
             <td style="padding:5px 4px;font-size:11px;font-weight:700;color:${col(stock52w)};text-align:right;border-left:1px solid #222">${fmt(stock52w)}</td>
-            <td style="padding:5px 4px;font-size:11px;font-weight:800;color:${col(diff52w)};text-align:right">${diff52w!=null?(diff52w>=0?'+':'')+diff52w.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;color:${col(diff52w)};text-align:right">${diff52w!=null?(diff52w>=0?'+':'')+diff52w.toFixed(1)+'%':'—'}</td>
+            <td style="padding:5px 4px;font-size:10px;font-weight:700;text-align:right;border-left:1px solid #222">
+                <div style="color:${col(port1dGain)}">${portCol1d}</div>
+                <div style="color:${col(portPnlPct)};font-size:9px">${portCol52w}</div>
+            </td>
         </tr>`;
     }).join('');
 
@@ -3059,9 +3081,10 @@ function renderSectorPanel(sectorName, stats) {
                     <tr style="border-bottom:1px solid #2a2a2a;background:#111">
                         <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
                         <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700">1D%</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700">vs IDX</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#aaa;text-align:right;font-weight:600">vs IDX</th>
                         <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700;border-left:1px solid #2a2a2a">52W%</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700">vs IDX</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#aaa;text-align:right;font-weight:600">vs IDX</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#00f2ff;text-align:right;font-weight:700;border-left:1px solid #2a2a2a">PORT</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
