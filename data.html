@@ -485,6 +485,20 @@
     };
     
     const RAW_GITHUB_URL = `https://raw.githubusercontent.com/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/${GITHUB_CONFIG.BRANCH}`;
+
+    // Centralized GitHub CDN fetch — bypasses CDN cache (query strings alone don't work on raw.githubusercontent.com)
+    function ghFetch(path) {
+        const cb = Date.now() + '_' + Math.random().toString(36).slice(2);
+        const url = path.startsWith('http') ? path : `${RAW_GITHUB_URL}/${path}`;
+        const sep = url.includes('?') ? '&' : '?';
+        return fetch(`${url}${sep}_cb=${cb}`, {
+            cache: 'no-store',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        });
+    }
     
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
@@ -1880,7 +1894,7 @@ CRITICAL RULES:
         };
         
         // 4. Delete from unified-symbols.json on GitHub
-        fetch(`${RAW_GITHUB_URL}/unified-symbols.json?cache=` + Date.now())
+        ghFetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
             .then(r => r.json())
             .then(data => {
                 let symbols = data.symbols || Object.values(data);
@@ -1891,7 +1905,7 @@ CRITICAL RULES:
             .catch(e => log(`⚠️ Symbol update failed: ${e.message}`));
         
         // 5. Delete from guidance.json on GitHub
-        fetch(`${RAW_GITHUB_URL}/guidance.json?cache=` + Date.now())
+        ghFetch(`${RAW_GITHUB_URL}/guidance.json`)
             .then(r => r.json())
             .then(data => {
                 delete data[ticker];
@@ -2010,7 +2024,7 @@ CRITICAL RULES:
         const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
         
         // Fetch current file first
-        fetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
+        ghFetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
             .then(r => r.json())
             .then(currentData => {
                 let symbols = currentData.symbols || [];
@@ -2240,7 +2254,7 @@ CRITICAL RULES:
         const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
         const marketDataUrl = `${RAW_GITHUB_URL}/data/market_data.json?v=${cacheBuster}`;
         
-        fetch(marketDataUrl)
+        ghFetch(marketDataUrl)
             .then(r => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 return r.text();
@@ -2297,7 +2311,7 @@ CRITICAL RULES:
                 // Fetch unified-symbols.json to record count in _METADATA_
                 logFetch('unified-symbols.json (count)');
                 const cb = Math.random().toString(36).slice(2) + Date.now();
-                return fetch(`${RAW_GITHUB_URL}/unified-symbols.json?v=${cb}`)
+                return ghFetch(`${RAW_GITHUB_URL}/unified-symbols.json`)
                     .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
                     .then(sym => {
                         const count = sym.symbols ? sym.symbols.length
@@ -2333,7 +2347,7 @@ CRITICAL RULES:
                 return new Promise((res) => {
                     logFetch('sector_indices.json');
                     const cb = Math.random().toString(36).slice(2) + Date.now();
-                    fetch(`${RAW_GITHUB_URL}/data/sector_indices.json?v=${cb}`)
+                    ghFetch(`${RAW_GITHUB_URL}/data/sector_indices.json`)
                         .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
                         .then(si => saveSectorIndicesToDB(si, res))
                         .catch(e => { logWarning('sector_indices skipped', e); res(); });
@@ -2432,7 +2446,7 @@ CRITICAL RULES:
             const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
             const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
             
-            fetch(ltpUrl)
+            ghFetch(ltpUrl)
                 .then(r => {
                     if (!r.ok) throw new Error(`HTTP ${r.status}`);
                     return r.json();
@@ -2618,7 +2632,7 @@ CRITICAL RULES:
         logFetch('sector_indices.json');
         updateStatusButton('⏳ Fetching Sector Indices');
         const url = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
-        fetch(url)
+        ghFetch(url)
             .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
             .then(data => saveSectorIndicesToDB(data, () => {
                 // Render only after DB transaction commits
@@ -2640,7 +2654,7 @@ CRITICAL RULES:
         const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
         const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
-        fetch(ltpUrl)
+        ghFetch(ltpUrl)
             .then(r => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 return r.json();
@@ -2725,7 +2739,7 @@ CRITICAL RULES:
 
                         // Fetch sector_indices, wait for commit, then re-render
                         const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
-                        fetch(siUrl)
+                        ghFetch(siUrl)
                             .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
                             .then(si => saveSectorIndicesToDB(si, afterLTPDone))
                             .catch(e => { logWarning('sector_indices skipped', e); afterLTPDone(); });
@@ -2820,7 +2834,7 @@ CRITICAL RULES:
         const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
         const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
         
-        fetch(ltpUrl)
+        ghFetch(ltpUrl)
             .then(r => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 return r.json();
@@ -2835,8 +2849,8 @@ CRITICAL RULES:
             })
             .then(() => new Promise((res) => {
                 // Fetch sector_indices and wait for its DB commit before rendering
-                const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json?v=${Date.now()}`;
-                fetch(siUrl)
+                const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json`;
+                ghFetch(siUrl)
                     .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
                     .then(si => saveSectorIndicesToDB(si, res))
                     .catch(e => { logWarning('sector_indices skipped', e); res(); });
