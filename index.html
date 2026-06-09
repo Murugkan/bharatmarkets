@@ -2737,11 +2737,24 @@ function drawSigHeatmap(stats) {
         return `rgb(${r},${g},${b})`;
     }
 
-    // ── SQUARIFIED TREEMAP ──────────────────────────────────
-    const total = stats.reduce((a, s) => a + s.count, 0);
+    // ── SQUARIFIED TREEMAP — sized by absolute portfolio 1D gain per sector ──
+    // Weight = sum of |change * qty| for each portfolio stock in the sector
+    // Fallback weight = 1 so sectors with no portfolio position still appear
+    const sectorWeights = {};
+    (typeof MASTER !== 'undefined' ? MASTER : []).forEach(s => {
+        const sec = s.company_details?.sector;
+        if (!sec) return;
+        const qty    = s.company_details?.qty || 0;
+        const change = s.price?.ltp?.change ?? 0;
+        const w = Math.abs(change * qty);
+        sectorWeights[sec] = (sectorWeights[sec] || 0) + w;
+    });
+    // Use absolute 1D gain as weight; sectors with 0 get a minimum of 1
+    stats.forEach(s => { s.weight = sectorWeights[s.name] || 1; });
+    const total = stats.reduce((a, s) => a + s.weight, 0);
     const items = [...stats]
-        .sort((a, b) => b.count - a.count)
-        .map(s => ({ ...s, area: (s.count / total) * W * H }));
+        .sort((a, b) => b.weight - a.weight)
+        .map(s => ({ ...s, area: (s.weight / total) * W * H }));
 
     const rects = [];
 
