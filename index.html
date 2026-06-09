@@ -2661,7 +2661,15 @@ function renderSectorTab() {
             ${cards.join('')}
         </div>`;
 
-    setTimeout(() => { try { drawSigHeatmap(stats); } catch(e) { console.error('drawSigHeatmap error:', e); } }, 150);
+    // Draw immediately and on any container resize
+    const _hmDraw = () => { try { drawSigHeatmap(stats); } catch(e) { console.error('drawSigHeatmap', e); } };
+    setTimeout(_hmDraw, 50);
+    const _hmCv = document.getElementById('sig-heatmap');
+    if (_hmCv) {
+        if (window._hmResizeObs) window._hmResizeObs.disconnect();
+        window._hmResizeObs = new ResizeObserver(() => _hmDraw());
+        window._hmResizeObs.observe(_hmCv.parentElement);
+    }
 }
 
 function sigFilter_sector(name) {
@@ -2859,10 +2867,10 @@ function drawSigHeatmap(stats) {
         ctx.fillStyle = 'rgba(255,255,255,0.06)';
         ctx.fillRect(rx, ry, rw, Math.min(3, rh * 0.12));
 
-        // ── Labels ──────────────────────────────────────────
+        // ── Labels ── use padded coords throughout ──────────
         const cw = rw, ch = rh;
         if (cw < 16 || ch < 12) return;
-        const cx = r.rx + r.rw / 2, cy = r.ry + r.rh / 2;
+        const cx = rx + cw / 2, cy = ry + ch / 2;
         ctx.textBaseline = 'middle';
 
         const F = '"JetBrains Mono",monospace';
@@ -2876,7 +2884,7 @@ function drawSigHeatmap(stats) {
                          : idx1dDot < -0.5  ? '#ff4d6d'
                          : '#888';
             ctx.beginPath();
-            ctx.arc(rx + rw - DOT_R - 3, ry + DOT_R + 3, DOT_R, 0, Math.PI * 2);
+            ctx.arc(rx + cw - DOT_R - 3, ry + DOT_R + 3, DOT_R, 0, Math.PI * 2);
             ctx.fillStyle = dotCol;
             ctx.fill();
         }
@@ -2927,20 +2935,29 @@ function drawSigHeatmap(stats) {
         });
         if (line.length) lines.push(line);
 
-        // Vertically centre the block
+        // Vertically centre the block — clamp so lines never overflow box
         const totalH = lines.length * lineH;
-        const startY = cy - totalH / 2 + lineH / 2;
+        const availH = ch - PAD_Y * 2;
+        // If all lines don't fit, drop trailing lines
+        const visLines = lines.slice(0, Math.max(1, Math.floor(availH / lineH)));
+        const visH = visLines.length * lineH;
+        const startY = ry + PAD_Y + (availH - visH) / 2 + lineH / 2;
 
-        lines.forEach((ln, li) => {
+        visLines.forEach((ln, li) => {
             const rowW = ln.reduce((s, t, i) => s + t.w + (i ? 4 : 0), 0);
-            let x = rx + PAD_X + (maxW - rowW) / 2; // centre each line
+            let x = rx + PAD_X + Math.max(0, (maxW - rowW) / 2);
             const y = startY + li * lineH;
             ln.forEach((t, i) => {
                 if (i) x += 4;
                 ctx.font = `${t.bold ? '800' : '600'} ${t.bold ? fsz + 1 : fsz}px ${F}`;
                 ctx.fillStyle = `rgba(255,255,255,${t.alpha})`;
                 ctx.textAlign = 'left';
+                // Clip text to box right edge
+                ctx.save();
+                ctx.rect(rx, ry, cw, ch);
+                ctx.clip();
                 ctx.fillText(t.text, x, y);
+                ctx.restore();
                 x += t.w;
             });
         });
