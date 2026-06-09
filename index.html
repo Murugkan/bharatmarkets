@@ -2859,76 +2859,92 @@ function drawSigHeatmap(stats) {
         ctx.fillStyle = 'rgba(255,255,255,0.06)';
         ctx.fillRect(rx, ry, rw, Math.min(3, rh * 0.12));
 
-        // Labels
+        // ── Labels ──────────────────────────────────────────
         const cw = rw, ch = rh;
-        if (cw < 20 || ch < 14) return;
+        if (cw < 16 || ch < 12) return;
         const cx = r.rx + r.rw / 2, cy = r.ry + r.rh / 2;
-        ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Portfolio 1D% — matches box colour
+        const F = '"JetBrains Mono",monospace';
+        const DOT_R = Math.min(4, cw * 0.07, ch * 0.07);
+
+        // ── Index 1D dot (top-right) ──────────────────────────
+        const idx1dDot = SECTOR_INDICES[r.name]?.change_1d_pct ?? null;
+        if (DOT_R >= 2) {
+            const dotCol = idx1dDot === null ? '#444'
+                         : idx1dDot > 0.5   ? '#00ff88'
+                         : idx1dDot < -0.5  ? '#ff4d6d'
+                         : '#888';
+            ctx.beginPath();
+            ctx.arc(rx + rw - DOT_R - 3, ry + DOT_R + 3, DOT_R, 0, Math.PI * 2);
+            ctx.fillStyle = dotCol;
+            ctx.fill();
+        }
+
+        // ── Token-based wrap layout ───────────────────────────
+        // Tokens: name · score · 1D%
+        // All laid out left-to-right, wrapping to next line when box width exceeded
         const port1dVal = r.portAvg1d;
         const port1dStr = port1dVal != null
             ? (port1dVal >= 0 ? '+' : '') + port1dVal.toFixed(1) + '%' : null;
 
-        // Abbreviate sector name to fit box width
         let nm = r.name
             .replace('Information Technology', 'Info Tech')
             .replace('Consumer Discretionary', 'Cons. Disc')
             .replace('Consumer Staples', 'Cons. Stpl');
 
-        const F = '"JetBrains Mono",monospace';
+        // Font sizes scale with box, capped
+        const fsz = Math.min(Math.floor(Math.min(cw, ch) * 0.18), 12);
+        if (fsz < 6) return;
 
-        if (ch >= 55 && cw >= 46) {
-            // LARGE: name top-left small, score centre big, 1D% bottom
-            const scoreSz = Math.min(Math.floor(Math.min(cw, ch) * 0.18), 16);
-            const nameSz  = Math.min(scoreSz - 2, 11);
-            const pctSz   = Math.min(scoreSz - 1, 12);
+        // Build token list: [{text, bold, alpha}]
+        const tokens = [];
+        tokens.push({ text: nm,              bold: false, alpha: 0.75 });
+        tokens.push({ text: String(r.score), bold: true,  alpha: 1.0  });
+        if (port1dStr) tokens.push({ text: port1dStr, bold: false, alpha: 0.92 });
 
-            // Truncate name to fit
-            ctx.font = `700 ${nameSz}px ${F}`;
-            let dispNm = nm;
-            while (dispNm.length > 3 && ctx.measureText(dispNm).width > cw - 8)
-                dispNm = dispNm.slice(0, -1);
+        // Measure each token
+        const PAD_X = 4, PAD_Y = 4;
+        const maxW = cw - PAD_X * 2;
+        const lineH = fsz * 1.5;
 
-            // Name — top, slightly left
-            ctx.fillStyle = 'rgba(255,255,255,0.75)';
-            ctx.textAlign = 'left';
-            ctx.fillText(dispNm, rx + 5, ry + nameSz + 4);
-            ctx.textAlign = 'center';
+        tokens.forEach(t => {
+            ctx.font = `${t.bold ? '800' : '600'} ${t.bold ? fsz + 1 : fsz}px ${F}`;
+            t.w = ctx.measureText(t.text).width;
+        });
 
-            // Score — centre
-            ctx.font = `800 ${scoreSz}px ${F}`;
-            ctx.fillStyle = '#fff';
-            ctx.fillText(String(r.score), cx, cy + scoreSz * 0.35);
-
-            // 1D% — bottom
-            if (port1dStr) {
-                ctx.font = `700 ${pctSz}px ${F}`;
-                ctx.fillStyle = 'rgba(255,255,255,0.92)';
-                ctx.fillText(port1dStr, cx, ry + rh - 6);
+        // Word-wrap: pack tokens into lines
+        const lines = [];
+        let line = [], lineW = 0;
+        tokens.forEach((t, i) => {
+            const gap = line.length ? 4 : 0;
+            if (line.length && lineW + gap + t.w > maxW) {
+                lines.push(line);
+                line = [t]; lineW = t.w;
+            } else {
+                line.push(t); lineW += gap + t.w;
             }
-            ctx.textAlign = 'center'; // restore for next box
-        } else if (ch >= 30 && cw >= 30) {
-            // MEDIUM: score + 1D% stacked centre
-            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.25), 12);
-            const gap = sz * 1.4;
-            const yBase = port1dStr ? cy - gap * 0.4 : cy;
-            ctx.font = `800 ${sz}px ${F}`;
-            ctx.fillStyle = '#fff';
-            ctx.fillText(String(r.score), cx, yBase);
-            if (port1dStr) {
-                ctx.font = `600 ${Math.max(sz - 2, 7)}px ${F}`;
-                ctx.fillStyle = 'rgba(255,255,255,0.88)';
-                ctx.fillText(port1dStr, cx, yBase + gap);
-            }
-        } else if (ch >= 16 && cw >= 20) {
-            // SMALL: score only, scaled to fill box
-            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.42), 11);
-            ctx.font = `800 ${sz}px ${F}`;
-            ctx.fillStyle = '#fff';
-            ctx.fillText(String(r.score), cx, cy + sz * 0.35);
-        }
+        });
+        if (line.length) lines.push(line);
+
+        // Vertically centre the block
+        const totalH = lines.length * lineH;
+        const startY = cy - totalH / 2 + lineH / 2;
+
+        lines.forEach((ln, li) => {
+            const rowW = ln.reduce((s, t, i) => s + t.w + (i ? 4 : 0), 0);
+            let x = rx + PAD_X + (maxW - rowW) / 2; // centre each line
+            const y = startY + li * lineH;
+            ln.forEach((t, i) => {
+                if (i) x += 4;
+                ctx.font = `${t.bold ? '800' : '600'} ${t.bold ? fsz + 1 : fsz}px ${F}`;
+                ctx.fillStyle = `rgba(255,255,255,${t.alpha})`;
+                ctx.textAlign = 'left';
+                ctx.fillText(t.text, x, y);
+                x += t.w;
+            });
+        });
+        ctx.textAlign = 'center'; // restore
     });
 
     // ── CLICK ───────────────────────────────────────────────
