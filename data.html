@@ -2194,31 +2194,8 @@ CRITICAL RULES:
     }
 
     function loadAllData() {
-        logInfo('DATA LOAD: Full refresh — clearing DB + caches');
+        logInfo('DATA LOAD: Full refresh');
         updateStatusButton('⏳ Starting Fresh Load');
-
-        // 1. Bump DB_VERSION so the next open triggers onupgradeneeded (fresh schema)
-        DB_VERSION = DB_VERSION + 1;
-        localStorage.setItem('db_version', String(DB_VERSION));
-        log(`📦 DB version bumped to ${DB_VERSION}`);
-
-        // 2. Clear service-worker caches
-        if ('caches' in window) {
-            caches.keys().then(names => names.forEach(n => {
-                caches.delete(n);
-                log(`🧹 SW cache cleared: ${n}`);
-            }));
-        }
-
-        // 3. Clear localStorage except PAT, guidance timestamps, and logs
-        const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs', 'db_version'];
-        const saved = {};
-        keep.forEach(k => { const v = localStorage.getItem(k); if (v !== null) saved[k] = v; });
-        localStorage.clear();
-        Object.entries(saved).forEach(([k, v]) => localStorage.setItem(k, v));
-        log('🧹 localStorage cleared (PAT + guidance preserved)');
-
-        // 4. Delete and recreate IndexedDB
         clearDatabaseAndRefresh();
     }
 
@@ -2231,18 +2208,18 @@ CRITICAL RULES:
             loadMarketDataFromGitHub();
         };
 
+        // If blocked or error, proceed anyway — the version bump in saveMarketDataToDB
+        // will force onupgradeneeded to recreate the store cleanly
         delReq.onerror = function() {
-            logError('Failed to delete database');
-            updateStatusButton('❌ Clear Error');
-            showToast('❌ DB delete failed — close other tabs and retry');
+            logWarning('DB delete blocked/failed — proceeding with fresh write');
+            updateStatusButton('⏳ Loading market_data.json');
+            loadMarketDataFromGitHub();
         };
 
-        // onblocked fires when index.html holds the DB open.
-        // index.html now has onversionchange → db.close(), so the block resolves automatically.
-        // Just log and wait — onsuccess will fire once the other tab releases.
         delReq.onblocked = function() {
-            logWarning('DB delete blocked — waiting for other tabs to release...');
-            updateStatusButton('⏳ Waiting for DB release');
+            logWarning('DB delete blocked — proceeding with fresh write');
+            updateStatusButton('⏳ Loading market_data.json');
+            loadMarketDataFromGitHub();
         };
     }
     
@@ -2352,13 +2329,23 @@ CRITICAL RULES:
             })
             .then(() => loadFromIndexedDB())
             .then(() => {
-                masterData = masterData; // already set by loadFromIndexedDB
-                updateStatusButton('✅ Loaded');
-                renderDataSources();
-                renderSymbols();
-                updateHeader();
-                showToast('✅ Data load complete!');
-                logSuccess('DATA LOAD complete');
+                logSuccess('DATA LOAD complete — clearing caches and reloading');
+                updateStatusButton('✅ Loaded — reloading...');
+
+                // Clear SW caches
+                if ('caches' in window) {
+                    caches.keys().then(names => names.forEach(n => caches.delete(n)));
+                }
+
+                // Clear localStorage except essentials
+                const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs'];
+                const saved = {};
+                keep.forEach(k => { const v = localStorage.getItem(k); if (v !== null) saved[k] = v; });
+                localStorage.clear();
+                Object.entries(saved).forEach(([k, v]) => localStorage.setItem(k, v));
+
+                // Hard reload — forces browser to re-read all assets and re-init from fresh DB
+                setTimeout(() => location.reload(true), 600);
             })
             .catch(err => {
                 logError('Loading market_data.json', err.message);
@@ -2742,13 +2729,8 @@ CRITICAL RULES:
                             .catch(e => { logWarning('sector_indices skipped', e); afterLTPDone(); });
 
                         function afterLTPDone() {
-                            loadFromIndexedDB().then(() => {
-                                updateStatusButton('✅ LTP Updated');
-                                renderDataSources();
-                                renderSymbols();
-                                updateHeader();
-                                showToast(`✅ LTP + sector indices updated`);
-                            });
+                            log('✅ LIVE LOAD complete — reloading');
+                            doHardReload();
                         }
                     };
 
@@ -2812,25 +2794,11 @@ CRITICAL RULES:
     }
 
     function reloadAuto() {
-        log('🔄 REFRESH: Merging fresh LTP data...');
+        log('🔄 REFRESH: Fetching fresh LTP + sector indices...');
         updateStatusButton('⏳ Refreshing');
-        
-        // Clear all service worker caches
-        if ('caches' in window) {
-            caches.keys().then(cacheNames => {
-                cacheNames.forEach(cacheName => {
-                    caches.delete(cacheName);
-                    log('✅ Cleared cache: ' + cacheName);
-                });
-            });
-        }
-        
-        log('📥 Fetching fresh ltp.json from GitHub...');
-        
-        // Fetch fresh ltp.json, merge into IndexedDB, then re-render in place (no page reload)
-        const cacheBuster = Math.random().toString(36).substring(2, 15) + Date.now();
-        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json?v=${cacheBuster}`;
-        
+
+        const ltpUrl = `${RAW_GITHUB_URL}/data/ltp.json`;
+
         ghFetch(ltpUrl)
             .then(r => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -2838,37 +2806,38 @@ CRITICAL RULES:
             })
             .then(json => {
                 if (!json.quotes) {
-                    log('⚠️ ltp.json not available, refreshing display from cache');
-                    return Promise.resolve();
+                    log('⚠️ ltp.json empty — reloading from cache');
+                    return doHardReload();
                 }
                 log('⏳ Merging ' + Object.keys(json.quotes).length + ' fresh prices...');
                 return mergeLTPIntoDB(json);
             })
             .then(() => new Promise((res) => {
-                // Fetch sector_indices and wait for its DB commit before rendering
-                const siUrl = `${RAW_GITHUB_URL}/data/sector_indices.json`;
-                ghFetch(siUrl)
+                ghFetch(`${RAW_GITHUB_URL}/data/sector_indices.json`)
                     .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
                     .then(si => saveSectorIndicesToDB(si, res))
                     .catch(e => { logWarning('sector_indices skipped', e); res(); });
             }))
-            .then(() => loadFromIndexedDB())
-            .then(() => {
-                updateStatusButton('✅ Refreshed');
-                renderDataSources();
-                renderSymbols();
-                updateHeader();
-                log('✅ Refresh complete');
-            })
+            .then(() => doHardReload())
             .catch(err => {
-                log(`⚠️ Refresh error: ${err.message} — re-rendering from cache`);
-                updateStatusButton('⚠️ Partial Refresh');
-                loadFromIndexedDB().then(() => {
-                    renderDataSources();
-                    renderSymbols();
-                    updateHeader();
-                });
+                log(`⚠️ Refresh error: ${err.message} — reloading anyway`);
+                doHardReload();
             });
+    }
+
+    function doHardReload() {
+        // Clear SW caches
+        if ('caches' in window) {
+            caches.keys().then(names => names.forEach(n => caches.delete(n)));
+        }
+        // Clear localStorage except essentials
+        const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs'];
+        const saved = {};
+        keep.forEach(k => { const v = localStorage.getItem(k); if (v !== null) saved[k] = v; });
+        localStorage.clear();
+        Object.entries(saved).forEach(([k, v]) => localStorage.setItem(k, v));
+        log('🔄 Hard reloading...');
+        setTimeout(() => location.reload(true), 400);
     }
     
     // New dedicated function to refresh LTP only (quick refresh without reloading fundamentals)

@@ -745,11 +745,7 @@ async function init() {
             // CRITICAL: yield connection when data.html bumps DB version (DATA LOAD)
             database.onversionchange = () => {
                 database.close();
-                console.log('ℹ️ DB version changed by data.html — reloading fresh data...');
-                // Re-sync DB_VERSION from localStorage (data.html bumped it)
-                DB_VERSION = parseInt(localStorage.getItem('db_version') || DB_VERSION, 10);
-                // Wait briefly for data.html to finish writing, then re-read
-                setTimeout(() => runEngineSync(), 800);
+                console.log('ℹ️ DB connection released — data.html will reload the page');
             };
             res(database);
         };
@@ -1446,8 +1442,6 @@ function runEngineSync() {
             // Yield when data.html bumps version
             database.onversionchange = () => {
                 database.close();
-                DB_VERSION = parseInt(localStorage.getItem('db_version') || DB_VERSION, 10);
-                setTimeout(() => runEngineSync(), 800);
             };
             // Guard BEFORE transaction — store may not exist yet
             if (!database.objectStoreNames.contains(STORE_NAME)) {
