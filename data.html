@@ -491,13 +491,9 @@
         const cb = Date.now() + '_' + Math.random().toString(36).slice(2);
         const url = path.startsWith('http') ? path : `${RAW_GITHUB_URL}/${path}`;
         const sep = url.includes('?') ? '&' : '?';
-        return fetch(`${url}${sep}_cb=${cb}`, {
-            cache: 'no-store',
-            headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache'
-            }
-        });
+        // cache:'no-store' bypasses browser cache; _cb= busts GitHub CDN (query string on path)
+        // Do NOT add Cache-Control/Pragma headers — forbidden on cross-origin requests, causes fetch to fail
+        return fetch(`${url}${sep}_cb=${cb}`, { cache: 'no-store' });
     }
     
     const DATA_SOURCES = [
@@ -2236,9 +2232,9 @@ CRITICAL RULES:
         };
 
         delReq.onerror = function() {
-            logError('Failed to delete database — trying anyway');
-            updateStatusButton('⏳ Loading market_data.json');
-            loadMarketDataFromGitHub();
+            logError('Failed to delete database');
+            updateStatusButton('❌ Clear Error');
+            showToast('❌ DB delete failed — close other tabs and retry');
         };
 
         // onblocked fires when another tab has the DB open
