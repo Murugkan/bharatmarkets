@@ -2737,20 +2737,24 @@ function drawSigHeatmap(stats) {
         return `rgb(${r},${g},${b})`;
     }
 
-    // ── SQUARIFIED TREEMAP — sized by absolute portfolio 1D gain per sector ──
-    // Weight = sum of |change * qty| for each portfolio stock in the sector
-    // Fallback weight = 1 so sectors with no portfolio position still appear
+    // ── SQUARIFIED TREEMAP — sized by avg |1D%| of portfolio stocks in sector ──
+    // Weight = average absolute 1D% across held stocks in each sector
+    // Non-portfolio sectors get weight = avg |1D%| across all their stocks (watchlist)
+    // Minimum weight = 0.1 so no sector vanishes
     const sectorWeights = {};
+    const sectorCounts  = {};
     (typeof MASTER !== 'undefined' ? MASTER : []).forEach(s => {
         const sec = s.company_details?.sector;
         if (!sec) return;
-        const qty    = s.company_details?.qty || 0;
-        const change = s.price?.ltp?.change ?? 0;
-        const w = Math.abs(change * qty);
-        sectorWeights[sec] = (sectorWeights[sec] || 0) + w;
+        const pct = Math.abs(sigToF(s.price?.ltp?.changePct) ?? 0);
+        if (!sectorWeights[sec]) { sectorWeights[sec] = 0; sectorCounts[sec] = 0; }
+        sectorWeights[sec] += pct;
+        sectorCounts[sec]  += 1;
     });
-    // Use absolute 1D gain as weight; sectors with 0 get a minimum of 1
-    stats.forEach(s => { s.weight = sectorWeights[s.name] || 1; });
+    stats.forEach(s => {
+        const cnt = sectorCounts[s.name] || 1;
+        s.weight = Math.max((sectorWeights[s.name] || 0) / cnt, 0.1);
+    });
     const total = stats.reduce((a, s) => a + s.weight, 0);
     const items = [...stats]
         .sort((a, b) => b.weight - a.weight)
