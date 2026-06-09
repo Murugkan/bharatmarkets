@@ -2737,24 +2737,32 @@ function drawSigHeatmap(stats) {
         return `rgb(${r},${g},${b})`;
     }
 
-    // ── SQUARIFIED TREEMAP — sized by avg |1D%| of portfolio stocks in sector ──
-    // Weight = average absolute 1D% across held stocks in each sector
-    // Non-portfolio sectors get weight = avg |1D%| across all their stocks (watchlist)
-    // Minimum weight = 0.1 so no sector vanishes
-    const sectorWeights = {};
-    const sectorCounts  = {};
+    // ── SQUARIFIED TREEMAP ──────────────────────────────────────────────────────
+    // SIZE  : total market cap of all stocks in sector (valuation.market.market_cap)
+    // COLOUR: sector avg daily price change % (price.ltp.changePct), pre-computed below
+    const sectorMcap   = {};   // sum of market_cap per sector
+    const sectorChgSum = {};   // sum of changePct per sector
+    const sectorChgCnt = {};   // count of stocks with changePct per sector
+
     (typeof MASTER !== 'undefined' ? MASTER : []).forEach(s => {
         const sec = s.company_details?.sector;
         if (!sec) return;
-        const pct = Math.abs(sigToF(s.price?.ltp?.changePct) ?? 0);
-        if (!sectorWeights[sec]) { sectorWeights[sec] = 0; sectorCounts[sec] = 0; }
-        sectorWeights[sec] += pct;
-        sectorCounts[sec]  += 1;
+        const mcap = cleanNum(s.valuation?.market?.market_cap) || 0;
+        const chg  = sigToF(s.price?.ltp?.changePct);
+        sectorMcap[sec]    = (sectorMcap[sec]    || 0) + mcap;
+        if (chg !== null) {
+            sectorChgSum[sec] = (sectorChgSum[sec] || 0) + chg;
+            sectorChgCnt[sec] = (sectorChgCnt[sec] || 0) + 1;
+        }
     });
+
     stats.forEach(s => {
-        const cnt = sectorCounts[s.name] || 1;
-        s.weight = Math.max((sectorWeights[s.name] || 0) / cnt, 0.1);
+        s.weight  = Math.max(sectorMcap[s.name]   || 1, 1);
+        s.avgChg  = sectorChgCnt[s.name]
+                      ? sectorChgSum[s.name] / sectorChgCnt[s.name]
+                      : null;
     });
+
     const total = stats.reduce((a, s) => a + s.weight, 0);
     const items = [...stats]
         .sort((a, b) => b.weight - a.weight)
@@ -2822,11 +2830,8 @@ function drawSigHeatmap(stats) {
     // ── DRAW ────────────────────────────────────────────────
     const PAD = 2;
     rects.forEach(r => {
-        // Portfolio avg 1D% for this sector
-        const secStocks = (typeof MASTER !== 'undefined' ? MASTER : []).filter(s => s.company_details?.sector === r.name && (s.company_details?.qty||0) > 0);
-        const vals = secStocks.map(s => sigToF(s.price?.ltp?.changePct ?? s.price?.ltp?.change_pct)).filter(v => v !== null);
-        const port1d = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
-        const col = port1d !== null ? oneDPctColor(port1d) : '#222';
+        // Colour by sector avg daily change % (all stocks, not just portfolio)
+        const col = r.avgChg !== null && r.avgChg !== undefined ? oneDPctColor(r.avgChg) : '#222';
         const rx = r.rx + PAD, ry = r.ry + PAD,
               rw = r.rw - PAD*2, rh = r.rh - PAD*2;
         if (rw < 2 || rh < 2) return;
