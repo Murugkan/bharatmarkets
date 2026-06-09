@@ -168,7 +168,7 @@
     <div class="kpi-box"><div class="kpi-label">Invested</div><div class="kpi-val" id="k-inv">₹0</div></div>
     <div class="kpi-box"><div class="kpi-label">Total P&L</div><div class="kpi-val" id="k-pnl">—</div></div>
     <div class="kpi-box"><div class="kpi-label">Today</div><div class="kpi-val" id="k-today" style="display:flex; align-items:center; gap:6px;"><span id="k-today-val">₹0</span><span style="color:#00ff88; font-size:9px; font-weight:bold;" id="k-today-pos">↑0</span><span style="color:#ff6b85; font-size:9px; font-weight:bold;" id="k-today-neg">↓0</span></div></div>
-    <div class="kpi-box" style="cursor:pointer;" onclick="runEngineSync()" title="Click to sync data"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
+    <div class="kpi-box" style="cursor:pointer;" onclick="reloadFromDB()" title="Reload from IndexedDB"><div class="kpi-label">Action</div><div class="kpi-val" style="color:#00ff88; font-size:11px;">SYNC ↻</div></div>
 </header>
 
 <div id="bar-wrap"><div id="tape-bar"></div></div>
@@ -802,6 +802,47 @@ async function init() {
     };
 
     render();
+
+    // Auto-refresh when user returns to this tab from data.html
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reloadFromDB();
+    });
+}
+
+async function reloadFromDB() {
+    const db = await new Promise(res => {
+        const req = indexedDB.open(DB_NAME);
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => res(null);
+    });
+    if (!db || !db.objectStoreNames.contains(STORE_NAME)) return;
+    try {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const newMaster = await new Promise((res, rej) => {
+            const r = store.getAll();
+            r.onsuccess = e => res((e.target.result||[]).filter(s => s.ticker && !s.ticker.startsWith('_')));
+            r.onerror = () => rej(r.error);
+        });
+        const siRec = await new Promise(res => {
+            const r = store.get('_SECTOR_INDICES_');
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => res(null);
+        });
+        db.close();
+        if (!newMaster.length) return;
+        MASTER = newMaster;
+        if (siRec?.sectors) SECTOR_INDICES = siRec.sectors;
+        SECTORS = [...new Set(MASTER.map(s => resolve(s,'SECTOR')||'OTHER'))].sort();
+        SECTORS.forEach((s,i) => COL[s] = PALETTE[i % PALETTE.length]);
+        render();
+        if (SIG_ALL.length) {
+            SIG_ALL = MASTER.filter(st => st.ticker && !st.ticker.startsWith('_')).map(st => sigComposite(st.ticker, st));
+            sigRenderList();
+            if (SIG_SELECTED) sigRenderDetail(SIG_SELECTED);
+        }
+        console.log('🔄 DB refreshed:', MASTER.length, 'stocks');
+    } catch(e) { console.warn('reloadFromDB error:', e); }
 }
 
 /**
@@ -2672,14 +2713,14 @@ function renderSectorTab() {
         <!-- Heatmap at top -->
         <div id="hm-wrap" style="padding:10px 10px 6px;">
             <div style="font-size:8px;color:#ddd;letter-spacing:0.1em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-                <span>PORTFOLIO 1D% BY SECTOR — tap to compare</span>
+                <span>SIGNAL HEATMAP — tap to filter</span>
                 <span style="display:flex;align-items:center;gap:5px">
-                    <span style="font-size:7px;color:#e03020">-3%</span>
-                    <div style="width:56px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgb(220,20,20),rgb(80,80,80),rgb(20,255,80))"></div>
-                    <span style="font-size:7px;color:#00ff88">+3%</span>
+                    <span style="font-size:7px;color:#dc3220">Weak</span>
+                    <div style="width:56px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgb(220,50,20),rgb(220,160,20),rgb(100,210,70))"></div>
+                    <span style="font-size:7px;color:#64d246">Strong</span>
                 </span>
             </div>
-            <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:8px;cursor:pointer;touch-action:pinch-zoom;"></canvas>
+            <canvas id="sig-heatmap" style="width:100%;display:block;border-radius:8px;cursor:pointer;"></canvas>
         </div>
         <!-- Sector comparison panel (shown on heatmap click) -->
         <div id="sec-panel" style="display:none;padding:0 10px 10px;"></div>
@@ -2720,7 +2761,7 @@ function renderSectorTab() {
             ${cards.join('')}
         </div>`;
 
-    setTimeout(() => { try { drawSigHeatmap(stats); } catch(e) { console.error('drawSigHeatmap error:', e); } }, 150);
+    setTimeout(() => drawSigHeatmap(stats), 150);
 }
 
 function sigFilter_sector(name) {
@@ -2741,24 +2782,6 @@ function secSort(by) {
 }
 
 // ---------- HEATMAP (canvas treemap) ----------
-function oneDPctColor(pct) {
-    // Magnitude-based: dark near 0%, bright at ±3%+
-    // Red = down, Green = up, darkness = magnitude
-    const mag = Math.min(Math.abs(pct) / 3, 1); // 0→dim, 3%→full
-    if (pct < 0) {
-        const r = Math.round(80 + mag * 160);
-        const g = Math.round(10 + mag * 10);
-        const b = Math.round(10 + mag * 10);
-        return `rgb(${r},${g},${b})`;
-    } else if (pct > 0) {
-        const r = Math.round(10 + mag * 10);
-        const g = Math.round(80 + mag * 160);
-        const b = Math.round(20 + mag * 30);
-        return `rgb(${r},${g},${b})`;
-    }
-    return '#1a1a1a';
-}
-
 function drawSigHeatmap(stats) {
     const cv = document.getElementById('sig-heatmap');
     if (!cv) return;
@@ -2864,11 +2887,7 @@ function drawSigHeatmap(stats) {
     // ── DRAW ────────────────────────────────────────────────
     const PAD = 2;
     rects.forEach(r => {
-        // Portfolio avg 1D% for this sector
-        const secStocks = (typeof MASTER !== 'undefined' ? MASTER : []).filter(s => s.company_details?.sector === r.name && (s.company_details?.qty||0) > 0);
-        const vals = secStocks.map(s => sigToF(s.price?.ltp?.changePct ?? s.price?.ltp?.change_pct)).filter(v => v !== null);
-        const port1d = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
-        const col = port1d !== null ? oneDPctColor(port1d) : '#222';
+        const col = scoreToColor(r.score);
         const rx = r.rx + PAD, ry = r.ry + PAD,
               rw = r.rw - PAD*2, rh = r.rh - PAD*2;
         if (rw < 2 || rh < 2) return;
@@ -2885,49 +2904,35 @@ function drawSigHeatmap(stats) {
 
         // Labels
         const cw = rw, ch = rh;
-        if (cw < 20 || ch < 14) return;
+        if (cw < 30 || ch < 18) return;
         const cx = r.rx + r.rw / 2, cy = r.ry + r.rh / 2;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const idx1d = SECTOR_INDICES[r.name]?.change_1d_pct ?? null;
-        const idx1dStr = idx1d !== null ? (idx1d >= 0 ? '+' : '') + idx1d.toFixed(1) + '%' : null;
-        const has1d = idx1dStr !== null;
-
-        if (ch >= 50 && cw >= 45) {
-            // Full: name + score + 1D%
+        if (ch >= 38 && cw >= 52) {
             const ns = cw > 130 ? 11 : cw > 80 ? 10 : 9;
             let nm = r.name
                 .replace('Information Technology', 'Info Tech')
                 .replace('Consumer Discretionary', 'Cons. Discr.')
                 .replace('Consumer Staples', 'Cons. Staples');
             if (nm.length > 14 && cw < 110) nm = nm.substring(0, 13) + '…';
-            const lineH = has1d ? ch / 4 : ch / 3;
+
+            const idx1d = SECTOR_INDICES[r.name]?.change_1d_pct ?? null;
+            const idx1dStr = idx1d !== null ? (idx1d >= 0 ? '+' : '') + idx1d.toFixed(1) + '%' : '';
+
             ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.fillText(nm, cx, cy - lineH);
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.fillText(nm, cx, cy - 10);
             ctx.font = `800 ${ns + 2}px "JetBrains Mono",monospace`;
             ctx.fillStyle = '#fff';
-            ctx.fillText(r.score, cx, cy + (has1d ? 0 : lineH * 0.3));
-            if (has1d) {
-                ctx.font = `700 ${ns}px "JetBrains Mono",monospace`;
-                ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                ctx.fillText(idx1dStr, cx, cy + lineH);
+            ctx.fillText(r.score, cx, cy + 4);
+            if (idx1dStr && ch >= 52) {
+                ctx.font = `600 ${ns - 1}px "JetBrains Mono",monospace`;
+                ctx.fillStyle = idx1d >= 0 ? 'rgba(0,255,136,0.9)' : 'rgba(255,77,109,0.9)';
+                ctx.fillText(idx1dStr, cx, cy + 17);
             }
-        } else if (ch >= 28 && cw >= 32) {
-            // Medium: score + 1D%
-            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.28), 11);
-            ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
-            ctx.fillStyle = '#fff';
-            ctx.fillText(r.score, cx, has1d ? cy - sz * 0.6 : cy);
-            if (has1d) {
-                ctx.font = `600 ${sz - 1}px "JetBrains Mono",monospace`;
-                ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                ctx.fillText(idx1dStr, cx, cy + sz * 0.8);
-            }
-        } else if (ch >= 14 && cw >= 20) {
-            // Small: score only
-            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.35), 10);
+        } else if (ch >= 22 && cw >= 32) {
+            const sz = Math.min(Math.floor(Math.min(cw, ch) * 0.3), 11);
             ctx.font = `800 ${sz}px "JetBrains Mono",monospace`;
             ctx.fillStyle = '#fff';
             ctx.fillText(r.score, cx, cy);
@@ -3010,37 +3015,63 @@ function renderSectorPanel(sectorName, stats) {
     panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <div style="font-size:11px;font-weight:800;color:#00f2ff;letter-spacing:0.08em">${sectorName.toUpperCase()}</div>
-            <div style="font-size:9px;color:#fff;cursor:pointer;padding:2px 8px;border:1px solid #333;border-radius:4px" onclick="document.getElementById('sec-panel').style.display='none'">✕</div>
+            <div style="font-size:9px;color:#bbb;cursor:pointer;padding:2px 8px;border:1px solid #333;border-radius:4px" onclick="document.getElementById('sec-panel').style.display='none'">✕</div>
         </div>
-        <!-- Row 1: Portfolio | Index (52W + 1D) | Peer Universe -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;margin-bottom:6px">
+        <!-- Row 1: Absolute values — Portfolio | Index 52W | Peer Universe -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px 8px 0 0;overflow:hidden;border-bottom:none">
             <div style="padding:8px 6px;border-right:1px solid #2a2a2a">
-                <div style="font-size:7px;color:#fff;letter-spacing:0.06em;margin-bottom:3px">PORTFOLIO</div>
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">PORTFOLIO</div>
                 <div style="font-size:14px;font-weight:800;color:${col(portAvg)}">${fmt(portAvg)}</div>
-                <div style="font-size:8px;color:#fff;margin-top:2px">${portVals.length} held</div>
+                <div style="font-size:8px;color:#bbb;margin-top:2px">${portVals.length} held</div>
             </div>
             <div style="padding:8px 6px;border-right:1px solid #2a2a2a;text-align:center">
-                <div style="font-size:7px;color:#fff;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()}</div>
-                <div style="font-size:14px;font-weight:800;color:${col(idxChg)}">${fmt(idxChg)} <span style="font-size:9px;font-weight:600;color:#aaa">52W</span></div>
-                <div style="font-size:13px;font-weight:800;color:${col(idxData.change_1d_pct??null)};margin-top:2px">${idxData.change_1d_pct!=null?(idxData.change_1d_pct>=0?'+':'')+idxData.change_1d_pct.toFixed(2)+'%':'—'} <span style="font-size:9px;font-weight:600;color:#aaa">1D</span></div>
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()} 52W</div>
+                <div style="font-size:14px;font-weight:800;color:${col(idxChg)}">${fmt(idxChg)}</div>
+                <div style="font-size:8px;color:#bbb;margin-top:2px">${idxSym}</div>
             </div>
             <div style="padding:8px 6px;text-align:right">
-                <div style="font-size:7px;color:#fff;letter-spacing:0.06em;margin-bottom:3px">PEER UNIVERSE</div>
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">PEER UNIVERSE</div>
                 <div style="font-size:14px;font-weight:800;color:${col(peerAvg)}">${fmt(peerAvg)}</div>
-                <div style="font-size:8px;color:#fff;margin-top:2px">${peerVals.length} stocks 52W</div>
+                <div style="font-size:8px;color:#bbb;margin-top:2px">${peerVals.length} stocks 52W</div>
             </div>
         </div>
-        ${s?`<div style="font-size:9px;color:#fff;margin-bottom:8px">Signal: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
+        <!-- Row 1b: Index 1D -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:#0d0d0d;border:1px solid #2a2a2a;border-top:1px solid #1a1a1a;overflow:hidden;border-bottom:none">
+            <div style="padding:6px 6px;border-right:1px solid #2a2a2a">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">TODAY</div>
+                <div style="font-size:14px;font-weight:800;color:#666">—</div>
+            </div>
+            <div style="padding:6px 6px;border-right:1px solid #2a2a2a;text-align:center">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">${idxName.toUpperCase()} 1D</div>
+                <div style="font-size:14px;font-weight:800;color:${col(idxData.change_1d_pct??null)}">${idxData.change_1d_pct!=null?(idxData.change_1d_pct>=0?'+':'')+idxData.change_1d_pct.toFixed(2)+'%':'—'}</div>
+            </div>
+            <div style="padding:6px 6px;text-align:right">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:3px">&nbsp;</div>
+                <div style="font-size:14px;font-weight:800;color:#666">—</div>
+            </div>
+        </div>
+        <!-- Row 2: Diffs — vs Index (alpha) | vs Peers -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:0 0 8px 8px;overflow:hidden;margin-bottom:6px">
+            <div style="padding:6px 8px;border-right:1px solid #2a2a2a">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">ALPHA vs INDEX</div>
+                <div style="font-size:16px;font-weight:800;color:${col(dIdx)}">${dIdx!=null?(dIdx>=0?'+':'')+dIdx.toFixed(1)+'%':'—'}</div>
+            </div>
+            <div style="padding:6px 8px;text-align:right">
+                <div style="font-size:7px;color:#bbb;letter-spacing:0.06em;margin-bottom:2px">ALPHA vs PEERS</div>
+                <div style="font-size:16px;font-weight:800;color:${col(dPeer)}">${dPeer!=null?(dPeer>=0?'+':'')+dPeer.toFixed(1)+'%':'—'}</div>
+            </div>
+        </div>
+        ${s?`<div style="font-size:9px;color:#bbb;margin-bottom:8px">Signal: <span style="color:${sigScoreColor(s.score)};font-weight:800">${s.score} — ${sigRating(s.score)}</span></div>`:''}
         <!-- Per-ticker table -->
         <div style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden">
             <table style="width:100%;border-collapse:collapse">
                 <thead>
                     <tr style="border-bottom:1px solid #2a2a2a;background:#111">
-                        <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700">1D%</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700">vs IDX</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700;border-left:1px solid #2a2a2a">52W%</th>
-                        <th style="padding:5px 4px;font-size:8px;color:#fff;text-align:right;font-weight:700">vs IDX</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:left;font-weight:700;letter-spacing:0.06em">TICKER</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">1D%</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">vs IDX</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700;border-left:1px solid #2a2a2a">52W%</th>
+                        <th style="padding:5px 4px;font-size:8px;color:#bbb;text-align:right;font-weight:700">vs IDX</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
