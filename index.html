@@ -2985,11 +2985,10 @@ function renderSectorPanel(sectorName, stats) {
     const dIdx  = dff(portAvg, idxChg);
     const dPeer = dff(portAvg, peerAvg);
 
-    // Per-ticker rows: portfolio P&L vs peer 52W
-    const allTickers = [...new Set([
-        ...Object.keys(portMap),
-        ...sectorTickers.map(st => st.ticker)
-    ])].sort();
+    // Per-ticker rows — all sector tickers sorted, held first
+    const heldSet = new Set(heldStocks.map(st => st.ticker));
+    const allTickers = [...sectorTickers.map(st => st.ticker)]
+        .sort((a, b) => (heldSet.has(b) ? 1 : 0) - (heldSet.has(a) ? 1 : 0) || a.localeCompare(b));
 
     const rows = allTickers.map(t => {
         const st = sectorTickers.find(x => x.ticker === t);
