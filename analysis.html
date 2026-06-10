@@ -2300,8 +2300,8 @@ async function loadStockNews(sym, name){
   el.innerHTML = '<div class="u-pad14c">Loading news…</div>';
 
   const companyName = (name || sym).split(' ').slice(0,3).join(' ');
-  const gnQuery = encodeURIComponent(`"${sym}" OR "${companyName}" stock NSE`);
-  const gnRssUrl = `https://news.google.com/rss/search?q=${gnQuery}&hl=en-IN&gl=IN&ceid=IN:en`;
+  // Build raw RSS URL — let the proxy handle encoding, don't pre-encode the query
+  const gnRssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(sym + ' ' + companyName + ' stock NSE India')}&hl=en-IN&gl=IN&ceid=IN:en`;
 
   // CORS proxy chain — tried in order until one works
   const corsProxies = [
