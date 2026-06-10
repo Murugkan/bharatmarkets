@@ -2325,24 +2325,46 @@ async function loadStockNews(sym, name, retry) {
 
   try {
     // Try two queries: specific (sym + name) first, fallback to sym-only if no results
-    async function fetchRss2json(q) {
-      var rssUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=en-IN&gl=IN&ceid=IN:en';
+    async function fetchRss2json(rssUrl) {
       var url = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl);
       var res = await fetch(url);
       var d = await res.json();
-      if(d.status === 'error') throw new Error('rss2json: ' + (d.message || 'blocked'));
-      console.log('rss2json response:', JSON.stringify(d).slice(0,200));
+      if(d.status === 'error') throw new Error(d.message || 'error');
       return d.items || [];
     }
 
     var companyShort = (name||sym).split(' ').slice(0,2).join(' ');
-    var items = await fetchRss2json(sym + ' ' + companyShort + ' NSE India stock');
 
-    // Fallback: sym only — catches small caps with less coverage
-    if(!items.length) items = await fetchRss2json(sym + ' NSE');
+    // Source 1: Google News RSS — full query
+    var gnBase = 'https://news.google.com/rss/search?hl=en-IN&gl=IN&ceid=IN:en&q=';
+    var items = [];
 
-    // Second fallback: company name only
-    if(!items.length && name) items = await fetchRss2json(companyShort + ' India stock');
+    var sources = [
+      gnBase + encodeURIComponent(sym + ' ' + companyShort + ' NSE India'),
+      gnBase + encodeURIComponent(sym + ' NSE'),
+      gnBase + encodeURIComponent(companyShort + ' India stock'),
+      // ET Markets RSS as last resort
+      'https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms',
+    ];
+
+    for(var i=0; i<sources.length; i++) {
+      try {
+        items = await fetchRss2json(sources[i]);
+        // For ET feed, filter to relevant items only
+        if(i === 3 && items.length) {
+          var symLower = sym.toLowerCase();
+          var nameLower = companyShort.toLowerCase();
+          var filtered = items.filter(function(it){
+            var t = (it.title||'').toLowerCase();
+            return t.includes(symLower) || t.includes(nameLower);
+          });
+          items = filtered.length ? filtered : [];
+        }
+        if(items.length) break;
+      } catch(e) {
+        if(i === sources.length - 1) throw e;
+      }
+    }
 
     if(!items.length) {
       el.innerHTML = '<div class="u-pad14c">No recent news found for ' + sym + '</div>';
@@ -2373,13 +2395,11 @@ async function loadStockNews(sym, name, retry) {
 
   } catch(e) {
     var gnUrl = 'https://news.google.com/search?q=' + encodeURIComponent(sym + ' NSE stock India') + '&hl=en-IN&gl=IN&ceid=IN:en';
-    var errDetail = e && e.message ? e.message : String(e);
-    el.innerHTML = '<div class="u-pad14c" style="text-align:left;font-size:9px;font-family:monospace;color:#ff6b6b;word-break:break-all">' +
-      'ERR: ' + errDetail + '<br><br>' +
-      '<a href="' + gnUrl + '" target="_blank" style="color:var(--ac);font-size:11px">Open Google News ↗</a>' +
+    el.innerHTML = '<div class="u-pad14c">No news found for ' + sym + '. ' +
+      '<a href="' + gnUrl + '" target="_blank" style="color:var(--ac)">Google News ↗</a>' +
       ' &nbsp;·&nbsp; <span data-sym="' + sym + '" data-name="' + (name||'') + '" ' +
       'onclick="loadStockNews(this.dataset.sym,this.dataset.name,true)" ' +
-      'style="color:var(--ac);font-size:11px;cursor:pointer;text-decoration:underline">Retry</span></div>';
+      'style="color:var(--ac);cursor:pointer;text-decoration:underline">Retry</span></div>';
   }
 }
 
