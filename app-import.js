@@ -1391,8 +1391,15 @@ function saveToIndexedDB(callback) {
     }
     
     try {
-        // Use correct database that index.html uses
-        var request = indexedDB.open(CONFIG.DATABASE_NAME, CONFIG.DATABASE_VERSION);
+        // Use same DB/store as data.html (raalanportfolio / stocks)
+        var request = indexedDB.open('raalanportfolio', CONFIG.DATABASE_VERSION);
+        
+        request.onupgradeneeded = function(e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('stocks')) {
+                db.createObjectStore('stocks', { keyPath: 'ticker' });
+            }
+        };
         
         request.onerror = function() {
             if (callback) callback(false);
@@ -1401,8 +1408,8 @@ function saveToIndexedDB(callback) {
         request.onsuccess = function(e) {
             var db = e.target.result;
             
-            var tx = db.transaction(CONFIG.STORE_NAME, "readwrite");
-            var store = tx.objectStore(CONFIG.STORE_NAME);
+            var tx = db.transaction('stocks', "readwrite");
+            var store = tx.objectStore('stocks');
             
             // Append to existing data (don't clear)
             var savedCount = 0;
