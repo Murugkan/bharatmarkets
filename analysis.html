@@ -2324,15 +2324,27 @@ async function loadStockNews(sym, name, retry) {
   el.innerHTML = '<div class="u-pad14c">Loading news…</div>';
 
   try {
-    var query = encodeURIComponent(sym + ' ' + (name||sym) + ' NSE India stock');
-    var rssUrl = 'https://news.google.com/rss/search?q=' + query + '&hl=en-IN&gl=IN&ceid=IN:en';
-    var url = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl) + '&count=12';
-    var res = await fetch(url);
-    var d = await res.json();
-    var items = d.items || [];
+    // Try two queries: specific (sym + name) first, fallback to sym-only if no results
+    async function fetchRss2json(q) {
+      var rssUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=en-IN&gl=IN&ceid=IN:en';
+      var url = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl) + '&count=12';
+      var res = await fetch(url);
+      var d = await res.json();
+      if(d.status === 'error') throw new Error(d.message || 'rss2json error');
+      return d.items || [];
+    }
+
+    var companyShort = (name||sym).split(' ').slice(0,2).join(' ');
+    var items = await fetchRss2json(sym + ' ' + companyShort + ' NSE India stock');
+
+    // Fallback: sym only — catches small caps with less coverage
+    if(!items.length) items = await fetchRss2json(sym + ' NSE');
+
+    // Second fallback: company name only
+    if(!items.length && name) items = await fetchRss2json(companyShort + ' India stock');
 
     if(!items.length) {
-      el.innerHTML = '<div class="u-pad14c">No recent news for ' + sym + '</div>';
+      el.innerHTML = '<div class="u-pad14c">No recent news found for ' + sym + '</div>';
       return;
     }
 
