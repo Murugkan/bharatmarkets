@@ -2330,7 +2330,8 @@ async function loadStockNews(sym, name, retry) {
       var url = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl) + '&count=12';
       var res = await fetch(url);
       var d = await res.json();
-      if(d.status === 'error') throw new Error(d.message || 'rss2json error');
+      if(d.status === 'error') throw new Error('rss2json: ' + (d.message || 'blocked'));
+      console.log('rss2json response:', JSON.stringify(d).slice(0,200));
       return d.items || [];
     }
 
@@ -2372,11 +2373,13 @@ async function loadStockNews(sym, name, retry) {
 
   } catch(e) {
     var gnUrl = 'https://news.google.com/search?q=' + encodeURIComponent(sym + ' NSE stock India') + '&hl=en-IN&gl=IN&ceid=IN:en';
-    el.innerHTML = '<div class="u-pad14c">Could not load news. ' +
-      '<a href="' + gnUrl + '" target="_blank" style="color:var(--ac)">Open Google News ↗</a> ' +
+    var errDetail = e && e.message ? e.message : String(e);
+    el.innerHTML = '<div class="u-pad14c" style="text-align:left;font-size:9px;font-family:monospace;color:#ff6b6b;word-break:break-all">' +
+      'ERR: ' + errDetail + '<br><br>' +
+      '<a href="' + gnUrl + '" target="_blank" style="color:var(--ac);font-size:11px">Open Google News ↗</a>' +
       ' &nbsp;·&nbsp; <span data-sym="' + sym + '" data-name="' + (name||'') + '" ' +
       'onclick="loadStockNews(this.dataset.sym,this.dataset.name,true)" ' +
-      'style="color:var(--ac);cursor:pointer;text-decoration:underline">Retry</span></div>';
+      'style="color:var(--ac);font-size:11px;cursor:pointer;text-decoration:underline">Retry</span></div>';
   }
 }
 
