@@ -2300,29 +2300,19 @@ async function loadStockNews(sym, name){
   el.innerHTML = '<div class="u-pad14c">Loading news…</div>';
 
   const companyName = (name || sym).split(' ').slice(0,3).join(' ');
-  // Build raw RSS URL — let the proxy handle encoding, don't pre-encode the query
-  const gnRssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(sym + ' ' + companyName + ' stock NSE India')}&hl=en-IN&gl=IN&ceid=IN:en`;
+  const searchQ = `${sym} ${companyName} NSE stock India`;
+  const gnRssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQ)}&hl=en-IN&gl=IN&ceid=IN:en`;
 
-  // CORS proxy chain — tried in order until one works
-  const corsProxies = [
-    `https://api.allorigins.win/get?url=${encodeURIComponent(gnRssUrl)}`,
-    `https://corsproxy.io/?${encodeURIComponent(gnRssUrl)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(gnRssUrl)}`,
-  ];
-
-  // Helper: parse Google News RSS XML into items array
+  // Helper: parse Google News RSS XML
   function parseGNXml(xml) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror')) return [];
     return Array.from(doc.querySelectorAll('item')).slice(0, 12).map(item => {
-      // <link> in Google News RSS is a text node between tags, not a child element
-      // Walk childNodes to find it reliably
       let link = '';
       for (const node of item.childNodes) {
         if (node.nodeName === 'link') { link = node.textContent.trim(); break; }
       }
-      // Fallback: try the guid which often contains the URL
       if (!link) link = item.querySelector('guid')?.textContent || '';
       return {
         title: item.querySelector('title')?.textContent || '',
@@ -2333,10 +2323,7 @@ async function loadStockNews(sym, name){
     }).filter(i => i.title);
   }
 
-  let items = [];
-
-  // Try each CORS proxy with timeout
-  async function fetchWithTimeout(url, ms=8000) {
+  async function fetchWithTimeout(url, ms=9000) {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), ms);
     try {
@@ -2346,23 +2333,35 @@ async function loadStockNews(sym, name){
     } catch(e) { clearTimeout(tid); throw e; }
   }
 
+  // Proxy chain — different wrapping styles
+  const proxyAttempts = [
+    // thingproxy: simple prepend, returns raw content
+    { url: `https://thingproxy.freeboard.io/fetch/${gnRssUrl}`, type: 'raw' },
+    // allorigins: returns JSON { contents }
+    { url: `https://api.allorigins.win/get?url=${encodeURIComponent(gnRssUrl)}`, type: 'allorigins' },
+    // corsproxy.io: raw, unencoded URL appended
+    { url: `https://corsproxy.io/?${gnRssUrl}`, type: 'raw' },
+    // codetabs
+    { url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(gnRssUrl)}`, type: 'raw' },
+  ];
+
+  let items = [];
   let lastErr = '';
-  for (const proxyUrl of corsProxies) {
+
+  for (const attempt of proxyAttempts) {
     if (items.length) break;
     try {
-      const res = await fetchWithTimeout(proxyUrl);
+      const res = await fetchWithTimeout(attempt.url);
       if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
-      const ct = res.headers.get('content-type') || '';
       let xml = '';
-      if (ct.includes('json') || proxyUrl.includes('allorigins')) {
+      if (attempt.type === 'allorigins') {
         const d = await res.json();
-        xml = d.contents || d.body || '';
+        xml = d.contents || '';
       } else {
         xml = await res.text();
       }
       items = parseGNXml(xml);
-      if (items.length) break;
-      lastErr = 'parsed 0 items';
+      if (!items.length) lastErr = 'empty feed';
     } catch(e) { lastErr = e.message || String(e); }
   }
 
