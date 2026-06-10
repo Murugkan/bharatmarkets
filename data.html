@@ -477,7 +477,7 @@
         PATHS: {
             symbols: 'unified-symbols.json',
             ltp: 'data/ltp.json',
-            guidance: 'guidance.json',
+            guidance: 'data/guidance.json',
             macro: 'macro_data.json',
             market_data: 'data/market_data.json',
             sector_indices: 'data/sector_indices.json'
@@ -1945,11 +1945,11 @@ CRITICAL RULES:
             .catch(e => log(`⚠️ Symbol update failed: ${e.message}`));
         
         // 5. Delete from guidance.json on GitHub
-        ghFetch('guidance.json')
+        ghFetch(GITHUB_CONFIG.PATHS.guidance)
             .then(r => r.json())
             .then(data => {
                 delete data[ticker];
-                uploadToGitHub(pat, 'guidance.json', data, `Delete ${ticker} guidance`);
+                uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, `Delete ${ticker} guidance`);
                 log(`✅ Deleted ${ticker} from guidance.json`);
             })
             .catch(e => log(`⚠️ Guidance update failed: ${e.message}`));
