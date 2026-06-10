@@ -2335,28 +2335,46 @@ async function loadStockNews(sym, name){
 
   let items = [];
 
-  // Try each CORS proxy in order
+  // Try each CORS proxy with timeout
+  async function fetchWithTimeout(url, ms=8000) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const r = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+      clearTimeout(tid);
+      return r;
+    } catch(e) { clearTimeout(tid); throw e; }
+  }
+
+  let lastErr = '';
   for (const proxyUrl of corsProxies) {
     if (items.length) break;
     try {
-      const res = await fetch(proxyUrl, { cache: 'no-store' });
-      if (!res.ok) continue;
+      const res = await fetchWithTimeout(proxyUrl);
+      if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
       const ct = res.headers.get('content-type') || '';
       let xml = '';
-      if (ct.includes('json')) {
-        // allorigins returns { contents: '<xml>...' }
+      if (ct.includes('json') || proxyUrl.includes('allorigins')) {
         const d = await res.json();
         xml = d.contents || d.body || '';
       } else {
-        // corsproxy.io and codetabs return raw XML
         xml = await res.text();
       }
       items = parseGNXml(xml);
-    } catch(_) {}
+      if (items.length) break;
+      lastErr = 'parsed 0 items';
+    } catch(e) { lastErr = e.message || String(e); }
   }
 
   if(!items.length) {
-    el.innerHTML = `<div class="u-pad14c">No recent news found for ${sym}. <a href="https://news.google.com/search?q=${encodeURIComponent(sym+' NSE stock')}" target="_blank" style="color:var(--ac)">Search Google News ↗</a></div>`;
+    el.innerHTML = `
+      <div class="u-pad14c" style="color:var(--tx2)">
+        Could not load RSS feed${lastErr ? ' (' + lastErr + ')' : ''}.<br>
+        <a href="https://news.google.com/search?q=${encodeURIComponent(sym+' NSE stock India')}" 
+           target="_blank" style="color:var(--ac);font-weight:600">
+          Open Google News for ${sym} ↗
+        </a>
+      </div>`;
     return;
   }
 
