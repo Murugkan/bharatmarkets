@@ -1628,15 +1628,17 @@ CRITICAL RULES:
             return;
         }
         
-        // Fetch current file
+        // Fetch current file (handle 404 = new file)
         fetch(apiUrl, {
             headers: { 'Authorization': `token ${pat}` }
         })
-        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+        .then(r => r.status === 404 ? { sha: null, content: null } : r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
         .then(fileData => {
             var content = {};
             try {
-                content = JSON.parse(atob(fileData.content));
+                if (fileData.content) {
+                    content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
+                }
             } catch(e) {
                 log(`⚠️ Could not parse existing file`);
                 content = { "_metadata": { "version": "1.0" } };
@@ -1658,18 +1660,20 @@ CRITICAL RULES:
             jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
             const encodedContent = utf8ToBase64(jsonString);
             
+            const body = {
+                message: `Add/update guidance for ${ticker}`,
+                content: encodedContent,
+                branch: GITHUB_CONFIG.BRANCH
+            };
+            if (fileData.sha) body.sha = fileData.sha;
+            
             return fetch(apiUrl, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `token ${pat}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    message: `Add/update guidance for ${ticker}`,
-                    content: encodedContent,
-                    sha: fileData.sha,
-                    branch: GITHUB_CONFIG.BRANCH
-                })
+                body: JSON.stringify(body)
             });
         })
         .then(r => {
@@ -1798,15 +1802,17 @@ CRITICAL RULES:
             return;
         }
         
-        // Fetch current file
+        // Fetch current file (handle 404 = new file)
         fetch(apiUrl, {
             headers: { 'Authorization': `token ${pat}` }
         })
-        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+        .then(r => r.status === 404 ? { sha: null, content: null } : r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
         .then(fileData => {
             var content = {};
             try {
-                content = JSON.parse(atob(fileData.content));
+                if (fileData.content) {
+                    content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
+                }
             } catch(e) {
                 log(`⚠️ Could not parse existing file`);
                 content = { "_metadata": { "version": "1.0" } };
@@ -1828,18 +1834,20 @@ CRITICAL RULES:
             jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
             const encodedContent = utf8ToBase64(jsonString);
             
+            const body = {
+                message: `Add/update insights for ${ticker}`,
+                content: encodedContent,
+                branch: GITHUB_CONFIG.BRANCH
+            };
+            if (fileData.sha) body.sha = fileData.sha;
+            
             return fetch(apiUrl, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `token ${pat}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    message: `Add/update insights for ${ticker}`,
-                    content: encodedContent,
-                    sha: fileData.sha,
-                    branch: GITHUB_CONFIG.BRANCH
-                })
+                body: JSON.stringify(body)
             });
         })
         .then(r => {
