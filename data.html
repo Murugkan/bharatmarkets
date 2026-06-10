@@ -475,7 +475,7 @@
         REPO: 'bharatmarkets',
         BRANCH: 'main',
         PATHS: {
-            symbols: 'unified-symbols.json',
+            symbols: 'data/unified-symbols.json',
             ltp: 'data/ltp.json',
             guidance: 'data/guidance.json',
             macro: 'macro_data.json',
@@ -1705,7 +1705,7 @@ CRITICAL RULES:
             };
             
             // NOW UPDATE unified-symbols.json with updated timestamp and count
-            const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
+            const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.symbols}`;
             fetch(symbolsUrl, {
                 headers: { 'Authorization': `token ${pat}` }
             })
@@ -1942,13 +1942,13 @@ CRITICAL RULES:
         };
         
         // 4. Delete from unified-symbols.json on GitHub
-        ghFetch('unified-symbols.json')
+        ghFetch(GITHUB_CONFIG.PATHS.symbols)
             .then(r => r.json())
             .then(data => {
                 let symbols = data.symbols || Object.values(data);
                 symbols = symbols.filter(s => s.ticker !== ticker);
                 const uploadData = data.symbols ? { symbols } : symbols;
-                uploadToGitHub(pat, 'unified-symbols.json', uploadData, `Delete ${ticker}`);
+                uploadToGitHub(pat, GITHUB_CONFIG.PATHS.symbols, uploadData, `Delete ${ticker}`);
             })
             .catch(e => log(`⚠️ Symbol update failed: ${e.message}`));
         
@@ -2069,10 +2069,10 @@ CRITICAL RULES:
     }
     
     function uploadUnifiedSymbols(pat) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/unified-symbols.json`;
+        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.symbols}`;
         
         // Fetch current file first
-        ghFetch('unified-symbols.json')
+        ghFetch(GITHUB_CONFIG.PATHS.symbols)
             .then(r => r.json())
             .then(currentData => {
                 let symbols = currentData.symbols || [];
@@ -2331,7 +2331,7 @@ CRITICAL RULES:
                 // Fetch unified-symbols.json to record count in _METADATA_
                 logFetch('unified-symbols.json (count)');
                 const cb = Math.random().toString(36).slice(2) + Date.now();
-                return ghFetch('unified-symbols.json')
+                return ghFetch(GITHUB_CONFIG.PATHS.symbols)
                     .then(r => r.json())
                     .then(sym => {
                         const count = sym.symbols ? sym.symbols.length
