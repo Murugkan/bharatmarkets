@@ -2297,41 +2297,61 @@ async function loadStockNews(sym, name){
   const el = document.getElementById('stock-news-list');
   if(!el) return;
 
-  // Try multiple RSS sources in order
-  const companyName = (name || sym).split(' ').slice(0,3).join(' ');
-  const q = encodeURIComponent(`"${sym}" OR "${companyName}" stock NSE`);
+  el.innerHTML = '<div class="u-pad14c">Loading news…</div>';
 
-  const sources = [
-    // Google News RSS via allorigins CORS proxy (fresher than rss2json)
-    `https://api.allorigins.win/get?url=${encodeURIComponent('https://news.google.com/rss/search?q='+q+'&hl=en-IN&gl=IN&ceid=IN:en')}`,
-    // Fallback: rss2json
-    `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent('https://news.google.com/rss/search?q='+q+'&hl=en-IN&gl=IN&ceid=IN:en')}&count=12&api_key=`,
+  const companyName = (name || sym).split(' ').slice(0,3).join(' ');
+  const gnQuery = encodeURIComponent(`"${sym}" OR "${companyName}" stock NSE`);
+  const gnRssUrl = `https://news.google.com/rss/search?q=${gnQuery}&hl=en-IN&gl=IN&ceid=IN:en`;
+
+  // CORS proxy chain — tried in order until one works
+  const corsProxies = [
+    `https://api.allorigins.win/get?url=${encodeURIComponent(gnRssUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(gnRssUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(gnRssUrl)}`,
   ];
+
+  // Helper: parse Google News RSS XML into items array
+  function parseGNXml(xml) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    if (doc.querySelector('parsererror')) return [];
+    return Array.from(doc.querySelectorAll('item')).slice(0, 12).map(item => {
+      // <link> in Google News RSS is a text node between tags, not a child element
+      // Walk childNodes to find it reliably
+      let link = '';
+      for (const node of item.childNodes) {
+        if (node.nodeName === 'link') { link = node.textContent.trim(); break; }
+      }
+      // Fallback: try the guid which often contains the URL
+      if (!link) link = item.querySelector('guid')?.textContent || '';
+      return {
+        title: item.querySelector('title')?.textContent || '',
+        link,
+        pubDate: item.querySelector('pubDate')?.textContent || '',
+        source: { name: item.querySelector('source')?.textContent || '' }
+      };
+    }).filter(i => i.title);
+  }
 
   let items = [];
 
-  // Try allorigins first (returns raw XML)
-  try {
-    const res = await fetch(sources[0], {cache:'no-store'});
-    const d = await res.json();
-    const xml = d.contents || '';
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xml, 'text/xml');
-    const entries = doc.querySelectorAll('item');
-    items = Array.from(entries).slice(0, 12).map(item => ({
-      title: item.querySelector('title')?.textContent || '',
-      link:  item.querySelector('link')?.textContent || '',
-      pubDate: item.querySelector('pubDate')?.textContent || '',
-      source: { name: item.querySelector('source')?.textContent || '' }
-    })).filter(i => i.title);
-  } catch(_) {}
-
-  // Fallback to rss2json
-  if(!items.length) {
+  // Try each CORS proxy in order
+  for (const proxyUrl of corsProxies) {
+    if (items.length) break;
     try {
-      const res = await fetch(sources[1], {cache:'no-store'});
-      const d = await res.json();
-      items = (d.items || []).slice(0, 12);
+      const res = await fetch(proxyUrl, { cache: 'no-store' });
+      if (!res.ok) continue;
+      const ct = res.headers.get('content-type') || '';
+      let xml = '';
+      if (ct.includes('json')) {
+        // allorigins returns { contents: '<xml>...' }
+        const d = await res.json();
+        xml = d.contents || d.body || '';
+      } else {
+        // corsproxy.io and codetabs return raw XML
+        xml = await res.text();
+      }
+      items = parseGNXml(xml);
     } catch(_) {}
   }
 
