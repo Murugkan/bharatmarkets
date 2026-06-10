@@ -2366,6 +2366,10 @@ async function loadStockNews(sym, name, retry) {
       }
     }
 
+    // Keep only last 30 days
+    var cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    items = items.filter(function(i){ return !i.pubDate || new Date(i.pubDate) > cutoff; });
+
     if(!items.length) {
       el.innerHTML = '<div class="u-pad14c">No recent news found for ' + sym + '</div>';
       return;
