@@ -356,7 +356,7 @@
 
         <!-- SECTION 1: DATA SOURCES -->
         <div class="section-box section-box--compact">
-            <div class="table-container">
+            <div class="table-container" style="padding-bottom:4px;">
                 <table style="font-size:10px;">
                     <thead>
                         <tr>
@@ -373,7 +373,7 @@
         </div>
 
         <!-- SECTION 2: LIVE LOG -->
-        <div class="section-box" style="margin-top:6px;padding:8px;">
+        <div class="section-box" style="margin-top:2px;padding:8px;">
             <div class="section-header">📋 Live Log</div>
             <div class="log-box" id="live-log">
                 <div style="color:rgba(255,255,255,0.2);padding:6px;font-size:10px;font-family:'Courier New',monospace;">[Waiting for activity...]</div>
@@ -615,14 +615,15 @@
             var bracketEnd = m.indexOf(']');
             var time = bracketEnd > -1 ? m.substring(1, bracketEnd) : '';
             var body = bracketEnd > -1 ? m.substring(bracketEnd + 2) : m;
-            var rowAccent = 'rgba(255,255,255,0.04)';
-            if (body.startsWith('✅')) rowAccent = 'rgba(0,255,136,0.07)';
-            else if (body.startsWith('❌')) rowAccent = 'rgba(255,77,109,0.09)';
-            else if (body.startsWith('⚠️')) rowAccent = 'rgba(245,158,11,0.07)';
-            else if (body.startsWith('🔗') || body.startsWith('📡') || body.startsWith('📥')) rowAccent = 'rgba(0,242,255,0.05)';
-            return '<div style="display:flex;gap:8px;padding:3px 6px;border-radius:3px;background:' + rowAccent + ';margin-bottom:1px;">' +
-                '<span style="color:rgba(255,255,255,0.28);font-size:9px;white-space:nowrap;padding-top:1px;min-width:72px;">' + time + '</span>' +
-                '<span style="color:rgba(255,255,255,0.82);font-size:10px;line-height:1.5;word-break:break-word;">' + body + '</span>' +
+            var rowAccent = 'rgba(255,255,255,0.06)';
+            var bodyColor = '#ffffff';
+            if (body.startsWith('✅')) { rowAccent = 'rgba(0,255,136,0.13)'; bodyColor = '#00ff88'; }
+            else if (body.startsWith('❌')) { rowAccent = 'rgba(255,77,109,0.15)'; bodyColor = '#ff6b6b'; }
+            else if (body.startsWith('⚠️')) { rowAccent = 'rgba(245,158,11,0.13)'; bodyColor = '#fbbf24'; }
+            else if (body.startsWith('🔗') || body.startsWith('📡') || body.startsWith('📥')) { rowAccent = 'rgba(0,242,255,0.1)'; bodyColor = '#00f2ff'; }
+            return '<div style="display:flex;gap:8px;padding:4px 6px;border-radius:3px;background:' + rowAccent + ';margin-bottom:2px;">' +
+                '<span style="color:rgba(255,255,255,0.55);font-size:9px;white-space:nowrap;padding-top:1px;min-width:72px;">' + time + '</span>' +
+                '<span style="color:' + bodyColor + ';font-size:10px;line-height:1.5;word-break:break-word;">' + body + '</span>' +
                 '</div>';
         }).join('');
         logBox.innerHTML = rows;
