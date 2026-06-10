@@ -2345,24 +2345,29 @@ async function loadStockNews(sym, name){
     { url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(gnRssUrl)}`, type: 'raw' },
   ];
 
-  let items = [];
-  let lastErr = '';
+  // Race all proxies in parallel — first valid result wins
+  async function tryProxy(attempt) {
+    const res = await fetchWithTimeout(attempt.url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let xml = '';
+    if (attempt.type === 'allorigins') {
+      const d = await res.json();
+      xml = d.contents || '';
+    } else {
+      xml = await res.text();
+    }
+    const parsed = parseGNXml(xml);
+    if (!parsed.length) throw new Error('empty feed');
+    return parsed;
+  }
 
-  for (const attempt of proxyAttempts) {
-    if (items.length) break;
-    try {
-      const res = await fetchWithTimeout(attempt.url);
-      if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
-      let xml = '';
-      if (attempt.type === 'allorigins') {
-        const d = await res.json();
-        xml = d.contents || '';
-      } else {
-        xml = await res.text();
-      }
-      items = parseGNXml(xml);
-      if (!items.length) lastErr = 'empty feed';
-    } catch(e) { lastErr = e.message || String(e); }
+  // Promise.any — resolves with first success, rejects only if ALL fail
+  let items = [];
+  let lastErr = 'all proxies failed';
+  try {
+    items = await Promise.any(proxyAttempts.map(a => tryProxy(a)));
+  } catch(e) {
+    lastErr = e.errors ? e.errors.map(x => x.message).join(' | ') : String(e);
   }
 
   if(!items.length) {
