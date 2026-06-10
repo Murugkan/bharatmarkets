@@ -2152,13 +2152,16 @@ CRITICAL RULES:
             })
             .then(() => {
                 // Fetch unified-symbols.json to record count in _METADATA_
+                // Use text() + regex to avoid parsing the full large file
                 logFetch('unified-symbols.json (count)');
-                const cb = Math.random().toString(36).slice(2) + Date.now();
                 return ghFetch(GITHUB_CONFIG.PATHS.symbols)
-                    .then(r => r.json())
-                    .then(sym => {
-                        const count = sym.symbols ? sym.symbols.length
-                                    : (Array.isArray(sym) ? sym.length : 0);
+                    .then(r => r.text())
+                    .then(txt => {
+                        // Extract top-level count field without full JSON parse
+                        const countMatch = txt.match(/"count"\s*:\s*(\d+)/);
+                        const updatedMatch = txt.match(/"updated"\s*:\s*"([^"]+)"/);
+                        const count = countMatch ? parseInt(countMatch[1]) : 0;
+                        const sym = { count, updated: updatedMatch ? updatedMatch[1] : new Date().toISOString() };
                         // Persist symbols_count into _METADATA_
                         return new Promise((res) => {
                             const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -2174,7 +2177,7 @@ CRITICAL RULES:
                                 mg.onsuccess = () => {
                                     const meta = mg.result || { ticker: '_METADATA_' };
                                     meta.symbols_count = count;
-                                    meta.symbols_updated_at = sym.updated || new Date().toISOString();
+                                    meta.symbols_updated_at = sym.updated;
                                     store.put(meta);
                                 };
                                 tx.oncomplete = () => { db.close(); logSuccess('symbols count', count); res(); };
