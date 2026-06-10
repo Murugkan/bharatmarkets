@@ -78,13 +78,6 @@
         .sec-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--tx2);margin-bottom:12px;display:flex;gap:4px}
         .u-pad14c{padding:14px;color:var(--tx3);text-align:center;font-size:11px}
         .u-tx3-10mt{font-size:10px;color:var(--tx3);margin-top:3px}
-        .news-item{padding:11px 13px;border-bottom:1px solid var(--b1);background:var(--s1)}
-        .news-src{display:flex;gap:8px;align-items:center;font-size:9px;color:var(--tx3);margin-bottom:6px}
-        .news-src span:first-child{color:var(--tx2);font-weight:600}
-        .news-title{font-size:11px;color:var(--tx1);line-height:1.4;font-weight:600}
-        .imp-badge{font-size:7px;padding:2px 5px;border-radius:3px;font-weight:700;color:white}
-        .imp-H{background:#ff6b85}
-        .imp-M{background:#ffa500}
         .imp-L{background:#888}
         .pill{font-size:7px;padding:2px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)}
         .pill-bl{background:#1e3350;color:#64b5f6}
@@ -975,7 +968,6 @@ function renderTab(tab) {
     } else if (tab === 'news') {
         html = renderNewsTab(s);
         document.getElementById('content').innerHTML = html;
-        setTimeout(() => { loadStockNews(s.ticker || s.sym, s.name); }, 50);
     } else if (tab === 'fundamentals') {
         // Try to get guidance from derived_metrics.ai_insights_guidance.guidance
         let guidance = {};
@@ -2243,12 +2235,27 @@ document.addEventListener('DOMContentLoaded', setupChartInteraction);
 // ════════════════════════════════════════════════════════
 
 function renderNewsTab(s){
+  const ticker = s.ticker || s.sym;
+  const companyName = (s.name || ticker).split(' ').slice(0,3).join(' ');
+  const gnUrl = `https://news.google.com/search?q=${encodeURIComponent(ticker + ' ' + companyName + ' NSE stock India')}&hl=en-IN&gl=IN&ceid=IN:en`;
   return `<div>
     <div style="padding:10px 12px 4px">
-      <div class="sec-lbl">📰 News Sources</div>
+      <div class="sec-lbl">📰 News</div>
     </div>
-    <div id="stock-news-list">
-      <div class="u-pad14c">Loading news…</div>
+    <div style="padding:0 12px 10px">
+      <iframe
+        src="${gnUrl}"
+        style="width:100%;height:420px;border:none;border-radius:8px;background:#0a0a0a;"
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+        title="Google News – ${ticker}">
+      </iframe>
+      <div style="margin-top:6px;text-align:right">
+        <a href="${gnUrl}" target="_blank" rel="noopener"
+          style="font-size:10px;color:var(--ac);text-decoration:none;">
+          Open in Google News ↗
+        </a>
+      </div>
     </div>
     <div style="padding:10px 12px">
       <div class="sec-lbl">🔗 Research Links</div>
@@ -2278,130 +2285,9 @@ function renderNewsTab(s){
 
 function timeAgo(d){if(!d||isNaN(d))return '';const s=Math.floor((Date.now()-d)/1000);if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
 
-function classifyNews(t){
-  const u=t.toUpperCase();
-  if(/RESULT|PROFIT|REVENUE|EARNING|Q[1-4]/.test(u))return{tag:'RESULTS',imp:'H'};
-  if(/RBI|REPO|INFLATION|CPI|GDP|RATE CUT|RATE HIKE|MONETARY/.test(u))return{tag:'RBI',imp:'H'};
-  if(/SEBI|REGULATION|PENALTY|PROBE|CBI|ED/.test(u))return{tag:'POLICY',imp:'H'};
-  if(/OIL|CRUDE|OPEC|BRENT|PETROLEUM/.test(u))return{tag:'OIL',imp:'H'};
-  if(/WAR|IRAN|ISRAEL|CONFLICT|SANCTION|GEO|MILITARY/.test(u))return{tag:'GEO',imp:'H'};
-  if(/FII|FPI|DII|FOREIGN INFLOW|OUTFLOW/.test(u))return{tag:'FII',imp:'M'};
-  if(/MERGER|ACQUI|DEAL|STAKE|BUYBACK|DIVIDEND/.test(u))return{tag:'CORP',imp:'M'};
-  if(/SENSEX|NIFTY|RALLY|CRASH|SURGE|PLUNGE/.test(u))return{tag:'INDEX',imp:'M'};
-  return{tag:'NEWS',imp:'L'};
-}
 
 function extractDomain(url){try{return new URL(url).hostname.replace(/^www\./,'').split('.')[0];}catch(_){return 'News';}}
 
-async function loadStockNews(sym, name){
-  const el = document.getElementById('stock-news-list');
-  if(!el) return;
-
-  el.innerHTML = '<div class="u-pad14c">Loading news…</div>';
-
-  const companyName = (name || sym).split(' ').slice(0,3).join(' ');
-  const searchQ = `${sym} ${companyName} NSE stock India`;
-  const gnRssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQ)}&hl=en-IN&gl=IN&ceid=IN:en`;
-
-  // Helper: parse Google News RSS XML
-  function parseGNXml(xml) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xml, 'text/xml');
-    if (doc.querySelector('parsererror')) return [];
-    return Array.from(doc.querySelectorAll('item')).slice(0, 12).map(item => {
-      let link = '';
-      for (const node of item.childNodes) {
-        if (node.nodeName === 'link') { link = node.textContent.trim(); break; }
-      }
-      if (!link) link = item.querySelector('guid')?.textContent || '';
-      return {
-        title: item.querySelector('title')?.textContent || '',
-        link,
-        pubDate: item.querySelector('pubDate')?.textContent || '',
-        source: { name: item.querySelector('source')?.textContent || '' }
-      };
-    }).filter(i => i.title);
-  }
-
-  async function fetchWithTimeout(url, ms=9000) {
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), ms);
-    try {
-      const r = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
-      clearTimeout(tid);
-      return r;
-    } catch(e) { clearTimeout(tid); throw e; }
-  }
-
-  // Proxy chain — different wrapping styles
-  const proxyAttempts = [
-    // thingproxy: simple prepend, returns raw content
-    { url: `https://thingproxy.freeboard.io/fetch/${gnRssUrl}`, type: 'raw' },
-    // allorigins: returns JSON { contents }
-    { url: `https://api.allorigins.win/get?url=${encodeURIComponent(gnRssUrl)}`, type: 'allorigins' },
-    // corsproxy.io: raw, unencoded URL appended
-    { url: `https://corsproxy.io/?${gnRssUrl}`, type: 'raw' },
-    // codetabs
-    { url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(gnRssUrl)}`, type: 'raw' },
-  ];
-
-  // Race all proxies in parallel — first valid result wins
-  async function tryProxy(attempt) {
-    const res = await fetchWithTimeout(attempt.url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    let xml = '';
-    if (attempt.type === 'allorigins') {
-      const d = await res.json();
-      xml = d.contents || '';
-    } else {
-      xml = await res.text();
-    }
-    const parsed = parseGNXml(xml);
-    if (!parsed.length) throw new Error('empty feed');
-    return parsed;
-  }
-
-  // Promise.any — resolves with first success, rejects only if ALL fail
-  let items = [];
-  let lastErr = 'all proxies failed';
-  try {
-    items = await Promise.any(proxyAttempts.map(a => tryProxy(a)));
-  } catch(e) {
-    lastErr = e.errors ? e.errors.map(x => x.message).join(' | ') : String(e);
-  }
-
-  if(!items.length) {
-    el.innerHTML = `
-      <div class="u-pad14c" style="color:var(--tx2)">
-        Could not load RSS feed${lastErr ? ' (' + lastErr + ')' : ''}.<br>
-        <a href="https://news.google.com/search?q=${encodeURIComponent(sym+' NSE stock India')}" 
-           target="_blank" style="color:var(--ac);font-weight:600">
-          Open Google News for ${sym} ↗
-        </a>
-      </div>`;
-    return;
-  }
-
-  // Sort by date — most recent first
-  items.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
-
-  el.innerHTML = items.map(item => {
-    const {tag, imp} = classifyNews(item.title);
-    const src = item.source?.name || extractDomain(item.link) || 'News';
-    const age = timeAgo(new Date(item.pubDate));
-    return `<a href="${item.link}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
-      <div class="news-item" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none">
-        <div class="news-src">
-          <span style="color:var(--ac);font-weight:700">${src}</span>
-          <span class="imp-badge imp-${imp}">${imp==='H'?'HIGH':imp==='M'?'MED':'LOW'}</span>
-          <span class="pill pill-bl" style="font-size:7px">${tag}</span>
-          <span>${age}</span>
-        </div>
-        <div class="news-title">${item.title}</div>
-      </div>
-    </a>`;
-  }).join('');
-}
 
 </script>
 </body>
