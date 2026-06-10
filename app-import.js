@@ -1857,7 +1857,7 @@ function postToGitHub() {
     
     status.innerHTML = '<span style="color:#ffb347;">⏳ Connecting to GitHub...</span>';
     
-    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/unified-symbols.json';
+    var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/data/unified-symbols.json';
     
     // Get current SHA and optionally existing data (for APPEND mode)
     fetch(apiUrl, {
