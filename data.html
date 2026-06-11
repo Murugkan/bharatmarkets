@@ -2731,6 +2731,7 @@ function openImportWorkflow() {
     try {
         importState.step = 1;
         importState.stocks = [];
+        importState.demat = '';
         
         // Read PAT from the PAT tab input (same as rest of data.html)
         var patInput = document.getElementById('patToken');
@@ -2825,8 +2826,15 @@ function showImportUI() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep1() {
+    var savedDemat = importState.demat || '';
     return '<div style="padding:8px;background:#0a0a0a;border:1px solid #111;border-radius:0;">' +
         '<h3 style="margin:0 0 10px 0;color:#00ff88;font-size:16px;font-weight:bold;">📤 Upload Stock List</h3>' +
+        '<div style="margin:0 0 10px 0;">' +
+        '<label style="font-size:11px;color:#cc88ff;font-weight:700;display:block;margin-bottom:4px;">Demat Account Name</label>' +
+        '<input type="text" id="demat-name-input" value="' + savedDemat + '" placeholder="e.g. SBICAP, Zerodha, Groww" ' +
+        'onchange="importState.demat = this.value.trim()" ' +
+        'style="width:100%;padding:8px;background:#1a1a2e;color:#cc88ff;border:1px solid #cc88ff;border-radius:6px;font-size:13px;box-sizing:border-box;">' +
+        '</div>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
         '<b style="color:#00ff88;">Format:</b> Stock Name, Qty (optional), Avg Price (optional)<br>' +
         '<b style="color:#00ff88;">Example:</b> HDFC Bank,84,817.50<br>' +
@@ -2973,6 +2981,7 @@ function processImportCSV(csv) {
     var avgIdx = -1;
     var isinIdx = -1;
     var sectorIdx = -1;
+    var tickerIdx = -1;
     
     for (var i = 0; i < headerParts.length; i++) {
         var h = headerParts[i];
@@ -2998,6 +3007,13 @@ function processImportCSV(csv) {
         // ISIN
         if (isinIdx === -1 && h === 'isin') {
             isinIdx = i;
+        }
+
+        // Ticker / NSE Symbol
+        if (tickerIdx === -1 && (h === 'ticker' || h === 'symbol' || h === 'nse symbol' ||
+            h === 'nse code' || h === 'trading symbol' || h === 'scrip code' ||
+            h.includes('nse') && h.includes('symbol'))) {
+            tickerIdx = i;
         }
         
         // Sector
@@ -3089,17 +3105,26 @@ function processImportCSV(csv) {
         if (seen.has(name)) continue;
         seen.add(name);
         
+        // Extract ticker if column exists
+        var ticker = null;
+        if (tickerIdx >= 0 && tickerIdx < parts.length) {
+            var tv = parts[tickerIdx].trim();
+            if (tv && tv !== 'NA' && tv !== '-' && tv.length > 0) ticker = tv.toUpperCase();
+        }
+
         // Add stock if has valid name and at least one of qty/avg
         if (name && (qty !== null || avg !== null)) {
             stocks.push({
                 name: name,
+                ticker: ticker || '',
                 isin: isin || '',
                 qty: qty || 0,
                 avg: avg || 0,
                 sector: sector || '',
                 industry: '',
+                demat: importState.demat || '',
                 type: qty !== null ? 'PORTFOLIO' : 'WATCHLIST',
-                status: ''
+                status: ''  // AI enrichment in step 4 is always required — ticker here is just a hint
             });
         }
     }
@@ -3189,11 +3214,13 @@ function addManualEntries() {
         
         importState.stocks.push({
             name: name,
+            ticker: '',
             isin: "",
             qty: qty,
             avg: avg,
             sector: "",
             industry: "",
+            demat: importState.demat || '',
             type: (qty && avg) ? "PORTFOLIO" : "WATCHLIST",
             status: ""
         });
@@ -3263,11 +3290,15 @@ function renderStep3() {
             '</div>';
     }
     
-    // Build list with sequence numbers
+    // Send all stocks to AI — AI ticker is authoritative (overrides CSV ticker)
+    // Show existing ticker as hint if available from CSV
     var stocksList = '';
     for (var i = 0; i < importState.stocks.length; i++) {
-        stocksList += (i + 1) + ',' + importState.stocks[i].name + '\n';
+        var s = importState.stocks[i];
+        var hint = (s.ticker && s.ticker !== '' && s.ticker !== 'NA') ? ' [hint: ' + s.ticker + ']' : '';
+        stocksList += (i + 1) + ',' + s.name + hint + '\n';
     }
+    var needsEnrichment = importState.stocks.length;
     
     var prompt = "TASK: Extract NSE/BSE Ticker, ISIN, Sector, Industry for Indian financial instruments.\n\n" +
         "INPUT: Mixed holdings (equities, ETFs, mutual funds, sovereign bonds, corporate bonds, SME, partially written names)\n\n" +
