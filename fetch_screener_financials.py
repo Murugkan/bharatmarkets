@@ -33,7 +33,7 @@ from typing import Dict, List, Any, Optional, Tuple
 def load_symbol_map() -> Dict[str, Any]:
     """Load symbol mapping file for ticker remapping"""
     try:
-        symbol_map_file = Path('symbol_map.json')
+        symbol_map_file = Path('data/symbol_map.json')
         if symbol_map_file.exists():
             with open(symbol_map_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -104,7 +104,7 @@ class Config:
     # Paths (relative to current directory)
     DATA_DIR = Path('data')
     LOGS_DIR = DATA_DIR / 'logs'
-    SYMBOLS_FILE = Path('unified-symbols.json')
+    SYMBOLS_FILE = Path('data/unified-symbols.json')
     
     # Output files
     OUTPUT_JSON = DATA_DIR / "screener_financials.json"
