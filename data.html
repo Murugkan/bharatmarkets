@@ -401,8 +401,7 @@
                 <thead>
                     <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
                         <th class="sticky" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left;">TICKER</th>
-                        <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left; width:100px;">NAME</th>
-                        <th style="color:#cc88ff; font-weight:700; padding:10px 4px; text-align:left; min-width:140px;">HOLDINGS</th>
+                        <th style="color:#cc88ff; font-weight:700; padding:10px 4px; text-align:left; min-width:160px;">HOLDINGS</th>
                         <th style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px;">S.NO</th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
                         <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
@@ -917,7 +916,7 @@
         var html = '';
         
         if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="10" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
+            html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
         } else {
             masterData.forEach((stock, index) => {
                 var ticker = stock.ticker || '—';
@@ -960,7 +959,7 @@
 
                 html += '<tr id="row-' + ticker + '" style="border-bottom:1px solid rgba(0,255,136,0.1);">'
                     + '<td class="sticky" style="font-weight:700;color:#00ffff;font-size:14px;padding:8px;min-width:90px;vertical-align:top;padding-top:10px;">' + ticker + '</td>'
-                    + '<td style="color:#8ab4f8;font-size:12px;padding:8px 4px;width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:top;padding-top:10px;">' + name + '</td>'
+
                     + '<td style="padding:6px 4px;vertical-align:top;min-width:160px;">'
                     +   '<div style="font-size:10px;color:#aaffcc;font-weight:700;margin-bottom:4px;">Total: ' + totalQty + '</div>'
                     +   holdingsHtml
@@ -1777,13 +1776,9 @@ CRITICAL RULES:
 
     function toggleEditMode() {
         editMode = !editMode;
-        // holdings edited via modal — no inline inputs to toggle
-        event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
-        if (editMode) {
-            document.getElementById('save-section').style.display = 'block';
-        } else {
-            document.getElementById('save-section').style.display = 'none';
-        }
+        event.target.textContent = '🔧 Edit Mode: ' + (editMode ? 'ON' : 'OFF');
+        document.getElementById('save-section').style.display = editMode ? 'block' : 'none';
+        renderSymbols(); // re-render to show/hide edit buttons in holdings cell
     }
 
     function deleteStock(ticker) {
