@@ -62,7 +62,7 @@ except ImportError:
 # Relative paths - works from repo root
 DATA_DIR = Path('data')
 SYMBOLS_FILE = Path('data/unified-symbols.json')
-SYMBOL_MAP_FILE = Path('symbol_map.json')
+SYMBOL_MAP_FILE = Path('data/symbol_map.json')
 
 # Output files
 YAHOO_FILE = DATA_DIR / "yahoofin_raw_data.json"
