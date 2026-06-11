@@ -402,8 +402,7 @@
                     <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
                         <th class="sticky" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left;">TICKER</th>
                         <th style="color:#8ab4f8; font-weight:700; padding:10px 4px; text-align:left; width:100px;">NAME</th>
-                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:40px;">QTY</th>
-                        <th style="color:#8ab4f8; font-weight:700; padding:10px 2px; text-align:center; width:45px;">AVG</th>
+                        <th style="color:#cc88ff; font-weight:700; padding:10px 4px; text-align:left; min-width:140px;">HOLDINGS</th>
                         <th style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px;">S.NO</th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
                         <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
@@ -923,15 +922,23 @@
             masterData.forEach((stock, index) => {
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
-                var qty = (stock.company_details && stock.company_details.qty) || 0;
-                var avg = (stock.company_details && stock.company_details.avg_cost) || 0;
+                // Sum qty across all holdings; show holdings as demat:qty@avg lines
+                var holdings = stock.holdings || [];
+                var totalQty = holdings.reduce((s,h) => s + (parseFloat(h.qty)||0), 0);
+                var holdingsDisplay = holdings.length
+                    ? holdings.map(h => (h.demat||'?') + ':' + (h.qty||0) + '@' + (h.avg||0)).join(' | ')
+                    : '';
+                var holdingsJson = JSON.stringify(holdings);
                 var serialNo = index + 1;
 
                 html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
                     <td class="sticky" style="font-weight:700; color:#00ffff; font-size:14px; padding:8px 8px; min-width:90px; vertical-align:middle;">${ticker}</td>
                     <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:100px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
-                    <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${qty}" class="qty-input" data-ticker="${ticker}" style="width:75px; padding:12px; background:#1a3a1a; color:#ffffff !important; border:2px solid #00ff88; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
-                    <td style="padding:1px 4px; vertical-align:middle;"><input type="number" value="${avg}" class="avg-input" data-ticker="${ticker}" step="0.01" style="width:85px; padding:12px; background:#1a2a3a; color:#ffffff !important; border:2px solid #00ccff; border-radius:4px; font-size:14px; font-weight:700; text-align:center;" ${editMode ? '' : 'disabled'}></td>
+                    <td style="padding:1px 4px; vertical-align:middle; min-width:140px;">
+                        <div style="font-size:11px; color:#aaffcc; font-weight:700; margin-bottom:2px;">Total: ${totalQty}</div>
+                        <div style="font-size:9px; color:#aaaaaa; white-space:pre-wrap; line-height:1.6;">${holdingsDisplay}</div>
+                        ${editMode ? `<button onclick="editHoldings('${ticker}', this)" data-holdings='${holdingsJson}' style="margin-top:4px; padding:3px 8px; font-size:10px; background:#cc88ff; color:#000; border:none; border-radius:3px; cursor:pointer; font-weight:700;">✏️ Edit</button>` : ''}
+                    </td>
                     <td style="color:#ffaa44; font-size:12px; font-weight:700; padding:8px 6px; text-align:center; min-width:40px; vertical-align:middle;">${serialNo}</td>
                     <td style="padding:1px 6px; vertical-align:middle;">
                         <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
@@ -1743,9 +1750,7 @@ CRITICAL RULES:
 
     function toggleEditMode() {
         editMode = !editMode;
-        document.querySelectorAll('.qty-input, .avg-input').forEach(el => {
-            el.disabled = !editMode;
-        });
+        // holdings edited via modal — no inline inputs to toggle
         event.target.textContent = `🔧 Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
         if (editMode) {
             document.getElementById('save-section').style.display = 'block';
@@ -1877,20 +1882,7 @@ CRITICAL RULES:
         
         log('💾 Saving changes...');
         
-        // Get all edited values
-        document.querySelectorAll('.qty-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newQty = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.qty = newQty;
-        });
-        
-        document.querySelectorAll('.avg-input').forEach(input => {
-            var ticker = input.dataset.ticker;
-            var newAvg = parseFloat(input.value) || 0;
-            var stock = masterData.find(s => s.ticker === ticker);
-            if (stock) stock.avg = newAvg;
-        });
+        // Holdings are updated in-memory via editHoldings() modal before save
         
         // Upload to GitHub
         uploadUnifiedSymbols(pat);
@@ -1912,7 +1904,7 @@ CRITICAL RULES:
             transaction.oncomplete = () => {
                 log('✅ Changes saved to IndexedDB');
                 editMode = false;
-                document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+                
                 document.getElementById('save-section').style.display = 'none';
                 document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
                 updateHeader();
@@ -1935,12 +1927,11 @@ CRITICAL RULES:
                 symbols = symbols.map(stock => {
                     const updated = masterData.find(m => m.ticker === stock.ticker);
                     if (updated) {
-                        // Only update QTY and AVG, keep other fields
-                        return {
-                            ...stock,
-                            qty: updated.qty,
-                            avg: updated.avg
-                        };
+                        // Write holdings array; remove legacy flat fields
+                        const s = { ...stock };
+                        delete s.qty; delete s.avg; delete s.demat;
+                        s.holdings = updated.holdings || stock.holdings || [];
+                        return s;
                     }
                     return stock;
                 });
@@ -1990,7 +1981,7 @@ CRITICAL RULES:
 
     function cancelChanges() {
         editMode = false;
-        document.querySelectorAll('.qty-input, .avg-input').forEach(el => el.disabled = true);
+        
         document.getElementById('save-section').style.display = 'none';
         renderSymbols();
     }
@@ -1998,7 +1989,9 @@ CRITICAL RULES:
     function downloadCSV() {
         var csv = 'TICKER,NAME,QTY,AVG\n';
         masterData.forEach(s => {
-            csv += `${s.ticker},${s.name},${s.qty},${s.avg}\n`;
+            var th = (s.holdings||[]).reduce((a,h)=>a+(parseFloat(h.qty)||0),0);
+            var dm = (s.holdings||[]).map(h=>(h.demat||'')+'='+h.qty+'@'+h.avg).join(';');
+            csv += `${s.ticker},${s.name},${th},${dm}\n`;
         });
         var link = document.createElement('a');
         link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
