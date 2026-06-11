@@ -387,13 +387,13 @@ const PALETTE = [
 ];
 
 const UI_FIELDS = [
-    '#', 'SECTOR', 'SIGNAL', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
+    '#', 'SECTOR', 'SIGNAL', 'DEMAT', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
     'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'BV',
     'EPS', 'FV', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'NETCF',
     'CAPEX', 'FCF', 'DEBT_EQ', 'INT_COV', 'P/S', 'EV/EBITDA', 'TAX_RATE'
 ];
 
-const TEXT_FIELDS = ['TICKER', 'SECTOR', 'SIGNAL'];
+const TEXT_FIELDS = ['TICKER', 'SECTOR', 'SIGNAL', 'DEMAT'];
 
 // ===== GLOBAL STATE =====
 let MASTER = [];          // All stocks (portfolio + watchlist)
@@ -520,6 +520,13 @@ const resolve = (obj, field) => {
         'LTP':           { paths: ['price.ltp.price'] },
         'QTY':           { paths: ['company_details.qty'] },
         'AVG':           { paths: ['company_details.avg_cost'] },
+        'DEMAT':         { fn: s => {
+                             const h = s?.company_details?.holdings;
+                             if (!h || !h.length) return '—';
+                             if (h.length === 1) return h[0].demat || '—';
+                             // Multiple demats — show as comma list
+                             return h.map(x => x.demat || '?').join(', ');
+                         }},
         'INVESTED':      { paths: ['invested'] },
         'ROE%':          { fn: s => { const v = s?.ratios?.ttm?.roe_pct; return v != null ? v * 100 : undefined; }},
         'ROCE%':         { fn: s => _latest(s?.ratios?.screener?.roce_pct) },
