@@ -2912,7 +2912,7 @@ def _audit(output: dict, log) -> bool:
     # ── Audit configuration ───────────────────────────────────────────────────
     # These are data facts, not code logic — update when portfolio changes.
     ETFs        = {'JUNIORBEES', 'NIFTYBEES'}   # no financials by nature
-    NO_PROMOTER = {'ICICIBANK', 'ITC'}          # widely-held, no promoter group in Screener
+    NO_PROMOTER = {'ICICIBANK', 'ITC', 'FEDERALBNK'}  # widely-held, no promoter group in Screener
     LOW_HISTORY = {'CIGNITITEC'}                # delisted/suspended — minimal OHLCV expected
 
     # Sanity checks: known-good FY26 net_profit values (Cr) for regression detection.
