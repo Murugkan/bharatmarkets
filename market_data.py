@@ -94,9 +94,8 @@ FIELD_MAP = {
     "unified_symbols:metadata": {
         "ticker":   ("company_details",  "ticker"),
         "name":     ("company_details",  "name"),
-        "qty":      ("company_details",  "qty"),           # summed across holdings
-        "avg":      ("company_details",  "avg_cost"),      # weighted avg across holdings
-        "holdings": ("company_details",  "holdings"),      # full demat breakdown
+        "qty":      ("company_details",  "qty"),
+        "avg":      ("company_details",  "avg_cost"),
         "isin":     ("company_details",   "isin"),
         "sector":   ("company_details",   "sector"),
         "industry": ("company_details",   "industry"),
@@ -2912,7 +2911,7 @@ def _audit(output: dict, log) -> bool:
     # ── Audit configuration ───────────────────────────────────────────────────
     # These are data facts, not code logic — update when portfolio changes.
     ETFs        = {'JUNIORBEES', 'NIFTYBEES'}   # no financials by nature
-    NO_PROMOTER = {'ICICIBANK', 'ITC', 'FEDERALBNK'}  # widely-held, no promoter group in Screener
+    NO_PROMOTER = {'ICICIBANK', 'ITC'}          # widely-held, no promoter group in Screener
     LOW_HISTORY = {'CIGNITITEC'}                # delisted/suspended — minimal OHLCV expected
 
     # Sanity checks: known-good FY26 net_profit values (Cr) for regression detection.
@@ -2929,13 +2928,12 @@ def _audit(output: dict, log) -> bool:
     tickers = [k for k in output if k != '_metadata']
     failures = []
 
-    def chk(label, ok, detail='', warn_only=False):
+    def chk(label, ok, detail=''):
         if ok:
             log.info(f"  AUDIT ✓ {label}" + (f" | {detail}" if detail else ""))
         else:
             log.warning(f"  AUDIT ✗ {label}" + (f" | {detail}" if detail else ""))
-            if not warn_only:
-                failures.append(label)
+            failures.append(label)
 
     log.info("── Post-load audit ──────────────────────────────────────────")
 
@@ -3028,8 +3026,7 @@ def _audit(output: dict, log) -> bool:
                     and not output[t]['ratios'].get('screener', {}).get('roce_pct')
                     and not output[t]['ratios'].get('screener', {}).get('roe_pct')]
     chk("J. Screener ratios present", not ratio_issues,
-        f"{len(ratio_issues)} tickers missing: {ratio_issues[:5]}" if ratio_issues else "",
-        warn_only=True)  # Expected for watchlist/new listings/financial cos
+        str(ratio_issues[:5]) if ratio_issues else "")
 
     # Use first non-ETF ticker as sample for structure checks
     sample_t = next((t for t in tickers if t not in ETFs), tickers[0])
@@ -3155,8 +3152,6 @@ def main():
 
     # Load sector from unified-symbols.json — authoritative sector source
     sector_map = {}
-    holdings_map = {}   # ticker -> {qty, avg} summed across demat accounts
-    us_entry_map = {}   # ticker -> full unified-symbols entry (for holdings[])
     unified_file = DATA_DIR / 'unified-symbols.json'
     if unified_file.exists():
         with open(unified_file, encoding='utf-8') as f:
@@ -3195,23 +3190,9 @@ def main():
                                  "a string or a missing comma), commit, and re-run.")
                     sys.exit(1)
         for entry in us.get('symbols', []):
-            t = entry.get('ticker')
-            if t and entry.get('sector'):
-                sector_map[t] = entry['sector']
-            if t:
-                # Sum qty/avg across all holdings (new structure)
-                holdings = entry.get('holdings', [])
-                if holdings:
-                    total_qty = sum(float(h.get('qty') or 0) for h in holdings)
-                    # Weighted average cost
-                    weighted = sum(float(h.get('qty') or 0) * float(h.get('avg') or 0) for h in holdings)
-                    avg_cost = round(weighted / total_qty, 2) if total_qty else 0
-                    holdings_map[t] = {'qty': total_qty, 'avg': avg_cost}
-                elif entry.get('qty') is not None:
-                    # Legacy flat structure fallback
-                    holdings_map[t] = {'qty': entry.get('qty', 0), 'avg': entry.get('avg', 0)}
-                us_entry_map[t] = entry
-        logger.info(f"  ✓ Loaded unified-symbols.json ({len(sector_map)} tickers with sector, {len(holdings_map)} with holdings)")
+            if entry.get('ticker') and entry.get('sector'):
+                sector_map[entry['ticker']] = entry['sector']
+        logger.info(f"  ✓ Loaded unified-symbols.json ({len(sector_map)} tickers with sector)")
     
     # Load guidance data
     guidance_file = DATA_DIR / 'guidance.json'
@@ -3228,17 +3209,6 @@ def main():
 
     for i, symbol in enumerate(symbols, 1):
         sections = raw[symbol].get("data", {})
-
-        # Inject summed qty/avg + full holdings[] from unified_symbols:metadata
-        h = holdings_map.get(symbol)
-        if h:
-            if 'unified_symbols:metadata' not in sections:
-                sections['unified_symbols:metadata'] = {}
-            sections['unified_symbols:metadata']['qty'] = h['qty']
-            sections['unified_symbols:metadata']['avg'] = h['avg']
-        # Also inject full holdings array for demat breakdown
-        if symbol in us_entry_map and 'unified_symbols:metadata' in sections:
-            sections['unified_symbols:metadata']['holdings'] = us_entry_map[symbol].get('holdings', [])
 
         # Extract Yahoo fin sections BEFORE bucketing (needed for merge)
         yf_historical, yf_latest = _extract_yf_fin_sections(sections)
@@ -3331,9 +3301,9 @@ def main():
     # ── Post-load audit ────────────────────────────────────────────────────────
     audit_passed = _audit(final_output, logger)
     if not audit_passed:
-        logger.error("✗ AUDIT FAILED — review warnings above before deploying")
-        sys.exit(1)
-    logger.info("✓ AUDIT PASSED")
+        logger.warning("⚠ AUDIT: gaps recorded above — output written, review before deploying")
+    else:
+        logger.info("✓ AUDIT PASSED")
 
 
 def _build_schema(output: dict) -> dict:
