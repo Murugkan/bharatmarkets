@@ -2101,42 +2101,29 @@ function sigRenderDetail(ticker) {
         }).join('')}
     </div>`;
 
-    // PIPELINE ENGINE (derived_metrics.calculated_metrics — v3 scoring)
+    // QUANT RATING (derived_metrics.calculated_metrics — pipeline v3 scoring)
+    // Rendered via sigPillarCard so it behaves exactly like the other sections.
     const cm=sig.pipe?.cm||{};
     if(cm.composite_score!==null&&cm.composite_score!==undefined){
         const pc=sigPipeColor(cm.rating);
-        const pillars=[['F',cm.fundamental_score],['T',cm.technical_score],['V',cm.valuation_score],['S',cm.sentiment_score]];
-        const newMetrics=[
-            ['CFO/PAT 3Y',     cm.cfo_pat_ratio!==null&&cm.cfo_pat_ratio!==undefined?cm.cfo_pat_ratio.toFixed(2)+'x':'N/A', cm.cash_score],
-            ['QTR PAT YoY',    sigPipeFmt(cm.qtr_profit_yoy_pct,1,'%'),       cm.qtr_growth_score],
-            ['OPM TREND',      sigPipeFmt(cm.opm_trend_pp,1,'pp'),            cm.opm_trend_score],
-            ['3M RETURN',      sigPipeFmt(cm.return_3m_pct,1,'%'),            cm.momentum_score],
-            ['TTM EPS GROWTH', sigPipeFmt(cm.earnings_growth_yoy,1,'%'),      cm.growth_score],
-            ['PROMOTER ΔQoQ',  sigPipeFmt(cm.promoter_chg_qoq_pp,2,'pp'),     null],
-            ['FII+DII ΔQoQ',   sigPipeFmt(cm.institutional_chg_qoq_pp,2,'pp'),null],
-            ['OWNERSHIP',      cm.ownership_score!==null&&cm.ownership_score!==undefined?String(cm.ownership_score):'N/A', cm.ownership_score],
-        ];
-        html+=`<div class="sig-ctx-box" style="margin-bottom:10px;border:1px solid ${pc}33">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <div class="sig-section-title">PIPELINE ENGINE${cm.pillars_used?` <span style="color:#666;font-weight:400">(${cm.pillars_used}/4 pillars)</span>`:''}</div>
-                <div style="display:flex;align-items:center;gap:6px">
-                    <span style="font-size:16px;font-weight:800;color:${pc}">${cm.composite_score}</span>
-                    <span class="sig-pill" style="background:${pc}22;color:${pc}">${cm.rating}</span>
-                </div>
-            </div>
-            <div style="display:flex;gap:6px;margin-bottom:8px">
-                ${pillars.map(([l,v])=>`<div style="flex:1;text-align:center;padding:4px 0;background:#0d0d0d;border-radius:4px">
-                    <div style="font-size:7px;color:#888">${l}</div>
-                    <div style="font-size:11px;font-weight:700;color:${v!==null&&v!==undefined?sigScoreColor(v):'#555'}">${v!==null&&v!==undefined?Math.round(v):'—'}</div>
-                </div>`).join('')}
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-                ${newMetrics.map(([lbl,val,sc])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;background:#0d0d0d;border-radius:4px">
-                    <span style="font-size:7px;color:#888">${lbl}</span>
-                    <span style="font-size:10px;font-weight:700;color:${sc!==null&&sc!==undefined?sigScoreColor(sc):(val==='N/A'?'#555':'#e2e8f0')}">${val}</span>
-                </div>`).join('')}
-            </div>
-        </div>`;
+        const sv=(v,dec,suf)=>({has:v!==null&&v!==undefined, txt:sigPipeFmt(v,dec,suf)});
+        const pipeSub={
+            call:  {s:Math.round(cm.composite_score), hasData:true, label:'MODEL CALL', val:cm.rating||''},
+            pf:    {s:cm.fundamental_score!=null?Math.round(cm.fundamental_score):0, hasData:cm.fundamental_score!=null, label:'FUNDAMENTAL', val:''},
+            pt:    {s:cm.technical_score!=null?Math.round(cm.technical_score):0,   hasData:cm.technical_score!=null,   label:'TECHNICAL',   val:''},
+            pv:    {s:cm.valuation_score!=null?Math.round(cm.valuation_score):0,   hasData:cm.valuation_score!=null,   label:'VALUATION',   val:''},
+            ps:    {s:cm.sentiment_score!=null?Math.round(cm.sentiment_score):0,   hasData:cm.sentiment_score!=null,   label:'SENTIMENT',   val:''},
+            cash:  {s:cm.cash_score??0,       hasData:cm.cash_score!=null,       label:'CFO/PAT 3Y',  val:cm.cfo_pat_ratio!=null?cm.cfo_pat_ratio.toFixed(2)+'x':'N/A'},
+            qtr:   {s:cm.qtr_growth_score??0, hasData:cm.qtr_growth_score!=null, label:'QTR PAT YoY', val:sigPipeFmt(cm.qtr_profit_yoy_pct,1,'%')},
+            opm:   {s:cm.opm_trend_score??0,  hasData:cm.opm_trend_score!=null,  label:'OPM TREND',   val:sigPipeFmt(cm.opm_trend_pp,1,'pp')},
+            mom:   {s:cm.momentum_score??0,   hasData:cm.momentum_score!=null,   label:'3M RETURN',   val:sigPipeFmt(cm.return_3m_pct,1,'%')},
+            grow:  {s:cm.growth_score??0,     hasData:cm.growth_score!=null,     label:'EPS GROWTH',  val:sigPipeFmt(cm.earnings_growth_yoy,1,'%')},
+            own:   {s:cm.ownership_score??0,  hasData:cm.ownership_score!=null,  label:'OWNERSHIP',
+                    val:(cm.promoter_chg_qoq_pp!=null||cm.institutional_chg_qoq_pp!=null)
+                        ?`P${sigPipeFmt(cm.promoter_chg_qoq_pp,2,'')} I${sigPipeFmt(cm.institutional_chg_qoq_pp,2,'')}`:'N/A'},
+        };
+        const pipePillar={score:Math.round(cm.composite_score), sub:pipeSub};
+        html+=sigPillarCard('pipe','QUANT RATING','🧮',pipePillar,pc);
     }
 
     // ANALYST TARGET
