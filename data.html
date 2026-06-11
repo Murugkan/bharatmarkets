@@ -922,12 +922,15 @@
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
                 // Support both new holdings[] and legacy company_details.qty/avg
-                var holdings = stock.holdings && stock.holdings.length
+                // Priority: stock.holdings → company_details.holdings → legacy qty/avg fallback
+                var holdings = (stock.holdings && stock.holdings.length)
                     ? stock.holdings
-                    : (((stock.company_details && stock.company_details.qty) || stock.qty)
-                        ? [{ demat: '', qty: (stock.company_details && stock.company_details.qty) || stock.qty || 0,
-                                          avg: (stock.company_details && stock.company_details.avg_cost) || stock.avg || 0 }]
-                        : []);
+                    : (stock.company_details && stock.company_details.holdings && stock.company_details.holdings.length)
+                        ? stock.company_details.holdings
+                        : (((stock.company_details && stock.company_details.qty) || stock.qty)
+                            ? [{ demat: '', qty: (stock.company_details && stock.company_details.qty) || stock.qty || 0,
+                                              avg: (stock.company_details && stock.company_details.avg_cost) || stock.avg || 0 }]
+                            : []);
                 var totalQty = holdings.reduce((s,h) => s + (parseFloat(h.qty)||0), 0);
                 var holdingsDisplay = holdings.map(function(h) {
                     return (h.demat ? h.demat + ': ' : '') + 'qty ' + (h.qty||0) + ' @ ₹' + (h.avg||0);
