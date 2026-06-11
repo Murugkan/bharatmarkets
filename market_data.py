@@ -598,54 +598,68 @@ FIELD_MAP = {
 
 SECTOR_PROFILES = {
     # Keys match unified-symbols.json sector field exactly
+    # margin_good: net margin % considered strong for the sector
+    # pe_fair / pb_fair: typical fair-value multiples for the sector (India)
     "Information Technology": {
         "fundamental": 0.4, "technical": 0.3, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 0.5,  "roe_excellent": 22, "roce_excellent": 25,
+        "margin_good": 16, "pe_fair": 26, "pb_fair": 7.0,
     },
     "Financials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 8.0,  "roe_excellent": 15, "roce_excellent": 12,
+        "margin_good": 18, "pe_fair": 15, "pb_fair": 2.5,
     },
     "Consumer Staples": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.0,  "roe_excellent": 25, "roce_excellent": 20,
+        "margin_good": 12, "pe_fair": 45, "pb_fair": 10.0,
     },
     "Consumer Discretionary": {
         "fundamental": 0.4, "technical": 0.25, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 1.5,  "roe_excellent": 18, "roce_excellent": 15,
+        "margin_good": 8,  "pe_fair": 40, "pb_fair": 6.0,
     },
     "Healthcare": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.5,  "roe_excellent": 20, "roce_excellent": 18,
+        "margin_good": 14, "pe_fair": 32, "pb_fair": 5.0,
     },
     "Industrials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 18, "roce_excellent": 20,
+        "margin_good": 8,  "pe_fair": 32, "pb_fair": 5.0,
     },
     "Defence": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 1.0,  "roe_excellent": 18, "roce_excellent": 20,
+        "margin_good": 12, "pe_fair": 38, "pb_fair": 8.0,
     },
     "Energy": {
         "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 14, "roce_excellent": 12,
+        "margin_good": 8,  "pe_fair": 13, "pb_fair": 1.8,
     },
     "Utilities": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10,
+        "margin_good": 12, "pe_fair": 16, "pb_fair": 2.2,
     },
     "Materials": {
         "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 16, "roce_excellent": 14,
+        "margin_good": 10, "pe_fair": 18, "pb_fair": 2.8,
     },
     "Telecom": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 10, "roce_excellent": 8,
+        "margin_good": 10, "pe_fair": 28, "pb_fair": 4.5,
     },
     # Fallback
     "Other": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 15, "roce_excellent": 15,
+        "margin_good": 10, "pe_fair": 22, "pb_fair": 3.5,
     },
 }
 
@@ -1455,6 +1469,15 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     Compute sector-aware scores from actual bucketed data.
     Sector comes from unified-symbols.json (passed in), not company_details.
     Does NOT touch any existing fields — only writes to derived_metrics.calculated_metrics.
+
+    v2 scoring:
+    - Continuous piecewise-linear scoring (no band saturation at 100)
+    - Sector-relative PE/PB via pe_fair / pb_fair in SECTOR_PROFILES
+    - Earnings growth scored inside fundamental pillar
+    - Momentum = 3-month return from ohlcv_daily (not 1-day noise)
+    - hasData at pillar level: pillars with no data are excluded and
+      remaining weights renormalized (no silent 50 defaults)
+    - Loss-makers get a low valuation score instead of skipping PE
     """
     fin        = bucketed.get("financials", {})
     rat        = bucketed.get("ratios", {})
@@ -1481,25 +1504,32 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                 return vals[sorted(vals, reverse=True)[0]]
         return None
 
-    def score_band(val, thresholds):
-        """Map a value to 0-100 score using (threshold, score) pairs, highest first."""
-        for threshold, sc in thresholds:
-            if val >= threshold:
-                return sc
-        return thresholds[-1][1]
+    def interp_score(v, points):
+        """Piecewise-linear interpolation. points = [(value, score), ...]
+        sorted by value ascending. Clamped at both ends. Continuous —
+        a 45% ROCE scores higher than a 25% ROCE."""
+        if v <= points[0][0]:
+            return points[0][1]
+        if v >= points[-1][0]:
+            return points[-1][1]
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            if x0 <= v <= x1:
+                return round(y0 + (y1 - y0) * (v - x0) / (x1 - x0))
+        return points[-1][1]
 
     # ── 1. FUNDAMENTAL ────────────────────────────────────────────────────────
     fundamental_components = []
 
-    # ROCE (Screener time-series) — primary efficiency metric
+    # ROCE (Screener time-series) — primary efficiency metric. Continuous;
+    # negative ROCE is penalised hard, headroom above "excellent" still scores.
     roce_data = rat.get('screener', {}).get('roce_pct', {})
     if isinstance(roce_data, dict) and roce_data:
         roce = sorted(roce_data.items(), reverse=True)[0][1]
-        if isinstance(roce, (int, float)) and roce is not None:
+        if isinstance(roce, (int, float)):
             metrics['roce_pct'] = roce
-            thresh = sector_profile.get('roce_excellent', 15)
-            roce_score = score_band(roce, [(thresh, 100), (thresh*0.75, 75),
-                                           (thresh*0.5, 50), (0, 25)])
+            t = sector_profile.get('roce_excellent', 15)
+            roce_score = interp_score(roce, [(-10, 5), (0, 25), (t * 0.5, 55),
+                                             (t, 85), (t * 1.6, 100)])
             metrics['roce_score'] = roce_score
             fundamental_components.append(roce_score)
 
@@ -1512,69 +1542,162 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         roe_ttm = rat.get('ttm', {}).get('roe_pct')
         if isinstance(roe_ttm, float):
             roe = roe_ttm * 100  # TTM is fraction, convert to %
-    if roe is not None:
+    if isinstance(roe, (int, float)):
         metrics['roe_pct'] = round(roe, 2)
-        thresh = sector_profile.get('roe_excellent', 15)
-        roe_score = score_band(roe, [(thresh, 100), (thresh*0.75, 75),
-                                     (thresh*0.5, 50), (0, 25)])
+        t = sector_profile.get('roe_excellent', 15)
+        roe_score = interp_score(roe, [(-10, 5), (0, 25), (t * 0.5, 55),
+                                       (t, 85), (t * 1.6, 100)])
         metrics['roe_score'] = roe_score
         fundamental_components.append(roe_score)
 
-    # Net margin (TTM)
+    # Net margin (TTM) — sector-aware via margin_good
     net_margin = rat.get('ttm', {}).get('net_margin_pct')
     if isinstance(net_margin, float):
         nm_pct = net_margin * 100
         metrics['net_margin_pct'] = round(nm_pct, 2)
-        margin_score = score_band(nm_pct, [(20, 100), (12, 75), (6, 50), (0, 25)])
+        mg = sector_profile.get('margin_good', 10)
+        margin_score = interp_score(nm_pct, [(-5, 5), (0, 25), (mg * 0.5, 55),
+                                             (mg, 85), (mg * 1.75, 100)])
         metrics['margin_score'] = margin_score
         fundamental_components.append(margin_score)
 
-    # Revenue growth YoY (TTM)
+    # Earnings growth YoY (TTM) — scored, not just stored
     rev_growth = rat.get('ttm', {}).get('earnings_growth_yoy')
     if isinstance(rev_growth, float):
-        metrics['earnings_growth_yoy'] = round(rev_growth * 100, 2)
+        g_pct = rev_growth * 100
+        metrics['earnings_growth_yoy'] = round(g_pct, 2)
+        growth_score = interp_score(g_pct, [(-30, 10), (-10, 30), (0, 45),
+                                            (10, 65), (25, 85), (50, 100)])
+        metrics['growth_score'] = growth_score
+        fundamental_components.append(growth_score)
 
-    # D/E check (sector-aware)
-    borr     = latest_annual('borrowings')
-    reserves = latest_annual('reserves')
+    # D/E (sector-aware, continuous; lower is better)
+    borr      = latest_annual('borrowings')
+    reserves  = latest_annual('reserves')
     share_cap = latest_annual('share_capital')
     equity = (reserves or 0) + (share_cap or 0)
     if borr is not None and equity and equity > 0:
         de = borr / equity
         metrics['debt_to_equity'] = round(de, 2)
-        de_limit = sector_profile.get('de_limit', 2.0)
-        de_score = score_band(de, [(0, 100), (de_limit*0.5, 75),
-                                   (de_limit, 50), (de_limit*1.5, 25)])
-        # Invert — lower D/E = better score
-        de_score = 100 - (de / max(de_limit * 2, 1)) * 60
-        de_score = max(20, min(100, round(de_score)))
+        lim = sector_profile.get('de_limit', 2.0)
+        de_score = interp_score(de, [(0, 100), (lim * 0.5, 80),
+                                     (lim, 55), (lim * 2, 25)])
         metrics['de_score'] = de_score
         fundamental_components.append(de_score)
 
+    # Cash quality: CFO/PAT computed from primary data (operating_cash_flow /
+    # net_profit), aggregated over up to 3 latest years to smooth working-capital
+    # swings. Skipped for Financials — CFO is not meaningful for banks/NBFCs.
+    # (Audit note: the pre-existing cash_conversion_ratio field has ambiguous
+    # provenance/scale and is intentionally NOT used.)
+    def annual_series(field, n=3):
+        d = fin.get(field, {})
+        for co in ('consolidated', 'standalone'):
+            ann = d.get(co, {}).get('annual', {})
+            vals = {k: v for k, v in ann.items()
+                    if len(k) == 10 and isinstance(v, (int, float))}
+            if vals:
+                return [vals[k] for k in sorted(vals, reverse=True)[:n]]
+        return None
+
+    if sector != 'Financials':
+        ocf_s = annual_series('operating_cash_flow')
+        np_s  = annual_series('net_profit')
+        if ocf_s and np_s:
+            n = min(len(ocf_s), len(np_s))
+            np_sum = sum(np_s[:n])
+            if np_sum > 0:
+                cfo_pat = sum(ocf_s[:n]) / np_sum
+                metrics['cfo_pat_ratio'] = round(cfo_pat, 2)
+                cash_score = interp_score(cfo_pat, [(0, 15), (0.5, 40), (0.8, 65),
+                                                    (1.0, 80), (1.3, 95)])
+                metrics['cash_score'] = cash_score
+                fundamental_components.append(cash_score)
+
+    # Quarterly earnings trajectory: latest quarter net profit YoY (Q vs Q-4)
+    def quarterly_series(field):
+        d = fin.get(field, {})
+        for co in ('consolidated', 'standalone'):
+            q = d.get(co, {}).get('quarterly', {})
+            vals = {k: v for k, v in q.items()
+                    if len(k) == 10 and isinstance(v, (int, float))}
+            if len(vals) >= 5:
+                return [vals[k] for k in sorted(vals, reverse=True)]
+        return None
+
+    np_q = quarterly_series('net_profit')
+    if np_q:
+        latest_q, base_q = np_q[0], np_q[4]
+        if base_q > 0:
+            q_yoy = (latest_q - base_q) / base_q * 100
+            metrics['qtr_profit_yoy_pct'] = round(q_yoy, 2)
+            qtr_score = interp_score(q_yoy, [(-50, 10), (-15, 30), (0, 45),
+                                             (15, 70), (40, 90), (80, 100)])
+        else:
+            # negative base: turnaround vs continued losses
+            qtr_score = 80 if latest_q > 0 else 15
+            metrics['qtr_profit_yoy_pct'] = None
+        metrics['qtr_growth_score'] = qtr_score
+        fundamental_components.append(qtr_score)
+
+    # Operating margin trend: latest annual OPM vs avg of prior 3 years (pp)
+    opm_d = fin.get('operating_margin_pct', {})
+    for co in ('consolidated', 'standalone'):
+        ann = opm_d.get(co, {}).get('annual', {})
+        vals = {k: v for k, v in ann.items()
+                if len(k) == 10 and isinstance(v, (int, float))}
+        keys = sorted(vals, reverse=True)
+        if len(keys) >= 3:
+            latest_yr = int(keys[0][:4])
+            prior = [vals[k] for k in keys[1:4] if latest_yr - int(k[:4]) <= 4]
+            if not prior:
+                break
+            ordered = [vals[k] for k in keys]
+            opm_trend = ordered[0] - (sum(prior) / len(prior))
+            metrics['opm_trend_pp'] = round(opm_trend, 2)
+            opm_score = interp_score(opm_trend, [(-6, 20), (-2, 40), (0, 55),
+                                                 (2, 75), (6, 95)])
+            metrics['opm_trend_score'] = opm_score
+            fundamental_components.append(opm_score)
+            break
+
     fundamental_score = round(sum(fundamental_components) / len(fundamental_components), 1) \
-                        if fundamental_components else 50
+                        if fundamental_components else None
     metrics['fundamental_score'] = fundamental_score
 
     # ── 2. VALUATION ──────────────────────────────────────────────────────────
     valuation_components = []
 
-    pe_ttm = val.get('pe', {}).get('pe_ttm')
+    pe_ttm  = val.get('pe', {}).get('pe_ttm')
+    pe_fair = sector_profile.get('pe_fair', 22)
     if pe_ttm and pe_ttm > 0:
         metrics['pe_ratio'] = round(pe_ttm, 2)
-        # Invert — lower PE = higher score
-        pe_score = max(20, min(100, round(110 - pe_ttm * 1.5)))
+        pe_score = interp_score(pe_ttm, [(pe_fair * 0.4, 100), (pe_fair * 0.8, 80),
+                                         (pe_fair, 65), (pe_fair * 1.5, 45),
+                                         (pe_fair * 2.5, 25), (pe_fair * 4, 10)])
         metrics['pe_score'] = pe_score
         valuation_components.append(pe_score)
+    else:
+        # Loss-maker: PE undefined because earnings are negative → penalise,
+        # don't silently skip. Only when we can confirm losses from margin.
+        nm = rat.get('ttm', {}).get('net_margin_pct')
+        if isinstance(nm, float) and nm < 0:
+            metrics['pe_score'] = 15
+            metrics['pe_loss_maker'] = True
+            valuation_components.append(15)
 
     pb = val.get('pe', {}).get('price_to_book')
+    pb_fair = sector_profile.get('pb_fair', 3.5)
     if pb and pb > 0:
         metrics['pb_ratio'] = round(pb, 2)
-        pb_score = max(20, min(100, round(100 - pb * 10)))
+        pb_score = interp_score(pb, [(pb_fair * 0.3, 100), (pb_fair * 0.7, 80),
+                                     (pb_fair, 65), (pb_fair * 1.5, 45),
+                                     (pb_fair * 2.5, 25), (pb_fair * 4, 10)])
         metrics['pb_score'] = pb_score
         valuation_components.append(pb_score)
 
     valuation_score = round(sum(valuation_components) / len(valuation_components), 1) \
-                      if valuation_components else 50
+                      if valuation_components else None
     metrics['valuation_score'] = valuation_score
 
     # ── 3. TECHNICAL ──────────────────────────────────────────────────────────
@@ -1606,55 +1729,115 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['week52_score'] = pos_score
         technical_components.append(pos_score)
 
-    # Price momentum (price_change_pct from price object)
-    pct_change = price.get('price_change_pct')
-    if pct_change is not None:
-        metrics['price_momentum_pct'] = round(pct_change, 2)
-        mom_score = score_band(pct_change, [(5, 80), (2, 65), (0, 55),
-                                            (-2, 45), (-5, 35)])
-        metrics['momentum_score'] = mom_score
-        technical_components.append(mom_score)
+    # Momentum: 3-month return from ohlcv_daily (newest first).
+    # ~63 trading days back; tolerate shorter history (min 40 days).
+    ohlcv = price.get('ohlcv_daily')
+    if isinstance(ohlcv, list) and len(ohlcv) >= 40 and close:
+        idx = min(62, len(ohlcv) - 1)
+        base = ohlcv[idx].get('Close')
+        if base and base > 0:
+            ret_3m = (close - base) / base * 100
+            metrics['return_3m_pct'] = round(ret_3m, 2)
+            mom_score = interp_score(ret_3m, [(-30, 10), (-15, 30), (0, 50),
+                                              (15, 75), (30, 90), (50, 100)])
+            metrics['momentum_score'] = mom_score
+            technical_components.append(mom_score)
 
     technical_score = round(sum(technical_components) / len(technical_components), 1) \
-                      if technical_components else 50
+                      if technical_components else None
     metrics['technical_score'] = technical_score
 
-    # ── 4. SENTIMENT ──────────────────────────────────────────────────────────
+    # ── 4. SENTIMENT: analyst signal + smart-money flows (hasData) ────────────
+    sentiment_components = []
+
+    # 4a. Analyst component
     analyst_rating = websignals.get('analyst_rating_score')
     target_mean    = websignals.get('target_mean')
-    analyst_count  = websignals.get('analyst_count', 0)
 
-    sentiment_score = 50
+    analyst_component = None
     if analyst_rating and isinstance(analyst_rating, (int, float)):
         # analyst_rating_score: 1=strong buy → 5=strong sell
-        sentiment_score = round((5 - analyst_rating) / 4 * 100)
+        analyst_component = round((5 - analyst_rating) / 4 * 100)
         metrics['analyst_rating_score'] = analyst_rating
 
     if target_mean and close and close > 0:
         upside = (target_mean - close) / close * 100
         metrics['analyst_upside_pct'] = round(upside, 2)
-        if upside > 20:   sentiment_score = min(100, sentiment_score + 15)
-        elif upside > 10: sentiment_score = min(100, sentiment_score + 8)
-        elif upside < 0:  sentiment_score = max(10,  sentiment_score - 10)
+        if analyst_component is None:
+            analyst_component = 50  # target exists but no rating — start neutral
+        if upside > 20:   analyst_component = min(100, analyst_component + 15)
+        elif upside > 10: analyst_component = min(100, analyst_component + 8)
+        elif upside < 0:  analyst_component = max(10,  analyst_component - 10)
 
-    metrics['sentiment_score'] = round(sentiment_score)
+    if analyst_component is not None:
+        metrics['analyst_component'] = analyst_component
+        sentiment_components.append(analyst_component)
 
-    # ── 5. COMPOSITE ──────────────────────────────────────────────────────────
+    # 4b. Ownership flows: promoter + institutional (FII+DII) QoQ change in pp
+    pattern = bucketed.get('company_details', {}) \
+                      .get('shareholding', {}).get('pattern', {})
+
+    def qoq_change(holder):
+        d = pattern.get(holder)
+        if not isinstance(d, dict):
+            return None
+        vals = {k: v for k, v in d.items()
+                if len(k) == 10 and isinstance(v, (int, float))}
+        if len(vals) < 2:
+            return None
+        ordered = sorted(vals, reverse=True)
+        return vals[ordered[0]] - vals[ordered[1]]
+
+    prom_chg = qoq_change('promoters')
+    fii_chg  = qoq_change('fiis')
+    dii_chg  = qoq_change('diis')
+
+    ownership_parts = []
+    if prom_chg is not None:
+        metrics['promoter_chg_qoq_pp'] = round(prom_chg, 2)
+        ownership_parts.append(interp_score(prom_chg, [(-2, 10), (-0.5, 35),
+                                                       (0, 55), (0.5, 75), (2, 95)]))
+    inst_chg = None
+    if fii_chg is not None or dii_chg is not None:
+        inst_chg = (fii_chg or 0) + (dii_chg or 0)
+        metrics['institutional_chg_qoq_pp'] = round(inst_chg, 2)
+        ownership_parts.append(interp_score(inst_chg, [(-3, 15), (-1, 35),
+                                                       (0, 50), (1, 70), (3, 90)]))
+    if ownership_parts:
+        ownership_score = round(sum(ownership_parts) / len(ownership_parts))
+        metrics['ownership_score'] = ownership_score
+        sentiment_components.append(ownership_score)
+
+    sentiment_score = round(sum(sentiment_components) / len(sentiment_components)) \
+                      if sentiment_components else None
+    metrics['sentiment_score'] = sentiment_score
+    metrics['sentiment_has_data'] = sentiment_score is not None
+
+    # ── 5. COMPOSITE (renormalize over pillars that have data) ────────────────
     w = sector_profile
-    composite = (
-        fundamental_score * w['fundamental'] +
-        valuation_score   * w['valuation']   +
-        technical_score   * w['technical']   +
-        sentiment_score   * w['sentiment']
-    )
-    metrics['composite_score'] = round(composite, 1)
+    pillars = [
+        (fundamental_score,            w['fundamental']),
+        (valuation_score,              w['valuation']),
+        (technical_score,              w['technical']),
+        (metrics['sentiment_score'],   w['sentiment']),
+    ]
+    avail = [(s, wt) for s, wt in pillars if s is not None]
+    if avail:
+        total_w = sum(wt for _, wt in avail)
+        composite = sum(s * wt for s, wt in avail) / total_w
+        metrics['composite_score'] = round(composite, 1)
+        metrics['pillars_used'] = len(avail)
+    else:
+        metrics['composite_score'] = None
+        metrics['pillars_used'] = 0
 
     score = metrics['composite_score']
-    if score >= 80:   metrics['rating'] = 'STRONG BUY'
-    elif score >= 67: metrics['rating'] = 'BUY'
-    elif score >= 53: metrics['rating'] = 'HOLD'
-    elif score >= 40: metrics['rating'] = 'SELL'
-    else:             metrics['rating'] = 'STRONG SELL'
+    if score is None:         metrics['rating'] = 'NO DATA'
+    elif score >= 78:         metrics['rating'] = 'STRONG BUY'
+    elif score >= 72:         metrics['rating'] = 'BUY'
+    elif score >= 63:         metrics['rating'] = 'HOLD'
+    elif score >= 54:         metrics['rating'] = 'SELL'
+    else:                     metrics['rating'] = 'STRONG SELL'
 
     metrics['sector_weights'] = {
         'fundamental': w['fundamental'],
@@ -2872,7 +3055,86 @@ def _audit(output: dict, log) -> bool:
     chk("M. Sanity values", not sanity_failures,
         str(sanity_failures) if sanity_failures else "")
 
-    total_checks = 13  # A through M
+    # ── Scoring-layer checks (v3 engine) ──────────────────────────────────────
+    VALID_RATINGS = {'STRONG BUY', 'BUY', 'HOLD', 'SELL', 'STRONG SELL', 'NO DATA'}
+    PILLAR_KEYS = ('fundamental_score', 'valuation_score',
+                   'technical_score', 'sentiment_score')
+    COMPONENT_KEYS = ('roce_score', 'roe_score', 'margin_score', 'growth_score',
+                      'de_score', 'cash_score', 'qtr_growth_score',
+                      'opm_trend_score', 'pe_score', 'pb_score', 'ma_score',
+                      'week52_score', 'momentum_score', 'ownership_score',
+                      'analyst_component')
+    cms = {t: output[t].get('derived_metrics', {}).get('calculated_metrics', {})
+           for t in tickers}
+
+    # N. Scoring coverage & valid ratings
+    n_issues = []
+    for t, cm in cms.items():
+        if not cm:
+            n_issues.append(f"{t}:no calculated_metrics")
+        elif cm.get('rating') not in VALID_RATINGS:
+            n_issues.append(f"{t}:rating={cm.get('rating')}")
+        elif cm.get('composite_score') is None and cm.get('pillars_used', 0) > 0:
+            n_issues.append(f"{t}:composite None with pillars_used>0")
+    chk("N. Scoring coverage & ratings valid", not n_issues,
+        str(n_issues[:5]) if n_issues else f"{len(cms)} tickers scored")
+
+    # O. All scores within 0–100
+    o_issues = []
+    for t, cm in cms.items():
+        for k in PILLAR_KEYS + COMPONENT_KEYS + ('composite_score',):
+            v = cm.get(k)
+            if v is not None and not (0 <= v <= 100):
+                o_issues.append(f"{t}.{k}={v}")
+    chk("O. Score ranges 0-100", not o_issues,
+        str(o_issues[:5]) if o_issues else "")
+
+    # P. hasData consistency (no silent defaults)
+    p_issues = []
+    for t, cm in cms.items():
+        if not cm:
+            continue
+        if (cm.get('sentiment_score') is None) == bool(cm.get('sentiment_has_data')):
+            p_issues.append(f"{t}:sentiment_has_data inconsistent")
+        n_avail = sum(1 for k in PILLAR_KEYS if cm.get(k) is not None)
+        if cm.get('pillars_used') != n_avail:
+            p_issues.append(f"{t}:pillars_used={cm.get('pillars_used')} vs {n_avail}")
+    chk("P. hasData consistency", not p_issues,
+        str(p_issues[:5]) if p_issues else "")
+
+    # Q. Anti-pinning: no component dominated by one value (catches scale
+    #    mismatches like the cash_conversion_ratio defect), composite not degenerate
+    q_issues = []
+    for k in COMPONENT_KEYS:
+        vals = [cm[k] for cm in cms.values() if cm.get(k) is not None]
+        if len(vals) >= 20:
+            top = max(vals.count(v) for v in set(vals))
+            if top / len(vals) > 0.8:
+                q_issues.append(f"{k}: {top}/{len(vals)} identical")
+    comps = [cm['composite_score'] for cm in cms.values()
+             if cm.get('composite_score') is not None]
+    if len(comps) >= 20:
+        mean = sum(comps) / len(comps)
+        sd = (sum((x - mean) ** 2 for x in comps) / (len(comps) - 1)) ** 0.5
+        if sd < 5:
+            q_issues.append(f"composite sd={sd:.1f}<5 (degenerate)")
+    chk("Q. Anti-pinning / dispersion", not q_issues,
+        str(q_issues[:5]) if q_issues else "")
+
+    # R. Component coverage floors — guard against silent upstream field breakage
+    n_scored = max(len([t for t in tickers if t not in ETFs]), 1)
+    floors = {'qtr_growth_score': 0.80, 'ownership_score': 0.80,
+              'momentum_score': 0.80, 'growth_score': 0.75,
+              'cash_score': 0.60, 'opm_trend_score': 0.60}
+    r_issues = []
+    for k, floor in floors.items():
+        n = sum(1 for cm in cms.values() if cm.get(k) is not None)
+        if n / n_scored < floor:
+            r_issues.append(f"{k}: {n}/{n_scored} < {floor:.0%}")
+    chk("R. Component coverage floors", not r_issues,
+        str(r_issues[:5]) if r_issues else "")
+
+    total_checks = 18  # A through R
     log.info(f"── Audit: {total_checks - len(failures)}/{total_checks} passed"
              + (f" | {len(failures)} failed: {failures}" if failures else " | all clear"))
 
