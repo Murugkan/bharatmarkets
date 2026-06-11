@@ -16,7 +16,7 @@ from pathlib import Path
 from datetime import datetime, UTC
 
 DATA_DIR = Path('data')
-SYMBOLS_FILE = Path('unified-symbols.json')
+SYMBOLS_FILE = Path('data/unified-symbols.json')
 SYMBOL_MAP_FILE = Path('symbol_map.json')
 YAHOOF_FILE = DATA_DIR / "yahoofin_financials.json"
 LOG_FILE = DATA_DIR / "logs/fetch_yahoofin_financials.log"

@@ -61,7 +61,7 @@ except ImportError:
 
 # Relative paths - works from repo root
 DATA_DIR = Path('data')
-SYMBOLS_FILE = Path('unified-symbols.json')
+SYMBOLS_FILE = Path('data/unified-symbols.json')
 SYMBOL_MAP_FILE = Path('symbol_map.json')
 
 # Output files

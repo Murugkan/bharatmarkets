@@ -104,7 +104,7 @@ class Config:
     # Paths (relative to current directory)
     DATA_DIR = Path('data')
     LOGS_DIR = DATA_DIR / 'logs'
-    SYMBOLS_FILE = Path('unified-symbols.json')
+    SYMBOLS_FILE = Path('data/unified-symbols.json')
     
     # Output files
     OUTPUT_JSON = DATA_DIR / "screener_financials.json"
