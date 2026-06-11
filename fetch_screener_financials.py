@@ -360,7 +360,6 @@ class ScreenerFinancialsScraper:
         """Fetch page HTML with retry logic and screener overrides"""
         screener_symbol = self.symbol_map.get('screener_overrides', {}).get(symbol, symbol.lower())
         url = f"{Config.BASE_URL}/{screener_symbol}/consolidated/"
-        logger.info(f"  FETCH: {symbol} → {url}")
 
         for attempt in range(Config.RETRY_ATTEMPTS):
             try:
@@ -386,9 +385,9 @@ class ScreenerFinancialsScraper:
                 return html
 
             except TimeoutException:
-                logger.warning(f"  TIMEOUT: {symbol} attempt {attempt + 1}/{Config.RETRY_ATTEMPTS} | url={url}")
+                logger.debug(f"Timeout: {symbol} (attempt {attempt + 1})")
             except Exception as e:
-                logger.warning(f"  FETCH ERROR: {symbol} attempt {attempt + 1}/{Config.RETRY_ATTEMPTS} | url={url} | {type(e).__name__}: {str(e)[:120]}")
+                logger.debug(f"Fetch error: {symbol} - {str(e)[:60]}")
                 self.reset_driver()  # Recreate on crash
 
             if attempt < Config.RETRY_ATTEMPTS - 1:
@@ -517,7 +516,6 @@ class ScreenerFinancialsScraper:
         """Fallback: fetch standalone (non-consolidated) page for tickers that lack a consolidated view"""
         screener_symbol = self.symbol_map.get('screener_overrides', {}).get(symbol, symbol.lower())
         url = f"{Config.BASE_URL}/{screener_symbol}/"  # no /consolidated/
-        logger.info(f"  FETCH (standalone): {symbol} → {url}")
 
         for attempt in range(Config.RETRY_ATTEMPTS):
             try:
@@ -537,7 +535,7 @@ class ScreenerFinancialsScraper:
                 time.sleep(Config.RATE_LIMIT_DELAY)
                 return html
             except Exception as e:
-                logger.warning(f"  FETCH ERROR (standalone): {symbol} attempt {attempt + 1}/{Config.RETRY_ATTEMPTS} | url={url} | {type(e).__name__}: {str(e)[:120]}")
+                logger.debug(f"Standalone fetch error: {symbol} - {str(e)[:60]}")
                 self.reset_driver()
             if attempt < Config.RETRY_ATTEMPTS - 1:
                 time.sleep(Config.RETRY_DELAY)
