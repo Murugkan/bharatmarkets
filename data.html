@@ -463,6 +463,8 @@
     let DB_VERSION = parseInt(localStorage.getItem('db_version') || '8', 10);
 
     let masterData = [];
+    let symbolsData = [];  // Stock list tab — loaded directly from unified-symbols.json
+    let guidanceFileData = {};  // Stock list tab — loaded directly from guidance.json
     let guidanceData = {};
     let guidanceTimestamps = {};
     let concallTimestamps = {}; // Separate timestamp for concall
@@ -650,7 +652,7 @@
         
         // Refresh data when switching tabs
         if (tabName === 'symbols') {
-            renderSymbols();
+            loadSymbolsFromGitHub();
         } else if (tabName === 'etl-pipeline') {
             renderDataSources();
         }
@@ -912,25 +914,37 @@
         localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
     }
 
+    function loadSymbolsFromGitHub() {
+        document.getElementById('symbols-table').innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;padding:20px;">⏳ Loading...</td></tr>';
+        // Fetch both files in parallel
+        Promise.all([
+            ghFetch(GITHUB_CONFIG.PATHS.symbols).then(function(r) { return r.json(); }),
+            ghFetch(GITHUB_CONFIG.PATHS.guidance).then(function(r) { return r.json(); }).catch(function() { return {}; })
+        ])
+        .then(function(results) {
+            symbolsData = results[0].symbols || [];
+            guidanceFileData = results[1] || {};
+            log('✅ Loaded ' + symbolsData.length + ' symbols + guidance');
+            renderSymbols();
+        })
+        .catch(function(e) {
+            log('❌ Could not load stock list: ' + e.message);
+            document.getElementById('symbols-table').innerHTML = '<tr><td colspan="9" style="text-align:center;color:#ff6b6b;padding:20px;">❌ Failed to load. Check PAT and connection.</td></tr>';
+        });
+    }
+
     function renderSymbols() {
         var html = '';
         
-        if (!masterData || masterData.length === 0) {
-            html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 No data loaded. Click "🚀 LOAD JSON" to populate symbols.</td></tr>';
+        if (!symbolsData || symbolsData.length === 0) {
+            html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 Loading...</td></tr>';
         } else {
-            masterData.forEach((stock, index) => {
+            symbolsData.forEach((stock, index) => {
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
                 // Support both new holdings[] and legacy company_details.qty/avg
-                // Priority: stock.holdings → company_details.holdings → legacy qty/avg fallback
-                var holdings = (stock.holdings && stock.holdings.length)
-                    ? stock.holdings
-                    : (stock.company_details && stock.company_details.holdings && stock.company_details.holdings.length)
-                        ? stock.company_details.holdings
-                        : (((stock.company_details && stock.company_details.qty) || stock.qty)
-                            ? [{ demat: '', qty: (stock.company_details && stock.company_details.qty) || stock.qty || 0,
-                                              avg: (stock.company_details && stock.company_details.avg_cost) || stock.avg || 0 }]
-                            : []);
+                // symbolsData has clean holdings[] — direct read
+                var holdings = stock.holdings || [];
                 var totalQty = holdings.reduce((s,h) => s + (parseFloat(h.qty)||0), 0);
                 var holdingsDisplay = holdings.map(function(h) {
                     return (h.demat ? h.demat + ': ' : '') + 'qty ' + (h.qty||0) + ' @ ₹' + (h.avg||0);
@@ -952,13 +966,10 @@
                     ? '<button onclick="editHoldings(\'' + ticker + '\')" style="margin-top:5px;padding:3px 8px;font-size:10px;background:#cc88ff;color:#000;border:none;border-radius:3px;cursor:pointer;font-weight:700;">&#9999; Edit</button>'
                     : '';
 
-                var concallDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date)
-                    ? stock.derived_metrics.ai_insights_guidance.guidance.date
-                    : (concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—');
-
-                var insightsDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date)
-                    ? stock.derived_metrics.ai_insights_guidance.insights.date
-                    : (insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—');
+                // Read dates directly from guidanceFileData (guidance.json)
+                var gEntry = guidanceFileData[ticker] || {};
+                var concallDate = (gEntry.guidance && gEntry.guidance.date) ? gEntry.guidance.date : '—';
+                var insightsDate = (gEntry.insights && gEntry.insights.date) ? gEntry.insights.date : '—';
 
                 html += '<tr id="row-' + ticker + '" style="border-bottom:1px solid rgba(0,255,136,0.1);">'
                     + '<td class="sticky" style="font-weight:700;color:#00ffff;font-size:14px;padding:8px;min-width:90px;vertical-align:top;padding-top:10px;">' + ticker + '</td>'
@@ -1568,69 +1579,9 @@ CRITICAL RULES:
             log('✅ Ready');
             showToast(`✅ Guidance saved for ${ticker}`);
             
-            // Update in-memory guidanceData
-            if (!guidanceData[ticker]) guidanceData[ticker] = {};
-            guidanceData[ticker].guidance = newGuidance;
-            saveGuidanceToStorage();
-            
-            // Record timestamp and update IndexedDB
-            const guidanceDate = newGuidance.date || new Date().toISOString().split('T')[0];
-            concallTimestamps[ticker] = guidanceDate;
-            localStorage.setItem('concallTimestamps', JSON.stringify(concallTimestamps));
-            
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                var stock = masterData.find(s => s.ticker === ticker);
-                if (stock) {
-                    stock.guidance = newGuidance;
-                    store.put(stock);
-                }
-            };
-            
-            // NOW UPDATE unified-symbols.json with updated timestamp and count
-            // Use ghFetch (handles large files via download_url) to avoid atob truncation
-            const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.symbols}`;
-            Promise.all([
-                ghFetch(GITHUB_CONFIG.PATHS.symbols).then(r => r.json()),
-                fetch(symbolsUrl, { headers: { 'Authorization': `token ${pat}` } }).then(r => r.json())
-            ])
-            .then(([symbolsContent, fileInfo]) => {
-                // Validate we got real data before writing
-                if (!symbolsContent || !symbolsContent.symbols || !Array.isArray(symbolsContent.symbols)) {
-                    throw new Error('symbols content invalid — aborting write to prevent corruption');
-                }
-                symbolsContent.updated = new Date().toISOString();
-                symbolsContent.count = symbolsContent.symbols.length;
-                const jsonStr = JSON.stringify(symbolsContent, null, 2);
-                // Validate JSON round-trips cleanly
-                JSON.parse(jsonStr);
-                const encodedSymbols = utf8ToBase64(jsonStr);
-                return fetch(symbolsUrl, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `token ${pat}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: `Update unified-symbols.json - guidance saved for ${ticker}`,
-                        content: encodedSymbols,
-                        sha: fileInfo.sha,
-                        branch: GITHUB_CONFIG.BRANCH
-                    })
-                });
-            })
-            .then(r => {
-                if (r?.ok) {
-                    log(`✅ Updated unified-symbols.json`);
-                }
-            })
-            .catch(e => {
-                log(`⚠️ Could not update unified-symbols.json: ${e.message}`);
-            });
-            
+            // Update in-memory guidanceFileData — no IndexedDB, no unified-symbols touch
+            if (!guidanceFileData[ticker]) guidanceFileData[ticker] = {};
+            guidanceFileData[ticker].guidance = newGuidance;
             renderSymbols();
         })
         .catch(e => {
@@ -1746,28 +1697,9 @@ CRITICAL RULES:
             log('✅ Ready');
             showToast(`✅ Insights saved for ${ticker}`);
             
-            // Update in-memory guidanceData
-            if (!guidanceData[ticker]) guidanceData[ticker] = {};
-            guidanceData[ticker].insights = newInsights;
-            saveGuidanceToStorage();
-            
-            // Record timestamp and update IndexedDB
-            const insightsDate = newInsights.date || new Date().toISOString().split('T')[0];
-            insightsTimestamps[ticker] = insightsDate;
-            localStorage.setItem('insightsTimestamps', JSON.stringify(insightsTimestamps));
-            
-            var req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onsuccess = (e) => {
-                var db = e.target.result;
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                var stock = masterData.find(s => s.ticker === ticker);
-                if (stock) {
-                    stock.insights = newInsights;
-                    store.put(stock);
-                }
-            };
-            
+            // Update in-memory guidanceFileData — no IndexedDB
+            if (!guidanceFileData[ticker]) guidanceFileData[ticker] = {};
+            guidanceFileData[ticker].insights = newInsights;
             renderSymbols();
         })
         .catch(e => {
@@ -1785,66 +1717,30 @@ CRITICAL RULES:
     }
 
     function deleteStock(ticker) {
-        if (!confirm(`Delete ${ticker}? (Removes from DB + Guidance JSON)`)) return;
+        if (!confirm('Delete ' + ticker + '? (Removes from unified-symbols.json + guidance.json)')) return;
         
         var pat = document.getElementById('patToken').value;
-        if (!pat) {
-            log('❌ PAT required');
-            showToast('❌ Configure PAT first');
-            return;
-        }
+        if (!pat) { showToast('❌ PAT required'); return; }
         
-        log(`🗑️ Deleting ${ticker}...`);
+        log('🗑️ Deleting ' + ticker + '...');
         
-        // 1. Remove from masterData
-        masterData = masterData.filter(s => s.ticker !== ticker);
-        
-        // 2. Remove guidance (both concall + insights)
-        delete guidanceData[ticker];
-        delete guidanceTimestamps[ticker];
-        delete concallTimestamps[ticker];
-        delete insightsTimestamps[ticker];
-        saveGuidanceToStorage();
-        log(`✅ Deleted guidance for ${ticker}`);
-        
-        // 3. Remove from IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            try {
-                var transaction = db.transaction(STORE_NAME, 'readwrite');
-                var store = transaction.objectStore(STORE_NAME);
-                store.delete(ticker);
-                transaction.oncomplete = () => {
-                    log(`✅ Deleted ${ticker} from IndexedDB`);
-                    renderSymbols();
-                    updateHeader();
-                };
-            } catch(err) {
-                log(`⚠️ IndexedDB delete: ${err.message}`);
-            }
-        };
-        
-        // 4. Delete from unified-symbols.json on GitHub
-        ghFetch(GITHUB_CONFIG.PATHS.symbols)
-            .then(r => r.json())
-            .then(data => {
-                let symbols = data.symbols || Object.values(data);
-                symbols = symbols.filter(s => s.ticker !== ticker);
-                const uploadData = data.symbols ? { symbols } : symbols;
-                uploadToGitHub(pat, GITHUB_CONFIG.PATHS.symbols, uploadData, `Delete ${ticker}`);
-            })
-            .catch(e => log(`⚠️ Symbol update failed: ${e.message}`));
-        
-        // 5. Delete from guidance.json on GitHub
+        // 1. Remove from in-memory
+        symbolsData = symbolsData.filter(function(s) { return s.ticker !== ticker; });
+        delete guidanceFileData[ticker];
+        renderSymbols();
+
+        // 2. Remove from unified-symbols.json on GitHub (use symbolsData already filtered)
+        uploadUnifiedSymbols(pat);
+
+        // 3. Remove from guidance.json on GitHub
         ghFetch(GITHUB_CONFIG.PATHS.guidance)
-            .then(r => r.json())
-            .then(data => {
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
                 delete data[ticker];
-                uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, `Delete ${ticker} guidance`);
-                log(`✅ Deleted ${ticker} from guidance.json`);
+                uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, 'Delete ' + ticker + ' guidance');
+                log('✅ Deleted ' + ticker + ' from guidance.json');
             })
-            .catch(e => log(`⚠️ Guidance update failed: ${e.message}`));
+            .catch(function(e) { log('⚠️ Guidance delete failed: ' + e.message); });
     }
     
     function uploadToGitHub(pat, filename, content, message) {
@@ -1909,114 +1805,72 @@ CRITICAL RULES:
         
         // Holdings are updated in-memory via editHoldings() modal before save
         
-        // Upload to GitHub
+        // Write directly to GitHub — no IndexedDB for stock list
         uploadUnifiedSymbols(pat);
-        
-        // Save to IndexedDB
-        var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onsuccess = (e) => {
-            var db = e.target.result;
-            var transaction = db.transaction(STORE_NAME, 'readwrite');
-            var store = transaction.objectStore(STORE_NAME);
-            
-            // Add updated timestamp to all stocks
-            const now = new Date().toLocaleTimeString();
-            masterData.forEach(stock => {
-                stock.updated = now;
-                store.put(stock);
-            });
-            
-            transaction.oncomplete = () => {
-                log('✅ Changes saved to IndexedDB');
-                editMode = false;
-                
-                document.getElementById('save-section').style.display = 'none';
-                document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
-                updateHeader();
-                renderSymbols();
-                showToast('✅ Saved!');
-            };
-        };
     }
     
     function uploadUnifiedSymbols(pat) {
-        const url = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.symbols}`;
-        
-        // Fetch current file first
-        ghFetch(GITHUB_CONFIG.PATHS.symbols)
-            .then(r => r.json())
-            .then(currentData => {
-                let symbols = currentData.symbols || [];
-                
-                // Update only changed stocks in the array
-                symbols = symbols.map(stock => {
-                    const updated = masterData.find(m => m.ticker === stock.ticker);
-                    if (updated) {
-                        // Write holdings array; remove legacy flat fields
-                        const s = { ...stock };
-                        delete s.qty; delete s.avg; delete s.demat;
-                        s.holdings = updated.holdings || stock.holdings || [];
-                        return s;
-                    }
-                    return stock;
-                });
-                
-                // Get SHA and upload
-                fetch(url, {
-                    headers: { 'Authorization': `token ${pat}` }
-                })
-                .then(r => r.json())
-                .then(fileInfo => {
-                    // Create file content with updated and count fields
-                    const fileContent = {
-                        updated: new Date().toISOString(),
-                        count: symbols.length,
-                        symbols: symbols
-                    };
-                    const encodedContent = utf8ToBase64(JSON.stringify(fileContent, null, 2));
-                    
-                    return fetch(url, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `token ${pat}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            message: 'Update QTY/AVG via ETL Center',
-                            content: encodedContent,
-                            sha: fileInfo.sha
-                        })
-                    });
-                })
-                .then(r => {
-                    if (r.ok) {
-                        log('✅ Updated unified-symbols.json on GitHub');
-                    } else {
-                        log('❌ Upload failed');
-                    }
-                })
-                .catch(e => {
-                    log(`❌ Upload error: ${e.message}`);
+        const url = 'https://api.github.com/repos/' + GITHUB_CONFIG.OWNER + '/' + GITHUB_CONFIG.REPO + '/contents/' + GITHUB_CONFIG.PATHS.symbols;
+        log('📡 Saving to unified-symbols.json...');
+
+        // Build clean symbols array from symbolsData
+        const symbols = symbolsData.map(function(stock) {
+            const s = Object.assign({}, stock);
+            delete s.qty; delete s.avg; delete s.demat;
+            if (!s.holdings) s.holdings = [];
+            return s;
+        });
+
+        const fileContent = {
+            updated: new Date().toISOString(),
+            count: symbols.length,
+            symbols: symbols
+        };
+
+        // Get SHA then PUT
+        fetch(url, { headers: { 'Authorization': 'token ' + pat } })
+            .then(function(r) { return r.json(); })
+            .then(function(fileInfo) {
+                const encodedContent = utf8ToBase64(JSON.stringify(fileContent, null, 2));
+                return fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'token ' + pat, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: 'Update holdings via ETL Center',
+                        content: encodedContent,
+                        sha: fileInfo.sha,
+                        branch: GITHUB_CONFIG.BRANCH
+                    })
                 });
             })
-            .catch(e => {
-                log(`❌ Error: ${e.message}`);
-            });
+            .then(function(r) {
+                if (r.ok) {
+                    log('✅ unified-symbols.json saved');
+                    editMode = false;
+                    document.getElementById('save-section').style.display = 'none';
+                    document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
+                    renderSymbols();
+                    showToast('✅ Saved to GitHub!');
+                } else {
+                    r.json().then(function(e) { log('❌ Save failed: ' + (e.message || r.status)); });
+                }
+            })
+            .catch(function(e) { log('❌ Upload error: ' + e.message); });
     }
 
     function cancelChanges() {
         editMode = false;
-        
         document.getElementById('save-section').style.display = 'none';
-        renderSymbols();
+        document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
+        loadSymbolsFromGitHub(); // reload fresh from GitHub
     }
 
     function downloadCSV() {
-        var csv = 'TICKER,NAME,QTY,AVG\n';
-        masterData.forEach(s => {
-            var th = (s.holdings||[]).reduce((a,h)=>a+(parseFloat(h.qty)||0),0);
-            var dm = (s.holdings||[]).map(h=>(h.demat||'')+'='+h.qty+'@'+h.avg).join(';');
-            csv += `${s.ticker},${s.name},${th},${dm}\n`;
+        var csv = 'Ticker,Name,TotalQty,Holdings\n';
+        symbolsData.forEach(function(s) {
+            var th = (s.holdings||[]).reduce(function(a,h){ return a+(parseFloat(h.qty)||0); }, 0);
+            var dm = (s.holdings||[]).map(function(h){ return (h.demat||'')+':'+h.qty+'@'+h.avg; }).join(';');
+            csv += s.ticker + ',' + (s.name||'') + ',' + th + ',' + dm + '\n';
         });
         var link = document.createElement('a');
         link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
@@ -4607,16 +4461,13 @@ function closeImportModal() {
 }
 
     function editHoldings(ticker) {
-        var stock = masterData.find(function(s){ return s.ticker === ticker; });
+        var stock = symbolsData.find(function(s){ return s.ticker === ticker; });
         if (!stock) return;
 
-        // Use holdings if present, else migrate from legacy fields
-        var holdings = (stock.holdings && stock.holdings.length)
+        // Read holdings directly from symbolsData (clean structure)
+        var holdings = stock.holdings && stock.holdings.length
             ? JSON.parse(JSON.stringify(stock.holdings))
-            : (((stock.company_details && stock.company_details.qty) || stock.qty)
-                ? [{ demat: '', qty: (stock.company_details && stock.company_details.qty) || stock.qty || 0,
-                                    avg: (stock.company_details && stock.company_details.avg_cost) || stock.avg || 0 }]
-                : []);
+            : [];
 
         window._hEdit = holdings;
         window._hTicker = ticker;
@@ -4673,9 +4524,8 @@ function closeImportModal() {
 
     function saveHoldings() {
         var ticker = window._hTicker;
-        var stock = masterData.find(function(s){ return s.ticker === ticker; });
+        var stock = symbolsData.find(function(s){ return s.ticker === ticker; });
         if (stock) {
-            // Keep rows that have either a demat name or non-zero qty — don't wipe on cancel
             stock.holdings = window._hEdit.filter(function(h){ return h.demat || h.qty > 0; });
         }
         var m = document.getElementById('holdings-modal');
