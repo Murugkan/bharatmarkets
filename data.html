@@ -1555,19 +1555,23 @@ CRITICAL RULES:
             };
             
             // NOW UPDATE unified-symbols.json with updated timestamp and count
+            // Use ghFetch (handles large files via download_url) to avoid atob truncation
             const symbolsUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.symbols}`;
-            fetch(symbolsUrl, {
-                headers: { 'Authorization': `token ${pat}` }
-            })
-            .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-            .then(fileData => {
-                var symbolsContent = JSON.parse(atob(fileData.content));
-                // Add updated and count if missing
-                symbolsContent.updated = new Date().toISOString();
-                if (symbolsContent.symbols && Array.isArray(symbolsContent.symbols)) {
-                    symbolsContent.count = symbolsContent.symbols.length;
+            Promise.all([
+                ghFetch(GITHUB_CONFIG.PATHS.symbols).then(r => r.json()),
+                fetch(symbolsUrl, { headers: { 'Authorization': `token ${pat}` } }).then(r => r.json())
+            ])
+            .then(([symbolsContent, fileInfo]) => {
+                // Validate we got real data before writing
+                if (!symbolsContent || !symbolsContent.symbols || !Array.isArray(symbolsContent.symbols)) {
+                    throw new Error('symbols content invalid — aborting write to prevent corruption');
                 }
-                const encodedSymbols = utf8ToBase64(JSON.stringify(symbolsContent, null, 2));
+                symbolsContent.updated = new Date().toISOString();
+                symbolsContent.count = symbolsContent.symbols.length;
+                const jsonStr = JSON.stringify(symbolsContent, null, 2);
+                // Validate JSON round-trips cleanly
+                JSON.parse(jsonStr);
+                const encodedSymbols = utf8ToBase64(jsonStr);
                 return fetch(symbolsUrl, {
                     method: 'PUT',
                     headers: {
@@ -1577,7 +1581,7 @@ CRITICAL RULES:
                     body: JSON.stringify({
                         message: `Update unified-symbols.json - guidance saved for ${ticker}`,
                         content: encodedSymbols,
-                        sha: fileData.sha,
+                        sha: fileInfo.sha,
                         branch: GITHUB_CONFIG.BRANCH
                     })
                 });

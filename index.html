@@ -1930,6 +1930,9 @@ function sigSentiment(st) {
 }
 
 // ---------- COMPOSITE ----------
+const SIG_PIPE_COLORS={'STRONG BUY':'#00ff88','BUY':'#69f0ae','HOLD':'#ffea00','SELL':'#ff9100','STRONG SELL':'#ff4d6d','NO DATA':'#666'};
+function sigPipeColor(r){ return SIG_PIPE_COLORS[r]||'#666'; }
+function sigPipeFmt(v,dec=1,suffix=''){ return (v===null||v===undefined)?'N/A':(v>0&&suffix==='%'?'+':'')+Number(v).toFixed(dec)+suffix; }
 function sigComposite(ticker, st) {
     const sector = st.company_details?.sector
         || st.derived_metrics?.calculated_metrics?.sector
@@ -1943,10 +1946,13 @@ function sigComposite(ticker, st) {
     let tS=0,tW=0;
     for(const [k,p] of pillars){ if(p.score!==null){tS+=p.score*cfg[k];tW+=cfg[k];} }
     const comp=tW>0?Math.round(tS/tW):null;
+    const cm=st.derived_metrics?.calculated_metrics||{};
+    const pipe={ comp:(cm.composite_score!==null&&cm.composite_score!==undefined)?cm.composite_score:null,
+                 rating:cm.rating||null, cm };
     return { ticker, comp, rating:comp!==null?sigRating(comp):null, ratingColor:comp!==null?sigScoreColor(comp):'#666',
         sector, weights:cfg, name:st.company_details?.long_name||st.company_details?.short_name||ticker,
         price:sigToF(st.price?.close_price||st.price?.ltp?.price),
-        F, T, V, S };
+        pipe, F, T, V, S };
 }
 
 // ---------- RENDER LIST ----------
@@ -1966,6 +1972,7 @@ function sigRenderList() {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                 <span style="font-size:12px;font-weight:800;color:#e2e8f0">${sig.ticker}</span>
                 <div style="display:flex;align-items:center;gap:5px;">
+                    ${sig.pipe&&sig.pipe.rating?`<span class="sig-pill" style="background:${sigPipeColor(sig.pipe.rating)}18;color:${sigPipeColor(sig.pipe.rating)};font-size:7px;border:1px solid ${sigPipeColor(sig.pipe.rating)}44">P·${sig.pipe.rating.replace(' BUY','B').replace(' SELL','S').replace('STRONG','S').replace('NO DATA','—')}</span>`:''}
                     <span style="font-size:12px;font-weight:800;color:${sig.ratingColor}">${sig.comp}</span>
                     <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating.replace(' BUY','').replace('STRONG','STR')}</span>
                 </div>
@@ -2093,6 +2100,44 @@ function sigRenderDetail(ticker) {
             </div>`;
         }).join('')}
     </div>`;
+
+    // PIPELINE ENGINE (derived_metrics.calculated_metrics — v3 scoring)
+    const cm=sig.pipe?.cm||{};
+    if(cm.composite_score!==null&&cm.composite_score!==undefined){
+        const pc=sigPipeColor(cm.rating);
+        const pillars=[['F',cm.fundamental_score],['T',cm.technical_score],['V',cm.valuation_score],['S',cm.sentiment_score]];
+        const newMetrics=[
+            ['CFO/PAT 3Y',     cm.cfo_pat_ratio!==null&&cm.cfo_pat_ratio!==undefined?cm.cfo_pat_ratio.toFixed(2)+'x':'N/A', cm.cash_score],
+            ['QTR PAT YoY',    sigPipeFmt(cm.qtr_profit_yoy_pct,1,'%'),       cm.qtr_growth_score],
+            ['OPM TREND',      sigPipeFmt(cm.opm_trend_pp,1,'pp'),            cm.opm_trend_score],
+            ['3M RETURN',      sigPipeFmt(cm.return_3m_pct,1,'%'),            cm.momentum_score],
+            ['TTM EPS GROWTH', sigPipeFmt(cm.earnings_growth_yoy,1,'%'),      cm.growth_score],
+            ['PROMOTER ΔQoQ',  sigPipeFmt(cm.promoter_chg_qoq_pp,2,'pp'),     null],
+            ['FII+DII ΔQoQ',   sigPipeFmt(cm.institutional_chg_qoq_pp,2,'pp'),null],
+            ['OWNERSHIP',      cm.ownership_score!==null&&cm.ownership_score!==undefined?String(cm.ownership_score):'N/A', cm.ownership_score],
+        ];
+        html+=`<div class="sig-ctx-box" style="margin-bottom:10px;border:1px solid ${pc}33">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div class="sig-section-title">PIPELINE ENGINE${cm.pillars_used?` <span style="color:#666;font-weight:400">(${cm.pillars_used}/4 pillars)</span>`:''}</div>
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:16px;font-weight:800;color:${pc}">${cm.composite_score}</span>
+                    <span class="sig-pill" style="background:${pc}22;color:${pc}">${cm.rating}</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+                ${pillars.map(([l,v])=>`<div style="flex:1;text-align:center;padding:4px 0;background:#0d0d0d;border-radius:4px">
+                    <div style="font-size:7px;color:#888">${l}</div>
+                    <div style="font-size:11px;font-weight:700;color:${v!==null&&v!==undefined?sigScoreColor(v):'#555'}">${v!==null&&v!==undefined?Math.round(v):'—'}</div>
+                </div>`).join('')}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                ${newMetrics.map(([lbl,val,sc])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;background:#0d0d0d;border-radius:4px">
+                    <span style="font-size:7px;color:#888">${lbl}</span>
+                    <span style="font-size:10px;font-weight:700;color:${sc!==null&&sc!==undefined?sigScoreColor(sc):(val==='N/A'?'#555':'#e2e8f0')}">${val}</span>
+                </div>`).join('')}
+            </div>
+        </div>`;
+    }
 
     // ANALYST TARGET
     if(cp && tgt) {
