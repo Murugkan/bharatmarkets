@@ -2929,12 +2929,13 @@ def _audit(output: dict, log) -> bool:
     tickers = [k for k in output if k != '_metadata']
     failures = []
 
-    def chk(label, ok, detail=''):
+    def chk(label, ok, detail='', warn_only=False):
         if ok:
             log.info(f"  AUDIT ✓ {label}" + (f" | {detail}" if detail else ""))
         else:
             log.warning(f"  AUDIT ✗ {label}" + (f" | {detail}" if detail else ""))
-            failures.append(label)
+            if not warn_only:
+                failures.append(label)
 
     log.info("── Post-load audit ──────────────────────────────────────────")
 
@@ -3027,7 +3028,8 @@ def _audit(output: dict, log) -> bool:
                     and not output[t]['ratios'].get('screener', {}).get('roce_pct')
                     and not output[t]['ratios'].get('screener', {}).get('roe_pct')]
     chk("J. Screener ratios present", not ratio_issues,
-        str(ratio_issues[:5]) if ratio_issues else "")
+        f"{len(ratio_issues)} tickers missing: {ratio_issues[:5]}" if ratio_issues else "",
+        warn_only=True)  # Expected for watchlist/new listings/financial cos
 
     # Use first non-ETF ticker as sample for structure checks
     sample_t = next((t for t in tickers if t not in ETFs), tickers[0])
