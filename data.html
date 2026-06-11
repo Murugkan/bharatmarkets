@@ -922,40 +922,67 @@
             masterData.forEach((stock, index) => {
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
-                // Sum qty across all holdings; show holdings as demat:qty@avg lines
-                var holdings = stock.holdings || [];
+                // Support both new holdings[] and legacy company_details.qty/avg
+                var holdings = stock.holdings && stock.holdings.length
+                    ? stock.holdings
+                    : (((stock.company_details && stock.company_details.qty) || stock.qty)
+                        ? [{ demat: '', qty: (stock.company_details && stock.company_details.qty) || stock.qty || 0,
+                                          avg: (stock.company_details && stock.company_details.avg_cost) || stock.avg || 0 }]
+                        : []);
                 var totalQty = holdings.reduce((s,h) => s + (parseFloat(h.qty)||0), 0);
-                var holdingsDisplay = holdings.length
-                    ? holdings.map(h => (h.demat||'?') + ':' + (h.qty||0) + '@' + (h.avg||0)).join(' | ')
-                    : '';
+                var holdingsDisplay = holdings.map(function(h) {
+                    return (h.demat ? h.demat + ': ' : '') + 'qty ' + (h.qty||0) + ' @ ₹' + (h.avg||0);
+                }).join('\n');
                 var holdingsJson = JSON.stringify(holdings);
                 var serialNo = index + 1;
 
-                html += `<tr id="row-${ticker}" style="border-bottom: 1px solid rgba(0,255,136,0.1);">
-                    <td class="sticky" style="font-weight:700; color:#00ffff; font-size:14px; padding:8px 8px; min-width:90px; vertical-align:middle;">${ticker}</td>
-                    <td style="color:#8ab4f8; font-size:12px; padding:12px 4px; white-space:nowrap; width:100px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;">${name}</td>
-                    <td style="padding:1px 4px; vertical-align:middle; min-width:140px;">
-                        <div style="font-size:11px; color:#aaffcc; font-weight:700; margin-bottom:2px;">Total: ${totalQty}</div>
-                        <div style="font-size:9px; color:#aaaaaa; white-space:pre-wrap; line-height:1.6;">${holdingsDisplay}</div>
-                        ${editMode ? `<button onclick="editHoldings('${ticker}', this)" data-holdings='${holdingsJson}' style="margin-top:4px; padding:3px 8px; font-size:10px; background:#cc88ff; color:#000; border:none; border-radius:3px; cursor:pointer; font-weight:700;">✏️ Edit</button>` : ''}
-                    </td>
-                    <td style="color:#ffaa44; font-size:12px; font-weight:700; padding:8px 6px; text-align:center; min-width:40px; vertical-align:middle;">${serialNo}</td>
-                    <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
-                            <button onclick="generateGuidancePrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📋</button>
-                            <button onclick="showGuidanceSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                        </div>
-                    </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#00ffaa; font-weight:700; text-align:center;">${(stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date) ? stock.derived_metrics.ai_insights_guidance.guidance.date : (concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—')}</td>
-                    <td style="padding:1px 6px; vertical-align:middle;">
-                        <div style="display:flex; gap:5px; align-items:center; justify-content:center;">
-                            <button onclick="generateInsightsPrompt('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#ffaa00; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">📊</button>
-                            <button onclick="showInsightsSaveModal('${ticker}')" style="width:40px; height:40px; padding:0; font-size:11px; background:#00dd88; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">✏️</button>
-                        </div>
-                    </td>
-                    <td style="padding:1px 6px; vertical-align:middle; font-size:9px; color:#ffaa44; font-weight:700; text-align:center;">${(stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date) ? stock.derived_metrics.ai_insights_guidance.insights.date : (insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—')}</td>
-                    <td style="text-align:center; padding:1px 4px; vertical-align:middle;"><button onclick="deleteStock('${ticker}')" style="width:40px; height:40px; padding:0; font-size:14px; background:#ff5555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center;">🗑️</button></td>
-                </tr>`;
+                // Build per-demat holding rows
+                var holdingsHtml = holdings.map(function(h) {
+                    return '<div style="display:flex;gap:6px;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);">'
+                        + '<span style="font-size:10px;color:#cc88ff;font-weight:700;min-width:55px;">' + (h.demat || '—') + '</span>'
+                        + '<span style="font-size:10px;color:#00ff88;font-weight:700;">' + (h.qty||0) + '</span>'
+                        + '<span style="font-size:9px;color:#666;">@</span>'
+                        + '<span style="font-size:10px;color:#00ccff;">&#8377;' + (h.avg||0) + '</span>'
+                        + '</div>';
+                }).join('');
+
+                var editBtn = editMode
+                    ? '<button onclick="editHoldings(\'' + ticker + '\')" style="margin-top:5px;padding:3px 8px;font-size:10px;background:#cc88ff;color:#000;border:none;border-radius:3px;cursor:pointer;font-weight:700;">&#9999; Edit</button>'
+                    : '';
+
+                var concallDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.guidance && stock.derived_metrics.ai_insights_guidance.guidance.date)
+                    ? stock.derived_metrics.ai_insights_guidance.guidance.date
+                    : (concallTimestamps[ticker] ? convertToIST(concallTimestamps[ticker]) : '—');
+
+                var insightsDate = (stock.derived_metrics && stock.derived_metrics.ai_insights_guidance && stock.derived_metrics.ai_insights_guidance.insights && stock.derived_metrics.ai_insights_guidance.insights.date)
+                    ? stock.derived_metrics.ai_insights_guidance.insights.date
+                    : (insightsTimestamps[ticker] ? convertToIST(insightsTimestamps[ticker]) : '—');
+
+                html += '<tr id="row-' + ticker + '" style="border-bottom:1px solid rgba(0,255,136,0.1);">'
+                    + '<td class="sticky" style="font-weight:700;color:#00ffff;font-size:14px;padding:8px;min-width:90px;vertical-align:top;padding-top:10px;">' + ticker + '</td>'
+                    + '<td style="color:#8ab4f8;font-size:12px;padding:8px 4px;width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:top;padding-top:10px;">' + name + '</td>'
+                    + '<td style="padding:6px 4px;vertical-align:top;min-width:160px;">'
+                    +   '<div style="font-size:10px;color:#aaffcc;font-weight:700;margin-bottom:4px;">Total: ' + totalQty + '</div>'
+                    +   holdingsHtml
+                    +   editBtn
+                    + '</td>'
+                    + '<td style="color:#ffaa44;font-size:12px;font-weight:700;padding:8px 6px;text-align:center;min-width:40px;vertical-align:top;padding-top:10px;">' + serialNo + '</td>'
+                    + '<td style="padding:4px 6px;vertical-align:top;padding-top:6px;">'
+                    +   '<div style="display:flex;gap:5px;align-items:center;justify-content:center;">'
+                    +     '<button onclick="generateGuidancePrompt(\'' + ticker + '\')" style="width:40px;height:40px;padding:0;font-size:11px;background:#00d4ff;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">&#128203;</button>'
+                    +     '<button onclick="showGuidanceSaveModal(\'' + ticker + '\')" style="width:40px;height:40px;padding:0;font-size:11px;background:#00dd88;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">&#9999;</button>'
+                    +   '</div>'
+                    + '</td>'
+                    + '<td style="padding:4px 6px;vertical-align:top;padding-top:10px;font-size:9px;color:#00ffaa;font-weight:700;text-align:center;">' + concallDate + '</td>'
+                    + '<td style="padding:4px 6px;vertical-align:top;padding-top:6px;">'
+                    +   '<div style="display:flex;gap:5px;align-items:center;justify-content:center;">'
+                    +     '<button onclick="generateInsightsPrompt(\'' + ticker + '\')" style="width:40px;height:40px;padding:0;font-size:11px;background:#ffaa00;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">&#128202;</button>'
+                    +     '<button onclick="showInsightsSaveModal(\'' + ticker + '\')" style="width:40px;height:40px;padding:0;font-size:11px;background:#00dd88;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">&#9999;</button>'
+                    +   '</div>'
+                    + '</td>'
+                    + '<td style="padding:4px 6px;vertical-align:top;padding-top:10px;font-size:9px;color:#ffaa44;font-weight:700;text-align:center;">' + insightsDate + '</td>'
+                    + '<td style="text-align:center;padding:4px;vertical-align:top;padding-top:6px;"><button onclick="deleteStock(\'' + ticker + '\')" style="width:40px;height:40px;padding:0;font-size:14px;background:#ff5555;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700;">🗑️</button></td>'
+                    + '</tr>';
             });
         }
 
