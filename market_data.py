@@ -3154,8 +3154,25 @@ def main():
     sector_map = {}
     unified_file = DATA_DIR / 'unified-symbols.json'
     if unified_file.exists():
-        with open(unified_file) as f:
-            us = json.load(f)
+        with open(unified_file, encoding='utf-8') as f:
+            us_text = f.read()
+        try:
+            us = json.loads(us_text)
+        except json.JSONDecodeError as e1:
+            # Raw control character inside a string (e.g. a literal newline/tab
+            # pasted into a company name). strict=False tolerates it.
+            try:
+                us = json.loads(us_text, strict=False)
+                logger.warning(f"  ⚠ unified-symbols.json has a control character "
+                               f"({e1.msg} at line {e1.lineno} col {e1.colno}) — "
+                               f"parsed with strict=False. Fix the source entry.")
+            except json.JSONDecodeError:
+                # Last resort: strip control chars (keep \n \t between tokens)
+                cleaned = ''.join(ch if ch >= ' ' or ch in '\n\t' else ' '
+                                  for ch in us_text)
+                us = json.loads(cleaned, strict=False)
+                logger.warning(f"  ⚠ unified-symbols.json required control-char "
+                               f"stripping to parse — fix the source file.")
         for entry in us.get('symbols', []):
             if entry.get('ticker') and entry.get('sector'):
                 sector_map[entry['ticker']] = entry['sector']
