@@ -2260,24 +2260,22 @@ function renderNewsTab(s){
     </div>
     <div style="padding:10px 12px">
       <div class="sec-lbl">🔗 Research Links</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
         ${[
-          {l:'NSE Official',u:`https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}`,c:'#2196f3',d:'Live quotes & filings'},
-          {l:'Screener.in',u:`https://www.screener.in/company/${s.ticker || s.sym}/`,c:'#a855f7',d:'Annual reports & ratios'},
-          {l:'Economic Times',u:`https://economictimes.indiatimes.com/topic/${s.ticker || s.sym}`,c:'#f97316',d:'Latest news coverage'},
-          {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${s.ticker || s.sym}/${s.ticker || s.sym}`,c:'#00d084',d:'Price & analysis'},
-          {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/`,c:'#64b5f6',d:'Advanced charts'},
-          {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent(s.ticker || s.sym+' NSE stock India')}`,c:'#4285f4',d:'News aggregator'},
+          {l:'NSE',      u:`https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}`,c:'#2196f3',i:'📊'},
+          {l:'Screener', u:`https://www.screener.in/company/${s.ticker || s.sym}/`,c:'#a855f7',i:'📋'},
+          {l:'ET Markets',u:`https://economictimes.indiatimes.com/topic/${s.ticker || s.sym}`,c:'#f97316',i:'📰'},
+          {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${s.ticker || s.sym}/${s.ticker || s.sym}`,c:'#00d084',i:'💹'},
+          {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/`,c:'#64b5f6',i:'📈'},
+          {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent((s.ticker || s.sym)+' NSE stock India')}`,c:'#4285f4',i:'🔍'},
         ].map(lk=>`
           <a href="${lk.u}" target="_blank" rel="noopener"
-            style="display:flex;align-items:center;gap:12px;padding:11px 13px;
-            background:var(--card);border:1px solid var(--b1);border-radius:9px;
+            style="display:flex;align-items:center;gap:8px;padding:10px 10px;
+            background:var(--card);border:1px solid var(--b1);border-radius:8px;
             text-decoration:none;border-left:3px solid ${lk.c}">
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:700;color:var(--tx)">${lk.l}</div>
-              <div class="u-tx3-10mt">${lk.d}</div>
-            </div>
-            <span style="font-size:11px;color:var(--b3)">↗</span>
+            <span style="font-size:14px">${lk.i}</span>
+            <span style="font-size:12px;font-weight:700;color:var(--tx)">${lk.l}</span>
+            <span style="font-size:10px;color:var(--b3);margin-left:auto">↗</span>
           </a>`).join('')}
       </div>
     </div>
@@ -2369,6 +2367,7 @@ async function loadStockNews(sym, name, retry) {
     // Keep only last 30 days
     var cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
     items = items.filter(function(i){ return !i.pubDate || new Date(i.pubDate) > cutoff; });
+    items.sort(function(a,b){ return new Date(b.pubDate) - new Date(a.pubDate); });
 
     if(!items.length) {
       el.innerHTML = '<div class="u-pad14c">No recent news found for ' + sym + '</div>';
