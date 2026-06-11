@@ -3166,13 +3166,29 @@ def main():
                 logger.warning(f"  ⚠ unified-symbols.json has a control character "
                                f"({e1.msg} at line {e1.lineno} col {e1.colno}) — "
                                f"parsed with strict=False. Fix the source entry.")
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e2:
                 # Last resort: strip control chars (keep \n \t between tokens)
                 cleaned = ''.join(ch if ch >= ' ' or ch in '\n\t' else ' '
                                   for ch in us_text)
-                us = json.loads(cleaned, strict=False)
-                logger.warning(f"  ⚠ unified-symbols.json required control-char "
-                               f"stripping to parse — fix the source file.")
+                try:
+                    us = json.loads(cleaned, strict=False)
+                    logger.warning(f"  ⚠ unified-symbols.json required control-char "
+                                   f"stripping to parse — fix the source file.")
+                except json.JSONDecodeError as e3:
+                    # Structurally broken JSON — show the offending lines with
+                    # control characters made visible, then stop.
+                    lines = us_text.split('\n')
+                    lo = max(0, e3.lineno - 4)
+                    hi = min(len(lines), e3.lineno + 2)
+                    logger.error(f"unified-symbols.json is STRUCTURALLY BROKEN: "
+                                 f"{e3.msg} at line {e3.lineno} col {e3.colno}")
+                    logger.error(f"Offending region (control chars shown as \\xNN):")
+                    for i in range(lo, hi):
+                        visible = lines[i].encode('unicode_escape').decode('ascii')
+                        logger.error(f"  {i+1:>5} | {visible}")
+                    logger.error("Fix the entry above (likely a raw newline inside "
+                                 "a string or a missing comma), commit, and re-run.")
+                    sys.exit(1)
         for entry in us.get('symbols', []):
             if entry.get('ticker') and entry.get('sector'):
                 sector_map[entry['ticker']] = entry['sector']
