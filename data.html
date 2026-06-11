@@ -3718,6 +3718,8 @@ function parseAIResponse(delimiter) {
         
         if (stock) {
             // Enrich with additional data (7-column format: SeqNo,Name,Ticker,ISIN,Sector,Industry,Type)
+            // Name and ticker from AI are authoritative — overwrite CSV values
+            if (parts[1] && parts[1] !== 'NA' && parts[1] !== 'UNKNOWN') stock.name = parts[1];
             if (parts[2] && parts[2] !== 'NA' && parts[2] !== 'UNKNOWN') stock.ticker = parts[2];
             if (parts[3] && parts[3] !== 'NA' && parts[3] !== 'UNKNOWN') stock.isin = parts[3];
             if (parts[4] && parts[4] !== '-') stock.sector = parts[4];
