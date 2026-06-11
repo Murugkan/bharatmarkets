@@ -4613,7 +4613,7 @@ function closeImportModal() {
             : (((stock.company_details && stock.company_details.qty) || stock.qty)
                 ? [{ demat: '', qty: (stock.company_details && stock.company_details.qty) || stock.qty || 0,
                                     avg: (stock.company_details && stock.company_details.avg_cost) || stock.avg || 0 }]
-                : [{ demat: '', qty: 0, avg: 0 }]);
+                : []);
 
         window._hEdit = holdings;
         window._hTicker = ticker;
@@ -4672,7 +4672,8 @@ function closeImportModal() {
         var ticker = window._hTicker;
         var stock = masterData.find(function(s){ return s.ticker === ticker; });
         if (stock) {
-            stock.holdings = window._hEdit.filter(function(h){ return h.qty > 0; });
+            // Keep rows that have either a demat name or non-zero qty — don't wipe on cancel
+            stock.holdings = window._hEdit.filter(function(h){ return h.demat || h.qty > 0; });
         }
         var m = document.getElementById('holdings-modal');
         if (m) m.remove();
