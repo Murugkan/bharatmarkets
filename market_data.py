@@ -94,8 +94,9 @@ FIELD_MAP = {
     "unified_symbols:metadata": {
         "ticker":   ("company_details",  "ticker"),
         "name":     ("company_details",  "name"),
-        "qty":      ("company_details",  "qty"),
-        "avg":      ("company_details",  "avg_cost"),
+        "qty":      ("company_details",  "qty"),           # summed across holdings
+        "avg":      ("company_details",  "avg_cost"),      # weighted avg across holdings
+        "holdings": ("company_details",  "holdings"),      # full demat breakdown
         "isin":     ("company_details",   "isin"),
         "sector":   ("company_details",   "sector"),
         "industry": ("company_details",   "industry"),
@@ -3152,6 +3153,8 @@ def main():
 
     # Load sector from unified-symbols.json — authoritative sector source
     sector_map = {}
+    holdings_map = {}   # ticker -> {qty, avg} summed across demat accounts
+    us_entry_map = {}   # ticker -> full unified-symbols entry (for holdings[])
     unified_file = DATA_DIR / 'unified-symbols.json'
     if unified_file.exists():
         with open(unified_file, encoding='utf-8') as f:
@@ -3190,9 +3193,23 @@ def main():
                                  "a string or a missing comma), commit, and re-run.")
                     sys.exit(1)
         for entry in us.get('symbols', []):
-            if entry.get('ticker') and entry.get('sector'):
-                sector_map[entry['ticker']] = entry['sector']
-        logger.info(f"  ✓ Loaded unified-symbols.json ({len(sector_map)} tickers with sector)")
+            t = entry.get('ticker')
+            if t and entry.get('sector'):
+                sector_map[t] = entry['sector']
+            if t:
+                # Sum qty/avg across all holdings (new structure)
+                holdings = entry.get('holdings', [])
+                if holdings:
+                    total_qty = sum(float(h.get('qty') or 0) for h in holdings)
+                    # Weighted average cost
+                    weighted = sum(float(h.get('qty') or 0) * float(h.get('avg') or 0) for h in holdings)
+                    avg_cost = round(weighted / total_qty, 2) if total_qty else 0
+                    holdings_map[t] = {'qty': total_qty, 'avg': avg_cost}
+                elif entry.get('qty') is not None:
+                    # Legacy flat structure fallback
+                    holdings_map[t] = {'qty': entry.get('qty', 0), 'avg': entry.get('avg', 0)}
+                us_entry_map[t] = entry
+        logger.info(f"  ✓ Loaded unified-symbols.json ({len(sector_map)} tickers with sector, {len(holdings_map)} with holdings)")
     
     # Load guidance data
     guidance_file = DATA_DIR / 'guidance.json'
@@ -3209,6 +3226,17 @@ def main():
 
     for i, symbol in enumerate(symbols, 1):
         sections = raw[symbol].get("data", {})
+
+        # Inject summed qty/avg + full holdings[] from unified_symbols:metadata
+        h = holdings_map.get(symbol)
+        if h:
+            if 'unified_symbols:metadata' not in sections:
+                sections['unified_symbols:metadata'] = {}
+            sections['unified_symbols:metadata']['qty'] = h['qty']
+            sections['unified_symbols:metadata']['avg'] = h['avg']
+        # Also inject full holdings array for demat breakdown
+        if symbol in us_entry_map and 'unified_symbols:metadata' in sections:
+            sections['unified_symbols:metadata']['holdings'] = us_entry_map[symbol].get('holdings', [])
 
         # Extract Yahoo fin sections BEFORE bucketing (needed for merge)
         yf_historical, yf_latest = _extract_yf_fin_sections(sections)
