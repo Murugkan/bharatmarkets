@@ -3746,6 +3746,7 @@ function renderStep5() {
         '<th style="padding:6px;text-align:left;color:#ffff00;cursor:pointer;user-select:none;min-width:60px;font-weight:bold;" onclick="sortStocks(\'ticker\')">▼ Ticker</th>' +
         '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:80px;" onclick="sortStocks(\'isin\')">▼ ISIN</th>' +
         '<th style="padding:6px;text-align:left;color:#00ff88;cursor:pointer;user-select:none;min-width:56px;" onclick="sortStocks(\'sector\')">▼ Sector</th>' +
+        '<th style="padding:6px;text-align:left;color:#cc88ff;cursor:pointer;user-select:none;width:60px;" onclick="sortStocks(\'demat\')">▼ Demat</th>' +
         '<th style="padding:6px;text-align:right;color:#00ff88;cursor:pointer;user-select:none;width:40px;" onclick="sortStocks(\'qty\')">▼ Qty</th>' +
         '<th style="padding:6px;text-align:right;color:#00ff88;cursor:pointer;user-select:none;width:50px;" onclick="sortStocks(\'avg\')">▼ Avg</th>' +
         '<th style="padding:6px;text-align:center;color:#00ff88;width:30px;">Del</th>' +
@@ -3773,6 +3774,8 @@ function renderStep5() {
             statusIcon + ' ' + (stock.isin || '-') + '</td>' +
             '<td style="padding:4px 6px;cursor:pointer;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="editCell(this, ' + idx + ', \'sector\')" title="' + (stock.sector || '') + '">' +
             (stock.sector || '-') + '</td>' +
+            '<td style="padding:4px 6px;color:#cc88ff;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'demat\')">'+
+            (stock.demat || '-') + '</td>' +
             '<td style="padding:4px 6px;text-align:right;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'qty\')">' +
             (stock.qty ? stock.qty : '-') + '</td>' +
             '<td style="padding:4px 6px;text-align:right;cursor:pointer;" onclick="editCell(this, ' + idx + ', \'avg\')">' +
@@ -3823,7 +3826,7 @@ function editCellStep4(cell, idx, field) {
         if (field === 'qty' || field === 'avg') {
             stock[field] = newValue ? parseFloat(newValue) : null;
         } else {
-            stock[field] = newValue;
+            stock[field] = newValue; // name, ticker, isin, sector, demat
         }
         showImportUI();
     }
@@ -4291,7 +4294,7 @@ function postToGitHub() {
     
     stocksToSave.forEach(function(stock) {
         var ticker = stock.ticker || '?';
-        unifiedData.symbols.push({
+        var entry = {
             ticker: ticker,
             name: stock.name,
             isin: stock.isin,
@@ -4299,9 +4302,17 @@ function postToGitHub() {
             industry: stock.industry,
             type: stock.type.toLowerCase(),
             source: 'import',
-            qty: stock.qty || 0,
-            avg: stock.avg || 0
-        });
+            holdings: []
+        };
+        // Build holdings array — only add if qty > 0
+        if (stock.qty > 0) {
+            entry.holdings.push({
+                demat: stock.demat || '',
+                qty: stock.qty || 0,
+                avg: stock.avg || 0
+            });
+        }
+        unifiedData.symbols.push(entry);
     });
     
     unifiedData.symbols.sort(function(a, b) {
@@ -4345,7 +4356,18 @@ function postToGitHub() {
                         return !newTickers[existing.ticker];
                     });
                     
-                    // Add new stocks
+                    // For stocks being replaced, preserve existing holdings not in new import
+                    unifiedData.symbols.forEach(function(newStock) {
+                        var existing = existingData.symbols.find(function(e) { return e.ticker === newStock.ticker; });
+                        if (existing && existing.holdings && existing.holdings.length) {
+                            // Merge: new holdings demat entries take precedence, keep others
+                            var newDemats = (newStock.holdings || []).map(function(h) { return h.demat; });
+                            var keptHoldings = existing.holdings.filter(function(h) { return !newDemats.includes(h.demat); });
+                            newStock.holdings = keptHoldings.concat(newStock.holdings || []);
+                        }
+                    });
+                    
+                    // Add new/updated stocks
                     mergedSymbols = mergedSymbols.concat(unifiedData.symbols);
                     
                     // Update final data
