@@ -4603,6 +4603,83 @@ function closeImportModal() {
     document.body.classList.remove('modal-open');
 }
 
+    function editHoldings(ticker) {
+        var stock = masterData.find(function(s){ return s.ticker === ticker; });
+        if (!stock) return;
+
+        // Use holdings if present, else migrate from legacy fields
+        var holdings = (stock.holdings && stock.holdings.length)
+            ? JSON.parse(JSON.stringify(stock.holdings))
+            : (((stock.company_details && stock.company_details.qty) || stock.qty)
+                ? [{ demat: '', qty: (stock.company_details && stock.company_details.qty) || stock.qty || 0,
+                                    avg: (stock.company_details && stock.company_details.avg_cost) || stock.avg || 0 }]
+                : [{ demat: '', qty: 0, avg: 0 }]);
+
+        window._hEdit = holdings;
+        window._hTicker = ticker;
+        renderHoldingsModal();
+    }
+
+    function renderHoldingsModal() {
+        var ticker = window._hTicker;
+        var holdings = window._hEdit;
+
+        var rows = holdings.map(function(h, i) {
+            return '<tr>'
+                + '<td style="padding:4px"><input type="text" value="' + (h.demat||'') + '" placeholder="e.g. Zerodha"'
+                + ' onchange="window._hEdit[' + i + '].demat=this.value"'
+                + ' style="width:90px;padding:6px;background:#1a1a2e;color:#cc88ff;border:1px solid #cc88ff;border-radius:4px;font-size:12px"></td>'
+                + '<td style="padding:4px"><input type="number" value="' + (h.qty||0) + '"'
+                + ' onchange="window._hEdit[' + i + '].qty=parseFloat(this.value)||0"'
+                + ' style="width:70px;padding:6px;background:#1a3a1a;color:#00ff88;border:1px solid #00ff88;border-radius:4px;font-size:12px"></td>'
+                + '<td style="padding:4px"><input type="number" value="' + (h.avg||0) + '" step="0.01"'
+                + ' onchange="window._hEdit[' + i + '].avg=parseFloat(this.value)||0"'
+                + ' style="width:80px;padding:6px;background:#1a2a3a;color:#00ccff;border:1px solid #00ccff;border-radius:4px;font-size:12px"></td>'
+                + '<td style="padding:4px"><button onclick="window._hEdit.splice(' + i + ',1);renderHoldingsModal()"'
+                + ' style="padding:4px 8px;background:#ff5555;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">✕</button></td>'
+                + '</tr>';
+        }).join('');
+
+        var existing = document.getElementById('holdings-modal');
+        if (existing) existing.remove();
+
+        var modal = document.createElement('div');
+        modal.id = 'holdings-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        modal.innerHTML = '<div style="background:#111;border:1px solid #333;border-radius:10px;padding:16px;width:92%;max-width:420px;">'
+            + '<div style="font-size:14px;font-weight:700;color:#cc88ff;margin-bottom:12px;">✏️ Holdings — ' + ticker + '</div>'
+            + '<table style="width:100%;border-collapse:collapse;">'
+            + '<thead><tr>'
+            + '<th style="color:#aaa;font-size:10px;padding:4px;text-align:left">DEMAT</th>'
+            + '<th style="color:#aaa;font-size:10px;padding:4px;text-align:left">QTY</th>'
+            + '<th style="color:#aaa;font-size:10px;padding:4px;text-align:left">AVG</th>'
+            + '<th></th></tr></thead>'
+            + '<tbody>' + rows + '</tbody>'
+            + '</table>'
+            + '<div style="display:flex;gap:8px;margin-top:12px;">'
+            + '<button onclick="window._hEdit.push({demat:\'\',qty:0,avg:0});renderHoldingsModal()"'
+            + ' style="flex:1;padding:8px;background:#333;color:#cc88ff;border:1px solid #cc88ff;border-radius:6px;cursor:pointer;font-size:12px">+ Add</button>'
+            + '<button onclick="saveHoldings()"'
+            + ' style="flex:1;padding:8px;background:#cc88ff;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px">💾 Save</button>'
+            + '<button onclick="document.getElementById(\'holdings-modal\').remove()"'
+            + ' style="flex:1;padding:8px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(modal);
+    }
+
+    function saveHoldings() {
+        var ticker = window._hTicker;
+        var stock = masterData.find(function(s){ return s.ticker === ticker; });
+        if (stock) {
+            stock.holdings = window._hEdit.filter(function(h){ return h.qty > 0; });
+        }
+        var m = document.getElementById('holdings-modal');
+        if (m) m.remove();
+        renderSymbols();
+        showToast('Holdings updated — tap SAVE CHANGES to persist');
+    }
+
 </script>
 
 </body>
