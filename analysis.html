@@ -1005,95 +1005,121 @@ function renderTab(tab) {
             html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No guidance data available</div></div>';
         } else {
             const g = guidance.guidance;
-            const ad = g.analyst_dimensions || {};
-            
-            const dimCard = (title, emoji, content, color) => `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid ${color}">
-                    <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;margin-bottom:6px">${emoji} ${title}</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${content || 'Not disclosed'}</div>
-                </div>
-            `;
-            
+            const m = g.management || {};
+            const fin = g.financial || {};
+            const biz = g.business || {};
+
+            // Sentiment colour (case-insensitive)
+            const sentColor = (v) => {
+                const t = (v || '').toLowerCase();
+                if (t.includes('positive') || t === 'high') return 'var(--gr)';
+                if (t.includes('cautious') || t === 'medium' || t.includes('neutral')) return 'var(--yw)';
+                if (t.includes('negative') || t === 'low') return 'var(--rd)';
+                return 'var(--tx3)';
+            };
+
+            // Section header: small caps label + hairline rule
+            const secHead = (label, color) => `
+                <div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
+                    <span style="width:3px;height:10px;background:${color};border-radius:1px"></span>
+                    <span style="font-size:9px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1.5px">${label}</span>
+                    <span style="flex:1;height:1px;background:var(--b1)"></span>
+                </div>`;
+
+            // Stat card for the financial grid
+            const finCard = (label, text, color) => `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px 11px">
+                    <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px">
+                        <span style="width:6px;height:6px;border-radius:50%;background:${color}"></span>
+                        <span style="font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px">${label}</span>
+                    </div>
+                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.55">${text || 'Not disclosed'}</div>
+                </div>`;
+
+            // Business row: label + text
+            const bizRow = (label, text) => text ? `
+                <div style="display:flex;gap:10px;padding:8px 0">
+                    <span style="flex:0 0 72px;font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;letter-spacing:1px;padding-top:2px">${label}</span>
+                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.6">${text}</span>
+                </div>` : '';
+
+            // Risk item: parse trailing "- High/Medium/Low" into a severity badge
+            const riskRow = (r) => {
+                const mt = r.match(/^(.*?)\s*[-–]\s*(High|Medium|Low)\s*$/i);
+                const txt = mt ? mt[1] : r;
+                const sev = mt ? mt[2] : null;
+                const sc = sev ? sentColor(sev.toLowerCase() === 'low' ? 'positive' : sev.toLowerCase() === 'medium' ? 'cautious' : 'negative') : '';
+                return `
+                <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">
+                    <span style="color:var(--rd);font-size:10px;line-height:1.5;flex-shrink:0">▸</span>
+                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${txt}</span>
+                    ${sev ? `<span style="flex-shrink:0;font-size:7px;font-weight:800;color:${sc};border:1px solid ${sc};border-radius:3px;padding:1px 5px;text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${sev}</span>` : ''}
+                </div>`;
+            };
+
+            const commitRow = (c) => `
+                <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">
+                    <span style="color:var(--gr);font-size:10px;line-height:1.5;flex-shrink:0">✓</span>
+                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${c}</span>
+                </div>`;
+
+            // Tone / Confidence chip
+            const chip = (label, value) => {
+                const c = sentColor(value);
+                return `
+                <div style="flex:1;display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:9px 11px">
+                    <span style="font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px">${label}</span>
+                    <span style="font-size:11px;font-weight:800;color:${c};text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:${c}"></span>${value || 'N/A'}</span>
+                </div>`;
+            };
+
             html = `
-                <div style="padding:12px 0;padding-bottom:80px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif;color:var(--tx1)">
-                
+                <div style="padding:12px 0 80px;color:var(--tx1)">
+
                 <!-- SUMMARY -->
-                <div style="background:linear-gradient(135deg, rgba(0,242,255,.1), rgba(0,200,150,.1));border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--ac)">
-                    <div style="font-size:9px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 ${g.quarter || 'Guidance'}</div>
-                    <div style="font-size:14px;color:var(--tx1);line-height:1.6;font-weight:500;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.summary || 'Company guidance summary'}</div>
-                    <div style="font-size:8px;color:var(--tx3);margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Updated: ${g.date || 'N/A'}</div>
-                </div>
-                
-                <!-- FINANCIALS - 2x2 GRID -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px">
-                    <div style="font-size:9px;font-weight:800;color:var(--yw);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">💰 Financial</div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                        <div style="background:rgba(0,0,0,.2);padding:10px;border-radius:6px;border-left:3px solid var(--yw)">
-                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Revenue</div>
-                            <div style="font-size:11px;color:var(--tx1);font-weight:400;line-height:1.4">${(g.financial && g.financial.revenue) ? g.financial.revenue.substring(0, 120) + '...' : 'Not disclosed'}</div>
-                        </div>
-                        <div style="background:rgba(0,232,150,.15);padding:10px;border-radius:6px;border-left:3px solid var(--gr)">
-                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Growth</div>
-                            <div style="font-size:12px;color:var(--gr);font-weight:400">↑ ${(g.financial && g.financial.growth) ? g.financial.growth.substring(0, 60) : 'N/A'}</div>
-                        </div>
-                        <div style="background:rgba(0,255,136,.15);padding:10px;border-radius:6px;border-left:3px solid var(--gr)">
-                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Margins</div>
-                            <div style="font-size:12px;color:var(--gr);font-weight:400">📈 ${(g.financial && g.financial.margins) ? g.financial.margins.substring(0, 60) : 'N/A'}</div>
-                        </div>
-                        <div style="background:rgba(0,212,255,.15);padding:10px;border-radius:6px;border-left:3px solid var(--ac)">
-                            <div style="font-size:7px;color:var(--tx3);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Capex</div>
-                            <div style="font-size:11px;color:var(--ac);font-weight:400">${(g.financial && g.financial.capex) ? g.financial.capex.substring(0, 80) : 'N/A'}</div>
-                        </div>
+                <div style="background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--ac);border-radius:6px;padding:13px 14px">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+                        <span style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:1.5px">${g.quarter || 'Guidance'}</span>
+                        <span style="font-size:8px;color:var(--tx3)">${g.date || ''}</span>
                     </div>
+                    <div style="font-size:12px;color:var(--tx1);line-height:1.65">${g.summary || 'Company guidance summary'}</div>
                 </div>
-                
+
+                <!-- FINANCIAL -->
+                ${secHead('Financial', 'var(--yw)')}
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    ${finCard('Revenue', fin.revenue, 'var(--yw)')}
+                    ${finCard('Growth', fin.growth, 'var(--gr)')}
+                    ${finCard('Margins', fin.margins, 'var(--gr)')}
+                    ${finCard('Capex', fin.capex, 'var(--ac)')}
+                </div>
+
                 <!-- BUSINESS -->
-                ${g.business ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--gr)">
-                    <div style="font-size:9px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:10px;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🏢 Business</div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.7;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">
-                        <div style="margin-bottom:8px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Expansion:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.expansion || 'N/A'}</span></div>
-                        <div style="margin-bottom:8px"><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Products:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.products || 'N/A'}</span></div>
-                        <div><span style="font-weight:700;color:var(--gr);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">▸ Geography:</span> <span style="color:var(--tx1);font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.business.geography || 'N/A'}</span></div>
-                    </div>
-                </div>
-                ` : ''}
-                
-                <!-- MANAGEMENT SENTIMENT -->
+                ${(biz.expansion || biz.products || biz.geography) ? `
+                ${secHead('Business', 'var(--gr)')}
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:4px 12px">
+                    ${[bizRow('Expansion', biz.expansion), bizRow('Products', biz.products), bizRow('Geography', biz.geography)].filter(Boolean).join('<div style="height:1px;background:rgba(26,35,50,.5)"></div>')}
+                </div>` : ''}
+
+                <!-- MANAGEMENT -->
                 ${g.management ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:14px;border-left:4px solid var(--ac)">
-                    <div style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px">👔 Management</div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-                        <div style="background:${g.management.tone === 'POSITIVE' ? 'rgba(0,232,150,.15)' : g.management.tone === 'Cautious' ? 'rgba(255,191,71,.15)' : 'rgba(255,107,133,.15)'};padding:12px;border-radius:8px;border:2px solid ${g.management.tone === 'POSITIVE' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">
-                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                                <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Tone</div>
-                                <div style="font-size:18px;font-weight:800">${g.management.tone === 'POSITIVE' ? '📈' : g.management.tone === 'Cautious' ? '⚠️' : '📉'}</div>
-                            </div>
-                            <div style="font-size:13px;font-weight:700;color:${g.management.tone === 'POSITIVE' ? 'var(--gr)' : g.management.tone === 'Cautious' ? 'var(--yw)' : 'var(--rd)'}">${g.management.tone || 'N/A'}</div>
-                        </div>
-                        <div style="background:rgba(0,242,255,.12);padding:12px;border-radius:8px;border:2px solid var(--ac)">
-                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                                <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Confidence</div>
-                                <div style="font-size:18px;font-weight:800">${g.management.confidence === 'HIGH' ? '🎯' : g.management.confidence === 'Medium' ? '📊' : '❓'}</div>
-                            </div>
-                            <div style="font-size:13px;font-weight:700;color:var(--ac)">${g.management.confidence || 'N/A'}</div>
-                        </div>
-                    </div>
-                    ${g.management.commitments && g.management.commitments.length > 0 ? `
-                    <div style="margin-bottom:8px">
-                        <div style="font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">✓ Commitments</div>
-                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:10px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.commitments.map(c => `<li style="color:var(--gr);margin-bottom:3px;font-weight:600">✓ ${c.substring(0, 100)}</li>`).join('')}</ul>
-                    </div>
-                    ` : ''}
-                    ${g.management.risks && g.management.risks.length > 0 ? `
-                    <div>
-                        <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠ Risks</div>
-                        <ul style="margin:0;padding-left:16px;list-style:none;font-size:10px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${g.management.risks.map(r => `<li style="color:var(--rd);margin-bottom:3px;font-weight:600">⚠ ${r.substring(0, 100)}</li>`).join('')}</ul>
-                    </div>
-                    ` : ''}
+                ${secHead('Management', 'var(--ac)')}
+                <div style="display:flex;gap:8px;margin-bottom:10px">
+                    ${chip('Tone', m.tone)}
+                    ${chip('Confidence', m.confidence)}
                 </div>
+                ${m.commitments && m.commitments.length ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:9px 12px;margin-bottom:8px">
+                    <div style="font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Commitments</div>
+                    ${m.commitments.map(commitRow).join('')}
+                </div>` : ''}
+                ${m.risks && m.risks.length ? `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:9px 12px">
+                    <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Risks</div>
+                    ${m.risks.map(riskRow).join('')}
+                </div>` : ''}
                 ` : ''}
-                
+
                 </div>
             `;
         }
@@ -1124,92 +1150,100 @@ function renderTab(tab) {
             const i = data.insights;
             const sb = i.sector_briefing || {};
             const an = i.analysis || {};
-            
-            // Helper function for signal color
-            const getSignalColor = (signal) => {
-                if (!signal) return 'var(--tx3)';
-                if (signal && signal.includes('Positive')) return 'var(--gr)';
-                if (signal && signal.includes('Caution')) return 'var(--rd)';
-                if (signal && signal.includes('Neutral')) return 'var(--yw)';
-                return 'var(--tx3)';
+
+            // Parse signal: head word (Positive/Neutral/Caution) for the badge,
+            // remainder (often a long parenthetical) as a detail footnote
+            const parseSignal = (sig) => {
+                if (!sig) return { head: 'N/A', detail: '', color: 'var(--tx3)' };
+                const lower = sig.toLowerCase();
+                let head = 'Neutral', color = 'var(--yw)';
+                if (lower.startsWith('positive')) { head = 'Positive'; color = 'var(--gr)'; }
+                else if (lower.startsWith('caution')) { head = 'Caution'; color = 'var(--rd)'; }
+                else if (!lower.startsWith('neutral')) { head = sig.split(/[\s(]/)[0]; color = 'var(--tx3)'; }
+                let detail = sig.slice(head.length).trim();
+                if (detail.startsWith('(') && detail.endsWith(')')) detail = detail.slice(1, -1);
+                return { head, detail, color };
             };
-            
-            // Investment dimension card helper
-            const analysisCard = (title, emoji, metric, assessment, signal, color) => `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid ${color}">
-                    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px">
-                        <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${emoji} ${title}</div>
-                        <div style="font-size:9px;font-weight:700;color:${getSignalColor(signal)};padding:2px 6px;background:${getSignalColor(signal) === 'var(--gr)' ? 'rgba(0,232,150,.15)' : getSignalColor(signal) === 'var(--rd)' ? 'rgba(255,107,133,.15)' : 'rgba(255,191,71,.15)'};border-radius:3px">${signal || 'Neutral'}</div>
+
+            // Section header (same pattern as fundamentals tab)
+            const secHead = (label, color) => `
+                <div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
+                    <span style="width:3px;height:10px;background:${color};border-radius:1px"></span>
+                    <span style="font-size:9px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1.5px">${label}</span>
+                    <span style="flex:1;height:1px;background:var(--b1)"></span>
+                </div>`;
+
+            // Investment dimension card
+            const analysisCard = (title, d, color) => {
+                if (!d) return '';
+                const sg = parseSignal(d.signal);
+                return `
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px 11px;margin-bottom:8px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px">
+                        <span style="display:flex;align-items:center;gap:5px;min-width:0">
+                            <span style="width:6px;height:6px;border-radius:50%;background:${color};flex-shrink:0"></span>
+                            <span style="font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px">${title}</span>
+                        </span>
+                        <span style="flex-shrink:0;font-size:7px;font-weight:800;color:${sg.color};border:1px solid ${sg.color};border-radius:3px;padding:1px 5px;text-transform:uppercase;letter-spacing:.5px">${sg.head}</span>
                     </div>
-                    <div style="font-size:9px;color:var(--tx3);margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;line-height:1.5"><strong>Metric:</strong> ${metric ? metric.substring(0, 200) : 'N/A'}</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${assessment ? assessment.substring(0, 300) : 'No assessment'}</div>
-                </div>
-            `;
-            
-            // Recommendation color logic
-            let recColor = 'var(--ac)', recBg = 'rgba(0,242,255,.15)';
-            if (i.recommendation && i.recommendation.toUpperCase() === 'BUY') {
-                recColor = 'var(--gr)'; recBg = 'rgba(0,232,150,.15)';
-            } else if (i.recommendation && i.recommendation.toUpperCase() === 'REDUCE') {
-                recColor = 'var(--yw)'; recBg = 'rgba(255,191,71,.15)';
-            } else if (i.recommendation && i.recommendation.toUpperCase() === 'SELL' || i.recommendation && i.recommendation.toUpperCase() === 'EXIT') {
-                recColor = 'var(--rd)'; recBg = 'rgba(255,107,133,.15)';
-            }
-            
+                    ${d.metric ? `<div style="font-size:9.5px;color:var(--tx3);line-height:1.55;margin-bottom:6px">${d.metric}</div>` : ''}
+                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${d.assessment || 'No assessment'}</div>
+                    ${sg.detail ? `<div style="font-size:8.5px;color:${sg.color};line-height:1.5;margin-top:6px;opacity:.85">▸ ${sg.detail}</div>` : ''}
+                </div>`;
+            };
+
+            // Sector briefing row: stacked label + text
+            const sbRow = (label, text, color) => text ? `
+                <div style="padding:9px 0">
+                    <div style="font-size:8px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
+                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${text}</div>
+                </div>` : '';
+
+            // Recommendation colour
+            const rec = (i.recommendation || 'HOLD').toUpperCase();
+            const recColor = rec === 'BUY' ? 'var(--gr)' : rec === 'REDUCE' ? 'var(--yw)' : (rec === 'SELL' || rec === 'EXIT') ? 'var(--rd)' : 'var(--ac)';
+
+            const sbRows = [
+                sbRow('Outlook', sb.sector_outlook, 'var(--ac)'),
+                sbRow('Growth & Dynamics', sb.sector_growth, 'var(--yw)'),
+                sbRow('Company Positioning', sb.company_positioning, 'var(--gr)'),
+                sbRow('Risks', sb.sector_risks, 'var(--rd)')
+            ].filter(Boolean);
+
             html = `
-                <div style="padding:4px 0;padding-bottom:80px">
-                
-                <!-- RECOMMENDATION HEADLINE -->
-                <div style="background:${recBg};border:1px solid ${recColor};border-radius:8px;padding:12px;margin-bottom:12px">
-                    <div style="font-size:12px;font-weight:900;color:${recColor};margin-bottom:4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">${i.recommendation || 'HOLD'}</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-weight:600;margin-bottom:4px;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${i.thesis ? i.thesis.substring(0, 400) + '...' : 'No thesis provided'}</div>
-                    ${i.trigger ? `<div style="font-size:9px;color:var(--tx3);font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;line-height:1.5"><strong>Trigger:</strong> ${i.trigger.substring(0, 250)}</div>` : ''}
+                <div style="padding:12px 0 80px;color:var(--tx1)">
+
+                <!-- RECOMMENDATION -->
+                <div style="background:var(--card);border:1px solid var(--b1);border-left:3px solid ${recColor};border-radius:6px;padding:13px 14px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <span style="font-size:12px;font-weight:900;color:${recColor};letter-spacing:2px">${rec}</span>
+                        <span style="font-size:8px;color:var(--tx3)">${i.date || ''}</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.65">${i.thesis || 'No thesis provided'}</div>
+                    ${i.trigger ? `
+                    <div style="margin-top:10px;padding-top:9px;border-top:1px solid rgba(26,35,50,.5)">
+                        <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Downgrade Trigger</div>
+                        <div style="font-size:9.5px;color:var(--tx3);line-height:1.55">${i.trigger}</div>
+                    </div>` : ''}
                 </div>
-                
-                <!-- INVESTMENT ANALYSIS DIMENSIONS -->
-                <div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:10px;padding:0 4px">📊 Investment Analysis</div>
-                
-                ${an.valuation ? analysisCard('Valuation', '💹', an.valuation.metric, an.valuation.assessment, an.valuation.signal, 'var(--ac)') : ''}
-                ${an.growth ? analysisCard('Growth', '📈', an.growth.metric, an.growth.assessment, an.growth.signal, 'var(--yw)') : ''}
-                ${an.profitability ? analysisCard('Profitability', '🎯', an.profitability.metric, an.profitability.assessment, an.profitability.signal, 'var(--gr)') : ''}
-                ${an.cash_strength ? analysisCard('Cash Strength', '💰', an.cash_strength.metric, an.cash_strength.assessment, an.cash_strength.signal, 'var(--ac)') : ''}
-                ${an.catalyst ? analysisCard('Catalyst', '🚀', an.catalyst.metric, an.catalyst.assessment, an.catalyst.signal, 'var(--yw)') : ''}
-                ${an.moat ? analysisCard('Moat', '🛡️', an.moat.metric, an.moat.assessment, an.moat.signal, 'var(--gr)') : ''}
-                ${an.opportunity ? analysisCard('Opportunity', '⭐', an.opportunity.metric, an.opportunity.assessment, an.opportunity.signal, 'var(--ac)') : ''}
-                
+
+                <!-- INVESTMENT ANALYSIS -->
+                ${secHead('Investment Analysis', 'var(--ac)')}
+                ${analysisCard('Valuation', an.valuation, 'var(--ac)')}
+                ${analysisCard('Growth', an.growth, 'var(--yw)')}
+                ${analysisCard('Profitability', an.profitability, 'var(--gr)')}
+                ${analysisCard('Cash Strength', an.cash_strength, 'var(--ac)')}
+                ${analysisCard('Catalyst', an.catalyst, 'var(--yw)')}
+                ${analysisCard('Moat', an.moat, 'var(--gr)')}
+                ${analysisCard('Opportunity', an.opportunity, 'var(--ac)')}
+
                 <!-- SECTOR BRIEFING -->
-                ${sb.sector_name ? `
-                <div style="border-top:2px solid var(--b1);margin:16px 0;padding-top:12px;font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🌍 Sector Briefing: ${sb.sector_name}</div>
-                ` : ''}
-                
-                ${sb.sector_outlook ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--ac)">
-                    <div style="font-size:10px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🔮 Sector Outlook</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_outlook}</div>
-                </div>
-                ` : ''}
-                
-                ${sb.sector_growth ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--yw)">
-                    <div style="font-size:10px;font-weight:700;color:var(--yw);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">📊 Sector Growth & Dynamics</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_growth}</div>
-                </div>
-                ` : ''}
-                
-                ${sb.company_positioning ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--gr)">
-                    <div style="font-size:10px;font-weight:700;color:var(--gr);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">🎯 Company Positioning</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.company_positioning}</div>
-                </div>
-                ` : ''}
-                
-                ${sb.sector_risks ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px;margin-bottom:10px;border-left:3px solid var(--rd)">
-                    <div style="font-size:10px;font-weight:700;color:var(--rd);text-transform:uppercase;margin-bottom:6px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">⚠️ Sector Risks</div>
-                    <div style="font-size:10px;color:var(--tx1);line-height:1.6;font-family:'Georgia', 'Garamond', 'Times New Roman', serif">${sb.sector_risks}</div>
-                </div>
-                ` : ''}
-                
+                ${sbRows.length ? `
+                ${secHead(`Sector Briefing${sb.sector_name ? ' · ' + sb.sector_name : ''}`, 'var(--ac)')}
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:3px 12px">
+                    ${sbRows.join('<div style="height:1px;background:rgba(26,35,50,.5)"></div>')}
+                </div>` : ''}
+
                 </div>
             `;
         }
