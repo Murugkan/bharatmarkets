@@ -1033,14 +1033,14 @@ function renderTab(tab) {
                         <span style="width:6px;height:6px;border-radius:50%;background:${color}"></span>
                         <span style="font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px">${label}</span>
                     </div>
-                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.55">${text || 'Not disclosed'}</div>
+                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.55">${hlSent(text) || 'Not disclosed'}</div>
                 </div>`;
 
             // Business row: label + text
             const bizRow = (label, text) => text ? `
                 <div style="display:flex;gap:10px;padding:8px 0">
                     <span style="flex:0 0 72px;font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;letter-spacing:1px;padding-top:2px">${label}</span>
-                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.6">${text}</span>
+                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(text)}</span>
                 </div>` : '';
 
             // Risk item: parse trailing "- High/Medium/Low" into a severity badge
@@ -1052,7 +1052,7 @@ function renderTab(tab) {
                 return `
                 <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">
                     <span style="color:var(--rd);font-size:10px;line-height:1.5;flex-shrink:0">▸</span>
-                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${txt}</span>
+                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${hlSent(txt)}</span>
                     ${sev ? `<span style="flex-shrink:0;font-size:7px;font-weight:800;color:${sc};border:1px solid ${sc};border-radius:3px;padding:1px 5px;text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${sev}</span>` : ''}
                 </div>`;
             };
@@ -1060,7 +1060,7 @@ function renderTab(tab) {
             const commitRow = (c) => `
                 <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">
                     <span style="color:var(--gr);font-size:10px;line-height:1.5;flex-shrink:0">✓</span>
-                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${c}</span>
+                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${hlSent(c)}</span>
                 </div>`;
 
             // Tone / Confidence chip
@@ -1082,7 +1082,7 @@ function renderTab(tab) {
                         <span style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:1.5px">${g.quarter || 'Guidance'}</span>
                         <span style="font-size:8px;color:var(--tx3)">${g.date || ''}</span>
                     </div>
-                    <div style="font-size:12px;color:var(--tx1);line-height:1.65">${g.summary || 'Company guidance summary'}</div>
+                    <div style="font-size:12px;color:var(--tx1);line-height:1.65">${hlSent(g.summary) || 'Company guidance summary'}</div>
                 </div>
 
                 <!-- FINANCIAL -->
@@ -1186,8 +1186,8 @@ function renderTab(tab) {
                         </span>
                         <span style="flex-shrink:0;font-size:7px;font-weight:800;color:${sg.color};border:1px solid ${sg.color};border-radius:3px;padding:1px 5px;text-transform:uppercase;letter-spacing:.5px">${sg.head}</span>
                     </div>
-                    ${d.metric ? `<div style="font-size:9.5px;color:var(--tx3);line-height:1.55;margin-bottom:6px">${d.metric}</div>` : ''}
-                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${d.assessment || 'No assessment'}</div>
+                    ${d.metric ? `<div style="font-size:9.5px;color:var(--tx3);line-height:1.55;margin-bottom:6px">${hlSent(d.metric)}</div>` : ''}
+                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(d.assessment) || 'No assessment'}</div>
                     ${sg.detail ? `<div style="font-size:8.5px;color:${sg.color};line-height:1.5;margin-top:6px;opacity:.85">▸ ${sg.detail}</div>` : ''}
                 </div>`;
             };
@@ -1196,7 +1196,7 @@ function renderTab(tab) {
             const sbRow = (label, text, color) => text ? `
                 <div style="padding:9px 0">
                     <div style="font-size:8px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
-                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${text}</div>
+                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(text)}</div>
                 </div>` : '';
 
             // Recommendation colour
@@ -1219,11 +1219,11 @@ function renderTab(tab) {
                         <span style="font-size:12px;font-weight:900;color:${recColor};letter-spacing:2px">${rec}</span>
                         <span style="font-size:8px;color:var(--tx3)">${i.date || ''}</span>
                     </div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.65">${i.thesis || 'No thesis provided'}</div>
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.65">${hlSent(i.thesis) || 'No thesis provided'}</div>
                     ${i.trigger ? `
                     <div style="margin-top:10px;padding-top:9px;border-top:1px solid rgba(26,35,50,.5)">
                         <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Downgrade Trigger</div>
-                        <div style="font-size:9.5px;color:var(--tx3);line-height:1.55">${i.trigger}</div>
+                        <div style="font-size:9.5px;color:var(--tx3);line-height:1.55">${hlSent(i.trigger)}</div>
                     </div>` : ''}
                 </div>
 
@@ -1250,6 +1250,23 @@ function renderTab(tab) {
     }
     
     document.getElementById('content').innerHTML = html;
+}
+
+// Sentiment highlighter: colours positive/negative phrases inside prose
+function hlSent(t){
+  if(!t) return t;
+  const wrap = (s,c) => `<span style="color:${c};font-weight:700">${s}</span>`;
+  let out = String(t);
+  // Directional numbers: +16%, up ~410 bps, -12%, down 5%
+  out = out.replace(/(^|[\s(>])(\+\s?~?\d[\d.,]*\s?(?:%|bps|x\b|Cr\b)?)/g, (m,p,n) => p + wrap(n,'var(--gr)'));
+  out = out.replace(/(^|[\s(>])(-\s?~?\d[\d.,]*\s?(?:%|bps))/g, (m,p,n) => p + wrap(n,'var(--rd)'));
+  out = out.replace(/\b(up|grew|gained|rose|jumped)(\s+(?:by\s+)?~?\d[\d.,]*\s?(?:%|bps|x)?)/gi, (m,w,n) => wrap(w+n,'var(--gr)'));
+  out = out.replace(/\b(down|fell|dropped|declined)(\s+(?:by\s+)?~?\d[\d.,]*\s?(?:%|bps|x)?)/gi, (m,w,n) => wrap(w+n,'var(--rd)'));
+  // Positive vocabulary
+  out = out.replace(/\b(debt-free|growth|grew|growing|gains?|gaining|improv(?:e|ed|es|ing|ement)s?|strong(?:er|est)?|strengthen(?:ing|ed)?|expand(?:ed|ing|s)?|expansions?|accelerat(?:e|ed|es|ing|ion)|outperform\w*|beat|exceed(?:ed|s|ing)?|breakeven|bullish|upside|record|robust|healthy|tailwinds?|turnaround|de-?leveraging|premiumization|profitable)\b/gi, m => wrap(m,'var(--gr)'));
+  // Negative vocabulary
+  out = out.replace(/\b(declin(?:e|ed|es|ing)s?|fell|fall(?:ing|s)?|dropp?(?:ed|ing)?|weak(?:er|ness|ening)?|loss(?:es)?|negative|risks?|risky|concerns?|pressur(?:e|es|ed|ing)|headwinds?|downside|downgrad(?:e|ed|es|ing)|caution(?:ary)?|bearish|miss(?:ed|es)?|slowdown|drag|deteriorat\w+|erosion|dilut(?:ive|ion)|stress|threats?|volatil\w+|inflation|overvalu\w+|contraction)\b/gi, m => wrap(m,'var(--rd)'));
+  return out;
 }
 
 // Init
