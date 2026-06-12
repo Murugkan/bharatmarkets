@@ -1365,18 +1365,16 @@ CRITICAL RULES:
         cleaned = cleaned.replace(/Â Â/g, '₹');
         // Pattern 3: Unicode sequence corruption
         cleaned = cleaned.replace(/\u00e2\u0082\u00a4/g, '₹');
-        // Pattern 4: â€? variations
-        cleaned = cleaned.replace(/â€?/g, '₹');
+        // Pattern 4: removed — was incorrectly converting –/—/quotes mojibake into ₹
         // Pattern 5: ₹¹ (corrupted with superscript)
         cleaned = cleaned.replace(/₹[¹²³⁴]/g, '₹');
         // Pattern 6: Multiple rupee chars should be one
         cleaned = cleaned.replace(/₹{2,}/g, '₹');
         // Pattern 7: Rupee with trailing garbage
         cleaned = cleaned.replace(/₹[\u00c2\u00c3][\u00a2\u00b9]/g, '₹');
-        // Pattern 8: Smart quotes and dashes to normal
+        // Pattern 8: Smart quotes to normal (dash normalization removed — was destructive)
         cleaned = cleaned.replace(/[""]/g, '"');
         cleaned = cleaned.replace(/['']/g, "'");
-        cleaned = cleaned.replace(/–/g, '-');
         
         return cleaned;
     }
@@ -1605,7 +1603,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             var existingFileFound = !!(fileData && fileData.sha);
             try {
                 if (fileData.content) {
-                    content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
+                    const binary = atob(fileData.content.replace(/\n/g, ''));
+                    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+                    content = JSON.parse(new TextDecoder().decode(bytes));
                 }
             } catch(e) {
                 if (existingFileFound) {
@@ -1728,7 +1728,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             var existingFileFound = !!(fileData && fileData.sha);
             try {
                 if (fileData.content) {
-                    content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
+                    const binary = atob(fileData.content.replace(/\n/g, ''));
+                    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+                    content = JSON.parse(new TextDecoder().decode(bytes));
                 }
             } catch(e) {
                 if (existingFileFound) {
@@ -1915,7 +1917,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 // If remote has more symbols than our in-memory copy, someone else's
                 // changes aren't reflected here — abort instead of silently dropping them.
                 try {
-                    const remoteContent = JSON.parse(atob(fileInfo.content.replace(/\n/g, '')));
+                    const binaryR = atob(fileInfo.content.replace(/\n/g, ''));
+                    const bytesR = Uint8Array.from(binaryR, c => c.charCodeAt(0));
+                    const remoteContent = JSON.parse(new TextDecoder().decode(bytesR));
                     const remoteCount = (remoteContent.symbols || []).length;
                     if (remoteCount > symbols.length) {
                         const proceed = confirm(
@@ -4482,7 +4486,9 @@ function postToGitHub() {
                 throw new Error('Append aborted — existing file not found/fetched');
             }
             try {
-                var existingContent = atob(data.content);
+                var binary = atob(data.content.replace(/\n/g, ''));
+                var bytes = Uint8Array.from(binary, function(c) { return c.charCodeAt(0); });
+                var existingContent = new TextDecoder().decode(bytes);
                 var existingData = JSON.parse(existingContent);
 
                 if (!existingData.symbols) {
