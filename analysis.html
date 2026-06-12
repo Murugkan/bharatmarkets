@@ -1045,10 +1045,10 @@ function renderTab(tab) {
 
             // Risk item: parse trailing "- High/Medium/Low" into a severity badge
             const riskRow = (r) => {
-                const mt = r.match(/^(.*?)\s*[-–]\s*(High|Medium|Low)\s*$/i);
+                const mt = r.match(/^(.*?)\s*[-–]\s*((?:High|Medium|Low)(?:\s*\/\s*(?:High|Medium|Low))?)\s*$/i);
                 const txt = mt ? mt[1] : r;
                 const sev = mt ? mt[2] : null;
-                const sc = sev ? sentColor(sev.toLowerCase() === 'low' ? 'positive' : sev.toLowerCase() === 'medium' ? 'cautious' : 'negative') : '';
+                const sc = sev ? (/high/i.test(sev) ? 'var(--rd)' : /medium/i.test(sev) ? 'var(--yw)' : 'var(--gr)') : '';
                 return `
                 <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">
                     <span style="color:var(--rd);font-size:10px;line-height:1.5;flex-shrink:0">▸</span>
@@ -1073,14 +1073,62 @@ function renderTab(tab) {
                 </div>`;
             };
 
+            // ── Helpers for extended guidance sections ──
+            const undisc = v => { if(!v) return true; const s = String(v).trim(); return /^(not disclosed|not applicable|not quantified|none disclosed|n\/?a)\b/i.test(s) && s.length <= 45; };
+            const pretty = k => k.replace(/_/g,' ').replace(/\b[a-z]/g,c=>c.toUpperCase()).replace(/\bRoi\b/g,'ROI').replace(/\bDso\b/g,'DSO').replace(/\bDio\b/g,'DIO').replace(/\bIt\b/g,'IT');
+
+            // Left-label compact row (matches Business card style)
+            const kvRow = (label, val) => undisc(val) ? '' : `
+                <div style="display:flex;gap:10px;padding:7px 0">
+                    <span style="flex:0 0 92px;font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;padding-top:2px;line-height:1.4">${label}</span>
+                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(val)}</span>
+                </div>`;
+
+            // Stacked row for long prose
+            const stackRow = (label, val, color) => undisc(val) ? '' : `
+                <div style="padding:8px 0">
+                    <div style="font-size:8px;font-weight:800;color:${color || 'var(--tx3)'};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
+                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(val)}</div>
+                </div>`;
+
+            // Bullet list rows with coloured marker
+            const listRows = (label, arr, color, marker) => {
+                const items = (arr || []).filter(x => !undisc(x));
+                if (!items.length) return '';
+                return `
+                <div style="padding:8px 0">
+                    <div style="font-size:8px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
+                    ${items.map(x => `
+                    <div style="display:flex;align-items:flex-start;gap:8px;padding:3px 0">
+                        <span style="color:${color};font-size:10px;line-height:1.5;flex-shrink:0">${marker}</span>
+                        <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${hlSent(x)}</span>
+                    </div>`).join('')}
+                </div>`;
+            };
+
+            // All string fields of an object as kvRows
+            const kvGroup = (obj) => Object.entries(obj || {}).filter(([k,v]) => typeof v === 'string').map(([k,v]) => kvRow(pretty(k), v)).join('');
+
+            const divider = '<div style="height:1px;background:rgba(26,35,50,.5)"></div>';
+            const joinRows = (...rows) => rows.filter(Boolean).join(divider);
+
+            // Card wrapper: emits nothing if content is empty
+            const secCard = (label, color, content) => content ? `
+                ${secHead(label, color)}
+                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:3px 12px">${content}</div>` : '';
+
+            const dp = g.deals_and_pipeline || {}, cu = g.customers || {}, sg2 = g.segments || {},
+                  geo = g.geography || {}, ops = g.operations || {}, ca = g.capital_allocation || {},
+                  cp = g.competitive_position || {}, adim = g.analyst_dimensions || {};
+
             html = `
                 <div style="padding:12px 0 80px;color:var(--tx1)">
 
                 <!-- SUMMARY -->
                 <div style="background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--ac);border-radius:6px;padding:13px 14px">
-                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-                        <span style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:1.5px">${g.quarter || 'Guidance'}</span>
-                        <span style="font-size:8px;color:var(--tx3)">${g.date || ''}</span>
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+                        <span style="flex:1;min-width:60%;font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:1.5px;line-height:1.5">${g.quarter || 'Guidance'}</span>
+                        <span style="font-size:8px;color:var(--tx3);flex-shrink:0">${g.date || ''}</span>
                     </div>
                     <div style="font-size:12px;color:var(--tx1);line-height:1.65">${hlSent(g.summary) || 'Company guidance summary'}</div>
                 </div>
@@ -1093,6 +1141,12 @@ function renderTab(tab) {
                     ${finCard('Margins', fin.margins, 'var(--gr)')}
                     ${finCard('Capex', fin.capex, 'var(--ac)')}
                 </div>
+
+                <!-- SEGMENTS -->
+                ${secCard('Segments', 'var(--yw)', joinRows(
+                    kvGroup(sg2.revenue_by_segment),
+                    stackRow('Outlook', sg2.segment_outlook, 'var(--yw)')
+                ))}
 
                 <!-- BUSINESS -->
                 ${(biz.expansion || biz.products || biz.geography) ? `
@@ -1119,6 +1173,61 @@ function renderTab(tab) {
                     ${m.risks.map(riskRow).join('')}
                 </div>` : ''}
                 ` : ''}
+
+                <!-- DEALS & PIPELINE -->
+                ${secCard('Deals & Pipeline', 'var(--ac)', joinRows(
+                    listRows('Deal Wins', dp.deal_wins, 'var(--gr)', '▸'),
+                    kvGroup(dp.order_book),
+                    kvRow('Sales Pipeline', dp.sales_pipeline),
+                    kvRow('Pipeline Value', dp.deal_pipeline_value)
+                ))}
+
+                <!-- CUSTOMERS -->
+                ${secCard('Customers', 'var(--gr)', joinRows(
+                    listRows('Additions', cu.customer_additions, 'var(--gr)', '+'),
+                    listRows('Losses', cu.customer_losses, 'var(--rd)', '−'),
+                    kvRow('Concentration', cu.customer_concentration),
+                    stackRow('Net Assessment', cu.net_assessment, 'var(--gr)')
+                ))}
+
+                <!-- GEOGRAPHY -->
+                ${secCard('Geography', 'var(--ac)', joinRows(
+                    kvGroup(geo.revenue_mix),
+                    stackRow('Expansion Plans', geo.expansion_plans, 'var(--ac)')
+                ))}
+
+                <!-- OPERATIONS -->
+                ${secCard('Operations', 'var(--yw)', joinRows(
+                    kvGroup(ops.headcount),
+                    kvGroup(ops.raw_materials),
+                    kvGroup(ops.working_capital)
+                ))}
+
+                <!-- CAPITAL ALLOCATION -->
+                ${secCard('Capital Allocation', 'var(--ac)', joinRows(
+                    kvGroup(ca.capex_detailed),
+                    kvGroup(ca.debt_management)
+                ))}
+
+                <!-- COMPETITIVE POSITION -->
+                ${secCard('Competitive Position', 'var(--gr)', joinRows(
+                    kvGroup(cp.market_share),
+                    stackRow('Pricing Strategy', cp.pricing_strategy, 'var(--ac)'),
+                    listRows('Advantages', cp.competitive_advantages, 'var(--gr)', '▸'),
+                    listRows('Threats', cp.competitive_threats, 'var(--rd)', '▸')
+                ))}
+
+                <!-- ANALYST VIEW -->
+                ${secCard('Analyst View', 'var(--ac)',
+                    joinRows(...Object.entries(adim).filter(([k,v]) => typeof v === 'string' && !undisc(v)).map(([k,v]) => stackRow(pretty(k), v, 'var(--ac)')))
+                )}
+
+                <!-- INVESTOR VERDICT -->
+                ${!undisc(g.investor_verdict) ? `
+                ${secHead('Investor Verdict', 'var(--gr)')}
+                <div style="background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--gr);border-radius:6px;padding:13px 14px">
+                    <div style="font-size:11px;color:var(--tx1);line-height:1.65">${hlSent(g.investor_verdict)}</div>
+                </div>` : ''}
 
                 </div>
             `;
@@ -1206,8 +1315,10 @@ function renderTab(tab) {
             const sbRows = [
                 sbRow('Outlook', sb.sector_outlook, 'var(--ac)'),
                 sbRow('Growth & Dynamics', sb.sector_growth, 'var(--yw)'),
+                sbRow('Context', sb.sector_context, 'var(--ac)'),
                 sbRow('Company Positioning', sb.company_positioning, 'var(--gr)'),
-                sbRow('Risks', sb.sector_risks, 'var(--rd)')
+                sbRow('Risks', sb.sector_risks, 'var(--rd)'),
+                sbRow('Sector vs Company Takeaway', sb.sector_vs_company_takeaway, 'var(--yw)')
             ].filter(Boolean);
 
             html = `
@@ -1222,7 +1333,7 @@ function renderTab(tab) {
                     <div style="font-size:11px;color:var(--tx1);line-height:1.65">${hlSent(i.thesis) || 'No thesis provided'}</div>
                     ${i.trigger ? `
                     <div style="margin-top:10px;padding-top:9px;border-top:1px solid rgba(26,35,50,.5)">
-                        <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Downgrade Trigger</div>
+                        <div style="font-size:8px;font-weight:800;color:var(--yw);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Rating Triggers</div>
                         <div style="font-size:9.5px;color:var(--tx3);line-height:1.55">${hlSent(i.trigger)}</div>
                     </div>` : ''}
                 </div>
