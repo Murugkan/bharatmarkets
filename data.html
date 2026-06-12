@@ -1479,75 +1479,7 @@ CRITICAL RULES:
         document.getElementById('insights-json-input').focus();
     }
 
-    
-async function decodeGitHubContent(content) {
-    const binary = atob(content.replace(/\n/g,''));
-    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
-}
-
-let guidanceSaveInProgress = false;
-
-async function saveGuidanceSectionToGitHub(ticker, sectionName, sectionData, pat) {
-    if (guidanceSaveInProgress) {
-        throw new Error('Another save is already in progress');
-    }
-
-    guidanceSaveInProgress = true;
-
-    try {
-        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
-
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            const getResp = await fetch(apiUrl, {
-                headers: { 'Authorization': `token ${pat}` }
-            });
-
-            const fileData = getResp.status === 404
-                ? { sha: null, content: null }
-                : await getResp.json();
-
-            let content = {};
-            if (fileData.content) {
-                content = JSON.parse(await decodeGitHubContent(fileData.content));
-            }
-
-            if (!content[ticker]) content[ticker] = {};
-            content[ticker][sectionName] = sectionData;
-
-            const payload = {
-                message: `Update ${sectionName} for ${ticker}`,
-                content: utf8ToBase64(JSON.stringify(content, null, 2)),
-                branch: GITHUB_CONFIG.BRANCH
-            };
-
-            if (fileData.sha) payload.sha = fileData.sha;
-
-            const putResp = await fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (putResp.ok) {
-                return await putResp.json();
-            }
-
-            if (putResp.status !== 409) {
-                throw new Error(await putResp.text());
-            }
-        }
-
-        throw new Error('GitHub SHA conflict after retries');
-    } finally {
-        guidanceSaveInProgress = false;
-    }
-}
-
-function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
+    function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
         var newGuidance = {};
@@ -1603,7 +1535,15 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             var existingFileFound = !!(fileData && fileData.sha);
             try {
                 if (fileData.content) {
-                    content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
+                    content = JSON.parse(
+                        new TextDecoder('utf-8').decode(
+                            Uint8Array.from(
+                                atob(fileData.content.replace(/
+/g,'')),
+                                c => c.charCodeAt(0)
+                            )
+                        )
+                    );
                 }
             } catch(e) {
                 if (existingFileFound) {
@@ -1726,7 +1666,15 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             var existingFileFound = !!(fileData && fileData.sha);
             try {
                 if (fileData.content) {
-                    content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
+                    content = JSON.parse(
+                        new TextDecoder('utf-8').decode(
+                            Uint8Array.from(
+                                atob(fileData.content.replace(/
+/g,'')),
+                                c => c.charCodeAt(0)
+                            )
+                        )
+                    );
                 }
             } catch(e) {
                 if (existingFileFound) {
