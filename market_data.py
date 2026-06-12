@@ -3152,6 +3152,7 @@ def main():
 
     # Load sector from unified-symbols.json — authoritative sector source
     sector_map = {}
+    portfolio_map = {}
     unified_file = DATA_DIR / 'unified-symbols.json'
     if unified_file.exists():
         with open(unified_file, encoding='utf-8') as f:
@@ -3193,6 +3194,30 @@ def main():
             if entry.get('ticker') and entry.get('sector'):
                 sector_map[entry['ticker']] = entry['sector']
         logger.info(f"  ✓ Loaded unified-symbols.json ({len(sector_map)} tickers with sector)")
+
+        # Build portfolio_map: aggregate holdings[] per ticker → qty, avg_cost, investment
+        for entry in us.get('symbols', []):
+            ticker = entry.get('ticker')
+            if not ticker:
+                continue
+            holdings = entry.get('holdings', [])
+            total_qty = 0
+            total_investment = 0.0
+            for h in holdings:
+                q = h.get('qty')
+                a = h.get('avg')
+                if q is None or a is None:
+                    continue
+                total_qty += q
+                total_investment += q * a
+            avg_cost = round(total_investment / total_qty, 4) if total_qty else None
+            portfolio_map[ticker] = {
+                'qty': total_qty if total_qty else None,
+                'avg_cost': avg_cost,
+                'investment': round(total_investment, 2) if total_investment else None,
+                'data_source': entry.get('source'),
+            }
+        logger.info(f"  ✓ Loaded portfolio holdings ({len(portfolio_map)} tickers)")
     
     # Load guidance data
     guidance_file = DATA_DIR / 'guidance.json'
@@ -3241,6 +3266,16 @@ def main():
             bucketed['derived_metrics']['ai_insights_guidance'] = guidance_data[symbol]
 
         output[symbol] = bucketed
+
+        # Inject portfolio holdings (qty, avg_cost, investment, data_source)
+        # from unified-symbols.json — not present in scraped sections
+        pf = portfolio_map.get(symbol)
+        if pf:
+            cd = bucketed.setdefault('company_details', {})
+            cd['qty'] = pf['qty']
+            cd['avg_cost'] = pf['avg_cost']
+            cd['investment'] = pf['investment']
+            cd['data_source'] = pf['data_source']
 
         # Report any unmapped fields for visibility
         u = bucketed.get("_unmapped", {})
