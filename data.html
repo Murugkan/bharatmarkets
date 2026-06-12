@@ -513,7 +513,9 @@
                 // Contents API returns base64-encoded content
                 if (apiResp.encoding === 'base64') {
                     // base64 decode — handle chunked content field (GitHub wraps at 60 chars)
-                    const raw = atob(apiResp.content.replace(/\n/g, ''));
+                    const binary = atob(apiResp.content.replace(/\n/g, ''));
+                    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+                    const raw = new TextDecoder().decode(bytes);
                     // Return Response-like object
                     return {
                         ok: true,
@@ -1906,9 +1908,30 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         };
 
         // Get SHA then PUT
-        fetch(url, { headers: { 'Authorization': 'token ' + pat } })
+        fetch(url + '?ref=' + GITHUB_CONFIG.BRANCH, { cache: 'no-store', headers: { 'Authorization': 'token ' + pat } })
             .then(function(r) { return r.json(); })
             .then(function(fileInfo) {
+                // Safety check: compare remote symbol count vs what we're about to write.
+                // If remote has more symbols than our in-memory copy, someone else's
+                // changes aren't reflected here — abort instead of silently dropping them.
+                try {
+                    const remoteContent = JSON.parse(atob(fileInfo.content.replace(/\n/g, '')));
+                    const remoteCount = (remoteContent.symbols || []).length;
+                    if (remoteCount > symbols.length) {
+                        const proceed = confirm(
+                            `⚠️ GitHub has ${remoteCount} symbols, you're about to save ${symbols.length}.\n` +
+                            `This may overwrite changes made elsewhere. Reload first?\n\n` +
+                            `Click Cancel to abort save, OK to overwrite anyway.`
+                        );
+                        if (!proceed) {
+                            throw new Error('Save aborted — remote has more symbols than local');
+                        }
+                    }
+                } catch (checkErr) {
+                    if (checkErr.message.indexOf('aborted') !== -1) throw checkErr;
+                    log('⚠️ Could not verify remote symbol count: ' + checkErr.message);
+                }
+
                 const encodedContent = utf8ToBase64(JSON.stringify(fileContent, null, 2));
                 return fetch(url, {
                     method: 'PUT',
@@ -1929,6 +1952,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
                     renderSymbols();
                     showToast('✅ Saved to GitHub!');
+                } else if (r.status === 409) {
+                    log('❌ Save conflict: file changed on GitHub since load. Reload and retry.');
+                    showToast('❌ Conflict — reload data first');
                 } else {
                     r.json().then(function(e) { log('❌ Save failed: ' + (e.message || r.status)); });
                 }
