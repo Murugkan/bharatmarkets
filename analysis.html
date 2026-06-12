@@ -95,6 +95,35 @@
         .badge-M{background:#f57c00}
         .badge-L{background:#546e7a}
         .badge-tag{background:#1e3350;color:#64b5f6;font-size:8px;padding:2px 5px;border-radius:3px}
+        /* ── Research-note presentation (fundamentals + insights tabs) ── */
+        .fx-sec{display:flex;align-items:baseline;gap:10px;margin:20px 2px 10px}
+        .fx-num{font-size:9px;font-weight:800;letter-spacing:1px}
+        .fx-ttl{font-size:10.5px;font-weight:800;color:var(--tx1);letter-spacing:2px;text-transform:uppercase}
+        .fx-rule{flex:1;height:1px;background:linear-gradient(90deg,var(--b1),transparent)}
+        .fx-card{background:linear-gradient(180deg,#0f1528,#0b101e);border:1px solid var(--b1);border-radius:10px;overflow:hidden;margin-bottom:10px;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+        .fx-card-h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 13px;background:rgba(255,255,255,.025);border-bottom:1px solid var(--b1)}
+        .fx-card-b{padding:11px 13px}
+        .fx-lab{font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1.2px}
+        .fx-prose{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif;font-size:11.5px;color:var(--tx1);line-height:1.65;letter-spacing:.1px}
+        .fx-metric{font-size:9.5px;color:var(--tx3);line-height:1.6;margin-bottom:7px;padding-bottom:7px;border-bottom:1px dashed rgba(26,35,50,.7)}
+        .fx-foot{font-size:9px;line-height:1.5;margin-top:7px;opacity:.85;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+        .fx-badge{flex-shrink:0;font-size:7.5px;font-weight:800;border:1px solid;border-radius:20px;padding:2px 8px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+        .fx-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block}
+        .fx-kv{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid rgba(26,35,50,.45)}
+        .fx-kv:last-child{border-bottom:none}
+        .fx-kv:first-child{padding-top:2px}
+        .fx-kv-l{flex:0 0 92px;font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;padding-top:2px;line-height:1.4}
+        .fx-kv-v{flex:1}
+        .fx-stack{padding:8px 0;border-bottom:1px solid rgba(26,35,50,.45)}
+        .fx-stack:last-child{border-bottom:none}
+        .fx-stack:first-child{padding-top:2px}
+        .fx-stack .fx-lab{margin-bottom:4px;display:block}
+        .fx-li{display:flex;align-items:flex-start;gap:8px;padding:3px 0}
+        .fx-li-m{font-size:10px;line-height:1.6;flex-shrink:0;font-weight:700}
+        .fx-li .fx-badge{margin-top:2px}
+        .fx-chip{flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;background:linear-gradient(180deg,#0f1528,#0b101e);border:1px solid var(--b1);border-radius:10px;padding:10px 12px}
+        .fx-score{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)}
+        .fx-score-i{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px}
     </style>
 </head>
 <body>
@@ -1008,6 +1037,9 @@ function renderTab(tab) {
             const m = g.management || {};
             const fin = g.financial || {};
             const biz = g.business || {};
+            const dp = g.deals_and_pipeline || {}, cu = g.customers || {}, sg2 = g.segments || {},
+                  geo = g.geography || {}, ops = g.operations || {}, ca = g.capital_allocation || {},
+                  cp = g.competitive_position || {}, adim = g.analyst_dimensions || {};
 
             // Sentiment colour (case-insensitive)
             const sentColor = (v) => {
@@ -1017,125 +1049,110 @@ function renderTab(tab) {
                 if (t.includes('negative') || t === 'low') return 'var(--rd)';
                 return 'var(--tx3)';
             };
+            const tint = (c) => c === 'var(--gr)' ? 'rgba(0,232,150,.1)' : c === 'var(--rd)' ? 'rgba(255,107,133,.1)' : c === 'var(--yw)' ? 'rgba(255,191,71,.1)' : 'rgba(122,143,160,.1)';
 
-            // Section header: small caps label + hairline rule
-            const secHead = (label, color) => `
-                <div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
-                    <span style="width:3px;height:10px;background:${color};border-radius:1px"></span>
-                    <span style="font-size:9px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1.5px">${label}</span>
-                    <span style="flex:1;height:1px;background:var(--b1)"></span>
+            const undisc = v => { if(!v) return true; const s = String(v).trim(); return /^(not disclosed|not applicable|not quantified|none disclosed|n\/?a)\b/i.test(s) && s.length <= 45; };
+            const pretty = k => k.replace(/_/g,' ').replace(/\b[a-z]/g,c=>c.toUpperCase()).replace(/\bRoi\b/g,'ROI').replace(/\bDso\b/g,'DSO').replace(/\bDio\b/g,'DIO').replace(/\bIt\b/g,'IT');
+
+            // Numbered section header — counts only sections that actually render
+            let secN = 0;
+            const secHead = (label, color) => {
+                secN++;
+                return `
+                <div class="fx-sec">
+                    <span class="fx-num" style="color:${color}">${String(secN).padStart(2,'0')}</span>
+                    <span class="fx-ttl">${label}</span>
+                    <span class="fx-rule"></span>
+                </div>`;
+            };
+
+            const kvRow = (label, val) => undisc(val) ? '' : `
+                <div class="fx-kv">
+                    <span class="fx-kv-l">${label}</span>
+                    <span class="fx-kv-v fx-prose">${hlSent(val)}</span>
                 </div>`;
 
-            // Stat card for the financial grid
-            const finCard = (label, text, color) => `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px 11px">
-                    <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px">
-                        <span style="width:6px;height:6px;border-radius:50%;background:${color}"></span>
-                        <span style="font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px">${label}</span>
-                    </div>
-                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.55">${hlSent(text) || 'Not disclosed'}</div>
+            const stackRow = (label, val, color) => undisc(val) ? '' : `
+                <div class="fx-stack">
+                    <div class="fx-lab" style="color:${color || 'var(--tx3)'}">${label}</div>
+                    <div class="fx-prose">${hlSent(val)}</div>
                 </div>`;
 
-            // Business row: label + text
-            const bizRow = (label, text) => text ? `
-                <div style="display:flex;gap:10px;padding:8px 0">
-                    <span style="flex:0 0 72px;font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;letter-spacing:1px;padding-top:2px">${label}</span>
-                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(text)}</span>
-                </div>` : '';
+            const listRows = (label, arr, color, marker) => {
+                const items = (arr || []).filter(x => !undisc(x));
+                if (!items.length) return '';
+                return `
+                <div class="fx-stack">
+                    <div class="fx-lab" style="color:${color}">${label}</div>
+                    ${items.map(x => `
+                    <div class="fx-li">
+                        <span class="fx-li-m" style="color:${color}">${marker}</span>
+                        <span class="fx-prose" style="flex:1">${hlSent(x)}</span>
+                    </div>`).join('')}
+                </div>`;
+            };
 
-            // Risk item: parse trailing "- High/Medium/Low" into a severity badge
+            const kvGroup = (obj) => Object.entries(obj || {}).filter(([k,v]) => typeof v === 'string').map(([k,v]) => kvRow(pretty(k), v)).join('');
+            const joinRows = (...rows) => rows.filter(Boolean).join('');
+
+            const secCard = (label, color, content) => content ? `
+                ${secHead(label, color)}
+                <div class="fx-card"><div class="fx-card-b">${content}</div></div>` : '';
+
+            // Risk item with severity badge (supports compound grades e.g. Medium/High)
             const riskRow = (r) => {
                 const mt = r.match(/^(.*?)\s*[-–]\s*((?:High|Medium|Low)(?:\s*\/\s*(?:High|Medium|Low))?)\s*$/i);
                 const txt = mt ? mt[1] : r;
                 const sev = mt ? mt[2] : null;
                 const sc = sev ? (/high/i.test(sev) ? 'var(--rd)' : /medium/i.test(sev) ? 'var(--yw)' : 'var(--gr)') : '';
                 return `
-                <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">
-                    <span style="color:var(--rd);font-size:10px;line-height:1.5;flex-shrink:0">▸</span>
-                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${hlSent(txt)}</span>
-                    ${sev ? `<span style="flex-shrink:0;font-size:7px;font-weight:800;color:${sc};border:1px solid ${sc};border-radius:3px;padding:1px 5px;text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${sev}</span>` : ''}
+                <div class="fx-li">
+                    <span class="fx-li-m" style="color:var(--rd)">▸</span>
+                    <span class="fx-prose" style="flex:1">${hlSent(txt)}</span>
+                    ${sev ? `<span class="fx-badge" style="color:${sc};border-color:${sc};background:${tint(sc)}">${sev}</span>` : ''}
                 </div>`;
             };
-
             const commitRow = (c) => `
-                <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0">
-                    <span style="color:var(--gr);font-size:10px;line-height:1.5;flex-shrink:0">✓</span>
-                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${hlSent(c)}</span>
+                <div class="fx-li">
+                    <span class="fx-li-m" style="color:var(--gr)">✓</span>
+                    <span class="fx-prose" style="flex:1">${hlSent(c)}</span>
                 </div>`;
 
-            // Tone / Confidence chip
             const chip = (label, value) => {
                 const c = sentColor(value);
                 return `
-                <div style="flex:1;display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:9px 11px">
-                    <span style="font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px">${label}</span>
-                    <span style="font-size:11px;font-weight:800;color:${c};text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:${c}"></span>${value || 'N/A'}</span>
+                <div class="fx-chip">
+                    <span class="fx-lab">${label}</span>
+                    <span class="fx-badge" style="color:${c};border-color:${c};background:${tint(c)}">${value || 'N/A'}</span>
                 </div>`;
             };
 
-            // ── Helpers for extended guidance sections ──
-            const undisc = v => { if(!v) return true; const s = String(v).trim(); return /^(not disclosed|not applicable|not quantified|none disclosed|n\/?a)\b/i.test(s) && s.length <= 45; };
-            const pretty = k => k.replace(/_/g,' ').replace(/\b[a-z]/g,c=>c.toUpperCase()).replace(/\bRoi\b/g,'ROI').replace(/\bDso\b/g,'DSO').replace(/\bDio\b/g,'DIO').replace(/\bIt\b/g,'IT');
-
-            // Left-label compact row (matches Business card style)
-            const kvRow = (label, val) => undisc(val) ? '' : `
-                <div style="display:flex;gap:10px;padding:7px 0">
-                    <span style="flex:0 0 92px;font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;padding-top:2px;line-height:1.4">${label}</span>
-                    <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(val)}</span>
+            const finCard = (label, text, color) => `
+                <div class="fx-card" style="margin-bottom:0">
+                    <div class="fx-card-h">
+                        <span style="display:flex;align-items:center;gap:6px">
+                            <span class="fx-dot" style="background:${color}"></span>
+                            <span class="fx-lab">${label}</span>
+                        </span>
+                    </div>
+                    <div class="fx-card-b"><div class="fx-prose" style="font-size:11px">${hlSent(text) || 'Not disclosed'}</div></div>
                 </div>`;
-
-            // Stacked row for long prose
-            const stackRow = (label, val, color) => undisc(val) ? '' : `
-                <div style="padding:8px 0">
-                    <div style="font-size:8px;font-weight:800;color:${color || 'var(--tx3)'};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
-                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(val)}</div>
-                </div>`;
-
-            // Bullet list rows with coloured marker
-            const listRows = (label, arr, color, marker) => {
-                const items = (arr || []).filter(x => !undisc(x));
-                if (!items.length) return '';
-                return `
-                <div style="padding:8px 0">
-                    <div style="font-size:8px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
-                    ${items.map(x => `
-                    <div style="display:flex;align-items:flex-start;gap:8px;padding:3px 0">
-                        <span style="color:${color};font-size:10px;line-height:1.5;flex-shrink:0">${marker}</span>
-                        <span style="flex:1;font-size:10.5px;color:var(--tx1);line-height:1.5">${hlSent(x)}</span>
-                    </div>`).join('')}
-                </div>`;
-            };
-
-            // All string fields of an object as kvRows
-            const kvGroup = (obj) => Object.entries(obj || {}).filter(([k,v]) => typeof v === 'string').map(([k,v]) => kvRow(pretty(k), v)).join('');
-
-            const divider = '<div style="height:1px;background:rgba(26,35,50,.5)"></div>';
-            const joinRows = (...rows) => rows.filter(Boolean).join(divider);
-
-            // Card wrapper: emits nothing if content is empty
-            const secCard = (label, color, content) => content ? `
-                ${secHead(label, color)}
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:3px 12px">${content}</div>` : '';
-
-            const dp = g.deals_and_pipeline || {}, cu = g.customers || {}, sg2 = g.segments || {},
-                  geo = g.geography || {}, ops = g.operations || {}, ca = g.capital_allocation || {},
-                  cp = g.competitive_position || {}, adim = g.analyst_dimensions || {};
 
             html = `
                 <div style="padding:12px 0 80px;color:var(--tx1)">
 
                 <!-- SUMMARY -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--ac);border-radius:6px;padding:13px 14px">
-                    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-                        <span style="flex:1;min-width:60%;font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:1.5px;line-height:1.5">${g.quarter || 'Guidance'}</span>
-                        <span style="font-size:8px;color:var(--tx3);flex-shrink:0">${g.date || ''}</span>
+                <div class="fx-card" style="border-color:rgba(0,242,255,.35)">
+                    <div class="fx-card-h" style="background:linear-gradient(90deg,rgba(0,242,255,.1),transparent)">
+                        <span class="fx-lab" style="color:var(--ac);flex:1;line-height:1.5">${g.quarter || 'Guidance'}</span>
+                        <span style="font-size:8px;color:var(--tx3);flex-shrink:0;margin-left:10px">${g.date || ''}</span>
                     </div>
-                    <div style="font-size:12px;color:var(--tx1);line-height:1.65">${hlSent(g.summary) || 'Company guidance summary'}</div>
+                    <div class="fx-card-b"><div class="fx-prose" style="font-size:12.5px">${hlSent(g.summary) || 'Company guidance summary'}</div></div>
                 </div>
 
                 <!-- FINANCIAL -->
                 ${secHead('Financial', 'var(--yw)')}
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
                     ${finCard('Revenue', fin.revenue, 'var(--yw)')}
                     ${finCard('Growth', fin.growth, 'var(--gr)')}
                     ${finCard('Margins', fin.margins, 'var(--gr)')}
@@ -1149,29 +1166,25 @@ function renderTab(tab) {
                 ))}
 
                 <!-- BUSINESS -->
-                ${(biz.expansion || biz.products || biz.geography) ? `
-                ${secHead('Business', 'var(--gr)')}
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:4px 12px">
-                    ${[bizRow('Expansion', biz.expansion), bizRow('Products', biz.products), bizRow('Geography', biz.geography)].filter(Boolean).join('<div style="height:1px;background:rgba(26,35,50,.5)"></div>')}
-                </div>` : ''}
+                ${secCard('Business', 'var(--gr)', joinRows(
+                    kvRow('Expansion', biz.expansion),
+                    kvRow('Products', biz.products),
+                    kvRow('Geography', biz.geography)
+                ))}
 
                 <!-- MANAGEMENT -->
                 ${g.management ? `
                 ${secHead('Management', 'var(--ac)')}
-                <div style="display:flex;gap:8px;margin-bottom:10px">
+                <div style="display:flex;gap:8px;margin-bottom:8px">
                     ${chip('Tone', m.tone)}
                     ${chip('Confidence', m.confidence)}
                 </div>
                 ${m.commitments && m.commitments.length ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:9px 12px;margin-bottom:8px">
-                    <div style="font-size:8px;font-weight:800;color:var(--gr);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Commitments</div>
-                    ${m.commitments.map(commitRow).join('')}
-                </div>` : ''}
+                <div class="fx-card"><div class="fx-card-h"><span class="fx-lab" style="color:var(--gr)">Commitments</span></div>
+                <div class="fx-card-b">${m.commitments.map(commitRow).join('')}</div></div>` : ''}
                 ${m.risks && m.risks.length ? `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:9px 12px">
-                    <div style="font-size:8px;font-weight:800;color:var(--rd);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Risks</div>
-                    ${m.risks.map(riskRow).join('')}
-                </div>` : ''}
+                <div class="fx-card"><div class="fx-card-h"><span class="fx-lab" style="color:var(--rd)">Risks</span></div>
+                <div class="fx-card-b">${m.risks.map(riskRow).join('')}</div></div>` : ''}
                 ` : ''}
 
                 <!-- DEALS & PIPELINE -->
@@ -1225,8 +1238,8 @@ function renderTab(tab) {
                 <!-- INVESTOR VERDICT -->
                 ${!undisc(g.investor_verdict) ? `
                 ${secHead('Investor Verdict', 'var(--gr)')}
-                <div style="background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--gr);border-radius:6px;padding:13px 14px">
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.65">${hlSent(g.investor_verdict)}</div>
+                <div class="fx-card" style="border-color:rgba(0,232,150,.35)">
+                    <div class="fx-card-b" style="border-top:2px solid var(--gr)"><div class="fx-prose" style="font-size:12px">${hlSent(g.investor_verdict)}</div></div>
                 </div>` : ''}
 
                 </div>
@@ -1260,8 +1273,9 @@ function renderTab(tab) {
             const sb = i.sector_briefing || {};
             const an = i.analysis || {};
 
-            // Parse signal: head word (Positive/Neutral/Caution) for the badge,
-            // remainder (often a long parenthetical) as a detail footnote
+            const tint = (c) => c === 'var(--gr)' ? 'rgba(0,232,150,.1)' : c === 'var(--rd)' ? 'rgba(255,107,133,.1)' : c === 'var(--yw)' ? 'rgba(255,191,71,.1)' : 'rgba(122,143,160,.1)';
+
+            // Parse signal: head word for the badge, remainder as a detail footnote
             const parseSignal = (sig) => {
                 if (!sig) return { head: 'N/A', detail: '', color: 'var(--tx3)' };
                 const lower = sig.toLowerCase();
@@ -1274,43 +1288,53 @@ function renderTab(tab) {
                 return { head, detail, color };
             };
 
-            // Section header (same pattern as fundamentals tab)
-            const secHead = (label, color) => `
-                <div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px">
-                    <span style="width:3px;height:10px;background:${color};border-radius:1px"></span>
-                    <span style="font-size:9px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1.5px">${label}</span>
-                    <span style="flex:1;height:1px;background:var(--b1)"></span>
+            let secN = 0;
+            const secHead = (label, color) => {
+                secN++;
+                return `
+                <div class="fx-sec">
+                    <span class="fx-num" style="color:${color}">${String(secN).padStart(2,'0')}</span>
+                    <span class="fx-ttl">${label}</span>
+                    <span class="fx-rule"></span>
                 </div>`;
+            };
 
-            // Investment dimension card
             const analysisCard = (title, d, color) => {
                 if (!d) return '';
                 const sg = parseSignal(d.signal);
                 return `
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px 11px;margin-bottom:8px">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px">
-                        <span style="display:flex;align-items:center;gap:5px;min-width:0">
-                            <span style="width:6px;height:6px;border-radius:50%;background:${color};flex-shrink:0"></span>
-                            <span style="font-size:8px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1px">${title}</span>
+                <div class="fx-card">
+                    <div class="fx-card-h">
+                        <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                            <span class="fx-dot" style="background:${color}"></span>
+                            <span class="fx-lab">${title}</span>
                         </span>
-                        <span style="flex-shrink:0;font-size:7px;font-weight:800;color:${sg.color};border:1px solid ${sg.color};border-radius:3px;padding:1px 5px;text-transform:uppercase;letter-spacing:.5px">${sg.head}</span>
+                        <span class="fx-badge" style="color:${sg.color};border-color:${sg.color};background:${tint(sg.color)}">${sg.head}</span>
                     </div>
-                    ${d.metric ? `<div style="font-size:9.5px;color:var(--tx3);line-height:1.55;margin-bottom:6px">${hlSent(d.metric)}</div>` : ''}
-                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(d.assessment) || 'No assessment'}</div>
-                    ${sg.detail ? `<div style="font-size:8.5px;color:${sg.color};line-height:1.5;margin-top:6px;opacity:.85">▸ ${sg.detail}</div>` : ''}
+                    <div class="fx-card-b">
+                        ${d.metric ? `<div class="fx-metric">${hlSent(d.metric)}</div>` : ''}
+                        <div class="fx-prose">${hlSent(d.assessment) || 'No assessment'}</div>
+                        ${sg.detail ? `<div class="fx-foot" style="color:${sg.color}">▸ ${sg.detail}</div>` : ''}
+                    </div>
                 </div>`;
             };
 
-            // Sector briefing row: stacked label + text
             const sbRow = (label, text, color) => text ? `
-                <div style="padding:9px 0">
-                    <div style="font-size:8px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${label}</div>
-                    <div style="font-size:10.5px;color:var(--tx1);line-height:1.6">${hlSent(text)}</div>
+                <div class="fx-stack">
+                    <div class="fx-lab" style="color:${color}">${label}</div>
+                    <div class="fx-prose">${hlSent(text)}</div>
                 </div>` : '';
 
-            // Recommendation colour
             const rec = (i.recommendation || 'HOLD').toUpperCase();
             const recColor = rec === 'BUY' ? 'var(--gr)' : rec === 'REDUCE' ? 'var(--yw)' : (rec === 'SELL' || rec === 'EXIT') ? 'var(--rd)' : 'var(--ac)';
+
+            // Signal scorecard: one dot per analysis dimension
+            const dims = [['Valuation', an.valuation], ['Growth', an.growth], ['Profitability', an.profitability], ['Cash', an.cash_strength], ['Catalyst', an.catalyst], ['Moat', an.moat], ['Opportunity', an.opportunity]].filter(d => d[1]);
+            const scorecard = dims.length ? `
+                <div class="fx-score">
+                    ${dims.map(([n, d]) => { const sg = parseSignal(d.signal); return `
+                    <span class="fx-score-i"><span class="fx-dot" style="background:${sg.color}"></span>${n}</span>`; }).join('')}
+                </div>` : '';
 
             const sbRows = [
                 sbRow('Outlook', sb.sector_outlook, 'var(--ac)'),
@@ -1325,17 +1349,20 @@ function renderTab(tab) {
                 <div style="padding:12px 0 80px;color:var(--tx1)">
 
                 <!-- RECOMMENDATION -->
-                <div style="background:var(--card);border:1px solid var(--b1);border-left:3px solid ${recColor};border-radius:6px;padding:13px 14px">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                        <span style="font-size:12px;font-weight:900;color:${recColor};letter-spacing:2px">${rec}</span>
+                <div class="fx-card" style="border-color:${recColor.replace('var(--gr)','rgba(0,232,150,.4)').replace('var(--yw)','rgba(255,191,71,.4)').replace('var(--rd)','rgba(255,107,133,.4)').replace('var(--ac)','rgba(0,242,255,.4)')}">
+                    <div class="fx-card-h" style="background:linear-gradient(90deg,${tint(recColor)},transparent)">
+                        <span style="font-size:13px;font-weight:900;color:${recColor};letter-spacing:3px">${rec}</span>
                         <span style="font-size:8px;color:var(--tx3)">${i.date || ''}</span>
                     </div>
-                    <div style="font-size:11px;color:var(--tx1);line-height:1.65">${hlSent(i.thesis) || 'No thesis provided'}</div>
-                    ${i.trigger ? `
-                    <div style="margin-top:10px;padding-top:9px;border-top:1px solid rgba(26,35,50,.5)">
-                        <div style="font-size:8px;font-weight:800;color:var(--yw);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Rating Triggers</div>
-                        <div style="font-size:9.5px;color:var(--tx3);line-height:1.55">${hlSent(i.trigger)}</div>
-                    </div>` : ''}
+                    <div class="fx-card-b">
+                        <div class="fx-prose" style="font-size:12px">${hlSent(i.thesis) || 'No thesis provided'}</div>
+                        ${scorecard}
+                        ${i.trigger ? `
+                        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">
+                            <div class="fx-lab" style="color:var(--yw);margin-bottom:4px">Rating Triggers</div>
+                            <div class="fx-prose" style="font-size:10.5px;color:var(--tx3)">${hlSent(i.trigger)}</div>
+                        </div>` : ''}
+                    </div>
                 </div>
 
                 <!-- INVESTMENT ANALYSIS -->
@@ -1351,9 +1378,7 @@ function renderTab(tab) {
                 <!-- SECTOR BRIEFING -->
                 ${sbRows.length ? `
                 ${secHead(`Sector Briefing${sb.sector_name ? ' · ' + sb.sector_name : ''}`, 'var(--ac)')}
-                <div style="background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:3px 12px">
-                    ${sbRows.join('<div style="height:1px;background:rgba(26,35,50,.5)"></div>')}
-                </div>` : ''}
+                <div class="fx-card"><div class="fx-card-b">${sbRows.join('')}</div></div>` : ''}
 
                 </div>
             `;
