@@ -3216,6 +3216,7 @@ def main():
                 'avg_cost': avg_cost,
                 'investment': round(total_investment, 2) if total_investment else None,
                 'data_source': entry.get('source'),
+                'holdings': holdings if holdings else None,
             }
         logger.info(f"  ✓ Loaded portfolio holdings ({len(portfolio_map)} tickers)")
     
@@ -3276,6 +3277,7 @@ def main():
             cd['avg_cost'] = pf['avg_cost']
             cd['investment'] = pf['investment']
             cd['data_source'] = pf['data_source']
+            cd['holdings'] = pf['holdings']
 
         # Report any unmapped fields for visibility
         u = bucketed.get("_unmapped", {})
