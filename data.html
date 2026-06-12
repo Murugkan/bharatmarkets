@@ -391,6 +391,11 @@
         <div style="margin-bottom:10px;">
             <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
             <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
+            <button id="guidanceBatchBtn" onclick="toggleGuidanceBatchMode()">📝 Guidance Batch: OFF</button>
+        </div>
+        <div id="guidance-batch-section" style="display:none; margin-bottom:12px;">
+            <button id="guidancePushBtn" onclick="pushGuidanceChanges()" class="btn-success">💾 PUSH GUIDANCE CHANGES (<span id="guidancePendingCount">0</span>)</button>
+            <button onclick="discardGuidanceChanges()">❌ Discard pending</button>
         </div>
         <div id="save-section" style="display:none; margin-bottom:12px;">
             <button onclick="saveChanges()" class="btn-success">💾 SAVE CHANGES</button>
@@ -465,6 +470,9 @@
     let masterData = [];
     let symbolsData = [];  // Stock list tab — loaded directly from unified-symbols.json
     let guidanceFileData = {};  // Stock list tab — loaded directly from guidance.json
+    let guidanceBatchMode = false;
+    let guidancePendingChanges = 0;
+    let guidanceFileDataSnapshot = null; // for discard
     let guidanceData = {};
     let guidanceTimestamps = {};
     let concallTimestamps = {}; // Separate timestamp for concall
@@ -1547,6 +1555,119 @@ async function saveGuidanceSectionToGitHub(ticker, sectionName, sectionData, pat
     }
 }
 
+// Single SHA-fetch + PUT of the full in-memory guidanceFileData.
+// Used both for immediate single-ticker saves (batch mode OFF) and for
+// pushing all staged changes at once (batch mode ON).
+function pushGuidanceFileData(pat, commitMessage) {
+    const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
+
+    let jsonString = JSON.stringify(guidanceFileData, null, 2);
+    jsonString = sanitizeJSON(jsonString);
+    const encodedContent = utf8ToBase64(jsonString);
+
+    return fetch(apiUrl + '?ref=' + GITHUB_CONFIG.BRANCH, {
+        cache: 'no-store',
+        headers: { 'Authorization': `token ${pat}` }
+    })
+    .then(r => r.status === 404 ? { sha: null } : r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+    .then(fileData => {
+        const body = {
+            message: commitMessage,
+            content: encodedContent,
+            branch: GITHUB_CONFIG.BRANCH
+        };
+        if (fileData && fileData.sha) body.sha = fileData.sha;
+
+        return fetch(apiUrl, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+    })
+    .then(r => {
+        if (!r?.ok) throw new Error('Failed to save guidance.json');
+        return r;
+    });
+}
+
+function toggleGuidanceBatchMode() {
+    guidanceBatchMode = !guidanceBatchMode;
+    const btn = document.getElementById('guidanceBatchBtn');
+    const section = document.getElementById('guidance-batch-section');
+
+    if (guidanceBatchMode) {
+        // Snapshot current state so "discard" can revert staged edits
+        guidanceFileDataSnapshot = JSON.parse(JSON.stringify(guidanceFileData));
+        guidancePendingChanges = 0;
+        btn.textContent = '📝 Guidance Batch: ON';
+        section.style.display = 'block';
+        log('📝 Guidance batch mode ON — edits will be staged locally until pushed');
+    } else {
+        if (guidancePendingChanges > 0) {
+            const proceed = confirm(
+                `${guidancePendingChanges} staged guidance change(s) not yet pushed.\n` +
+                `Turn off batch mode anyway? (Edits remain staged in memory until you push or reload.)`
+            );
+            if (!proceed) { guidanceBatchMode = true; return; }
+        }
+        btn.textContent = '📝 Guidance Batch: OFF';
+        section.style.display = 'none';
+        log('📝 Guidance batch mode OFF');
+    }
+    updateGuidanceBatchUI();
+}
+
+function updateGuidanceBatchUI() {
+    const countEl = document.getElementById('guidancePendingCount');
+    if (countEl) countEl.textContent = guidancePendingChanges;
+    const pushBtn = document.getElementById('guidancePushBtn');
+    if (pushBtn) pushBtn.disabled = guidancePendingChanges === 0;
+}
+
+function pushGuidanceChanges() {
+    if (guidancePendingChanges === 0) {
+        showToast('Nothing to push');
+        return;
+    }
+    var pat = document.getElementById('patToken').value;
+    if (!pat) { showToast('❌ PAT required'); return; }
+
+    log(`💾 Pushing ${guidancePendingChanges} staged guidance/insights change(s)...`);
+    pushGuidanceFileData(pat, `Batch update guidance/insights (${guidancePendingChanges} tickers)`)
+        .then(() => {
+            log(`✅ Pushed ${guidancePendingChanges} change(s) to guidance.json`);
+            log('✅ Ready');
+            showToast('✅ Guidance changes pushed!');
+            guidancePendingChanges = 0;
+            guidanceFileDataSnapshot = JSON.parse(JSON.stringify(guidanceFileData));
+            updateGuidanceBatchUI();
+            renderSymbols();
+        })
+        .catch(e => {
+            log('❌ Error');
+            showToast(`❌ Push failed: ${e.message}`);
+            log(`❌ Push error: ${e.message}`);
+        });
+}
+
+function discardGuidanceChanges() {
+    if (guidancePendingChanges === 0) {
+        showToast('Nothing to discard');
+        return;
+    }
+    if (!confirm(`Discard ${guidancePendingChanges} staged guidance/insights change(s)?`)) return;
+
+    guidanceFileData = guidanceFileDataSnapshot ? JSON.parse(JSON.stringify(guidanceFileDataSnapshot)) : guidanceFileData;
+    guidancePendingChanges = 0;
+    updateGuidanceBatchUI();
+    log('🗑️ Discarded staged guidance changes');
+    showToast('🗑️ Staged changes discarded');
+    renderSymbols();
+}
+
 function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
@@ -1593,80 +1714,39 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             return;
         }
         
-        // Fetch current file (handle 404 = new file)
-        fetch(apiUrl, {
-            headers: { 'Authorization': `token ${pat}` }
-        })
-        .then(r => r.status === 404 ? { sha: null, content: null } : r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        .then(fileData => {
-            var content = {};
-            var existingFileFound = !!(fileData && fileData.sha);
-            try {
-                if (fileData.content) {
-                    const binary = atob(fileData.content.replace(/\n/g, ''));
-                    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-                    content = JSON.parse(new TextDecoder().decode(bytes));
-                }
-            } catch(e) {
-                if (existingFileFound) {
-                    showToast('❌ Aborted: could not parse existing file — not overwriting');
-                    log('❌ Aborted save — existing file failed to parse: ' + e.message);
-                    return;
-                }
-                content = { "_metadata": { "version": "1.0" } };
-            }
-            
-            if (!content[ticker]) content[ticker] = {};
-            
-            // Update only this ticker's guidance
-            // Use date from parameter (from modal), or default to today
-            if (date) {
-                newGuidance.date = date;
-            } else {
-                newGuidance.date = new Date().toISOString().split('T')[0];
-            }
-            content[ticker].guidance = newGuidance;
-            
-            // Encode using proper UTF-8 base64 helper
-            let jsonString = JSON.stringify(content, null, 2);
-            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
-            const encodedContent = utf8ToBase64(jsonString);
-            
-            const body = {
-                message: `Add/update guidance for ${ticker}`,
-                content: encodedContent,
-                branch: GITHUB_CONFIG.BRANCH
-            };
-            if (fileData.sha) body.sha = fileData.sha;
-            
-            return fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            });
-        })
-        .then(r => {
-            if (!r?.ok) throw new Error('Failed to save');
-            log(`✅ Guidance for ${ticker} saved`);
-            log('✅ Ready');
-            showToast(`✅ Guidance saved for ${ticker}`);
-            
-            // Update in-memory guidanceFileData — no IndexedDB, no unified-symbols touch
-            if (!guidanceFileData[ticker]) guidanceFileData[ticker] = {};
-            guidanceFileData[ticker].guidance = newGuidance;
+        // Stage this ticker's guidance in our in-memory copy (guidanceFileData).
+        if (date) {
+            newGuidance.date = date;
+        } else {
+            newGuidance.date = new Date().toISOString().split('T')[0];
+        }
+        if (!guidanceFileData[ticker]) guidanceFileData[ticker] = {};
+        guidanceFileData[ticker].guidance = newGuidance;
+
+        if (guidanceBatchMode) {
+            guidancePendingChanges++;
+            updateGuidanceBatchUI();
+            log(`📝 Staged guidance for ${ticker} (${guidancePendingChanges} pending)`);
+            showToast(`📝 Staged ${ticker} — push when ready`);
             renderSymbols();
-        })
-        .catch(e => {
-            log('❌ Error');
-            showToast(`❌ Error: ${e.message}`);
-            log(`❌ Save error: ${e.message}`);
-        });
-    }
-    
-    function saveInsightsToGitHub(ticker, jsonText, pat, date) {
+            return;
+        }
+
+        pushGuidanceFileData(pat, `Add/update guidance for ${ticker}`)
+            .then(() => {
+                log(`✅ Guidance for ${ticker} saved`);
+                log('✅ Ready');
+                showToast(`✅ Guidance saved for ${ticker}`);
+                renderSymbols();
+            })
+            .catch(e => {
+                log('❌ Error');
+                showToast(`❌ Error: ${e.message}`);
+                log(`❌ Save error: ${e.message}`);
+            });
+}
+
+function saveInsightsToGitHub(ticker, jsonText, pat, date) {
         const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`;
         
         var newInsights = {};
@@ -1718,77 +1798,37 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             return;
         }
         
-        // Fetch current file (handle 404 = new file)
-        fetch(apiUrl, {
-            headers: { 'Authorization': `token ${pat}` }
-        })
-        .then(r => r.status === 404 ? { sha: null, content: null } : r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
-        .then(fileData => {
-            var content = {};
-            var existingFileFound = !!(fileData && fileData.sha);
-            try {
-                if (fileData.content) {
-                    const binary = atob(fileData.content.replace(/\n/g, ''));
-                    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-                    content = JSON.parse(new TextDecoder().decode(bytes));
-                }
-            } catch(e) {
-                if (existingFileFound) {
-                    showToast('❌ Aborted: could not parse existing file — not overwriting');
-                    log('❌ Aborted save — existing file failed to parse: ' + e.message);
-                    return;
-                }
-                content = { "_metadata": { "version": "1.0" } };
-            }
-            
-            if (!content[ticker]) content[ticker] = {};
-            
-            // Update only this ticker's insights
-            // Use date from parameter (from modal), or default to today
-            if (date) {
-                newInsights.date = date;
-            } else {
-                newInsights.date = new Date().toISOString().split('T')[0];
-            }
-            content[ticker].insights = newInsights;
-            
-            // Encode using proper UTF-8 base64 helper
-            let jsonString = JSON.stringify(content, null, 2);
-            jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
-            const encodedContent = utf8ToBase64(jsonString);
-            
-            const body = {
-                message: `Add/update insights for ${ticker}`,
-                content: encodedContent,
-                branch: GITHUB_CONFIG.BRANCH
-            };
-            if (fileData.sha) body.sha = fileData.sha;
-            
-            return fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            });
-        })
-        .then(r => {
-            if (!r?.ok) throw new Error('Failed to save');
-            log(`✅ Insights for ${ticker} saved`);
-            log('✅ Ready');
-            showToast(`✅ Insights saved for ${ticker}`);
-            
-            // Update in-memory guidanceFileData — no IndexedDB
-            if (!guidanceFileData[ticker]) guidanceFileData[ticker] = {};
-            guidanceFileData[ticker].insights = newInsights;
+        // Update only this ticker's insights in our in-memory copy (guidanceFileData) —
+        // same approach as uploadUnifiedSymbols. Only fetch SHA for the PUT, not full content.
+        if (date) {
+            newInsights.date = date;
+        } else {
+            newInsights.date = new Date().toISOString().split('T')[0];
+        }
+        if (!guidanceFileData[ticker]) guidanceFileData[ticker] = {};
+        guidanceFileData[ticker].insights = newInsights;
+
+        if (guidanceBatchMode) {
+            guidancePendingChanges++;
+            updateGuidanceBatchUI();
+            log(`📝 Staged insights for ${ticker} (${guidancePendingChanges} pending)`);
+            showToast(`📝 Staged ${ticker} — push when ready`);
             renderSymbols();
-        })
-        .catch(e => {
-            log('❌ Error');
-            showToast(`❌ Error: ${e.message}`);
-            log(`❌ Save error: ${e.message}`);
-        });
+            return;
+        }
+
+        pushGuidanceFileData(pat, `Add/update insights for ${ticker}`)
+            .then(() => {
+                log(`✅ Insights for ${ticker} saved`);
+                log('✅ Ready');
+                showToast(`✅ Insights saved for ${ticker}`);
+                renderSymbols();
+            })
+            .catch(e => {
+                log('❌ Error');
+                showToast(`❌ Error: ${e.message}`);
+                log(`❌ Save error: ${e.message}`);
+            });
     }
 
     function toggleEditMode() {
