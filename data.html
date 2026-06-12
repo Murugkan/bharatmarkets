@@ -1532,12 +1532,17 @@ CRITICAL RULES:
         .then(r => r.status === 404 ? { sha: null, content: null } : r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
         .then(fileData => {
             var content = {};
+            var existingFileFound = !!(fileData && fileData.sha);
             try {
                 if (fileData.content) {
                     content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
                 }
             } catch(e) {
-                log(`⚠️ Could not parse existing file`);
+                if (existingFileFound) {
+                    showToast('❌ Aborted: could not parse existing file — not overwriting');
+                    log('❌ Aborted save — existing file failed to parse: ' + e.message);
+                    return;
+                }
                 content = { "_metadata": { "version": "1.0" } };
             }
             
@@ -1650,12 +1655,17 @@ CRITICAL RULES:
         .then(r => r.status === 404 ? { sha: null, content: null } : r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
         .then(fileData => {
             var content = {};
+            var existingFileFound = !!(fileData && fileData.sha);
             try {
                 if (fileData.content) {
                     content = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
                 }
             } catch(e) {
-                log(`⚠️ Could not parse existing file`);
+                if (existingFileFound) {
+                    showToast('❌ Aborted: could not parse existing file — not overwriting');
+                    log('❌ Aborted save — existing file failed to parse: ' + e.message);
+                    return;
+                }
                 content = { "_metadata": { "version": "1.0" } };
             }
             
@@ -4372,12 +4382,20 @@ function postToGitHub() {
         var finalData = unifiedData;
         
         // In APPEND mode, fetch and merge existing data
-        if (importState.importMode === 'append' && data.content) {
+        if (importState.importMode === 'append') {
+            if (!data.content) {
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not fetch existing unified-symbols.json for append</span>';
+                throw new Error('Append aborted — existing file not found/fetched');
+            }
             try {
                 var existingContent = atob(data.content);
                 var existingData = JSON.parse(existingContent);
-                
-                if (existingData.symbols) {
+
+                if (!existingData.symbols) {
+                    status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: existing unified-symbols.json has no "symbols" array</span>';
+                    throw new Error('Append aborted — existing file missing symbols array');
+                }
+                {
                     // Create map of new stocks by ticker
                     var newTickers = {};
                     unifiedData.symbols.forEach(function(s) {
@@ -4408,7 +4426,8 @@ function postToGitHub() {
                     finalData.count = mergedSymbols.length;
                 }
             } catch(e) {
-                // Continue with append mode if parse fails
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not parse existing unified-symbols.json — not overwriting. ' + e.message + '</span>';
+                throw new Error('Append aborted — existing file parse failed: ' + e.message);
             }
         }
         
