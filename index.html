@@ -524,8 +524,8 @@ const resolve = (obj, field) => {
                              const h = s?.company_details?.holdings;
                              if (!h || !h.length) return '—';
                              if (h.length === 1) return h[0].demat || '—';
-                             // Multiple demats — show as comma list
-                             return h.map(x => x.demat || '?').join(', ');
+                             // Multiple demats — show shortened 2-letter codes
+                             return h.map(x => (x.demat || '?').slice(0, 2).toLowerCase()).join('|');
                          }},
         'INVESTED':      { paths: ['invested'] },
         'ROE%':          { fn: s => { const v = s?.ratios?.ttm?.roe_pct; return v != null ? v * 100 : undefined; }},
