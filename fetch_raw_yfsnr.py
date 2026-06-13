@@ -240,21 +240,27 @@ class Step1Tester:
         passed = 0
         total = 0
         
-        for ticker, entry in list(self.yahoo.items())[:1]:
+        for ticker, entry in list(self.yahoo.items()):
+            if ticker == "_metadata":
+                continue
             total += 1
             if (isinstance(entry, dict) and 'ticker' in entry and 'observations' in entry):
                 logger.info(f"  ✓ Yahoo structure valid")
                 passed += 1
             else:
                 logger.error(f"  ✗ Yahoo structure invalid")
-        
-        for ticker, entry in list(self.screener.items())[:1]:
+            break
+
+        for ticker, entry in list(self.screener.items()):
+            if ticker == "_metadata":
+                continue
             total += 1
             if (isinstance(entry, dict) and 'ticker' in entry and 'observations' in entry):
                 logger.info(f"  ✓ Screener structure valid")
                 passed += 1
             else:
                 logger.error(f"  ✗ Screener structure invalid")
+            break
         
         self.results["Data Structure"] = (passed, total if total > 0 else 1)
     

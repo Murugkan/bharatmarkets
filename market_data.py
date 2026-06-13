@@ -101,6 +101,9 @@ FIELD_MAP = {
         "industry": ("company_details",   "industry"),
         "type":     ("company_details",   "type"),
         "source":   ("company_details",   "data_source"),
+        # holdings is handled separately via portfolio_map (see main()) and
+        # written to company_details.holdings — skip here to avoid _unmapped.
+        "holdings": ("__skip__", "__skip__"),
     },
 
     # ── yahoofin_raw:info ─────────────────────────────────────────────────────
