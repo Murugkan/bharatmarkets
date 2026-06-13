@@ -244,8 +244,28 @@ def load_symbols():
     # All symbols in unified-symbols.json are already confirmed
     # No need to resolve or update
 
-    # Filter out delisted symbols
-    syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved") and s["sym"] not in DELISTED]
+    # Identify MUTUAL FUND / ETF-as-MF entries — these have no Yahoo/NSE
+    # equity quote (NAV comes from fetch_amfi_nav.py instead). Detect via
+    # explicit instrument_type, sector, or ISIN prefix "INF" (mutual fund
+    # convention). Sovereign Gold Bonds (SGB) are exchange-traded and ARE
+    # fetchable via Yahoo (e.g. SGBFEB32IV.NS), so they're excluded here —
+    # only true off-exchange mutual funds are skipped.
+    def is_mf_like(entry):
+        isin = (entry.get('isin') or '').strip().upper()
+        itype = (entry.get('instrument_type') or '').upper()
+        sector = (entry.get('sector') or '').upper()
+        return (
+            itype == 'MUTUAL FUND'
+            or sector == 'MUTUAL FUND'
+            or isin.startswith('INF')
+        )
+
+    mf_skipped = len([s for s in data if s.get("sym") and is_mf_like(s)])
+    if mf_skipped:
+        print(f"🪙 Skipped {mf_skipped} mutual fund symbols (NAV handled separately via fetch_amfi_nav.py)")
+
+    # Filter out delisted symbols and MF/SGB entries
+    syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved") and s["sym"] not in DELISTED and not is_mf_like(s)]
     filtered = len([s["sym"] for s in data if s.get("sym") and s["sym"] in DELISTED])
     if filtered:
         print(f"🗑 Skipped {filtered} delisted symbols")
