@@ -98,7 +98,7 @@ logger.write("Reading tickers from screener_raw_data.json", 'INIT')
 try:
     with open(DATA_DIR / 'screener_raw_data.json') as f:
         screener_raw_file = json.load(f)
-    TICKERS_TO_PROCESS = list(screener_raw_file.keys())
+    TICKERS_TO_PROCESS = [k for k in screener_raw_file.keys() if k != '_metadata']
     if TICKERS_TO_PROCESS:
         logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from screener_raw", 'INIT')
     else:
@@ -107,8 +107,29 @@ except:
     with open(DATA_DIR / 'prices.json') as f:
         prices_file = json.load(f)
     prices_data = prices_file.get("quotes", {})
-    TICKERS_TO_PROCESS = list(prices_data.keys())
+    TICKERS_TO_PROCESS = [k for k in prices_data.keys() if k != '_metadata']
     logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from prices.json", 'INIT')
+
+# Add MUTUAL FUND / SOVEREIGN BOND / ETF tickers from unified-symbols.json that
+# aren't covered by Screener/Yahoo (e.g. AMFI-only mutual funds) — these have
+# no screener_raw/yahoofin sections but still need to flow through to
+# market_data.json for portfolio holdings + NAV injection.
+try:
+    with open(DATA_DIR / 'unified-symbols.json', encoding='utf-8') as f:
+        unified_symbols_file = json.load(f)
+    existing = set(TICKERS_TO_PROCESS)
+    added = []
+    for entry in unified_symbols_file.get('symbols', []):
+        ticker = entry.get('ticker')
+        itype = (entry.get('instrument_type') or '').upper()
+        if ticker and ticker not in existing and itype in ('MUTUAL FUND', 'SOVEREIGN BOND'):
+            TICKERS_TO_PROCESS.append(ticker)
+            existing.add(ticker)
+            added.append(ticker)
+    if added:
+        logger.write(f"Added {len(added)} MF/SGB ticker(s) from unified-symbols.json: {', '.join(added)}", 'INIT')
+except Exception as e:
+    logger.write(f"Could not load unified-symbols.json for MF/SGB tickers: {e}", 'WARNING')
 
 logger.write(f"Processing tickers: {', '.join(TICKERS_TO_PROCESS)}", 'INIT')
 logger.write(f"Input directory: {DATA_DIR}", 'INIT')
