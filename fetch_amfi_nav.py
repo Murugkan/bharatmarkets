@@ -120,12 +120,13 @@ def parse_navall(text, wanted_isins):
         if ';' not in line:
             # Section header line: either an AMC name or a scheme category.
             # Category headers contain "Schemes" (e.g. "Open Ended Schemes...");
-            # anything else is treated as the AMC name.
+            # anything else is treated as the AMC name. The category line
+            # always comes first, immediately followed by the AMC name line —
+            # so the AMC line must NOT clear current_category.
             if 'scheme' in line.lower():
                 current_category = line
             else:
                 current_amc = line
-                current_category = None
             continue
 
         parts = line.split(';')
