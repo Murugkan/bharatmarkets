@@ -40,6 +40,7 @@ import json
 import sys
 import logging
 from pathlib import Path
+from copy import deepcopy
 from datetime import datetime, UTC
 
 # GitHub repo paths
