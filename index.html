@@ -360,40 +360,6 @@
 </footer>
 
 <script>
-// ===== DEBUG OVERLAY (iPhone-friendly console) =====
-var DEBUG_LOG = [];
-function debugLog(type, args) {
-    const msg = Array.from(args).map(a => {
-        if (a instanceof Error) return a.message + '\n' + (a.stack||'');
-        if (typeof a === 'object') { try { return JSON.stringify(a); } catch(e){ return String(a); } }
-        return String(a);
-    }).join(' ');
-    DEBUG_LOG.push('[' + new Date().toLocaleTimeString() + '] [' + type + '] ' + msg);
-    const el = document.getElementById('debug-log');
-    if (el) el.textContent = DEBUG_LOG.slice(-200).join('\n\n');
-}
-(function(){
-    const origError = console.error;
-    console.error = function(...args){ debugLog('ERROR', args); origError.apply(console, args); };
-    const origWarn = console.warn;
-    console.warn = function(...args){ debugLog('WARN', args); origWarn.apply(console, args); };
-    window.addEventListener('error', function(e){
-        debugLog('UNCAUGHT', [e.message + ' @ ' + (e.filename||'') + ':' + e.lineno + ':' + e.colno, e.error]);
-    });
-    window.addEventListener('unhandledrejection', function(e){
-        debugLog('PROMISE-REJECT', [e.reason]);
-    });
-})();
-function toggleDebugPanel(){
-    const p = document.getElementById('debug-panel');
-    p.style.display = (p.style.display==='none'||!p.style.display) ? 'block' : 'none';
-}
-function clearDebugLog(){
-    DEBUG_LOG = [];
-    const el = document.getElementById('debug-log');
-    if (el) el.textContent = '';
-}
-
 /**
  * BHARATMARKETS ONYX PRO TERMINAL
  * Portfolio Manager & Analytics Dashboard
@@ -3771,17 +3737,5 @@ init().catch(err => {
 });
 </script>
 
-<!-- ===== DEBUG OVERLAY ===== -->
-<div id="debug-toggle" onclick="toggleDebugPanel()" style="position:fixed;bottom:60px;right:8px;z-index:99999;background:#ff4d6d;color:#fff;font-size:10px;font-weight:800;padding:6px 10px;border-radius:6px;font-family:monospace;box-shadow:0 2px 8px rgba(0,0,0,0.5)">DEBUG</div>
-<div id="debug-panel" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;background:rgba(0,0,0,0.95);color:#0f0;font-family:monospace;font-size:11px;padding:12px;overflow:auto;white-space:pre-wrap;word-break:break-word">
-    <div style="display:flex;justify-content:space-between;margin-bottom:8px;position:sticky;top:0;background:#000;padding-bottom:8px">
-        <span style="color:#fff;font-weight:800">DEBUG LOG</span>
-        <div>
-            <button onclick="clearDebugLog()" style="background:#333;color:#fff;border:none;padding:4px 8px;border-radius:4px;margin-right:6px">Clear</button>
-            <button onclick="toggleDebugPanel()" style="background:#ff4d6d;color:#fff;border:none;padding:4px 8px;border-radius:4px">Close</button>
-        </div>
-    </div>
-    <div id="debug-log"></div>
-</div>
 </body>
 </html>
