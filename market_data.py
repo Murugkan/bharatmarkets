@@ -3153,6 +3153,7 @@ def main():
     # Load sector from unified-symbols.json — authoritative sector source
     sector_map = {}
     portfolio_map = {}
+    unified_updated_at = None
     unified_file = DATA_DIR / 'unified-symbols.json'
     if unified_file.exists():
         with open(unified_file, encoding='utf-8') as f:
@@ -3194,6 +3195,8 @@ def main():
             if entry.get('ticker') and entry.get('sector'):
                 sector_map[entry['ticker']] = entry['sector']
         logger.info(f"  ✓ Loaded unified-symbols.json ({len(sector_map)} tickers with sector)")
+
+        unified_updated_at = us.get('updated')
 
         # Build portfolio_map: aggregate holdings[] per ticker → qty, avg_cost, investment
         for entry in us.get('symbols', []):
@@ -3297,6 +3300,12 @@ def main():
     guidance_meta = guidance_data.get('_metadata', {}) if isinstance(guidance_data, dict) else {}
     raw_meta = raw.get('_metadata', {}) if isinstance(raw, dict) else {}
 
+    # Fall back to the input file's own mtime if market_data_raw.json lacks
+    # _metadata.generated_at (e.g. older file written before that field existed).
+    raw_generated_at = raw_meta.get("generated_at")
+    if not raw_generated_at and INPUT_FILE.exists():
+        raw_generated_at = datetime.fromtimestamp(INPUT_FILE.stat().st_mtime).isoformat()
+
     final_output = {
         "_metadata": {
             "generated_at": datetime.now().isoformat(),
@@ -3306,14 +3315,16 @@ def main():
             # ── Input source info (counts + freshness) ─────────────────────────
             "sources": {
                 "market_data_raw": {
-                    "generated_at": raw_meta.get("generated_at"),
+                    "generated_at": raw_generated_at,
                     "total_tickers": raw_meta.get("total_tickers", len(symbols)),
                 },
                 "unified_symbols": {
+                    "updated_at": unified_updated_at,
                     "tickers_with_sector": len(sector_map),
                     "tickers_with_portfolio": len(portfolio_map),
                 },
                 "guidance": {
+                    "updated_at": guidance_meta.get("updated_at"),
                     "tickers_with_guidance": guidance_meta.get(
                         "tickers_with_guidance",
                         len([s for s in symbols if isinstance(guidance_data.get(s), dict) and "guidance" in guidance_data.get(s, {})])
@@ -3323,15 +3334,8 @@ def main():
                         len([s for s in symbols if isinstance(guidance_data.get(s), dict) and "insights" in guidance_data.get(s, {})])
                     ),
                     "total_tickers": guidance_meta.get("total_tickers", len([k for k in guidance_data if k != "_metadata"])),
-                    "updated_at": guidance_meta.get("updated_at"),
                 },
             },
-
-            # Backward-compat top-level field (some consumers read this directly)
-            "tickers_with_guidance": guidance_meta.get(
-                "tickers_with_guidance",
-                len([s for s in symbols if isinstance(guidance_data.get(s), dict) and "guidance" in guidance_data.get(s, {})])
-            ),
         }
     }
     
