@@ -82,6 +82,7 @@
         /* CONTENT AREA */
         .content {
             height: calc(100vh - 160px);
+            height: calc(100dvh - 160px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 8px;
@@ -955,12 +956,18 @@
         if (query !== '' && firstMatch) {
             const container = document.querySelector('.table-container');
             if (container) container.scrollLeft = 0; // reset horizontal scroll so TICKER column is visible
-            // Scroll the page so the matched row sits just below the sticky header,
-            // rather than scrollIntoView's 'center', which can push the header out of view.
-            const headerHeight = container ? container.querySelector('thead').offsetHeight : 0;
-            const rowTop = firstMatch.getBoundingClientRect().top;
-            const offset = rowTop - headerHeight - 8; // 8px breathing room
-            window.scrollBy({ top: offset, behavior: 'smooth' });
+            // Scroll the .content panel (the app's internal scroll area) so the
+            // matched row sits just below the sticky header. Scrolling `window`
+            // here can scroll an outer app shell instead, leaving this panel
+            // displaced until the shell's own nav resets it.
+            const content = document.querySelector('.content');
+            if (content) {
+                const headerHeight = container ? container.querySelector('thead').offsetHeight : 0;
+                const contentRect = content.getBoundingClientRect();
+                const rowRect = firstMatch.getBoundingClientRect();
+                const offset = (rowRect.top - contentRect.top) - headerHeight - 8; // 8px breathing room
+                content.scrollBy({ top: offset, behavior: 'smooth' });
+            }
         }
     }
 
