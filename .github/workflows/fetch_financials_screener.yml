@@ -32,7 +32,7 @@ jobs:
       - name: Run scraper
         run: python fetch_screener_financials.py
 
-      - name: Commit results to repo
+      - name: Commit results to repo (retry on concurrent updates)
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -42,8 +42,26 @@ jobs:
             exit 0
           fi
           git commit -m "Update screener data - $(date +'%Y-%m-%d %H:%M:%S')"
-          git pull --rebase origin main
-          git push origin main
+
+          # Retry push with rebase to survive other workflows pushing to main
+          # concurrently (this job can run for hours, so the gap between
+          # rebase and push is large). Each retry re-applies this commit on
+          # top of the latest remote main.
+          max_attempts=5
+          attempt=1
+          until git push origin main; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Push failed after $max_attempts attempts"
+              exit 1
+            fi
+            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 1))  # jitter to reduce repeated collisions
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          echo "Push succeeded on attempt $attempt"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
