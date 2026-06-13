@@ -112,7 +112,7 @@
             padding: 6px 8px;
             border-bottom: 1px solid #111;
         }
-        td.sticky {
+        td.sticky, th.sticky {
             position: sticky;
             left: 0;
             background: #0a0a0a;
@@ -121,6 +121,7 @@
             color: var(--bl);
             font-weight: 800;
         }
+        th.sticky { z-index: 11; background: rgba(0,50,100,0.9); }
         
         thead tr {
             position: sticky;
@@ -952,7 +953,14 @@
             if (matches && !firstMatch) firstMatch = row;
         });
         if (query !== '' && firstMatch) {
-            firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const container = document.querySelector('.table-container');
+            if (container) container.scrollLeft = 0; // reset horizontal scroll so TICKER column is visible
+            // Scroll the page so the matched row sits just below the sticky header,
+            // rather than scrollIntoView's 'center', which can push the header out of view.
+            const headerHeight = container ? container.querySelector('thead').offsetHeight : 0;
+            const rowTop = firstMatch.getBoundingClientRect().top;
+            const offset = rowTop - headerHeight - 8; // 8px breathing room
+            window.scrollBy({ top: offset, behavior: 'smooth' });
         }
     }
 
