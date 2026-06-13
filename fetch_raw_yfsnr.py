@@ -180,8 +180,9 @@ class Step1Tester:
         for name, file_path, data in tests:
             if file_path.exists():
                 logger.info(f"  ✓ {name:12s} file exists")
-                if isinstance(data, dict) and len(data) > 0:
-                    logger.info(f"    └─ {len(data)} tickers loaded")
+                ticker_count = len([k for k in data if k != "_metadata"]) if isinstance(data, dict) else 0
+                if isinstance(data, dict) and ticker_count > 0:
+                    logger.info(f"    └─ {ticker_count} tickers loaded")
                     passed += 1
                 else:
                     logger.error(f"    └─ Empty or invalid JSON")
@@ -195,8 +196,8 @@ class Step1Tester:
         logger.info("\n[TEST 2] TICKER COVERAGE")
         logger.info("-" * 80)
         
-        y_tickers = set(self.yahoo.keys())
-        s_tickers = set(self.screener.keys())
+        y_tickers = set(self.yahoo.keys()) - {"_metadata"}
+        s_tickers = set(self.screener.keys()) - {"_metadata"}
         all_tickers = y_tickers | s_tickers
         
         logger.info(f"  Yahoo:     {len(y_tickers):2d} tickers")
@@ -215,8 +216,8 @@ class Step1Tester:
         logger.info("\n[TEST 3] OBSERVATION COUNTS")
         logger.info("-" * 80)
         
-        y_obs = sum(len(e.get('observations', [])) for e in self.yahoo.values())
-        s_obs = sum(len(e.get('observations', [])) for e in self.screener.values())
+        y_obs = sum(len(e.get('observations', [])) for k, e in self.yahoo.items() if k != "_metadata")
+        s_obs = sum(len(e.get('observations', [])) for k, e in self.screener.items() if k != "_metadata")
         
         logger.info(f"  Yahoo:     {y_obs:3d} observations")
         logger.info(f"  Screener:  {s_obs:3d} observations")
@@ -657,10 +658,20 @@ def main():
     logger.info(f"  Current directory: {Path.cwd()}")
     
     if FETCH_YAHOO:
+        yahoo_store["_metadata"] = {
+            "generated_at": now(),
+            "count": len([k for k in yahoo_store if k != "_metadata"]),
+            "runtime_seconds": runtime
+        }
         save_json(YAHOO_FILE, yahoo_store)
         logger.info(f"  ✓ Saved: {YAHOO_FILE.resolve()}")
     
     if FETCH_SCREENER:
+        screener_store["_metadata"] = {
+            "generated_at": now(),
+            "count": len([k for k in screener_store if k != "_metadata"]),
+            "runtime_seconds": runtime
+        }
         save_json(SCREENER_FILE, screener_store)
         logger.info(f"  ✓ Saved: {SCREENER_FILE.resolve()}")
     
