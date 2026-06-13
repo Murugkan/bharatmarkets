@@ -657,8 +657,11 @@ def main():
             except Exception as e:
                 yahoo_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
         
-        # Screener (if enabled)
-        if FETCH_SCREENER:
+        # Screener (if enabled) — skip for SGB/Government Securities, since
+        # Screener.in only indexes companies with P&L/balance-sheet data and
+        # has no page for government debt instruments (confirmed 404).
+        is_sgb = itype == "SOVEREIGN BOND" or sector == "GOVERNMENT SECURITIES"
+        if FETCH_SCREENER and not is_sgb:
             if ticker not in screener_store:
                 screener_store[ticker] = {"ticker": ticker, "name": symbol.get("name"), "isin": symbol.get("isin"), "observations": []}
             try:
