@@ -2877,9 +2877,10 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 setTimeout(() => location.reload(true), 600);
             })
             .catch(err => {
-                logError('Loading market_data.json', err.message);
-                log('❌ Load Error');
-                showToast(`Error: ${err.message}`, 'error');
+                const msg = (err && err.message) ? err.message : String(err);
+                logError('Loading market_data.json', msg);
+                log(`❌ Load Error: ${msg}`);
+                showToast(`Error: ${msg}`, 'error');
             });
     }
     
@@ -3326,9 +3327,10 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 };
             })
             .catch(err => {
-                logError('Fetching LTP', err.message);
-                log('❌ Fetch Error');
-                showToast(`Error: ${err.message}`, 'error');
+                const msg = (err && err.message) ? err.message : String(err);
+                logError('Fetching LTP', msg);
+                log(`❌ Fetch Error: ${msg}`);
+                showToast(`Error: ${msg}`, 'error');
             });
     }
     
@@ -3374,7 +3376,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             }))
             .then(() => doHardReload())
             .catch(err => {
-                log(`⚠️ Refresh error: ${err.message} — reloading anyway`);
+                const msg = (err && err.message) ? err.message : String(err);
+                log(`⚠️ Refresh error: ${msg} — reloading anyway`);
                 doHardReload();
             });
     }
