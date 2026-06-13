@@ -902,11 +902,15 @@
                 fetchColorStyle = matches ? 'color:#00ff88;' : 'color:#ff4d6d;';
             }
             // For UI Delta Load (sector_indices.json) Fetch time, color green/red
-            // based on whether it matches Web Delta Fetch's timestamp, which is
-            // sourced from ltp.json directly (live fetch).
+            // based on whether it's from the same day as Web Delta Fetch's
+            // timestamp (sourced from ltp.json directly, live fetch). Exact
+            // equality is too strict — both files are stamped a few seconds
+            // apart by independent steps in the same workflow run.
             if (s.name === 'sector_indices.json') {
                 if (metadata.sector_indices_updated_at && metadata.ltp_live_updated_at) {
-                    var deltaMatches = metadata.sector_indices_updated_at === metadata.ltp_live_updated_at;
+                    var dDate = new Date(metadata.sector_indices_updated_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    var lDate = new Date(metadata.ltp_live_updated_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    var deltaMatches = dDate === lDate;
                     fetchColorStyle = deltaMatches ? 'color:#00ff88;' : 'color:#ff4d6d;';
                     deltaIsRed = !deltaMatches;
                 } else {
