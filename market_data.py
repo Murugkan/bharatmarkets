@@ -3293,28 +3293,45 @@ def main():
     
     # Create output with metadata
     from datetime import datetime
-    import time
-    
+
+    guidance_meta = guidance_data.get('_metadata', {}) if isinstance(guidance_data, dict) else {}
+    raw_meta = raw.get('_metadata', {}) if isinstance(raw, dict) else {}
+
     final_output = {
         "_metadata": {
             "generated_at": datetime.now().isoformat(),
             "total_tickers": total,
-            "tickers_with_guidance": len([s for s in symbols if s in guidance_data]),
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
 
-            # ── SCHEMA — generated at runtime from actual output ───────────────────
-            # Key   = exact dot-path to the field (as accessed in JS/Python)
-            # Value = unit: Cr | INR | INR_abs | pct | frac | ratio | int | epoch | str | []  | bars
-            # {YYYY-MM-DD} = dict keyed by ISO date string
-            # []           = list (shareholding time-series objects)
-            # bars         = list of OHLCV dicts {Date, Open, High, Low, Close, Volume}
-            # Cr           = Indian Rupees, Crores
-            # INR_abs      = absolute INR — divide by 1e7 for Crores (market_cap, EV etc.)
-            # pct          = percentage as float  (18.5 = 18.5%)
-            # frac         = fraction 0–1  (0.185 = 18.5%)
-            # epoch        = Unix timestamp seconds
-            # ─────────────────────────────────────────────────────────────────────
-            "schema": _build_schema(output),
+            # ── Input source info (counts + freshness) ─────────────────────────
+            "sources": {
+                "market_data_raw": {
+                    "generated_at": raw_meta.get("generated_at"),
+                    "total_tickers": raw_meta.get("total_tickers", len(symbols)),
+                },
+                "unified_symbols": {
+                    "tickers_with_sector": len(sector_map),
+                    "tickers_with_portfolio": len(portfolio_map),
+                },
+                "guidance": {
+                    "tickers_with_guidance": guidance_meta.get(
+                        "tickers_with_guidance",
+                        len([s for s in symbols if isinstance(guidance_data.get(s), dict) and "guidance" in guidance_data.get(s, {})])
+                    ),
+                    "tickers_with_insights": guidance_meta.get(
+                        "tickers_with_insights",
+                        len([s for s in symbols if isinstance(guidance_data.get(s), dict) and "insights" in guidance_data.get(s, {})])
+                    ),
+                    "total_tickers": guidance_meta.get("total_tickers", len([k for k in guidance_data if k != "_metadata"])),
+                    "updated_at": guidance_meta.get("updated_at"),
+                },
+            },
+
+            # Backward-compat top-level field (some consumers read this directly)
+            "tickers_with_guidance": guidance_meta.get(
+                "tickers_with_guidance",
+                len([s for s in symbols if isinstance(guidance_data.get(s), dict) and "guidance" in guidance_data.get(s, {})])
+            ),
         }
     }
     
@@ -3341,154 +3358,6 @@ def main():
         logger.warning("⚠ AUDIT: gaps recorded above — output written, review before deploying")
     else:
         logger.info("✓ AUDIT PASSED")
-
-
-def _build_schema(output: dict) -> dict:
-    """
-    Generate _metadata.schema at runtime from the actual bucketed output.
-    Walks every field path across all tickers and infers the unit/type.
-    Always in sync with the real data — never stale.
-    """
-    UNIT_MAP = {
-        # financials — Cr
-        'Net_Profit':'Cr','Sales':'Cr','Expenses':'Cr','Operating_Profit':'Cr',
-        'Other_Income':'Cr','Interest':'Cr','Depreciation':'Cr',
-        'profit_before_tax':'Cr','share_capital':'Cr','Reserves':'Cr',
-        'Borrowings':'Cr','Deposits':'Cr','Other_Liabilities':'Cr',
-        'Total_Liabilities':'Cr','net_fixed_assets':'Cr','capital_wip':'Cr',
-        'Investments':'Cr','Other_Assets':'Cr','Total_Assets':'Cr',
-        'operating_cash_flow':'Cr','investing_cash_flow':'Cr',
-        'financing_cash_flow':'Cr','net_cash_flow':'Cr','Free_Cash_Flow':'Cr',
-        'net_interest_income':'Cr','yf_revenue':'Cr','yf_ebitda':'Cr',
-        'yf_gross_profit':'Cr','yf_capex':'Cr','yf_free_cash_flow':'Cr',
-        'yf_cash':'Cr','yf_cogs':'Cr','yf_operating_cash_flow':'Cr',
-        'yf_receivables':'Cr','yf_invested_capital':'Cr','yf_working_capital':'Cr',
-        'yf_lease_obligations':'Cr','yf_rd_expense':'Cr','yf_tangible_assets':'Cr',
-        'yf_exceptional_items':'Cr','yf_normalized_profit':'Cr',
-        'yf_latest_revenue':'Cr','yf_latest_net_profit':'Cr','yf_latest_ebit':'Cr',
-        'yf_latest_operating_cash_flow':'Cr','yf_latest_fcf':'Cr',
-        'yf_latest_borrowings':'Cr','yf_latest_total_assets':'Cr',
-        'yf_latest_total_liabilities':'Cr','yf_latest_depreciation':'Cr',
-        'yf_latest_interest':'Cr',
-        'fcf_ttm':'Cr','operating_cash_flow_ttm':'Cr','gross_profit_ttm':'Cr',
-        'net_profit_ttm':'Cr','cash_and_equivalents':'Cr',
-        # financials — INR per share
-        'eps':'INR','yf_latest_eps':'INR','cash_per_share':'INR','book_value':'INR',
-        # financials — pct
-        'operating_margin_pct':'pct','tax_rate_pct':'pct','dividend_payout_pct':'pct',
-        'net_interest_margin_pct':'pct','gross_npa_pct':'pct','net_npa_pct':'pct',
-        # financials — ratio
-        'cash_conversion_ratio':'ratio',
-        # ratios — days
-        'debtor_days':'days','inventory_days':'days','days_payable':'days',
-        'cash_conversion_cycle':'days','working_capital_days':'days',
-        # ratios — pct
-        'roce_pct':'pct','roe_pct':'pct','net_margin_pct':'pct',
-        'gross_margin_pct':'pct','ebitda_margin_pct':'pct','operating_margin_pct':'pct',
-        'roa_pct':'pct','insider_holding_pct':'pct','institutional_holding_pct':'pct',
-        # ratios — frac
-        'earnings_growth_yoy':'frac','earnings_growth_qoq':'frac',
-        'index_52w_change':'frac',
-        # ratios — ratio
-        'debt_to_equity_ratio':'ratio','current_ratio':'ratio','quick_ratio':'ratio',
-        # valuation — shares/eps history
-        'basic_eps_history':'INR','diluted_eps_history':'INR',
-        'basic_shares_history':'int','diluted_shares_history':'int',
-        'shares_outstanding_history':'int',
-        # company_details
-        'employee_count':'int','floating_shares':'int','implied_shares':'int',
-        'shares_outstanding':'int','government':'pct','others':'pct',
-        'promoters':'pct','fiis':'pct','diis':'pct','public':'pct',
-        'face_value':'INR',
-        'last_fiscal_year_end':'epoch','next_fiscal_year_end':'epoch',
-        'most_recent_quarter':'epoch',
-        # price
-        'high':'INR','low':'INR','beta':'ratio',
-        'all_time_high':'INR','all_time_low':'INR',
-        'ask':'INR','bid':'INR','ask_size':'int','bid_size':'int',
-        'avg_volume':'int','avg_volume_10d':'int','avg_volume_3mo':'int',
-        'market_volume':'int','week52_high_diff':'INR','week52_low_diff':'INR',
-        'enterprise_value':'INR_abs','ebitda':'INR_abs','total_debt':'INR_abs',
-        'market_cap':'INR_abs','basic_market_cap':'INR_abs',
-        # valuation — ratio
-        'pe_ttm':'ratio','pe_forward':'ratio','peg':'ratio','peg_ttm':'ratio',
-        'price_to_book':'ratio','price_to_sales':'ratio','pe_current_year':'ratio',
-        'ev_to_revenue':'ratio','ev_to_ebitda':'ratio',
-        # valuation — INR
-        'eps_ttm':'INR','eps_forward':'INR','eps_current_year':'INR',
-        # price — INR
-        'price':'INR','change':'INR','prev_close':'INR','week52_high':'INR',
-        'week52_low':'INR','close_price':'INR','market_price':'INR',
-        'day_high':'INR','day_low':'INR','day_open':'INR','price_change':'INR',
-        'ma_50d':'INR','ma_200d':'INR','ma_50d_diff':'INR','ma_200d_diff':'INR',
-        'target_high':'INR','target_low':'INR','target_mean':'INR','target_median':'INR',
-        # price — pct
-        'change_pct':'pct','price_change_pct':'pct',
-        'ma_50d_diff_pct':'pct','ma_200d_diff_pct':'pct',
-        'week52_high_diff_pct':'pct','week52_low_diff_pct':'pct',
-        # price — int
-        'day_volume':'int','market_volume':'int',
-        # websignals
-        'analyst_rating_score':'float 1-5','analyst_count':'int',
-        'governance_audit_risk':'int 1-10','governance_board_risk':'int 1-10',
-        'governance_comp_risk':'int 1-10','governance_rights_risk':'int 1-10',
-        'governance_overall_risk':'int 1-10',
-        'next_earnings_date':'epoch','earnings_date_start':'epoch',
-        'earnings_date_end':'epoch','earnings_call_start':'epoch',
-        'earnings_call_end':'epoch','listing_date_ms':'epoch',
-        'officer_compensation_date':'epoch',
-    }
-
-    def infer_unit(leaf: str, full_path: str, sample_val) -> str:
-        # For nested paths (e.g. Borrowings.consolidated.annual),
-        # look up by root field name first, then leaf key
-        root = full_path.split('.')[0]
-        for key in (root, leaf):
-            if key in UNIT_MAP:
-                return UNIT_MAP[key]
-        if leaf.endswith('_pct') or root.endswith('_pct'):
-            return 'pct'
-        if leaf.endswith('_ms') or 'timestamp' in leaf:
-            return 'epoch'
-        if isinstance(sample_val, float) and sample_val and 0 < abs(sample_val) < 1:
-            return 'frac'
-        return 'str'
-
-    buckets = ['company_details','financials','ratios','valuation','price','websignals','derived_metrics']
-    schema = {}
-    tickers = [k for k in output if k != '_metadata']
-    if not tickers:
-        return schema
-
-    for bucket in buckets:
-        paths: dict = {}
-
-        def recurse(obj, prefix, depth):
-            if not isinstance(obj, dict) or depth > 5:
-                return
-            for k, v in obj.items():
-                full = f'{prefix}.{k}' if prefix else k
-                if isinstance(v, dict):
-                    sample_keys = [sk for sk in list(v.keys())[:3] if isinstance(sk, str)]
-                    if sample_keys and all(len(sk) == 10 and '-' in sk for sk in sample_keys):
-                        sample_v = list(v.values())[0] if v else None
-                        paths[full + '.{YYYY-MM-DD}'] = infer_unit(k, full, sample_v)
-                    else:
-                        recurse(v, full, depth + 1)
-                elif isinstance(v, list):
-                    if v and isinstance(v[0], dict) and 'Date' in v[0]:
-                        paths[full + '[]'] = 'bars | {Date,Open,High,Low,Close,Volume}'
-                    else:
-                        paths[full + '[]'] = '[]'
-                else:
-                    paths[full] = infer_unit(k, full, v)
-
-        for t in tickers:
-            recurse(output[t].get(bucket, {}), '', 0)
-
-        schema[bucket] = dict(sorted(paths.items()))
-
-    return schema
 
 
 if __name__ == "__main__":
