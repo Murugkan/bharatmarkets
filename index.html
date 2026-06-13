@@ -356,7 +356,6 @@
     </a>
     <a href="data.html" class="nav-btn"><span class="nav-label">Data</span></a>
     <a href="analysis.html" class="nav-btn"><span class="nav-label">Analysis</span></a>
-    <a href="#" class="nav-btn" onclick="showDebugAlert(); return false;"><span class="nav-label">Debug</span></a>
 </footer>
 
 <script>
@@ -1446,109 +1445,6 @@ window.addEventListener('pageshow', function(event) {
         });
     }
 });
-
-// Simple debug alert for iPhone
-function showDebugAlert() {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onsuccess = (e) => {
-        const db = e.target.result;
-        let m = '🐛 PORTFOLIO DEBUG\n\n';
-        m += `DB Name: ${db.name}\n`;
-        m += `DB Version (actual): ${db.version}\n`;
-        m += `Store Name (looking for): ${STORE_NAME}\n`;
-        m += `Available stores: ${Array.from(db.objectStoreNames).join(', ')}\n\n`;
-        
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-            m += '❌ Store does not exist!\n';
-            alert(m);
-            return;
-        }
-        
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const getAllReq = tx.objectStore(STORE_NAME).getAll();
-        
-        getAllReq.onsuccess = (e) => {
-            const stocks = e.target.result;
-            m += `📊 Total Records in DB: ${stocks.length}\n\n`;
-            
-            if (stocks.length === 0) {
-                m += '⚠️ Store is EMPTY!\n';
-                m += 'Data not saved to DB.';
-                alert(m);
-                return;
-            }
-            
-            const s = stocks[0];
-            m += `✅ First Record: ${s.ticker}\n`;
-            m += `Record fields: ${Object.keys(s).length}\n\n`;
-            
-            // Test resolve
-            m += '=== RESOLVE TEST (first stock) ===\n';
-            const testFields = ['TICKER', 'NAME', 'SECTOR', 'LTP', 'PE', 'QTY', 'AVG'];
-            testFields.forEach(f => {
-                const val = resolve(s, f);
-                m += `${f.padEnd(8)}: ${String(val).substring(0, 20)}\n`;
-            });
-            
-            m += '\n=== MASTER ARRAY ===\n';
-            m += `MASTER.length: ${MASTER.length}\n`;
-            
-            if (MASTER.length === 0) {
-                m += '❌ MASTER is EMPTY!\n';
-                m += 'Data loaded from DB but MASTER not populated';
-                alert(m);
-                return;
-            }
-            
-            m += `First stock: ${MASTER[0].ticker}\n\n`;
-            
-            m += '=== FILTER & RENDER TEST ===\n';
-            m += `viewMode: ${viewMode}\n`;
-            m += `filter (sector): ${filter || 'none'}\n`;
-            m += `searchQuery: ${searchQuery || 'none'}\n`;
-            m += `categoryFilter: ${categoryFilter || 'all'}\n\n`;
-            
-            const filtered = applyFilters(MASTER);
-            m += `After applyFilters: ${filtered.length} stocks\n`;
-            
-            if (filtered.length === 0) {
-                m += '❌ ALL FILTERED OUT!\n';
-                m += 'Check viewMode, sector filter, search query\n\n';
-            } else {
-                m += `✅ ${filtered.length} stocks passed filters\n\n`;
-                
-                m += '=== TABLE BUILD TEST ===\n';
-                const sorted = sortStocks(filtered);
-                const header = buildTableHeader();
-                const rows = buildTableRows(sorted);
-                const footer = buildTableFooter({sumPnl: 0, sumInv: 0, sum1dGain: 0});
-                const html = header + rows + footer;
-                
-                m += `Header bytes: ${header.length}\n`;
-                m += `Rows HTML bytes: ${rows.length}\n`;
-                m += `Footer bytes: ${footer.length}\n`;
-                m += `Total HTML: ${html.length}\n`;
-                
-                if (html.length < 500) {
-                    m += '\n❌ HTML TOO SHORT\n';
-                } else {
-                    m += '\n✅ HTML looks good\n';
-                }
-            }
-            
-            alert(m);
-        };
-        
-        getAllReq.onerror = (e) => {
-            m += '❌ Error reading store: ' + getAllReq.error;
-            alert(m);
-        };
-    };
-    
-    req.onerror = () => {
-        alert(`❌ Cannot open DB!\nDB: ${DB_NAME}\nVersion: ${DB_VERSION}`);
-    };
-}
 
 
 // ============================================================
