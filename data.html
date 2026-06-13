@@ -1131,7 +1131,7 @@
     }
 
     function generateGuidancePrompt(ticker) {
-        var stock = masterData.find(s => s.ticker === ticker);
+        var stock = symbolsData.find(s => s.ticker === ticker) || masterData.find(s => s.ticker === ticker);
         if (!stock) {
             showToast('❌ Stock not found');
             return;
@@ -1289,14 +1289,18 @@ CRITICAL RULES:
     }
     
     function generateInsightsPrompt(ticker) {
-        var stock = masterData.find(s => s.ticker === ticker);
+        var stock = symbolsData.find(s => s.ticker === ticker) || masterData.find(s => s.ticker === ticker);
         if (!stock) {
             showToast('❌ Stock not found');
             return;
         }
         
         var name = stock.name || ticker;
-        var sector = (stock.company_details && stock.company_details.sector) || 'N/A';
+        // sector may only be present in masterData (IndexedDB-enriched); fall back if symbolsData entry lacks it
+        var masterStock = masterData.find(s => s.ticker === ticker);
+        var sector = (stock.company_details && stock.company_details.sector)
+            || (masterStock && masterStock.company_details && masterStock.company_details.sector)
+            || 'N/A';
         
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
