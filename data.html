@@ -1829,6 +1829,11 @@ CRITICAL RULES:
         try {
             var parsed = JSON.parse(jsonText);
 
+            // Verify the pasted JSON's ticker matches the stock this modal was opened for
+            if (parsed.ticker && String(parsed.ticker).toUpperCase() !== ticker.toUpperCase()) {
+                throw new Error(`Ticker mismatch: pasted JSON is for "${parsed.ticker}", expected "${ticker}"`);
+            }
+
             if (parsed.guidance) {
                 newGuidance = parsed.guidance;
             } else if (parsed[ticker.toUpperCase()]) {
@@ -1924,6 +1929,11 @@ CRITICAL RULES:
         var newInsights = {};
         try {
             var parsed = JSON.parse(jsonText);
+
+            // Verify the pasted JSON's ticker matches the stock this modal was opened for
+            if (parsed.ticker && String(parsed.ticker).toUpperCase() !== ticker.toUpperCase()) {
+                throw new Error(`Ticker mismatch: pasted JSON is for "${parsed.ticker}", expected "${ticker}"`);
+            }
 
             if (parsed.insights) {
                 newInsights = parsed.insights;
