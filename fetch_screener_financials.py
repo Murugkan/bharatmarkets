@@ -654,6 +654,13 @@ class ScreenerFinancialsScraper:
                     'duration_seconds': round(duration, 2),
                     'success_rate': f"{(len(self.scraped_data) / max(self.stats['total'], 1) * 100):.1f}%"
                 },
+                # Alias for consistency with other pipeline outputs
+                # (generated_at/count), used by the data status page.
+                '_metadata': {
+                    'generated_at': datetime.now().isoformat(),
+                    'count': len(self.scraped_data),
+                    'runtime_seconds': round(duration, 2)
+                },
                 'failed_symbols': self.failed_symbols,
                 'data': self.scraped_data
             }
