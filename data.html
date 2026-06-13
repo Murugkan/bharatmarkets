@@ -81,8 +81,8 @@
 
         /* CONTENT AREA */
         .content {
-            height: calc(100vh - 160px);
-            height: calc(100dvh - 160px);
+            height: calc(100vh - 110px);
+            height: calc(100dvh - 110px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 8px;
@@ -393,7 +393,7 @@
         <div style="display:flex; flex-wrap:nowrap; gap:6px; margin-bottom:10px; align-items:center; overflow-x:auto;">
             <button onclick="toggleEditMode()" style="padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">🔧 Edit: OFF</button>
             <button onclick="downloadCSV()" style="background: var(--gr); padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">📊 CSV</button>
-            <button onclick="saveChanges()" class="btn-success" style="padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">💾 Save</button>
+            <button id="save-holdings-btn" onclick="saveChanges()" class="btn-success" style="padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">💾 Save (<span id="save-count">0</span>)</button>
             <button id="publish-guidance-btn" onclick="publishGuidanceInsights()" style="background:#ffaa00; color:#000; font-weight:700; padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">📤 Pub (<span id="publish-count">0</span>)</button>
             <input id="tickerSearch" type="text" placeholder="GO" maxlength="10" oninput="filterAndScrollTicker(this.value)" style="width:3.5em; min-width:3.5em; flex-shrink:0; padding:6px 4px; font-size:11px; text-align:center; text-transform:uppercase; background:#111; color:#0ff; border:1px solid #333; border-radius:4px; font-family:'JetBrains Mono', monospace;">
         </div>
@@ -471,6 +471,7 @@
     let concallTimestamps = {}; // Separate timestamp for concall
     let insightsTimestamps = {}; // Separate timestamp for insights
     let editMode = false;
+    let pendingHoldingsChanges = new Set(); // tickers with locally-edited holdings, not yet saved
     let sortColumn = 'serial'; // 'ticker' | 'serial' | 'concallDate' | 'insightsDate'
     let sortDirection = 'asc'; // 'asc' | 'desc'
     let pendingGuidanceChanges = {}; // ticker -> newGuidance object, staged until Publish
@@ -931,9 +932,11 @@
             guidanceFileData = results[1] || {};
             pendingGuidanceChanges = {};
             pendingInsightsChanges = {};
+            pendingHoldingsChanges.clear();
             log('✅ Loaded ' + symbolsData.length + ' symbols + guidance');
             renderSymbols();
             updatePublishButton();
+            updateSaveButton();
         })
         .catch(function(e) {
             log('❌ Could not load stock list: ' + e.message);
@@ -2214,6 +2217,11 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         // 1. Remove from in-memory
         symbolsData = symbolsData.filter(function(s) { return s.ticker !== ticker; });
         delete guidanceFileData[ticker];
+        pendingHoldingsChanges.delete(ticker);
+        pendingGuidanceChanges[ticker] && delete pendingGuidanceChanges[ticker];
+        pendingInsightsChanges[ticker] && delete pendingInsightsChanges[ticker];
+        updateSaveButton();
+        updatePublishButton();
         renderSymbols();
 
         // 2. Remove from unified-symbols.json on GitHub (use symbolsData already filtered)
@@ -2282,6 +2290,10 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     }
 
     function saveChanges() {
+        if (pendingHoldingsChanges.size === 0) {
+            showToast('Nothing to save');
+            return;
+        }
         var pat = document.getElementById('patToken').value;
         if (!pat) {
             showToast('❌ PAT required to save');
@@ -2334,8 +2346,10 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 if (r.ok) {
                     log('✅ unified-symbols.json saved');
                     editMode = false;
+                    pendingHoldingsChanges.clear();
                     document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit: OFF';
                     renderSymbols();
+                    updateSaveButton();
                     showToast('✅ Holdings saved to GitHub!');
                 } else {
                     r.json().then(function(e) { log('❌ Save failed: ' + (e.message || r.status)); });
@@ -5071,10 +5085,22 @@ function closeImportModal() {
         if (stock) {
             stock.holdings = window._hEdit.filter(function(h){ return h.demat || h.qty > 0; });
         }
+        pendingHoldingsChanges.add(ticker);
         var m = document.getElementById('holdings-modal');
         if (m) m.remove();
         renderSymbols();
-        showToast('Holdings updated — tap SAVE HOLDINGS to persist');
+        updateSaveButton();
+        showToast('Holdings updated — tap SAVE to persist');
+    }
+
+    // Update the count and enabled/disabled state of the "Save" (holdings) button.
+    function updateSaveButton() {
+        const btn = document.getElementById('save-holdings-btn');
+        if (!btn) return;
+        const count = pendingHoldingsChanges.size;
+        document.getElementById('save-count').textContent = count;
+        btn.disabled = count === 0;
+        btn.style.opacity = count === 0 ? '0.4' : '1';
     }
 
 </script>
