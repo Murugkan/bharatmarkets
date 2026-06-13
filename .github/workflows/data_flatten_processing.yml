@@ -67,7 +67,7 @@ jobs:
           git config user.email "pipeline@bharatmarkets.dev"
           git config user.name "BharatMarkets Pipeline"
 
-      - name: Commit flattened data
+      - name: Commit flattened data (retry on concurrent updates)
         run: |
           # Check if files exist before committing
           if [ -f data/market_data_raw.json ]; then
@@ -87,10 +87,28 @@ jobs:
           # Only commit if there are staged changes
           if git diff --cached --quiet; then
             echo "No changes to commit"
-          else
-            git commit -m "Data: Flatten raw market data $(date +'%Y-%m-%d %H:%M:%S')"
-            git push origin HEAD:main || true
+            exit 0
           fi
+
+          git commit -m "Data: Flatten raw market data $(date +'%Y-%m-%d %H:%M:%S')"
+
+          max_attempts=5
+          attempt=1
+          until git push origin HEAD:main; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Push failed after $max_attempts attempts"
+              exit 1
+            fi
+            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 1))
+            git fetch origin main
+            git stash --include-untracked
+            git rebase origin/main
+            git stash pop || true
+          done
+
+          echo "Push succeeded on attempt $attempt"
 
   process-data:
     name: "Generate market_data.json"
@@ -127,7 +145,7 @@ jobs:
           git config user.email "pipeline@bharatmarkets.dev"
           git config user.name "BharatMarkets Pipeline"
 
-      - name: Commit processed data
+      - name: Commit processed data (retry on concurrent updates)
         run: |
           # Check if files exist before committing
           if [ -f data/market_data.json ]; then
@@ -144,7 +162,28 @@ jobs:
           else
             echo "⚠ market_data.log not found"
           fi
-          
-          # Commit and push
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
           git commit -m "Data: Generate market_data.json with buckets + derived metrics $(date +'%Y-%m-%d %H:%M:%S')"
-          git push origin HEAD:main || true
+
+          max_attempts=5
+          attempt=1
+          until git push origin HEAD:main; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Push failed after $max_attempts attempts"
+              exit 1
+            fi
+            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 1))
+            git fetch origin main
+            git stash --include-untracked
+            git rebase origin/main
+            git stash pop || true
+          done
+
+          echo "Push succeeded on attempt $attempt"
