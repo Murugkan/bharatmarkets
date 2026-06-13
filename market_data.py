@@ -100,6 +100,7 @@ FIELD_MAP = {
         "sector":   ("company_details",   "sector"),
         "industry": ("company_details",   "industry"),
         "type":     ("company_details",   "type"),
+        "instrument_type": ("company_details", "instrument_type"),
         "source":   ("company_details",   "data_source"),
         # holdings is handled separately via portfolio_map (see main()) and
         # written to company_details.holdings — skip here to avoid _unmapped.
@@ -3156,6 +3157,7 @@ def main():
     # Load sector from unified-symbols.json — authoritative sector source
     sector_map = {}
     portfolio_map = {}
+    isin_to_ticker = {}  # for matching mf_nav.json (AMFI) entries by ISIN
     unified_updated_at = None
     unified_file = DATA_DIR / 'unified-symbols.json'
     if unified_file.exists():
@@ -3224,6 +3226,9 @@ def main():
                 'data_source': entry.get('source'),
                 'holdings': holdings if holdings else None,
             }
+            isin = entry.get('isin')
+            if isin:
+                isin_to_ticker[isin.strip().upper()] = ticker
         logger.info(f"  ✓ Loaded portfolio holdings ({len(portfolio_map)} tickers)")
     
     # Load guidance data
@@ -3233,6 +3238,20 @@ def main():
         with open(guidance_file) as f:
             guidance_data = json.load(f)
         logger.info(f"  ✓ Loaded guidance.json ({len(guidance_data)} tickers)")
+
+    # Load mutual fund NAV data (AMFI), matched to tickers via ISIN
+    mf_nav_file = DATA_DIR / 'mf_nav.json'
+    mf_nav_by_ticker = {}
+    if mf_nav_file.exists():
+        with open(mf_nav_file) as f:
+            mf_nav_data = json.load(f)
+        for isin, nav_entry in mf_nav_data.items():
+            if isin == '_metadata':
+                continue
+            ticker = isin_to_ticker.get(isin.strip().upper())
+            if ticker:
+                mf_nav_by_ticker[ticker] = nav_entry
+        logger.info(f"  ✓ Loaded mf_nav.json ({len(mf_nav_by_ticker)} tickers matched)")
 
     output  = {}
     symbols = [k for k in raw.keys() if k != '_metadata']  # Skip _metadata
@@ -3285,6 +3304,16 @@ def main():
             cd['data_source'] = pf['data_source']
             cd['holdings'] = pf['holdings']
 
+        # Inject mutual fund NAV (from AMFI, matched via ISIN) as the
+        # "live to" price for MF/SGB holdings — these have no Yahoo/Screener data.
+        nav = mf_nav_by_ticker.get(symbol)
+        if nav:
+            price = bucketed.setdefault('price', {})
+            price['nav'] = nav.get('nav')
+            price['nav_date'] = nav.get('date')
+            price['nav_scheme_name'] = nav.get('scheme_name')
+            price['nav_source'] = 'AMFI'
+
         # Report any unmapped fields for visibility
         u = bucketed.get("_unmapped", {})
         if u:
@@ -3335,6 +3364,9 @@ def main():
                         len([s for s in symbols if isinstance(guidance_data.get(s), dict) and "insights" in guidance_data.get(s, {})])
                     ),
                     "total_tickers": guidance_meta.get("total_tickers", len([k for k in guidance_data if k != "_metadata"])),
+                },
+                "mutual_funds": {
+                    "tickers_with_nav": len(mf_nav_by_ticker),
                 },
             },
         }
