@@ -388,15 +388,12 @@
 
     <!-- TAB 2: SYMBOLS EDITOR -->
     <div id="symbols" class="tab-content">
-        <div style="margin-bottom:10px;">
-            <button onclick="toggleEditMode()">🔧 Edit Mode: OFF</button>
-            <button onclick="downloadCSV()" style="background: var(--gr);">📊 Export CSV</button>
-        </div>
-        <div id="save-section" style="display:none; margin-bottom:12px;">
-            <button onclick="saveChanges()" class="btn-success">💾 SAVE HOLDINGS</button>
-        </div>
-        <div id="publish-guidance-section" style="display:none; margin-bottom:12px;">
-            <button id="publish-guidance-btn" onclick="publishGuidanceInsights()" style="background:#ffaa00; color:#000; font-weight:700;">📤 Publish Concall/Insights (<span id="publish-count">0</span>)</button>
+        <div style="display:flex; flex-wrap:nowrap; gap:6px; margin-bottom:10px; align-items:center; overflow-x:auto;">
+            <button onclick="toggleEditMode()" style="padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">🔧 Edit: OFF</button>
+            <button onclick="downloadCSV()" style="background: var(--gr); padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">📊 CSV</button>
+            <button onclick="saveChanges()" class="btn-success" style="padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">💾 Save</button>
+            <button id="publish-guidance-btn" onclick="publishGuidanceInsights()" style="background:#ffaa00; color:#000; font-weight:700; padding:6px 8px; font-size:9px; white-space:nowrap; flex-shrink:0;">📤 Pub (<span id="publish-count">0</span>)</button>
+            <input id="tickerSearch" type="text" placeholder="GO" maxlength="10" oninput="filterAndScrollTicker(this.value)" style="width:3.5em; min-width:3.5em; flex-shrink:0; padding:6px 4px; font-size:11px; text-align:center; text-transform:uppercase; background:#111; color:#0ff; border:1px solid #333; border-radius:4px; font-family:'JetBrains Mono', monospace;">
         </div>
         <div class="table-container">
             <table>
@@ -942,6 +939,23 @@
         });
     }
 
+    // Filters visible rows by ticker substring match (case-insensitive) and
+    // scrolls the first match into view. Empty input shows all rows again.
+    function filterAndScrollTicker(query) {
+        query = (query || '').trim().toUpperCase();
+        const rows = document.querySelectorAll('#symbols-table tr[id^="row-"]');
+        let firstMatch = null;
+        rows.forEach(function(row) {
+            const ticker = row.id.replace('row-', '').toUpperCase();
+            const matches = query === '' || ticker.includes(query);
+            row.style.display = matches ? '' : 'none';
+            if (matches && !firstMatch) firstMatch = row;
+        });
+        if (query !== '' && firstMatch) {
+            firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
     function setSort(column) {
         if (sortColumn === column) {
             sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
@@ -1070,6 +1084,8 @@
         }
 
         document.getElementById('symbols-table').innerHTML = html;
+        const searchInput = document.getElementById('tickerSearch');
+        if (searchInput && searchInput.value) filterAndScrollTicker(searchInput.value);
     }
     
     function convertToIST(isoString) {
@@ -1966,20 +1982,19 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
     function toggleEditMode() {
         editMode = !editMode;
-        event.target.textContent = '🔧 Edit Mode: ' + (editMode ? 'ON' : 'OFF');
-        document.getElementById('save-section').style.display = editMode ? 'block' : 'none';
+        event.target.textContent = '🔧 Edit: ' + (editMode ? 'ON' : 'OFF');
         renderSymbols(); // re-render to show/hide edit buttons in holdings cell
     }
 
-    // Show/hide and update the count on the "Publish Concall/Insights" button.
-    // Independent of editMode — visible whenever there are unpublished changes,
-    // so publishing doesn't require being in (or exiting) Edit Mode.
+    // Update the count and enabled/disabled state of the "Publish" button.
+    // Independent of editMode — usable whenever there are unpublished changes.
     function updatePublishButton() {
-        const section = document.getElementById('publish-guidance-section');
-        if (!section) return;
+        const btn = document.getElementById('publish-guidance-btn');
+        if (!btn) return;
         const count = Object.keys(pendingGuidanceChanges).length + Object.keys(pendingInsightsChanges).length;
         document.getElementById('publish-count').textContent = count;
-        section.style.display = count > 0 ? 'block' : 'none';
+        btn.disabled = count === 0;
+        btn.style.opacity = count === 0 ? '0.4' : '1';
     }
 
     // Publishes all staged concall (guidance) and insights edits to guidance.json
@@ -2070,30 +2085,83 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
             let jsonString = JSON.stringify(content, null, 2);
             jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
-            const encodedContent = utf8ToBase64(jsonString);
 
-            const body = {
-                message: `Publish concall/insights updates (${guidanceTickers.length + insightsTickers.length} tickers)`,
-                content: encodedContent,
-                branch: GITHUB_CONFIG.BRANCH
+            const commitMessage = `Publish concall/insights updates (${guidanceTickers.length + insightsTickers.length} tickers)`;
+            const apiBase = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}`;
+            const ghHeaders = {
+                'Authorization': `token ${pat}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.github.v3+json'
             };
-            if (sha) body.sha = sha; // sha-validated write: GitHub 409s if file changed since GET
 
-            return fetch(`https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/contents/${GITHUB_CONFIG.PATHS.guidance}`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            });
+            // guidance.json can exceed 1MB, which the Contents API PUT rejects.
+            // Use the Git Data API instead: create a blob (no size limit issue
+            // here), point a new tree entry at it, create a commit on top of the
+            // current branch head, then fast-forward the branch ref to it.
+            // sha-validation equivalent: we read the branch ref tip just before
+            // writing and use it as the commit parent; if someone else pushed in
+            // between, updateRef below uses force:false so it will fail loudly
+            // instead of silently overwriting concurrent changes.
+            return fetch(`${apiBase}/git/refs/heads/${GITHUB_CONFIG.BRANCH}`, { cache: 'no-store', headers: ghHeaders })
+                .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status} getting branch ref`))
+                .then(refData => {
+                    const parentCommitSha = refData.object.sha;
+                    return fetch(`${apiBase}/git/commits/${parentCommitSha}`, { cache: 'no-store', headers: ghHeaders })
+                        .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status} getting parent commit`))
+                        .then(commitData => ({ parentCommitSha, baseTreeSha: commitData.tree.sha }));
+                })
+                .then(({ parentCommitSha, baseTreeSha }) => {
+                    // 1. Create blob with the new file content
+                    return fetch(`${apiBase}/git/blobs`, {
+                        method: 'POST',
+                        headers: ghHeaders,
+                        body: JSON.stringify({ content: utf8ToBase64(jsonString), encoding: 'base64' })
+                    })
+                    .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.message || `HTTP ${r.status} creating blob`)))
+                    .then(blobData => ({ parentCommitSha, baseTreeSha, blobSha: blobData.sha }));
+                })
+                .then(({ parentCommitSha, baseTreeSha, blobSha }) => {
+                    // 2. Create a new tree with guidance.json pointing at the new blob
+                    return fetch(`${apiBase}/git/trees`, {
+                        method: 'POST',
+                        headers: ghHeaders,
+                        body: JSON.stringify({
+                            base_tree: baseTreeSha,
+                            tree: [{ path: GITHUB_CONFIG.PATHS.guidance, mode: '100644', type: 'blob', sha: blobSha }]
+                        })
+                    })
+                    .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.message || `HTTP ${r.status} creating tree`)))
+                    .then(treeData => ({ parentCommitSha, newTreeSha: treeData.sha }));
+                })
+                .then(({ parentCommitSha, newTreeSha }) => {
+                    // 3. Create a commit with the new tree
+                    return fetch(`${apiBase}/git/commits`, {
+                        method: 'POST',
+                        headers: ghHeaders,
+                        body: JSON.stringify({
+                            message: commitMessage,
+                            tree: newTreeSha,
+                            parents: [parentCommitSha]
+                        })
+                    })
+                    .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.message || `HTTP ${r.status} creating commit`)));
+                })
+                .then(newCommit => {
+                    // 4. Fast-forward the branch ref to the new commit (force:false
+                    //    fails with 422/409-like error if branch moved concurrently)
+                    return fetch(`${apiBase}/git/refs/heads/${GITHUB_CONFIG.BRANCH}`, {
+                        method: 'PATCH',
+                        headers: ghHeaders,
+                        body: JSON.stringify({ sha: newCommit.sha, force: false })
+                    });
+                });
         })
         .then(r => {
             if (r === null) return; // aborted earlier
             if (!r.ok) {
                 return r.json().then(e => {
-                    if (r.status === 409) {
-                        throw new Error('File changed on GitHub since load (409) — reload and retry');
+                    if (r.status === 422) {
+                        throw new Error('Branch changed on GitHub since load — reload and retry');
                     }
                     throw new Error(e.message || `HTTP ${r.status}`);
                 });
@@ -2247,8 +2315,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 if (r.ok) {
                     log('✅ unified-symbols.json saved');
                     editMode = false;
-                    document.getElementById('save-section').style.display = 'none';
-                    document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
+                    document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit: OFF';
                     renderSymbols();
                     showToast('✅ Holdings saved to GitHub!');
                 } else {
