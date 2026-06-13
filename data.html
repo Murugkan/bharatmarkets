@@ -403,7 +403,7 @@
                 <thead>
                     <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
                         <th class="sticky" onclick="setSort('ticker')" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left; cursor:pointer;">TICKER<span id="sort-ticker"></span></th>
-                        <th style="color:#cc88ff; font-weight:700; padding:10px 4px; text-align:left; min-width:160px;">HOLDINGS</th>
+                        <th onclick="setSort('holdings')" style="color:#cc88ff; font-weight:700; padding:10px 4px; text-align:left; min-width:160px; cursor:pointer;">HOLDINGS<span id="sort-holdings"></span></th>
                         <th onclick="setSort('serial')" style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px; cursor:pointer;">S.NO<span id="sort-serial"></span></th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
                         <th onclick="setSort('concallDate')" style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px; cursor:pointer;">CONCALL DATE<span id="sort-concallDate"></span></th>
@@ -949,7 +949,7 @@
             sortColumn = column;
             sortDirection = 'asc';
         }
-        ['ticker','serial','concallDate','insightsDate'].forEach(function(col) {
+        ['ticker','holdings','serial','concallDate','insightsDate'].forEach(function(col) {
             var el = document.getElementById('sort-' + col);
             if (el) el.textContent = (col === sortColumn) ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
         });
@@ -966,10 +966,13 @@
             var indexedData = symbolsData.map(function(stock, index) {
                 var ticker = stock.ticker || '—';
                 var gEntry = guidanceFileData[ticker] || {};
+                var holdings = stock.holdings || [];
+                var totalQty = holdings.reduce((s,h) => s + (parseFloat(h.qty)||0), 0);
                 return {
                     stock: stock,
                     origIndex: index,
                     ticker: ticker,
+                    totalQty: totalQty,
                     concallDate: (gEntry.guidance && gEntry.guidance.date) ? gEntry.guidance.date : '',
                     insightsDate: (gEntry.insights && gEntry.insights.date) ? gEntry.insights.date : ''
                 };
@@ -979,6 +982,7 @@
             indexedData.sort(function(a, b) {
                 var av, bv;
                 if (sortColumn === 'ticker') { av = a.ticker; bv = b.ticker; }
+                else if (sortColumn === 'holdings') { av = a.totalQty; bv = b.totalQty; }
                 else if (sortColumn === 'concallDate') { av = a.concallDate; bv = b.concallDate; }
                 else if (sortColumn === 'insightsDate') { av = a.insightsDate; bv = b.insightsDate; }
                 else { av = a.origIndex; bv = b.origIndex; } // 'serial'
@@ -2053,6 +2057,16 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 if (!content[ticker]) content[ticker] = {};
                 content[ticker].insights = pendingInsightsChanges[ticker];
             });
+
+            // Update _metadata with current ticker counts
+            const tickerKeys = Object.keys(content).filter(k => k !== '_metadata');
+            const guidanceCount = tickerKeys.filter(k => content[k] && content[k].guidance).length;
+            const insightsCount = tickerKeys.filter(k => content[k] && content[k].insights).length;
+            if (!content._metadata) content._metadata = {};
+            content._metadata.total_tickers = tickerKeys.length;
+            content._metadata.tickers_with_guidance = guidanceCount;
+            content._metadata.tickers_with_insights = insightsCount;
+            content._metadata.updated_at = new Date().toISOString();
 
             let jsonString = JSON.stringify(content, null, 2);
             jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
