@@ -778,6 +778,56 @@
                 
                 db.close();
                 renderDataSourcesTable(html, metadata);
+
+                // Shared object for live-fetched fields; both async fetches below
+                // merge into this so neither overwrites the other's result.
+                const liveMetadata = Object.assign({}, metadata);
+
+                // Async: fetch market_data.json's live _metadata (E2E row's Fetch
+                // time should reflect the file on GitHub, not the DB snapshot).
+                // Re-render once available; cheap re-render, no DB write.
+                ghFetch('data/market_data.json')
+                    .then(r => r.json())
+                    .then(json => {
+                        const liveMeta = json._metadata || {};
+                        liveMetadata.market_data_live_generated_at = liveMeta.generated_at || null;
+                        liveMetadata.market_data_live_total_tickers = liveMeta.total_tickers ?? null;
+                        renderDataSourcesTable(html, liveMetadata);
+                    })
+                    .catch(() => { /* leave DB-only render in place */ });
+
+                // Async: fetch ltp.json's live `updated` (Web Delta Fetch row's
+                // Fetch time should reflect the file on GitHub, not the DB snapshot).
+                ghFetch('data/ltp.json')
+                    .then(r => r.json())
+                    .then(json => {
+                        liveMetadata.ltp_live_updated_at = json.updated || null;
+                        renderDataSourcesTable(html, liveMetadata);
+                    })
+                    .catch(() => { /* leave DB-only render in place */ });
+
+                // Async: fetch guidance.json live and count tickers whose
+                // guidance.date is older than 1 month (Refresh row count).
+                ghFetch('data/guidance.json')
+                    .then(r => r.json())
+                    .then(json => {
+                        var oneMonthAgo = new Date();
+                        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                        var total = 0, stale = 0;
+                        Object.keys(json).forEach(function(ticker) {
+                            if (ticker === '_metadata') return;
+                            var entry = json[ticker];
+                            var dateStr = entry && entry.guidance && entry.guidance.date;
+                            if (!dateStr) return;
+                            total++;
+                            var d = new Date(dateStr);
+                            if (!isNaN(d) && d < oneMonthAgo) stale++;
+                        });
+                        liveMetadata.guidance_live_total = total;
+                        liveMetadata.guidance_live_stale_count = stale;
+                        renderDataSourcesTable(html, liveMetadata);
+                    })
+                    .catch(() => { /* leave DB-only render in place */ });
             };
             
             getMetadataReq.onerror = function() {
@@ -806,6 +856,7 @@
 
     function renderDataSourcesTable(html, metadata) {
         var rowParts = {}; // keyed by source name -> row html
+        var deltaIsRed = false; // UI Delta Load status, used by the Refresh row
 
         DATA_SOURCES.forEach((s, index) => {
             // Get count from metadata
@@ -825,7 +876,7 @@
             if (s.name === 'market_data.json') {
                 jsonTime = metadata.market_data_generated_at || '—';
             } else if (s.name === 'ltp.json') {
-                jsonTime = metadata.ltp_updated_at || '—';
+                jsonTime = metadata.ltp_live_updated_at || '—';
             } else if (s.name === 'sector_indices.json') {
                 jsonTime = metadata.sector_indices_updated_at || '—';
             } else if (s.name === 'unified-symbols.json') {
@@ -840,6 +891,27 @@
                     istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
                 } catch(e) {
                     istTime = jsonTime;
+                }
+            }
+
+            // For market_data.json's Fetch time, color green/red based on whether
+            // the DB snapshot's generated_at matches the live file on GitHub.
+            var fetchColorStyle = '';
+            if (s.name === 'market_data.json' && metadata.market_data_live_generated_at) {
+                var matches = metadata.market_data_generated_at === metadata.market_data_live_generated_at;
+                fetchColorStyle = matches ? 'color:#00ff88;' : 'color:#ff4d6d;';
+            }
+            // For UI Delta Load (sector_indices.json) Fetch time, color green/red
+            // based on whether it matches Web Delta Fetch's timestamp, which is
+            // sourced from ltp.json directly (live fetch).
+            if (s.name === 'sector_indices.json') {
+                if (metadata.sector_indices_updated_at && metadata.ltp_live_updated_at) {
+                    var deltaMatches = metadata.sector_indices_updated_at === metadata.ltp_live_updated_at;
+                    fetchColorStyle = deltaMatches ? 'color:#00ff88;' : 'color:#ff4d6d;';
+                    deltaIsRed = !deltaMatches;
+                } else {
+                    fetchColorStyle = 'color:#ff4d6d;';
+                    deltaIsRed = true;
                 }
             }
 
@@ -861,45 +933,122 @@
             }
 
             var lastLoad = lastLoadKey ? getLastLoadIST(lastLoadKey) : '—';
+            // For market_data.json, "Load" = when IndexedDB was last (re)built,
+            // not when the button was clicked.
+            if (s.name === 'market_data.json') {
+                if (metadata.db_built_at) {
+                    try {
+                        lastLoad = new Date(metadata.db_built_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    } catch(e) {
+                        lastLoad = metadata.db_built_at;
+                    }
+                } else {
+                    lastLoad = '—';
+                }
+            }
+
+            var srcName = s.name === 'market_data.json' ? 'Builds local IndexedDB cache'
+                         : s.name === 'sector_indices.json' ? 'LTP + Indices'
+                         : s.name === 'ltp.json' ? 'LTP + Index'
+                         : s.name;
+
+            // For UI Delta Load (sector_indices.json row), show combined LTP/Indices
+            // counts and the merge timestamp instead of the file's own count/Load.
+            var displayCount = count;
+            if (s.name === 'sector_indices.json') {
+                displayCount = `${metadata.ltp_count ?? '—'} / ${metadata.sector_indices_count ?? '—'}`;
+                if (metadata.delta_merged_at) {
+                    try {
+                        lastLoad = new Date(metadata.delta_merged_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    } catch(e) {
+                        lastLoad = metadata.delta_merged_at;
+                    }
+                } else {
+                    lastLoad = '—';
+                }
+            } else if (s.name === 'ltp.json') {
+                displayCount = `${metadata.ltp_count ?? '—'} / ${metadata.sector_indices_count ?? '—'}`;
+            }
+
+            var loadRow = (index === 0 || s.name === 'ltp.json') ? '' : `<div class="last-load-cell"><b>Load:</b> ${lastLoad}</div>`;
 
             rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
                 ${actionBtn}
                 <div class="src-info">
-                    <div class="src-name">${s.name}</div>
-                    <div class="src-count count-cell">Count: ${count}</div>
+                    <div class="src-name">${srcName}</div>
+                    <div class="src-count count-cell">Count: ${displayCount}</div>
                 </div>
                 <div class="src-times">
-                    <div class="time-cell"><b>Fetch:</b> ${istTime}</div>
-                    <div class="last-load-cell"><b>Load:</b> ${lastLoad}</div>
+                    <div class="time-cell"><b>Fetch:</b> <span style="${fetchColorStyle}">${istTime}</span></div>
+                    ${loadRow}
                 </div>
             </div>`;
         });
+
+        // "Web E2E Load" — triggers .github/workflows/marketdata_e2e_pipeline.yml
+        // (full pipeline: raw fetch -> financials -> flatten -> bucket market_data.json)
+        // Fetch time/count = market_data.json's live _metadata, fetched directly
+        // from GitHub (not the DB snapshot) — see renderDataSources().
+        var e2eFetchTime = '—';
+        if (metadata.market_data_live_generated_at) {
+            try {
+                e2eFetchTime = new Date(metadata.market_data_live_generated_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+            } catch(e) {
+                e2eFetchTime = metadata.market_data_live_generated_at;
+            }
+        }
+
+        rowParts['e2e-pipeline'] = `<div class="source-row" data-source="e2e-pipeline">
+            <button class="src-btn" onclick="triggerE2EWorkflow()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚙️ Web E2E Load</button>
+            <div class="src-info">
+                <div class="src-name">marketdata_e2e_pipeline.yml</div>
+                <div class="src-count count-cell">Count: ${metadata.market_data_live_total_tickers ?? '—'}</div>
+            </div>
+            <div class="src-times">
+                <div class="time-cell"><b>Fetch:</b> ${e2eFetchTime}</div>
+            </div>
+        </div>`;
+
+        // E2E status: green if DB's market_data snapshot matches the live pipeline output
+        var e2eIsRed;
+        if (metadata.market_data_generated_at && metadata.market_data_live_generated_at) {
+            e2eIsRed = metadata.market_data_generated_at !== metadata.market_data_live_generated_at;
+        } else {
+            e2eIsRed = true;
+        }
+
+        // Refresh row's overall status = red if either Delta or E2E is red
+        var refreshIsRed = deltaIsRed || e2eIsRed;
+        var refreshColorStyle = refreshIsRed ? 'color:#ff4d6d;' : 'color:#00ff88;';
+
+        // DB build timestamp (always shown as Load, regardless of status)
+        var dbBuildTime = '—';
+        if (metadata.db_built_at) {
+            try {
+                dbBuildTime = new Date(metadata.db_built_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+            } catch(e) {
+                dbBuildTime = metadata.db_built_at;
+            }
+        }
+
+        // Guidance staleness: tickers whose guidance.date is older than 1 month,
+        // computed from guidance.json fetched live (see renderDataSources()).
+        var guidanceTotal = metadata.guidance_live_total ?? '—';
+        var guidanceStaleCount = metadata.guidance_live_stale_count;
+        var guidanceStaleHtml = (guidanceStaleCount != null)
+            ? `<span style="color:#ff4d6d;"> ${guidanceStaleCount}</span>`
+            : ' —';
 
         // Generic "Full Refresh All" row (= existing REFRESH button / reloadAuto())
         rowParts['refresh-all'] = `<div class="source-row" data-source="refresh-all">
             <button class="src-btn" onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🔄 Refresh</button>
             <div class="src-info">
-                <div class="src-name">Full Refresh (LTP + Sector Indices)</div>
-                <div class="src-count count-cell">DB: <span id="dbCountBox">0|0</span></div>
+                <div class="src-count count-cell">Tickers: ${metadata.market_data_count ?? '—'} # Guidance: ${guidanceTotal}${guidanceStaleHtml}</div>
             </div>
             <div class="src-times">
-                <div class="time-cell"><b>Fetch:</b> —</div>
-                <div class="last-load-cell"><b>Load:</b> ${getLastLoadIST('lastLoad_refresh')}</div>
+                <div class="last-load-cell" style="${refreshColorStyle}"><b>Load:</b> ${dbBuildTime}</div>
             </div>
-        </div>`;
-
-        // "Web E2E Load" — triggers .github/workflows/marketdata_e2e_pipeline.yml
-        // (full pipeline: raw fetch -> financials -> flatten -> bucket market_data.json)
-        rowParts['e2e-pipeline'] = `<div class="source-row" data-source="e2e-pipeline">
-            <button class="src-btn" onclick="triggerE2EWorkflow()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚙️ Web E2E Load</button>
-            <div class="src-info">
-                <div class="src-name">marketdata_e2e_pipeline.yml</div>
-                <div class="src-count count-cell">Full pipeline</div>
-            </div>
-            <div class="src-times">
-                <div class="time-cell"><b>Fetch:</b> —</div>
-                <div class="last-load-cell"><b>Load:</b> ${getLastLoadIST('lastLoad_e2e')}</div>
-            </div>
+            <button class="src-btn" onclick="forcePageReset()" style="background:#333; color:#ff4d6d; font-weight:800;">⛔ Reset</button>
         </div>`;
 
         // Order: Refresh, (Delta Load + Fetch), (Full Load + ETL dummy), Wizard
@@ -911,6 +1060,26 @@
         document.getElementById('sources-table').innerHTML = rows;
     }
 
+
+    // Stamps _METADATA_.delta_merged_at (= when LTP + sector_indices merge into
+    // the existing DB completed) and invokes the callback once written.
+    function stampDeltaMergedAt(callback) {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = (e) => {
+            const db = e.target.result;
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const metaGet = store.get('_METADATA_');
+            metaGet.onsuccess = () => {
+                const meta = metaGet.result || { ticker: '_METADATA_' };
+                meta.delta_merged_at = new Date().toISOString();
+                store.put(meta);
+            };
+            tx.oncomplete = () => { db.close(); callback(); };
+            tx.onerror = () => { db.close(); callback(); };
+        };
+        req.onerror = () => callback();
+    }
 
     function saveSectorIndicesToDB(data, onDone) {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -2619,8 +2788,11 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 
                 // Extract guidance count from metadata if available
                 const guidanceCount = json._metadata?.sources?.guidance?.tickers_with_guidance || 0;
-                
-                return saveMarketDataToDB(stocks_to_process, generatedAt, guidanceCount);
+
+                // Extract market_data.json's own ticker count (distinct from DB count)
+                const fileTickerCount = json._metadata?.total_tickers ?? null;
+
+                return saveMarketDataToDB(stocks_to_process, generatedAt, guidanceCount, fileTickerCount);
             })
             .then(() => {
                 logSuccess('market_data.json loaded');
@@ -2703,7 +2875,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             });
     }
     
-    function saveMarketDataToDB(stocks_to_process, generatedAt, guidanceCount) {
+    function saveMarketDataToDB(stocks_to_process, generatedAt, guidanceCount, fileTickerCount) {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
             
@@ -2741,6 +2913,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                         ticker: '_METADATA_',
                         market_data_generated_at: generatedAt || new Date().toISOString(),
                         market_data_count: savedCount,
+                        market_data_file_ticker_count: fileTickerCount,
+                        db_built_at: new Date().toISOString(),
                         tickers_with_guidance: guidanceCount || 0,
                         ltp_updated_at: null,
                         ltp_count: null,
@@ -2960,8 +3134,6 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     
     
     function triggerE2EWorkflow() {
-        localStorage.setItem('lastLoad_e2e', new Date().toISOString());
-        renderDataSources();
         logInfo('Triggering GitHub workflow: marketdata_e2e_pipeline.yml');
         log('⏳ Triggering Workflow');
 
@@ -3128,7 +3300,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
                         function afterLTPDone() {
                             log('✅ LIVE LOAD complete — reloading');
-                            doHardReload();
+                            stampDeltaMergedAt(doHardReload);
                         }
                     };
 
@@ -3197,6 +3369,23 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             });
     }
 
+    // Hard reset: delete IndexedDB entirely, clear caches/localStorage (except
+    // essentials), then reload. Use this when a DB load/transaction gets stuck.
+    function forcePageReset() {
+        if (!confirm('Reset page? This clears the local cache and reloads. Your PAT and saved logs are kept.')) return;
+
+        log('🔄 Force reset — deleting IndexedDB...');
+
+        const delReq = indexedDB.deleteDatabase(DB_NAME);
+        const finish = function() { doHardReload(); };
+        delReq.onsuccess = finish;
+        delReq.onerror = finish;
+        delReq.onblocked = function() {
+            log('⚠️ IndexedDB delete blocked — reloading anyway');
+            finish();
+        };
+    }
+
     function doHardReload() {
         // Clear SW caches
         if ('caches' in window) {
@@ -3222,7 +3411,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             const db = ev.target.result;
             if (!db.objectStoreNames.contains(STORE_NAME)) {
                 db.close();
-                document.getElementById('dbCountBox').textContent = stockCount + '|0';
+                var _dcb = document.getElementById('dbCountBox'); if (_dcb) _dcb.textContent = stockCount + '|0';
                 return;
             }
             
@@ -3242,7 +3431,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 }
                 
                 db.close();
-                document.getElementById('dbCountBox').textContent = stockCount + '|' + guidanceCount;
+                var _dcb2 = document.getElementById('dbCountBox'); if (_dcb2) _dcb2.textContent = stockCount + '|' + guidanceCount;
             };
             
             getMetadataReq.onerror = function() {
@@ -3251,7 +3440,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     stock.derived_metrics?.ai_insights_guidance?.guidance?.date
                 ).length;
                 db.close();
-                document.getElementById('dbCountBox').textContent = stockCount + '|' + guidanceCount;
+                var _dcb2 = document.getElementById('dbCountBox'); if (_dcb2) _dcb2.textContent = stockCount + '|' + guidanceCount;
             };
         };
         
@@ -3260,7 +3449,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             const guidanceCount = masterData.filter(stock => 
                 stock.derived_metrics?.ai_insights_guidance?.guidance?.date
             ).length;
-            document.getElementById('dbCountBox').textContent = stockCount + '|' + guidanceCount;
+            var _dcb2 = document.getElementById('dbCountBox'); if (_dcb2) _dcb2.textContent = stockCount + '|' + guidanceCount;
         };
     }
 
