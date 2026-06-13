@@ -828,6 +828,8 @@
                 jsonTime = metadata.ltp_updated_at || '—';
             } else if (s.name === 'sector_indices.json') {
                 jsonTime = metadata.sector_indices_updated_at || '—';
+            } else if (s.name === 'unified-symbols.json') {
+                jsonTime = metadata.symbols_updated_at || '—';
             }
 
             // Convert ISO to IST (UTC+5:30)
@@ -886,24 +888,24 @@
             </div>
         </div>`;
 
-        // Dummy "ETL" row — placeholder, not yet wired to a workflow.
-        // TODO: link to ETL GitHub Actions workflow (.yml) when ready.
-        rowParts['etl-dummy'] = `<div class="source-row" data-source="etl-dummy">
-            <button class="src-btn" onclick="showToast('ETL workflow not yet connected')" style="background:#333; color:#888; font-weight:800;">⚙️ Web Full Load</button>
+        // "Web E2E Load" — triggers .github/workflows/marketdata_e2e_pipeline.yml
+        // (full pipeline: raw fetch -> financials -> flatten -> bucket market_data.json)
+        rowParts['e2e-pipeline'] = `<div class="source-row" data-source="e2e-pipeline">
+            <button class="src-btn" onclick="triggerE2EWorkflow()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚙️ Web E2E Load</button>
             <div class="src-info">
-                <div class="src-name">ETL Pipeline (not yet linked)</div>
-                <div class="src-count count-cell">Count: —</div>
+                <div class="src-name">marketdata_e2e_pipeline.yml</div>
+                <div class="src-count count-cell">Full pipeline</div>
             </div>
             <div class="src-times">
                 <div class="time-cell"><b>Fetch:</b> —</div>
-                <div class="last-load-cell"><b>Load:</b> —</div>
+                <div class="last-load-cell"><b>Load:</b> ${getLastLoadIST('lastLoad_e2e')}</div>
             </div>
         </div>`;
 
         // Order: Refresh, (Delta Load + Fetch), (Full Load + ETL dummy), Wizard
         var rows = rowParts['refresh-all']
             + `<div class="source-row-group">${rowParts['sector_indices.json']}${rowParts['ltp.json']}</div>`
-            + `<div class="source-row-group">${rowParts['market_data.json']}${rowParts['etl-dummy']}</div>`
+            + `<div class="source-row-group">${rowParts['market_data.json']}${rowParts['e2e-pipeline']}</div>`
             + rowParts['unified-symbols.json'];
 
         document.getElementById('sources-table').innerHTML = rows;
@@ -2957,6 +2959,65 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     }
     
     
+    function triggerE2EWorkflow() {
+        localStorage.setItem('lastLoad_e2e', new Date().toISOString());
+        renderDataSources();
+        logInfo('Triggering GitHub workflow: marketdata_e2e_pipeline.yml');
+        log('⏳ Triggering Workflow');
+
+        const pat = localStorage.getItem('github_pat');
+        if (!pat) {
+            logWarning('PAT not configured - cannot trigger workflow');
+            showToast('❌ PAT required to trigger workflow');
+            return;
+        }
+
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/marketdata_e2e_pipeline.yml/dispatches`;
+
+        logFetch(`workflow: ${apiUrl}`);
+
+        fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ref: GITHUB_CONFIG.BRANCH,
+                inputs: {}
+            })
+        })
+        .then(r => {
+            if (r.status === 204) {
+                logSuccess('Workflow dispatch accepted');
+                logInfo('Full E2E pipeline running on GitHub — this may take a while');
+                log('✅ Workflow Triggered');
+                showToast('✅ E2E pipeline triggered! This may take a while.', 'success');
+            } else if (r.status === 401) {
+                logError('Invalid PAT token');
+                log('❌ Invalid PAT');
+                showToast('❌ Invalid PAT token');
+            } else if (r.status === 404) {
+                logError('Workflow not found', 'check marketdata_e2e_pipeline.yml exists');
+                log('❌ Workflow Not Found');
+                showToast('❌ Workflow not found');
+            } else {
+                return r.text().then(text => {
+                    logError('Workflow dispatch failed', `HTTP ${r.status}`);
+                    log('❌ Workflow Error');
+                    showToast(`❌ Error: HTTP ${r.status}`);
+                });
+            }
+        })
+        .catch(err => {
+            logError('Workflow dispatch error', err.message);
+            log('❌ Error');
+            showToast(`❌ Error: ${err.message}`);
+        });
+    }
+
+
     function fetchSectorIndicesOnly() {
         logFetch('sector_indices.json');
         log('⏳ Fetching Sector Indices');
