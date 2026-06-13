@@ -145,19 +145,37 @@ jobs:
           [ -f data/screener_raw_data.json ] && echo "✓ screener_raw_data.json" || echo "✗ screener_raw_data.json not found"
           [ -f data/logs/fetch_raw_yfsnr.log ] && echo "✓ fetch_raw_yfsnr.log" || echo "✗ fetch_raw_yfsnr.log not found"
 
-      - name: Commit & Push
+      - name: Commit & Push (retry on concurrent updates)
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
-          
-          # Add files
+
+          # Stage only this workflow's output files
           git add data/yahoofin_raw_data.json data/screener_raw_data.json data/logs/fetch_raw_yfsnr.log 2>/dev/null || true
-          
-          # Check if there are changes
+
+          # Nothing to commit -> done
           if git diff --quiet --cached; then
             echo "No changes to commit"
             exit 0
           fi
-          
+
           git commit -m "[Step 1] Fetch Raw Data: $(date +'%Y-%m-%d %H:%M:%S')"
-          git push origin main
+
+          # Retry push with rebase to survive other workflows pushing to main
+          # concurrently. Each retry re-applies this workflow's commit on top of
+          # the latest remote main, so changes are never lost or overwritten.
+          max_attempts=5
+          attempt=1
+          until git push origin main; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Push failed after $max_attempts attempts"
+              exit 1
+            fi
+            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 1))  # jitter to reduce repeated collisions
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          echo "Push succeeded on attempt $attempt"
