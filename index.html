@@ -517,7 +517,7 @@ const resolve = (obj, field) => {
         '1DCH':          { paths: ['price.ltp.change'] },
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
-        'LTP':           { paths: ['price.ltp.price'] },
+        'LTP':           { paths: ['price.ltp.price', 'price.nav'] },
         'QTY':           { paths: ['company_details.qty'] },
         'AVG':           { paths: ['company_details.avg_cost'] },
         'DEMAT':         { fn: s => {
@@ -1969,7 +1969,7 @@ function sigRenderList() {
     if(SIG_SEARCH_F) items=items.filter(x=>x.ticker.includes(SIG_SEARCH_F)||x.name.toUpperCase().includes(SIG_SEARCH_F));
     if(SIG_SORT==='name') items.sort((a,b)=>a.ticker.localeCompare(b.ticker));
     else if(SIG_SORT==='sector') items.sort((a,b)=>a.sector.localeCompare(b.sector));
-    else items.sort((a,b)=>b.comp-a.comp);
+    else items.sort((a,b)=>(b.comp??-1)-(a.comp??-1));
 
     const listEl=document.getElementById('sig-list');
     listEl.innerHTML=items.map(sig=>{
