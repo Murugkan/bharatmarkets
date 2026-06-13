@@ -188,8 +188,10 @@ def fetch_from_nse_api(symbol):
                 'longName': info_header.get('companyName', symbol),
                 'sector': 'Government Securities' if symbol.startswith('SGB') else info_header.get('industry', 'NA'),
             }
+        else:
+            logger.warning(f"NSE API for {symbol}: response OK but no 'priceInfo'. Keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
     except Exception as e:
-        pass
+        logger.warning(f"NSE API failed for {symbol}: {e}")
     
     return None
 
@@ -223,6 +225,7 @@ def fetch_from_bse_api(symbol):
         header = data.get('Header', {}) or {}
         ltp = curr.get('LTP')
         if ltp is None:
+            logger.warning(f"BSE API for {symbol} (scrip {scrip}): no LTP in response. Keys: CurrRate={list(curr.keys())}, top-level={list(data.keys())}")
             return None
 
         ltp = float(ltp)
@@ -242,8 +245,8 @@ def fetch_from_bse_api(symbol):
             'longName': data.get('Scripname', symbol),
             'sector': 'Government Securities',
         }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"BSE API failed for {symbol} (scrip {scrip}): {e}")
 
     return None
 
