@@ -1,0 +1,37 @@
+name: Test fetch_prices.py (standalone)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance requests
+
+      - name: Run fetch_prices.py
+        run: python fetch_prices.py
+
+      - name: Show prices.json (SGBFEB32IV, JUNIORBEES)
+        run: |
+          python3 - << 'PYTHON_EOF'
+          import json
+          data = json.load(open("prices.json"))
+          for t in ("SGBFEB32IV", "JUNIORBEES"):
+              print(t, "->", data.get("quotes", {}).get(t))
+          PYTHON_EOF
+
+      - name: Upload prices.json as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prices-json
+          path: prices.json
