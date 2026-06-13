@@ -58,14 +58,33 @@ def save_json(path, data):
 
 
 def get_portfolio_isins():
-    """Collect ISINs from unified-symbols.json holdings for MF/SGB instruments."""
+    """Collect ISINs from unified-symbols.json holdings for MF/SGB instruments.
+
+    Prefers the explicit `instrument_type` field, but most wizard-imported
+    entries don't have it set. Falls back to: ISIN starting with "INF"
+    (mutual fund / ETF convention) or sector == "Mutual Fund"/"Government
+    Securities". ETFs (also INF-prefixed) are harmless here — AMFI simply
+    won't have a NAV match for them, so they're silently skipped later.
+    """
     us = load_json(SYMBOLS_FILE)
     isins = set()
     for entry in us.get('symbols', []):
-        itype = (entry.get('instrument_type') or entry.get('instrumentType') or '').upper()
         isin = entry.get('isin')
-        if isin and itype in ('MUTUAL FUND', 'SOVEREIGN BOND'):
-            isins.add(isin.strip().upper())
+        if not isin:
+            continue
+        isin = isin.strip().upper()
+
+        itype = (entry.get('instrument_type') or entry.get('instrumentType') or '').upper()
+        sector = (entry.get('sector') or '').upper()
+
+        is_mf_like = (
+            itype in ('MUTUAL FUND', 'SOVEREIGN BOND')
+            or sector in ('MUTUAL FUND', 'GOVERNMENT SECURITIES')
+            or isin.startswith('INF')
+        )
+
+        if is_mf_like:
+            isins.add(isin)
     return isins
 
 
