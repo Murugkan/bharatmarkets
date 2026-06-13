@@ -369,6 +369,15 @@
             text-align: center;
             line-height: 1.3;
         }
+        .src-btn.is-running {
+            background: linear-gradient(135deg, #ffb300 0%, #ff8800 100%) !important;
+            color: #000 !important;
+            animation: pulseRunning 1s ease-in-out infinite;
+        }
+        @keyframes pulseRunning {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
         .source-row .src-info {
             flex: 1;
             min-width: 0;
@@ -511,6 +520,9 @@
     let masterData = [];
     let symbolsData = [];  // Stock list tab — loaded directly from unified-symbols.json
     let guidanceFileData = {};  // Stock list tab — loaded directly from guidance.json
+    // Set of button IDs currently "in progress" — renderDataSourcesTable adds
+    // the pulsing class to these when (re)building the table HTML.
+    let runningButtons = {};
     let guidanceData = {};
     let guidanceTimestamps = {};
     let concallTimestamps = {}; // Separate timestamp for concall
@@ -677,7 +689,7 @@
             else if (body.startsWith('⚠️')) { rowAccent = 'rgba(245,158,11,0.13)'; bodyColor = '#fbbf24'; }
             else if (body.startsWith('🔗') || body.startsWith('📡') || body.startsWith('📥')) { rowAccent = 'rgba(0,242,255,0.1)'; bodyColor = '#00f2ff'; }
             return '<div style="display:flex;gap:8px;padding:4px 6px;border-radius:3px;background:' + rowAccent + ';margin-bottom:2px;">' +
-                '<span style="color:rgba(255,255,255,0.55);font-size:9px;white-space:nowrap;padding-top:1px;min-width:72px;">' + time + '</span>' +
+                '<span style="color:rgba(255,255,255,0.75);font-size:9px;white-space:nowrap;padding-top:1px;min-width:72px;">' + time + '</span>' +
                 '<span style="color:' + bodyColor + ';font-size:10px;line-height:1.5;word-break:break-word;">' + body + '</span>' +
                 '</div>';
         }).join('');
@@ -923,16 +935,16 @@
             var actionBtn = '';
             var lastLoadKey = '';
             if (index === 0) {
-                actionBtn = `<button class="src-btn" onclick="openWizard()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🧙 Portfolio Load</button>`;
+                actionBtn = `<button class="src-btn" onclick="openWizard()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">🧙 Portfolio Load</button>`;
                 lastLoadKey = 'lastLoad_wizard';
             } else if (s.name === 'ltp.json') {
-                actionBtn = `<button class="src-btn" onclick="triggerLTPWorkflowOnly()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚡ Web Delta Fetch</button>`;
+                actionBtn = `<button class="src-btn" onclick="triggerLTPWorkflowOnly()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">⚡ Web Delta Fetch</button>`;
                 lastLoadKey = 'lastLoad_ltp';
             } else if (s.name === 'market_data.json') {
-                actionBtn = `<button class="src-btn" id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🚀 UI Full Load</button>`;
+                actionBtn = `<button class="src-btn${runningButtons['loadJsonBtn'] ? ' is-running' : ''}" id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">🚀 UI Full Load</button>`;
                 lastLoadKey = 'lastLoad_full';
             } else if (s.name === 'sector_indices.json') {
-                actionBtn = `<button class="src-btn" onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚡ UI Delta Load</button>`;
+                actionBtn = `<button class="src-btn${runningButtons['deltaLoadBtn'] ? ' is-running' : ''}" id="deltaLoadBtn" onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">⚡ UI Delta Load</button>`;
                 lastLoadKey = 'lastLoad_delta';
             }
 
@@ -950,11 +962,6 @@
                     lastLoad = '—';
                 }
             }
-
-            var srcName = s.name === 'market_data.json' ? 'Builds local IndexedDB cache'
-                         : s.name === 'sector_indices.json' ? 'LTP + Indices'
-                         : s.name === 'ltp.json' ? 'LTP + Index'
-                         : s.name;
 
             // For UI Delta Load (sector_indices.json row), show combined LTP/Indices
             // counts and the merge timestamp instead of the file's own count/Load.
@@ -979,7 +986,6 @@
             rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
                 ${actionBtn}
                 <div class="src-info">
-                    <div class="src-name">${srcName}</div>
                     <div class="src-count count-cell">Count: ${displayCount}</div>
                 </div>
                 <div class="src-times">
@@ -1003,9 +1009,8 @@
         }
 
         rowParts['e2e-pipeline'] = `<div class="source-row" data-source="e2e-pipeline">
-            <button class="src-btn" onclick="triggerE2EWorkflow()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚙️ Web E2E Load</button>
+            <button class="src-btn" onclick="triggerE2EWorkflow()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">⚙️ Web E2E Load</button>
             <div class="src-info">
-                <div class="src-name">marketdata_e2e_pipeline.yml</div>
                 <div class="src-count count-cell">Count: ${metadata.market_data_live_total_tickers ?? '—'}</div>
             </div>
             <div class="src-times">
@@ -1045,12 +1050,12 @@
 
         // Generic "Full Refresh All" row (= existing REFRESH button / reloadAuto())
         rowParts['refresh-all'] = `<div class="source-row" data-source="refresh-all">
-            <button class="src-btn" onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🔄 Refresh</button>
+            <button class="src-btn${runningButtons['refreshBtn'] ? ' is-running' : ''}" id="refreshBtn" onclick="reloadAuto()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">🔄 Refresh</button>
             <div class="src-info">
                 <div class="time-cell" style="font-size:10px; color:#888;"><b>Load:</b> <span style="${refreshColorStyle}">${dbBuildTime}</span></div>
                 <div class="src-count count-cell">Tickers: ${metadata.market_data_count ?? '—'} # Guidance: ${guidanceTotal}${guidanceStaleHtml}</div>
             </div>
-            <button class="src-btn" onclick="forcePageReset()" style="background:#333; color:#ff4d6d; font-weight:800;">⛔ Reset</button>
+            <button class="src-btn" onclick="forcePageReset()" style="background:#444; color:#ccc; font-weight:800;">⛔ Reset</button>
         </div>`;
 
         // Order: Refresh, (Delta Load + Fetch), (Full Load + ETL dummy), Wizard
@@ -2716,6 +2721,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
     function loadAllData() {
         localStorage.setItem('lastLoad_full', new Date().toISOString());
+        runningButtons['loadJsonBtn'] = true;
         renderDataSources();
         logInfo('DATA LOAD: Full refresh');
         log('⏳ Starting Fresh Load');
@@ -3067,6 +3073,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     
     function updateLTPFromGitHub() {
         localStorage.setItem('lastLoad_delta', new Date().toISOString());
+        runningButtons['deltaLoadBtn'] = true;
         renderDataSources();
         logInfo('LIVE LOAD: Fetching LTP + sector indices');
         log('⏳ Fetching LTP');
@@ -3344,6 +3351,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
     function reloadAuto() {
         localStorage.setItem('lastLoad_refresh', new Date().toISOString());
+        runningButtons['refreshBtn'] = true;
         renderDataSources();
         log('🔄 REFRESH: Fetching fresh LTP + sector indices...');
         log('⏳ Refreshing');
