@@ -394,20 +394,21 @@
         </div>
         <div id="save-section" style="display:none; margin-bottom:12px;">
             <button onclick="saveChanges()" class="btn-success">💾 SAVE HOLDINGS</button>
-            <button onclick="cancelChanges()">❌ Cancel</button>
-            <button id="publish-guidance-btn" onclick="publishGuidanceInsights()" style="display:none; background:#ffaa00; color:#000; font-weight:700;">📤 Publish Concall/Insights (<span id="publish-count">0</span>)</button>
+        </div>
+        <div id="publish-guidance-section" style="display:none; margin-bottom:12px;">
+            <button id="publish-guidance-btn" onclick="publishGuidanceInsights()" style="background:#ffaa00; color:#000; font-weight:700;">📤 Publish Concall/Insights (<span id="publish-count">0</span>)</button>
         </div>
         <div class="table-container">
             <table>
                 <thead>
                     <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
-                        <th class="sticky" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left;">TICKER</th>
+                        <th class="sticky" onclick="setSort('ticker')" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left; cursor:pointer;">TICKER<span id="sort-ticker"></span></th>
                         <th style="color:#cc88ff; font-weight:700; padding:10px 4px; text-align:left; min-width:160px;">HOLDINGS</th>
-                        <th style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px;">S.NO</th>
+                        <th onclick="setSort('serial')" style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px; cursor:pointer;">S.NO<span id="sort-serial"></span></th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
-                        <th style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px;">CONCALL DATE</th>
+                        <th onclick="setSort('concallDate')" style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px; cursor:pointer;">CONCALL DATE<span id="sort-concallDate"></span></th>
                         <th style="color:#f59e0b; font-weight:700; padding:10px 4px; text-align:center;">INSIGHTS</th>
-                        <th style="color:#ffaa44; font-weight:700; padding:10px 4px; text-align:center; width:75px;">INSIGHTS DATE</th>
+                        <th onclick="setSort('insightsDate')" style="color:#ffaa44; font-weight:700; padding:10px 4px; text-align:center; width:75px; cursor:pointer;">INSIGHTS DATE<span id="sort-insightsDate"></span></th>
                         <th style="color:#ff4444; font-weight:700; padding:10px 4px; text-align:center; width:40px;">DEL</th>
                     </tr>
                 </thead>
@@ -471,6 +472,8 @@
     let concallTimestamps = {}; // Separate timestamp for concall
     let insightsTimestamps = {}; // Separate timestamp for insights
     let editMode = false;
+    let sortColumn = 'serial'; // 'ticker' | 'serial' | 'concallDate' | 'insightsDate'
+    let sortDirection = 'asc'; // 'asc' | 'desc'
     let pendingGuidanceChanges = {}; // ticker -> newGuidance object, staged until Publish
     let pendingInsightsChanges = {}; // ticker -> newInsights object, staged until Publish
     let logMessages = [];
@@ -939,13 +942,62 @@
         });
     }
 
+    function setSort(column) {
+        if (sortColumn === column) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortColumn = column;
+            sortDirection = 'asc';
+        }
+        ['ticker','serial','concallDate','insightsDate'].forEach(function(col) {
+            var el = document.getElementById('sort-' + col);
+            if (el) el.textContent = (col === sortColumn) ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+        });
+        renderSymbols();
+    }
+
     function renderSymbols() {
         var html = '';
         
         if (!symbolsData || symbolsData.length === 0) {
             html = '<tr><td colspan="9" style="text-align:center; color:#666; padding:40px;">📭 Loading...</td></tr>';
         } else {
-            symbolsData.forEach((stock, index) => {
+            // Build indexed list so original S.NO is preserved regardless of sort
+            var indexedData = symbolsData.map(function(stock, index) {
+                var ticker = stock.ticker || '—';
+                var gEntry = guidanceFileData[ticker] || {};
+                return {
+                    stock: stock,
+                    origIndex: index,
+                    ticker: ticker,
+                    concallDate: (gEntry.guidance && gEntry.guidance.date) ? gEntry.guidance.date : '',
+                    insightsDate: (gEntry.insights && gEntry.insights.date) ? gEntry.insights.date : ''
+                };
+            });
+
+            var dir = sortDirection === 'asc' ? 1 : -1;
+            indexedData.sort(function(a, b) {
+                var av, bv;
+                if (sortColumn === 'ticker') { av = a.ticker; bv = b.ticker; }
+                else if (sortColumn === 'concallDate') { av = a.concallDate; bv = b.concallDate; }
+                else if (sortColumn === 'insightsDate') { av = a.insightsDate; bv = b.insightsDate; }
+                else { av = a.origIndex; bv = b.origIndex; } // 'serial'
+
+                // Empty dates sort last regardless of direction
+                if (sortColumn === 'concallDate' || sortColumn === 'insightsDate') {
+                    if (!av && !bv) return a.origIndex - b.origIndex;
+                    if (!av) return 1;
+                    if (!bv) return -1;
+                }
+
+                if (av < bv) return -1 * dir;
+                if (av > bv) return 1 * dir;
+                return a.origIndex - b.origIndex;
+            });
+
+            indexedData.forEach(function(entry) {
+                var stock = entry.stock;
+                var index = entry.origIndex;
                 var ticker = stock.ticker || '—';
                 var name = stock.name || '—';
                 // Support both new holdings[] and legacy company_details.qty/avg
@@ -1913,16 +1965,17 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         event.target.textContent = '🔧 Edit Mode: ' + (editMode ? 'ON' : 'OFF');
         document.getElementById('save-section').style.display = editMode ? 'block' : 'none';
         renderSymbols(); // re-render to show/hide edit buttons in holdings cell
-        updatePublishButton();
     }
 
-    // Show/hide and update the count on the "Publish Concall/Insights" button
+    // Show/hide and update the count on the "Publish Concall/Insights" button.
+    // Independent of editMode — visible whenever there are unpublished changes,
+    // so publishing doesn't require being in (or exiting) Edit Mode.
     function updatePublishButton() {
-        const btn = document.getElementById('publish-guidance-btn');
-        if (!btn) return;
+        const section = document.getElementById('publish-guidance-section');
+        if (!section) return;
         const count = Object.keys(pendingGuidanceChanges).length + Object.keys(pendingInsightsChanges).length;
         document.getElementById('publish-count').textContent = count;
-        btn.style.display = (editMode && count > 0) ? 'inline-block' : 'none';
+        section.style.display = count > 0 ? 'block' : 'none';
     }
 
     // Publishes all staged concall (guidance) and insights edits to guidance.json
@@ -2179,32 +2232,16 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             .then(function(r) {
                 if (r.ok) {
                     log('✅ unified-symbols.json saved');
-                    const stillPending = Object.keys(pendingGuidanceChanges).length + Object.keys(pendingInsightsChanges).length;
-                    if (stillPending === 0) {
-                        editMode = false;
-                        document.getElementById('save-section').style.display = 'none';
-                        document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
-                    } else {
-                        showToast(`✅ Holdings saved. ${stillPending} concall/insights change(s) still pending — use Publish.`);
-                    }
+                    editMode = false;
+                    document.getElementById('save-section').style.display = 'none';
+                    document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
                     renderSymbols();
-                    updatePublishButton();
-                    showToast('✅ Saved to GitHub!');
+                    showToast('✅ Holdings saved to GitHub!');
                 } else {
                     r.json().then(function(e) { log('❌ Save failed: ' + (e.message || r.status)); });
                 }
             })
             .catch(function(e) { log('❌ Upload error: ' + e.message); });
-    }
-
-    function cancelChanges() {
-        editMode = false;
-        pendingGuidanceChanges = {};
-        pendingInsightsChanges = {};
-        document.getElementById('save-section').style.display = 'none';
-        document.querySelector('button[onclick="toggleEditMode()"]').textContent = '🔧 Edit Mode: OFF';
-        updatePublishButton();
-        loadSymbolsFromGitHub(); // reload fresh from GitHub
     }
 
     function downloadCSV() {
