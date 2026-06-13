@@ -81,8 +81,8 @@
 
         /* CONTENT AREA */
         .content {
-            height: calc(100vh - 110px);
-            height: calc(100dvh - 110px);
+            height: calc(100vh - 90px);
+            height: calc(100dvh - 90px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 8px;
@@ -178,8 +178,8 @@
             border-top: 1px solid var(--b1);
             display: flex;
             justify-content: space-around;
-            padding: 12px 0;
-            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+            padding: 6px 0;
+            padding-bottom: calc(6px + env(safe-area-inset-bottom));
             z-index: 999;
         }
 
@@ -191,7 +191,7 @@
             align-items: center;
             justify-content: center;
             width: 50%;
-            padding: 8px 0;
+            padding: 4px 0;
             transition: color 0.2s;
         }
 
@@ -335,6 +335,71 @@
             width: 100%;
             box-sizing: border-box;
         }
+
+        /* DATA SOURCES — unified rows */
+        .source-list { display: flex; flex-direction: column; gap: 6px; }
+        .source-row-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .source-row-group .source-row {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 6px;
+        }
+        .source-row-group .source-row .src-times {
+            text-align: left;
+        }
+        .source-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            background: #111;
+            border: 1px solid var(--b1);
+            border-radius: 8px;
+        }
+        .source-row .src-btn {
+            flex-shrink: 0;
+            padding: 8px 10px;
+            font-size: 9px;
+            border-radius: 6px;
+            min-width: 64px;
+            text-align: center;
+            line-height: 1.3;
+        }
+        .source-row .src-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .source-row .src-name {
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--tx);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .source-row .src-count {
+            font-size: 9px;
+            color: var(--bl);
+            font-weight: 700;
+        }
+        .source-row .src-times {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            font-size: 8px;
+            color: #888;
+            text-align: right;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .source-row .src-times b { color: #aaa; font-weight: 700; }
         
     </style>
 </head>
@@ -353,29 +418,9 @@
     <!-- TAB 1: COMBINED ETL PIPELINE -->
     <div id="etl-pipeline" class="tab-content active">
         
-        <!-- ACTION BUTTONS -->
-        <div class="inline-buttons">
-            <button id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; transition: all 0.3s;"><span style="font-size:12px;">🚀</span>FULL LOAD</button>
-            <button onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px; font-weight:700;"><span style="font-size:12px;">⚡</span>DELTA LOAD</button>
-            <button onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; padding:6px 4px;"><span style="font-size:12px;">🔄</span>REFRESH <span id="dbCountBox" style="font-weight:800; margin-left:4px;">0|0</span></button>
-        </div>
-
-        <!-- SECTION 1: DATA SOURCES -->
+        <!-- DATA SOURCES — unified action + status rows -->
         <div class="section-box section-box--compact">
-            <div class="table-container" style="padding-bottom:4px;">
-                <table style="font-size:10px;">
-                    <thead>
-                        <tr>
-                            <th>Source</th>
-                            <th>Count</th>
-                            <th>Updated (IST)</th>
-                            <th style="text-align:center;">Data Load</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sources-table">
-                    </tbody>
-                </table>
-            </div>
+            <div id="sources-table" class="source-list"></div>
         </div>
 
         <!-- SECTION 2: LIVE LOG -->
@@ -450,8 +495,8 @@
 
 <!-- NAVIGATION FOOTER -->
 <footer class="nav-footer">
-    <a href="index.html" class="nav-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
-    <a href="data.html" class="nav-btn active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
+    <a href="index.html" class="nav-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg><span class="nav-label">Portfolio</span></a>
+    <a href="data.html" class="nav-btn active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.76 9.76 0 0 1-6.74-2.74L3 16"></path><path d="M3 21v-5h5"></path></svg><span class="nav-label">Data</span></a>
 
 </footer>
 
@@ -746,7 +791,22 @@
         };
     }
     
+    // Reads/formats a "last load" (UI load) timestamp stamped in localStorage by
+    // the button handlers (loadAllData/updateLTPFromGitHub/reloadAuto/openWizard/
+    // triggerLTPWorkflowOnly). Does not affect any existing load logic.
+    function getLastLoadIST(key) {
+        var iso = localStorage.getItem(key);
+        if (!iso) return '—';
+        try {
+            return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+        } catch(e) {
+            return '—';
+        }
+    }
+
     function renderDataSourcesTable(html, metadata) {
+        var rowParts = {}; // keyed by source name -> row html
+
         DATA_SOURCES.forEach((s, index) => {
             // Get count from metadata
             let count = '—';
@@ -759,8 +819,8 @@
             } else if (s.name === 'sector_indices.json') {
                 count = metadata.sector_indices_count || '—';
             }
-            
-            // Get timestamp from metadata
+
+            // Get last-fetch timestamp (file's own updated_at) from metadata
             var jsonTime = '—';
             if (s.name === 'market_data.json') {
                 jsonTime = metadata.market_data_generated_at || '—';
@@ -769,7 +829,7 @@
             } else if (s.name === 'sector_indices.json') {
                 jsonTime = metadata.sector_indices_updated_at || '—';
             }
-            
+
             // Convert ISO to IST (UTC+5:30)
             var istTime = '—';
             if (jsonTime && jsonTime !== '—' && !jsonTime.includes('❌')) {
@@ -780,31 +840,73 @@
                     istTime = jsonTime;
                 }
             }
-            
-            // First file (unified-symbols) opens wizard, others load data
-            var loadButton = '';
+
+            // Action button — same handlers/onclick as before, just relocated
+            var actionBtn = '';
+            var lastLoadKey = '';
             if (index === 0) {
-                loadButton = `<button onclick="openWizard()" style="padding:4px 8px; font-size:8px; background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🧙 Wizard</button>`;
+                actionBtn = `<button class="src-btn" onclick="openWizard()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🧙 Portfolio Load</button>`;
+                lastLoadKey = 'lastLoad_wizard';
             } else if (s.name === 'ltp.json') {
-                // LTP JSON: trigger workflow to fetch fresh data from Yahoo Finance
-                loadButton = `<button onclick="triggerLTPWorkflowOnly()" style="padding:4px 8px; font-size:8px;">⚡</button>`;
+                actionBtn = `<button class="src-btn" onclick="triggerLTPWorkflowOnly()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚡ Web Delta Fetch</button>`;
+                lastLoadKey = 'lastLoad_ltp';
+            } else if (s.name === 'market_data.json') {
+                actionBtn = `<button class="src-btn" id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🚀 UI Full Load</button>`;
+                lastLoadKey = 'lastLoad_full';
             } else if (s.name === 'sector_indices.json') {
-                loadButton = '';
-            } else {
-                // Market data — no standalone load button (use FULL LOAD)
-                loadButton = '';
+                actionBtn = `<button class="src-btn" onclick="updateLTPFromGitHub()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">⚡ UI Delta Load</button>`;
+                lastLoadKey = 'lastLoad_delta';
             }
-            
-            html += `<tr data-source="${s.name}">
-                <td>${s.name}</td>
-                <td class="count-cell">${count}</td>
-                <td class="time-cell" style="font-size:9px;">${istTime}</td>
-                <td style="text-align:center;">${loadButton}</td>
-            </tr>`;
+
+            var lastLoad = lastLoadKey ? getLastLoadIST(lastLoadKey) : '—';
+
+            rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
+                ${actionBtn}
+                <div class="src-info">
+                    <div class="src-name">${s.name}</div>
+                    <div class="src-count count-cell">Count: ${count}</div>
+                </div>
+                <div class="src-times">
+                    <div class="time-cell"><b>Fetch:</b> ${istTime}</div>
+                    <div class="last-load-cell"><b>Load:</b> ${lastLoad}</div>
+                </div>
+            </div>`;
         });
-        
-        // Render the table
-        document.getElementById('sources-table').innerHTML = html;
+
+        // Generic "Full Refresh All" row (= existing REFRESH button / reloadAuto())
+        rowParts['refresh-all'] = `<div class="source-row" data-source="refresh-all">
+            <button class="src-btn" onclick="reloadAuto()" style="background:linear-gradient(135deg, #00f2ff 0%, #00ccff 100%); color:#000; font-weight:800;">🔄 Refresh</button>
+            <div class="src-info">
+                <div class="src-name">Full Refresh (LTP + Sector Indices)</div>
+                <div class="src-count count-cell">DB: <span id="dbCountBox">0|0</span></div>
+            </div>
+            <div class="src-times">
+                <div class="time-cell"><b>Fetch:</b> —</div>
+                <div class="last-load-cell"><b>Load:</b> ${getLastLoadIST('lastLoad_refresh')}</div>
+            </div>
+        </div>`;
+
+        // Dummy "ETL" row — placeholder, not yet wired to a workflow.
+        // TODO: link to ETL GitHub Actions workflow (.yml) when ready.
+        rowParts['etl-dummy'] = `<div class="source-row" data-source="etl-dummy">
+            <button class="src-btn" onclick="showToast('ETL workflow not yet connected')" style="background:#333; color:#888; font-weight:800;">⚙️ Web Full Load</button>
+            <div class="src-info">
+                <div class="src-name">ETL Pipeline (not yet linked)</div>
+                <div class="src-count count-cell">Count: —</div>
+            </div>
+            <div class="src-times">
+                <div class="time-cell"><b>Fetch:</b> —</div>
+                <div class="last-load-cell"><b>Load:</b> —</div>
+            </div>
+        </div>`;
+
+        // Order: Refresh, (Delta Load + Fetch), (Full Load + ETL dummy), Wizard
+        var rows = rowParts['refresh-all']
+            + `<div class="source-row-group">${rowParts['sector_indices.json']}${rowParts['ltp.json']}</div>`
+            + `<div class="source-row-group">${rowParts['market_data.json']}${rowParts['etl-dummy']}</div>`
+            + rowParts['unified-symbols.json'];
+
+        document.getElementById('sources-table').innerHTML = rows;
     }
 
 
@@ -2374,6 +2476,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
 
     function openWizard() {
+        localStorage.setItem('lastLoad_wizard', new Date().toISOString());
+        renderDataSources();
         var pat = document.getElementById('patToken').value;
         if (!pat) {
             showToast('❌ PAT token required');
@@ -2438,6 +2542,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     }
 
     function loadAllData() {
+        localStorage.setItem('lastLoad_full', new Date().toISOString());
+        renderDataSources();
         logInfo('DATA LOAD: Full refresh');
         log('⏳ Starting Fresh Load');
         clearDatabaseAndRefresh();
@@ -2782,6 +2888,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     }
     
     function updateLTPFromGitHub() {
+        localStorage.setItem('lastLoad_delta', new Date().toISOString());
+        renderDataSources();
         logInfo('LIVE LOAD: Fetching LTP + sector indices');
         log('⏳ Fetching LTP');
         
@@ -2790,6 +2898,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     }
     
     function triggerLTPWorkflowOnly() {
+        localStorage.setItem('lastLoad_ltp', new Date().toISOString());
+        renderDataSources();
         logInfo('Triggering GitHub workflow to fetch fresh LTP data');
         log('⏳ Triggering Workflow');
         
@@ -2998,6 +3108,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     
 
     function reloadAuto() {
+        localStorage.setItem('lastLoad_refresh', new Date().toISOString());
+        renderDataSources();
         log('🔄 REFRESH: Fetching fresh LTP + sector indices...');
         log('⏳ Refreshing');
 
