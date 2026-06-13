@@ -420,11 +420,12 @@ def main():
     runtime = round(time.time() - start_time, 2)
     
     logger.info(f"\nSaving files...")
-    yahoof_store["_metadata"] = {
+    yahoof_metadata = {
         "generated_at": now(),
-        "count": len([k for k in yahoof_store if k != "_metadata"]),
+        "count": len(yahoof_store),
         "runtime_seconds": runtime
     }
+    yahoof_store = {"_metadata": yahoof_metadata, **yahoof_store}
     save_json(YAHOOF_FILE, yahoof_store)
     logger.info(f"  ✓ Saved: {YAHOOF_FILE.resolve()}")
     

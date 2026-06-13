@@ -658,20 +658,22 @@ def main():
     logger.info(f"  Current directory: {Path.cwd()}")
     
     if FETCH_YAHOO:
-        yahoo_store["_metadata"] = {
+        yahoo_metadata = {
             "generated_at": now(),
-            "count": len([k for k in yahoo_store if k != "_metadata"]),
+            "count": len(yahoo_store),
             "runtime_seconds": runtime
         }
+        yahoo_store = {"_metadata": yahoo_metadata, **yahoo_store}
         save_json(YAHOO_FILE, yahoo_store)
         logger.info(f"  ✓ Saved: {YAHOO_FILE.resolve()}")
     
     if FETCH_SCREENER:
-        screener_store["_metadata"] = {
+        screener_metadata = {
             "generated_at": now(),
-            "count": len([k for k in screener_store if k != "_metadata"]),
+            "count": len(screener_store),
             "runtime_seconds": runtime
         }
+        screener_store = {"_metadata": screener_metadata, **screener_store}
         save_json(SCREENER_FILE, screener_store)
         logger.info(f"  ✓ Saved: {SCREENER_FILE.resolve()}")
     
