@@ -380,7 +380,18 @@ def main():
     for symbol in symbols:
         ticker = str(symbol["ticker"]).strip()
         
-        if ticker in DELISTED or str(ticker).upper().startswith("SGB") or "BOND" in str(ticker).upper():
+        # Skip MUTUAL FUND / ETF-as-MF entries — no Yahoo financials exist for
+        # these; NAV is fetched separately via fetch_amfi_nav.py. Sovereign
+        # Gold Bonds (SGB) are exchange-traded and NOT excluded here.
+        isin_upper = str(symbol.get("isin") or "").strip().upper()
+        itype = str(symbol.get("instrument_type") or "").upper()
+        sector_field = str(symbol.get("sector") or "").upper()
+        if (
+            ticker in DELISTED
+            or itype == "MUTUAL FUND"
+            or sector_field == "MUTUAL FUND"
+            or isin_upper.startswith("INF")
+        ):
             skipped += 1
             continue
         
@@ -420,12 +431,6 @@ def main():
     runtime = round(time.time() - start_time, 2)
     
     logger.info(f"\nSaving files...")
-    yahoof_metadata = {
-        "generated_at": now(),
-        "count": len(yahoof_store),
-        "runtime_seconds": runtime
-    }
-    yahoof_store = {"_metadata": yahoof_metadata, **yahoof_store}
     save_json(YAHOOF_FILE, yahoof_store)
     logger.info(f"  ✓ Saved: {YAHOOF_FILE.resolve()}")
     

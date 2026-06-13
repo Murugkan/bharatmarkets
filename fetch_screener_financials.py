@@ -30,30 +30,58 @@ from typing import Dict, List, Any, Optional, Tuple
 # SYMBOL MAPPING LOADER
 # ============================================================================
 
+# Built-in fallback overrides for tickers whose Screener.in URL slug differs
+# from their NSE/portfolio ticker symbol (renamed companies, BSE-only numeric
+# codes, or brand-name slugs). Entries in data/symbol_map.json's
+# 'screener_overrides' take precedence over these defaults.
+DEFAULT_SCREENER_OVERRIDES = {
+    'AZADIND':    '504731',     # Azad India Mobility — Screener uses BSE code
+    'BLACKBOX':   'BBOX',       # Black Box Ltd — NSE symbol differs from name-derived slug
+    'CAPITALNUM': '544343',     # CapitalNumbers Infotech — recent IPO, BSE code slug
+    'HEBL':       '504176',     # High Energy Batteries (India) — BSE code slug
+    'KPENERGY':   'KPEL',       # K.P. Energy Ltd — NSE ticker is KPEL, not KPENERGY
+    'KPPL':       '539997',     # Kwality Pharmaceuticals — BSE code slug
+    'MCDOWELL-N': 'UNITDSPR',   # United Spirits — Screener uses BSE symbol UNITDSPR
+    'QUALITY':    'QPOWER',     # Quality Power Electrical Equipments — slug is QPOWER
+    'REVATHI':    'RVTH',       # Revathi Equipment India — slug is RVTH
+    'SHILCHAR':   'id/2979',    # Shilchar Technologies — Screener uses internal numeric id
+    'SHREEREF':   '544458',     # Shree Refrigerations — recent IPO, BSE code slug
+    'TITANBIO':   '524717',     # Titan Biotech — BSE code slug
+    'ZINKA':      'BLACKBUCK',  # Zinka Logistics — Screener uses brand name BlackBuck
+}
+
+
 def load_symbol_map() -> Dict[str, Any]:
     """Load symbol mapping file for ticker remapping"""
     try:
         symbol_map_file = Path('data/symbol_map.json')
         if symbol_map_file.exists():
             with open(symbol_map_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {
-            'indices': {},
-            'overrides': {},
-            'screener_overrides': {},
-            'delisted': [],
-            'isin_map': {}
-        }
+                data = json.load(f)
+        else:
+            data = {
+                'indices': {},
+                'overrides': {},
+                'screener_overrides': {},
+                'delisted': [],
+                'isin_map': {}
+            }
     except Exception as e:
         logger_early = logging.getLogger(__name__)
         logger_early.warning(f"Could not load symbol_map.json: {e}")
-        return {
+        data = {
             'indices': {},
             'overrides': {},
             'screener_overrides': {},
             'delisted': [],
             'isin_map': {}
         }
+
+    # Merge built-in defaults — file-provided overrides win on conflicts.
+    merged = dict(DEFAULT_SCREENER_OVERRIDES)
+    merged.update(data.get('screener_overrides', {}))
+    data['screener_overrides'] = merged
+    return data
 
 # ============================================================================
 # DEPENDENCY CHECK
@@ -238,13 +266,26 @@ class ScreenerFinancialsScraper:
                 data = json.load(f)
             
             symbols = []
-            
+            mf_excluded = 0
+
+            def is_mutual_fund(item):
+                """True for mutual fund / ETF-as-MF entries — no Screener page exists.
+                Sovereign Gold Bonds (SGB) ARE excluded from this check since they're
+                exchange-traded and may have a Screener/Yahoo presence."""
+                isin = str(item.get('isin') or '').strip().upper()
+                itype = str(item.get('instrument_type') or '').upper()
+                sector = str(item.get('sector') or '').upper()
+                return itype == 'MUTUAL FUND' or sector == 'MUTUAL FUND' or isin.startswith('INF')
+
             # Handle dict format: {"symbols": [{"ticker": "INFY"}, ...]}
             if isinstance(data, dict):
                 symbols_data = data.get('symbols', [])
                 if isinstance(symbols_data, list):
                     for item in symbols_data:
                         if isinstance(item, dict):
+                            if is_mutual_fund(item):
+                                mf_excluded += 1
+                                continue
                             # Try ticker first, then symbol, then NSE
                             sym = item.get('ticker') or item.get('symbol') or item.get('Symbol') or item.get('NSE')
                             if sym:
@@ -254,12 +295,18 @@ class ScreenerFinancialsScraper:
             elif isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict):
+                        if is_mutual_fund(item):
+                            mf_excluded += 1
+                            continue
                         sym = item.get('ticker') or item.get('symbol') or item.get('Symbol') or item.get('NSE')
                         if sym:
                             symbols.append(str(sym).strip())
                     elif isinstance(item, str):
                         if item.strip():
                             symbols.append(item.strip())
+
+            if mf_excluded:
+                logger.warning(f"MUTUAL FUND: Excluded {mf_excluded} mutual fund symbol(s) — no Screener page exists")
             
             # Clean and deduplicate
             symbols = [s.upper() for s in symbols if s]
