@@ -100,7 +100,7 @@ jobs:
           echo "=== Current git status ==="
           git status
 
-      - name: "✅ Force-commit & Push"
+      - name: "✅ Force-commit & Push (retry on concurrent updates)"
         run: |
           echo "Force-adding files..."
           [ -f fetch_yahoofin_financials.py ]              && git add -f fetch_yahoofin_financials.py              || echo "⚠ fetch_yahoofin_financials.py not found"
@@ -115,13 +115,32 @@ jobs:
           echo ""
           if git diff --cached --quiet; then
             echo "Nothing new to commit — skipping"
-          else
-            echo "Committing..."
-            git commit -m "chore: [FETCH] Financial Metrics - $(date +'%Y-%m-%d %H:%M:%S')"
-            echo ""
-            echo "Pushing..."
-            git push origin HEAD:main
+            exit 0
           fi
+
+          echo "Committing..."
+          git commit -m "chore: [FETCH] Financial Metrics - $(date +'%Y-%m-%d %H:%M:%S')"
+
+          # Retry push with rebase to survive other workflows pushing to main
+          # concurrently. Each retry re-applies this commit on top of the
+          # latest remote main.
+          echo ""
+          echo "Pushing..."
+          max_attempts=5
+          attempt=1
+          until git push origin HEAD:main; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Push failed after $max_attempts attempts"
+              exit 1
+            fi
+            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 1))  # jitter to reduce repeated collisions
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          echo "Push succeeded on attempt $attempt"
 
       - name: "📝 Summary"
         if: always()
