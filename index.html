@@ -3686,7 +3686,17 @@ function renderCompare() {
 
 function sigBoot() {
     buildSigMedians(MASTER);
-    SIG_ALL=MASTER.filter(st=>st.ticker&&!st.ticker.startsWith('_')).map(st=>sigComposite(st.ticker,st));
+    SIG_ALL = MASTER
+        .filter(st => st.ticker && !st.ticker.startsWith('_'))
+        .map(st => {
+            try {
+                return sigComposite(st.ticker, st);
+            } catch(e) {
+                console.error('sigComposite failed for', st.ticker, e);
+                return null;
+            }
+        })
+        .filter(x => x !== null);
     // Populate sector dropdowns (signals tab + rank tab)
     const sectors=[...new Set(SIG_ALL.map(x=>x.sector))].sort();
     const sel=document.getElementById('sig-sector-filter');
