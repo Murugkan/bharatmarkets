@@ -2014,11 +2014,11 @@ function sigRenderList() {
                 <span style="font-size:12px;font-weight:800;color:#e2e8f0">${sig.ticker}</span>
                 <div style="display:flex;align-items:center;gap:5px;">
                     ${sig.pipe&&sig.pipe.rating?`<span class="sig-pill" style="background:${sigPipeColor(sig.pipe.rating)}18;color:${sigPipeColor(sig.pipe.rating)};font-size:7px;border:1px solid ${sigPipeColor(sig.pipe.rating)}44">P·${sig.pipe.rating.replace(' BUY','B').replace(' SELL','S').replace('STRONG','S').replace('NO DATA','—')}</span>`:''}
-                    <span style="font-size:12px;font-weight:800;color:${sig.ratingColor}">${sig.comp}</span>
-                    <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating.replace(' BUY','').replace('STRONG','STR')}</span>
+                    <span style="font-size:12px;font-weight:800;color:${sig.ratingColor}">${sig.comp??'—'}</span>
+                    <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating?sig.rating.replace(' BUY','').replace('STRONG','STR'):'NO DATA'}</span>
                 </div>
             </div>
-            <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${sig.comp}%;background:${sig.ratingColor}"></div></div>
+            <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${sig.comp??0}%;background:${sig.ratingColor}"></div></div>
             <div style="display:flex;gap:8px;margin-top:5px;">
                 <span style="font-size:8px;color:${fc}">F${sig.F.score}</span>
                 <span style="font-size:8px;color:${tc}">T${sig.T.score}</span>
@@ -2116,12 +2116,12 @@ function sigRenderDetail(ticker) {
                 </div>
             </div>
             <div style="text-align:right">
-                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp}<span style="font-size:10px;font-weight:400;color:#bbb;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).length,0)})</span></div>
-                <div style="font-size:10px;font-weight:800;color:${sig.ratingColor};letter-spacing:0.06em">${sig.rating}</div>
+                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp??'—'}<span style="font-size:10px;font-weight:400;color:#bbb;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).length,0)})</span></div>
+                <div style="font-size:10px;font-weight:800;color:${sig.ratingColor};letter-spacing:0.06em">${sig.rating||'NO DATA'}</div>
             </div>
         </div>
         <div style="margin:8px 0 4px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
-            <div style="height:100%;width:${sig.comp}%;background:${sig.ratingColor};border-radius:2px;transition:width 0.4s ease"></div>
+            <div style="height:100%;width:${sig.comp??0}%;background:${sig.ratingColor};border-radius:2px;transition:width 0.4s ease"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd;margin-bottom:4px">
             <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
@@ -2225,8 +2225,8 @@ function sigRenderDetail(ticker) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div><div style="font-size:8px;color:#ddd">Sector Median PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sectorMedianPE?sectorMedianPE.toFixed(1)+'x':'N/A'}</div></div>
             <div><div style="font-size:8px;color:#ddd">Stock PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.valuation?.pe?.pe_ttm)?sigToF(st.valuation?.pe?.pe_ttm).toFixed(1)+'x':'N/A'}</div></div>
-            <div><div style="font-size:8px;color:#ddd">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price?.['52_week']?.change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
-            <div><div style="font-size:8px;color:#ddd">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price?.ltp?.beta).toFixed(2):'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#ddd">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price['52_week'].change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#ddd">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price.ltp.beta).toFixed(2):'N/A'}</div></div>
         </div>
     </div>`;
 
@@ -2587,14 +2587,14 @@ function buildSectorStats() {
         const sec = sig.sector || '—';
         if(!map[sec]) map[sec] = { tickers:[], scores:[], F:[], T:[], V:[], S:[], ratings:{} };
         map[sec].tickers.push(sig.ticker);
-        map[sec].scores.push(sig.comp);
-        map[sec].F.push(sig.F.score);
-        map[sec].T.push(sig.T.score);
-        map[sec].V.push(sig.V.score);
-        map[sec].S.push(sig.S.score);
-        map[sec].ratings[sig.rating] = (map[sec].ratings[sig.rating]||0)+1;
+        if(sig.comp!==null) map[sec].scores.push(sig.comp);
+        if(sig.F.score!==null) map[sec].F.push(sig.F.score);
+        if(sig.T.score!==null) map[sec].T.push(sig.T.score);
+        if(sig.V.score!==null) map[sec].V.push(sig.V.score);
+        if(sig.S.score!==null) map[sec].S.push(sig.S.score);
+        if(sig.rating) map[sec].ratings[sig.rating] = (map[sec].ratings[sig.rating]||0)+1;
     });
-    const avg = arr => Math.round(arr.reduce((a,b)=>a+b,0)/arr.length);
+    const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
     return Object.entries(map).map(([name, d]) => ({
         name,
         count: d.tickers.length,
@@ -2611,7 +2611,7 @@ function buildSectorStats() {
 function renderSectorTab() {
     if(!SIG_ALL.length) return;
     let stats = buildSectorStats();
-    if(SEC_SORT==='score') stats.sort((a,b)=>b.score-a.score);
+    if(SEC_SORT==='score') stats.sort((a,b)=>(b.score??-1)-(a.score??-1));
     else if(SEC_SORT==='name') stats.sort((a,b)=>a.name.localeCompare(b.name));
     else stats.sort((a,b)=>b.count-a.count);
 
@@ -2620,15 +2620,15 @@ function renderSectorTab() {
     const buyTotal = stats.reduce((a,s)=>a+s.buyCount,0);
     const sellTotal = stats.reduce((a,s)=>a+s.sellCount,0);
     const neutralTotal = universe - buyTotal - sellTotal;
-    const topSec = [...stats].sort((a,b)=>b.score-a.score)[0];
-    const weakSec = [...stats].sort((a,b)=>a.score-b.score)[0];
+    const topSec = [...stats].sort((a,b)=>(b.score??-1)-(a.score??-1))[0];
+    const weakSec = [...stats].sort((a,b)=>(a.score??999)-(b.score??999))[0];
 
     // ---- SECTOR CARDS ----
     const cards = stats.map(s => {
-        const col = sigScoreColor(s.score);
-        const rating = sigRating(s.score);
+        const col = s.score!=null ? sigScoreColor(s.score) : '#555';
+        const rating = s.score!=null ? sigRating(s.score) : 'NO DATA';
         // Mini arc SVG (semicircle gauge)
-        const angle = (s.score/100)*180;
+        const angle = ((s.score??0)/100)*180;
         const rad = angle * Math.PI/180;
         const cx=36,cy=36,r=26;
         const ex = cx + r*Math.cos(Math.PI - rad);
@@ -2636,18 +2636,18 @@ function renderSectorTab() {
         const arcSVG = `<svg width="72" height="42" viewBox="0 0 72 42" style="display:block;margin:0 auto">
             <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round"/>
             <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round"/>
-            <text x="${cx}" y="${cy+2}" text-anchor="middle" fill="${col}" font-size="13" font-weight="800" font-family="JetBrains Mono,monospace">${s.score}</text>
+            <text x="${cx}" y="${cy+2}" text-anchor="middle" fill="${col}" font-size="13" font-weight="800" font-family="JetBrains Mono,monospace">${s.score??'—'}</text>
         </svg>`;
 
         // Pillar mini bars (4 bars stacked)
         const pillarBar = (label, val) => {
-            const pc = sigScoreColor(val);
+            const pc = val!=null ? sigScoreColor(val) : '#555';
             return `<div style="display:flex;align-items:center;gap:3px;margin-bottom:2px">
                 <span style="font-size:7px;color:#ccc;width:8px">${label}</span>
                 <div style="flex:1;height:3px;background:#1a1a1a;border-radius:2px;overflow:hidden">
-                    <div style="height:100%;width:${val}%;background:${pc}"></div>
+                    <div style="height:100%;width:${val??0}%;background:${pc}"></div>
                 </div>
-                <span style="font-size:7px;color:${pc};width:18px;text-align:right">${val}</span>
+                <span style="font-size:7px;color:${pc};width:18px;text-align:right">${val??'—'}</span>
             </div>`;
         };
 
@@ -3377,7 +3377,7 @@ function renderRankTab() {
         let av, bv;
         if(sortCol==='ticker') { av=a.ticker; bv=b.ticker; return sortDir==='asc'?av.localeCompare(bv):bv.localeCompare(av); }
         if(sortCol==='sector') { av=a.sector; bv=b.sector; return sortDir==='asc'?av.localeCompare(bv):bv.localeCompare(av); }
-        if(sortCol==='comp') { av=a.comp; bv=b.comp; }
+        if(sortCol==='comp') { av=a.comp??-1; bv=b.comp??-1; }
         else { av=a[sortCol]?.score||0; bv=b[sortCol]?.score||0; }
         return sortDir==='asc'?av-bv:bv-av;
     });
@@ -3395,7 +3395,7 @@ function renderRankTab() {
             <td style="color:${sigScoreColor(sig.T.score)}">${sig.T.score}</td>
             <td style="color:${sigScoreColor(sig.V.score)}">${sig.V.score}</td>
             <td style="color:${sigScoreColor(sig.S.score)}">${sig.S.score}</td>
-            <td><span style="font-size:7px;font-weight:800;color:${rCol}">${sig.rating.replace('STRONG ','S.')}</span></td>
+            <td><span style="font-size:7px;font-weight:800;color:${rCol}">${sig.rating?sig.rating.replace('STRONG ','S.'):'NO DATA'}</span></td>
         </tr>`;
     }).join('');
 }
@@ -3658,7 +3658,7 @@ function renderCompare() {
             <div style="font-size:13px;font-weight:800;color:#f1f5f9">${s.ticker}</div>
             <div style="font-size:8px;color:#ccc;margin-top:2px">${s.company_details?.sector||'—'}</div>
             ${cp?`<div style="font-size:10px;color:#ddd;margin-top:3px">₹${cp.toLocaleString()}</div>`:''}
-            ${sig?`<div style="font-size:11px;font-weight:800;color:${col};margin-top:3px">${sig.comp} <span style="font-size:8px">${sig.rating}</span></div>`:''}
+            ${sig?`<div style="font-size:11px;font-weight:800;color:${col};margin-top:3px">${sig.comp??'—'} <span style="font-size:8px">${sig.rating||'NO DATA'}</span></div>`:''}
         </td>`;
     }).join('');
 
