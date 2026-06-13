@@ -40,8 +40,7 @@ import json
 import sys
 import logging
 from pathlib import Path
-from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, UTC
 
 # GitHub repo paths
 PROJECT_ROOT = Path(__file__).parent.parent if Path(__file__).parent.name == 'src' else Path(__file__).parent
@@ -3295,8 +3294,6 @@ def main():
     logger.info(f"Writing {OUTPUT_FILE} …")
     
     # Create output with metadata
-    from datetime import datetime
-
     guidance_meta = guidance_data.get('_metadata', {}) if isinstance(guidance_data, dict) else {}
     raw_meta = raw.get('_metadata', {}) if isinstance(raw, dict) else {}
 
@@ -3304,11 +3301,11 @@ def main():
     # _metadata.generated_at (e.g. older file written before that field existed).
     raw_generated_at = raw_meta.get("generated_at")
     if not raw_generated_at and INPUT_FILE.exists():
-        raw_generated_at = datetime.fromtimestamp(INPUT_FILE.stat().st_mtime).isoformat()
+        raw_generated_at = datetime.fromtimestamp(INPUT_FILE.stat().st_mtime, UTC).isoformat()
 
     final_output = {
         "_metadata": {
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "total_tickers": total,
             "unmapped_count": sum(len(v) for v in unmapped_summary.values()),
 

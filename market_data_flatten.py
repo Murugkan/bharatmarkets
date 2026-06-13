@@ -10,7 +10,7 @@ import json
 import re
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, UTC
 from collections import OrderedDict
 from pathlib import Path
 
@@ -812,7 +812,7 @@ try:
     # Add metadata
     output_with_metadata = {
         "_metadata": {
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "total_tickers": len(output_all),
             "data_sources": [
                 "screener_raw_data.json (97 tickers)",

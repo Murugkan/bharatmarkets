@@ -23,7 +23,7 @@ import logging
 import argparse
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional, Tuple
 
 # ============================================================================
@@ -657,7 +657,7 @@ class ScreenerFinancialsScraper:
                 # Alias for consistency with other pipeline outputs
                 # (generated_at/count), used by the data status page.
                 '_metadata': {
-                    'generated_at': datetime.now().isoformat(),
+                    'generated_at': datetime.now(UTC).isoformat(),
                     'count': len(self.scraped_data),
                     'runtime_seconds': round(duration, 2)
                 },
