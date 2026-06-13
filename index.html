@@ -929,21 +929,16 @@ function applyFilters(stocks) {
         filtered = filtered.filter(stock => cleanNum(resolve(stock, 'QTY')) === 0 || resolve(stock, 'QTY') === '—');
     }
     
-    // Category filter (equity vs other)
+    // Category filter (equity vs non-equity)
     if (categoryFilter === 'equity') {
         filtered = filtered.filter(stock => {
             const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
             return isin.startsWith('INE');
         });
-    } else if (categoryFilter === 'etf') {
-        filtered = filtered.filter(stock => {
-            const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
-            return isin.startsWith('INF');
-        });
     } else if (categoryFilter === 'other') {
         filtered = filtered.filter(stock => {
             const isin = (stock.company_details?.isin || stock.isin || '').toUpperCase();
-            return !isin.startsWith('INE') && !isin.startsWith('INF');
+            return !isin.startsWith('INE');
         });
     }
     
@@ -1246,8 +1241,8 @@ function toggleReturnFilter() {
 }
 
 /**
- * Toggle category filter: All → Equity (INE) → Other (non-INE) → All
- * Filters stocks by ISIN type: equity stocks vs mutual funds/bonds
+ * Toggle category filter: All → Equity (INE) → Non-Equity (MF/ETF/SGB/Bonds) → All
+ * Filters stocks by ISIN type: equity stocks vs everything else
  * @returns {void}
  */
 function toggleCategoryFilter() {
@@ -1256,11 +1251,8 @@ function toggleCategoryFilter() {
         categoryFilter = 'equity';
         btn.innerHTML = 'EQ'; btn.style.background = '#007aff'; btn.style.color = '#fff';
     } else if (categoryFilter === 'equity') {
-        categoryFilter = 'etf';
-        btn.innerHTML = 'ETF'; btn.style.background = '#8b5cf6'; btn.style.color = '#fff';
-    } else if (categoryFilter === 'etf') {
         categoryFilter = 'other';
-        btn.innerHTML = 'INS'; btn.style.background = '#ff9500'; btn.style.color = '#fff';
+        btn.innerHTML = 'NON-EQ'; btn.style.background = '#ff9500'; btn.style.color = '#fff';
     } else {
         categoryFilter = null;
         btn.innerHTML = 'SPLT'; btn.style.background = '#666'; btn.style.color = '#fff';
