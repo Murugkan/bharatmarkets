@@ -175,8 +175,8 @@ def setup_logging():
     # Remove existing handlers
     logger.handlers.clear()
     
-    # File handler - WARNING level only
-    fh = logging.FileHandler(Config.LOG_FILE)
+    # File handler - WARNING level only - overwrite (not append) each run
+    fh = logging.FileHandler(Config.LOG_FILE, mode='w')
     fh.setLevel(logging.WARNING)
     
     # Console handler - WARNING level only
@@ -269,13 +269,19 @@ class ScreenerFinancialsScraper:
             mf_excluded = 0
 
             def is_mutual_fund(item):
-                """True for mutual fund / ETF-as-MF entries — no Screener page exists.
-                Sovereign Gold Bonds (SGB) ARE excluded from this check since they're
-                exchange-traded and may have a Screener/Yahoo presence."""
+                """True for mutual fund / ETF-as-MF / SGB entries — no Screener
+                financial-statement page exists for these. SGBs ARE excluded
+                here (unlike fetch_ltp.py/fetch_raw_yfsnr.py) because Screener
+                only indexes companies with P&L/balance-sheet data; government
+                debt instruments have none, so the scrape always times out."""
                 isin = str(item.get('isin') or '').strip().upper()
                 itype = str(item.get('instrument_type') or '').upper()
                 sector = str(item.get('sector') or '').upper()
-                return itype == 'MUTUAL FUND' or sector == 'MUTUAL FUND' or isin.startswith('INF')
+                return (
+                    itype in ('MUTUAL FUND', 'SOVEREIGN BOND')
+                    or sector in ('MUTUAL FUND', 'GOVERNMENT SECURITIES')
+                    or isin.startswith('INF')
+                )
 
             # Handle dict format: {"symbols": [{"ticker": "INFY"}, ...]}
             if isinstance(data, dict):
@@ -306,7 +312,7 @@ class ScreenerFinancialsScraper:
                             symbols.append(item.strip())
 
             if mf_excluded:
-                logger.warning(f"MUTUAL FUND: Excluded {mf_excluded} mutual fund symbol(s) — no Screener page exists")
+                logger.warning(f"MUTUAL FUND/SGB: Excluded {mf_excluded} symbol(s) — no Screener financial page exists")
             
             # Clean and deduplicate
             symbols = [s.upper() for s in symbols if s]

@@ -194,6 +194,60 @@ def fetch_from_nse_api(symbol):
     return None
 
 
+# ── Fetch SGB price from BSE API (fallback when NSE API also fails) ──────
+# Static map of SGB ticker -> BSE scrip code. NSE has no reliable public
+# search API and BSE scrip codes for SGBs are stable (assigned at issue),
+# so a small static table is simplest. Add new SGB holdings here as needed.
+SGB_BSE_SCRIP_CODES = {
+    'SGBFEB32IV': '800329',
+}
+
+def fetch_from_bse_api(symbol):
+    """
+    Fetch SGB price from BSE API using a static scrip-code lookup.
+    Used as final fallback when both Yahoo and NSE API fail (common for
+    SGBs, which Yahoo doesn't carry and NSE's API often blocks CI IPs).
+
+    Returns: dict with all price fields (mapped to yfinance structure) or None if failed.
+    """
+    scrip = SGB_BSE_SCRIP_CODES.get(symbol)
+    if not scrip:
+        return None
+    try:
+        url = f"https://api.bseindia.com/BseIndiaAPI/api/getScripHeaderData/w?Debtflag=&scrip={scrip}"
+        resp = requests.get(url, headers={**HEADERS, "Referer": "https://www.bseindia.com/"}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        curr = data.get('CurrRate', {}) or {}
+        header = data.get('Header', {}) or {}
+        ltp = curr.get('LTP')
+        if ltp is None:
+            return None
+
+        ltp = float(ltp)
+        chg = float(curr.get('Chg', 0) or 0)
+        prev = ltp - chg
+
+        return {
+            'currentPrice': ltp,
+            'previousClose': prev,
+            'open': None,
+            'dayHigh': None,
+            'dayLow': None,
+            'fiftyTwoWeekHigh': float(header.get('WeekHigh52')) if header.get('WeekHigh52') else None,
+            'fiftyTwoWeekLow': float(header.get('WeekLow52')) if header.get('WeekLow52') else None,
+            'volume': None,
+            'beta': None,
+            'longName': data.get('Scripname', symbol),
+            'sector': 'Government Securities',
+        }
+    except Exception:
+        pass
+
+    return None
+
+
 # ── Yahoo search — only called when RESOLVE=true ───────────────────────
 def search_yahoo_symbol(name, isin=""):
     import urllib.request, urllib.parse
@@ -294,12 +348,19 @@ def fetch_ticker(sym):
                 except: info_bo = {}
                 return info_bo, hist_bo
             
-            # Try NSE API as final fallback (for CNINFOTECH, HIGHENE, SGBFEB32IV, etc.)
+            # Try NSE API as next fallback (for CNINFOTECH, HIGHENE, SGBFEB32IV, etc.)
             nse_data = fetch_from_nse_api(sym)
             if nse_data:
                 print(f"  ⚠ {sym}: using NSE API")
                 return nse_data, None
-            
+
+            # Try BSE API as final fallback (SGBs — Yahoo doesn't carry these,
+            # and NSE's API often blocks CI/datacenter IPs)
+            bse_data = fetch_from_bse_api(sym)
+            if bse_data:
+                print(f"  ⚠ {sym}: using BSE API")
+                return bse_data, None
+
             print(f"  ✗ {sym}: not found")
             return {}, None
     except Exception as e:
