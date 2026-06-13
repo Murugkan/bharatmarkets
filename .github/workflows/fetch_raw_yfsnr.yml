@@ -1,5 +1,8 @@
 name: 'Fetch Raw Data - yahoofin + screener'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   workflow_dispatch:
     inputs:
@@ -175,7 +178,9 @@ jobs:
             attempt=$((attempt + 1))
             sleep $((RANDOM % 5 + 1))  # jitter to reduce repeated collisions
             git fetch origin main
+            git stash --include-untracked
             git rebase origin/main
+            git stash pop || true
           done
 
           echo "Push succeeded on attempt $attempt"
