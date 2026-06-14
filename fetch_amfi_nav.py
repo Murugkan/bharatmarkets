@@ -34,7 +34,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(name)-10s | %(levelname)-8s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()]
+    handlers=[logging.FileHandler(LOG_FILE, mode='w'), logging.StreamHandler()]
 )
 logger = logging.getLogger("AMFI-NAV")
 
@@ -60,11 +60,11 @@ def save_json(path, data):
 def get_portfolio_isins():
     """Collect ISINs from unified-symbols.json holdings for MF/SGB instruments.
 
-    Prefers the explicit `instrument_type` field, but most wizard-imported
-    entries don't have it set. Falls back to: ISIN starting with "INF"
-    (mutual fund / ETF convention) or sector == "Mutual Fund"/"Government
-    Securities". ETFs (also INF-prefixed) are harmless here — AMFI simply
-    won't have a NAV match for them, so they're silently skipped later.
+    Uses `instrument_type` (now populated for all entries via the wizard's
+    AI-enrichment step), falling back to sector == "Mutual Fund"/"Government
+    Securities" for any older entries that predate that field. Does NOT use
+    an ISIN "INF" prefix check — ETFs (e.g. JUNIORBEES, INF200KA1FS3) are
+    also INF-prefixed but are not mutual funds and have no AMFI NAV.
     """
     us = load_json(SYMBOLS_FILE)
     isins = set()
@@ -80,7 +80,6 @@ def get_portfolio_isins():
         is_mf_like = (
             itype in ('MUTUAL FUND', 'SOVEREIGN BOND')
             or sector in ('MUTUAL FUND', 'GOVERNMENT SECURITIES')
-            or isin.startswith('INF')
         )
 
         if is_mf_like:
