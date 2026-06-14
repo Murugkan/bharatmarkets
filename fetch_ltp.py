@@ -301,25 +301,28 @@ def load_symbols():
     # All symbols in unified-symbols.json are already confirmed
     # No need to resolve or update
 
-    # Identify MUTUAL FUND / ETF-as-MF entries — these have no Yahoo/NSE
-    # equity quote (NAV comes from fetch_amfi_nav.py instead). Detect via
-    # explicit instrument_type, sector, or ISIN prefix "INF" (mutual fund
-    # convention). Sovereign Gold Bonds (SGB) are exchange-traded and ARE
-    # fetchable via Yahoo (e.g. SGBFEB32IV.NS), so they're excluded here —
-    # only true off-exchange mutual funds are skipped.
+    # Identify MUTUAL FUND entries — these have no Yahoo/NSE equity quote
+    # (NAV comes from fetch_amfi_nav.py instead). Detect via explicit
+    # instrument_type or sector == 'MUTUAL FUND' (real wizard-imported MF
+    # entries always set sector="Mutual Fund", even without instrument_type).
+    # NOTE: do NOT use an ISIN "INF" prefix check — ETFs like JUNIORBEES
+    # (INF200KA1FS3, sector="ETF") also have INF-prefixed ISINs but ARE
+    # exchange-traded with real Yahoo LTP data; an INF-prefix check would
+    # incorrectly exclude them. Sovereign Gold Bonds (SGB) are also
+    # exchange-traded and fetchable via Yahoo, so they're not skipped here.
     def is_mf_like(entry):
-        isin = (entry.get('isin') or '').strip().upper()
         itype = (entry.get('instrument_type') or '').upper()
         sector = (entry.get('sector') or '').upper()
-        return (
-            itype == 'MUTUAL FUND'
-            or sector == 'MUTUAL FUND'
-            or isin.startswith('INF')
-        )
+        return itype == 'MUTUAL FUND' or sector == 'MUTUAL FUND'
 
-    mf_skipped = len([s for s in data if s.get("sym") and is_mf_like(s)])
+    mf_skipped_list = [s.get("sym") for s in data if s.get("sym") and is_mf_like(s)]
+    mf_skipped = len(mf_skipped_list)
     if mf_skipped:
         print(f"🪙 Skipped {mf_skipped} mutual fund symbols (NAV handled separately via fetch_amfi_nav.py)")
+        print(f"   DEBUG mf_skipped_list: {mf_skipped_list}")
+        for s in data:
+            if s.get("sym") in ("JUNIORBEES", "NIFTYBEES"):
+                print(f"   DEBUG {s['sym']}: instrument_type={s.get('instrument_type')!r} sector={s.get('sector')!r} is_mf_like={is_mf_like(s)}")
 
     # Filter out delisted symbols and MF/SGB entries
     syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved") and s["sym"] not in DELISTED and not is_mf_like(s)]
