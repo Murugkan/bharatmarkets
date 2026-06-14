@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 BharatMarkets Onyx Pro Terminal - Multi-Ticker Data Pipeline
-Dynamically processes all tickers from ltp.json without hardcoding
+Dynamically processes all tickers from prices.json without hardcoding
 All logs written to file for GitHub workflow
 Headers preserve exact source names (no underscore stripping)
 """
@@ -90,7 +90,7 @@ class Logger:
 
 logger = Logger(LOG_FILE)
 
-# Read tickers from ltp.json dynamically
+# Read tickers from prices.json dynamically
 logger.write_section("INITIALIZATION")
 logger.write("Reading tickers from screener_raw_data.json", 'INIT')
 
@@ -104,11 +104,11 @@ try:
     else:
         raise ValueError("screener_raw is empty")
 except:
-    with open(DATA_DIR / 'ltp.json') as f:
+    with open(DATA_DIR / 'prices.json') as f:
         prices_file = json.load(f)
     prices_data = prices_file.get("quotes", {})
     TICKERS_TO_PROCESS = [k for k in prices_data.keys() if k != '_metadata']
-    logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from ltp.json", 'INIT')
+    logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from prices.json", 'INIT')
 
 # Add MUTUAL FUND / SOVEREIGN BOND / ETF tickers from unified-symbols.json that
 # aren't covered by Screener/Yahoo (e.g. AMFI-only mutual funds) — these have
@@ -260,7 +260,7 @@ def load_all_data():
         'yahoofin_fin': DATA_DIR / 'yahoofin_financials.json',
         'yahoofin_raw': DATA_DIR / 'yahoofin_raw_data.json',
         'guidance': DATA_DIR / 'guidance.json',
-        'prices': DATA_DIR / 'ltp.json',
+        'prices': DATA_DIR / 'prices.json',
         'unified_symbols': DATA_DIR / 'unified-symbols.json',
     }
     
@@ -793,24 +793,12 @@ for TICKER in TICKERS_TO_PROCESS:
                     output[TICKER]['data'][section_key].append(row)
         
         # === ADD LTP FROM PRICES ===
-        # NOTE: all_data['prices'] was already unwrapped from
-        # {"quotes": {...}} to just the quotes dict at module level
-        # (see "Extract quotes from prices" above) — do NOT call
-        # .get('quotes', {}) again here, or ticker_prices is always {}.
         prices_dict = all_data.get('prices', {})
-        ticker_prices = prices_dict.get(TICKER, {}) if prices_dict else {}
+        ticker_prices = prices_dict.get('quotes', {}).get(TICKER, {}) if prices_dict else {}
         daily_section = "yahoofin_raw:history_6mo_1d"
         daily_data = output[TICKER]['data'].get(daily_section, [])
-
-        # Inject LTP whenever fetch_ltp.py produced a quote for this ticker —
-        # do NOT require yahoofin OHLCV history to be present (some tickers,
-        # e.g. ETFs like JUNIORBEES, may have a working quote in ltp.json
-        # even if Yahoo's .history() call returns empty for them). Previously
-        # this was gated on `daily_data` being non-empty AND `daily_data` was
-        # never written back to output[TICKER]['data'] when the section key
-        # didn't already exist (since .get(key, []) returns a throwaway list),
-        # so LTP silently never appeared for such tickers.
-        if ticker_prices.get('ltp') is not None:
+        
+        if daily_data and len(daily_data) > 0:
             ltp_obj = {
                 'metric': 'LTP',
                 'source': 'prices',
@@ -830,7 +818,6 @@ for TICKER in TICKERS_TO_PROCESS:
                 }
             }
             daily_data.insert(0, ltp_obj)
-            output[TICKER]['data'][daily_section] = daily_data
         
         # === CLEAN AND FINALIZE ===
         output[TICKER]['data'] = clean_metric_names(output[TICKER]['data'])
@@ -859,7 +846,7 @@ try:
                 "yahoofin_raw_data.json (97 tickers)",
                 "yahoofin_financials.json (97 tickers)",
                 "guidance.json (29 tickers)",
-                "ltp.json",
+                "prices.json (98 tickers)",
                 "unified-symbols.json (97 tickers)"
             ],
             "structure": {

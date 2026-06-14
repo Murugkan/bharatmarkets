@@ -2408,12 +2408,13 @@ function setupChartInteraction(){
     }else if(t.isPanning&&currentStock){
       S.panOffset=Math.max(0,t.startPan-Math.round((e.touches[0].clientX-t.startX)*bpp()));
       go();
+      e.preventDefault();
     }
   };
   const te=()=>{t.isPanning=false;t.lastDist=0;};
-  canvas.ontouchstart=ts;canvas.ontouchmove=tm;canvas.ontouchend=te;
+  canvas.ontouchstart=ts;canvas.addEventListener('touchmove',tm,{passive:false});canvas.ontouchend=te;
   const v=document.getElementById('cv-vol');
-  if(v){v.ontouchstart=ts;v.ontouchmove=tm;v.ontouchend=te;}
+  if(v){v.ontouchstart=ts;v.addEventListener('touchmove',tm,{passive:false});v.ontouchend=te;}
 }
 document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
