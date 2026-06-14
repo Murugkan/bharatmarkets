@@ -121,13 +121,11 @@ try:
     added = []
     for entry in unified_symbols_file.get('symbols', []):
         ticker = entry.get('ticker')
-        isin = (entry.get('isin') or '').strip().upper()
         itype = (entry.get('instrument_type') or '').upper()
         sector = (entry.get('sector') or '').upper()
         is_mf_like = (
             itype in ('MUTUAL FUND', 'SOVEREIGN BOND')
             or sector in ('MUTUAL FUND', 'GOVERNMENT SECURITIES')
-            or isin.startswith('INF')
         )
         if ticker and ticker not in existing and is_mf_like:
             TICKERS_TO_PROCESS.append(ticker)

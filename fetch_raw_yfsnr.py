@@ -629,21 +629,19 @@ def main():
             skipped += 1
             continue
         
-        # Skip MUTUAL FUND / ETF-as-MF entries — these have no Yahoo/Screener
-        # equity data; NAV is fetched separately via fetch_amfi_nav.py.
-        # Detect via instrument_type, sector, or ISIN prefix "INF" (mutual
-        # fund convention), since most wizard-imported entries lack an
-        # explicit instrument_type field. Sovereign Gold Bonds (SGB) ARE
-        # exchange-traded and fetchable via Yahoo (e.g. SGBFEB32IV.NS), so
-        # they are NOT skipped here.
-        isin_upper = str(symbol.get("isin") or "").strip().upper()
+        # Skip MUTUAL FUND entries — these have no Yahoo/Screener equity
+        # data; NAV is fetched separately via fetch_amfi_nav.py. Detect via
+        # instrument_type or sector == "MUTUAL FUND" (real wizard-imported
+        # entries always set sector="Mutual Fund" even without an explicit
+        # instrument_type). NOTE: do NOT use an ISIN "INF" prefix check —
+        # ETFs like JUNIORBEES (INF200KA1FS3, sector="ETF") also have
+        # INF-prefixed ISINs but ARE exchange-traded with real Yahoo data;
+        # an INF-prefix check would incorrectly exclude them. Sovereign Gold
+        # Bonds (SGB) ARE exchange-traded and fetchable via Yahoo, so they
+        # are NOT skipped here.
         itype = str(symbol.get("instrument_type") or "").upper()
         sector = str(symbol.get("sector") or "").upper()
-        if (
-            itype == "MUTUAL FUND"
-            or sector == "MUTUAL FUND"
-            or isin_upper.startswith("INF")
-        ):
+        if itype == "MUTUAL FUND" or sector == "MUTUAL FUND":
             skipped += 1
             continue
         

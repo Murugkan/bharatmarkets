@@ -380,17 +380,19 @@ def main():
     for symbol in symbols:
         ticker = str(symbol["ticker"]).strip()
         
-        # Skip MUTUAL FUND / ETF-as-MF entries — no Yahoo financials exist for
-        # these; NAV is fetched separately via fetch_amfi_nav.py. Sovereign
-        # Gold Bonds (SGB) are exchange-traded and NOT excluded here.
-        isin_upper = str(symbol.get("isin") or "").strip().upper()
+        # Skip MUTUAL FUND entries — no Yahoo financials exist for these;
+        # NAV is fetched separately via fetch_amfi_nav.py. Detect via
+        # instrument_type or sector == "MUTUAL FUND" only — NOT an ISIN
+        # "INF" prefix check, since ETFs like JUNIORBEES (INF200KA1FS3,
+        # sector="ETF") also have INF-prefixed ISINs but ARE fetchable via
+        # Yahoo. Sovereign Gold Bonds (SGB) are exchange-traded and NOT
+        # excluded here.
         itype = str(symbol.get("instrument_type") or "").upper()
         sector_field = str(symbol.get("sector") or "").upper()
         if (
             ticker in DELISTED
             or itype == "MUTUAL FUND"
             or sector_field == "MUTUAL FUND"
-            or isin_upper.startswith("INF")
         ):
             skipped += 1
             continue

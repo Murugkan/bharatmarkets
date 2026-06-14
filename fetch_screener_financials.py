@@ -269,18 +269,20 @@ class ScreenerFinancialsScraper:
             mf_excluded = 0
 
             def is_mutual_fund(item):
-                """True for mutual fund / ETF-as-MF / SGB entries — no Screener
+                """True for mutual fund / SGB entries — no Screener
                 financial-statement page exists for these. SGBs ARE excluded
                 here (unlike fetch_ltp.py/fetch_raw_yfsnr.py) because Screener
                 only indexes companies with P&L/balance-sheet data; government
-                debt instruments have none, so the scrape always times out."""
-                isin = str(item.get('isin') or '').strip().upper()
+                debt instruments have none, so the scrape always times out.
+                NOTE: do NOT use an ISIN "INF" prefix check — ETFs like
+                JUNIORBEES/NIFTYBEES (INF200KA1FS3 etc., sector="ETF") also
+                have INF-prefixed ISINs but DO have a (minimal) Screener
+                page; an INF-prefix check would incorrectly exclude them."""
                 itype = str(item.get('instrument_type') or '').upper()
                 sector = str(item.get('sector') or '').upper()
                 return (
                     itype in ('MUTUAL FUND', 'SOVEREIGN BOND')
                     or sector in ('MUTUAL FUND', 'GOVERNMENT SECURITIES')
-                    or isin.startswith('INF')
                 )
 
             # Handle dict format: {"symbols": [{"ticker": "INFY"}, ...]}
