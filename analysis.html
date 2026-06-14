@@ -65,12 +65,13 @@
         .section-row > div{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:10px}
         
         /* Weightage Summary */
-        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:0 6px 6px 6px;margin-bottom:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+        .weightage-container{background:var(--card);border:1px solid var(--b1);border-radius:6px;padding:0 6px 6px 6px;margin-bottom:6px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px}
         .weightage-box{text-align:center;padding:4px;background:rgba(0,0,0,.3);border-radius:4px}
         .weightage-label{font-size:7px;color:var(--tx3);text-transform:uppercase;margin-bottom:2px}
         .weightage-value{font-size:18px;font-weight:800}
         .pos-box .weightage-value{color:var(--gr)}
         .neg-box .weightage-value{color:var(--rd)}
+        .neu-box .weightage-value{color:var(--yw)}
         .signal-box .weightage-value{color:var(--ac);font-size:14px}
         .signal-label{font-size:8px;color:var(--tx3);margin-top:4px;text-transform:uppercase;font-weight:700}
         
@@ -353,6 +354,7 @@ const fieldMapping = {
     'price_to_sales': ['valuation.pe.price_to_sales'],
     'ev_to_ebitda': ['valuation.pe.ev_to_ebitda'],
     'ev_to_revenue': ['valuation.pe.ev_to_revenue'],
+    'peg': ['valuation.pe.peg', 'valuation.pe.peg_ttm'],
     'book_value': ['valuation.market.book_value'],
     
     // EPS Values (from valuation.eps.eps_ttm)
@@ -659,7 +661,7 @@ function renderTab(tab) {
         const roe = num(get(s, 'roe', 'return_on_equity'));
         const roce = num(get(s, 'roce', 'return_on_capital_employed'));
         const opm = num(get(s, 'opm', 'operating_margin', 'operating_margins'));
-        const ltp = num(get(s, 'ltp', 'price'));
+        const ltp = num(get(s, 'ltp'));
         const mcapRaw = num(get(s, 'mcap', 'market_cap'));
         // valuation.market.market_cap is in rupees; convert to Cr (÷1Cr=10,000,000)
         const mcap = mcapRaw > 1e8 ? mcapRaw / 1e7 : mcapRaw; // if >10Cr in rupees, convert
@@ -667,21 +669,23 @@ function renderTab(tab) {
         // Sales/Revenue: latest annual value from financials
         const salesData = resolveField(s, 'sales');
         const sales = num(typeof salesData === 'object' && salesData !== null
-            ? Object.values(salesData).slice(-1)[0]
+            ? latestFromDict(salesData)
             : salesData);
 
-        // EBITDA: flat field from financials
-        const ebitda = num(resolveField(s, 'ebitda'));
+        // EBITDA: flat field from financials (valuation.market.ebitda is in
+        // rupees; convert to Cr, same as market_cap)
+        const ebitdaRaw = num(resolveField(s, 'ebitda'));
+        const ebitda = ebitdaRaw > 1e8 ? ebitdaRaw / 1e7 : ebitdaRaw;
 
         // CFO / FCF: latest annual value
         const cfoData = resolveField(s, 'cfo');
         const cfo = num(typeof cfoData === 'object' && cfoData !== null
-            ? Object.values(cfoData).slice(-1)[0]
+            ? latestFromDict(cfoData)
             : cfoData);
 
         const fcfData = resolveField(s, 'fcf');
         const fcf = num(typeof fcfData === 'object' && fcfData !== null
-            ? Object.values(fcfData).slice(-1)[0]
+            ? latestFromDict(fcfData)
             : fcfData);
 
         const eps = num(get(s, 'eps_ttm', 'trailing_eps'));
@@ -701,28 +705,6 @@ function renderTab(tab) {
 
         const quarterly = getQuarterlyData(s);
         
-        // EXTRACT: Positive & Negative signals (from AI insights analysis pillars)
-        const sigCounts = getSignalCounts(s);
-        const posSignals = sigCounts.pos;
-        const negSignals = sigCounts.neg;
-        const totalSignals = posSignals + negSignals;
-        const posWeightage = totalSignals > 0 ? Math.round((posSignals / totalSignals) * 100) : 0;
-        const negWeightage = totalSignals > 0 ? Math.round((negSignals / totalSignals) * 100) : 0;
-
-        // COMPUTE: Overall signal from the same pos/neg pillar counts shown
-        // above (valuation, growth, profitability, cash_strength, catalyst,
-        // moat, opportunity). Falls back to the AI insights recommendation
-        // only if no pillars have a Positive/Negative signal at all.
-        const signal = (() => {
-            if (totalSignals === 0) {
-                const rec = get(s, 'signal');
-                return rec !== '—' ? rec : 'HOLD';
-            }
-            if (posWeightage >= 70) return 'BUY';
-            if (posWeightage <= 30) return 'SELL';
-            return 'HOLD';
-        })();
-        
         // EXTRACT: Total Debt — latest annual borrowings
         let totalDebt = 0;
         if (quarterly && quarterly.length > 0) {
@@ -736,7 +718,7 @@ function renderTab(tab) {
         if (!totalDebt) {
             const debtData = resolveField(s, 'debt');
             totalDebt = num(typeof debtData === 'object' && debtData !== null
-                ? Object.values(debtData).slice(-1)[0] : debtData);
+                ? latestFromDict(debtData) : debtData);
         }
         
         // CALCULATE: Operating Margin Trend from quarterly
@@ -792,10 +774,10 @@ function renderTab(tab) {
         if (!interestCoverage) {
             const intData = resolveField(s, 'interest');
             const intVal = num(typeof intData === 'object' && intData !== null
-                ? Object.values(intData).slice(-1)[0] : intData);
+                ? latestFromDict(intData) : intData);
             const opData = resolveField(s, 'operating_profit');
             const opVal = num(typeof opData === 'object' && opData !== null
-                ? Object.values(opData).slice(-1)[0] : opData);
+                ? latestFromDict(opData) : opData);
             if (opVal > 0 && intVal > 0) interestCoverage = opVal / intVal;
         }
         
@@ -815,6 +797,43 @@ function renderTab(tab) {
             const ev = mcap + totalDebt - cash;
             evEbitda = ev / ebitda;
         }
+
+        // EXTRACT: PEG ratio, Current Ratio, Quick Ratio
+        const peg = num(get(s, 'peg'));
+        const currentRatio = num(get(s, 'current_ratio'));
+        const quickRatio = num(get(s, 'quick_ratio'));
+
+        // CLASSIFY: 13 real, data-driven metrics as positive/neutral/warning.
+        // (Q Score, G Score, Credit were hardcoded placeholders and have
+        // been removed from the page entirely — see TBD links below.)
+        const peClass    = pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning';
+        const pbClass    = pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning';
+        const evClass    = evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd';
+        const roicClass  = roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning';
+        const ccClass    = cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning';
+        const fcfYClass  = fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd';
+        const revCagrClass = revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd';
+        const epsCagrClass = earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd';
+        const deClass   = debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning';
+        const icClass   = interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd';
+        const promClass = prom > 50 ? 'val-positive' : prom > 30 ? 'val-neutral' : 'val-warning';
+        const fiiClass  = fii > 20 ? 'val-positive' : fii > 10 ? 'val-neutral' : 'val-warning';
+        const diiClass  = dii > 15 ? 'val-positive' : dii > 10 ? 'val-neutral' : 'val-warning';
+        const pegClass  = peg > 0 ? (peg < 1 ? 'val-positive' : peg < 2 ? 'val-neutral' : 'val-warning') : 'tbd';
+        const curClass  = currentRatio > 0 ? (currentRatio > 1.5 ? 'val-positive' : currentRatio >= 1 ? 'val-neutral' : 'val-warning') : 'tbd';
+        const quickClass = quickRatio > 0 ? (quickRatio > 1 ? 'val-positive' : quickRatio >= 0.5 ? 'val-neutral' : 'val-warning') : 'tbd';
+
+        const allClasses = [peClass, pbClass, evClass, roicClass, ccClass, fcfYClass, revCagrClass, epsCagrClass, deClass, icClass, promClass, fiiClass, diiClass, pegClass, curClass, quickClass];
+        const posSignals = allClasses.filter(c => c === 'val-positive').length;
+        const negSignals = allClasses.filter(c => c === 'val-warning').length;
+        const neuSignals = allClasses.length - posSignals - negSignals;
+        const totalSignals = posSignals + negSignals;
+        const posWeightage = totalSignals > 0 ? Math.round((posSignals / totalSignals) * 100) : 0;
+        const negWeightage = totalSignals > 0 ? Math.round((negSignals / totalSignals) * 100) : 0;
+        const neuWeightage = Math.round((neuSignals / allClasses.length) * 100);
+
+        // COMPUTE: Overall signal — simple majority of pos vs neg metrics
+        const signal = posSignals > negSignals ? 'BUY' : negSignals > posSignals ? 'SELL' : 'HOLD';
         
         html = `
             <div style="padding:8px 0;padding-bottom:80px">
@@ -830,6 +849,11 @@ function renderTab(tab) {
                     <div class="weightage-label">Negative</div>
                     <div class="weightage-value">${negWeightage}%</div>
                     <div style="font-size:7px;color:var(--tx3)">-${negSignals}</div>
+                </div>
+                <div class="weightage-box neu-box">
+                    <div class="weightage-label">Neutral</div>
+                    <div class="weightage-value">${neuWeightage}%</div>
+                    <div style="font-size:7px;color:var(--tx3)">${neuSignals}</div>
                 </div>
                 <div class="weightage-box signal-box">
                     <div class="weightage-label">Signal</div>
@@ -853,19 +877,19 @@ function renderTab(tab) {
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">P/E</div>
-                        <div class="metric-value ${pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning'}">${fmt(pe)}x</div>
+                        <div class="metric-value ${peClass}">${fmt(pe)}x</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">P/B</div>
-                        <div class="metric-value ${pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning'}">${fmt(pb)}x</div>
+                        <div class="metric-value ${pbClass}">${fmt(pb)}x</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">EV/EBITDA</div>
-                        <div class="metric-value ${evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd'}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
+                        <div class="metric-value ${evClass}">${evEbitda > 0 ? fmt(evEbitda, 1) + 'x' : tbdLink('EV/EBITDA')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">PEG</div>
-                        <div class="metric-value">${tbdLink('PEG Ratio')}</div>
+                        <div class="metric-value ${pegClass}">${peg > 0 ? fmt(peg, 2) + 'x' : tbdLink('PEG Ratio')}</div>
                     </div>
                 </div>
                 
@@ -878,7 +902,7 @@ function renderTab(tab) {
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">ROIC</div>
-                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">${fmt(roce)}%</div>
+                        <div class="metric-value ${roicClass}">${fmt(roce)}%</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">WACC</div>
@@ -886,15 +910,15 @@ function renderTab(tab) {
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Cash Conv</div>
-                        <div class="metric-value ${cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning'}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
+                        <div class="metric-value ${ccClass}">${cashConversion > 0 ? fmt(cashConversion) + '%' : tbdLink('Cash Conversion')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">FCF Yield</div>
-                        <div class="metric-value ${fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd'}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
+                        <div class="metric-value ${fcfYClass}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Q Score</div>
-                        <div class="metric-value ${roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning'}">A</div>
+                        <div class="metric-value">${tbdLink('Quality Score')}</div>
                     </div>
                 </div>
             </div>
@@ -906,7 +930,7 @@ function renderTab(tab) {
                     <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">📈 Growth</div>
                     <div class="metric-row">
                         <div class="metric-label">Rev CAGR</div>
-                        <div class="metric-value ${revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd'}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
+                        <div class="metric-value ${revCagrClass}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">EBITDA CAGR</div>
@@ -914,11 +938,11 @@ function renderTab(tab) {
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">EPS CAGR</div>
-                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'tbd'}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
+                        <div class="metric-value ${epsCagrClass}">${earningsCagr > 0 ? fmt(earningsCagr) + '%' : tbdLink('Earnings CAGR')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">G Score</div>
-                        <div class="metric-value ${earningsCagr > 20 ? 'val-positive' : earningsCagr > 10 ? 'val-neutral' : 'val-warning'}">B+</div>
+                        <div class="metric-value">${tbdLink('Growth Score')}</div>
                     </div>
                 </div>
                 
@@ -927,23 +951,23 @@ function renderTab(tab) {
                     <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">🏦 Health</div>
                     <div class="metric-row">
                         <div class="metric-label">D/EBITDA</div>
-                        <div class="metric-value ${debtToEbitda > 0 && debtToEbitda < 2 ? 'val-positive' : debtToEbitda < 3.5 ? 'val-neutral' : 'val-warning'}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
+                        <div class="metric-value ${deClass}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Int Cover</div>
-                        <div class="metric-value ${interestCoverage > 5 ? 'val-positive' : interestCoverage > 2 ? 'val-neutral' : 'tbd'}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
+                        <div class="metric-value ${icClass}">${interestCoverage > 0 ? fmt(interestCoverage, 1) + 'x' : tbdLink('Interest Coverage')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Curr Ratio</div>
-                        <div class="metric-value">${tbdLink('Current Ratio')}</div>
+                        <div class="metric-value ${curClass}">${currentRatio > 0 ? fmt(currentRatio, 2) + 'x' : tbdLink('Current Ratio')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Quick Ratio</div>
-                        <div class="metric-value">${tbdLink('Quick Ratio')}</div>
+                        <div class="metric-value ${quickClass}">${quickRatio > 0 ? fmt(quickRatio, 2) + 'x' : tbdLink('Quick Ratio')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Credit</div>
-                        <div class="metric-value val-positive">AA-</div>
+                        <div class="metric-value">${tbdLink('Credit Rating')}</div>
                     </div>
                 </div>
             </div>
@@ -969,15 +993,15 @@ function renderTab(tab) {
                     <div>
                         <div class="metric-row">
                             <div class="metric-label">Promoter</div>
-                            <div class="metric-value ${prom > 50 ? 'val-positive' : prom > 30 ? 'val-neutral' : 'val-warning'}">${fmt(prom)}%</div>
+                            <div class="metric-value ${promClass}">${fmt(prom)}%</div>
                         </div>
                         <div class="metric-row">
                             <div class="metric-label">FII</div>
-                            <div class="metric-value ${fii > 20 ? 'val-positive' : fii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(fii)}%</div>
+                            <div class="metric-value ${fiiClass}">${fmt(fii)}%</div>
                         </div>
                         <div class="metric-row">
                             <div class="metric-label">DII</div>
-                            <div class="metric-value ${dii > 15 ? 'val-positive' : dii > 10 ? 'val-neutral' : 'val-warning'}">${fmt(dii)}%</div>
+                            <div class="metric-value ${diiClass}">${fmt(dii)}%</div>
                         </div>
                     </div>
                 </div>
