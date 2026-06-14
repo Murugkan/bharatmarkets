@@ -368,7 +368,70 @@ jobs:
           echo "Push succeeded on attempt $attempt"
 
   # ==========================================================================
-  # JOB 5: Bucket market_data_raw.json -> market_data.json (final output)
+  # JOB 5: Mutual fund / SGB NAV from AMFI — fetch_amfi_nav.py
+  # Independent of jobs 1-3 (only needs unified-symbols.json, already in repo).
+  # Must complete before bucket-market-data so mf_nav.json is available.
+  # ==========================================================================
+  fetch-mf-nav:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests -q
+
+      - name: Run fetch_amfi_nav.py
+        run: python fetch_amfi_nav.py
+
+      - name: Verify output file
+        run: |
+          if [ -f data/mf_nav.json ]; then
+            echo "✓ mf_nav.json exists"
+            ls -lh data/mf_nav.json
+          else
+            echo "✗ mf_nav.json NOT FOUND"
+          fi
+
+      - name: Commit & Push (retry on concurrent updates)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add data/mf_nav.json data/logs/fetch_amfi_nav.log 2>/dev/null || true
+
+          if git diff --quiet --cached; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "[MF NAV] Fetch AMFI NAV: $(date +'%Y-%m-%d %H:%M:%S')"
+
+          max_attempts=5
+          attempt=1
+          until git push origin main; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Push failed after $max_attempts attempts"
+              exit 1
+            fi
+            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 1))
+            git fetch origin main
+            git stash --include-untracked
+            git rebase origin/main
+            git stash pop || true
+          done
+
+          echo "Push succeeded on attempt $attempt"
+
+  # ==========================================================================
+  # JOB 6: Bucket market_data_raw.json -> market_data.json (final output)
   # Runs after flatten-market-data and fetch-mf-nav so both market_data_raw.json
   # and mf_nav.json are available.
   # ==========================================================================
@@ -412,69 +475,6 @@ jobs:
           fi
 
           git commit -m "[Step 3] Bucket Market Data: $(date +'%Y-%m-%d %H:%M:%S')"
-
-          max_attempts=5
-          attempt=1
-          until git push origin main; do
-            if [ $attempt -ge $max_attempts ]; then
-              echo "::error::Push failed after $max_attempts attempts"
-              exit 1
-            fi
-            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
-            attempt=$((attempt + 1))
-            sleep $((RANDOM % 5 + 1))
-            git fetch origin main
-            git stash --include-untracked
-            git rebase origin/main
-            git stash pop || true
-          done
-
-          echo "Push succeeded on attempt $attempt"
-
-  # ==========================================================================
-  # JOB 6: Mutual fund / SGB NAV from AMFI — fetch_amfi_nav.py
-  # Independent of jobs 1-3 (only needs unified-symbols.json, already in repo).
-  # Must complete before bucket-market-data so mf_nav.json is available.
-  # ==========================================================================
-  fetch-mf-nav:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install requests -q
-
-      - name: Run fetch_amfi_nav.py
-        run: python fetch_amfi_nav.py
-
-      - name: Verify output file
-        run: |
-          if [ -f data/mf_nav.json ]; then
-            echo "✓ mf_nav.json exists"
-            ls -lh data/mf_nav.json
-          else
-            echo "✗ mf_nav.json NOT FOUND"
-          fi
-
-      - name: Commit & Push (retry on concurrent updates)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add data/mf_nav.json data/logs/fetch_amfi_nav.log 2>/dev/null || true
-
-          if git diff --quiet --cached; then
-            echo "No changes to commit"
-            exit 0
-          fi
-
-          git commit -m "[MF NAV] Fetch AMFI NAV: $(date +'%Y-%m-%d %H:%M:%S')"
 
           max_attempts=5
           attempt=1
