@@ -488,6 +488,9 @@ const fieldMapping = {
     
     // Signals & Guidance (from derived_metrics)
     'signal': ['derived_metrics.ai_insights_guidance.insights.recommendation'],
+    'fundamental_score': ['derived_metrics.calculated_metrics.fundamental_score'],
+    'composite_score': ['derived_metrics.calculated_metrics.composite_score'],
+    'backend_rating': ['derived_metrics.calculated_metrics.rating'],
     
     // Data Arrays
     'quarterly': ['financials.revenue.consolidated.quarterly'],
@@ -660,7 +663,9 @@ function renderTab(tab) {
         const pe = num(get(s, 'pe', 'trailing_pe'));
         const pb = num(get(s, 'pb', 'price_to_book'));
         const roe = num(get(s, 'roe', 'return_on_equity'));
-        const roce = num(get(s, 'roce', 'return_on_capital_employed'));
+        const roceData = resolveField(s, 'roce');
+        const roce = num(typeof roceData === 'object' && roceData !== null
+            ? latestFromDict(roceData) : roceData);
         const opm = num(get(s, 'opm', 'operating_margin', 'operating_margins'));
         const ltp = num(get(s, 'ltp'));
         const faceValue = num(get(s, 'face_value'));
@@ -820,7 +825,7 @@ function renderTab(tab) {
         const peClass    = pe > 0 && pe < 20 ? 'val-positive' : pe >= 20 && pe < 40 ? 'val-neutral' : 'val-warning';
         const pbClass    = pb > 0 && pb < 1.5 ? 'val-positive' : pb >= 1.5 && pb < 3 ? 'val-neutral' : 'val-warning';
         const evClass    = evEbitda > 0 ? (evEbitda < 12 ? 'val-positive' : evEbitda < 20 ? 'val-neutral' : 'val-warning') : 'tbd';
-        const roicClass  = roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning';
+        const roicClass  = roce === 0 ? 'tbd' : roce > 15 ? 'val-positive' : roce > 10 ? 'val-neutral' : 'val-warning';
         const ccClass    = cashConversion > 100 ? 'val-positive' : cashConversion > 50 ? 'val-neutral' : 'val-warning';
         const fcfYClass  = fcfYield > 5 ? 'val-positive' : fcfYield > 2 ? 'val-neutral' : 'tbd';
         const revCagrClass = revenueCagr > 15 ? 'val-positive' : revenueCagr > 8 ? 'val-neutral' : 'tbd';
@@ -833,7 +838,7 @@ function renderTab(tab) {
         const pegClass  = peg > 0 ? (peg < 1 ? 'val-positive' : peg < 2 ? 'val-neutral' : 'val-warning') : 'tbd';
         const curClass  = currentRatio > 0 ? (currentRatio > 1.5 ? 'val-positive' : currentRatio >= 1 ? 'val-neutral' : 'val-warning') : 'tbd';
         const quickClass = quickRatio > 0 ? (quickRatio > 1 ? 'val-positive' : quickRatio >= 0.5 ? 'val-neutral' : 'val-warning') : 'tbd';
-        const roaClass  = roa > 10 ? 'val-positive' : roa > 5 ? 'val-neutral' : 'val-warning';
+        const roaClass  = roa === 0 ? 'tbd' : roa > 10 ? 'val-positive' : roa > 5 ? 'val-neutral' : 'val-warning';
         const revGrowthClass = revGrowthTTM > 10 ? 'val-positive' : revGrowthTTM > 5 ? 'val-neutral' : 'val-warning';
         const deqClass  = debtToEquity < 50 ? 'val-positive' : debtToEquity < 100 ? 'val-neutral' : 'val-warning';
         const opmTrendClass = marginTrend === '—' ? 'tbd' : (marginTrendDelta > 0.5 ? 'val-positive' : marginTrendDelta < -0.5 ? 'val-warning' : 'val-neutral');
@@ -849,6 +854,10 @@ function renderTab(tab) {
 
         // COMPUTE: Overall signal — simple majority of pos vs neg metrics
         const signal = posSignals > negSignals ? 'BUY' : negSignals > posSignals ? 'SELL' : 'HOLD';
+
+        // Backend's own pre-computed score, for reference/comparison
+        const backendScore = num(get(s, 'fundamental_score'));
+        const backendRating = get(s, 'backend_rating');
         
         html = `
             <div style="padding:8px 0;padding-bottom:80px">
@@ -875,6 +884,9 @@ function renderTab(tab) {
                     <div class="weightage-value ${signal === 'BUY' ? 'val-positive' : signal === 'SELL' ? 'val-negative' : 'val-neutral'}">${signal}</div>
                     <div class="signal-label">${signal === 'BUY' ? '📈 Bullish' : signal === 'SELL' ? '📉 Bearish' : '⚪ Neutral'}</div>
                 </div>
+            </div>
+            <div style="text-align:center;font-size:8px;color:var(--tx3);margin:-2px 0 6px 0">
+                Backend score: ${backendScore > 0 ? fmt(backendScore, 1) : '—'}/100${backendRating !== '—' ? ' · ' + backendRating : ''}
             </div>
             
             <!-- ROW 1: Valuation + Quality -->
@@ -921,7 +933,7 @@ function renderTab(tab) {
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">ROIC</div>
-                        <div class="metric-value ${roicClass}">${fmt(roce)}%</div>
+                        <div class="metric-value ${roicClass}">${roce > 0 ? fmt(roce) + '%' : tbdLink('ROCE')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">WACC</div>
@@ -937,7 +949,7 @@ function renderTab(tab) {
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">ROA</div>
-                        <div class="metric-value ${roaClass}">${fmt(roa)}%</div>
+                        <div class="metric-value ${roaClass}">${roa > 0 ? fmt(roa) + '%' : tbdLink('ROA')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Q Score</div>
