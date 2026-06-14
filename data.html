@@ -4328,6 +4328,8 @@ function renderStep3() {
         "STEP 11: OUTPUT FORMAT (STRICT)\n\n" +
         "Comma-separated, NO spaces:\n\n" +
         "SeqNo,Name,Ticker,ISIN,Sector,Industry,InstrumentType\n\n" +
+        "InstrumentType MUST be exactly one of (no extra text/parentheses):\n" +
+        "EQUITY | ETF | MUTUAL FUND | SOVEREIGN BOND | CORPORATE BOND | SME | UNKNOWN\n\n" +
         "Rules:\n" +
         "- Preserve sequence number\n" +
         "- Ticker not applicable → NA\n" +
@@ -5117,6 +5119,7 @@ function generateJSONPreview() {
             isin: stock.isin,
             sector: stock.sector,
             industry: stock.industry,
+            instrument_type: stock.instrumentType || '',
             type: stock.type.toLowerCase(),
             source: 'import'
         });
@@ -5208,6 +5211,7 @@ function postToGitHub() {
             isin: stock.isin,
             sector: stock.sector,
             industry: stock.industry,
+            instrument_type: stock.instrumentType || '',
             type: stock.type.toLowerCase(),
             source: 'import',
             holdings: []
