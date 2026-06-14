@@ -793,8 +793,12 @@ for TICKER in TICKERS_TO_PROCESS:
                     output[TICKER]['data'][section_key].append(row)
         
         # === ADD LTP FROM PRICES ===
+        # NOTE: all_data['prices'] was already unwrapped from
+        # {"quotes": {...}} to just the quotes dict at module level
+        # (see "Extract quotes from prices" above) — do NOT call
+        # .get('quotes', {}) again here, or ticker_prices is always {}.
         prices_dict = all_data.get('prices', {})
-        ticker_prices = prices_dict.get('quotes', {}).get(TICKER, {}) if prices_dict else {}
+        ticker_prices = prices_dict.get(TICKER, {}) if prices_dict else {}
         daily_section = "yahoofin_raw:history_6mo_1d"
         daily_data = output[TICKER]['data'].get(daily_section, [])
         
