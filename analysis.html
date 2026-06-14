@@ -142,7 +142,6 @@
             <div class="price-val" id="ltp">₹—</div>
             <div class="price-chg" id="chg" style="color:var(--gr)">—</div>
         </div>
-        <button class="back-btn" onclick="loadPortfolioData()" style="color:var(--gr);font-size:16px;padding:4px 8px;cursor:pointer" title="Load portfolio with qty">💾</button>
     </div>
     
     <div class="tabs">
@@ -172,33 +171,6 @@ const DB = "raalanportfolio";
 const STORE = "stocks";
 let currentStock = null;
 let currentTab = "overview";
-
-// ✅ AUTO-INIT: Load portfolio on first visit
-window.addEventListener('load', async () => {
-  try {
-    // Check if portfolio already loaded
-    const db = await new Promise((resolve) => {
-      const req = indexedDB.open(DB, 8);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-    });
-    
-    if (db) {
-      const tx = db.transaction(STORE, 'readonly');
-      const store = tx.objectStore(STORE);
-      const req = store.get('GRSE');
-      
-      req.onsuccess = () => {
-        const grse = req.result;
-        // If GRSE doesn't have qty field, need to load portfolio
-        if (!grse || grse.qty === undefined) {
-          loadPortfolioData();
-        }
-      };
-    }
-  } catch (e) {
-  }
-});
 
 
 // ✅ Canvas Chart State (REQUIRED for chart functions)
@@ -248,89 +220,6 @@ function updateFinancialSource(value, type) {
     // Clear cached quarterly data so it's recalculated with new source
     delete currentStock._quarterlyCache;
     scheduleChartRedraw();
-  }
-}
-
-async function loadPortfolioData(forceClear = false) {
-  
-  try {
-    const response = await fetch('../uploads/market_data.json');
-    if (!response.ok) throw new Error(`Failed: ${response.status}`);
-    const allData = await response.json();
-    
-    // Set portfolio holdings at CORRECT location: company_details.qty
-    if (allData.GRSE) {
-      allData.GRSE.company_details = allData.GRSE.company_details || {};
-      allData.GRSE.company_details.qty = 50;
-      allData.GRSE.company_details.avg_cost = 2400;
-    }
-    if (allData.ABCAPITAL) {
-      allData.ABCAPITAL.company_details = allData.ABCAPITAL.company_details || {};
-      allData.ABCAPITAL.company_details.qty = 100;
-      allData.ABCAPITAL.company_details.avg_cost = 350;
-    }
-    
-    // Open IndexedDB
-    let db;
-    if (forceClear) {
-      const deleteReq = indexedDB.deleteDatabase(DB);
-      await new Promise((resolve) => {
-        deleteReq.onsuccess = resolve;
-        deleteReq.onerror = resolve;
-      });
-    }
-    
-    db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB, 8);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(new Error('DB open failed'));
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: 'ticker' });
-        }
-      };
-    });
-    
-    const tx = db.transaction(STORE, 'readwrite');
-    const store = tx.objectStore(STORE);
-    
-    if (forceClear) {
-      await new Promise((resolve) => {
-        const clearReq = store.clear();
-        clearReq.onsuccess = resolve;
-        clearReq.onerror = resolve;
-      });
-    }
-    
-    let saved = 0;
-    let portfolio = 0;
-    
-    for (const [ticker, stock] of Object.entries(allData)) {
-      stock.ticker = ticker;
-      
-      // Ensure company_details exists and has qty field
-      stock.company_details = stock.company_details || {};
-      stock.company_details.qty = stock.company_details.qty || 0;
-      
-      await new Promise((resolve) => {
-        const req = store.put(stock);
-        req.onsuccess = () => {
-          saved++;
-          const qty = stock.company_details.qty || 0;
-          if (qty > 0) {
-            portfolio++;
-          }
-          resolve();
-        };
-        req.onerror = () => resolve();
-      });
-    }
-    
-    db.close();
-    
-    
-  } catch (e) {
   }
 }
 
@@ -571,7 +460,7 @@ async function loadStock() {
             <div class="placeholder">
                 <div class="placeholder-emoji">❌</div>
                 <div>No stock selected</div>
-                <div style="font-size:9px;color:#ff9800;margin-top:8px">Use: analysis.html?drill=TICKER</div>
+                <div style="font-size:9px;color:#9d8cff;margin-top:8px">Use: analysis.html?drill=TICKER</div>
             </div>`;
         return;
     }
@@ -1125,7 +1014,7 @@ function renderTab(tab) {
         }
         
         if (!guidance || !guidance.guidance) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No guidance data available</div></div>';
+            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#9d8cff;margin-top:8px">No guidance data available</div></div>';
         } else {
             const g = guidance.guidance;
             const m = g.management || {};
@@ -1361,7 +1250,7 @@ function renderTab(tab) {
         }
         
         if (!data || !data.insights) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Insights</div><div style="font-size:9px;color:#ff9800;margin-top:8px">No insights data available</div></div>';
+            html = '<div class="placeholder"><div class="placeholder-emoji">💡</div><div>Insights</div><div style="font-size:9px;color:#9d8cff;margin-top:8px">No insights data available</div></div>';
         } else {
             const i = data.insights;
             const sb = i.sector_briefing || {};
