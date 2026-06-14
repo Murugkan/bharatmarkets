@@ -315,14 +315,9 @@ def load_symbols():
         sector = (entry.get('sector') or '').upper()
         return itype == 'MUTUAL FUND' or sector == 'MUTUAL FUND'
 
-    mf_skipped_list = [s.get("sym") for s in data if s.get("sym") and is_mf_like(s)]
-    mf_skipped = len(mf_skipped_list)
+    mf_skipped = len([s for s in data if s.get("sym") and is_mf_like(s)])
     if mf_skipped:
         print(f"🪙 Skipped {mf_skipped} mutual fund symbols (NAV handled separately via fetch_amfi_nav.py)")
-        print(f"   DEBUG mf_skipped_list: {mf_skipped_list}")
-        for s in data:
-            if s.get("sym") in ("JUNIORBEES", "NIFTYBEES"):
-                print(f"   DEBUG {s['sym']}: instrument_type={s.get('instrument_type')!r} sector={s.get('sector')!r} is_mf_like={is_mf_like(s)}")
 
     # Filter out delisted symbols and MF/SGB entries
     syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved") and s["sym"] not in DELISTED and not is_mf_like(s)]
