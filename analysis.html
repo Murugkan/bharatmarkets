@@ -482,6 +482,7 @@ const fieldMapping = {
     'ticker': ['company_details.ticker'],
     'sector': ['company_details.sector'],
     'industry': ['company_details.industry'],
+    'face_value': ['company_details.face_value'],
     'qty': ['company_details.qty'],
     'avg_cost': ['company_details.avg_cost'],
     
@@ -662,6 +663,7 @@ function renderTab(tab) {
         const roce = num(get(s, 'roce', 'return_on_capital_employed'));
         const opm = num(get(s, 'opm', 'operating_margin', 'operating_margins'));
         const ltp = num(get(s, 'ltp'));
+        const faceValue = num(get(s, 'face_value'));
         const mcapRaw = num(get(s, 'mcap', 'market_cap'));
         // valuation.market.market_cap is in rupees; convert to Cr (÷1Cr=10,000,000)
         const mcap = mcapRaw > 1e8 ? mcapRaw / 1e7 : mcapRaw; // if >10Cr in rupees, convert
@@ -723,10 +725,12 @@ function renderTab(tab) {
         
         // CALCULATE: Operating Margin Trend from quarterly
         let marginTrend = '—';
+        let marginTrendDelta = 0;
         if (quarterly && quarterly.length >= 2) {
             const recent = quarterly.slice(-3).map(q => num(q.opm || 0));
             if (recent.length > 0) {
                 marginTrend = recent.map(m => fmt(m)).join('% → ') + '%';
+                marginTrendDelta = recent[recent.length - 1] - recent[0];
             }
         }
         
@@ -803,6 +807,13 @@ function renderTab(tab) {
         const currentRatio = num(get(s, 'current_ratio'));
         const quickRatio = num(get(s, 'quick_ratio'));
 
+        // EXTRACT: ROA, Revenue Growth (TTM), Debt/Equity
+        // ratios.ttm.*_pct fields are fractions (0.15 = 15%); debt_to_equity_ratio
+        // is already in percent-of-equity terms (9.83 ≈ D/E ratio 0.098).
+        const roa = num(get(s, 'roa')) * 100;
+        const revGrowthTTM = num(get(s, 'revenue_growth')) * 100;
+        const debtToEquity = num(get(s, 'debt_to_equity'));
+
         // CLASSIFY: 13 real, data-driven metrics as positive/neutral/warning.
         // (Q Score, G Score, Credit were hardcoded placeholders and have
         // been removed from the page entirely — see TBD links below.)
@@ -822,8 +833,12 @@ function renderTab(tab) {
         const pegClass  = peg > 0 ? (peg < 1 ? 'val-positive' : peg < 2 ? 'val-neutral' : 'val-warning') : 'tbd';
         const curClass  = currentRatio > 0 ? (currentRatio > 1.5 ? 'val-positive' : currentRatio >= 1 ? 'val-neutral' : 'val-warning') : 'tbd';
         const quickClass = quickRatio > 0 ? (quickRatio > 1 ? 'val-positive' : quickRatio >= 0.5 ? 'val-neutral' : 'val-warning') : 'tbd';
+        const roaClass  = roa > 10 ? 'val-positive' : roa > 5 ? 'val-neutral' : 'val-warning';
+        const revGrowthClass = revGrowthTTM > 10 ? 'val-positive' : revGrowthTTM > 5 ? 'val-neutral' : 'val-warning';
+        const deqClass  = debtToEquity < 50 ? 'val-positive' : debtToEquity < 100 ? 'val-neutral' : 'val-warning';
+        const opmTrendClass = marginTrend === '—' ? 'tbd' : (marginTrendDelta > 0.5 ? 'val-positive' : marginTrendDelta < -0.5 ? 'val-warning' : 'val-neutral');
 
-        const allClasses = [peClass, pbClass, evClass, roicClass, ccClass, fcfYClass, revCagrClass, epsCagrClass, deClass, icClass, promClass, fiiClass, diiClass, pegClass, curClass, quickClass];
+        const allClasses = [peClass, pbClass, evClass, roicClass, ccClass, fcfYClass, revCagrClass, epsCagrClass, deClass, icClass, promClass, fiiClass, diiClass, pegClass, curClass, quickClass, roaClass, revGrowthClass, deqClass, opmTrendClass];
         const posSignals = allClasses.filter(c => c === 'val-positive').length;
         const negSignals = allClasses.filter(c => c === 'val-warning').length;
         const neuSignals = allClasses.length - posSignals - negSignals;
@@ -872,6 +887,10 @@ function renderTab(tab) {
                         <div class="metric-value val-neutral">₹${fmt(ltp)}</div>
                     </div>
                     <div class="metric-row">
+                        <div class="metric-label">Face Value</div>
+                        <div class="metric-value val-neutral">₹${fmt(faceValue, faceValue % 1 === 0 ? 0 : 2)}</div>
+                    </div>
+                    <div class="metric-row">
                         <div class="metric-label">Fair Value</div>
                         <div class="metric-value">${tbdLink('DCF Fair Value')}</div>
                     </div>
@@ -898,7 +917,7 @@ function renderTab(tab) {
                     <div style="font-weight:800;color:var(--ac);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-size:8px">⭐ Quality</div>
                     <div class="metric-row">
                         <div class="metric-label">Op Margin</div>
-                        <div class="metric-value val-neutral">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
+                        <div class="metric-value ${opmTrendClass}">${marginTrend !== '—' ? marginTrend : tbdLink('Operating Margin')}</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">ROIC</div>
@@ -917,6 +936,10 @@ function renderTab(tab) {
                         <div class="metric-value ${fcfYClass}">${fcfYield > 0 ? fmt(fcfYield, 1) + '%' : tbdLink('FCF Yield')}</div>
                     </div>
                     <div class="metric-row">
+                        <div class="metric-label">ROA</div>
+                        <div class="metric-value ${roaClass}">${fmt(roa)}%</div>
+                    </div>
+                    <div class="metric-row">
                         <div class="metric-label">Q Score</div>
                         <div class="metric-value">${tbdLink('Quality Score')}</div>
                     </div>
@@ -931,6 +954,10 @@ function renderTab(tab) {
                     <div class="metric-row">
                         <div class="metric-label">Rev CAGR</div>
                         <div class="metric-value ${revCagrClass}">${revenueCagr > 0 ? fmt(revenueCagr) + '%' : tbdLink('Revenue CAGR')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">Rev Growth (TTM)</div>
+                        <div class="metric-value ${revGrowthClass}">${fmt(revGrowthTTM)}%</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">EBITDA CAGR</div>
@@ -952,6 +979,10 @@ function renderTab(tab) {
                     <div class="metric-row">
                         <div class="metric-label">D/EBITDA</div>
                         <div class="metric-value ${deClass}">${debtToEbitda > 0 ? fmt(debtToEbitda, 1) + 'x' : tbdLink('Debt/EBITDA')}</div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric-label">D/Equity</div>
+                        <div class="metric-value ${deqClass}">${fmt(debtToEquity / 100, 2)}x</div>
                     </div>
                     <div class="metric-row">
                         <div class="metric-label">Int Cover</div>
