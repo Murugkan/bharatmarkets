@@ -178,7 +178,7 @@ const S = {
   chartRange: '1Y',
   chartInterval: 'D',
   maVis: { sma20: true, sma50: true, ema200: true, vol: true },
-  kpiVis: { pe: false, sales: false, rev: false, net: false, cfo: false, ncf: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false },
+  kpiVis: { pe: false, sales: false, rev: false, net: false, cfo: false, ncf: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false, interest: false, ccr: false },
   chartPan: 0,
   panOffset: 0,
   chartZoom: 1,
@@ -975,13 +975,13 @@ function renderTab(tab) {
               <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
             </label>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
-            ${[{k:'sales',c:'#a78bfa',l:'Sales'},{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            ${[{k:'sales',c:'#a78bfa',l:'Sales'},{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'},{k:'interest',c:'#e879f9',l:'Int'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
             ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'},{k:'debt',c:'#f87171',l:'Debt'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
-            ${[{k:'cfo',c:'#34d399',l:'CFO'},{k:'fcf',c:'#14b8a6',l:'FCF'},{k:'ncf',c:'#2dd4bf',l:'NCF'},{k:'pe',c:'#f59e0b',l:'P/E'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            ${[{k:'cfo',c:'#34d399',l:'CFO'},{k:'fcf',c:'#14b8a6',l:'FCF'},{k:'ncf',c:'#2dd4bf',l:'NCF'},{k:'ccr',c:'#5eead4',l:'CCR'},{k:'pe',c:'#f59e0b',l:'P/E'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
             <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -1578,6 +1578,7 @@ function getQuarterlyData(s){
     const assetsData = getFinancialData('total_assets');
     const borrowingsData = getFinancialData('borrowings');
     const interestData = getFinancialData('interest');
+    const ccrData = getFinancialData('cash_conversion_ratio');
     
     // Get all unique dates
     const allDates = new Set([
@@ -1592,7 +1593,8 @@ function getQuarterlyData(s){
       ...Object.keys(ncfData),
       ...Object.keys(assetsData),
       ...Object.keys(borrowingsData),
-      ...Object.keys(interestData)
+      ...Object.keys(interestData),
+      ...Object.keys(ccrData)
     ]);
     
     // Build data points - sorted oldest first
@@ -1607,6 +1609,7 @@ function getQuarterlyData(s){
       if(netProfitData[date]) q.net = parseFloat(netProfitData[date]) || 0;
       if(epsData[date]) q.eps = parseFloat(epsData[date]) || 0;
       if(interestData[date]) q.interest = parseFloat(interestData[date]) || 0;
+      if(ccrData[date]) q.ccr = parseFloat(ccrData[date]) || 0;
       
       // Balance Sheet metrics
       if(assetsData[date]) q.assets = parseFloat(assetsData[date]) || 0;
@@ -1909,6 +1912,7 @@ function drawCandlestick(s){
     {k:'pbt',  label:'PBT',       col:'#8b5cf6'},
     {k:'net',  label:'Net',       col:'#4ade80'},
     {k:'eps',  label:'EPS',       col:'#06b6d4'},
+    {k:'interest', label:'Interest', col:'#e879f9'},
     // Balance Sheet
     {k:'assets',     label:'Assets',  col:'#f0ad4e'},
     {k:'borrowings', label:'Borrow',  col:'#ff6b6b'},
@@ -1917,6 +1921,7 @@ function drawCandlestick(s){
     {k:'cfo',  label:'CFO',  col:'#34d399'},
     {k:'fcf',  label:'FCF',  col:'#14b8a6'},
     {k:'ncf',  label:'NCF',  col:'#2dd4bf'},
+    {k:'ccr',  label:'CCR',  col:'#5eead4'},
     // Valuation
     {k:'pe',   label:'P/E',  col:'#f59e0b'},
   ];
