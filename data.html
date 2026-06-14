@@ -2493,35 +2493,41 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     }
 
     function deleteStockFromList(ticker) {
-        if (!confirm('Delete ' + ticker + '? (Removes from unified-symbols.json + guidance.json)')) return;
-        
-        var pat = document.getElementById('patToken').value;
-        if (!pat) { showToast('❌ PAT required'); return; }
-        
-        log('🗑️ Deleting ' + ticker + '...');
-        
-        // 1. Remove from in-memory
-        symbolsData = symbolsData.filter(function(s) { return s.ticker !== ticker; });
-        delete guidanceFileData[ticker];
-        pendingHoldingsChanges.delete(ticker);
-        pendingGuidanceChanges[ticker] && delete pendingGuidanceChanges[ticker];
-        pendingInsightsChanges[ticker] && delete pendingInsightsChanges[ticker];
-        updateSaveButton();
-        updatePublishButton();
-        renderSymbols();
+        // Dismiss the on-screen keyboard first (e.g. from the ticker search box),
+        // otherwise the confirm() dialog's OK button can end up hidden behind it on iOS.
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 
-        // 2. Remove from unified-symbols.json on GitHub (use symbolsData already filtered)
-        uploadUnifiedSymbols(pat);
+        setTimeout(function() {
+            if (!confirm('Delete ' + ticker + '? (Removes from unified-symbols.json + guidance.json)')) return;
 
-        // 3. Remove from guidance.json on GitHub
-        ghFetch(GITHUB_CONFIG.PATHS.guidance)
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                delete data[ticker];
-                uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, 'Delete ' + ticker + ' guidance');
-                log('✅ Deleted ' + ticker + ' from guidance.json');
-            })
-            .catch(function(e) { log('⚠️ Guidance delete failed: ' + e.message); });
+            var pat = document.getElementById('patToken').value;
+            if (!pat) { showToast('❌ PAT required'); return; }
+
+            log('🗑️ Deleting ' + ticker + '...');
+
+            // 1. Remove from in-memory
+            symbolsData = symbolsData.filter(function(s) { return s.ticker !== ticker; });
+            delete guidanceFileData[ticker];
+            pendingHoldingsChanges.delete(ticker);
+            pendingGuidanceChanges[ticker] && delete pendingGuidanceChanges[ticker];
+            pendingInsightsChanges[ticker] && delete pendingInsightsChanges[ticker];
+            updateSaveButton();
+            updatePublishButton();
+            renderSymbols();
+
+            // 2. Remove from unified-symbols.json on GitHub (use symbolsData already filtered)
+            uploadUnifiedSymbols(pat);
+
+            // 3. Remove from guidance.json on GitHub
+            ghFetch(GITHUB_CONFIG.PATHS.guidance)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    delete data[ticker];
+                    uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, 'Delete ' + ticker + ' guidance');
+                    log('✅ Deleted ' + ticker + ' from guidance.json');
+                })
+                .catch(function(e) { log('⚠️ Guidance delete failed: ' + e.message); });
+        }, 150);
     }
     
     function uploadToGitHub(pat, filename, content, message) {
