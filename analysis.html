@@ -484,11 +484,7 @@ const fieldMapping = {
     'avg_cost': ['company_details.avg_cost'],
     
     // Signals & Guidance (from derived_metrics)
-    'pos': ['derived_metrics.calculated_metrics.positive'],
-    'positive': ['derived_metrics.calculated_metrics.positive'],
-    'neg': ['derived_metrics.calculated_metrics.negative'],
-    'negative': ['derived_metrics.calculated_metrics.negative'],
-    'signal': ['derived_metrics.ai_insights_guidance.signal'],
+    'signal': ['derived_metrics.ai_insights_guidance.insights.recommendation'],
     
     // Data Arrays
     'quarterly': ['financials.revenue.consolidated.quarterly'],
@@ -530,6 +526,23 @@ function getNestedValue(obj, path) {
         }
     }
     return current;
+}
+
+// Count Positive/Negative/Neutral signals from
+// derived_metrics.ai_insights_guidance.insights.analysis.*.signal
+// (e.g. valuation, growth, profitability, cash_strength, catalyst, moat, opportunity)
+function getSignalCounts(stock) {
+    const analysis = getNestedValue(stock, 'derived_metrics.ai_insights_guidance.insights.analysis');
+    let pos = 0, neg = 0, neutral = 0;
+    if (analysis && typeof analysis === 'object') {
+        for (const pillar of Object.values(analysis)) {
+            const sig = (pillar && pillar.signal || '').toLowerCase();
+            if (sig === 'positive') pos++;
+            else if (sig === 'negative') neg++;
+            else if (sig === 'neutral') neutral++;
+        }
+    }
+    return { pos, neg, neutral, total: pos + neg + neutral };
 }
 
 // Generate TBD link with search capability
@@ -688,13 +701,27 @@ function renderTab(tab) {
 
         const quarterly = getQuarterlyData(s);
         
-        // EXTRACT: Positive & Negative signals, Signal
-        const posSignals = num(get(s, 'pos', 'positive', 0));
-        const negSignals = num(get(s, 'neg', 'negative', 0));
-        const signal = get(s, 'signal', 'Signal', 'BUY');
+        // EXTRACT: Positive & Negative signals (from AI insights analysis pillars)
+        const sigCounts = getSignalCounts(s);
+        const posSignals = sigCounts.pos;
+        const negSignals = sigCounts.neg;
         const totalSignals = posSignals + negSignals;
         const posWeightage = totalSignals > 0 ? Math.round((posSignals / totalSignals) * 100) : 0;
         const negWeightage = totalSignals > 0 ? Math.round((negSignals / totalSignals) * 100) : 0;
+
+        // COMPUTE: Overall signal from the same pos/neg pillar counts shown
+        // above (valuation, growth, profitability, cash_strength, catalyst,
+        // moat, opportunity). Falls back to the AI insights recommendation
+        // only if no pillars have a Positive/Negative signal at all.
+        const signal = (() => {
+            if (totalSignals === 0) {
+                const rec = get(s, 'signal');
+                return rec !== '—' ? rec : 'HOLD';
+            }
+            if (posWeightage >= 70) return 'BUY';
+            if (posWeightage <= 30) return 'SELL';
+            return 'HOLD';
+        })();
         
         // EXTRACT: Total Debt — latest annual borrowings
         let totalDebt = 0;
