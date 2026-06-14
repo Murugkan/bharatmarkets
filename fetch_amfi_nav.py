@@ -247,7 +247,7 @@ def main():
         returns = compute_returns(history)
         if returns:
             entry['returns'] = returns
-            logger.info(f"  ✓ {entry.get('scheme_name', isin)}: returns {returns}")
+            logger.info(f"  ✓ {entry.get('scheme_name', isin)}: returns computed")
 
     output = {"_metadata": {"generated_at": now(), "count": len(matched), "source": "AMFI NAVAll.txt + mfapi.in"}}
     output.update(matched)
