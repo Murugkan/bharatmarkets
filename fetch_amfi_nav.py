@@ -19,6 +19,7 @@ Part 2 — SGB LTP:
 
 import json
 import logging
+import re
 import requests
 import time
 from pathlib import Path
@@ -34,17 +35,13 @@ LOG_FILE = DATA_DIR / 'logs/fetch_amfi_nav.log'
 
 AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
 
-NSE_HOME_URL = 'https://www.nseindia.com'
-NSE_QUOTE_PAGE_URL = 'https://www.nseindia.com/get-quote/equity/{symbol}'
-NSE_QUOTE_URL = 'https://www.nseindia.com/api/quote-equity?symbol={symbol}'
+SGBANALYZER_URL = 'https://sgbanalyzer.com/sgb/{symbol}'
 
-NSE_HEADERS = {
+SCRAPE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-    "Accept": "*/*",
+    "Accept": "text/html,application/xhtml+xml",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
 }
 
 (DATA_DIR / 'logs').mkdir(parents=True, exist_ok=True)
@@ -297,30 +294,29 @@ def get_portfolio_sgb_symbols():
 
 
 def fetch_sgb_ltp(session, symbol):
-    """Fetch LTP + change data for a single SGB symbol from NSE quote-equity API."""
-    # Visit the quote page first to set quote-specific cookies and provide a
-    # realistic Referer for the subsequent API call.
-    quote_page = NSE_QUOTE_PAGE_URL.format(symbol=symbol)
-    session.get(quote_page, headers=NSE_HEADERS, timeout=15)
-    time.sleep(1)
+    """Scrape current market price for an SGB symbol from sgbanalyzer.com.
 
-    headers = dict(NSE_HEADERS)
-    headers["Referer"] = quote_page
-    headers["Accept"] = "application/json"
-
-    url = NSE_QUOTE_URL.format(symbol=symbol)
-    resp = session.get(url, headers=headers, timeout=15)
+    The page embeds the price in plain text as e.g. "₹15,501.85" near
+    "Current Price" / "Market price". Extract via regex; tolerant of minor
+    markup changes since this is a third-party page, not an API.
+    """
+    url = SGBANALYZER_URL.format(symbol=symbol.lower())
+    resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
     resp.raise_for_status()
-    data = resp.json()
+    html = resp.text
 
-    price_info = data.get('priceInfo', {})
-    metadata = data.get('metadata', {})
+    # Match "₹15,501.85" style price anywhere on the page
+    match = re.search(r'₹\s*([\d,]+\.\d{2})', html)
+    if not match:
+        raise ValueError("price pattern not found on page")
+
+    ltp_str = match.group(1).replace(',', '')
+    ltp = float(ltp_str)
 
     return {
-        'ltp': price_info.get('lastPrice'),
-        'change': price_info.get('change'),
-        'pchange': price_info.get('pChange'),
-        'date': metadata.get('lastUpdateTime'),
+        'ltp': ltp,
+        'source': 'sgbanalyzer.com',
+        'date': now(),
     }
 
 
