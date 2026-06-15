@@ -519,8 +519,8 @@ const resolve = (obj, field) => {
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
         'LTP':           { paths: ['price.ltp.price', 'price.nav'] },
-        'QTY':           { paths: ['company_details.qty'] },
-        'AVG':           { paths: ['company_details.avg_cost'] },
+        'QTY':           { fn: s => s._effQty != null ? s._effQty : s?.company_details?.qty },
+        'AVG':           { fn: s => s._effAvg != null ? s._effAvg : s?.company_details?.avg_cost },
         'DEMAT':         { fn: s => {
                              const h = s?.company_details?.holdings;
                              if (!h || !h.length) return '—';
@@ -800,6 +800,19 @@ async function init() {
  * Calculates derived metrics: INVESTED, PNL, PNL%, 1D%, 1DCH, 1D_GAIN, ATH%, 52W%, POS, NEG, SIGNAL
  */
 function enrichStock(stock) {
+    // When a demat filter is active and this ticker has multiple holdings,
+    // show only that demat's qty/avg (so QTY/AVG/INVESTED/PNL reflect just that account).
+    stock._effQty = undefined;
+    stock._effAvg = undefined;
+    if (dematFilter) {
+        const h = (stock.company_details?.holdings || [])
+            .find(x => (x.demat || '').toLowerCase() === dematFilter.toLowerCase());
+        if (h) {
+            stock._effQty = parseFloat(h.qty) || 0;
+            stock._effAvg = parseFloat(h.avg ?? h.avg_cost) || 0;
+        }
+    }
+
     const qty = cleanNum(resolve(stock, 'QTY'));
     const avg = cleanNum(resolve(stock, 'AVG'));
     const ltp = cleanNum(resolve(stock, 'LTP'));
