@@ -2476,6 +2476,61 @@ function classifyNews(t){
   return {tag:'General', imp:'L'};
 }
 
+function buildTodaysBriefing(items){
+  var oneDay = 24*60*60*1000;
+  var now = Date.now();
+  var todays = items.filter(function(it){
+    var t = new Date(it.pubDate).getTime();
+    return !isNaN(t) && (now - t) < oneDay;
+  });
+
+  var usedItems = todays;
+  var label = "Today's Briefing";
+  if(!usedItems.length){
+    // fall back to most recent 48h if nothing in the last 24h
+    var twoDay = 2*oneDay;
+    usedItems = items.filter(function(it){
+      var t = new Date(it.pubDate).getTime();
+      return !isNaN(t) && (now - t) < twoDay;
+    });
+    label = 'Latest Update';
+  }
+  if(!usedItems.length) return '';
+
+  var groups = {};
+  var order = ['Corporate','Strategy','General'];
+  var impRank = {H:3, M:2, L:1};
+  usedItems.forEach(function(it){
+    var c = classifyNews(it.title);
+    if(!groups[c.tag]) groups[c.tag] = {items:[], imp:c.imp};
+    groups[c.tag].items.push(it);
+    if(impRank[c.imp] > impRank[groups[c.tag].imp]) groups[c.tag].imp = c.imp;
+  });
+
+  var sections = order.filter(function(t){ return groups[t]; }).map(function(tag){
+    var g = groups[tag];
+    var impLabel = g.imp === 'H' ? 'HIGH' : g.imp === 'M' ? 'MED' : 'LOW';
+    var bullets = g.items.slice(0,3).map(function(it){
+      var title = it.title.replace(/\s*[-|]\s*[^-|]+$/, '');
+      return '<li style="margin-bottom:3px">' + title + '</li>';
+    }).join('');
+    var more = g.items.length > 3 ? '<li style="color:var(--tx3);list-style:none;margin-left:-18px">+' + (g.items.length-3) + ' more</li>' : '';
+    return '<div style="margin-bottom:8px">' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">' +
+      '<span class="badge-tag">' + tag + '</span>' +
+      '<span class="badge badge-' + g.imp + '">' + impLabel + '</span>' +
+      '<span style="font-size:9px;color:var(--tx3)">' + g.items.length + (g.items.length === 1 ? ' story' : ' stories') + '</span>' +
+      '</div>' +
+      '<ul style="margin:0;padding-left:18px;font-size:11px;color:var(--tx1);line-height:1.5">' + bullets + more + '</ul>' +
+      '</div>';
+  }).join('');
+
+  return '<div style="padding:10px 12px;margin:0 0 8px;background:var(--card);border:1px solid var(--b1);border-radius:8px">' +
+    '<div class="sec-lbl" style="margin-bottom:8px">📅 ' + label + ' <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:normal">(' + usedItems.length + (usedItems.length === 1 ? ' story' : ' stories') + ')</span></div>' +
+    sections +
+    '</div>';
+}
+
 function timeAgo(d){
   if(!d || isNaN(d)) return '';
   const s = Math.floor((Date.now() - d) / 1000);
@@ -2550,7 +2605,7 @@ async function loadStockNews(sym, name, retry) {
       return;
     }
 
-    var html = items.map(function(item) {
+    var cardsHtml = items.map(function(item) {
       var classified = classifyNews(item.title);
       var tag = classified.tag, imp = classified.imp;
       var src = (item.source && item.source.name) ? item.source.name : extractDomain(item.link) || 'News';
@@ -2568,6 +2623,9 @@ async function loadStockNews(sym, name, retry) {
         '</div>' +
         '</a>';
     }).join('');
+
+    var briefingHtml = buildTodaysBriefing(items);
+    var html = briefingHtml + cardsHtml;
 
     try { sessionStorage.setItem(cacheKey, html); } catch(_) {}
     el.innerHTML = html;
