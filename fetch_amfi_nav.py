@@ -326,14 +326,11 @@ def run_sgb_ltp():
 
     if not symbols:
         sgb_logger.warning("No SOVEREIGN BOND symbols found in unified-symbols.json — writing empty output")
-        output = {"_metadata": {"generated_at": now(), "count": 0, "source": "NSE quote-equity"}}
+        output = {"_metadata": {"generated_at": now(), "count": 0, "source": "sgbanalyzer.com"}}
         save_json(SGB_LTP_OUTPUT_FILE, output)
         return
 
     session = requests.Session()
-    # Bootstrap cookies via homepage (required for NSE API access)
-    session.get(NSE_HOME_URL, headers=NSE_HEADERS, timeout=15)
-    time.sleep(1)
 
     result = {}
     for symbol in sorted(symbols):
@@ -346,7 +343,7 @@ def run_sgb_ltp():
             sgb_logger.info(f"  ✓ {symbol}: LTP {entry['ltp']}")
         except Exception as e:
             sgb_logger.warning(f"  ⚠ {symbol}: fetch failed: {e}")
-        time.sleep(1)  # avoid rate limiting
+        time.sleep(1)  # be polite to sgbanalyzer.com
 
     missing = symbols - set(result.keys())
     if missing:
@@ -354,7 +351,7 @@ def run_sgb_ltp():
 
     sgb_logger.info(f"  ✓ Fetched {len(result)}/{len(symbols)} SGB symbols")
 
-    output = {"_metadata": {"generated_at": now(), "count": len(result), "source": "NSE quote-equity"}}
+    output = {"_metadata": {"generated_at": now(), "count": len(result), "source": "sgbanalyzer.com"}}
     output.update(result)
     save_json(SGB_LTP_OUTPUT_FILE, output)
     sgb_logger.info(f"✓ Wrote {SGB_LTP_OUTPUT_FILE}")
