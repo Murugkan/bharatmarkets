@@ -1,32 +1,48 @@
 #!/usr/bin/env python3
 """
-AMFI Mutual Fund NAV Fetcher
-============================
-Downloads AMFI's daily NAVAll.txt (all mutual fund schemes in India) and
-extracts NAV + date for ISINs present in the portfolio's unified-symbols.json
-holdings (instrumentType == "MUTUAL FUND" or "SOVEREIGN BOND" with an ISIN
-that matches an AMFI-listed scheme — SGBs are not in AMFI; included here in
-case a fund-of-fund SGB wrapper is used).
+AMFI Mutual Fund NAV + SGB LTP Fetcher
+=======================================
+Part 1 — AMFI NAV:
+  Downloads AMFI's daily NAVAll.txt (all mutual fund schemes in India) and
+  extracts NAV + date for ISINs present in the portfolio's unified-symbols.json
+  holdings (instrumentType == "MUTUAL FUND" or "SOVEREIGN BOND" with an ISIN
+  that matches an AMFI-listed scheme — SGBs are not in AMFI; included here in
+  case a fund-of-fund SGB wrapper is used).
+  Output: data/mf_nav.json
 
-Output: data/mf_nav.json
-{
-  "_metadata": {"generated_at": ..., "count": N, "source": "AMFI NAVAll.txt"},
-  "<ISIN>": {"scheme_name": "...", "nav": 123.4567, "date": "DD-MMM-YYYY"}
-}
+Part 2 — SGB LTP:
+  Fetches Last Traded Price (LTP) for Sovereign Gold Bond (SGB) tickers from
+  NSE's quote-equity API, for entries in unified-symbols.json holdings where
+  instrument_type == "SOVEREIGN BOND".
+  Output: data/sgb_ltp.json
 """
 
 import json
 import logging
 import requests
+import time
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
 
 DATA_DIR = Path('data')
 SYMBOLS_FILE = DATA_DIR / 'unified-symbols.json'
-OUTPUT_FILE = DATA_DIR / 'mf_nav.json'
+
+MF_NAV_OUTPUT_FILE = DATA_DIR / 'mf_nav.json'
+SGB_LTP_OUTPUT_FILE = DATA_DIR / 'sgb_ltp.json'
+
 LOG_FILE = DATA_DIR / 'logs/fetch_amfi_nav.log'
 
 AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
+
+NSE_HOME_URL = 'https://www.nseindia.com'
+NSE_QUOTE_URL = 'https://www.nseindia.com/api/quote-equity?symbol={symbol}'
+
+NSE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 (DATA_DIR / 'logs').mkdir(parents=True, exist_ok=True)
 
@@ -37,6 +53,7 @@ logging.basicConfig(
     handlers=[logging.FileHandler(LOG_FILE, mode='w'), logging.StreamHandler()]
 )
 logger = logging.getLogger("AMFI-NAV")
+sgb_logger = logging.getLogger("SGB-LTP")
 
 
 def now():
@@ -56,6 +73,10 @@ def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
+
+# ===========================================================================
+# Part 1 — AMFI Mutual Fund NAV
+# ===========================================================================
 
 def get_portfolio_isins():
     """Collect ISINs from unified-symbols.json holdings for MF/SGB instruments.
@@ -219,14 +240,14 @@ def fetch_historical_nav(scheme_code):
         return []
 
 
-def main():
+def run_amfi_nav():
     wanted_isins = get_portfolio_isins()
     logger.info(f"Portfolio ISINs to match (MUTUAL FUND / SOVEREIGN BOND): {len(wanted_isins)}")
 
     if not wanted_isins:
         logger.warning("No MUTUAL FUND / SOVEREIGN BOND ISINs found in unified-symbols.json — writing empty output")
         output = {"_metadata": {"generated_at": now(), "count": 0, "source": "AMFI NAVAll.txt"}}
-        save_json(OUTPUT_FILE, output)
+        save_json(MF_NAV_OUTPUT_FILE, output)
         return
 
     text = fetch_navall()
@@ -251,8 +272,98 @@ def main():
 
     output = {"_metadata": {"generated_at": now(), "count": len(matched), "source": "AMFI NAVAll.txt + mfapi.in"}}
     output.update(matched)
-    save_json(OUTPUT_FILE, output)
-    logger.info(f"✓ Wrote {OUTPUT_FILE}")
+    save_json(MF_NAV_OUTPUT_FILE, output)
+    logger.info(f"✓ Wrote {MF_NAV_OUTPUT_FILE}")
+
+
+# ===========================================================================
+# Part 2 — SGB LTP (NSE)
+# ===========================================================================
+
+def get_portfolio_sgb_symbols():
+    """Collect ticker symbols for instrument_type == 'SOVEREIGN BOND'."""
+    us = load_json(SYMBOLS_FILE)
+    symbols = set()
+    for entry in us.get('symbols', []):
+        itype = (entry.get('instrument_type') or entry.get('instrumentType') or '').upper()
+        if itype == 'SOVEREIGN BOND':
+            symbol = (entry.get('symbol') or entry.get('ticker') or '').strip().upper()
+            if symbol:
+                symbols.add(symbol)
+    return symbols
+
+
+def fetch_sgb_ltp(session, symbol):
+    """Fetch LTP + change data for a single SGB symbol from NSE quote-equity API."""
+    url = NSE_QUOTE_URL.format(symbol=symbol)
+    resp = session.get(url, headers=NSE_HEADERS, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+
+    price_info = data.get('priceInfo', {})
+    metadata = data.get('metadata', {})
+
+    return {
+        'ltp': price_info.get('lastPrice'),
+        'change': price_info.get('change'),
+        'pchange': price_info.get('pChange'),
+        'date': metadata.get('lastUpdateTime'),
+    }
+
+
+def run_sgb_ltp():
+    symbols = get_portfolio_sgb_symbols()
+    sgb_logger.info(f"Portfolio SGB symbols to fetch: {len(symbols)}")
+
+    if not symbols:
+        sgb_logger.warning("No SOVEREIGN BOND symbols found in unified-symbols.json — writing empty output")
+        output = {"_metadata": {"generated_at": now(), "count": 0, "source": "NSE quote-equity"}}
+        save_json(SGB_LTP_OUTPUT_FILE, output)
+        return
+
+    session = requests.Session()
+    # Bootstrap cookies via homepage (required for NSE API access)
+    session.get(NSE_HOME_URL, headers=NSE_HEADERS, timeout=15)
+
+    result = {}
+    for symbol in sorted(symbols):
+        try:
+            entry = fetch_sgb_ltp(session, symbol)
+            if entry.get('ltp') is None:
+                sgb_logger.warning(f"  ⚠ {symbol}: no LTP in response")
+                continue
+            result[symbol] = entry
+            sgb_logger.info(f"  ✓ {symbol}: LTP {entry['ltp']}")
+        except Exception as e:
+            sgb_logger.warning(f"  ⚠ {symbol}: fetch failed: {e}")
+        time.sleep(1)  # avoid rate limiting
+
+    missing = symbols - set(result.keys())
+    if missing:
+        sgb_logger.warning(f"  ⚠ {len(missing)} symbol(s) not fetched: {sorted(missing)}")
+
+    sgb_logger.info(f"  ✓ Fetched {len(result)}/{len(symbols)} SGB symbols")
+
+    output = {"_metadata": {"generated_at": now(), "count": len(result), "source": "NSE quote-equity"}}
+    output.update(result)
+    save_json(SGB_LTP_OUTPUT_FILE, output)
+    sgb_logger.info(f"✓ Wrote {SGB_LTP_OUTPUT_FILE}")
+
+
+# ===========================================================================
+# Main
+# ===========================================================================
+
+def main():
+    try:
+        run_amfi_nav()
+    except Exception as e:
+        logger.warning(f"  ⚠ AMFI NAV run failed: {e}")
+
+    try:
+        run_sgb_ltp()
+    except Exception as e:
+        sgb_logger.warning(f"  ⚠ SGB LTP run failed: {e}")
 
 
 if __name__ == "__main__":
