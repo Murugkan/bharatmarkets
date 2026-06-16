@@ -260,6 +260,7 @@ def load_all_data():
         'yahoofin_fin': DATA_DIR / 'yahoofin_financials.json',
         'yahoofin_raw': DATA_DIR / 'yahoofin_raw_data.json',
         'guidance': DATA_DIR / 'guidance.json',
+        'prices': DATA_DIR / 'ltp.json',
         'nav_ltp': DATA_DIR / 'nav_ltp.json',
         'unified_symbols': DATA_DIR / 'unified-symbols.json',
     }
@@ -793,12 +794,20 @@ for TICKER in TICKERS_TO_PROCESS:
                     output[TICKER]['data'][section_key].append(row)
         
         # === ADD LTP FROM PRICES ===
+        # NOTE: all_data['prices'] was already unwrapped from
+        # {"quotes": {...}} to just the quotes dict at module level
+        # (see "Extract quotes from prices" above) — do NOT call
+        # .get('quotes', {}) again here, or ticker_prices is always {}.
         prices_dict = all_data.get('prices', {})
-        ticker_prices = prices_dict.get('quotes', {}).get(TICKER, {}) if prices_dict else {}
+        ticker_prices = prices_dict.get(TICKER, {}) if prices_dict else {}
         daily_section = "yahoofin_raw:history_6mo_1d"
         daily_data = output[TICKER]['data'].get(daily_section, [])
-        
-        if daily_data and len(daily_data) > 0:
+
+        # Inject LTP whenever fetch_ltp.py produced a quote for this ticker —
+        # do NOT require yahoofin OHLCV history to be present (some tickers,
+        # e.g. ETFs like JUNIORBEES, may have a working quote in ltp.json
+        # even if Yahoo's .history() call returns empty for them).
+        if ticker_prices.get('ltp') is not None:
             ltp_obj = {
                 'metric': 'LTP',
                 'source': 'prices',
@@ -818,6 +827,7 @@ for TICKER in TICKERS_TO_PROCESS:
                 }
             }
             daily_data.insert(0, ltp_obj)
+            output[TICKER]['data'][daily_section] = daily_data
         
         # === ADD LTP FROM NAV_LTP (MF / SGB / QSIF fallback) ===
         # For tickers with no prices.json entry, look up nav_ltp.json by ISIN
@@ -876,6 +886,7 @@ try:
                 "yahoofin_raw_data.json (97 tickers)",
                 "yahoofin_financials.json (97 tickers)",
                 "guidance.json (29 tickers)",
+                "ltp.json (equity LTP)",
                 "nav_ltp.json (MF/SGB/QSIF)",
                 "unified-symbols.json (97 tickers)"
             ],
