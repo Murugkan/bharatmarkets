@@ -416,8 +416,18 @@ def fetch_and_parse_qsif_homepage(session):
             resp.raise_for_status()
             html = resp.text
 
-            # NAV pattern: **10.20** followed by "As of" and date
-            nav_match = re.search(r'\*\*([\d.]+)\*\*.*?As\s+of\s*\n?\s*([\d\w\-]+)', html, re.DOTALL)
+            # NAV is in a <strong> tag followed by an img and "As of" date text
+            # Raw HTML pattern: <strong>10.20</strong><img...>...\nAs of\n DD-Mon-YYYY
+            nav_match = re.search(
+                r'<strong>\s*([\d.]+)\s*</strong>.*?As\s+of\s*\n?\s*([\d\w\-]+)',
+                html, re.DOTALL | re.IGNORECASE
+            )
+            if not nav_match:
+                # Fallback: look for NAV value near "As of" anywhere on page
+                nav_match = re.search(
+                    r'([\d]{2,3}\.\d{2})\s*(?:<[^>]+>)*\s*As\s+of\s*\n?\s*([\d\w\-]+)',
+                    html, re.DOTALL | re.IGNORECASE
+                )
             if not nav_match:
                 qsif_logger.warning(f"  ⚠ {isin}: NAV pattern not found on {url}")
                 continue
