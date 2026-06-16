@@ -3239,19 +3239,20 @@ def main():
             guidance_data = json.load(f)
         logger.info(f"  ✓ Loaded guidance.json ({len(guidance_data)} tickers)")
 
-    # Load mutual fund NAV data (AMFI), matched to tickers via ISIN
-    mf_nav_file = DATA_DIR / 'mf_nav.json'
-    mf_nav_by_ticker = {}
-    if mf_nav_file.exists():
-        with open(mf_nav_file) as f:
-            mf_nav_data = json.load(f)
-        for isin, nav_entry in mf_nav_data.items():
-            if isin == '_metadata':
+    # Load nav_ltp.json (AMFI MF + SGB + QSIF), matched to tickers via ISIN or symbol
+    nav_ltp_file = DATA_DIR / 'nav_ltp.json'
+    nav_ltp_by_ticker = {}
+    if nav_ltp_file.exists():
+        with open(nav_ltp_file) as f:
+            nav_ltp_data = json.load(f)
+        for key, entry in nav_ltp_data.items():
+            if key == '_metadata':
                 continue
-            ticker = isin_to_ticker.get(isin.strip().upper())
-            if ticker:
-                mf_nav_by_ticker[ticker] = nav_entry
-        logger.info(f"  ✓ Loaded mf_nav.json ({len(mf_nav_by_ticker)} tickers matched)")
+            # Key is either ISIN or ticker symbol (e.g. SGBFEB32IV)
+            ticker = isin_to_ticker.get(key.strip().upper()) or key
+            if ticker in [k for k in raw.keys() if k != '_metadata']:
+                nav_ltp_by_ticker[ticker] = entry
+        logger.info(f"  ✓ Loaded nav_ltp.json ({len(nav_ltp_by_ticker)} tickers matched)")
 
     output  = {}
     symbols = [k for k in raw.keys() if k != '_metadata']  # Skip _metadata
@@ -3304,15 +3305,16 @@ def main():
             cd['data_source'] = pf['data_source']
             cd['holdings'] = pf['holdings']
 
-        # Inject mutual fund NAV (from AMFI, matched via ISIN) as the
-        # "live to" price for MF/SGB holdings — these have no Yahoo/Screener data.
-        nav = mf_nav_by_ticker.get(symbol)
+        # Inject nav_ltp data (AMFI MF / SGB / QSIF) as live price
+        nav = nav_ltp_by_ticker.get(symbol)
         if nav:
             price = bucketed.setdefault('price', {})
-            price['nav'] = nav.get('nav')
-            price['nav_date'] = nav.get('date')
-            price['nav_scheme_name'] = nav.get('scheme_name')
-            price['nav_source'] = 'AMFI'
+            price['ltp'] = nav.get('ltp')
+            price['ltp_date'] = nav.get('date')
+            price['ltp_scheme_name'] = nav.get('scheme_name')
+            price['ltp_source'] = nav.get('source')
+            if nav.get('returns'):
+                price['ltp_returns'] = nav.get('returns')
 
         # Report any unmapped fields for visibility
         u = bucketed.get("_unmapped", {})
@@ -3365,8 +3367,8 @@ def main():
                     ),
                     "total_tickers": guidance_meta.get("total_tickers", len([k for k in guidance_data if k != "_metadata"])),
                 },
-                "mutual_funds": {
-                    "tickers_with_nav": len(mf_nav_by_ticker),
+                "nav_ltp": {
+                    "tickers_with_ltp": len(nav_ltp_by_ticker),
                 },
             },
         }

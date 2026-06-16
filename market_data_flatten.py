@@ -260,7 +260,7 @@ def load_all_data():
         'yahoofin_fin': DATA_DIR / 'yahoofin_financials.json',
         'yahoofin_raw': DATA_DIR / 'yahoofin_raw_data.json',
         'guidance': DATA_DIR / 'guidance.json',
-        'prices': DATA_DIR / 'prices.json',
+        'nav_ltp': DATA_DIR / 'nav_ltp.json',
         'unified_symbols': DATA_DIR / 'unified-symbols.json',
     }
     
@@ -819,6 +819,36 @@ for TICKER in TICKERS_TO_PROCESS:
             }
             daily_data.insert(0, ltp_obj)
         
+        # === ADD LTP FROM NAV_LTP (MF / SGB / QSIF fallback) ===
+        # For tickers with no prices.json entry, look up nav_ltp.json by ISIN
+        # (from unified-symbols.json) or directly by ticker symbol.
+        nav_ltp_data = all_data.get('nav_ltp', {})
+        if nav_ltp_data:
+            # Resolve ISIN for this ticker from unified_symbols
+            us_symbols = all_data.get('unified_symbols', {}).get('symbols', [])
+            isin = next(
+                (e.get('isin') for e in us_symbols
+                 if (e.get('ticker') or e.get('symbol')) == TICKER),
+                None
+            )
+            nav_entry = nav_ltp_data.get(isin) or nav_ltp_data.get(TICKER)
+            if nav_entry and nav_entry.get('ltp') is not None:
+                nav_ltp_obj = {
+                    'metric': 'LTP',
+                    'source': nav_entry.get('source', 'nav_ltp'),
+                    'section': 'latest_price',
+                    'data': {
+                        'ltp': nav_entry.get('ltp'),
+                        'date': nav_entry.get('date'),
+                        'scheme_name': nav_entry.get('scheme_name'),
+                        'returns': nav_entry.get('returns'),
+                    }
+                }
+                # Inject into nav_ltp section (always) and daily_data if present
+                if 'nav_ltp:latest_price' not in output[TICKER]['data']:
+                    output[TICKER]['data']['nav_ltp:latest_price'] = []
+                output[TICKER]['data']['nav_ltp:latest_price'].insert(0, nav_ltp_obj)
+
         # === CLEAN AND FINALIZE ===
         output[TICKER]['data'] = clean_metric_names(output[TICKER]['data'])
         output_all[TICKER] = output[TICKER]
@@ -846,7 +876,7 @@ try:
                 "yahoofin_raw_data.json (97 tickers)",
                 "yahoofin_financials.json (97 tickers)",
                 "guidance.json (29 tickers)",
-                "prices.json (98 tickers)",
+                "nav_ltp.json (MF/SGB/QSIF)",
                 "unified-symbols.json (97 tickers)"
             ],
             "structure": {
