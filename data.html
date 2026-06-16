@@ -798,12 +798,15 @@
                 // Async: fetch market_data.json's live _metadata (E2E row's Fetch
                 // time should reflect the file on GitHub, not the DB snapshot).
                 // Re-render once available; cheap re-render, no DB write.
+                // Async: fetch market_data.json live metadata for Web E2E Load row.
+                // Use text() + regex to avoid parsing the full large file.
                 ghFetch('data/market_data.json')
-                    .then(r => r.json())
-                    .then(json => {
-                        const liveMeta = json._metadata || {};
-                        liveMetadata.market_data_live_generated_at = liveMeta.generated_at || null;
-                        liveMetadata.market_data_live_total_tickers = liveMeta.total_tickers ?? null;
+                    .then(r => r.text())
+                    .then(txt => {
+                        const genMatch = txt.match(/"generated_at"\s*:\s*"([^"]+)"/);
+                        const tickersMatch = txt.match(/"total_tickers"\s*:\s*(\d+)/);
+                        liveMetadata.market_data_live_generated_at = genMatch ? genMatch[1] : null;
+                        liveMetadata.market_data_live_total_tickers = tickersMatch ? parseInt(tickersMatch[1]) : null;
                         renderDataSourcesTable(html, liveMetadata);
                     })
                     .catch(() => { /* leave DB-only render in place */ });
@@ -3298,6 +3301,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                                 if (!stock.price['52_week']) stock.price['52_week'] = {};
                                 stock.price['52_week'].high = quote.w52h;
                                 stock.price['52_week'].low  = quote.w52l;
+                                // MF/SGB/QSIF: nav_date and nav_source from nav_ltp.json via fetch_ltp.py
+                                if (quote.nav_date) stock.price.ltp.nav_date = quote.nav_date;
+                                if (quote.nav_source) stock.price.ltp.nav_source = quote.nav_source;
 
                                 store.put(stock);
                                 updatedCount++;
