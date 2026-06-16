@@ -118,139 +118,6 @@ HEADERS = {
     "Accept-Language": "en-IN,en;q=0.9",
 }
 
-# ── Fetch Mutual Fund NAV via NSE API ──────────────────────────────────────
-def fetch_mf_nav(isin):
-    """
-    Fetch Mutual Fund NAV (Net Asset Value) from NSE API using ISIN.
-    Returns: dict with 'ltp' (NAV), 'change', 'changePct' or None if failed.
-    """
-    try:
-        # NSE Mutual Fund Data API
-        url = f"https://www.nseindia.com/api/mutual-fund-data?isin={isin}"
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        
-        if data and 'data' in data and len(data['data']) > 0:
-            mf_data = data['data'][0]
-            nav = float(mf_data.get('nav', 0))
-            prev_nav = float(mf_data.get('prevNav', nav))  # fallback to current if not available
-            change = nav - prev_nav
-            change_pct = (change / prev_nav * 100) if prev_nav != 0 else 0
-            
-            return {
-                'ltp': nav,
-                'change': change,
-                'changePct': change_pct,
-            }
-    except Exception as e:
-        print(f"  ⚠ MF NAV fetch failed for {isin}: {e}")
-    
-    return None
-
-# ── Resolve SGB ISIN to Trading Code ───────────────────────────────────────
-def resolve_sgb_code(isin):
-    """
-    Lookup SGB ISIN in sgb_map to get NSE trading code.
-    Returns: trading code (e.g., 'SGB2032IV') or None if not found.
-    """
-    return SGB_MAP.get(isin, None)
-
-# ── Fetch Stock Price from NSE API (Fallback for Yahoo misses) ───────────────
-def fetch_from_nse_api(symbol):
-    """
-    Fetch stock/SGB price directly from NSE API.
-    Used as fallback when Yahoo Finance doesn't have data.
-    
-    Returns: dict with all price fields (mapped to yfinance structure) or None if failed.
-    """
-    try:
-        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        
-        if data and 'priceInfo' in data:
-            price_info = data['priceInfo']
-            info_header = data.get('info', {})
-            
-            # Map NSE fields to yfinance field names for build_quote()
-            return {
-                'currentPrice': float(price_info.get('lastPrice', 0)),
-                'previousClose': float(price_info.get('previousClose', 0)),
-                'open': float(price_info.get('open', None)) if price_info.get('open') else None,
-                'dayHigh': float(price_info.get('intraDayHighLow', {}).get('max', None)) if price_info.get('intraDayHighLow', {}).get('max') else None,
-                'dayLow': float(price_info.get('intraDayHighLow', {}).get('min', None)) if price_info.get('intraDayHighLow', {}).get('min') else None,
-                'fiftyTwoWeekHigh': float(price_info.get('weekHighLow', {}).get('max', None)) if price_info.get('weekHighLow', {}).get('max') else None,
-                'fiftyTwoWeekLow': float(price_info.get('weekHighLow', {}).get('min', None)) if price_info.get('weekHighLow', {}).get('min') else None,
-                'volume': None,  # NSE equity API doesn't provide volume
-                'beta': None,    # Not applicable for bonds/SGBs
-                'longName': info_header.get('companyName', symbol),
-                'sector': 'Government Securities' if symbol.startswith('SGB') else info_header.get('industry', 'NA'),
-            }
-        else:
-            logger.warning(f"NSE API for {symbol}: response OK but no 'priceInfo'. Keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
-    except Exception as e:
-        logger.warning(f"NSE API failed for {symbol}: {e}")
-    
-    return None
-
-
-# ── Fetch SGB price from BSE API (fallback when NSE API also fails) ──────
-# Static map of SGB ticker -> BSE scrip code. NSE has no reliable public
-# search API and BSE scrip codes for SGBs are stable (assigned at issue),
-# so a small static table is simplest. Add new SGB holdings here as needed.
-SGB_BSE_SCRIP_CODES = {
-    'SGBFEB32IV': '800329',
-}
-
-def fetch_from_bse_api(symbol):
-    """
-    Fetch SGB price from BSE API using a static scrip-code lookup.
-    Used as final fallback when both Yahoo and NSE API fail (common for
-    SGBs, which Yahoo doesn't carry and NSE's API often blocks CI IPs).
-
-    Returns: dict with all price fields (mapped to yfinance structure) or None if failed.
-    """
-    scrip = SGB_BSE_SCRIP_CODES.get(symbol)
-    if not scrip:
-        return None
-    try:
-        url = f"https://api.bseindia.com/BseIndiaAPI/api/getScripHeaderData/w?Debtflag=&scrip={scrip}"
-        resp = requests.get(url, headers={**HEADERS, "Referer": "https://www.bseindia.com/"}, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-
-        curr = data.get('CurrRate', {}) or {}
-        header = data.get('Header', {}) or {}
-        ltp = curr.get('LTP')
-        if ltp is None:
-            logger.warning(f"BSE API for {symbol} (scrip {scrip}): no LTP in response. Keys: CurrRate={list(curr.keys())}, top-level={list(data.keys())}")
-            return None
-
-        ltp = float(ltp)
-        chg = float(curr.get('Chg', 0) or 0)
-        prev = ltp - chg
-
-        return {
-            'currentPrice': ltp,
-            'previousClose': prev,
-            'open': None,
-            'dayHigh': None,
-            'dayLow': None,
-            'fiftyTwoWeekHigh': float(header.get('WeekHigh52')) if header.get('WeekHigh52') else None,
-            'fiftyTwoWeekLow': float(header.get('WeekLow52')) if header.get('WeekLow52') else None,
-            'volume': None,
-            'beta': None,
-            'longName': data.get('Scripname', symbol),
-            'sector': 'Government Securities',
-        }
-    except Exception as e:
-        logger.warning(f"BSE API failed for {symbol} (scrip {scrip}): {e}")
-
-    return None
-
-
 # ── Yahoo search — only called when RESOLVE=true ───────────────────────
 def search_yahoo_symbol(name, isin=""):
     import urllib.request, urllib.parse
@@ -317,7 +184,7 @@ def load_symbols():
 
     mf_skipped = len([s for s in data if s.get("sym") and is_mf_like(s)])
     if mf_skipped:
-        print(f"🪙 Skipped {mf_skipped} mutual fund symbols (NAV handled separately via fetch_amfi_nav.py)")
+        print(f"🪙 Skipped {mf_skipped} mutual fund symbols (NAV handled via fetch_nav_ltp.py)")
 
     # Filter out delisted symbols and MF/SGB entries
     syms = [s["sym"] for s in data if s.get("sym") and s.get("resolved") and s["sym"] not in DELISTED and not is_mf_like(s)]
@@ -349,19 +216,6 @@ def fetch_ticker(sym):
                 except: info_bo = {}
                 return info_bo, hist_bo
             
-            # Try NSE API as next fallback (for CNINFOTECH, HIGHENE, SGBFEB32IV, etc.)
-            nse_data = fetch_from_nse_api(sym)
-            if nse_data:
-                print(f"  ⚠ {sym}: using NSE API")
-                return nse_data, None
-
-            # Try BSE API as final fallback (SGBs — Yahoo doesn't carry these,
-            # and NSE's API often blocks CI/datacenter IPs)
-            bse_data = fetch_from_bse_api(sym)
-            if bse_data:
-                print(f"  ⚠ {sym}: using BSE API")
-                return bse_data, None
-
             print(f"  ✗ {sym}: not found")
             return {}, None
     except Exception as e:
@@ -600,65 +454,48 @@ def main():
             logger.warning(f"Failed to fetch {sym}")
 
     # ──────────────────────────────────────────────────────────────────────
-    # FETCH: Mutual Funds (try Yahoo first, then NSE API)
+    # FETCH: Mutual Funds + SGBs + QSIF — from nav_ltp.json
+    # (NSE/BSE APIs block GitHub Actions IPs; nav_ltp.json is pre-fetched
+    #  by fetch_nav_ltp.py which runs before this step)
     # ──────────────────────────────────────────────────────────────────────
-    if mf_syms:
-        print(f"💰 Fetching {len(mf_syms)} mutual funds…")
-        for sym in mf_syms:
-            entry = sym_to_entry.get(sym, {})
-            isin = entry.get("isin", "").upper()
-            
-            # Try Yahoo first (in case it's mapped or has a ticker)
-            trading_code, is_mapped = resolve_trading_code(sym, isin)
-            yf_sym = to_yf(trading_code)
-            q = None
-            
+    nav_ltp_syms = mf_syms + sgb_syms
+    if nav_ltp_syms:
+        print(f"💰 Injecting {len(nav_ltp_syms)} MF/SGB/QSIF from nav_ltp.json…")
+        nav_ltp_data = {}
+        nav_ltp_path = Path("data/nav_ltp.json")
+        if nav_ltp_path.exists():
             try:
-                info = yf.Ticker(yf_sym).info or {}
-                hist = yf.Ticker(yf_sym).history(period="1d")
-                if hist is not None and not hist.empty:
-                    q = build_quote(sym, info, hist)
-                    if q:
-                        quotes[sym] = q
-            except:
-                pass
-            
-            # If Yahoo failed, try NSE API
-            if not q:
-                nav_data = fetch_mf_nav(isin)
-                if nav_data:
-                    q = {
-                        "ticker": sym,
-                        "name": entry.get("name", sym),
-                        "sector": "",
-                        "ltp": nav_data.get('ltp'),
-                        "change": nav_data.get('change'),
-                        "changePct": nav_data.get('changePct'),
-                        "open": None, "high": None, "low": None, "prev": None,
-                        "vol": 0, "w52h": None, "w52l": None, "beta": None,
-                    }
-                    quotes[sym] = q
-                else:
-                    logger.warning(f"Failed to fetch {sym} (Yahoo & NSE API)")
-                    errors.append(sym)
+                nav_ltp_data = json.loads(nav_ltp_path.read_text())
+            except Exception as e:
+                logger.warning(f"nav_ltp.json load failed: {e}")
 
-    # ──────────────────────────────────────────────────────────────────────
-    # FETCH: SGBs (resolve ISIN to trading code, then fetch via Yahoo)
-    # ──────────────────────────────────────────────────────────────────────
-    if sgb_syms:
-        print(f"🏆 Fetching {len(sgb_syms)} govt securities…")
-        for sym in sgb_syms:
+        # Build ISIN → nav_ltp key lookup (nav_ltp is keyed by ISIN or ticker)
+        isin_to_nav = {}
+        for key, entry in nav_ltp_data.items():
+            if key == '_metadata':
+                continue
+            isin_to_nav[key.upper()] = entry
+
+        for sym in nav_ltp_syms:
             entry = sym_to_entry.get(sym, {})
             isin = entry.get("isin", "").upper()
-            trading_code, is_mapped = resolve_trading_code(sym, isin)
-            
-            # Use fetch_ticker() which includes NSE API fallback
-            info, hist = fetch_ticker(trading_code)
-            q = build_quote(sym, info, hist)
-            if q:
+            nav_entry = isin_to_nav.get(isin) or isin_to_nav.get(sym.upper())
+            if nav_entry and nav_entry.get('ltp') is not None:
+                q = {
+                    "ticker": sym,
+                    "name": nav_entry.get('scheme_name') or entry.get("name", sym),
+                    "sector": entry.get("sector", ""),
+                    "ltp": nav_entry.get('ltp'),
+                    "change": None, "changePct": None,
+                    "open": None, "high": None, "low": None, "prev": None,
+                    "vol": 0, "w52h": None, "w52l": None, "beta": None,
+                    "nav_date": nav_entry.get('date'),
+                    "nav_source": nav_entry.get('source'),
+                }
                 quotes[sym] = q
+                print(f"  ✓ {sym}: LTP {nav_entry['ltp']} ({nav_entry.get('source')})")
             else:
-                logger.warning(f"Failed to fetch {sym}")
+                logger.warning(f"nav_ltp.json: no entry for {sym} (ISIN: {isin})")
                 errors.append(sym)
 
     # ──────────────────────────────────────────────────────────────────────

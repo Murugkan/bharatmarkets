@@ -3044,6 +3044,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                             stock.price['52_week'].high = quote.w52h;
                             stock.price['52_week'].low = quote.w52l;
                             stock.price.ltp.beta = quote.beta;
+                            // MF/SGB/QSIF: nav_date and nav_source from nav_ltp.json via fetch_ltp.py
+                            if (quote.nav_date) stock.price.ltp.nav_date = quote.nav_date;
+                            if (quote.nav_source) stock.price.ltp.nav_source = quote.nav_source;
                             stock.ltpUpdatedAt = ltpTime;
                             
                             store.put(stock);
