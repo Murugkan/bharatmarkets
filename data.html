@@ -3738,7 +3738,7 @@ function renderStep1() {
         '<div style="margin:0 0 10px 0;">' +
         '<label style="font-size:11px;color:#cc88ff;font-weight:700;display:block;margin-bottom:4px;">Demat Account Name</label>' +
         '<input type="text" id="demat-name-input" value="' + savedDemat + '" placeholder="e.g. SBICAP, Zerodha, Groww" ' +
-        'onchange="importState.demat = this.value.trim()" ' +
+        'oninput="importState.demat = this.value.trim()" onchange="importState.demat = this.value.trim()" ' +
         'style="width:100%;padding:8px;background:#1a1a2e;color:#cc88ff;border:1px solid #cc88ff;border-radius:6px;font-size:13px;box-sizing:border-box;">' +
         '</div>' +
         '<div style="padding:10px;background:#111;border-left:3px solid #00ff88;margin:6px 0;font-size:12px;color:#ccc;border-radius:4px;">' +
@@ -3779,6 +3779,10 @@ function handleDragLeave(e) {
 
 function handleImportFile(file) {
     if (!file) return;
+    
+    // Capture demat field value now — before async file read completes
+    var dematInput = document.getElementById('demat-name-input');
+    if (dematInput) importState.demat = dematInput.value.trim();
     
     var status = document.getElementById('file-status');
     status.innerHTML = '<span style="color:#ffb347;">⏳ Reading file...</span>';
@@ -5208,7 +5212,10 @@ function postToGitHub() {
         return;
     }
     
-    if (!confirm('Post ' + importState.stocks.length + ' stocks (' + importState.importMode.toUpperCase() + ' mode) to unified-symbols.json?')) {
+    var confirmMsg = importState.importMode === 'replace'
+        ? 'PURGE/LOAD [' + (importState.demat || 'unknown') + ']: post ' + importState.stocks.length + ' stocks to unified-symbols.json?\n\nThis will clear all ' + (importState.demat || '') + ' holdings and reload fresh.'
+        : 'APPEND: post ' + importState.stocks.length + ' stocks to unified-symbols.json?';
+    if (!confirm(confirmMsg)) {
         return;
     }
     
