@@ -493,23 +493,42 @@ def run_qsif_nav():
         all_rows.extend(rows2)
         qsif_logger.info(f"  Page 2: {len(rows2)} rows")
 
+    # Deduplicate rows (pagination may return overlapping sets)
+    seen = set()
+    unique_rows = []
+    for r in all_rows:
+        key = (r['scheme_name'], r['option'])
+        if key not in seen:
+            seen.add(key)
+            unique_rows.append(r)
+    all_rows = unique_rows
+
+    qsif_logger.info(f"  Unique rows after dedup: {len(all_rows)}")
+    for r in all_rows:
+        qsif_logger.info(f"    {r['scheme_name']} | {r['option']} | {r['nav']}")
+
     qsif_logger.info(f"  Total rows fetched: {len(all_rows)}")
 
     # Match portfolio entries to scraped rows by scheme_name keyword (case-insensitive)
     result = {}
     for entry in entries:
         symbol = entry['symbol']
-        # Build a shorter keyword from the name for fuzzy matching against qsif.com table rows.
-        # e.g. "QSIF EQUITY LONG-SHORT FUND-REGULAR PLAN-GROWTH" → "equity long-short"
-        name_lower = entry['scheme_name'].lower().replace('qsif', '').replace('fund', '').strip(' -')
-        # Take first meaningful segment before plan/option qualifiers
-        keyword = re.split(r'[-–]\s*(regular|direct|growth|idcw|plan|option)', name_lower)[0].strip(' -')
-        if not keyword:
-            keyword = name_lower
+        # Match by word overlap — extract meaningful words from entry name,
+        # ignore common stop words, check if all remain present in table row.
+        stop = {'qsif', 'fund', 'plan', 'option', 'regular', 'direct',
+                'growth', 'idcw', 'dividend', 'long', 'short'}
+        name_words = set(re.split(r'[\s\-–]+', entry['scheme_name'].lower())) - stop
+        name_words.discard('')
 
-        qsif_logger.info(f"  Keyword for {symbol}: '{keyword}'")
+        qsif_logger.info(f"  Match words for {symbol}: {name_words}")
         qsif_logger.info(f"  Available rows: {[r['scheme_name'] for r in all_rows]}")
-        matched_rows = [r for r in all_rows if keyword in r['scheme_name'].lower()]
+
+        def row_score(r):
+            row_words = set(re.split(r'[\s\-–]+', r['scheme_name'].lower()))
+            return len(name_words & row_words)
+
+        matched_rows = [r for r in all_rows if row_score(r) > 0]
+        matched_rows.sort(key=row_score, reverse=True)
 
         if not matched_rows:
             qsif_logger.warning(f"  ⚠ {symbol}: no match for scheme_name '{entry['scheme_name']}'")
