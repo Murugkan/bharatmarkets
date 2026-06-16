@@ -5143,13 +5143,14 @@ function postToGitHub() {
             // Start with existing stocks, purged of the target demat's holdings
             var purgedExisting = existingData.symbols.map(function(ex) {
                 return Object.assign({}, ex, {
-                    holdings: (ex.holdings || []).filter(function(h) { return h.demat !== purgeDemat; })
+                    holdings: (ex.holdings || []).filter(function(h) { return (h.demat || '').trim().toLowerCase() !== purgeDemat.toLowerCase(); })
                 });
             });
 
-            // Drop stocks that now have no holdings and aren't in incoming
+            // Drop stocks that now have no holdings left (they belonged entirely to purgeDemat)
+            // The incoming merge below will re-add them fresh if they appear in the new import
             purgedExisting = purgedExisting.filter(function(ex) {
-                return ex.holdings.length > 0 || incomingMap[ex.ticker];
+                return ex.holdings.length > 0;
             });
 
             // Build a map for O(1) lookup
