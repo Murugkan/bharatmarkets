@@ -44,7 +44,12 @@ AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
 
 SGBANALYZER_URL = 'https://sgbanalyzer.com/sgb/{symbol}'
 
-QSIF_NAV_URL = 'https://www.qsif.com'
+QSIF_NAV_URL = 'https://www.qsif.com/All-Strategies/funds'
+
+# Fund detail page URLs keyed by ISIN — add new entries as more QSIF funds are held
+QSIF_FUND_URLS = {
+    'INF966L30027': 'https://www.qsif.com/equity/qsif-logn-short-fund',
+}
 
 SCRAPE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -396,36 +401,40 @@ def get_portfolio_qsif_entries():
 
 
 def fetch_and_parse_qsif_homepage(session):
-    """Fetch qsif.com homepage and parse fund cards.
+    """Scrape NAV from individual QSIF fund detail pages (server-rendered).
 
-    Homepage has fund cards in the format:
-      ## qsif Equity Long-Short Fund
-      Regular Plan | Option: Growth
-      NAV as on 15-Jun-2026: 10.33
+    Fund detail pages contain NAV in the pattern:
+      **10.20** ... As of\n DD-Mon-YYYY
 
-    Returns list of dicts: {scheme_name, plan, nav, date}
+    Falls back to /All-Strategies/funds listing page if no detail URL is known.
+    Returns list of dicts: {isin, scheme_name, nav, date}
     """
-    resp = session.get(QSIF_NAV_URL, headers=SCRAPE_HEADERS, timeout=15)
-    resp.raise_for_status()
-    html = resp.text
-    qsif_logger.info(f"  Homepage HTML length: {len(html)} chars")
-
-    # Match each fund card: scheme name + NAV date + value
-    # Pattern anchored on "NAV as on DD-Mon-YYYY: <value>"
-    pattern = re.compile(
-        r'<h2[^>]*>\s*(qsif [^<]+?)\s*</h2>.*?'          # scheme name in <h2>
-        r'NAV\s+as\s+on\s*\n?\s*([\d\w\-]+):\s*([\d.]+)',  # NAV as on DATE: VALUE
-        re.DOTALL | re.IGNORECASE
-    )
     rows = []
-    for m in pattern.finditer(html):
-        scheme = re.sub(r'\s+', ' ', m.group(1)).strip()
-        date_str = m.group(2).strip()
+    for isin, url in QSIF_FUND_URLS.items():
         try:
-            nav = float(m.group(3).strip())
-        except ValueError:
-            continue
-        rows.append({'scheme_name': scheme, 'nav': nav, 'date': date_str})
+            resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
+            resp.raise_for_status()
+            html = resp.text
+
+            # NAV pattern: **10.20** followed by "As of" and date
+            nav_match = re.search(r'\*\*([\d.]+)\*\*.*?As\s+of\s*\n?\s*([\d\w\-]+)', html, re.DOTALL)
+            if not nav_match:
+                qsif_logger.warning(f"  ⚠ {isin}: NAV pattern not found on {url}")
+                continue
+
+            nav = float(nav_match.group(1).strip())
+            date_str = nav_match.group(2).strip()
+
+            # Scheme name from <h2>
+            name_match = re.search(r'<h2[^>]*>\s*(qsif[^<]+?)\s*</h2>', html, re.IGNORECASE)
+            scheme_name = re.sub(r'\s+', ' ', name_match.group(1)).strip() if name_match else isin
+
+            rows.append({'isin': isin, 'scheme_name': scheme_name, 'nav': nav, 'date': date_str})
+            qsif_logger.info(f"  Fetched {scheme_name}: NAV {nav} as of {date_str}")
+
+        except Exception as e:
+            qsif_logger.warning(f"  ⚠ {isin}: fetch failed: {e}")
+        time.sleep(1)
 
     return rows
 
@@ -442,39 +451,25 @@ def run_qsif_nav():
 
     session = requests.Session()
     all_rows = fetch_and_parse_qsif_homepage(session)
-    qsif_logger.info(f"  Found {len(all_rows)} fund cards on homepage")
-    for r in all_rows:
-        qsif_logger.info(f"    {r['scheme_name']} | {r['nav']} | {r['date']}")
+    qsif_logger.info(f"  Fetched {len(all_rows)} QSIF fund NAVs")
 
-    # Match portfolio entries by word overlap
+    # Index rows by ISIN for direct lookup
+    rows_by_isin = {r['isin']: r for r in all_rows}
+
     result = {}
-    stop = {'qsif', 'fund', 'plan', 'option', 'regular', 'direct',
-            'growth', 'idcw', 'dividend', 'long', 'short'}
-
     for entry in entries:
-        symbol = entry['symbol']
-        name_words = set(re.split(r'[\s\-–]+', entry['scheme_name'].lower())) - stop
-        name_words.discard('')
-
-        def row_score(r):
-            row_words = set(re.split(r'[\s\-–]+', r['scheme_name'].lower()))
-            return len(name_words & row_words)
-
-        matched = [r for r in all_rows if row_score(r) > 0]
-        matched.sort(key=row_score, reverse=True)
-
-        if not matched:
-            qsif_logger.warning(f"  ⚠ {symbol}: no match for '{entry['scheme_name']}'")
+        symbol = entry['symbol']  # ISIN
+        row = rows_by_isin.get(symbol)
+        if not row:
+            qsif_logger.warning(f"  ⚠ {symbol}: no data fetched (add URL to QSIF_FUND_URLS)")
             continue
-
-        best = matched[0]
         result[symbol] = {
-            'scheme_name': best['scheme_name'],
-            'nav': best['nav'],
-            'date': best['date'],
+            'scheme_name': row['scheme_name'],
+            'nav': row['nav'],
+            'date': row['date'],
             'source': 'qsif.com',
         }
-        qsif_logger.info(f"  ✓ {symbol}: NAV {best['nav']} ({best['date']})")
+        qsif_logger.info(f"  ✓ {symbol}: NAV {row['nav']} ({row['date']})")
 
     missing = {e['symbol'] for e in entries} - set(result.keys())
     if missing:
