@@ -486,7 +486,7 @@ def main():
                     "name": nav_entry.get('scheme_name') or entry.get("name", sym),
                     "sector": entry.get("sector", ""),
                     "ltp": nav_entry.get('ltp'),
-                    "change": None, "changePct": None,
+                    "change": nav_entry.get('change'), "changePct": nav_entry.get('changePct'),
                     "open": None, "high": None, "low": None, "prev": None,
                     "vol": 0, "w52h": None, "w52l": None, "beta": None,
                     "nav_date": nav_entry.get('date'),

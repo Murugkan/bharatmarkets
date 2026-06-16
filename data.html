@@ -3038,6 +3038,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                                 stock.price.ltp_nav = quote.ltp;
                                 stock.price.ltp_date = quote.nav_date;
                                 stock.price.ltp_source = quote.nav_source;
+                                // SGB only: 1D change computed from previous run in fetch_nav_ltp.py
+                                if (quote.change != null) stock.price.ltp_change = quote.change;
+                                if (quote.changePct != null) stock.price.ltp_change_pct = quote.changePct;
                             } else {
                                 // Equity: write to ltp object
                                 if (!stock.price.ltp) stock.price.ltp = {};
@@ -3297,6 +3300,9 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                                     stock.price.ltp_nav = quote.ltp;
                                     stock.price.ltp_date = quote.nav_date;
                                     stock.price.ltp_source = quote.nav_source;
+                                    // SGB only: 1D change computed in fetch_nav_ltp.py
+                                    if (quote.change != null) stock.price.ltp_change = quote.change;
+                                    if (quote.changePct != null) stock.price.ltp_change_pct = quote.changePct;
                                 } else {
                                     // Equity: write to ltp object
                                     if (!stock.price.ltp) stock.price.ltp = {};

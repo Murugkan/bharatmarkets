@@ -495,6 +495,15 @@ def run_qsif_nav():
 def main():
     merged = {}
 
+    # Load existing nav_ltp.json to get previous SGB prices for 1D change computation
+    prev_nav_ltp = {}
+    if NAV_LTP_OUTPUT_FILE.exists():
+        try:
+            with open(NAV_LTP_OUTPUT_FILE, 'r', encoding='utf-8') as f:
+                prev_nav_ltp = json.load(f)
+        except Exception as e:
+            logger.warning(f"  ⚠ Could not load previous nav_ltp.json: {e}")
+
     try:
         amfi = run_amfi_nav()
         merged.update(amfi)
@@ -503,6 +512,17 @@ def main():
 
     try:
         sgb = run_sgb_ltp()
+        # Compute 1D change for SGB by comparing to previous run's ltp
+        for symbol, entry in sgb.items():
+            prev = prev_nav_ltp.get(symbol, {})
+            prev_ltp = prev.get('ltp')
+            curr_ltp = entry.get('ltp')
+            if prev_ltp and curr_ltp and prev_ltp != curr_ltp:
+                entry['change'] = round(curr_ltp - prev_ltp, 2)
+                entry['changePct'] = round((curr_ltp - prev_ltp) / prev_ltp * 100, 3)
+            else:
+                entry['change'] = None
+                entry['changePct'] = None
         merged.update(sgb)
     except Exception as e:
         sgb_logger.warning(f"  ⚠ SGB LTP run failed: {e}")
