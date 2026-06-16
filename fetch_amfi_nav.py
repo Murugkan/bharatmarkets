@@ -415,24 +415,19 @@ def fetch_and_parse_qsif_homepage(session):
             resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
             resp.raise_for_status()
             html = resp.text
-            qsif_logger.info(f"  {isin}: HTML len={len(html)} | first500={html[:500].replace(chr(10),' ')}")
 
-            # NAV is in a <strong> tag followed by an img and "As of" date text
-            # Raw HTML pattern: <strong>10.20</strong><img...>...\nAs of\n DD-Mon-YYYY
+            # Raw HTML structure:
+            # <strong>10.33</strong> or plain text in a div,
+            # followed by <span class="paddl"><img green_icon/></span></div>
+            # then <span>As of\n    15-Jun-2026</span>
             nav_match = re.search(
-                r'<strong>\s*([\d.]+)\s*</strong>.*?As\s+of\s*\n?\s*([\d\w\-]+)',
+                r'([\d]+\.[\d]+)\s*(?:<[^>]+>\s*)*'   # NAV value, possibly wrapped in tags
+                r'<span[^>]*>\s*<img[^>]+green_icon[^>]*/>\s*</span>'  # green icon
+                r'.*?<span[^>]*>\s*As\s+of\s*\n?\s*([\d\w\-]+)',       # As of DATE
                 html, re.DOTALL | re.IGNORECASE
             )
             if not nav_match:
-                # Fallback: look for NAV value near "As of" anywhere on page
-                nav_match = re.search(
-                    r'([\d]{2,3}\.\d{2})\s*(?:<[^>]+>)*\s*As\s+of\s*\n?\s*([\d\w\-]+)',
-                    html, re.DOTALL | re.IGNORECASE
-                )
-            if not nav_match:
-                # Log a snippet around "As of" for debugging
-                snip = re.search(r'.{100}As\s+of.{50}', html, re.DOTALL | re.IGNORECASE)
-                qsif_logger.warning(f"  ⚠ {isin}: NAV pattern not found on {url} | HTML len={len(html)} | snippet={snip.group(0)[:150] if snip else 'none'}")
+                qsif_logger.warning(f"  ⚠ {isin}: NAV pattern not found | snippet={html[html.lower().find('as of')-200:html.lower().find('as of')+100] if 'as of' in html.lower() else 'none'}")
                 continue
 
             nav = float(nav_match.group(1).strip())
