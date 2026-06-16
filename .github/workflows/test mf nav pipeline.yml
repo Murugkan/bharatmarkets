@@ -8,7 +8,7 @@ on:
 
 jobs:
   # ==========================================================================
-  # JOB 1: Mutual fund / SGB NAV from AMFI — fetch_amfi_nav.py
+  # JOB 1: Mutual fund / SGB NAV from AMFI — fetch_nav_ltp.py
   # ==========================================================================
   fetch-mf-nav:
     runs-on: ubuntu-latest
@@ -24,16 +24,16 @@ jobs:
       - name: Install dependencies
         run: pip install requests -q
 
-      - name: Run fetch_amfi_nav.py
-        run: python fetch_amfi_nav.py
+      - name: Run fetch_nav_ltp.py
+        run: python fetch_nav_ltp.py
 
       - name: Verify output file
         run: |
-          if [ -f data/mf_nav.json ]; then
-            echo "✓ mf_nav.json exists"
-            cat data/mf_nav.json
+          if [ -f data/nav_ltp.json ]; then
+            echo "✓ nav_ltp.json exists"
+            cat data/nav_ltp.json
           else
-            echo "✗ mf_nav.json NOT FOUND"
+            echo "✗ nav_ltp.json NOT FOUND"
           fi
 
       - name: Commit & Push (retry on concurrent updates)
@@ -41,7 +41,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add data/mf_nav.json data/sgb_ltp.json data/qsif_nav.json data/logs/fetch_amfi_nav.log 2>/dev/null || true
+          git add data/nav_ltp.json data/logs/fetch_nav_ltp.log 2>/dev/null || true
 
           if git diff --quiet --cached; then
             echo "No changes to commit"
@@ -70,7 +70,7 @@ jobs:
 
   # ==========================================================================
   # JOB 2: Bucket market_data_raw.json -> market_data.json (final output)
-  # Runs after fetch-mf-nav so mf_nav.json is available.
+  # Runs after fetch-mf-nav so nav_ltp.json is available.
   # NOTE: requires market_data_raw.json to already exist in the repo from a
   # previous full pipeline run.
   # ==========================================================================
