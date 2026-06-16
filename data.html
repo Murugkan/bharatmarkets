@@ -456,7 +456,14 @@
                 <thead>
                     <tr style="background:rgba(0,50,100,0.5); border-bottom:2px solid #00ffff;">
                         <th class="sticky" onclick="setSort('ticker')" style="color:#00ffff; font-weight:700; padding:10px 8px; text-align:left; cursor:pointer;">TICKER<span id="sort-ticker"></span></th>
-                        <th onclick="setSort('holdings')" style="color:#cc88ff; font-weight:700; padding:10px 4px; text-align:left; min-width:160px; cursor:pointer;">HOLDINGS<span id="sort-holdings"></span></th>
+                        <th style="color:#cc88ff; font-weight:700; padding:6px 4px; text-align:left; min-width:160px;">
+                            <div style="display:flex;align-items:center;gap:4px;">
+                                <span onclick="setSort('holdings')" style="cursor:pointer;">HOLDINGS<span id="sort-holdings"></span></span>
+                                <input id="dematFilterInput" type="text" placeholder="demat" oninput="setDematFilter(this.value)"
+                                    style="width:70px;padding:3px 5px;background:#111;color:#cc88ff;border:1px solid #4a2a6e;border-radius:4px;font-size:9px;font-family:inherit;text-transform:lowercase;">
+                                <button onclick="clearDematFilter()" id="dematFilterClear" style="display:none;padding:2px 5px;background:#3a1a1a;color:#ff6b6b;border:none;border-radius:3px;cursor:pointer;font-size:9px;font-family:inherit;">✕</button>
+                            </div>
+                        </th>
                         <th onclick="setSort('serial')" style="color:#ffaa44; font-weight:700; padding:10px 6px; text-align:center; min-width:40px; cursor:pointer;">S.NO<span id="sort-serial"></span></th>
                         <th style="color:#00ffff; font-weight:700; padding:10px 4px; text-align:center;">CONCALL</th>
                         <th onclick="setSort('concallDate')" style="color:#00ffaa; font-weight:700; padding:10px 4px; text-align:center; width:75px; cursor:pointer;">CONCALL DATE<span id="sort-concallDate"></span></th>
@@ -531,6 +538,7 @@
     let pendingHoldingsChanges = new Set(); // tickers with locally-edited holdings, not yet saved
     let sortColumn = 'serial'; // 'ticker' | 'serial' | 'concallDate' | 'insightsDate'
     let sortDirection = 'asc'; // 'asc' | 'desc'
+    let dematFilter = ''; // demat name filter for holdings column
     let pendingGuidanceChanges = {}; // ticker -> newGuidance object, staged until Publish
     let pendingInsightsChanges = {}; // ticker -> newInsights object, staged until Publish
     let logMessages = [];
@@ -1253,6 +1261,22 @@
         }
     }
 
+    function setDematFilter(val) {
+        dematFilter = val;
+        var clearBtn = document.getElementById('dematFilterClear');
+        if (clearBtn) clearBtn.style.display = val ? 'inline-block' : 'none';
+        renderSymbols();
+    }
+
+    function clearDematFilter() {
+        dematFilter = '';
+        var input = document.getElementById('dematFilterInput');
+        if (input) input.value = '';
+        var clearBtn = document.getElementById('dematFilterClear');
+        if (clearBtn) clearBtn.style.display = 'none';
+        renderSymbols();
+    }
+
     function setSort(column) {
         if (sortColumn === column) {
             sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
@@ -1288,6 +1312,16 @@
                     insightsDate: (gEntry.insights && gEntry.insights.date) ? gEntry.insights.date : ''
                 };
             });
+
+            // Apply demat filter
+            if (dematFilter) {
+                var df = dematFilter.trim().toLowerCase();
+                indexedData = indexedData.filter(function(entry) {
+                    return (entry.stock.holdings || []).some(function(h) {
+                        return (h.demat || '').toLowerCase().indexOf(df) !== -1;
+                    });
+                });
+            }
 
             var dir = sortDirection === 'asc' ? 1 : -1;
             indexedData.sort(function(a, b) {
@@ -1326,7 +1360,10 @@
                 var serialNo = index + 1;
 
                 // Build per-demat holding rows
-                var holdingsHtml = holdings.map(function(h) {
+                var visibleHoldings = dematFilter
+                    ? holdings.filter(function(h) { return (h.demat||'').toLowerCase().indexOf(dematFilter.trim().toLowerCase()) !== -1; })
+                    : holdings;
+                var holdingsHtml = visibleHoldings.map(function(h) {
                     return '<div style="display:flex;gap:6px;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);">'
                         + '<span style="font-size:10px;color:#cc88ff;font-weight:700;min-width:55px;">' + (h.demat || '—') + '</span>'
                         + '<span style="font-size:10px;color:#00ff88;font-weight:700;">' + (h.qty||0) + '</span>'
