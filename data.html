@@ -5061,20 +5061,21 @@ function renderStep6() {
     }
     html += '</div>';
     
-    // Append vs Replace Option
+    // Append vs Purge/Load Option
+    var dematLabel = importState.demat ? ('<b style="color:#cc88ff;">' + importState.demat + '</b>') : '<span style="color:#ff6b85;">⚠️ no demat set</span>';
     html += '<div style="margin:8px 0;padding:15px;background:#050505;border:1px solid #222;border-radius:8px;">' +
         '<div style="color:#00ff88;font-weight:bold;margin-bottom:10px;">📥 Import Mode</div>' +
         '<div style="display:flex;gap:6px;">' +
         '<button onclick="setImportMode(\'append\')" id="btn-append" style="flex:1;padding:10px;' +
         'background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;' +
-        'font-size:12px;">➕ APPEND to Portfolio</button>' +
+        'font-size:12px;">➕ APPEND</button>' +
         '<button onclick="setImportMode(\'replace\')" id="btn-replace" style="flex:1;padding:10px;' +
         'background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;' +
-        'font-size:12px;">🔄 REPLACE Portfolio</button>' +
+        'font-size:12px;">🔄 PURGE/LOAD</button>' +
         '</div>' +
         '<div style="margin-top:8px;font-size:10px;color:#888;">' +
-        '<b>APPEND:</b> Add new stocks to existing portfolio<br>' +
-        '<b>REPLACE:</b> Clear portfolio and import fresh' +
+        '<b>APPEND:</b> Merge new stocks into existing portfolio (demat holdings merged by name)<br>' +
+        '<b>PURGE/LOAD:</b> Clear <i>only</i> ' + dematLabel + ' holdings, then load fresh — other demats untouched' +
         '</div>' +
         '</div>';
     
@@ -5221,18 +5222,9 @@ function postToGitHub() {
         symbols: []
     };
     
-    // In REPLACE mode, start fresh; in APPEND mode, we'll merge later
+    // Build the incoming symbols array (same for both modes; merge logic applied later)
     var stocksToSave = importState.stocks;
-    
-    if (importState.importMode === 'replace') {
-        // Clear all existing stocks - just use new stocks
-        stocksToSave = importState.stocks;
-        unifiedData.count = stocksToSave.length;
-    } else {
-        // APPEND mode - will merge with existing (handled in GitHub fetch)
-        // For now just save the new stocks
-        unifiedData.count = stocksToSave.length;
-    }
+    unifiedData.count = stocksToSave.length;
     
     stocksToSave.forEach(function(stock) {
         var ticker = stock.ticker || '?';
@@ -5281,11 +5273,11 @@ function postToGitHub() {
         var sha = data.sha || undefined;
         var finalData = unifiedData;
         
-        // In APPEND mode, fetch and merge existing data
-        if (importState.importMode === 'append') {
+        // APPEND and PURGE/LOAD both need the existing file
+        if (importState.importMode === 'append' || importState.importMode === 'replace') {
             if (!data.content) {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not fetch existing unified-symbols.json for append</span>';
-                throw new Error('Append aborted — existing file not found/fetched');
+                status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not fetch existing unified-symbols.json</span>';
+                throw new Error('Aborted — existing file not found/fetched');
             }
             try {
                 var existingContent = base64ToUtf8(data.content);
@@ -5293,41 +5285,73 @@ function postToGitHub() {
 
                 if (!existingData.symbols) {
                     status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: existing unified-symbols.json has no "symbols" array</span>';
-                    throw new Error('Append aborted — existing file missing symbols array');
+                    throw new Error('Aborted — existing file missing symbols array');
                 }
-                {
-                    // Create map of new stocks by ticker
-                    var newTickers = {};
-                    unifiedData.symbols.forEach(function(s) {
-                        newTickers[s.ticker] = s;
+
+                // Build map of incoming stocks by ticker
+                var newTickers = {};
+                unifiedData.symbols.forEach(function(s) { newTickers[s.ticker] = s; });
+
+                if (importState.importMode === 'replace') {
+                    // PURGE/LOAD — demat-scoped:
+                    // 1. Strip the current demat's holdings from every existing stock.
+                    // 2. Drop stocks with no remaining holdings AND not in the incoming set.
+                    // 3. Merge surviving (other-demat) holdings with new incoming holdings.
+                    var purgeDemat = (importState.demat || '').trim();
+
+                    var baseSymbols = existingData.symbols.map(function(existing) {
+                        var keptHoldings = (existing.holdings || []).filter(function(h) {
+                            return h.demat !== purgeDemat;
+                        });
+                        return Object.assign({}, existing, { holdings: keptHoldings });
+                    }).filter(function(existing) {
+                        return existing.holdings.length > 0 || newTickers[existing.ticker];
                     });
-                    
-                    // Keep existing stocks that aren't being replaced
+
+                    var baseMap = {};
+                    baseSymbols.forEach(function(s) { baseMap[s.ticker] = s; });
+
+                    unifiedData.symbols.forEach(function(newStock) {
+                        if (baseMap[newStock.ticker]) {
+                            baseMap[newStock.ticker].holdings = baseMap[newStock.ticker].holdings.concat(newStock.holdings || []);
+                            baseMap[newStock.ticker].name = newStock.name || baseMap[newStock.ticker].name;
+                            baseMap[newStock.ticker].type = newStock.type || baseMap[newStock.ticker].type;
+                        } else {
+                            baseMap[newStock.ticker] = newStock;
+                            baseSymbols.push(newStock);
+                        }
+                    });
+
+                    var seen = {};
+                    finalData.symbols = baseSymbols.map(function(s) { return baseMap[s.ticker] || s; }).filter(function(s) {
+                        if (seen[s.ticker]) return false;
+                        seen[s.ticker] = true;
+                        return true;
+                    });
+                    finalData.count = finalData.symbols.length;
+
+                } else {
+                    // APPEND — merge: keep existing stocks not in new import, merge holdings for overlaps
                     var mergedSymbols = existingData.symbols.filter(function(existing) {
                         return !newTickers[existing.ticker];
                     });
-                    
-                    // For stocks being replaced, preserve existing holdings not in new import
+
                     unifiedData.symbols.forEach(function(newStock) {
                         var existing = existingData.symbols.find(function(e) { return e.ticker === newStock.ticker; });
                         if (existing && existing.holdings && existing.holdings.length) {
-                            // Merge: new holdings demat entries take precedence, keep others
                             var newDemats = (newStock.holdings || []).map(function(h) { return h.demat; });
                             var keptHoldings = existing.holdings.filter(function(h) { return !newDemats.includes(h.demat); });
                             newStock.holdings = keptHoldings.concat(newStock.holdings || []);
                         }
                     });
-                    
-                    // Add new/updated stocks
+
                     mergedSymbols = mergedSymbols.concat(unifiedData.symbols);
-                    
-                    // Update final data
                     finalData.symbols = mergedSymbols;
                     finalData.count = mergedSymbols.length;
                 }
             } catch(e) {
                 status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not parse existing unified-symbols.json — not overwriting. ' + e.message + '</span>';
-                throw new Error('Append aborted — existing file parse failed: ' + e.message);
+                throw new Error('Aborted — existing file parse failed: ' + e.message);
             }
         }
         
@@ -5348,7 +5372,9 @@ function postToGitHub() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                message: importState.importMode.toUpperCase() + ': ' + importState.stocks.length + ' stocks',
+                message: (importState.importMode === 'replace'
+                    ? 'PURGE/LOAD [' + (importState.demat || 'unknown') + ']: ' + importState.stocks.length + ' stocks'
+                    : 'APPEND: ' + importState.stocks.length + ' stocks'),
                 content: base64Content,
                 sha: sha
             })
@@ -5359,7 +5385,7 @@ function postToGitHub() {
         if (data.commit && data.commit.sha) {
             status.innerHTML = '<div style="color:#00ff88;"><b>✅ Posted Successfully!</b></div>' +
                 '<div style="margin:6px 0;font-size:11px;color:#888;">' +
-                'Mode: <b>' + importState.importMode.toUpperCase() + '</b><br>' +
+                'Mode: <b>' + (importState.importMode === 'replace' ? 'PURGE/LOAD [' + (importState.demat || '') + ']' : 'APPEND') + '</b><br>' +
                 'Message: ' + data.commit.message + '<br>' +
                 'SHA: ' + data.commit.sha.substring(0, 10) + '...<br>' +
                 'File: ' + data.content.name + '<br><br>' +
