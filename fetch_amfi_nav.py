@@ -28,7 +28,6 @@ import logging
 import re
 import requests
 import time
-from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
 
@@ -480,6 +479,7 @@ def run_qsif_nav():
 
     # Fetch page 1
     html = fetch_qsif_nav_page(session, page_num=1)
+    qsif_logger.info(f"  Page 1 HTML length: {len(html)} chars")
     rows, viewstate, eventvalidation, has_next = parse_qsif_nav_table(html)
     all_rows.extend(rows)
     qsif_logger.info(f"  Page 1: {len(rows)} rows")
