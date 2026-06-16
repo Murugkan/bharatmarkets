@@ -44,7 +44,7 @@ AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
 
 SGBANALYZER_URL = 'https://sgbanalyzer.com/sgb/{symbol}'
 
-QSIF_NAV_URL = 'https://www.qsif.com/NAV/latestnav'
+QSIF_NAV_URL = 'https://www.qsif.com'
 
 SCRAPE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -395,74 +395,39 @@ def get_portfolio_qsif_entries():
     return entries
 
 
-def fetch_qsif_nav_page(session, page_num=1, viewstate=None, eventvalidation=None):
-    """Fetch one page of qsif.com/NAV/latestnav.
+def fetch_and_parse_qsif_homepage(session):
+    """Fetch qsif.com homepage and parse fund cards.
 
-    Page 1: plain GET. Subsequent pages: POST with ASP.NET hidden fields
-    (__VIEWSTATE, __EVENTVALIDATION) extracted from the previous response,
-    plus the __doPostBack target for the next-page link.
+    Homepage has fund cards in the format:
+      ## qsif Equity Long-Short Fund
+      Regular Plan | Option: Growth
+      NAV as on 15-Jun-2026: 10.33
+
+    Returns list of dicts: {scheme_name, plan, nav, date}
     """
-    if page_num == 1:
-        resp = session.get(QSIF_NAV_URL, headers=SCRAPE_HEADERS, timeout=15)
-    else:
-        # ASP.NET pagination — POST with __doPostBack event for page N
-        event_target = f"ctl00$ContentPlaceHolder1$nav_sch$ctl01$ctl{page_num - 1:02d}"
-        data = {
-            '__EVENTTARGET': event_target,
-            '__EVENTARGUMENT': '',
-            '__VIEWSTATE': viewstate or '',
-            '__EVENTVALIDATION': eventvalidation or '',
-        }
-        resp = session.post(QSIF_NAV_URL, headers=SCRAPE_HEADERS, data=data, timeout=15)
-
+    resp = session.get(QSIF_NAV_URL, headers=SCRAPE_HEADERS, timeout=15)
     resp.raise_for_status()
-    return resp.text
+    html = resp.text
+    qsif_logger.info(f"  Homepage HTML length: {len(html)} chars")
 
-
-def parse_qsif_nav_table(html):
-    """Parse the NAV table from qsif.com HTML using BeautifulSoup.
-
-    Returns list of row dicts and ASP.NET hidden field values for pagination.
-    """
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, 'html.parser')
+    # Match each fund card: scheme name + NAV date + value
+    # Pattern anchored on "NAV as on DD-Mon-YYYY: <value>"
+    pattern = re.compile(
+        r'<h2[^>]*>\s*(qsif [^<]+?)\s*</h2>.*?'          # scheme name in <h2>
+        r'NAV\s+as\s+on\s*\n?\s*([\d\w\-]+):\s*([\d.]+)',  # NAV as on DATE: VALUE
+        re.DOTALL | re.IGNORECASE
+    )
     rows = []
-
-    # Extract ASP.NET hidden fields for pagination
-    vs = soup.find('input', {'id': '__VIEWSTATE'})
-    ev = soup.find('input', {'id': '__EVENTVALIDATION'})
-    viewstate = vs['value'] if vs else ''
-    eventvalidation = ev['value'] if ev else ''
-
-    # Find the NAV table — locate by header row content
-    for table in soup.find_all('table'):
-        headers = [th.get_text(strip=True).lower() for th in table.find_all('th')]
-        if not any('scheme' in h or 'nav' in h for h in headers):
+    for m in pattern.finditer(html):
+        scheme = re.sub(r'\s+', ' ', m.group(1)).strip()
+        date_str = m.group(2).strip()
+        try:
+            nav = float(m.group(3).strip())
+        except ValueError:
             continue
-        for tr in table.find_all('tr')[1:]:  # skip header row
-            tds = [td.get_text(strip=True) for td in tr.find_all('td')]
-            if len(tds) < 4:
-                continue
-            # Columns: Date | Scheme Name | Option | NAV | %Chg
-            try:
-                nav = float(tds[3])
-            except (ValueError, IndexError):
-                continue
-            rows.append({
-                'date': tds[0],
-                'scheme_name': tds[1],
-                'option': tds[2],
-                'nav': nav,
-                'pchange': tds[4] if len(tds) > 4 else '',
-            })
-        break  # only parse first matching table
+        rows.append({'scheme_name': scheme, 'nav': nav, 'date': date_str})
 
-    # Check if a "Next" page link exists
-    has_next = bool(soup.find(string=re.compile(r'Next', re.IGNORECASE),
-                               attrs={'href': re.compile(r'__doPostBack', re.IGNORECASE)})
-                    or 'Next' in html)
-
-    return rows, viewstate, eventvalidation, has_next
+    return rows
 
 
 def run_qsif_nav():
@@ -476,80 +441,36 @@ def run_qsif_nav():
         return
 
     session = requests.Session()
-    all_rows = []
-
-    # Fetch page 1
-    html = fetch_qsif_nav_page(session, page_num=1)
-    qsif_logger.info(f"  Page 1 HTML length: {len(html)} chars")
-    rows, viewstate, eventvalidation, has_next = parse_qsif_nav_table(html)
-    all_rows.extend(rows)
-    qsif_logger.info(f"  Page 1: {len(rows)} rows")
-
-    # Fetch page 2 if present
-    if has_next:
-        time.sleep(1)
-        html2 = fetch_qsif_nav_page(session, page_num=2, viewstate=viewstate, eventvalidation=eventvalidation)
-        rows2, _, _, _ = parse_qsif_nav_table(html2)
-        all_rows.extend(rows2)
-        qsif_logger.info(f"  Page 2: {len(rows2)} rows")
-
-    # Deduplicate rows (pagination may return overlapping sets)
-    seen = set()
-    unique_rows = []
+    all_rows = fetch_and_parse_qsif_homepage(session)
+    qsif_logger.info(f"  Found {len(all_rows)} fund cards on homepage")
     for r in all_rows:
-        key = (r['scheme_name'], r['option'])
-        if key not in seen:
-            seen.add(key)
-            unique_rows.append(r)
-    all_rows = unique_rows
+        qsif_logger.info(f"    {r['scheme_name']} | {r['nav']} | {r['date']}")
 
-    qsif_logger.info(f"  Unique rows after dedup: {len(all_rows)}")
-    for r in all_rows:
-        qsif_logger.info(f"    {r['scheme_name']} | {r['option']} | {r['nav']}")
-
-    qsif_logger.info(f"  Total rows fetched: {len(all_rows)}")
-
-    # Match portfolio entries to scraped rows by scheme_name keyword (case-insensitive)
+    # Match portfolio entries by word overlap
     result = {}
+    stop = {'qsif', 'fund', 'plan', 'option', 'regular', 'direct',
+            'growth', 'idcw', 'dividend', 'long', 'short'}
+
     for entry in entries:
         symbol = entry['symbol']
-        # Match by word overlap — extract meaningful words from entry name,
-        # ignore common stop words, check if all remain present in table row.
-        stop = {'qsif', 'fund', 'plan', 'option', 'regular', 'direct',
-                'growth', 'idcw', 'dividend', 'long', 'short'}
         name_words = set(re.split(r'[\s\-–]+', entry['scheme_name'].lower())) - stop
         name_words.discard('')
-
-        qsif_logger.info(f"  Match words for {symbol}: {name_words}")
-        qsif_logger.info(f"  Available rows: {[r['scheme_name'] for r in all_rows]}")
 
         def row_score(r):
             row_words = set(re.split(r'[\s\-–]+', r['scheme_name'].lower()))
             return len(name_words & row_words)
 
-        matched_rows = [r for r in all_rows if row_score(r) > 0]
-        matched_rows.sort(key=row_score, reverse=True)
+        matched = [r for r in all_rows if row_score(r) > 0]
+        matched.sort(key=row_score, reverse=True)
 
-        if not matched_rows:
-            qsif_logger.warning(f"  ⚠ {symbol}: no match for scheme_name '{entry['scheme_name']}'")
+        if not matched:
+            qsif_logger.warning(f"  ⚠ {symbol}: no match for '{entry['scheme_name']}'")
             continue
 
-        # Prefer matching plan type (regular/direct) from entry name
-        prefer_direct = 'direct' in entry['scheme_name'].lower()
-        if prefer_direct:
-            best = next(
-                (r for r in matched_rows if 'direct' in r['scheme_name'].lower() and 'growth' in r['option'].lower()),
-                matched_rows[0]
-            )
-        else:
-            best = next(
-                (r for r in matched_rows if 'regular' in r['scheme_name'].lower() and 'growth' in r['option'].lower()),
-                matched_rows[0]
-            )
+        best = matched[0]
         result[symbol] = {
             'scheme_name': best['scheme_name'],
             'nav': best['nav'],
-            'pchange': best['pchange'],
             'date': best['date'],
             'source': 'qsif.com',
         }
