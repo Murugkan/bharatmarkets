@@ -424,6 +424,11 @@ def parse_qsif_nav_table(html):
 
     Returns list of row dicts and ASP.NET hidden field values for pagination.
     """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        raise ImportError("beautifulsoup4 is required: add 'beautifulsoup4' to requirements.txt")
+
     soup = BeautifulSoup(html, 'html.parser')
     rows = []
 
