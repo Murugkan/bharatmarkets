@@ -507,6 +507,8 @@ def run_qsif_nav():
         if not keyword:
             keyword = name_lower
 
+        qsif_logger.info(f"  Keyword for {symbol}: '{keyword}'")
+        qsif_logger.info(f"  Available rows: {[r['scheme_name'] for r in all_rows]}")
         matched_rows = [r for r in all_rows if keyword in r['scheme_name'].lower()]
 
         if not matched_rows:
