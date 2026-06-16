@@ -3032,24 +3032,29 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                         
                         if (quote) {
                             if (!stock.price) stock.price = {};
-                            if (!stock.price.ltp) stock.price.ltp = {};
-                            
-                            stock.price.ltp.price = quote.ltp;
-                            stock.price.ltp.open = quote.open;
-                            stock.price.ltp.high = quote.high;
-                            stock.price.ltp.low = quote.low;
-                            stock.price.ltp.prev_close = quote.prev;
-                            stock.price.ltp.change = quote.change;
-                            stock.price.ltp.changePct = quote.changePct;        // camelCase — used by signals
-                            stock.price.ltp.change_pct = quote.changePct;       // snake_case — consistency
-                            stock.price.ltp.day_volume = quote.vol;
-                            if (!stock.price['52_week']) stock.price['52_week'] = {};
-                            stock.price['52_week'].high = quote.w52h;
-                            stock.price['52_week'].low = quote.w52l;
-                            stock.price.ltp.beta = quote.beta;
-                            // MF/SGB/QSIF: nav_date and nav_source from nav_ltp.json via fetch_ltp.py
-                            if (quote.nav_date) stock.price.ltp.nav_date = quote.nav_date;
-                            if (quote.nav_source) stock.price.ltp.nav_source = quote.nav_source;
+
+                            if (quote.nav_date) {
+                                // MF/SGB/QSIF: NAV is a scalar — write to ltp_nav, not ltp object
+                                stock.price.ltp_nav = quote.ltp;
+                                stock.price.ltp_date = quote.nav_date;
+                                stock.price.ltp_source = quote.nav_source;
+                            } else {
+                                // Equity: write to ltp object
+                                if (!stock.price.ltp) stock.price.ltp = {};
+                                stock.price.ltp.price = quote.ltp;
+                                stock.price.ltp.open = quote.open;
+                                stock.price.ltp.high = quote.high;
+                                stock.price.ltp.low = quote.low;
+                                stock.price.ltp.prev_close = quote.prev;
+                                stock.price.ltp.change = quote.change;
+                                stock.price.ltp.changePct = quote.changePct;        // camelCase — used by signals
+                                stock.price.ltp.change_pct = quote.changePct;       // snake_case — consistency
+                                stock.price.ltp.day_volume = quote.vol;
+                                if (!stock.price['52_week']) stock.price['52_week'] = {};
+                                stock.price['52_week'].high = quote.w52h;
+                                stock.price['52_week'].low = quote.w52l;
+                                stock.price.ltp.beta = quote.beta;
+                            }
                             stock.ltpUpdatedAt = ltpTime;
                             
                             store.put(stock);
@@ -3286,24 +3291,29 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
                             if (quote) {
                                 if (!stock.price) stock.price = {};
-                                if (!stock.price.ltp) stock.price.ltp = {};
 
-                                stock.price.ltp.price      = quote.ltp;
-                                stock.price.ltp.open       = quote.open;
-                                stock.price.ltp.high       = quote.high;
-                                stock.price.ltp.low        = quote.low;
-                                stock.price.ltp.prev_close = quote.prev;
-                                stock.price.ltp.change     = quote.change;
-                                stock.price.ltp.changePct  = quote.changePct;
-                                stock.price.ltp.change_pct = quote.changePct;
-                                stock.price.ltp.day_volume = quote.vol;
-                                stock.price.ltp.beta       = quote.beta;
-                                if (!stock.price['52_week']) stock.price['52_week'] = {};
-                                stock.price['52_week'].high = quote.w52h;
-                                stock.price['52_week'].low  = quote.w52l;
-                                // MF/SGB/QSIF: nav_date and nav_source from nav_ltp.json via fetch_ltp.py
-                                if (quote.nav_date) stock.price.ltp.nav_date = quote.nav_date;
-                                if (quote.nav_source) stock.price.ltp.nav_source = quote.nav_source;
+                                if (quote.nav_date) {
+                                    // MF/SGB/QSIF: NAV scalar — write to ltp_nav, not ltp object
+                                    stock.price.ltp_nav = quote.ltp;
+                                    stock.price.ltp_date = quote.nav_date;
+                                    stock.price.ltp_source = quote.nav_source;
+                                } else {
+                                    // Equity: write to ltp object
+                                    if (!stock.price.ltp) stock.price.ltp = {};
+                                    stock.price.ltp.price      = quote.ltp;
+                                    stock.price.ltp.open       = quote.open;
+                                    stock.price.ltp.high       = quote.high;
+                                    stock.price.ltp.low        = quote.low;
+                                    stock.price.ltp.prev_close = quote.prev;
+                                    stock.price.ltp.change     = quote.change;
+                                    stock.price.ltp.changePct  = quote.changePct;
+                                    stock.price.ltp.change_pct = quote.changePct;
+                                    stock.price.ltp.day_volume = quote.vol;
+                                    stock.price.ltp.beta       = quote.beta;
+                                    if (!stock.price['52_week']) stock.price['52_week'] = {};
+                                    stock.price['52_week'].high = quote.w52h;
+                                    stock.price['52_week'].low  = quote.w52l;
+                                }
 
                                 store.put(stock);
                                 updatedCount++;

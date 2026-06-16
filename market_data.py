@@ -3305,11 +3305,13 @@ def main():
             cd['data_source'] = pf['data_source']
             cd['holdings'] = pf['holdings']
 
-        # Inject nav_ltp data (AMFI MF / SGB / QSIF) as live price
+        # Inject nav_ltp data (AMFI MF / SGB / QSIF) as live price.
+        # Written to price.ltp_nav (scalar) — separate from price.ltp (object)
+        # used by equities, to avoid structure collision on delta loads.
         nav = nav_ltp_by_ticker.get(symbol)
         if nav:
             price = bucketed.setdefault('price', {})
-            price['ltp'] = nav.get('ltp')
+            price['ltp_nav'] = nav.get('ltp')
             price['ltp_date'] = nav.get('date')
             price['ltp_scheme_name'] = nav.get('scheme_name')
             price['ltp_source'] = nav.get('source')
