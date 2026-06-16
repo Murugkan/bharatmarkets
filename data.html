@@ -5065,7 +5065,7 @@ function postToGitHub() {
     var ghPAT = importState.githubPAT;
     var ghUser = GITHUB_CONFIG.OWNER;
     var ghRepo = GITHUB_CONFIG.REPO;
-    var purgeDemat = (importState.demat || '').trim();
+    var purgeDemat = (importState.demat || '').trim().toLowerCase();
 
     if (!ghPAT) {
         alert('❌ PAT not configured. Go to PAT tab and save your token.');
@@ -5143,7 +5143,7 @@ function postToGitHub() {
             // Start with existing stocks, purged of the target demat's holdings
             var purgedExisting = existingData.symbols.map(function(ex) {
                 return Object.assign({}, ex, {
-                    holdings: (ex.holdings || []).filter(function(h) { return (h.demat || '').trim().toLowerCase() !== purgeDemat.toLowerCase(); })
+                    holdings: (ex.holdings || []).filter(function(h) { return (h.demat || '').trim().toLowerCase() !== purgeDemat; })
                 });
             });
 
@@ -5192,8 +5192,8 @@ function postToGitHub() {
             incomingSymbols.forEach(function(inc) {
                 var ex = existingData.symbols.find(function(e) { return e.ticker === inc.ticker; });
                 if (ex && ex.holdings && ex.holdings.length) {
-                    var incDemats = inc.holdings.map(function(h) { return h.demat; });
-                    var keptHoldings = ex.holdings.filter(function(h) { return !incDemats.includes(h.demat); });
+                    var incDemats = inc.holdings.map(function(h) { return (h.demat||'').trim().toLowerCase(); });
+                    var keptHoldings = ex.holdings.filter(function(h) { return !incDemats.includes((h.demat||'').trim().toLowerCase()); });
                     inc.holdings = keptHoldings.concat(inc.holdings);
                 }
             });
