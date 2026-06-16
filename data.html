@@ -3673,7 +3673,7 @@ function showImportUI() {
         html += '<div style="display:flex;align-items:center;gap:6px;">' +
             '<div style="flex:1;height:3px;background:#1a1a1a;border-radius:2px;overflow:hidden;">' +
             '<div style="width:' + progress + '%;height:100%;background:#00ff88;transition:width 0.2s;"></div></div>' +
-            '<button onclick="closeImportModal()" style="' + btnStyle + 'background:#1a1a1a;color:#ff6b6b;border:1px solid #3a1a1a;">Cancel</button>' +
+            '<button onclick="closeImportModal()" style="' + btnStyle + 'background:#1a1200;color:#ffb347;border:1px solid #4a3000;">Cancel</button>' +
             (importState.step > 1 ? '<button onclick="prevImportStep()" style="' + btnStyle + 'background:#222;color:#ccc;">← Back</button>' : '') +
             (!isLast
                 ? '<button onclick="nextImportStep()" style="' + btnStyle + 'background:#00ff88;color:#000;font-weight:800;">Next →</button>'
@@ -4647,7 +4647,7 @@ function renderStep5() {
             '<td style="padding:4px 4px;text-align:right;cursor:pointer;color:#aaa;" onclick="editCell(this,' + idx + ',\'avg\')">' +
             (stock.avg ? '₹'+stock.avg.toFixed(0) : '—') + '</td>' +
             '<td style="padding:4px;text-align:center;">' +
-            '<button class="step5-delete-btn" data-idx="' + idx + '" style="background:transparent;color:#444;border:none;padding:2px 4px;cursor:pointer;font-size:12px;">✕</button>' +
+            '<button class="step5-delete-btn" data-idx="' + idx + '" style="background:#3a1010;color:#ff5555;border:1px solid #5a1a1a;border-radius:4px;padding:3px 7px;cursor:pointer;font-size:11px;font-weight:800;">✕</button>' +
             '</td></tr>';
     });
     
@@ -5062,44 +5062,27 @@ function setImportMode(mode) {
 }
 
 function postToGitHub() {
-    // PAT captured at wizard open time — read from importState
     var ghPAT = importState.githubPAT;
     var ghUser = GITHUB_CONFIG.OWNER;
     var ghRepo = GITHUB_CONFIG.REPO;
-    
+    var purgeDemat = (importState.demat || '').trim();
+
     if (!ghPAT) {
         alert('❌ PAT not configured. Go to PAT tab and save your token.');
         return;
     }
-    
-    if (!confirm('Post ' + importState.stocks.length + ' stocks (' + importState.importMode.toUpperCase() + ' mode) to unified-symbols.json?')) {
-        return;
-    }
-    
+
+    var confirmMsg = importState.importMode === 'replace'
+        ? 'PURGE/LOAD [' + purgeDemat + ']: clear all ' + purgeDemat + ' holdings and reload ' + importState.stocks.length + ' stocks?'
+        : 'APPEND: merge ' + importState.stocks.length + ' stocks into existing portfolio?';
+    if (!confirm(confirmMsg)) return;
+
     var status = document.getElementById('step7-status');
     status.innerHTML = '<span style="color:#ffb347;">⏳ Preparing data...</span>';
-    
-    // Build JSON based on import mode
-    var unifiedData = {
-        updated: new Date().toISOString(),
-        count: importState.stocks.length,
-        symbols: []
-    };
-    
-    // In REPLACE mode, start fresh; in APPEND mode, we'll merge later
-    var stocksToSave = importState.stocks;
-    
-    if (importState.importMode === 'replace') {
-        // Clear all existing stocks - just use new stocks
-        stocksToSave = importState.stocks;
-        unifiedData.count = stocksToSave.length;
-    } else {
-        // APPEND mode - will merge with existing (handled in GitHub fetch)
-        // For now just save the new stocks
-        unifiedData.count = stocksToSave.length;
-    }
-    
-    stocksToSave.forEach(function(stock) {
+
+    // Build incoming symbols array from the imported stocks
+    var incomingSymbols = [];
+    importState.stocks.forEach(function(stock) {
         var ticker = stock.ticker || '?';
         var entry = {
             ticker: ticker,
@@ -5112,122 +5095,141 @@ function postToGitHub() {
             source: 'import',
             holdings: []
         };
-        // Build holdings array — only add if qty > 0
         if (stock.qty > 0) {
-            entry.holdings.push({
-                demat: stock.demat || '',
-                qty: stock.qty || 0,
-                avg: stock.avg || 0
-            });
+            entry.holdings.push({ demat: stock.demat || '', qty: stock.qty || 0, avg: stock.avg || 0 });
         }
-        unifiedData.symbols.push(entry);
+        incomingSymbols.push(entry);
     });
-    
-    unifiedData.symbols.sort(function(a, b) {
-        return a.ticker.localeCompare(b.ticker);
-    });
-    
-    var jsonContent = JSON.stringify(unifiedData, null, 2);
-    var base64Content = btoa(unescape(encodeURIComponent(jsonContent)));
-    
-    status.innerHTML = '<span style="color:#ffb347;">⏳ Connecting to GitHub...</span>';
-    
+
     var apiUrl = 'https://api.github.com/repos/' + ghUser + '/' + ghRepo + '/contents/data/unified-symbols.json';
-    
-    // Get current SHA and optionally existing data (for APPEND mode)
+    status.innerHTML = '<span style="color:#ffb347;">⏳ Fetching existing file...</span>';
+
     fetch(apiUrl, {
-        headers: {
-            'Authorization': 'token ' + ghPAT,
-            'Accept': 'application/vnd.github.v3+json'
-        }
+        headers: { 'Authorization': 'token ' + ghPAT, 'Accept': 'application/vnd.github.v3+json' }
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
         var sha = data.sha || undefined;
-        var finalData = unifiedData;
-        
-        // In APPEND mode, fetch and merge existing data
-        if (importState.importMode === 'append') {
-            if (!data.content) {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not fetch existing unified-symbols.json for append</span>';
-                throw new Error('Append aborted — existing file not found/fetched');
-            }
-            try {
-                var existingContent = base64ToUtf8(data.content);
-                var existingData = JSON.parse(existingContent);
 
-                if (!existingData.symbols) {
-                    status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: existing unified-symbols.json has no "symbols" array</span>';
-                    throw new Error('Append aborted — existing file missing symbols array');
-                }
-                {
-                    // Create map of new stocks by ticker
-                    var newTickers = {};
-                    unifiedData.symbols.forEach(function(s) {
-                        newTickers[s.ticker] = s;
-                    });
-                    
-                    // Keep existing stocks that aren't being replaced
-                    var mergedSymbols = existingData.symbols.filter(function(existing) {
-                        return !newTickers[existing.ticker];
-                    });
-                    
-                    // For stocks being replaced, preserve existing holdings not in new import
-                    unifiedData.symbols.forEach(function(newStock) {
-                        var existing = existingData.symbols.find(function(e) { return e.ticker === newStock.ticker; });
-                        if (existing && existing.holdings && existing.holdings.length) {
-                            // Merge: new holdings demat entries take precedence, keep others
-                            var newDemats = (newStock.holdings || []).map(function(h) { return h.demat; });
-                            var keptHoldings = existing.holdings.filter(function(h) { return !newDemats.includes(h.demat); });
-                            newStock.holdings = keptHoldings.concat(newStock.holdings || []);
-                        }
-                    });
-                    
-                    // Add new/updated stocks
-                    mergedSymbols = mergedSymbols.concat(unifiedData.symbols);
-                    
-                    // Update final data
-                    finalData.symbols = mergedSymbols;
-                    finalData.count = mergedSymbols.length;
-                }
-            } catch(e) {
-                status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not parse existing unified-symbols.json — not overwriting. ' + e.message + '</span>';
-                throw new Error('Append aborted — existing file parse failed: ' + e.message);
-            }
+        if (!data.content) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not fetch existing unified-symbols.json</span>';
+            throw new Error('Could not fetch existing file');
         }
-        
-        // Sort by ticker
-        finalData.symbols.sort(function(a, b) {
-            return a.ticker.localeCompare(b.ticker);
-        });
-        
+
+        var existingData;
+        try {
+            existingData = JSON.parse(base64ToUtf8(data.content));
+        } catch(e) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: could not parse existing file — ' + e.message + '</span>';
+            throw e;
+        }
+
+        if (!existingData.symbols) {
+            status.innerHTML = '<span style="color:#ff6b85;">❌ Aborted: existing file has no symbols array</span>';
+            throw new Error('No symbols array in existing file');
+        }
+
+        var finalSymbols;
+
+        if (importState.importMode === 'replace') {
+            // PURGE/LOAD — demat-scoped only:
+            // 1. For every existing stock, strip holdings that belong to purgeDemat
+            // 2. Drop stocks that have no holdings left AND are not in the incoming set
+            // 3. For stocks in the incoming set, append new holdings to any surviving other-demat holdings
+
+            var incomingMap = {};
+            incomingSymbols.forEach(function(s) { incomingMap[s.ticker] = s; });
+
+            // Start with existing stocks, purged of the target demat's holdings
+            var purgedExisting = existingData.symbols.map(function(ex) {
+                return Object.assign({}, ex, {
+                    holdings: (ex.holdings || []).filter(function(h) { return h.demat !== purgeDemat; })
+                });
+            });
+
+            // Drop stocks that now have no holdings and aren't in incoming
+            purgedExisting = purgedExisting.filter(function(ex) {
+                return ex.holdings.length > 0 || incomingMap[ex.ticker];
+            });
+
+            // Build a map for O(1) lookup
+            var purgedMap = {};
+            purgedExisting.forEach(function(ex) { purgedMap[ex.ticker] = ex; });
+
+            // Merge incoming into purged base
+            incomingSymbols.forEach(function(inc) {
+                if (purgedMap[inc.ticker]) {
+                    // Existing stock: append new demat holdings to surviving other-demat holdings
+                    purgedMap[inc.ticker].holdings = purgedMap[inc.ticker].holdings.concat(inc.holdings);
+                    // Refresh name/type from fresh import
+                    purgedMap[inc.ticker].name = inc.name || purgedMap[inc.ticker].name;
+                    purgedMap[inc.ticker].type = inc.type || purgedMap[inc.ticker].type;
+                } else {
+                    // Brand new ticker not previously in file
+                    purgedMap[inc.ticker] = inc;
+                    purgedExisting.push(inc);
+                }
+            });
+
+            // Rebuild deduplicated array from map
+            var seen = {};
+            finalSymbols = purgedExisting.filter(function(s) {
+                if (seen[s.ticker]) return false;
+                seen[s.ticker] = true;
+                return true;
+            }).map(function(s) { return purgedMap[s.ticker] || s; });
+
+        } else {
+            // APPEND — keep all existing, merge holdings for overlapping tickers
+            var incomingMap2 = {};
+            incomingSymbols.forEach(function(s) { incomingMap2[s.ticker] = s; });
+
+            // Keep existing stocks not in incoming unchanged
+            var kept = existingData.symbols.filter(function(ex) { return !incomingMap2[ex.ticker]; });
+
+            // For overlapping tickers: preserve other-demat holdings from existing
+            incomingSymbols.forEach(function(inc) {
+                var ex = existingData.symbols.find(function(e) { return e.ticker === inc.ticker; });
+                if (ex && ex.holdings && ex.holdings.length) {
+                    var incDemats = inc.holdings.map(function(h) { return h.demat; });
+                    var keptHoldings = ex.holdings.filter(function(h) { return !incDemats.includes(h.demat); });
+                    inc.holdings = keptHoldings.concat(inc.holdings);
+                }
+            });
+
+            finalSymbols = kept.concat(incomingSymbols);
+        }
+
+        finalSymbols.sort(function(a, b) { return a.ticker.localeCompare(b.ticker); });
+
+        var finalData = {
+            updated: new Date().toISOString(),
+            count: finalSymbols.length,
+            symbols: finalSymbols
+        };
+
         var jsonContent = JSON.stringify(finalData, null, 2);
         var base64Content = btoa(unescape(encodeURIComponent(jsonContent)));
-        
         status.innerHTML = '<span style="color:#ffb347;">⏳ Posting to GitHub...</span>';
-        
+
+        var commitMsg = importState.importMode === 'replace'
+            ? 'PURGE/LOAD [' + purgeDemat + ']: ' + importState.stocks.length + ' stocks'
+            : 'APPEND: ' + importState.stocks.length + ' stocks';
+
         return fetch(apiUrl, {
             method: 'PUT',
-            headers: {
-                'Authorization': 'token ' + ghPAT,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: importState.importMode.toUpperCase() + ': ' + importState.stocks.length + ' stocks',
-                content: base64Content,
-                sha: sha
-            })
+            headers: { 'Authorization': 'token ' + ghPAT, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: commitMsg, content: base64Content, sha: sha })
         });
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
         if (data.commit && data.commit.sha) {
+            var modeLabel = importState.importMode === 'replace' ? 'PURGE/LOAD [' + purgeDemat + ']' : 'APPEND';
             status.innerHTML = '<div style="color:#00ff88;"><b>✅ Posted Successfully!</b></div>' +
                 '<div style="margin:6px 0;font-size:11px;color:#888;">' +
-                'Mode: <b>' + importState.importMode.toUpperCase() + '</b><br>' +
-                'Message: ' + data.commit.message + '<br>' +
-                'SHA: ' + data.commit.sha.substring(0, 10) + '...<br>' +
-                'File: ' + data.content.name + '<br><br>' +
+                'Mode: <b>' + modeLabel + '</b><br>' +
+                'Commit: ' + data.commit.sha.substring(0, 10) + '...<br>' +
                 '<b style="color:#00ff88;">' + importState.stocks.length + ' stocks imported</b>' +
                 '</div>';
         } else {
