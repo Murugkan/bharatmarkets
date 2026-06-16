@@ -257,7 +257,7 @@ jobs:
           sudo apt-get install -y google-chrome-stable
 
       - name: Install dependencies
-        run: pip install -r libraries_snr.txt
+        run: pip install -r fetch_financials_screener_requirements.txt
 
       - name: Create directories
         run: mkdir -p data/logs
@@ -306,7 +306,6 @@ jobs:
 
   # ==========================================================================
   # JOB 4: Flatten/merge all sources into market_data_raw.json
-  # Runs after the 3 fetch jobs so their freshly-pushed outputs are available.
   # ==========================================================================
   flatten-market-data:
     runs-on: ubuntu-latest
@@ -368,11 +367,10 @@ jobs:
           echo "Push succeeded on attempt $attempt"
 
   # ==========================================================================
-  # JOB 5: Mutual fund / SGB NAV from AMFI — fetch_amfi_nav.py
-  # Independent of jobs 1-3 (only needs unified-symbols.json, already in repo).
-  # Must complete before bucket-market-data so mf_nav.json is available.
+  # JOB 5: NAV/LTP for MF, SGB, QSIF — fetch_nav_ltp.py
+  # Independent of jobs 1-3. Must complete before bucket-market-data.
   # ==========================================================================
-  fetch-mf-nav:
+  fetch-nav-ltp:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -384,18 +382,18 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests -q
+        run: pip install requests beautifulsoup4 -q
 
-      - name: Run fetch_amfi_nav.py
-        run: python fetch_amfi_nav.py
+      - name: Run fetch_nav_ltp.py
+        run: python fetch_nav_ltp.py
 
       - name: Verify output file
         run: |
-          if [ -f data/mf_nav.json ]; then
-            echo "✓ mf_nav.json exists"
-            ls -lh data/mf_nav.json
+          if [ -f data/nav_ltp.json ]; then
+            echo "✓ nav_ltp.json exists"
+            ls -lh data/nav_ltp.json
           else
-            echo "✗ mf_nav.json NOT FOUND"
+            echo "✗ nav_ltp.json NOT FOUND"
           fi
 
       - name: Commit & Push (retry on concurrent updates)
@@ -403,14 +401,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add data/mf_nav.json data/logs/fetch_amfi_nav.log 2>/dev/null || true
+          git add data/nav_ltp.json data/logs/fetch_nav_ltp.log 2>/dev/null || true
 
           if git diff --quiet --cached; then
             echo "No changes to commit"
             exit 0
           fi
 
-          git commit -m "[MF NAV] Fetch AMFI NAV: $(date +'%Y-%m-%d %H:%M:%S')"
+          git commit -m "[NAV LTP] Fetch MF/SGB/QSIF: $(date +'%Y-%m-%d %H:%M:%S')"
 
           max_attempts=5
           attempt=1
@@ -432,12 +430,10 @@ jobs:
 
   # ==========================================================================
   # JOB 6: Bucket market_data_raw.json -> market_data.json (final output)
-  # Runs after flatten-market-data and fetch-mf-nav so both market_data_raw.json
-  # and mf_nav.json are available.
   # ==========================================================================
   bucket-market-data:
     runs-on: ubuntu-latest
-    needs: [flatten-market-data, fetch-mf-nav]
+    needs: [flatten-market-data, fetch-nav-ltp]
     steps:
       - name: Checkout repo (latest main)
         uses: actions/checkout@v5
