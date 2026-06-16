@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y google-chrome-stable
 
       - name: Install dependencies
-        run: pip install -r fetch_financials_screener_requirements.txt
+        run: pip install -r libraries_snr.txt
 
       - name: Create directories
         run: mkdir -p data/logs
@@ -46,10 +46,6 @@ jobs:
           fi
           git commit -m "Update screener data - $(date +'%Y-%m-%d %H:%M:%S')"
 
-          # Retry push with rebase to survive other workflows pushing to main
-          # concurrently (this job can run for hours, so the gap between
-          # rebase and push is large). Each retry re-applies this commit on
-          # top of the latest remote main.
           max_attempts=5
           attempt=1
           until git push origin main; do
@@ -59,7 +55,7 @@ jobs:
             fi
             echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
             attempt=$((attempt + 1))
-            sleep $((RANDOM % 5 + 1))  # jitter to reduce repeated collisions
+            sleep $((RANDOM % 5 + 1))
             git fetch origin main
             git stash --include-untracked
             git rebase origin/main
