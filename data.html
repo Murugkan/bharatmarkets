@@ -4447,12 +4447,13 @@ function copyPrompt() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function renderStep4() {
-    var textarea = document.getElementById("ai-response");
-    var hasResponse = textarea && textarea.value.trim().length > 0;
     var stockCount = importState.stocks ? importState.stocks.length : 0;
-    var hasEnrichedData = importState.stocks && importState.stocks.some(function(s) { 
+    var hasEnrichedData = !importState.showPasteView && importState.stocks && importState.stocks.some(function(s) { 
         return s.ticker || s.sector || s.industry; 
     });
+    // Restore previously saved paste text into the textarea after re-render
+    var savedPaste = importState.aiResponseData || '';
+    var hasResponse = savedPaste.trim().length > 0;
     
     // If data has been parsed, show editable table instead of textarea
     if (hasEnrichedData) {
@@ -4461,7 +4462,7 @@ function renderStep4() {
             
             // BUTTONS AT TOP
             '<div style="margin:8px 0;display:flex;gap:6px;margin-bottom:15px;">' +
-            '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back to Paste</button>' +
+            '<button onclick="importState.showPasteView=true;showImportUI()" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back to Paste</button>' +
             '<button onclick="goToStep(5)" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Proceed to Step 5 →</button>' +
             '</div>' +
             
@@ -4522,7 +4523,7 @@ function renderStep4() {
         // BUTTONS AT TOP
         '<div style="margin:8px 0;display:flex;gap:6px;margin-bottom:15px;">' +
         '<button onclick="goToStep(3)" style="flex:1;padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">← Back</button>' +
-        '<button onclick="manuallyParseStep4()" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">🔄 Parse Data</button>' +
+        '<button onclick="importState.showPasteView=false;manuallyParseStep4()" style="flex:1;padding:10px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">🔄 Parse Data</button>' +
         '</div>' +
         
         // STATUS MESSAGE
@@ -4538,11 +4539,11 @@ function renderStep4() {
         '<b style="color:#ffb347;">Format:</b> SeqNo, Name, Ticker, ISIN, Sector, Industry (comma/tab/pipe separated)' +
         '</div>' +
         
-        // TEXTAREA CONTENT
+        // TEXTAREA CONTENT — pre-filled with previously saved paste
         '<textarea id="ai-response" style="width:100%;height:350px;' +
         'padding:10px;background:#000;border:1px solid #222;color:#fff;font-family:monospace;' +
         'font-size:11px;border-radius:6px;resize:vertical;" ' +
-        'placeholder="Paste AI response here..."></textarea>' +
+        'placeholder="Paste AI response here...">' + savedPaste.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</textarea>' +
         
         '<div id="step4-result" style="margin:6px 0;font-size:12px;color:#00ff88;"></div>' +
         '</div>';
@@ -4784,16 +4785,8 @@ function goToStep(stepNum) {
         if (textarea) {
             importState.aiResponseData = textarea.value;
         }
-    }
-    
-    // Restore Step 4 textarea data when returning
-    if (stepNum === 4 && importState.aiResponseData) {
-        setTimeout(function() {
-            var textarea = document.getElementById('ai-response');
-            if (textarea) {
-                textarea.value = importState.aiResponseData;
-            }
-        }, 50);
+        // Reset paste view flag when navigating away
+        if (stepNum !== 4) importState.showPasteView = false;
     }
     
     importState.step = stepNum;
@@ -5415,12 +5408,17 @@ function nextImportStep() {
     if (importState.step < IMPORT_CONFIG.TOTAL_STEPS) {
         // Handle step 4: parse data or move to next step
         if (importState.step === 4) {
+            // Always save textarea content before any action
+            var textarea = document.getElementById('ai-response');
+            if (textarea) importState.aiResponseData = textarea.value;
+
             var hasEnrichedData = importState.stocks && importState.stocks.some(function(s) { 
                 return s.ticker || s.sector || s.industry; 
             });
             
             // If already parsed, just move to step 5
             if (hasEnrichedData) {
+                importState.showPasteView = false;
                 importState.step++;
                 showImportUI();
             } else {
