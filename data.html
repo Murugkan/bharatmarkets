@@ -3637,7 +3637,7 @@ function openImportWorkflow() {
     try {
         importState.step = 1;
         importState.stocks = [];
-        importState.demat = '';
+        importState.demat = localStorage.getItem('import_demat') || '';
         
         // Read PAT from the PAT tab input (same as rest of data.html)
         var patInput = document.getElementById('patToken');
@@ -3735,7 +3735,7 @@ function renderStep1() {
         '<div style="margin-bottom:10px;">' +
         '<label style="font-size:10px;color:#cc88ff;font-weight:700;display:block;margin-bottom:4px;text-transform:uppercase;">Demat Account</label>' +
         '<input type="text" id="demat-name-input" value="' + savedDemat + '" placeholder="e.g. SBICAP, Zerodha, Groww" ' +
-        'oninput="importState.demat = this.value.trim()" onchange="importState.demat = this.value.trim()" ' +
+        'oninput="importState.demat = this.value.trim(); localStorage.setItem(\'import_demat\', this.value.trim())" onchange="importState.demat = this.value.trim(); localStorage.setItem(\'import_demat\', this.value.trim())" ' +
         'style="width:100%;padding:10px;background:#0d0d1a;color:#cc88ff;border:1px solid #4a2a6e;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:inherit;">' +
         '</div>' +
         '<div id="drop-zone" onclick="document.getElementById(\'file-input\').click()" ' +
@@ -3774,7 +3774,7 @@ function handleImportFile(file) {
     
     // Capture demat field value now — before async file read completes
     var dematInput = document.getElementById('demat-name-input');
-    if (dematInput) importState.demat = dematInput.value.trim();
+    if (dematInput) { importState.demat = dematInput.value.trim(); localStorage.setItem('import_demat', importState.demat); }
     
     var status = document.getElementById('file-status');
     status.innerHTML = '<span style="color:#ffb347;">⏳ Reading file...</span>';
