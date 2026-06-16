@@ -28,6 +28,7 @@ import logging
 import re
 import requests
 import time
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
 
@@ -420,46 +421,46 @@ def fetch_qsif_nav_page(session, page_num=1, viewstate=None, eventvalidation=Non
 
 
 def parse_qsif_nav_table(html):
-    """Parse the NAV table from qsif.com HTML. Returns list of row dicts and
-    ASP.NET hidden field values for pagination."""
+    """Parse the NAV table from qsif.com HTML using BeautifulSoup.
+
+    Returns list of row dicts and ASP.NET hidden field values for pagination.
+    """
+    soup = BeautifulSoup(html, 'html.parser')
     rows = []
 
     # Extract ASP.NET hidden fields for pagination
-    vs_match = re.search(r'id="__VIEWSTATE"\s+value="([^"]*)"', html)
-    ev_match = re.search(r'id="__EVENTVALIDATION"\s+value="([^"]*)"', html)
-    viewstate = vs_match.group(1) if vs_match else ''
-    eventvalidation = ev_match.group(1) if ev_match else ''
+    vs = soup.find('input', {'id': '__VIEWSTATE'})
+    ev = soup.find('input', {'id': '__EVENTVALIDATION'})
+    viewstate = vs['value'] if vs else ''
+    eventvalidation = ev['value'] if ev else ''
 
-    # Parse table rows: Date | Scheme Name | Option | NAV | %Chg
-    pattern = re.compile(
-        r'<tr[^>]*>.*?<td[^>]*>([\d\-A-Za-z]+)</td>.*?'   # Date
-        r'<td[^>]*>(.*?)</td>.*?'                           # Scheme Name
-        r'<td[^>]*>(.*?)</td>.*?'                           # Option
-        r'<td[^>]*>([\d.]+)</td>.*?'                        # NAV
-        r'<td[^>]*>([^<]*)</td>.*?</tr>',                   # %Chg
-        re.DOTALL | re.IGNORECASE
-    )
-    for m in pattern.finditer(html):
-        date_str = m.group(1).strip()
-        scheme = re.sub(r'<[^>]+>', '', m.group(2)).strip()
-        option = re.sub(r'<[^>]+>', '', m.group(3)).strip()
-        try:
-            nav = float(m.group(4).strip())
-        except ValueError:
+    # Find the NAV table — locate by header row content
+    for table in soup.find_all('table'):
+        headers = [th.get_text(strip=True).lower() for th in table.find_all('th')]
+        if not any('scheme' in h or 'nav' in h for h in headers):
             continue
-        pchg = m.group(5).strip()
-        if scheme and nav:
+        for tr in table.find_all('tr')[1:]:  # skip header row
+            tds = [td.get_text(strip=True) for td in tr.find_all('td')]
+            if len(tds) < 4:
+                continue
+            # Columns: Date | Scheme Name | Option | NAV | %Chg
+            try:
+                nav = float(tds[3])
+            except (ValueError, IndexError):
+                continue
             rows.append({
-                'date': date_str,
-                'scheme_name': scheme,
-                'option': option,
+                'date': tds[0],
+                'scheme_name': tds[1],
+                'option': tds[2],
                 'nav': nav,
-                'pchange': pchg,
+                'pchange': tds[4] if len(tds) > 4 else '',
             })
+        break  # only parse first matching table
 
     # Check if a "Next" page link exists
-    has_next = bool(re.search(r'__doPostBack\([^)]*Next[^)]*\)', html, re.IGNORECASE)
-                    or re.search(r'>Next<', html, re.IGNORECASE))
+    has_next = bool(soup.find(string=re.compile(r'Next', re.IGNORECASE),
+                               attrs={'href': re.compile(r'__doPostBack', re.IGNORECASE)})
+                    or 'Next' in html)
 
     return rows, viewstate, eventvalidation, has_next
 
@@ -511,11 +512,18 @@ def run_qsif_nav():
             qsif_logger.warning(f"  ⚠ {symbol}: no match for scheme_name '{entry['scheme_name']}'")
             continue
 
-        # Prefer Direct Plan, Growth option if multiple rows match
-        best = next(
-            (r for r in matched_rows if 'direct' in r['scheme_name'].lower() and 'growth' in r['option'].lower()),
-            matched_rows[0]
-        )
+        # Prefer matching plan type (regular/direct) from entry name
+        prefer_direct = 'direct' in entry['scheme_name'].lower()
+        if prefer_direct:
+            best = next(
+                (r for r in matched_rows if 'direct' in r['scheme_name'].lower() and 'growth' in r['option'].lower()),
+                matched_rows[0]
+            )
+        else:
+            best = next(
+                (r for r in matched_rows if 'regular' in r['scheme_name'].lower() and 'growth' in r['option'].lower()),
+                matched_rows[0]
+            )
         result[symbol] = {
             'scheme_name': best['scheme_name'],
             'nav': best['nav'],
