@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset=UTF-8><meta name=viewport content=width=device-width,initial-scale=1>
+<style>body{font-family:monospace;font-size:11px;background:#060c18;color:#f0f6ff;padding:12px}
+pre{white-space:pre-wrap;word-break:break-all;color:#7a8fa0;font-size:10px;margin:4px 0 12px;border-left:2px solid #1a2332;padding-left:8px}
+.ok{color:#00e896}.err{color:#ff6b85}.h{color:#00f2ff;font-weight:bold;margin:10px 0 2px}
+button{background:#1a2332;color:#00f2ff;border:1px solid #1a2332;padding:6px 12px;border-radius:4px;cursor:pointer;margin:4px;font-size:11px}
+</style></head>
+<body>
+<div class=h>Network Test — Graphite India NSE</div>
+<button onclick=runAll()>▶ Run All Tests</button>
+<div id=out></div>
+<script>
+var out = document.getElementById('out');
+function log(label, msg, ok) {
+  out.innerHTML += '<div class=h>' + label + '</div><pre class=' + (ok?'ok':'err') + '>' + msg + '</pre>';
+}
+
+var RSS = 'https://news.google.com/rss/search?hl=en-IN&gl=IN&ceid=IN:en&q=Graphite+India+NSE';
+
+async function test1() {
+  try {
+    var r = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(RSS));
+    var d = await r.json();
+    log('1. rss2json', 'status='+r.status+' rss_status='+d.status+' items='+(d.items||[]).length, d.status==='ok'&&(d.items||[]).length>0);
+  } catch(e) { log('1. rss2json', 'FAIL: '+e.message, false); }
+}
+
+async function test2() {
+  try {
+    var r = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(RSS));
+    var d = await r.json();
+    var xml = d.contents||'';
+    var items = xml.match(/<item>/g)||[];
+    log('2. allorigins', 'status='+r.status+' xml_len='+xml.length+' <item> count='+items.length, items.length>0);
+  } catch(e) { log('2. allorigins', 'FAIL: '+e.message, false); }
+}
+
+async function test3() {
+  try {
+    var r = await fetch('https://corsproxy.io/?' + encodeURIComponent(RSS));
+    var xml = await r.text();
+    var items = xml.match(/<item>/g)||[];
+    log('3. corsproxy.io', 'status='+r.status+' xml_len='+xml.length+' <item> count='+items.length, items.length>0);
+  } catch(e) { log('3. corsproxy.io', 'FAIL: '+e.message, false); }
+}
+
+async function test4() {
+  try {
+    var r = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent('https://feeds.bbci.co.uk/news/rss.xml'));
+    var d = await r.json();
+    log('4. rss2json+BBC (baseline)', 'status='+r.status+' rss_status='+d.status+' items='+(d.items||[]).length, d.status==='ok'&&(d.items||[]).length>0);
+  } catch(e) { log('4. rss2json+BBC', 'FAIL: '+e.message, false); }
+}
+
+async function runAll() {
+  out.innerHTML = '<pre style=color:#ffbf47>Running tests…</pre>';
+  await test1(); await test2(); await test3(); await test4();
+}
+</script>
+</body></html>
