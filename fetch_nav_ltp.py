@@ -423,8 +423,9 @@ def fetch_and_parse_qsif_homepage(session):
                 html
             )
             # NAV: a decimal number appearing just before the green_icon img tag
+            # Actual HTML: <span><b>\n  10.33</b></span><span class="paddl"><img green_icon/>
             nav_val_match = re.search(
-                r'>([\d]{1,3}\.[\d]{2})</[^>]+>\s*<span[^>]*paddl',
+                r'<b>\s*([\d]{1,3}\.[\d]+)\s*</b>\s*</span>\s*<span[^>]*paddl',
                 html
             )
             if not as_of_match or not nav_val_match:
@@ -455,32 +456,29 @@ def run_qsif_nav():
     qsif_logger.info(f"Portfolio SIF entries to match: {len(entries)}")
 
     if not entries:
-        qsif_logger.warning("No SIF entries found in unified-symbols.json — writing empty output")
-        output = {"_metadata": {"generated_at": now(), "count": 0, "source": "qsif.com"}}
-        save_json(QSIF_NAV_OUTPUT_FILE, output)
-        return
+        qsif_logger.warning("No SIF entries found in unified-symbols.json")
+        return {}
 
     session = requests.Session()
     all_rows = fetch_and_parse_qsif_homepage(session)
     qsif_logger.info(f"  Fetched {len(all_rows)} QSIF fund NAVs")
 
-    # Index rows by ISIN for direct lookup
     rows_by_isin = {r['isin']: r for r in all_rows}
 
     result = {}
     for entry in entries:
-        symbol = entry['symbol']  # ISIN
+        symbol = entry['symbol']
         row = rows_by_isin.get(symbol)
         if not row:
             qsif_logger.warning(f"  ⚠ {symbol}: no data fetched (add URL to QSIF_FUND_URLS)")
             continue
         result[symbol] = {
-            'scheme_name': row['scheme_name'],
-            'nav': row['nav'],
+            'ltp': row['nav'],
             'date': row['date'],
+            'scheme_name': row['scheme_name'],
             'source': 'qsif.com',
         }
-        qsif_logger.info(f"  ✓ {symbol}: NAV {row['nav']} ({row['date']})")
+        qsif_logger.info(f"  ✓ {symbol}: LTP {row['nav']} ({row['date']})")
 
     missing = {e['symbol'] for e in entries} - set(result.keys())
     if missing:
