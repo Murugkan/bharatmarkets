@@ -2419,104 +2419,96 @@ function setupChartInteraction(){
 document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
 // ════════════════════════════════════════════════════════
-// NEWS TAB FUNCTIONS
+// NEWS TAB FUNCTIONS  (enhanced)
 // ════════════════════════════════════════════════════════
-// ════════════════════════════════════════════════════════
 
-function renderNewsTab(s){
-  const ticker = s.ticker || s.sym;
-  const companyName = (s.name || ticker).split(' ').slice(0,3).join(' ');
-  setTimeout(() => loadStockNews(ticker, s.name), 50);
-  return `<div>
-    <div style="padding:10px 12px 4px">
-      <div class="sec-lbl">📰 News</div>
-    </div>
-    <div id="stock-news-list" style="padding:0 12px 4px">
-      <div class="u-pad14c">Loading news…</div>
-    </div>
-    <div style="padding:10px 12px">
-      <div class="sec-lbl">🔗 Research Links</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        ${[
-          {l:'NSE',      u:`https://www.nseindia.com/get-quotes/equity?symbol=${s.ticker || s.sym}`,c:'#2196f3',i:'📊'},
-          {l:'Screener', u:`https://www.screener.in/company/${s.ticker || s.sym}/`,c:'#a855f7',i:'📋'},
-          {l:'ET Markets',u:`https://economictimes.indiatimes.com/topic/${s.ticker || s.sym}`,c:'#f97316',i:'📰'},
-          {l:'Moneycontrol',u:`https://www.moneycontrol.com/india/stockpricequote/${s.ticker || s.sym}/${s.ticker || s.sym}`,c:'#00d084',i:'💹'},
-          {l:'TradingView',u:`https://in.tradingview.com/symbols/NSE-${s.ticker || s.sym}/`,c:'#64b5f6',i:'📈'},
-          {l:'Google News',u:`https://news.google.com/search?q=${encodeURIComponent((s.ticker || s.sym)+' NSE stock India')}`,c:'#4285f4',i:'🔍'},
-        ].map(lk=>`
-          <a href="${lk.u}" target="_blank" rel="noopener"
-            style="display:flex;align-items:center;gap:8px;padding:10px 10px;
-            background:var(--card);border:1px solid var(--b1);border-radius:8px;
-            text-decoration:none;border-left:3px solid ${lk.c}">
-            <span style="font-size:14px">${lk.i}</span>
-            <span style="font-size:12px;font-weight:700;color:#ffffff">${lk.l}</span>
-            <span style="font-size:10px;color:var(--b3);margin-left:auto">↗</span>
-          </a>`).join('')}
-      </div>
-    </div>
-  </div>`;
+// ── Trading-relevance classification ──────────────────
+// Returns { tag, imp, icon, tradingRelevant }
+// Tags: Results | Bulk/Block | Corp Action | Insider | F&O | Regulatory | Strategy | Macro | General
+function classifyNews(t) {
+  var tl = (t || '').toLowerCase();
+
+  // Priority 1 – Results / Earnings (CRITICAL)
+  if (/\b(q[1-4]\s*fy|result|earning|profit|loss|revenue|turnover|pat|ebitda|quarterly|annual result|net income)\b/.test(tl))
+    return { tag:'Results', imp:'H', icon:'📊', tradingRelevant:true };
+
+  // Priority 2 – Bulk / Block deals (CRITICAL for price action)
+  if (/\b(bulk deal|block deal|bulk trade|block trade|large deal|institutional buy|institutional sell)\b/.test(tl))
+    return { tag:'Bulk/Block', imp:'H', icon:'🔀', tradingRelevant:true };
+
+  // Priority 3 – Corporate Actions
+  if (/\b(dividend|bonus issue|stock split|rights issue|buyback|agm|egm|record date|ex-date|ex date|demerger|merger|amalgamation|acquisition|open offer|delisting|ipo|fpo|qip|ncd|ofs)\b/.test(tl))
+    return { tag:'Corp Action', imp:'H', icon:'🏢', tradingRelevant:true };
+
+  // Priority 4 – Insider / Promoter
+  if (/\b(promoter|insider|pledg|encumber|stake sale|stake increase|creeping acquisition|sast|open market purchase|open market sale)\b/.test(tl))
+    return { tag:'Insider', imp:'H', icon:'👤', tradingRelevant:true };
+
+  // Priority 5 – Regulatory / Legal (SEBI, NCLT, ED, CBI, court)
+  if (/\b(sebi|nclt|nclat|cbi|ed |enforcement|court order|penalty|fine|notice|show cause|fraud|scam|fir|raid|arrest|ban|suspension|order won|order received|contract win|l1 bid|l-1)\b/.test(tl))
+    return { tag:'Regulatory', imp:'H', icon:'⚖️', tradingRelevant:true };
+
+  // Priority 6 – F&O / Derivatives
+  if (/\b(f&o|futures|options|put call|oi |open interest|rollover|expiry|derivative|long build|short build|long unwinding|short covering|pcr|circuit|upper circuit|lower circuit|asm|gsm)\b/.test(tl))
+    return { tag:'F&O', imp:'M', icon:'📉', tradingRelevant:true };
+
+  // Priority 7 – Strategy / Capex / Management
+  if (/\b(capex|expansion|plant|capacity|launch|ceo|cfo|md |management change|order book|guidance|forecast|target|outlook|upgrade|downgrade|initiat|rating|analyst|brokerage|price target|tp |buy|sell|hold|overweight|underweight)\b/.test(tl))
+    return { tag:'Strategy', imp:'M', icon:'🎯', tradingRelevant:true };
+
+  // Priority 8 – Macro / Sector
+  if (/\b(rbi|repo rate|inflation|cpi|iip|gdp|rupee|dollar|crude|oil|nifty|sensex|budget|fiscal|gst|policy|sector|industry|import duty|export|tariff)\b/.test(tl))
+    return { tag:'Macro', imp:'M', icon:'🌐', tradingRelevant:false };
+
+  return { tag:'General', imp:'L', icon:'📰', tradingRelevant:false };
 }
 
+// ── Today's Trading Briefing (grouped, priority-ordered) ──
+function buildTodaysBriefing(items) {
+  var oneDay = 24 * 60 * 60 * 1000;
+  var now    = Date.now();
 
-
-
-
-function extractDomain(url){
-  try{ return new URL(url).hostname.replace(/^www\./, '').split('.')[0]; }
-  catch(_){ return 'News'; }
-}
-
-function classifyNews(t){
-  t = t.toLowerCase();
-  const high = ['result','earnings','profit','loss','revenue','acquisition','merger','buyback','dividend','fraud','scam','fir','raid','sebi','rbi','order','win','contract','launch'];
-  const med  = ['expansion','plant','capex','hire','ceo','cfo','management','stake','investment','partnership','deal'];
-  for(const w of high) if(t.includes(w)) return {tag:'Corporate', imp:'H'};
-  for(const w of med)  if(t.includes(w)) return {tag:'Strategy',  imp:'M'};
-  return {tag:'General', imp:'L'};
-}
-
-function buildTodaysBriefing(items){
-  var oneDay = 24*60*60*1000;
-  var now = Date.now();
-  var todays = items.filter(function(it){
+  var todays = items.filter(function(it) {
     var t = new Date(it.pubDate).getTime();
     return !isNaN(t) && (now - t) < oneDay;
   });
-
   var usedItems = todays;
-  var label = "Today's Briefing";
-  if(!usedItems.length){
-    // fall back to most recent 48h if nothing in the last 24h
-    var twoDay = 2*oneDay;
-    usedItems = items.filter(function(it){
+  var label = "Today's Trading Brief";
+
+  if (!usedItems.length) {
+    usedItems = items.filter(function(it) {
       var t = new Date(it.pubDate).getTime();
-      return !isNaN(t) && (now - t) < twoDay;
+      return !isNaN(t) && (now - t) < 2 * oneDay;
     });
     label = 'Latest Update';
   }
-  if(!usedItems.length) return '';
+  if (!usedItems.length) return '';
 
-  var groups = {};
-  var order = ['Corporate','Strategy','General'];
-  var impRank = {H:3, M:2, L:1};
-  usedItems.forEach(function(it){
+  // Group by tag, track highest importance
+  var order  = ['Results','Bulk/Block','Corp Action','Insider','Regulatory','F&O','Strategy','Macro','General'];
+  var impRank = { H:3, M:2, L:1 };
+  var groups  = {};
+
+  usedItems.forEach(function(it) {
     var c = classifyNews(it.title);
-    if(!groups[c.tag]) groups[c.tag] = {items:[], imp:c.imp};
+    if (!groups[c.tag]) groups[c.tag] = { items:[], imp:c.imp, icon:c.icon };
     groups[c.tag].items.push(it);
-    if(impRank[c.imp] > impRank[groups[c.tag].imp]) groups[c.tag].imp = c.imp;
+    if (impRank[c.imp] > impRank[groups[c.tag].imp]) groups[c.tag].imp = c.imp;
   });
 
-  var sections = order.filter(function(t){ return groups[t]; }).map(function(tag){
+  var sections = order.filter(function(tag) { return groups[tag]; }).map(function(tag) {
     var g = groups[tag];
     var impLabel = g.imp === 'H' ? 'HIGH' : g.imp === 'M' ? 'MED' : 'LOW';
-    var bullets = g.items.slice(0,3).map(function(it){
+    var bullets  = g.items.slice(0, 3).map(function(it) {
       var title = it.title.replace(/\s*[-|]\s*[^-|]+$/, '');
-      return '<li style="margin-bottom:3px">' + title + '</li>';
+      return '<li style="margin-bottom:4px;line-height:1.45">' + title + '</li>';
     }).join('');
-    var more = g.items.length > 3 ? '<li style="color:var(--tx3);list-style:none;margin-left:-18px">+' + (g.items.length-3) + ' more</li>' : '';
-    return '<div style="margin-bottom:8px">' +
-      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">' +
+    var more = g.items.length > 3
+      ? '<li style="color:var(--tx3);list-style:none;margin-left:-18px;margin-top:2px">+' + (g.items.length - 3) + ' more</li>'
+      : '';
+    return '<div style="margin-bottom:10px">' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">' +
+      '<span style="font-size:12px">' + g.icon + '</span>' +
       '<span class="badge-tag">' + tag + '</span>' +
       '<span class="badge badge-' + g.imp + '">' + impLabel + '</span>' +
       '<span style="font-size:9px;color:var(--tx3)">' + g.items.length + (g.items.length === 1 ? ' story' : ' stories') + '</span>' +
@@ -2525,11 +2517,59 @@ function buildTodaysBriefing(items){
       '</div>';
   }).join('');
 
-  return '<div style="padding:10px 12px;margin:0 0 8px;background:var(--card);border:1px solid var(--b1);border-radius:8px">' +
-    '<div class="sec-lbl" style="margin-bottom:8px">📅 ' + label + ' <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:normal">(' + usedItems.length + (usedItems.length === 1 ? ' story' : ' stories') + ')</span></div>' +
-    sections +
+  return '<div style="padding:10px 12px;margin:0 0 10px;background:var(--card);border:1px solid var(--b1);border-radius:8px">' +
+    '<div class="sec-lbl" style="margin-bottom:8px">📅 ' + label +
+    ' <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:normal">(' + usedItems.length + (usedItems.length === 1 ? ' story' : ' stories') + ')</span></div>' +
+    sections + '</div>';
+}
+
+// ── Trading Intelligence panel (static quick-links) ──
+function buildTradingIntelPanel(sym) {
+  var enc = encodeURIComponent(sym);
+  var cells = [
+    { label:'NSE Quote',    icon:'📊', url:'https://www.nseindia.com/get-quotes/equity?symbol=' + enc,                                   color:'#2196f3' },
+    { label:'F&O Chain',    icon:'⛓️', url:'https://www.nseindia.com/option-chain?symbol=' + enc,                                         color:'#ff9800' },
+    { label:'Bulk Deals',   icon:'🔀', url:'https://www.nseindia.com/companies-listing/corporate-filings-bulk-deals',                     color:'#e91e63' },
+    { label:'Corp Actions', icon:'🏢', url:'https://www.nseindia.com/companies-listing/corporate-filings-corporate-actions',              color:'#9c27b0' },
+    { label:'Insider',      icon:'👤', url:'https://www.nseindia.com/companies-listing/corporate-filings-insider-trading',                color:'#f44336' },
+    { label:'Screener',     icon:'📋', url:'https://www.screener.in/company/' + enc + '/',                                               color:'#a855f7' },
+    { label:'ET Markets',   icon:'📰', url:'https://economictimes.indiatimes.com/topic/' + enc,                                          color:'#f97316' },
+    { label:'Moneycontrol', icon:'💹', url:'https://www.moneycontrol.com/india/stockpricequote/' + enc + '/' + enc,                      color:'#00d084' },
+    { label:'TradingView',  icon:'📈', url:'https://in.tradingview.com/symbols/NSE-' + enc + '/',                                        color:'#64b5f6' },
+    { label:'Google News',  icon:'🔍', url:'https://news.google.com/search?q=' + encodeURIComponent(sym + ' NSE stock India') + '&hl=en-IN&gl=IN', color:'#4285f4' },
+    { label:'Annual Report',icon:'📑', url:'https://www.bseindia.com/stock-share-price/xxx/xxx/xxx/annual-report/',                      color:'#78909c' },
+    { label:'BSE Filings',  icon:'📂', url:'https://www.bseindia.com/corporates/ann.html?scripcd=' + enc,                               color:'#607d8b' },
+  ];
+
+  return '<div style="margin-bottom:12px">' +
+    '<div class="sec-lbl" style="padding:0 0 6px">⚡ Trading Intelligence</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">' +
+    cells.map(function(c) {
+      return '<a href="' + c.url + '" target="_blank" rel="noopener" ' +
+        'style="display:flex;align-items:center;gap:7px;padding:8px 9px;' +
+        'background:var(--card);border:1px solid var(--b1);border-radius:7px;' +
+        'text-decoration:none;border-left:3px solid ' + c.color + '">' +
+        '<span style="font-size:13px">' + c.icon + '</span>' +
+        '<span style="font-size:11px;font-weight:700;color:#fff">' + c.label + '</span>' +
+        '<span style="font-size:9px;color:var(--b3);margin-left:auto">↗</span>' +
+        '</a>';
+    }).join('') +
+    '</div></div>';
+}
+
+function renderNewsTab(s) {
+  var sym = s.ticker || s.sym;
+  setTimeout(function() { loadStockNews(sym, s.name); }, 50);
+  return '<div style="padding:10px 12px">' +
+    buildTradingIntelPanel(sym) +
+    '<div class="sec-lbl">📰 Live News</div>' +
+    '<div id="stock-news-list"><div class="u-pad14c">Loading news…</div></div>' +
     '</div>';
 }
+
+
+// (classifyNews, buildTodaysBriefing, buildTradingIntelPanel, renderNewsTab defined above)
+
 
 function timeAgo(d){
   if(!d || isNaN(d)) return '';
@@ -2540,102 +2580,156 @@ function timeAgo(d){
   return Math.floor(s/86400) + 'd ago';
 }
 
+function extractDomain(url) {
+  try { return new URL(url).hostname.replace(/^www\./, '').split('.')[0]; }
+  catch(_) { return 'News'; }
+}
+
 async function loadStockNews(sym, name, retry) {
   var el = document.getElementById('stock-news-list');
-  if(!el) return;
+  if (!el) return;
 
-  var cacheKey = 'news_' + sym;
-  if(!retry) {
+  var cacheKey = 'news_v2_' + sym;
+  if (!retry) {
     var cached = sessionStorage.getItem(cacheKey);
-    if(cached) { el.innerHTML = cached; return; }
+    if (cached) { el.innerHTML = cached; return; }
   }
 
-  el.innerHTML = '<div class="u-pad14c">Loading news…</div>';
+  el.innerHTML = '<div class="u-pad14c">🔍 Fetching trading intelligence…</div>';
+
+  async function fetchRss(rssUrl) {
+    var url = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl);
+    var res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    var d   = await res.json();
+    if (d.status === 'error') throw new Error(d.message || 'rss error');
+    return d.items || [];
+  }
+
+  var companyShort = (name || sym).split(' ').slice(0, 3).join(' ');
+  var companyTwo   = (name || sym).split(' ').slice(0, 2).join(' ');
+  var gnBase = 'https://news.google.com/rss/search?hl=en-IN&gl=IN&ceid=IN:en&q=';
+
+  // ── Targeted query set — ordered by trading relevance ──
+  var queries = [
+    // 1. Results / earnings
+    gnBase + encodeURIComponent('"' + sym + '" result OR earnings OR profit OR revenue OR quarterly'),
+    // 2. Bulk/block deals + corporate actions
+    gnBase + encodeURIComponent('"' + sym + '" bulk deal OR block deal OR dividend OR bonus OR split OR buyback OR agm OR rights'),
+    // 3. Regulatory / orders / contracts
+    gnBase + encodeURIComponent('"' + sym + '" sebi OR order win OR contract OR l1 OR penalty OR insider OR promoter'),
+    // 4. Analyst / broker actions (price targets, upgrades, downgrades)
+    gnBase + encodeURIComponent('"' + sym + '" target OR upgrade OR downgrade OR buy OR sell OR initiat'),
+    // 5. General company news (company name + NSE)
+    gnBase + encodeURIComponent(companyShort + ' NSE India'),
+    // 6. Ticker-only fallback
+    gnBase + encodeURIComponent(sym + ' NSE'),
+    // 7. ET Markets broad feed (filtered)
+    'https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms',
+  ];
 
   try {
-    // Try two queries: specific (sym + name) first, fallback to sym-only if no results
-    async function fetchRss2json(rssUrl) {
-      var url = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl);
-      var res = await fetch(url);
-      var d = await res.json();
-      if(d.status === 'error') throw new Error(d.message || 'error');
-      return d.items || [];
-    }
+    var allItems  = [];
+    var seenLinks = {};
+    var cutoff    = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    var symLower  = sym.toLowerCase();
+    var nameLower = companyTwo.toLowerCase();
 
-    var companyShort = (name||sym).split(' ').slice(0,2).join(' ');
-
-    // Source 1: Google News RSS — full query
-    var gnBase = 'https://news.google.com/rss/search?hl=en-IN&gl=IN&ceid=IN:en&q=';
-    var items = [];
-
-    var sources = [
-      gnBase + encodeURIComponent(sym + ' ' + companyShort + ' NSE India'),
-      gnBase + encodeURIComponent(sym + ' NSE'),
-      gnBase + encodeURIComponent(companyShort + ' India stock'),
-      // ET Markets RSS as last resort
-      'https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms',
-    ];
-
-    for(var i=0; i<sources.length; i++) {
+    for (var i = 0; i < queries.length; i++) {
       try {
-        items = await fetchRss2json(sources[i]);
-        // For ET feed, filter to relevant items only
-        if(i === 3 && items.length) {
-          var symLower = sym.toLowerCase();
-          var nameLower = companyShort.toLowerCase();
-          var filtered = items.filter(function(it){
-            var t = (it.title||'').toLowerCase();
+        var batch = await fetchRss(queries[i]);
+
+        // ET feed (index 6) — filter to company only
+        if (i === 6) {
+          batch = batch.filter(function(it) {
+            var t = (it.title || '').toLowerCase();
             return t.includes(symLower) || t.includes(nameLower);
           });
-          items = filtered.length ? filtered : [];
         }
-        if(items.length) break;
-      } catch(e) {
-        if(i === sources.length - 1) throw e;
-      }
+
+        // Dedup + date filter
+        batch.forEach(function(it) {
+          var link = it.link || it.guid || it.title;
+          if (!link || seenLinks[link]) return;
+          var pub = new Date(it.pubDate).getTime();
+          if (isNaN(pub) || pub < cutoff) return;
+          seenLinks[link] = true;
+          allItems.push(it);
+        });
+
+        // After first 4 targeted queries, stop early if we have enough
+        if (i >= 3 && allItems.length >= 20) break;
+      } catch(e) { /* skip failed source */ }
     }
 
-    // Keep only last 30 days
-    var cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
-    items = items.filter(function(i){ return !i.pubDate || new Date(i.pubDate) > cutoff; });
-    items.sort(function(a,b){ return new Date(b.pubDate) - new Date(a.pubDate); });
-
-    if(!items.length) {
-      el.innerHTML = '<div class="u-pad14c">No recent news found for ' + sym + '</div>';
+    if (!allItems.length) {
+      el.innerHTML = '<div class="u-pad14c">No recent news for ' + sym +
+        ' · <a href="https://news.google.com/search?q=' + encodeURIComponent(sym + ' NSE') +
+        '" target="_blank" style="color:var(--ac)">Google News ↗</a>' +
+        ' · <span onclick="loadStockNews(\'' + sym + '\',\'' + (name||'') + '\',true)" ' +
+        'style="color:var(--ac);cursor:pointer;text-decoration:underline">Retry</span></div>';
       return;
     }
 
-    var cardsHtml = items.map(function(item) {
-      var classified = classifyNews(item.title);
-      var tag = classified.tag, imp = classified.imp;
+    // Sort: HIGH importance first, then by date
+    var impRank = { H:3, M:2, L:1 };
+    allItems.sort(function(a, b) {
+      var ca = classifyNews(a.title), cb = classifyNews(b.title);
+      var rankDiff = (impRank[cb.imp] || 1) - (impRank[ca.imp] || 1);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(b.pubDate) - new Date(a.pubDate);
+    });
+
+    // Build news cards
+    var cardsHtml = allItems.map(function(item) {
+      var cl  = classifyNews(item.title);
       var src = (item.source && item.source.name) ? item.source.name : extractDomain(item.link) || 'News';
       var age = timeAgo(new Date(item.pubDate));
-      var impLabel = imp === 'H' ? 'HIGH' : imp === 'M' ? 'MED' : 'LOW';
+      var impLabel = cl.imp === 'H' ? 'HIGH' : cl.imp === 'M' ? 'MED' : 'LOW';
+      // Highlight trading-relevant rows with a subtle left border
+      var borderStyle = cl.tradingRelevant
+        ? (cl.imp === 'H' ? 'border-left:3px solid var(--rd)' : 'border-left:3px solid var(--yw)')
+        : '';
       return '<a href="' + item.link + '" target="_blank" rel="noopener" style="display:block;text-decoration:none">' +
-        '<div class="news-card">' +
+        '<div class="news-card" style="' + borderStyle + '">' +
         '<div class="news-meta">' +
+        '<span style="font-size:11px">' + cl.icon + '</span>' +
         '<span class="news-source">' + src + '</span>' +
-        '<span class="badge badge-' + imp + '">' + impLabel + '</span>' +
-        '<span class="badge-tag">' + tag + '</span>' +
+        '<span class="badge badge-' + cl.imp + '">' + impLabel + '</span>' +
+        '<span class="badge-tag">' + cl.tag + '</span>' +
         '<span class="news-age">' + age + '</span>' +
         '</div>' +
         '<div class="news-headline">' + item.title + '</div>' +
-        '</div>' +
-        '</a>';
+        '</div></a>';
     }).join('');
 
-    var briefingHtml = buildTodaysBriefing(items);
-    var html = briefingHtml + cardsHtml;
+    // Count by tag for summary strip
+    var tagCounts = {};
+    allItems.forEach(function(it) {
+      var tag = classifyNews(it.title).tag;
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    });
+    var stripHtml = Object.entries(tagCounts).map(function(kv) {
+      return '<span class="badge-tag" style="margin-right:4px">' + kv[0] + ' ' + kv[1] + '</span>';
+    }).join('');
+
+    var summaryStrip = '<div style="padding:6px 0 10px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">' +
+      '<span style="font-size:9px;color:var(--tx3);margin-right:4px">' + allItems.length + ' stories:</span>' +
+      stripHtml +
+      '<span onclick="loadStockNews(\'' + sym + '\',\'' + (name||'') + '\',true)" ' +
+      'style="margin-left:auto;font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Refresh</span>' +
+      '</div>';
+
+    var briefingHtml = buildTodaysBriefing(allItems);
+    var html = summaryStrip + briefingHtml + cardsHtml;
 
     try { sessionStorage.setItem(cacheKey, html); } catch(_) {}
     el.innerHTML = html;
 
   } catch(e) {
     var gnUrl = 'https://news.google.com/search?q=' + encodeURIComponent(sym + ' NSE stock India') + '&hl=en-IN&gl=IN&ceid=IN:en';
-    el.innerHTML = '<div class="u-pad14c">No news found for ' + sym + '. ' +
+    el.innerHTML = '<div class="u-pad14c">Failed to load news. ' +
       '<a href="' + gnUrl + '" target="_blank" style="color:var(--ac)">Google News ↗</a>' +
-      ' &nbsp;·&nbsp; <span data-sym="' + sym + '" data-name="' + (name||'') + '" ' +
-      'onclick="loadStockNews(this.dataset.sym,this.dataset.name,true)" ' +
+      ' &nbsp;·&nbsp; <span onclick="loadStockNews(\'' + sym + '\',\'' + (name||'') + '\',true)" ' +
       'style="color:var(--ac);cursor:pointer;text-decoration:underline">Retry</span></div>';
   }
 }
