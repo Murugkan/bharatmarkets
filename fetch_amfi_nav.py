@@ -415,6 +415,7 @@ def fetch_and_parse_qsif_homepage(session):
             resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
             resp.raise_for_status()
             html = resp.text
+            qsif_logger.info(f"  {isin}: HTML len={len(html)} | first500={html[:500].replace(chr(10),' ')}")
 
             # NAV is in a <strong> tag followed by an img and "As of" date text
             # Raw HTML pattern: <strong>10.20</strong><img...>...\nAs of\n DD-Mon-YYYY
@@ -429,7 +430,9 @@ def fetch_and_parse_qsif_homepage(session):
                     html, re.DOTALL | re.IGNORECASE
                 )
             if not nav_match:
-                qsif_logger.warning(f"  ⚠ {isin}: NAV pattern not found on {url}")
+                # Log a snippet around "As of" for debugging
+                snip = re.search(r'.{100}As\s+of.{50}', html, re.DOTALL | re.IGNORECASE)
+                qsif_logger.warning(f"  ⚠ {isin}: NAV pattern not found on {url} | HTML len={len(html)} | snippet={snip.group(0)[:150] if snip else 'none'}")
                 continue
 
             nav = float(nav_match.group(1).strip())
