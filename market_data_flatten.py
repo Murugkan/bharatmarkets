@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 BharatMarkets Onyx Pro Terminal - Multi-Ticker Data Pipeline
-Dynamically processes all tickers from ltp.json without hardcoding
+Dynamically processes all tickers from prices.json without hardcoding
 All logs written to file for GitHub workflow
 Headers preserve exact source names (no underscore stripping)
 """
@@ -90,7 +90,7 @@ class Logger:
 
 logger = Logger(LOG_FILE)
 
-# Read tickers from ltp.json dynamically
+# Read tickers from prices.json dynamically
 logger.write_section("INITIALIZATION")
 logger.write("Reading tickers from screener_raw_data.json", 'INIT')
 
@@ -104,11 +104,11 @@ try:
     else:
         raise ValueError("screener_raw is empty")
 except:
-    with open(DATA_DIR / 'ltp.json') as f:
+    with open(DATA_DIR / 'prices.json') as f:
         prices_file = json.load(f)
     prices_data = prices_file.get("quotes", {})
     TICKERS_TO_PROCESS = [k for k in prices_data.keys() if k != '_metadata']
-    logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from ltp.json", 'INIT')
+    logger.write(f"Found {len(TICKERS_TO_PROCESS)} tickers from prices.json", 'INIT')
 
 # Add MUTUAL FUND / SOVEREIGN BOND / ETF tickers from unified-symbols.json that
 # aren't covered by Screener/Yahoo (e.g. AMFI-only mutual funds) — these have
@@ -261,6 +261,7 @@ def load_all_data():
         'yahoofin_raw': DATA_DIR / 'yahoofin_raw_data.json',
         'guidance': DATA_DIR / 'guidance.json',
         'prices': DATA_DIR / 'ltp.json',
+        'nav_ltp': DATA_DIR / 'nav_ltp.json',
         'unified_symbols': DATA_DIR / 'unified-symbols.json',
     }
     
@@ -805,11 +806,7 @@ for TICKER in TICKERS_TO_PROCESS:
         # Inject LTP whenever fetch_ltp.py produced a quote for this ticker —
         # do NOT require yahoofin OHLCV history to be present (some tickers,
         # e.g. ETFs like JUNIORBEES, may have a working quote in ltp.json
-        # even if Yahoo's .history() call returns empty for them). Previously
-        # this was gated on `daily_data` being non-empty AND `daily_data` was
-        # never written back to output[TICKER]['data'] when the section key
-        # didn't already exist (since .get(key, []) returns a throwaway list),
-        # so LTP silently never appeared for such tickers.
+        # even if Yahoo's .history() call returns empty for them).
         if ticker_prices.get('ltp') is not None:
             ltp_obj = {
                 'metric': 'LTP',
@@ -832,6 +829,36 @@ for TICKER in TICKERS_TO_PROCESS:
             daily_data.insert(0, ltp_obj)
             output[TICKER]['data'][daily_section] = daily_data
         
+        # === ADD LTP FROM NAV_LTP (MF / SGB / QSIF fallback) ===
+        # For tickers with no prices.json entry, look up nav_ltp.json by ISIN
+        # (from unified-symbols.json) or directly by ticker symbol.
+        nav_ltp_data = all_data.get('nav_ltp', {})
+        if nav_ltp_data:
+            # Resolve ISIN for this ticker from unified_symbols
+            us_symbols = all_data.get('unified_symbols', {}).get('symbols', [])
+            isin = next(
+                (e.get('isin') for e in us_symbols
+                 if (e.get('ticker') or e.get('symbol')) == TICKER),
+                None
+            )
+            nav_entry = nav_ltp_data.get(isin) or nav_ltp_data.get(TICKER)
+            if nav_entry and nav_entry.get('ltp') is not None:
+                nav_ltp_obj = {
+                    'metric': 'LTP',
+                    'source': nav_entry.get('source', 'nav_ltp'),
+                    'section': 'latest_price',
+                    'data': {
+                        'ltp': nav_entry.get('ltp'),
+                        'date': nav_entry.get('date'),
+                        'scheme_name': nav_entry.get('scheme_name'),
+                        'returns': nav_entry.get('returns'),
+                    }
+                }
+                # Inject into nav_ltp section (always) and daily_data if present
+                if 'nav_ltp:latest_price' not in output[TICKER]['data']:
+                    output[TICKER]['data']['nav_ltp:latest_price'] = []
+                output[TICKER]['data']['nav_ltp:latest_price'].insert(0, nav_ltp_obj)
+
         # === CLEAN AND FINALIZE ===
         output[TICKER]['data'] = clean_metric_names(output[TICKER]['data'])
         output_all[TICKER] = output[TICKER]
@@ -859,7 +886,8 @@ try:
                 "yahoofin_raw_data.json (97 tickers)",
                 "yahoofin_financials.json (97 tickers)",
                 "guidance.json (29 tickers)",
-                "ltp.json",
+                "ltp.json (equity LTP)",
+                "nav_ltp.json (MF/SGB/QSIF)",
                 "unified-symbols.json (97 tickers)"
             ],
             "structure": {
