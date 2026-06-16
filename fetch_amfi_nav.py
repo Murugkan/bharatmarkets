@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AMFI Mutual Fund NAV + SGB LTP Fetcher
-=======================================
+AMFI Mutual Fund NAV + SGB LTP + QSIF NAV Fetcher
+===================================================
 Part 1 — AMFI NAV:
   Downloads AMFI's daily NAVAll.txt (all mutual fund schemes in India) and
   extracts NAV + date for ISINs present in the portfolio's unified-symbols.json
@@ -12,9 +12,15 @@ Part 1 — AMFI NAV:
 
 Part 2 — SGB LTP:
   Fetches Last Traded Price (LTP) for Sovereign Gold Bond (SGB) tickers from
-  NSE's quote-equity API, for entries in unified-symbols.json holdings where
+  sgbanalyzer.com, for entries in unified-symbols.json where
   instrument_type == "SOVEREIGN BOND".
   Output: data/sgb_ltp.json
+
+Part 3 — QSIF NAV:
+  Scrapes latest NAV from qsif.com/NAV/latestnav for entries in
+  unified-symbols.json where instrument_type == "SIF". Matches by scheme_name
+  keyword (case-insensitive substring). Handles ASP.NET pagination (2 pages).
+  Output: data/qsif_nav.json
 """
 
 import json
@@ -30,12 +36,15 @@ SYMBOLS_FILE = DATA_DIR / 'unified-symbols.json'
 
 MF_NAV_OUTPUT_FILE = DATA_DIR / 'mf_nav.json'
 SGB_LTP_OUTPUT_FILE = DATA_DIR / 'sgb_ltp.json'
+QSIF_NAV_OUTPUT_FILE = DATA_DIR / 'qsif_nav.json'
 
 LOG_FILE = DATA_DIR / 'logs/fetch_amfi_nav.log'
 
 AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
 
 SGBANALYZER_URL = 'https://sgbanalyzer.com/sgb/{symbol}'
+
+QSIF_NAV_URL = 'https://www.qsif.com/NAV/latestnav'
 
 SCRAPE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -54,6 +63,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AMFI-NAV")
 sgb_logger = logging.getLogger("SGB-LTP")
+qsif_logger = logging.getLogger("QSIF-NAV")
 
 
 def now():
@@ -104,6 +114,11 @@ def get_portfolio_isins():
         )
 
         if is_mf_like:
+            # QSIF/SIF schemes are not in AMFI NAVAll.txt — exclude them here;
+            # they are handled separately by run_qsif_nav().
+            name = (entry.get('name') or '').lower()
+            if 'qsif' in name:
+                continue
             isins.add(isin)
     return isins
 
@@ -358,6 +373,171 @@ def run_sgb_ltp():
 
 
 # ===========================================================================
+# Part 3 — QSIF NAV (qsif.com)
+# ===========================================================================
+
+def get_portfolio_qsif_entries():
+    """Collect symbol + scheme_name keyword for QSIF/SIF entries.
+
+    Matches on name containing 'qsif' (case-insensitive) since these schemes
+    are filed as instrument_type == 'MUTUAL FUND' in unified-symbols.json but
+    are SIF schemes not present in AMFI NAVAll.txt.
+    """
+    us = load_json(SYMBOLS_FILE)
+    entries = []
+    for entry in us.get('symbols', []):
+        name = (entry.get('name') or entry.get('scheme_name') or '').strip()
+        if 'qsif' not in name.lower():
+            continue
+        symbol = (entry.get('isin') or entry.get('symbol') or entry.get('ticker') or '').strip().upper()
+        if symbol and name:
+            entries.append({'symbol': symbol, 'scheme_name': name})
+    return entries
+
+
+def fetch_qsif_nav_page(session, page_num=1, viewstate=None, eventvalidation=None):
+    """Fetch one page of qsif.com/NAV/latestnav.
+
+    Page 1: plain GET. Subsequent pages: POST with ASP.NET hidden fields
+    (__VIEWSTATE, __EVENTVALIDATION) extracted from the previous response,
+    plus the __doPostBack target for the next-page link.
+    """
+    if page_num == 1:
+        resp = session.get(QSIF_NAV_URL, headers=SCRAPE_HEADERS, timeout=15)
+    else:
+        # ASP.NET pagination — POST with __doPostBack event for page N
+        event_target = f"ctl00$ContentPlaceHolder1$nav_sch$ctl01$ctl{page_num - 1:02d}"
+        data = {
+            '__EVENTTARGET': event_target,
+            '__EVENTARGUMENT': '',
+            '__VIEWSTATE': viewstate or '',
+            '__EVENTVALIDATION': eventvalidation or '',
+        }
+        resp = session.post(QSIF_NAV_URL, headers=SCRAPE_HEADERS, data=data, timeout=15)
+
+    resp.raise_for_status()
+    return resp.text
+
+
+def parse_qsif_nav_table(html):
+    """Parse the NAV table from qsif.com HTML. Returns list of row dicts and
+    ASP.NET hidden field values for pagination."""
+    rows = []
+
+    # Extract ASP.NET hidden fields for pagination
+    vs_match = re.search(r'id="__VIEWSTATE"\s+value="([^"]*)"', html)
+    ev_match = re.search(r'id="__EVENTVALIDATION"\s+value="([^"]*)"', html)
+    viewstate = vs_match.group(1) if vs_match else ''
+    eventvalidation = ev_match.group(1) if ev_match else ''
+
+    # Parse table rows: Date | Scheme Name | Option | NAV | %Chg
+    pattern = re.compile(
+        r'<tr[^>]*>.*?<td[^>]*>([\d\-A-Za-z]+)</td>.*?'   # Date
+        r'<td[^>]*>(.*?)</td>.*?'                           # Scheme Name
+        r'<td[^>]*>(.*?)</td>.*?'                           # Option
+        r'<td[^>]*>([\d.]+)</td>.*?'                        # NAV
+        r'<td[^>]*>([^<]*)</td>.*?</tr>',                   # %Chg
+        re.DOTALL | re.IGNORECASE
+    )
+    for m in pattern.finditer(html):
+        date_str = m.group(1).strip()
+        scheme = re.sub(r'<[^>]+>', '', m.group(2)).strip()
+        option = re.sub(r'<[^>]+>', '', m.group(3)).strip()
+        try:
+            nav = float(m.group(4).strip())
+        except ValueError:
+            continue
+        pchg = m.group(5).strip()
+        if scheme and nav:
+            rows.append({
+                'date': date_str,
+                'scheme_name': scheme,
+                'option': option,
+                'nav': nav,
+                'pchange': pchg,
+            })
+
+    # Check if a "Next" page link exists
+    has_next = bool(re.search(r'__doPostBack\([^)]*Next[^)]*\)', html, re.IGNORECASE)
+                    or re.search(r'>Next<', html, re.IGNORECASE))
+
+    return rows, viewstate, eventvalidation, has_next
+
+
+def run_qsif_nav():
+    entries = get_portfolio_qsif_entries()
+    qsif_logger.info(f"Portfolio SIF entries to match: {len(entries)}")
+
+    if not entries:
+        qsif_logger.warning("No SIF entries found in unified-symbols.json — writing empty output")
+        output = {"_metadata": {"generated_at": now(), "count": 0, "source": "qsif.com"}}
+        save_json(QSIF_NAV_OUTPUT_FILE, output)
+        return
+
+    session = requests.Session()
+    all_rows = []
+
+    # Fetch page 1
+    html = fetch_qsif_nav_page(session, page_num=1)
+    rows, viewstate, eventvalidation, has_next = parse_qsif_nav_table(html)
+    all_rows.extend(rows)
+    qsif_logger.info(f"  Page 1: {len(rows)} rows")
+
+    # Fetch page 2 if present
+    if has_next:
+        time.sleep(1)
+        html2 = fetch_qsif_nav_page(session, page_num=2, viewstate=viewstate, eventvalidation=eventvalidation)
+        rows2, _, _, _ = parse_qsif_nav_table(html2)
+        all_rows.extend(rows2)
+        qsif_logger.info(f"  Page 2: {len(rows2)} rows")
+
+    qsif_logger.info(f"  Total rows fetched: {len(all_rows)}")
+
+    # Match portfolio entries to scraped rows by scheme_name keyword (case-insensitive)
+    result = {}
+    for entry in entries:
+        symbol = entry['symbol']
+        # Build a shorter keyword from the name for fuzzy matching against qsif.com table rows.
+        # e.g. "QSIF EQUITY LONG-SHORT FUND-REGULAR PLAN-GROWTH" → "equity long-short"
+        name_lower = entry['scheme_name'].lower().replace('qsif', '').replace('fund', '').strip(' -')
+        # Take first meaningful segment before plan/option qualifiers
+        keyword = re.split(r'[-–]\s*(regular|direct|growth|idcw|plan|option)', name_lower)[0].strip(' -')
+        if not keyword:
+            keyword = name_lower
+
+        matched_rows = [r for r in all_rows if keyword in r['scheme_name'].lower()]
+
+        if not matched_rows:
+            qsif_logger.warning(f"  ⚠ {symbol}: no match for scheme_name '{entry['scheme_name']}'")
+            continue
+
+        # Prefer Direct Plan, Growth option if multiple rows match
+        best = next(
+            (r for r in matched_rows if 'direct' in r['scheme_name'].lower() and 'growth' in r['option'].lower()),
+            matched_rows[0]
+        )
+        result[symbol] = {
+            'scheme_name': best['scheme_name'],
+            'nav': best['nav'],
+            'pchange': best['pchange'],
+            'date': best['date'],
+            'source': 'qsif.com',
+        }
+        qsif_logger.info(f"  ✓ {symbol}: NAV {best['nav']} ({best['date']})")
+
+    missing = {e['symbol'] for e in entries} - set(result.keys())
+    if missing:
+        qsif_logger.warning(f"  ⚠ {len(missing)} symbol(s) not matched: {sorted(missing)}")
+
+    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(entries)} SIF entries")
+
+    output = {"_metadata": {"generated_at": now(), "count": len(result), "source": "qsif.com"}}
+    output.update(result)
+    save_json(QSIF_NAV_OUTPUT_FILE, output)
+    qsif_logger.info(f"✓ Wrote {QSIF_NAV_OUTPUT_FILE}")
+
+
+# ===========================================================================
 # Main
 # ===========================================================================
 
@@ -371,6 +551,11 @@ def main():
         run_sgb_ltp()
     except Exception as e:
         sgb_logger.warning(f"  ⚠ SGB LTP run failed: {e}")
+
+    try:
+        run_qsif_nav()
+    except Exception as e:
+        qsif_logger.warning(f"  ⚠ QSIF NAV run failed: {e}")
 
 
 if __name__ == "__main__":
