@@ -2426,19 +2426,18 @@ var _newsDb = null;
 var _newsDbPromise = null;
 var _noiseRe = /share price today|live.*stock price|nse\/bse|ipo listing|ipo date|ipo price|ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live/i;
 
-// ── Quick links strip ─────────────────────────────────
 function renderNewsTab(s) {
   var sym = s.ticker || s.sym;
   var enc = encodeURIComponent(sym);
   var links = [
-    {l:'NSE',         u:'https://www.nseindia.com/get-quotes/equity?symbol='+enc,         c:'#2196f3'},
-    {l:'Screener',    u:'https://www.screener.in/company/'+enc+'/',                        c:'#a855f7'},
-    {l:'Corp Actions',u:'https://www.nseindia.com/companies-listing/corporate-filings-corporate-actions', c:'#9c27b0'},
-    {l:'Bulk Deals',  u:'https://www.nseindia.com/companies-listing/corporate-filings-bulk-deals',        c:'#e91e63'},
-    {l:'Insider',     u:'https://www.nseindia.com/companies-listing/corporate-filings-insider-trading',   c:'#f44336'},
-    {l:'F&O',         u:'https://www.nseindia.com/option-chain?symbol='+enc,              c:'#ff9800'},
-    {l:'ET Markets',  u:'https://economictimes.indiatimes.com/topic/'+enc,                c:'#f97316'},
-    {l:'Chart',       u:'https://in.tradingview.com/symbols/NSE-'+enc+'/',                c:'#64b5f6'},
+    {l:'NSE',          u:'https://www.nseindia.com/get-quotes/equity?symbol='+enc,                                          c:'#2196f3'},
+    {l:'Screener',     u:'https://www.screener.in/company/'+enc+'/',                                                        c:'#a855f7'},
+    {l:'Corp Actions', u:'https://trendlyne.com/equity/corporate-actions/'+enc+'/0/',                                       c:'#9c27b0'},
+    {l:'Bulk Deals',   u:'https://trendlyne.com/equity/bulk-block-deals/'+enc+'/0/',                                        c:'#e91e63'},
+    {l:'Insider',      u:'https://trendlyne.com/equity/insider-trading/'+enc+'/0/',                                         c:'#f44336'},
+    {l:'F&O',          u:'https://www.nseindia.com/option-chain?symbol='+enc,                                               c:'#ff9800'},
+    {l:'ET Markets',   u:'https://economictimes.indiatimes.com/topic/'+enc,                                                 c:'#f97316'},
+    {l:'Chart',        u:'https://in.tradingview.com/symbols/NSE-'+enc+'/',                                                 c:'#64b5f6'},
   ];
   var strip = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;-webkit-overflow-scrolling:touch;scrollbar-width:none">'+
     links.map(function(lk){
@@ -2451,7 +2450,6 @@ function renderNewsTab(s) {
     '<div id="stock-news-list"><div class="u-pad14c">Loading…</div></div></div>';
 }
 
-// ── Pre-market brief renderer ─────────────────────────
 function _renderBrief(b, staleStr) {
   if(!b || !b.catalyst) return '';
   var sent = b.sentiment || 'Neutral';
@@ -2467,21 +2465,18 @@ function _renderBrief(b, staleStr) {
   }
 
   return '<div style="margin-bottom:10px;border-radius:8px;background:var(--card);border:1px solid var(--b1);border-left:3px solid '+sentColor+'">'+
-    // Header
     '<div style="padding:9px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px">'+
       '<span style="font-size:10px;font-weight:800;color:'+sentColor+'">'+sentIcon+' '+sent.toUpperCase()+'</span>'+
       '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+(b.as_of||staleStr||'')+'</span>'+
     '</div>'+
-    // Body
     '<div style="padding:10px 12px">'+
       row('Key Catalyst', b.catalyst)+
-      row('Street View', b.street_view)+
-      row('Risk', b.risk, '#ef5350')+
+      row('Street View',  b.street_view)+
+      row('Risk',         b.risk, '#ef5350')+
     '</div>'+
   '</div>';
 }
 
-// ── News helpers ──────────────────────────────────────
 function _classify(t){
   var tl=(t||'').toLowerCase();
   if(/\bq[1-4]\b|result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))              return {tag:'Results',    imp:'H', c:'#ef5350'};
@@ -2506,7 +2501,6 @@ function _ago(d){
 
 function _trim(t){ return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim(); }
 
-// ── Main loader ───────────────────────────────────────
 async function loadStockNews(sym, name, retry){
   var el = document.getElementById('stock-news-list');
   if(!el) return;
@@ -2529,22 +2523,18 @@ async function loadStockNews(sym, name, retry){
     var staleMin = db.updated ? Math.round((Date.now()-new Date(db.updated).getTime())/60000) : null;
     var staleStr = !staleMin?'': staleMin<60?staleMin+'m ago': staleMin<1440?Math.round(staleMin/60)+'h ago':Math.floor(staleMin/1440)+'d ago';
 
-    // Support old [] format and new {items,brief} format
     var entry = (db.news||{})[sym] || [];
     var items = Array.isArray(entry) ? entry : (entry.items || []);
     var brief = Array.isArray(entry) ? null  : (entry.brief || null);
 
-    // Filter noise + 1 month; sort newest first
     var cutoff = Date.now() - 30*86400000;
     items = items.filter(function(it){
       return !_noiseRe.test(it.title||'') && new Date(it.pubDate).getTime() >= cutoff;
     });
     items.sort(function(a,b){ return new Date(b.pubDate)-new Date(a.pubDate); });
 
-    // Brief card
     var briefHtml = _renderBrief(brief, staleStr);
 
-    // News cards
     var cards = items.map(function(item){
       var cl  = _classify(item.title);
       var bdr = cl.imp==='L' ? '#546e7a44' : cl.c;
@@ -2573,7 +2563,7 @@ async function loadStockNews(sym, name, retry){
     el.innerHTML =
       '<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
       '📂 <b>data/news.json</b> not found.<br>'+
-      'Run <b>GitHub Actions → Fetch Stock News</b> to generate it.<br><br>'+
+      'Run <b>GitHub Actions → Fetch Stock News</b>.<br><br>'+
       '<a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">🔍 Google News ↗</a></div>';
   }
 }
