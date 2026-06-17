@@ -2419,7 +2419,7 @@ function setupChartInteraction(){
 document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
 // ════════════════════════════════════════════════════════
-// NEWS TAB
+// NEWS TAB FUNCTIONS
 // ════════════════════════════════════════════════════════
 
 function renderNewsTab(s) {
@@ -2438,14 +2438,28 @@ function renderNewsTab(s) {
   var linksHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:14px">' +
     links.map(function(lk){
       return '<a href="'+lk.u+'" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 10px;background:var(--card);border:1px solid var(--b1);border-radius:7px;text-decoration:none;border-left:3px solid '+lk.c+'">'+
-        '<span style="font-size:13px">'+lk.i+'</span><span style="font-size:11px;font-weight:700;color:#fff">'+lk.l+'</span>'+
+        '<span style="font-size:13px">'+lk.i+'</span>'+
+        '<span style="font-size:11px;font-weight:700;color:#fff">'+lk.l+'</span>'+
         '<span style="font-size:9px;color:var(--b3);margin-left:auto">↗</span></a>';
     }).join('')+'</div>';
   setTimeout(function(){ loadStockNews(sym, s.name); }, 50);
   return '<div style="padding:10px 12px">'+
     '<div class="sec-lbl" style="margin-bottom:8px">⚡ Quick Links</div>'+linksHtml+
     '<div class="sec-lbl" style="margin-bottom:6px">📰 Live News</div>'+
-    '<div id="stock-news-list"><div class="u-pad14c">Searching…</div></div></div>';
+    '<div id="stock-news-list"><div class="u-pad14c">Loading news…</div></div></div>';
+}
+
+function classifyNews(t){
+  var tl=(t||'').toLowerCase();
+  if(/result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))                         return {tag:'Results',    imp:'H',icon:'📊'};
+  if(/dividend|bonus|split|buyback|agm|egm|record date|ex.date|merger|acquisit|ipo|qip/.test(tl)) return {tag:'Corp Action',imp:'H',icon:'🏢'};
+  if(/bulk deal|block deal/.test(tl))                                                              return {tag:'Bulk/Block', imp:'H',icon:'🔀'};
+  if(/sebi|nclt|penalty|fine|notice|fraud|scam|fir|raid|ban|contract win|order win|l1 /.test(tl)) return {tag:'Regulatory', imp:'H',icon:'⚖️'};
+  if(/promoter|insider|pledge|encumber|stake sale/.test(tl))                                       return {tag:'Insider',    imp:'H',icon:'👤'};
+  if(/circuit|asm|gsm|open interest|rollover|expiry|pcr/.test(tl))                                return {tag:'F&O',        imp:'M',icon:'📉'};
+  if(/target price|upgrade|downgrade|initiat|outperform|overweight|underweight/.test(tl))          return {tag:'Analyst',    imp:'M',icon:'🎯'};
+  if(/capex|expansion|plant|capacity|launch|ceo|cfo|guidance|forecast|deal/.test(tl))             return {tag:'Strategy',   imp:'M',icon:'🏗️'};
+  return {tag:'General',imp:'L',icon:'📰'};
 }
 
 function timeAgo(d){
@@ -2457,127 +2471,115 @@ function timeAgo(d){
   return Math.floor(s/86400)+'d ago';
 }
 
-function classifyNews(t){
-  var tl=(t||'').toLowerCase();
-  if(/result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))                                   return {tag:'Results',    imp:'H',icon:'📊'};
-  if(/dividend|bonus|split|buyback|agm|egm|record date|ex.date|merger|acquisit|ipo|qip/.test(tl))          return {tag:'Corp Action',imp:'H',icon:'🏢'};
-  if(/bulk deal|block deal/.test(tl))                                                                       return {tag:'Bulk/Block', imp:'H',icon:'🔀'};
-  if(/sebi|nclt|penalty|fine|notice|fraud|scam|fir|raid|ban|contract win|order win|l1 /.test(tl))          return {tag:'Regulatory', imp:'H',icon:'⚖️'};
-  if(/promoter|insider|pledge|encumber|stake sale/.test(tl))                                                return {tag:'Insider',    imp:'H',icon:'👤'};
-  if(/circuit|asm|gsm|open interest|rollover|expiry|pcr/.test(tl))                                         return {tag:'F&O',        imp:'M',icon:'📉'};
-  if(/target price|upgrade|downgrade|initiat|outperform|overweight|underweight/.test(tl))                   return {tag:'Analyst',    imp:'M',icon:'🎯'};
-  if(/capex|expansion|plant|capacity|launch|ceo|cfo|guidance|forecast|deal/.test(tl))                      return {tag:'Strategy',   imp:'M',icon:'🏗️'};
-  return {tag:'General',imp:'L',icon:'📰'};
-}
+function renderItems(items, sym, name){
+  if(!items||!items.length) return '';
+  var rank={H:3,M:2,L:1};
+  items.sort(function(a,b){
+    var ca=classifyNews(a.title),cb=classifyNews(b.title);
+    var d=(rank[cb.imp]||1)-(rank[ca.imp]||1);
+    return d!==0?d:new Date(b.pubDate)-new Date(a.pubDate);
+  });
 
-async function loadStockNews(sym, name, retry) {
-  var el = document.getElementById('stock-news-list');
-  if(!el) return;
-
-  var cacheKey = 'snews6_' + sym;
-  if(!retry) {
-    try {
-      var cached = sessionStorage.getItem(cacheKey);
-      if(cached){ el.innerHTML = cached; return; }
-    } catch(_){}
+  // Briefing panel (last 48h)
+  var now=Date.now();
+  var recent=items.filter(function(it){return (now-new Date(it.pubDate).getTime())<172800000;});
+  var briefing='';
+  if(recent.length){
+    var label=recent.some(function(it){return (now-new Date(it.pubDate).getTime())<86400000;})?'Today\'s Briefing':'Latest Update';
+    var order=['Results','Corp Action','Bulk/Block','Regulatory','Insider','F&O','Analyst','Strategy','General'];
+    var groups={}, impRank={H:3,M:2,L:1};
+    recent.forEach(function(it){
+      var c=classifyNews(it.title);
+      if(!groups[c.tag]) groups[c.tag]={items:[],imp:c.imp,icon:c.icon};
+      groups[c.tag].items.push(it);
+      if(impRank[c.imp]>impRank[groups[c.tag].imp]) groups[c.tag].imp=c.imp;
+    });
+    var secs=order.filter(function(t){return groups[t];}).map(function(tag){
+      var g=groups[tag],il=g.imp==='H'?'HIGH':g.imp==='M'?'MED':'LOW';
+      var bullets=g.items.slice(0,3).map(function(it){
+        return '<li style="margin-bottom:4px">'+it.title.replace(/\s*[-|]\s*[^-|]+$/,'')+'</li>';
+      }).join('');
+      var more=g.items.length>3?'<li style="color:var(--tx3);list-style:none;margin-left:-18px">+'+(g.items.length-3)+' more</li>':'';
+      return '<div style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'+
+        '<span>'+g.icon+'</span><span class="badge-tag">'+tag+'</span><span class="badge badge-'+g.imp+'">'+il+'</span>'+
+        '<span style="font-size:9px;color:var(--tx3)">'+g.items.length+' stor'+(g.items.length===1?'y':'ies')+'</span></div>'+
+        '<ul style="margin:0;padding-left:18px;font-size:11px;color:var(--tx1);line-height:1.5">'+bullets+more+'</ul></div>';
+    }).join('');
+    briefing='<div style="padding:10px 12px;margin-bottom:10px;background:var(--card);border:1px solid var(--b1);border-radius:8px">'+
+      '<div class="sec-lbl" style="margin-bottom:8px">📅 '+label+' <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:normal">('+recent.length+' stor'+(recent.length===1?'y':'ies')+')</span></div>'+secs+'</div>';
   }
 
-  var safeName = (name||'').replace(/'/g,"\\'");
-  el.innerHTML = '<div class="u-pad14c">Searching news for '+sym+'…</div>';
+  var cards=items.map(function(item){
+    var cl=classifyNews(item.title);
+    var il=cl.imp==='H'?'HIGH':cl.imp==='M'?'MED':'LOW';
+    var age=item.pubDate?timeAgo(new Date(item.pubDate)):'';
+    var bdr=cl.imp==='H'?'border-left:3px solid var(--rd)':cl.imp==='M'?'border-left:3px solid var(--yw)':'';
+    return '<a href="'+(item.link||'#')+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
+      '<div class="news-card" style="'+bdr+'">'+
+      '<div class="news-meta"><span style="font-size:11px;margin-right:2px">'+cl.icon+'</span>'+
+      '<span class="news-source">'+(item.source||'News')+'</span>'+
+      '<span class="badge badge-'+cl.imp+'">'+il+'</span><span class="badge-tag">'+cl.tag+'</span>'+
+      '<span class="news-age">'+age+'</span></div>'+
+      '<div class="news-headline">'+item.title+'</div></div></a>';
+  }).join('');
+  return briefing+cards;
+}
 
-  var co = (name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim().split(' ').slice(0,3).join(' ');
+async function loadStockNews(sym, name, retry){
+  var el=document.getElementById('stock-news-list');
+  if(!el) return;
 
-  var prompt = 'Search for the very latest news about "'+co+'" NSE:'+sym+' India stock. '+
-    'Include: quarterly results, earnings, bulk/block deals, dividends, buybacks, SEBI orders, '+
-    'analyst ratings, contract wins, promoter activity. Last 30 days only. '+
-    'Respond with ONLY a valid JSON array, no markdown, no explanation. '+
-    'Each element: {"title":"...","source":"...","pubDate":"2025-MM-DD","link":"https://..."}';
+  var cacheKey='snews8_'+sym;
+  if(!retry){ try{ var c=sessionStorage.getItem(cacheKey); if(c){el.innerHTML=c;return;} }catch(_){} }
+  el.innerHTML='<div class="u-pad14c">Loading news…</div>';
+
+  var safeName=(name||'').replace(/'/g,"\\'");
+  var gnUrl='https://news.google.com/search?q='+encodeURIComponent((name||sym).split(' ').slice(0,3).join(' ')+' NSE')+'&hl=en-IN&gl=IN&ceid=IN:en';
+
+  // Detect base path (works for /bharatmarkets/ or root)
+  var base = (location.pathname.match(/^(\/[^/]+\/)/) || [,''])[1];
+  var jsonUrl = base + 'data/news/' + encodeURIComponent(sym) + '.json';
 
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
+    var r = await fetch(jsonUrl);
 
-    // Surface the actual HTTP error for diagnosis
-    if(!res.ok) {
-      var errText = await res.text();
-      throw new Error('HTTP '+res.status+': '+errText.slice(0,200));
-    }
-
-    var data = await res.json();
-
-    // Collect all text blocks (tool results come before final text)
-    var text = (data.content||[]).filter(function(b){ return b.type==='text'; }).map(function(b){ return b.text; }).join('');
-
-    // Extract JSON array from response
-    var items = [];
-    var m = text.match(/\[[\s\S]*?\]/);
-    if(m){ try{ items = JSON.parse(m[0]); }catch(_){} }
-
-    if(!Array.isArray(items) || !items.length) {
-      // Show raw response for diagnosis
-      el.innerHTML = '<div style="padding:10px;font-size:10px;color:var(--yw)">API responded but no items parsed.<br>'+
-        '<pre style="font-size:9px;color:var(--tx3);white-space:pre-wrap;word-break:break-all">'+
-        (text||JSON.stringify(data)).slice(0,500)+'</pre>'+
-        '<span onclick="loadStockNews(\''+sym+'\',\''+safeName+'\',true)" style="color:var(--ac);cursor:pointer">↺ Retry</span></div>';
+    if(!r.ok) {
+      // JSON file doesn't exist yet — show setup message
+      el.innerHTML =
+        '<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.7">'+
+        '📂 News not fetched yet for <b>'+sym+'</b>.<br>'+
+        'Run the GitHub Actions workflow to generate news files, then reload.<br><br>'+
+        '<a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">🔍 Google News in the meantime ↗</a>'+
+        '</div>';
       return;
     }
 
-    // Render items
-    var impRank = {H:3,M:2,L:1};
-    items.sort(function(a,b){
-      var ca=classifyNews(a.title), cb=classifyNews(b.title);
-      var d=(impRank[cb.imp]||1)-(impRank[ca.imp]||1);
-      return d!==0?d:new Date(b.pubDate||0)-new Date(a.pubDate||0);
-    });
+    var data = await r.json();
+    var items = data.items || [];
+    var updated = data.updated ? new Date(data.updated) : null;
 
-    var cards = items.map(function(item){
-      var cl  = classifyNews(item.title||'');
-      var il  = cl.imp==='H'?'HIGH':cl.imp==='M'?'MED':'LOW';
-      var age = item.pubDate ? timeAgo(new Date(item.pubDate)) : '';
-      var bdr = cl.imp==='H'?'border-left:3px solid var(--rd)':cl.imp==='M'?'border-left:3px solid var(--yw)':'';
-      return '<a href="'+(item.link||'#')+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
-        '<div class="news-card" style="'+bdr+'">'+
-        '<div class="news-meta">'+
-        '<span style="font-size:11px;margin-right:2px">'+cl.icon+'</span>'+
-        '<span class="news-source">'+(item.source||'News')+'</span>'+
-        '<span class="badge badge-'+cl.imp+'">'+il+'</span>'+
-        '<span class="badge-tag">'+cl.tag+'</span>'+
-        '<span class="news-age">'+age+'</span>'+
-        '</div>'+
-        '<div class="news-headline">'+(item.title||'')+'</div>'+
-        '</div></a>';
-    }).join('');
+    if(!items.length){
+      el.innerHTML='<div class="u-pad14c">No recent news for '+sym+'. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
+      return;
+    }
 
-    var bar = '<div style="display:flex;justify-content:space-between;padding:4px 0 8px">'+
-      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories</span>'+
-      '<span onclick="loadStockNews(\''+sym+'\',\''+safeName+'\',true)" style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Refresh</span></div>';
+    var staleMins = updated ? Math.round((Date.now()-updated.getTime())/60000) : null;
+    var staleStr = staleMins !== null
+      ? (staleMins < 60 ? staleMins+'m ago' : Math.round(staleMins/60)+'h ago')
+      : '';
 
-    var html = bar + cards;
-    try{ sessionStorage.setItem(cacheKey, html); }catch(_){}
+    var bar='<div style="display:flex;justify-content:space-between;padding:4px 0 8px;align-items:center">'+
+      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories'+(staleStr?' · fetched '+staleStr:'')+'</span>'+
+      '<span onclick="loadStockNews(\''+sym+'\',\''+safeName+'\',true)" style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span></div>';
+
+    var html = bar + renderItems(items, sym, name);
+    try{sessionStorage.setItem(cacheKey, html);}catch(_){}
     el.innerHTML = html;
 
   } catch(e) {
-    // Show full error so we can diagnose
-    var gnUrl = 'https://news.google.com/search?q='+encodeURIComponent(sym+' NSE India')+'&hl=en-IN&gl=IN&ceid=IN:en';
-    el.innerHTML = '<div style="padding:10px">'+
-      '<div style="font-size:10px;color:var(--rd);margin-bottom:8px;word-break:break-all">Error: '+e.message+'</div>'+
-      '<div style="display:flex;gap:10px">'+
-      '<a href="'+gnUrl+'" target="_blank" style="font-size:11px;color:var(--ac)">🔍 Google News ↗</a>'+
-      '<span onclick="loadStockNews(\''+sym+'\',\''+safeName+'\',true)" style="font-size:11px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Retry</span>'+
-      '</div></div>';
+    el.innerHTML='<div class="u-pad14c">Could not load news. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
   }
 }
-
-
-
 
 </script>
 </body>
