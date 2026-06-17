@@ -88,34 +88,56 @@ def fetch_for_ticker(sym, name):
             items.append(it)
     return items[:MAX_ITEMS]
 
-def main():
-    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+def generate_summary(sym, name, items):
+    """Build a factual 2-3 sentence news summary from recent headlines. No API needed."""
+    from email.utils import parsedate_to_datetime
+    cutoff_7d = datetime.now(timezone.utc).timestamp() - 7 * 86400
 
-    with open(PORTFOLIO_FILE, encoding='utf-8') as f:
-        data = json.load(f)
-    tickers = [(s['ticker'].strip(), s.get('name','').strip())
-               for s in data.get('symbols', []) if s.get('ticker')]
+    recent = []
+    for it in items:
+        try:
+            if parsedate_to_datetime(it['pubDate']).timestamp() >= cutoff_7d:
+                recent.append(it['title'])
+        except Exception:
+            pass
 
-    print(f'Fetching news for {len(tickers)} tickers...')
+    if not recent:
+        return ''
 
-    result = {}
-    for sym, name in tickers:
-        print(f'  {sym}...', end=' ', flush=True)
-        items = fetch_for_ticker(sym, name)
-        result[sym] = items
-        print(len(items))
+    # Clean titles: strip trailing " - Source Name"
+    import re as _re
+    def clean(t):
+        return _re.sub(r'\s*[-–|]\s*.{2,25}$', '', t).strip()
 
-    output = {
-        'updated': datetime.now(timezone.utc).isoformat(),
-        'count':   len(result),
-        'news':    result          # { "SBIN": [...], "GRAPHITE": [...], ... }
-    }
+    cleaned = [clean(t) for t in recent[:8]]
 
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(output, f, ensure_ascii=False, separators=(',', ':'))
+    # Group by rough category
+    results, corp, regulatory, other = [], [], [], []
+    for t in cleaned:
+        tl = t.lower()
+        if any(w in tl for w in ['result','profit','loss','revenue','ebitda','earning','q1','q2','q3','q4']):
+            results.append(t)
+        elif any(w in tl for w in ['dividend','buyback','split','agm','merger','acqui','order','contract','sebi','penalty','fraud']):
+            corp.append(t)
+        elif any(w in tl for w in ['upgrade','downgrade','target','analyst','outperform','buy','sell']):
+            regulatory.append(t)
+        else:
+            other.append(t)
 
-    size_kb = os.path.getsize(OUTPUT_FILE) // 1024
-    print(f'\nWritten {OUTPUT_FILE} ({size_kb} KB, {len(result)} tickers)')
+    parts = []
+    if results:
+        parts.append(results[0] + ('.' if not results[0].endswith('.') else ''))
+    if corp:
+        parts.append(corp[0] + ('.' if not corp[0].endswith('.') else ''))
+    if regulatory:
+        parts.append(regulatory[0] + ('.' if not regulatory[0].endswith('.') else ''))
+    # Fill up to 3 sentences from other if needed
+    for t in other:
+        if len(parts) >= 3:
+            break
+        parts.append(t + ('.' if not t.endswith('.') else ''))
+
+    return ' '.join(parts[:3])
 
 if __name__ == '__main__':
     main()
