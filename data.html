@@ -3092,18 +3092,23 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
 
                     stocks.forEach(function(stock) {
                         const ticker = stock.ticker;
+                        // ISIN: check stock.isin or company_details.isin
+                        var stockIsin = stock.isin || (stock.company_details && stock.company_details.isin) || null;
+                        // Name: check stock.name or company_details.name
+                        var stockName = stock.name || (stock.company_details && stock.company_details.name) || '';
+
                         // 1. exact ticker key  2. ISIN key  3. scheme_name fuzzy match
-                        var quote = quotes[ticker] || (stock.isin ? isinMap[stock.isin] : null);
+                        var quote = quotes[ticker] || (stockIsin ? isinMap[stockIsin] : null);
                         if (!quote) {
-                            var normName = (stock.name || '').toLowerCase().replace(/[^a-z0-9]/g,'');
+                            var normName = stockName.toLowerCase().replace(/[^a-z0-9]/g,'');
                             quote = nameMap[normName] || null;
-                            // partial match: find first scheme_name that contains the stock name or vice versa
+                            // partial match: scheme_name contains stock name or vice versa
                             if (!quote && normName.length > 4) {
                                 var nameKeys = Object.keys(nameMap);
                                 for (var ni = 0; ni < nameKeys.length; ni++) {
                                     if (nameKeys[ni].indexOf(normName) !== -1 || normName.indexOf(nameKeys[ni]) !== -1) {
                                         quote = nameMap[nameKeys[ni]];
-                                        logProcess('NAV matched by name', stock.name + ' -> ' + nameKeys[ni]);
+                                        logProcess('NAV matched by name', stockName + ' -> ' + nameKeys[ni]);
                                         break;
                                     }
                                 }
