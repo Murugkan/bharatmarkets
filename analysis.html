@@ -2456,16 +2456,19 @@ function renderNewsTab(s) {
 
 function classifyNews(t){
   var tl=(t||'').toLowerCase();
-  if(/result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))                         return {tag:'Results',    imp:'H',icon:'📊'};
-  if(/dividend|bonus|split|buyback|agm|egm|record date|ex.date|merger|acquisit|ipo|qip/.test(tl)) return {tag:'Corp Action',imp:'H',icon:'🏢'};
-  if(/bulk deal|block deal/.test(tl))                                                              return {tag:'Bulk/Block', imp:'H',icon:'🔀'};
-  if(/sebi|nclt|penalty|fine|notice|fraud|scam|fir|raid|ban|contract win|order win|l1 /.test(tl)) return {tag:'Regulatory', imp:'H',icon:'⚖️'};
-  if(/promoter|insider|pledge|encumber|stake sale/.test(tl))                                       return {tag:'Insider',    imp:'H',icon:'👤'};
-  if(/circuit|asm|gsm|open interest|rollover|expiry|pcr/.test(tl))                                return {tag:'F&O',        imp:'M',icon:'📉'};
-  if(/target price|upgrade|downgrade|initiat|outperform|overweight|underweight/.test(tl))          return {tag:'Analyst',    imp:'M',icon:'🎯'};
-  if(/capex|expansion|plant|capacity|launch|ceo|cfo|guidance|forecast|deal/.test(tl))             return {tag:'Strategy',   imp:'M',icon:'🏗️'};
+  if(/\bq[1-4]\b|result|earning|profit|loss|revenue|quarterly|pat |ebitda|net income/.test(tl)) return {tag:'Results',    imp:'H',icon:'📊'};
+  if(/dividend|bonus issue|stock split|buyback|agm|egm|record date|ex.date|merger|acqui|ipo allot|qip/.test(tl)) return {tag:'Corp Action',imp:'H',icon:'🏢'};
+  if(/bulk deal|block deal/.test(tl))                                                           return {tag:'Bulk/Block', imp:'H',icon:'🔀'};
+  if(/sebi|nclt|penalty|fine|show cause|fraud|scam|fir|raid|ban|contract win|order win|l1 |order receiv/.test(tl)) return {tag:'Regulatory',imp:'H',icon:'⚖️'};
+  if(/promoter|insider|pledge|encumber|stake sale|stake hike/.test(tl))                        return {tag:'Insider',    imp:'H',icon:'👤'};
+  if(/circuit|asm|gsm|open interest|rollover|expiry|pcr/.test(tl))                             return {tag:'F&O',        imp:'M',icon:'📉'};
+  if(/target price|price target|upgrade|downgrade|initiat|outperform|overweight|underweight|analyst/.test(tl)) return {tag:'Analyst',imp:'M',icon:'🎯'};
+  if(/capex|expansion|plant|capacity|launch|appoint|resign|guidance|forecast|deal|partner/.test(tl)) return {tag:'Strategy',imp:'M',icon:'🏗️'};
   return {tag:'General',imp:'L',icon:'📰'};
 }
+
+// Noise patterns — skip these entirely
+var NOISE_RE = /share price today|live.*stock price|nse\/bse|ipo listing|ipo date|ipo price|ipo allotment|ipo gmp|stock.*chart.*tradingview|stock.*chart.*nse|live price|price today|share price live/i;
 
 function timeAgo(d){
   if(!d||isNaN(d)) return '';
@@ -2473,12 +2476,26 @@ function timeAgo(d){
   if(s<60) return 'just now';
   if(s<3600) return Math.floor(s/60)+'m ago';
   if(s<86400) return Math.floor(s/3600)+'h ago';
-  return Math.floor(s/86400)+'d ago';
+  var days=Math.floor(s/86400);
+  if(days<30) return days+'d ago';
+  var months=Math.floor(days/30);
+  return months+'mo ago';
 }
 
 function renderItems(items, gnUrl){
   if(!items||!items.length) return '<div class="u-pad14c">No recent news. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
 
+  // Filter noise & 90-day window
+  var cutoff = Date.now() - 90*86400000;
+  items = items.filter(function(it){
+    if(NOISE_RE.test(it.title||'')) return false;
+    var pub = new Date(it.pubDate).getTime();
+    return !isNaN(pub) && pub >= cutoff;
+  });
+
+  if(!items.length) return '<div class="u-pad14c">No news in last 3 months. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
+
+  // Sort: importance desc, then date desc
   var rank={H:3,M:2,L:1};
   items.sort(function(a,b){
     var ca=classifyNews(a.title), cb=classifyNews(b.title);
@@ -2486,9 +2503,9 @@ function renderItems(items, gnUrl){
     return d!==0 ? d : new Date(b.pubDate)-new Date(a.pubDate);
   });
 
-  // Briefing panel — last 48h
+  // Briefing panel — last 7 days, grouped by tag
   var now=Date.now();
-  var recent=items.filter(function(it){ return (now-new Date(it.pubDate).getTime())<172800000; });
+  var recent=items.filter(function(it){ return (now-new Date(it.pubDate).getTime())<7*86400000; });
   var briefing='';
   if(recent.length){
     var isToday=recent.some(function(it){ return (now-new Date(it.pubDate).getTime())<86400000; });
@@ -2500,38 +2517,55 @@ function renderItems(items, gnUrl){
       groups[c.tag].items.push(it);
       if(impRank[c.imp]>impRank[groups[c.tag].imp]) groups[c.tag].imp=c.imp;
     });
-    var secs=order.filter(function(t){ return groups[t]; }).map(function(tag){
-      var g=groups[tag], il=g.imp==='H'?'HIGH':g.imp==='M'?'MED':'LOW';
-      var bullets=g.items.slice(0,3).map(function(it){
-        return '<li style="margin-bottom:4px">'+it.title.replace(/\s*[-|]\s*[^-|]+$/,'')+'</li>';
+    var hasMeaningful = Object.keys(groups).some(function(t){ return t!=='General'; });
+    if(hasMeaningful || isToday){
+      var secs=order.filter(function(t){ return groups[t]; }).map(function(tag){
+        var g=groups[tag], il=g.imp==='H'?'HIGH':g.imp==='M'?'MED':'LOW';
+        var color=g.imp==='H'?'var(--rd)':g.imp==='M'?'var(--yw)':'var(--tx3)';
+        var bullets=g.items.slice(0,3).map(function(it){
+          var title=it.title.replace(/\s*[-|–]\s*[^-|–]{1,30}$/,'').trim();
+          return '<li style="margin-bottom:5px;line-height:1.45">'+title+'</li>';
+        }).join('');
+        var more=g.items.length>3?'<li style="color:var(--tx3);list-style:none;margin-left:-16px;margin-top:2px;font-size:10px">+'+(g.items.length-3)+' more</li>':'';
+        return '<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--b1)">'+
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'+
+          '<span style="font-size:13px">'+g.icon+'</span>'+
+          '<span style="font-size:10px;font-weight:800;color:'+color+';letter-spacing:0.5px;text-transform:uppercase">'+tag+'</span>'+
+          '<span style="font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;background:'+color+'22;color:'+color+'">'+il+'</span>'+
+          '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+g.items.length+' stor'+(g.items.length===1?'y':'ies')+'</span>'+
+          '</div>'+
+          '<ul style="margin:0;padding-left:16px;font-size:11px;color:var(--tx1);line-height:1.5">'+bullets+more+'</ul>'+
+          '</div>';
       }).join('');
-      var more=g.items.length>3?'<li style="color:var(--tx3);list-style:none;margin-left:-18px">+'+(g.items.length-3)+' more</li>':'';
-      return '<div style="margin-bottom:10px">'+
-        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'+
-        '<span>'+g.icon+'</span><span class="badge-tag">'+tag+'</span>'+
-        '<span class="badge badge-'+g.imp+'">'+il+'</span>'+
-        '<span style="font-size:9px;color:var(--tx3)">'+g.items.length+' stor'+(g.items.length===1?'y':'ies')+'</span>'+
-        '</div><ul style="margin:0;padding-left:18px;font-size:11px;color:var(--tx1);line-height:1.5">'+bullets+more+'</ul></div>';
-    }).join('');
-    briefing='<div style="padding:10px 12px;margin-bottom:10px;background:var(--card);border:1px solid var(--b1);border-radius:8px">'+
-      '<div class="sec-lbl" style="margin-bottom:8px">📅 '+(isToday?"Today's Briefing":'Latest Update')+
-      ' <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:normal">('+
-      recent.length+' stor'+(recent.length===1?'y':'ies')+')</span></div>'+secs+'</div>';
+      // Remove last border
+      secs = secs.replace(/border-bottom:1px solid var\(--b1\)">\s*$/, '">');
+      briefing='<div style="padding:12px 14px;margin-bottom:10px;background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--ac);border-radius:8px">'+
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'+
+        '<span style="font-size:12px">📅</span>'+
+        '<span style="font-size:10px;font-weight:800;color:var(--ac);letter-spacing:0.5px;text-transform:uppercase">'+(isToday?"Today's Briefing":'This Week')+'</span>'+
+        '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+recent.length+' stor'+(recent.length===1?'y':'ies')+'</span>'+
+        '</div>'+secs+'</div>';
+    }
   }
 
+  // News cards
   var cards=items.map(function(item){
     var cl=classifyNews(item.title);
     var il=cl.imp==='H'?'HIGH':cl.imp==='M'?'MED':'LOW';
-    var bdr=cl.imp==='H'?'border-left:3px solid var(--rd)':cl.imp==='M'?'border-left:3px solid var(--yw)':'';
+    var bdrColor=cl.imp==='H'?'var(--rd)':cl.imp==='M'?'var(--yw)':'transparent';
+    var title=item.title.replace(/\s*[-|–]\s*[^-|–]{1,30}$/,'').trim();
+    var age=timeAgo(new Date(item.pubDate));
     return '<a href="'+(item.link||gnUrl)+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
-      '<div class="news-card" style="'+bdr+'">'+
-      '<div class="news-meta">'+
-      '<span style="font-size:11px;margin-right:2px">'+cl.icon+'</span>'+
-      '<span class="news-source">'+(item.source||'News')+'</span>'+
-      '<span class="badge badge-'+cl.imp+'">'+il+'</span>'+
-      '<span class="badge-tag">'+cl.tag+'</span>'+
-      '<span class="news-age">'+timeAgo(new Date(item.pubDate))+'</span>'+
-      '</div><div class="news-headline">'+item.title+'</div></div></a>';
+      '<div class="news-card" style="border-left:3px solid '+bdrColor+';padding:10px 12px">'+
+      '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap">'+
+      '<span style="font-size:10px">'+cl.icon+'</span>'+
+      '<span style="font-size:10px;font-weight:700;color:var(--tx2)">'+( item.source||'News')+'</span>'+
+      '<span style="font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;background:'+bdrColor+'22;color:'+bdrColor+(cl.imp==='L'?';background:var(--b1);color:var(--tx3)':'')+'">'+il+'</span>'+
+      '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)">'+cl.tag+'</span>'+
+      '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+age+'</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--tx1);line-height:1.5;font-weight:500">'+title+'</div>'+
+      '</div></a>';
   }).join('');
 
   return briefing+cards;
@@ -2561,17 +2595,23 @@ async function loadStockNews(sym, name, retry){
   try {
     if(retry) _newsDb=null;
     var db = await loadNewsDb();
-    var items = (db.news||{})[sym] || [];
+    var raw  = (db.news||{})[sym] || [];
     var updated = db.updated ? new Date(db.updated) : null;
     var staleMins = updated ? Math.round((Date.now()-updated.getTime())/60000) : null;
-    var staleStr = staleMins===null ? '' : staleMins<60 ? staleMins+'m ago' : Math.round(staleMins/60)+'h ago';
+    var staleStr = staleMins===null?'': staleMins<60 ? staleMins+'m ago' : staleMins<1440 ? Math.round(staleMins/60)+'h ago' : Math.floor(staleMins/1440)+'d ago';
 
-    var bar='<div style="display:flex;justify-content:space-between;padding:4px 0 8px;align-items:center">'+
-      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories'+(staleStr?' · fetched '+staleStr:'')+'</span>'+
+    // Apply noise filter + 90-day cutoff to get display count
+    var cutoff=Date.now()-90*86400000;
+    var filtered=raw.filter(function(it){
+      return !NOISE_RE.test(it.title||'') && new Date(it.pubDate).getTime()>=cutoff;
+    });
+
+    var bar='<div style="display:flex;justify-content:space-between;padding:2px 0 10px;align-items:center">'+
+      '<span style="font-size:9px;color:var(--tx3)">'+filtered.length+' stories · 3 months'+(staleStr?' · '+staleStr:'')+'</span>'+
       '<span onclick="_newsDb=null;loadStockNews(\''+sym+'\',\''+safeName+'\',true)" '+
       'style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span></div>';
 
-    el.innerHTML = bar + renderItems(items, gnUrl);
+    el.innerHTML = bar + renderItems(raw, gnUrl);
 
   } catch(e) {
     el.innerHTML=

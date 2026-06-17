@@ -6,10 +6,19 @@ Run by GitHub Actions every 6 hours.
 """
 import json, os, re, urllib.request, urllib.parse, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+import re
+
+# Noise headlines to skip — stock price pages, IPO listing articles
+NOISE_RE = re.compile(
+    r'share price today|live.*stock price|nse/bse|ipo listing|ipo date|ipo price|'
+    r'ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live',
+    re.IGNORECASE
+)
 
 PORTFOLIO_FILE = 'data/unified-symbols.json'
 OUTPUT_FILE    = 'data/news.json'
-MAX_ITEMS      = 20
+MAX_ITEMS      = 25
+CUTOFF_DAYS    = 90
 
 def fetch_rss(url):
     req = urllib.request.Request(url, headers={
@@ -58,13 +67,22 @@ def fetch_for_ticker(sym, name):
         GN + urllib.parse.quote(f'{co} NSE'),
         GN + urllib.parse.quote(f'{sym} NSE India'),
     ]
+    cutoff_ts = datetime.now(timezone.utc).timestamp() - CUTOFF_DAYS * 86400
     seen, items = set(), []
     for q in queries:
         for it in parse_rss(fetch_rss(q)):
             key = it['link'] or it['title']
-            if key and key not in seen:
-                seen.add(key)
-                items.append(it)
+            if not key or key in seen: continue
+            if NOISE_RE.search(it.get('title', '')): continue
+            # Date filter
+            try:
+                from email.utils import parsedate_to_datetime
+                pub_ts = parsedate_to_datetime(it['pubDate']).timestamp()
+                if pub_ts < cutoff_ts: continue
+            except Exception:
+                pass  # keep if unparseable
+            seen.add(key)
+            items.append(it)
         if len(items) >= MAX_ITEMS:
             break
     return items[:MAX_ITEMS]
