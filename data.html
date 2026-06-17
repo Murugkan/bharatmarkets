@@ -554,7 +554,8 @@
             guidance: 'data/guidance.json',
             macro: 'macro_data.json',
             market_data: 'data/market_data.json',
-            sector_indices: 'data/sector_indices.json'
+            sector_indices: 'data/sector_indices.json',
+            nav_ltp: 'data/nav_ltp.json'
         }
     };
     
@@ -2898,6 +2899,17 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     .catch(e => logWarning('unified-symbols count skipped', e));
             })
             .then(() => {
+                // Fetch nav_ltp and merge NAV prices into DB
+                return new Promise((res) => {
+                    logFetch('nav_ltp.json');
+                    ghFetch('data/nav_ltp.json')
+                        .then(r => r.json())
+                        .then(nav => mergeLTPIntoDB(nav))
+                        .catch(e => { logWarning('nav_ltp skipped', e); })
+                        .finally(() => res());
+                });
+            })
+            .then(() => {
                 // Fetch sector_indices last; re-render only after it commits
                 return new Promise((res) => {
                     logFetch('sector_indices.json');
@@ -3377,11 +3389,18 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                         logSuccess('LTP updated', `${updatedCount} stocks`);
                         db.close();
 
-                        // Fetch sector_indices, wait for commit, then re-render
-                        ghFetch('data/sector_indices.json')
+                        // Fetch nav_ltp first, then sector_indices, then re-render
+                        logFetch('nav_ltp.json');
+                        ghFetch('data/nav_ltp.json')
                             .then(r => r.json())
-                            .then(si => saveSectorIndicesToDB(si, afterLTPDone))
-                            .catch(e => { logWarning('sector_indices skipped', e); afterLTPDone(); });
+                            .then(nav => mergeLTPIntoDB(nav))
+                            .catch(e => { logWarning('nav_ltp skipped', e); })
+                            .finally(() => {
+                                ghFetch('data/sector_indices.json')
+                                    .then(r => r.json())
+                                    .then(si => saveSectorIndicesToDB(si, afterLTPDone))
+                                    .catch(e => { logWarning('sector_indices skipped', e); afterLTPDone(); });
+                            });
 
                         function afterLTPDone() {
                             log('✅ LIVE LOAD complete — reloading');
@@ -3443,6 +3462,14 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 log('⏳ Merging ' + Object.keys(json.quotes).length + ' fresh prices...');
                 return mergeLTPIntoDB(json);
             })
+            .then(() => new Promise((res) => {
+                logFetch('nav_ltp.json');
+                ghFetch('data/nav_ltp.json')
+                    .then(r => r.json())
+                    .then(nav => mergeLTPIntoDB(nav))
+                    .catch(e => { logWarning('nav_ltp skipped', e); })
+                    .finally(() => res());
+            }))
             .then(() => new Promise((res) => {
                 ghFetch('data/sector_indices.json')
                     .then(r => r.json())
