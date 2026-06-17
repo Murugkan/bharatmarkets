@@ -3079,16 +3079,21 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     
                     stocks.forEach(function(stock) {
                         const ticker = stock.ticker;
-                        const quote = quotes[ticker];
+                        // Match by ticker first, then fall back to ISIN (nav_ltp.json uses ISIN as key)
+                        const quote = quotes[ticker] || quotes[stock.isin] || null;
                         
                         if (quote) {
                             if (!stock.price) stock.price = {};
 
-                            if (quote.nav_date) {
+                            // nav_date (ltp.json MF/SGB) or date (nav_ltp.json) marks a NAV entry
+                            var navDate = quote.nav_date || quote.date || null;
+                            var navSource = quote.nav_source || quote.source || null;
+
+                            if (navDate && (quote.nav_date || quote.date || quote.scheme_name)) {
                                 // MF/SGB/QSIF: NAV is a scalar — write to ltp_nav, not ltp object
                                 stock.price.ltp_nav = quote.ltp;
-                                stock.price.ltp_date = quote.nav_date;
-                                stock.price.ltp_source = quote.nav_source;
+                                stock.price.ltp_date = navDate;
+                                stock.price.ltp_source = navSource;
                                 // SGB only: 1D change computed from previous run in fetch_nav_ltp.py
                                 if (quote.change != null) stock.price.ltp_change = quote.change;
                                 if (quote.changePct != null) stock.price.ltp_change_pct = quote.changePct;
@@ -3346,11 +3351,13 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                             if (quote) {
                                 if (!stock.price) stock.price = {};
 
-                                if (quote.nav_date) {
+                                var navDate2 = quote.nav_date || quote.date || null;
+                                var navSource2 = quote.nav_source || quote.source || null;
+                                if (navDate2 && (quote.nav_date || quote.date || quote.scheme_name)) {
                                     // MF/SGB/QSIF: NAV scalar — write to ltp_nav, not ltp object
                                     stock.price.ltp_nav = quote.ltp;
-                                    stock.price.ltp_date = quote.nav_date;
-                                    stock.price.ltp_source = quote.nav_source;
+                                    stock.price.ltp_date = navDate2;
+                                    stock.price.ltp_source = navSource2;
                                     // SGB only: 1D change computed in fetch_nav_ltp.py
                                     if (quote.change != null) stock.price.ltp_change = quote.change;
                                     if (quote.changePct != null) stock.price.ltp_change_pct = quote.changePct;
