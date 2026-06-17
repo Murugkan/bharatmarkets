@@ -444,7 +444,7 @@ function getSignalCounts(stock) {
 const tbdLink = (label) => {
     const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
     const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
-    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
+    return `<a href="javascript:void(0)" onclick="window.location.href='${googleSearch.replace(/'/g,'%27')}'" class="tbd-link" title="Search: ${label}">TBD</a>`;
 };
 
 // Get URL param
@@ -2492,7 +2492,6 @@ function _classify(t){
   if(/capex|expansion|plant|capacity|launch|appoint|resign|guidance|forecast|deal|partner/.test(tl)) return {tag:'Strategy',  imp:'M', c:'#ffd54f'};
   return {tag:'General', imp:'L', c:'#546e7a'};
 }
-
 function _ago(d){
   if(!d||isNaN(d)) return '';
   var s=Math.floor((Date.now()-d)/1000);
@@ -2501,7 +2500,6 @@ function _ago(d){
   var days=Math.floor(s/86400);
   return days<30?days+'d ago':Math.floor(days/30)+'mo ago';
 }
-
 function _trim(t){ return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim(); }
 
 async function loadStockNews(sym, name, retry){
