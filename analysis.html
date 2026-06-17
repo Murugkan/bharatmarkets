@@ -2424,213 +2424,167 @@ document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
 var _newsDb = null;
 var _newsDbPromise = null;
-
-// Noise: skip static price pages & old IPO articles
 var _noiseRe = /share price today|live.*stock price|nse\/bse|ipo listing|ipo date|ipo price|ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live/i;
 
 function renderNewsTab(s) {
   var sym = s.ticker || s.sym;
   var enc = encodeURIComponent(sym);
+
+  // Compact single-row scrollable links strip
   var links = [
-    {l:'NSE Quote',   u:'https://www.nseindia.com/get-quotes/equity?symbol='+enc,                         c:'#2196f3',i:'📊'},
-    {l:'Screener',    u:'https://www.screener.in/company/'+enc+'/',                                       c:'#a855f7',i:'📋'},
-    {l:'Corp Actions',u:'https://www.nseindia.com/companies-listing/corporate-filings-corporate-actions', c:'#9c27b0',i:'🏢'},
-    {l:'Bulk Deals',  u:'https://www.nseindia.com/companies-listing/corporate-filings-bulk-deals',        c:'#e91e63',i:'🔀'},
-    {l:'Insider',     u:'https://www.nseindia.com/companies-listing/corporate-filings-insider-trading',   c:'#f44336',i:'👤'},
-    {l:'F&O Chain',   u:'https://www.nseindia.com/option-chain?symbol='+enc,                              c:'#ff9800',i:'⛓'},
-    {l:'ET Markets',  u:'https://economictimes.indiatimes.com/topic/'+enc,                                c:'#f97316',i:'📰'},
-    {l:'TradingView', u:'https://in.tradingview.com/symbols/NSE-'+enc+'/',                                c:'#64b5f6',i:'📈'},
+    {l:'NSE',         u:'https://www.nseindia.com/get-quotes/equity?symbol='+enc,                         c:'#2196f3'},
+    {l:'Screener',    u:'https://www.screener.in/company/'+enc+'/',                                       c:'#a855f7'},
+    {l:'Corp Actions',u:'https://www.nseindia.com/companies-listing/corporate-filings-corporate-actions', c:'#9c27b0'},
+    {l:'Bulk Deals',  u:'https://www.nseindia.com/companies-listing/corporate-filings-bulk-deals',        c:'#e91e63'},
+    {l:'Insider',     u:'https://www.nseindia.com/companies-listing/corporate-filings-insider-trading',   c:'#f44336'},
+    {l:'F&O',         u:'https://www.nseindia.com/option-chain?symbol='+enc,                              c:'#ff9800'},
+    {l:'ET Markets',  u:'https://economictimes.indiatimes.com/topic/'+enc,                                c:'#f97316'},
+    {l:'Chart',       u:'https://in.tradingview.com/symbols/NSE-'+enc+'/',                                c:'#64b5f6'},
   ];
-  var linksHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:14px">' +
+
+  var strip = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;scrollbar-width:none">'+
     links.map(function(lk){
       return '<a href="'+lk.u+'" target="_blank" rel="noopener" '+
-        'style="display:flex;align-items:center;gap:8px;padding:9px 10px;background:var(--card);'+
-        'border:1px solid var(--b1);border-radius:7px;text-decoration:none;border-left:3px solid '+lk.c+'">'+
-        '<span style="font-size:13px">'+lk.i+'</span>'+
-        '<span style="font-size:11px;font-weight:700;color:#fff">'+lk.l+'</span>'+
-        '<span style="font-size:9px;color:var(--b3);margin-left:auto">↗</span></a>';
+        'style="flex:0 0 auto;padding:5px 10px;border-radius:5px;border:1px solid '+lk.c+'44;'+
+        'background:'+lk.c+'12;color:'+lk.c+';font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap">'+
+        lk.l+'</a>';
     }).join('')+'</div>';
+
   setTimeout(function(){ loadStockNews(sym, s.name); }, 50);
-  return '<div style="padding:10px 12px">'+
-    '<div class="sec-lbl" style="margin-bottom:8px">⚡ Quick Links</div>'+linksHtml+
-    '<div class="sec-lbl" style="margin-bottom:6px">📰 Live News</div>'+
+  return '<div style="padding:10px 12px">'+strip+
     '<div id="stock-news-list"><div class="u-pad14c">Loading news…</div></div></div>';
 }
 
-function _classifyNews(t){
+function _classify(t){
   var tl=(t||'').toLowerCase();
-  if(/\bq[1-4]\b|result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))              return {tag:'Results',    imp:'H', icon:'📊', color:'#ef5350'};
-  if(/dividend|bonus issue|stock split|buyback|agm|egm|record date|ex.date|merger|acqui|qip/.test(tl)) return {tag:'Corp Action',imp:'H', icon:'🏢', color:'#ef5350'};
-  if(/bulk deal|block deal/.test(tl))                                                              return {tag:'Bulk/Block', imp:'H', icon:'🔀', color:'#ef5350'};
-  if(/sebi|nclt|penalty|fine|show cause|fraud|scam|fir|raid|ban|contract win|order win|order receiv|l1 /.test(tl)) return {tag:'Regulatory',imp:'H', icon:'⚖️', color:'#ef5350'};
-  if(/promoter|insider|pledge|encumber|stake sale|stake hike/.test(tl))                           return {tag:'Insider',    imp:'H', icon:'👤', color:'#ef5350'};
-  if(/circuit|asm|gsm|open interest|rollover|expiry|pcr/.test(tl))                               return {tag:'F&O',        imp:'M', icon:'📉', color:'#ffd54f'};
-  if(/target price|price target|upgrade|downgrade|initiat|outperform|overweight|underweight/.test(tl)) return {tag:'Analyst',   imp:'M', icon:'🎯', color:'#ffd54f'};
-  if(/capex|expansion|plant|capacity|launch|appoint|resign|guidance|forecast|deal|partner/.test(tl)) return {tag:'Strategy',  imp:'M', icon:'🏗️', color:'#ffd54f'};
-  return {tag:'General', imp:'L', icon:'📰', color:'#546e7a'};
+  if(/\bq[1-4]\b|result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))              return {tag:'Results',    imp:'H', c:'#ef5350'};
+  if(/dividend|bonus issue|stock split|buyback|agm|egm|record date|ex.date|merger|acqui|qip/.test(tl)) return {tag:'Corp Action',imp:'H', c:'#ef5350'};
+  if(/bulk deal|block deal/.test(tl))                                                              return {tag:'Bulk/Block', imp:'H', c:'#ef5350'};
+  if(/sebi|nclt|penalty|fine|show cause|fraud|scam|fir|raid|ban|contract win|order win|order receiv|l1 /.test(tl)) return {tag:'Regulatory',imp:'H', c:'#ef5350'};
+  if(/promoter|insider|pledge|encumber|stake sale|stake hike/.test(tl))                           return {tag:'Insider',    imp:'H', c:'#ef5350'};
+  if(/circuit|asm|gsm|open interest|rollover|expiry|pcr/.test(tl))                               return {tag:'F&O',        imp:'M', c:'#ffd54f'};
+  if(/target price|price target|upgrade|downgrade|initiat|outperform|overweight|underweight/.test(tl)) return {tag:'Analyst',   imp:'M', c:'#ffd54f'};
+  if(/capex|expansion|plant|capacity|launch|appoint|resign|guidance|forecast|deal|partner/.test(tl)) return {tag:'Strategy',  imp:'M', c:'#ffd54f'};
+  return {tag:'General', imp:'L', c:'#546e7a'};
 }
 
-function _timeAgo(d){
+function _ago(d){
   if(!d||isNaN(d)) return '';
   var s=Math.floor((Date.now()-d)/1000);
-  if(s<60) return 'just now';
-  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<3600)  return Math.floor(s/60)+'m ago';
   if(s<86400) return Math.floor(s/3600)+'h ago';
   var days=Math.floor(s/86400);
-  if(days<30) return days+'d ago';
-  return Math.floor(days/30)+'mo ago';
+  return days<30 ? days+'d ago' : Math.floor(days/30)+'mo ago';
 }
 
-function _cleanTitle(t){
-  // Remove trailing " - Source Name" if source suffix ≤ 30 chars
-  return (t||'').replace(/\s+[-–|]\s+[^-–|]{2,30}$/, '').trim();
-}
-
-function _buildBriefing(items){
-  // Group last 7 days by tag
-  var now = Date.now();
-  var week = items.filter(function(it){
-    return (now - new Date(it.pubDate).getTime()) < 7*86400000;
-  });
-  if(!week.length) return '';
-
-  var order = ['Results','Corp Action','Bulk/Block','Regulatory','Insider','F&O','Analyst','Strategy','General'];
-  var impRank = {H:3,M:2,L:1};
-  var groups = {};
-  week.forEach(function(it){
-    var c = _classifyNews(it.title);
-    if(!groups[c.tag]) groups[c.tag] = {items:[], imp:c.imp, icon:c.icon, color:c.color};
-    groups[c.tag].items.push(it);
-    if(impRank[c.imp] > impRank[groups[c.tag].imp]){
-      groups[c.tag].imp   = c.imp;
-      groups[c.tag].color = c.color;
-    }
-  });
-
-  // Only show if there's at least one non-General item
-  var meaningful = order.filter(function(t){ return groups[t] && t !== 'General'; });
-  if(!meaningful.length && !groups['General']) return '';
-
-  var isToday = week.some(function(it){ return (now - new Date(it.pubDate).getTime()) < 86400000; });
-  var label   = isToday ? "Today's Briefing" : 'This Week';
-
-  var rows = order.filter(function(t){ return groups[t]; }).map(function(tag, i, arr){
-    var g   = groups[tag];
-    var col = g.color;
-    var il  = g.imp==='H' ? 'HIGH' : g.imp==='M' ? 'MED' : '';
-    var divider = i < arr.length-1 ? 'border-bottom:1px solid var(--b1);margin-bottom:10px;padding-bottom:10px' : '';
-    var bullets = g.items.slice(0,3).map(function(it){
-      return '<li style="margin-bottom:4px;line-height:1.45;color:var(--tx1)">'+_cleanTitle(it.title)+'</li>';
-    }).join('');
-    var more = g.items.length>3
-      ? '<li style="list-style:none;margin-left:-14px;margin-top:3px;font-size:9px;color:var(--tx3)">+' + (g.items.length-3)+' more</li>'
-      : '';
-    return '<div style="'+divider+'">'+
-      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'+
-        '<span style="font-size:12px">'+g.icon+'</span>'+
-        '<span style="font-size:10px;font-weight:800;letter-spacing:0.4px;color:'+col+'">'+tag.toUpperCase()+'</span>'+
-        (il ? '<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:'+col+'20;color:'+col+'">'+il+'</span>' : '')+
-        '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+g.items.length+(g.items.length===1?' story':' stories')+'</span>'+
-      '</div>'+
-      '<ul style="margin:0;padding-left:14px;font-size:11px;line-height:1.5">'+bullets+more+'</ul>'+
-    '</div>';
-  }).join('');
-
-  return '<div style="margin-bottom:10px;background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--ac);border-radius:8px;padding:12px 14px">'+
-    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">'+
-      '<span style="font-size:11px">📅</span>'+
-      '<span style="font-size:10px;font-weight:800;letter-spacing:0.5px;color:var(--ac)">'+label.toUpperCase()+'</span>'+
-      '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+week.length+(week.length===1?' story':' stories')+'</span>'+
-    '</div>'+
-    rows+
-  '</div>';
-}
-
-function _buildCards(items, gnUrl){
-  return items.map(function(item){
-    var cl  = _classifyNews(item.title);
-    var col = cl.imp==='H' ? '#ef5350' : cl.imp==='M' ? '#ffd54f' : 'transparent';
-    var il  = cl.imp==='H' ? 'HIGH' : cl.imp==='M' ? 'MED' : '';
-    var age = _timeAgo(new Date(item.pubDate));
-    var src = item.source || 'News';
-    var title = _cleanTitle(item.title);
-    return '<a href="'+(item.link||gnUrl)+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
-      '<div style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+col+';cursor:pointer">'+
-        '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap">'+
-          '<span style="font-size:10px">'+cl.icon+'</span>'+
-          '<span style="font-size:10px;font-weight:700;color:var(--ac)">'+src+'</span>'+
-          (il ? '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:'+col+'20;color:'+col+'">'+il+'</span>' : '')+
-          '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)">'+cl.tag+'</span>'+
-          '<span style="font-size:9px;color:var(--tx3);margin-left:auto;white-space:nowrap">'+age+'</span>'+
-        '</div>'+
-        '<div style="font-size:12px;color:var(--tx1);line-height:1.5;font-weight:500">'+title+'</div>'+
-      '</div></a>';
-  }).join('');
-}
-
-function loadNewsDb(force){
-  if(_newsDb && !force) return Promise.resolve(_newsDb);
-  if(_newsDbPromise && !force) return _newsDbPromise;
-  var base = (location.pathname.match(/^(\/[^/]+\/)/) || [,''])[1];
-  _newsDbPromise = fetch(base+'data/news.json?_='+Date.now())
-    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-    .then(function(d){ _newsDb=d; _newsDbPromise=null; return d; })
-    .catch(function(e){ _newsDbPromise=null; throw e; });
-  return _newsDbPromise;
+function _trim(t){
+  return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim();
 }
 
 async function loadStockNews(sym, name, retry){
   var el = document.getElementById('stock-news-list');
   if(!el) return;
 
-  var words  = (name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(/\s+/).slice(0,3).join(' ');
-  var gnUrl  = 'https://news.google.com/search?q='+encodeURIComponent(words+' NSE')+'&hl=en-IN&gl=IN&ceid=IN:en';
-  var safeN  = (name||'').replace(/'/g,"\\'");
+  var words = (name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(/\s+/).slice(0,3).join(' ');
+  var gnUrl = 'https://news.google.com/search?q='+encodeURIComponent(words+' NSE')+'&hl=en-IN&gl=IN&ceid=IN:en';
+  var safeN = (name||'').replace(/'/g,"\\'");
 
-  el.innerHTML = '<div class="u-pad14c">Loading news…</div>';
+  el.innerHTML = '<div class="u-pad14c">Loading…</div>';
 
   try {
     if(retry) _newsDb = null;
-    var db      = await loadNewsDb();
-    var raw     = (db.news||{})[sym] || [];
-    var updated = db.updated ? new Date(db.updated) : null;
-    var staleMins = updated ? Math.round((Date.now()-updated.getTime())/60000) : null;
-    var staleStr  = !staleMins ? '' : staleMins<60 ? staleMins+'m ago' : staleMins<1440 ? Math.round(staleMins/60)+'h ago' : Math.floor(staleMins/1440)+'d ago';
+    if(!_newsDb && !_newsDbPromise){
+      var base = (location.pathname.match(/^(\/[^/]+\/)/) || [,''])[1];
+      _newsDbPromise = fetch(base+'data/news.json?_='+Date.now())
+        .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function(d){ _newsDb=d; _newsDbPromise=null; return d; })
+        .catch(function(e){ _newsDbPromise=null; throw e; });
+    }
+    var db = await (_newsDb ? Promise.resolve(_newsDb) : _newsDbPromise);
 
-    // Filter: noise + 90-day window
+    var updated  = db.updated ? new Date(db.updated) : null;
+    var staleMin = updated ? Math.round((Date.now()-updated.getTime())/60000) : null;
+    var staleStr = !staleMin ? '' : staleMin<60 ? staleMin+'m ago' : staleMin<1440 ? Math.round(staleMin/60)+'h ago' : Math.floor(staleMin/1440)+'d ago';
+
     var cutoff = Date.now() - 90*86400000;
-    var items  = raw.filter(function(it){
-      if(_noiseRe.test(it.title||'')) return false;
-      var pub = new Date(it.pubDate).getTime();
-      return !isNaN(pub) && pub >= cutoff;
+    var items  = ((db.news||{})[sym]||[]).filter(function(it){
+      return !_noiseRe.test(it.title||'') && new Date(it.pubDate).getTime() >= cutoff;
     });
 
-    // Sort: importance desc, then newest
-    var rank = {H:3, M:2, L:1};
+    var rank = {H:3,M:2,L:1};
     items.sort(function(a,b){
-      var ca=_classifyNews(a.title), cb=_classifyNews(b.title);
+      var ca=_classify(a.title), cb=_classify(b.title);
       var d=(rank[cb.imp]||1)-(rank[ca.imp]||1);
-      return d!==0 ? d : new Date(b.pubDate)-new Date(a.pubDate);
+      return d!==0?d:new Date(b.pubDate)-new Date(a.pubDate);
     });
 
-    var bar = '<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 10px">'+
-      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories · 3 months'+(staleStr?' · '+staleStr:'')+'</span>'+
-      '<span onclick="_newsDb=null;loadStockNews(\''+sym+'\',\''+safeN+'\',true)" '+
-        'style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span>'+
-    '</div>';
+    // ── Briefing: last 7 days, grouped, no duplication in cards ──
+    var now  = Date.now();
+    var week = items.filter(function(it){ return (now-new Date(it.pubDate).getTime())<7*86400000; });
+    var briefingHtml = '';
 
-    if(!items.length){
-      el.innerHTML = bar+'<div class="u-pad14c">No news in last 3 months. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
-      return;
+    if(week.length){
+      var order=['Results','Corp Action','Bulk/Block','Regulatory','Insider','F&O','Analyst','Strategy','General'];
+      var groups={};
+      week.forEach(function(it){
+        var c=_classify(it.title);
+        if(!groups[c.tag]) groups[c.tag]={items:[],c:c.c};
+        groups[c.tag].items.push(it);
+      });
+      var isToday=week.some(function(it){return (now-new Date(it.pubDate).getTime())<86400000;});
+      var label=(isToday?"Today":"This Week").toUpperCase();
+
+      var rows=order.filter(function(t){return groups[t];}).map(function(tag,i,arr){
+        var g=groups[tag];
+        var sep=i<arr.length-1?'border-bottom:1px solid var(--b1);padding-bottom:8px;margin-bottom:8px':'';
+        var bullets=g.items.slice(0,3).map(function(it){
+          return '<li style="margin-bottom:3px;line-height:1.4">'+_trim(it.title)+'</li>';
+        }).join('');
+        var more=g.items.length>3?'<li style="list-style:none;margin-left:-14px;font-size:9px;color:var(--tx3)">+'+(g.items.length-3)+' more</li>':'';
+        return '<div style="'+sep+'">'+
+          '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">'+
+            '<span style="font-size:10px;font-weight:800;color:'+g.c+'">'+tag.toUpperCase()+'</span>'+
+            '<span style="font-size:9px;color:var(--tx3)">'+g.items.length+(g.items.length===1?' story':' stories')+'</span>'+
+          '</div>'+
+          '<ul style="margin:0;padding-left:14px;font-size:11px;color:var(--tx1);line-height:1.45">'+bullets+more+'</ul>'+
+        '</div>';
+      }).join('');
+
+      briefingHtml='<div style="margin-bottom:10px;border:1px solid var(--b1);border-left:3px solid var(--ac);border-radius:8px;padding:10px 12px">'+
+        '<div style="display:flex;align-items:center;margin-bottom:10px">'+
+          '<span style="font-size:10px;font-weight:800;letter-spacing:0.5px;color:var(--ac)">📅 '+label+'</span>'+
+          '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+week.length+(week.length===1?' story':' stories')+'</span>'+
+        '</div>'+rows+'</div>';
     }
 
-    el.innerHTML = bar + _buildBriefing(items) + _buildCards(items, gnUrl);
+    // ── Cards: ALL items (briefing is a summary, not a filter) ──
+    var cards=items.map(function(item){
+      var cl=_classify(item.title);
+      var bdr=cl.imp==='L'?'transparent':cl.c;
+      return '<a href="'+(item.link||gnUrl)+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
+        '<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+bdr+'">'+
+          '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap">'+
+            '<span style="font-size:10px;font-weight:700;color:var(--ac)">'+(item.source||'News')+'</span>'+
+            (cl.imp!=='L'?'<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:'+cl.c+'20;color:'+cl.c+'">'+cl.imp+'</span>':'')+
+            '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)">'+cl.tag+'</span>'+
+            '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+_ago(new Date(item.pubDate))+'</span>'+
+          '</div>'+
+          '<div style="font-size:12px;color:var(--tx1);line-height:1.45">'+_trim(item.title)+'</div>'+
+        '</div></a>';
+    }).join('');
+
+    var bar='<div style="display:flex;justify-content:space-between;align-items:center;padding:0 0 8px">'+
+      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories · 3mo'+(staleStr?' · '+staleStr:'')+'</span>'+
+      '<span onclick="_newsDb=null;loadStockNews(\''+sym+'\',\''+safeN+'\',true)" style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span>'+
+    '</div>';
+
+    el.innerHTML = items.length
+      ? bar+briefingHtml+cards
+      : bar+'<div class="u-pad14c">No news in last 3 months. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
 
   } catch(e){
-    el.innerHTML =
-      '<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
-      '📂 <b>data/news.json</b> not found.<br>'+
-      'Run <b>GitHub Actions → Fetch Stock News</b> to generate it.<br><br>'+
+    el.innerHTML='<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
+      '📂 <b>data/news.json</b> not found.<br>Run <b>GitHub Actions → Fetch Stock News</b>.<br><br>'+
       '<a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">🔍 Google News ↗</a></div>';
   }
 }
