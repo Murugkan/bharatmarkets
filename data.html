@@ -2904,7 +2904,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     logFetch('nav_ltp.json');
                     ghFetch('data/nav_ltp.json')
                         .then(r => r.json())
-                        .then(nav => mergeLTPIntoDB(nav))
+                        .then(nav => mergeLTPIntoDB(nav, null, true))
                         .catch(e => { logWarning('nav_ltp skipped', e); })
                         .finally(() => res());
                 });
@@ -3045,16 +3045,16 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         });
     }
     
-    function mergeLTPIntoDB(quoteDataOrQuotes, ltpUpdatedTime) {
+    function mergeLTPIntoDB(quoteDataOrQuotes, ltpUpdatedTime, isNav) {
         return new Promise((resolve, reject) => {
             // Handle both old format (just quotes object) and new format (full JSON with metadata)
             let quotes = quoteDataOrQuotes;
             let ltpTime = ltpUpdatedTime || new Date().toISOString();
             
-            // If it's the new format with metadata
-            if (quoteDataOrQuotes && typeof quoteDataOrQuotes === 'object' && quoteDataOrQuotes.quotes && quoteDataOrQuotes.updated) {
+            // Detect format: { quotes: {...}, updated: '...' } or { quotes: {...} } or flat { TICKER: {...} }
+            if (quoteDataOrQuotes && typeof quoteDataOrQuotes === 'object' && quoteDataOrQuotes.quotes) {
                 quotes = quoteDataOrQuotes.quotes;
-                ltpTime = quoteDataOrQuotes.updated;
+                if (quoteDataOrQuotes.updated) ltpTime = quoteDataOrQuotes.updated;
             }
             
             const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -3074,6 +3074,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 
                 getAllReq.onsuccess = function() {
                     const stocks = getAllReq.result;
+                    const quoteKeys = Object.keys(quotes);
+                    logProcess('mergeLTPIntoDB: quote keys', quoteKeys.length);
                     
                     stocks.forEach(function(stock) {
                         const ticker = stock.ticker;
@@ -3115,15 +3117,15 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     });
                     
                     // Read-modify-write: preserve ALL existing fields, only update LTP fields
+                    // isNav=true: skip ltp_updated_at so NAV merge doesn't clobber the LTP timestamp
                     const getMetadataReq = store.get('_METADATA_');
                     getMetadataReq.onsuccess = function() {
                         const meta = getMetadataReq.result || { ticker: '_METADATA_' };
-                        meta.ltp_updated_at = ltpTime;
-                        meta.ltp_count = mergedCount;
+                        if (!isNav) { meta.ltp_updated_at = ltpTime; meta.ltp_count = mergedCount; }
                         store.put(meta);
                     };
                     getMetadataReq.onerror = function() {
-                        store.put({ ticker: '_METADATA_', ltp_updated_at: ltpTime, ltp_count: mergedCount });
+                        if (!isNav) store.put({ ticker: '_METADATA_', ltp_updated_at: ltpTime, ltp_count: mergedCount });
                     };
                 };
                 
@@ -3393,7 +3395,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                         logFetch('nav_ltp.json');
                         ghFetch('data/nav_ltp.json')
                             .then(r => r.json())
-                            .then(nav => mergeLTPIntoDB(nav))
+                            .then(nav => mergeLTPIntoDB(nav, null, true))
                             .catch(e => { logWarning('nav_ltp skipped', e); })
                             .finally(() => {
                                 ghFetch('data/sector_indices.json')
@@ -3466,7 +3468,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 logFetch('nav_ltp.json');
                 ghFetch('data/nav_ltp.json')
                     .then(r => r.json())
-                    .then(nav => mergeLTPIntoDB(nav))
+                    .then(nav => mergeLTPIntoDB(nav, null, true))
                     .catch(e => { logWarning('nav_ltp skipped', e); })
                     .finally(() => res());
             }))
