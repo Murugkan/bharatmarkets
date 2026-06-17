@@ -2426,30 +2426,62 @@ var _newsDb = null;
 var _newsDbPromise = null;
 var _noiseRe = /share price today|live.*stock price|nse\/bse|ipo listing|ipo date|ipo price|ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live/i;
 
+// ── In-app browser (iframe overlay) ──────────────────
+function _openLink(url) {
+  // Remove any existing overlay
+  var old = document.getElementById('_iab');
+  if(old) old.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = '_iab';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#060c18;display:flex;flex-direction:column';
+
+  overlay.innerHTML =
+    // Top bar
+    '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0a1628;border-bottom:1px solid #1a2c45;flex-shrink:0">'+
+      '<button onclick="document.getElementById(\'_iab\').remove()" '+
+        'style="background:#1a2c45;border:none;color:#00f2ff;font-size:13px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap">'+
+        '← Back</button>'+
+      '<div style="font-size:10px;color:#546e7a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+url+'</div>'+
+      '<a href="'+url+'" target="_blank" rel="noopener" '+
+        'style="background:#1a2c45;border:none;color:#90a4ae;font-size:11px;padding:6px 10px;border-radius:6px;cursor:pointer;text-decoration:none;white-space:nowrap;flex-shrink:0">'+
+        'Open ↗</a>'+
+    '</div>'+
+    // iframe
+    '<iframe src="'+url+'" style="flex:1;border:none;width:100%" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>';
+
+  document.body.appendChild(overlay);
+}
+
+// ── Quick links strip ─────────────────────────────────
 function renderNewsTab(s) {
   var sym = s.ticker || s.sym;
   var enc = encodeURIComponent(sym);
   var links = [
-    {l:'NSE',          u:'https://www.nseindia.com/get-quotes/equity?symbol='+enc,                                          c:'#2196f3'},
-    {l:'Screener',     u:'https://www.screener.in/company/'+enc+'/',                                                        c:'#a855f7'},
-    {l:'Corp Actions', u:'https://trendlyne.com/equity/corporate-actions/'+enc+'/0/',                                       c:'#9c27b0'},
-    {l:'Bulk Deals',   u:'https://trendlyne.com/equity/bulk-block-deals/'+enc+'/0/',                                        c:'#e91e63'},
-    {l:'Insider',      u:'https://trendlyne.com/equity/insider-trading/'+enc+'/0/',                                         c:'#f44336'},
-    {l:'F&O',          u:'https://www.nseindia.com/option-chain?symbol='+enc,                                               c:'#ff9800'},
-    {l:'ET Markets',   u:'https://economictimes.indiatimes.com/topic/'+enc,                                                 c:'#f97316'},
-    {l:'Chart',        u:'https://in.tradingview.com/symbols/NSE-'+enc+'/',                                                 c:'#64b5f6'},
+    {l:'NSE',          u:'https://www.nseindia.com/get-quotes/equity?symbol='+enc,        c:'#2196f3'},
+    {l:'Screener',     u:'https://www.screener.in/company/'+enc+'/',                       c:'#a855f7'},
+    {l:'Corp Actions', u:'https://trendlyne.com/equity/corporate-actions/'+enc+'/0/',      c:'#9c27b0'},
+    {l:'Bulk Deals',   u:'https://trendlyne.com/equity/bulk-block-deals/'+enc+'/0/',       c:'#e91e63'},
+    {l:'Insider',      u:'https://trendlyne.com/equity/insider-trading/'+enc+'/0/',        c:'#f44336'},
+    {l:'F&O',          u:'https://www.nseindia.com/option-chain?symbol='+enc,             c:'#ff9800'},
+    {l:'ET Markets',   u:'https://economictimes.indiatimes.com/topic/'+enc,               c:'#f97316'},
+    {l:'Chart',        u:'https://in.tradingview.com/symbols/NSE-'+enc+'/',               c:'#64b5f6'},
   ];
+
   var strip = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;-webkit-overflow-scrolling:touch;scrollbar-width:none">'+
     links.map(function(lk){
-      return '<a href="'+lk.u+'" target="_blank" rel="noopener" '+
+      return '<a href="javascript:void(0)" onclick="_openLink(\''+lk.u+'\')" '+
         'style="flex:0 0 auto;padding:5px 11px;border-radius:20px;border:1px solid '+lk.c+'55;'+
-        'background:'+lk.c+'15;color:'+lk.c+';font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap">'+lk.l+'</a>';
+        'background:'+lk.c+'15;color:'+lk.c+';font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;cursor:pointer">'+
+        lk.l+'</a>';
     }).join('')+'</div>';
+
   setTimeout(function(){ loadStockNews(sym, s.name); }, 50);
   return '<div style="padding:10px 12px">'+strip+
     '<div id="stock-news-list"><div class="u-pad14c">Loading…</div></div></div>';
 }
 
+// ── Pre-market brief ──────────────────────────────────
 function _renderBrief(b, staleStr) {
   if(!b || !b.catalyst) return '';
   var sent = b.sentiment || 'Neutral';
@@ -2477,6 +2509,7 @@ function _renderBrief(b, staleStr) {
   '</div>';
 }
 
+// ── Helpers ───────────────────────────────────────────
 function _classify(t){
   var tl=(t||'').toLowerCase();
   if(/\bq[1-4]\b|result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))              return {tag:'Results',    imp:'H', c:'#ef5350'};
@@ -2501,6 +2534,7 @@ function _ago(d){
 
 function _trim(t){ return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim(); }
 
+// ── Main loader ───────────────────────────────────────
 async function loadStockNews(sym, name, retry){
   var el = document.getElementById('stock-news-list');
   if(!el) return;
@@ -2535,19 +2569,20 @@ async function loadStockNews(sym, name, retry){
 
     var briefHtml = _renderBrief(brief, staleStr);
 
+    // News cards — open in-app via _openLink
     var cards = items.map(function(item){
       var cl  = _classify(item.title);
       var bdr = cl.imp==='L' ? '#546e7a44' : cl.c;
-      return '<a href="'+(item.link||gnUrl)+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
-        '<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+bdr+'">'+
-          '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap">'+
-            '<span style="font-size:10px;font-weight:700;color:var(--ac)">'+(item.source||'News')+'</span>'+
-            (cl.imp!=='L'?'<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:'+cl.c+'20;color:'+cl.c+'">'+cl.imp+'</span>':'')+
-            '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)">'+cl.tag+'</span>'+
-            '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+_ago(new Date(item.pubDate))+'</span>'+
-          '</div>'+
-          '<div style="font-size:12px;color:var(--tx1);line-height:1.45">'+_trim(item.title)+'</div>'+
-        '</div></a>';
+      var url = (item.link||gnUrl).replace(/'/g,'%27');
+      return '<div onclick="_openLink(\''+url+'\')" style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+bdr+';cursor:pointer">'+
+        '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap">'+
+          '<span style="font-size:10px;font-weight:700;color:var(--ac)">'+(item.source||'News')+'</span>'+
+          (cl.imp!=='L'?'<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:'+cl.c+'20;color:'+cl.c+'">'+cl.imp+'</span>':'')+
+          '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--b1);color:var(--tx3)">'+cl.tag+'</span>'+
+          '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+_ago(new Date(item.pubDate))+'</span>'+
+        '</div>'+
+        '<div style="font-size:12px;color:var(--tx1);line-height:1.45">'+_trim(item.title)+'</div>'+
+      '</div>';
     }).join('');
 
     var bar = '<div style="display:flex;justify-content:space-between;align-items:center;padding:0 0 8px">'+
@@ -2557,14 +2592,16 @@ async function loadStockNews(sym, name, retry){
     '</div>';
 
     el.innerHTML = bar + briefHtml +
-      (items.length ? cards : '<div class="u-pad14c">No news in last month. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>');
+      (items.length ? cards
+        : '<div class="u-pad14c">No news in last month. '+
+          '<span onclick="_openLink(\''+gnUrl+'\')" style="color:var(--ac);cursor:pointer">Google News ↗</span></div>');
 
   } catch(e){
     el.innerHTML =
       '<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
       '📂 <b>data/news.json</b> not found.<br>'+
       'Run <b>GitHub Actions → Fetch Stock News</b>.<br><br>'+
-      '<a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">🔍 Google News ↗</a></div>';
+      '<span onclick="_openLink(\''+gnUrl+'\')" style="color:var(--ac);cursor:pointer">🔍 Google News ↗</span></div>';
   }
 }
 
