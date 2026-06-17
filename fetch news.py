@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Fetches Google News RSS for all tickers in data/unified-symbols.json
-and writes a single data/news.json file with news items + text summary per ticker.
+Fetches Google News RSS for all tickers in data/unified-symbols.json.
+Generates a pre-market brief from actual fetched headlines.
+Writes data/news.json.
 Run by GitHub Actions every 6 hours.
 """
 import json, os, re, urllib.request, urllib.parse, xml.etree.ElementTree as ET
@@ -11,7 +12,7 @@ from email.utils import parsedate_to_datetime
 PORTFOLIO_FILE = 'data/unified-symbols.json'
 OUTPUT_FILE    = 'data/news.json'
 MAX_ITEMS      = 25
-CUTOFF_DAYS    = 90
+CUTOFF_DAYS    = 30   # 1 month
 
 NOISE_RE = re.compile(
     r'share price today|live.*stock price|nse/bse|ipo listing|ipo date|ipo price|'
@@ -19,7 +20,9 @@ NOISE_RE = re.compile(
     re.IGNORECASE
 )
 
-# ── Fetch ────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Fetch & parse RSS
+# ─────────────────────────────────────────────────────────────
 
 def fetch_rss(url):
     req = urllib.request.Request(url, headers={
@@ -45,8 +48,12 @@ def parse_rss(xml_text):
             source = (source_el.text or '').strip() if source_el is not None else ''
             title = gt('title')
             if title:
-                items.append({'title': title, 'link': gt('link'),
-                              'pubDate': gt('pubDate'), 'source': source})
+                items.append({
+                    'title':   title,
+                    'link':    gt('link'),
+                    'pubDate': gt('pubDate'),
+                    'source':  source,
+                })
     except Exception as e:
         print(f'    parse error: {e}')
     return items
@@ -54,8 +61,7 @@ def parse_rss(xml_text):
 def clean_name(name, sym):
     STOP = {'LTD','LIMITED','PVT','PRIVATE','INC','CORP','LLP','MOB'}
     words = re.sub(r'[^a-zA-Z0-9 ]', ' ', name or sym).split()
-    clean = [w for w in words if w and w.upper() not in STOP]
-    return ' '.join(clean[:3])
+    return ' '.join(w for w in words if w and w.upper() not in STOP)[:40]
 
 def fetch_for_ticker(sym, name):
     GN = 'https://news.google.com/rss/search?hl=en-IN&gl=IN&ceid=IN:en&q='
@@ -71,57 +77,116 @@ def fetch_for_ticker(sym, name):
         for it in parse_rss(fetch_rss(q)):
             key = it['link'] or it['title']
             if not key or key in seen: continue
-            if NOISE_RE.search(it.get('title', '')): continue
+            if NOISE_RE.search(it['title']): continue
             try:
-                if parsedate_to_datetime(it['pubDate']).timestamp() < cutoff_ts: continue
+                if parsedate_to_datetime(it['pubDate']).timestamp() < cutoff_ts:
+                    continue
             except Exception:
                 pass
             seen.add(key)
             items.append(it)
     return items[:MAX_ITEMS]
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Pre-market brief — built from actual fetched headlines
+# ─────────────────────────────────────────────────────────────
 
-def generate_summary(items):
-    """2-3 sentence factual summary from last 7 days of headlines. No API needed."""
-    cutoff_7d = datetime.now(timezone.utc).timestamp() - 7 * 86400
-    recent = []
-    for it in items:
-        try:
-            if parsedate_to_datetime(it['pubDate']).timestamp() >= cutoff_7d:
-                recent.append(it['title'])
-        except Exception:
-            recent.append(it['title'])  # include if date unparseable
+def clean_title(t):
+    """Strip trailing ' - Source Name' suffix."""
+    return re.sub(r'\s*[-–|]\s*.{2,28}$', '', t or '').strip()
 
-    if not recent:
-        return ''
+def build_brief(items):
+    """
+    Generates a structured pre-market brief from real fetched headlines.
+    Returns a dict with: sentiment, catalyst, risk, street_view, summary
+    """
+    if not items:
+        return {}
 
-    def clean(t):
-        return re.sub(r'\s*[-–|]\s*.{2,25}$', '', t).strip()
+    # Use last 7 days for brief; fall back to all items if none in 7d
+    now_ts = datetime.now(timezone.utc).timestamp()
+    week   = [it for it in items
+              if _parse_ts(it['pubDate']) >= now_ts - 7*86400]
+    pool   = week if week else items[:10]
 
-    cleaned = [clean(t) for t in recent[:10]]
+    titles = [clean_title(it['title']) for it in pool]
 
-    results, corp, analyst, other = [], [], [], []
-    for t in cleaned:
+    # Bucket by category
+    results, corp, analyst, regulatory, other = [], [], [], [], []
+    for t in titles:
         tl = t.lower()
-        if any(w in tl for w in ['result','profit','loss','revenue','ebitda','earning','q1','q2','q3','q4']):
+        if any(w in tl for w in ['result','profit','loss','revenue','ebitda','earning','q1','q2','q3','q4','quarterly']):
             results.append(t)
-        elif any(w in tl for w in ['dividend','buyback','split','agm','merger','acqui','order','contract','sebi','penalty','fraud','notice','fine']):
+        elif any(w in tl for w in ['dividend','buyback','split','agm','merger','acqui','qip','order','contract','raise','fund']):
             corp.append(t)
-        elif any(w in tl for w in ['upgrade','downgrade','target','analyst','outperform','overweight','underweight']):
+        elif any(w in tl for w in ['upgrade','downgrade','target','analyst','outperform','overweight','underweight','buy','sell','hold']):
             analyst.append(t)
+        elif any(w in tl for w in ['sebi','nclt','penalty','fine','notice','fraud','scam','fir','raid','ban','regulatory']):
+            regulatory.append(t)
         else:
             other.append(t)
 
+    # Sentiment: count positive vs negative signals
+    pos_words = ['rise','rally','surge','jump','gain','high','record','beat','strong','upgrade','buy','outperform','positive','profit','growth']
+    neg_words = ['fall','drop','decline','tank','loss','weak','miss','cut','downgrade','sell','underperform','negative','concern','penalty','fraud']
+    pos = sum(1 for t in titles for w in pos_words if w in t.lower())
+    neg = sum(1 for t in titles for w in neg_words if w in t.lower())
+
+    if pos > neg + 1:
+        sentiment = 'Bullish'
+    elif neg > pos + 1:
+        sentiment = 'Bearish'
+    elif pos == 0 and neg == 0:
+        sentiment = 'Neutral'
+    else:
+        sentiment = 'Mixed'
+
+    # Catalyst: most important single headline (priority: results > regulatory > corp > analyst > other)
+    catalyst = ''
+    for bucket in [results, regulatory, corp, analyst, other]:
+        if bucket:
+            catalyst = bucket[0]
+            break
+
+    # Risk: look for negative signals in all buckets
+    risk = ''
+    risk_words = ['fall','drop','decline','tank','loss','weak','miss','concern','penalty','fraud','notice','fine','ban','scam','raid']
+    for t in titles:
+        if any(w in t.lower() for w in risk_words):
+            risk = t
+            break
+    if not risk and neg > 0:
+        risk = 'Watch for selling pressure based on recent news flow'
+
+    # Street view: analyst headlines
+    street_view = analyst[0] if analyst else (other[0] if other else '')
+
+    # Summary: 2-3 sentences from top buckets
     parts = []
-    for bucket in [results, corp, analyst, other]:
+    for bucket in [results, corp, regulatory, analyst, other]:
         if bucket and len(parts) < 3:
             t = bucket[0]
             parts.append(t if t.endswith('.') else t + '.')
+    summary = ' '.join(parts[:3])
 
-    return ' '.join(parts[:3])
+    return {
+        'sentiment':   sentiment,
+        'catalyst':    catalyst,
+        'risk':        risk or 'No specific risk signals in recent news.',
+        'street_view': street_view,
+        'summary':     summary,
+        'as_of':       datetime.now(timezone.utc).strftime('%d %b %Y %H:%M UTC'),
+    }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+def _parse_ts(pub_date):
+    try:
+        return parsedate_to_datetime(pub_date).timestamp()
+    except Exception:
+        return 0
+
+# ─────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────
 
 def main():
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
@@ -136,10 +201,11 @@ def main():
     result = {}
     for sym, name in tickers:
         print(f'  {sym}...', end=' ', flush=True)
-        items   = fetch_for_ticker(sym, name)
-        summary = generate_summary(items)
-        result[sym] = {'items': items, 'summary': summary}
-        print(f'{len(items)} items' + (' + summary' if summary else ''))
+        items = fetch_for_ticker(sym, name)
+        brief = build_brief(items)
+        result[sym] = {'items': items, 'brief': brief}
+        has_brief = '+ brief' if brief.get('catalyst') else ''
+        print(f'{len(items)} items {has_brief}')
 
     output = {
         'updated': datetime.now(timezone.utc).isoformat(),
@@ -151,7 +217,7 @@ def main():
         json.dump(output, f, ensure_ascii=False, separators=(',', ':'))
 
     size_kb = os.path.getsize(OUTPUT_FILE) // 1024
-    print(f'\nWritten {OUTPUT_FILE} ({size_kb} KB, {len(result)} tickers)')
+    print(f'\nWritten {OUTPUT_FILE} ({size_kb} KB)')
 
 if __name__ == '__main__':
     main()

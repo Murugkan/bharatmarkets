@@ -2424,136 +2424,9 @@ document.addEventListener('DOMContentLoaded', setupChartInteraction);
 
 var _newsDb = null;
 var _newsDbPromise = null;
-var _briefCache = {};
 var _noiseRe = /share price today|live.*stock price|nse\/bse|ipo listing|ipo date|ipo price|ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live/i;
 
-function _getKey(){ return localStorage.getItem('ak')||''; }
-
-function _apiKeyPrompt(){
-  return '<div style="padding:14px;border:1px solid var(--b1);border-radius:8px;background:var(--card);margin-bottom:10px">'+
-    '<div style="font-size:11px;font-weight:700;color:var(--ac);margin-bottom:6px">🔑 One-time Setup — Pre-market Brief</div>'+
-    '<div style="font-size:11px;color:var(--tx2);margin-bottom:10px;line-height:1.6">'+
-    'Paste your Anthropic API key to enable live sentiment & catalyst briefs.<br>'+
-    '<a href="https://console.anthropic.com/keys" target="_blank" style="color:var(--ac)">Get key →</a>'+
-    ' &nbsp;Key is saved locally, never uploaded.</div>'+
-    '<input id="ak-inp" type="password" placeholder="sk-ant-..." '+
-    'style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid var(--b1);background:#0a1628;color:#fff;font-size:12px;margin-bottom:8px">'+
-    '<button onclick="(function(){var k=document.getElementById(\'ak-inp\').value.trim();if(!k)return;localStorage.setItem(\'ak\',k);var el=document.getElementById(\'stock-news-list\');if(el){el.innerHTML=\'<div class=u-pad14c>Generating brief…</div>\';}var sym=new URLSearchParams(location.search).get(\'drill\')||\'SBIN\';loadStockNews(sym,\'\',false);})()" '+
-    'style="width:100%;padding:8px;border-radius:6px;border:none;background:var(--ac);color:#000;font-size:12px;font-weight:700;cursor:pointer">'+
-    'Save & Generate Brief</button></div>';
-}
-
-async function _fetchBrief(sym, name){
-  var key = _getKey();
-  if(!key) return null;
-  var co = (name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(/\s+/).slice(0,3).join(' ');
-  var today = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
-
-  var prompt = 'Search for the latest news and analyst views on ' + co + ' (NSE:' + sym + ') as of ' + today + '. ' +
-    'Return ONLY this JSON object, no markdown:\n' +
-    '{"sentiment":"Bullish or Bearish or Mixed or Neutral",' +
-    '"sentiment_reason":"one line",' +
-    '"catalyst":"most important thing happening with this stock right now",' +
-    '"risk":"key downside risk today",' +
-    '"street_view":"what analysts and traders are saying",' +
-    '"verdict":"one line action stance"}';
-
-  // Try with web_search tool first, fall back to no tool if 400
-  var body = {
-    model: 'claude-sonnet-4-6',
-    max_tokens: 500,
-    tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-    messages: [{ role: 'user', content: prompt }]
-  };
-
-  var res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify(body)
-  });
-
-  // If 400 with web_search, retry without (model may not have tool access)
-  if(res.status === 400){
-    delete body.tools;
-    res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify(body)
-    });
-  }
-
-  if(!res.ok){
-    if(res.status===401){ localStorage.removeItem('ak'); }
-    var errText = await res.text();
-    throw new Error('API '+res.status+': '+errText.slice(0,120));
-  }
-
-  var data = await res.json();
-  var text = (data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
-  var m = text.match(/\{[\s\S]*?\}/);
-  if(!m) throw new Error('no json in response');
-  return JSON.parse(m[0]);
-}
-
-function _renderBrief(b, sym){
-  if(!b) return '';
-  var sentColor = /bullish/i.test(b.sentiment||'')?'#00e896':/bearish/i.test(b.sentiment||'')?'#ef5350':'#ffd54f';
-  var verdColor = /buy|bullish|watch/i.test(b.verdict||'')?'#00e896':/avoid|bearish/i.test(b.verdict||'')?'#ef5350':'#ffd54f';
-  var sym2 = (sym||'').replace(/[^a-zA-Z0-9]/g,'');
-
-  return '<div id="brief-'+sym2+'" style="margin-bottom:10px;border-radius:8px;background:var(--card);border:1px solid var(--b1);border-left:3px solid '+sentColor+'">'+
-    '<div style="padding:9px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px">'+
-      '<span style="font-size:10px;font-weight:800;color:'+sentColor+'">'+
-        (/bullish/i.test(b.sentiment||'')?'▲':/bearish/i.test(b.sentiment||'')?'▼':'◆')+
-        ' '+(b.sentiment||'').toUpperCase()+'</span>'+
-      '<span style="font-size:10px;color:var(--tx2);flex:1">'+( b.sentiment_reason||'')+'</span>'+
-      '<span onclick="delete _briefCache[\''+sym+'\'];_reloadBrief(\''+sym+'\',\''+sym2+'\')" '+
-        'style="font-size:10px;color:var(--tx3);cursor:pointer;flex-shrink:0">↺</span>'+
-    '</div>'+
-    '<div style="padding:10px 12px">'+
-      '<div style="margin-bottom:8px">'+
-        '<div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:3px">Key Catalyst</div>'+
-        '<div style="font-size:12px;color:var(--tx1);line-height:1.5">'+(b.catalyst||'')+'</div>'+
-      '</div>'+
-      '<div style="margin-bottom:8px">'+
-        '<div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:3px">Street View</div>'+
-        '<div style="font-size:12px;color:var(--tx1);line-height:1.5">'+(b.street_view||'')+'</div>'+
-      '</div>'+
-      '<div style="margin-bottom:10px">'+
-        '<div style="font-size:9px;font-weight:700;color:#ef5350;text-transform:uppercase;margin-bottom:3px">Risk</div>'+
-        '<div style="font-size:12px;color:var(--tx1);line-height:1.5">'+(b.risk||'')+'</div>'+
-      '</div>'+
-      '<div style="padding:8px 10px;border-radius:6px;background:'+verdColor+'15;border:1px solid '+verdColor+'33">'+
-        '<span style="font-size:11px;font-weight:800;color:'+verdColor+'">'+(b.verdict||'')+'</span>'+
-      '</div>'+
-    '</div>'+
-  '</div>';
-}
-
-function _reloadBrief(sym, sym2){
-  var el = document.getElementById('brief-'+sym2);
-  if(el) el.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--tx3)">Searching…</div>';
-  _fetchBrief(sym,'').then(function(b){
-    if(!b) return;
-    _briefCache[sym]=b;
-    var el2=document.getElementById('brief-'+sym2);
-    if(el2) el2.outerHTML=_renderBrief(b,sym);
-  }).catch(function(e){
-    var el2=document.getElementById('brief-'+sym2);
-    if(el2) el2.innerHTML='<div style="padding:10px;font-size:10px;color:var(--tx3)">'+e.message+'</div>';
-  });
-}
-
+// ── Quick links strip ─────────────────────────────────
 function renderNewsTab(s) {
   var sym = s.ticker || s.sym;
   var enc = encodeURIComponent(sym);
@@ -2578,6 +2451,37 @@ function renderNewsTab(s) {
     '<div id="stock-news-list"><div class="u-pad14c">Loading…</div></div></div>';
 }
 
+// ── Pre-market brief renderer ─────────────────────────
+function _renderBrief(b, staleStr) {
+  if(!b || !b.catalyst) return '';
+  var sent = b.sentiment || 'Neutral';
+  var sentColor = sent==='Bullish'?'#00e896': sent==='Bearish'?'#ef5350': sent==='Mixed'?'#ffd54f':'#90a4ae';
+  var sentIcon  = sent==='Bullish'?'▲': sent==='Bearish'?'▼': sent==='Mixed'?'◆':'—';
+
+  function row(label, val, labelColor) {
+    if(!val) return '';
+    return '<div style="margin-bottom:9px">'+
+      '<div style="font-size:9px;font-weight:700;color:'+(labelColor||'var(--tx3)')+';text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px">'+label+'</div>'+
+      '<div style="font-size:12px;color:var(--tx1);line-height:1.5">'+val+'</div>'+
+    '</div>';
+  }
+
+  return '<div style="margin-bottom:10px;border-radius:8px;background:var(--card);border:1px solid var(--b1);border-left:3px solid '+sentColor+'">'+
+    // Header
+    '<div style="padding:9px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px">'+
+      '<span style="font-size:10px;font-weight:800;color:'+sentColor+'">'+sentIcon+' '+sent.toUpperCase()+'</span>'+
+      '<span style="font-size:9px;color:var(--tx3);margin-left:auto">'+(b.as_of||staleStr||'')+'</span>'+
+    '</div>'+
+    // Body
+    '<div style="padding:10px 12px">'+
+      row('Key Catalyst', b.catalyst)+
+      row('Street View', b.street_view)+
+      row('Risk', b.risk, '#ef5350')+
+    '</div>'+
+  '</div>';
+}
+
+// ── News helpers ──────────────────────────────────────
 function _classify(t){
   var tl=(t||'').toLowerCase();
   if(/\bq[1-4]\b|result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))              return {tag:'Results',    imp:'H', c:'#ef5350'};
@@ -2602,61 +2506,48 @@ function _ago(d){
 
 function _trim(t){ return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim(); }
 
+// ── Main loader ───────────────────────────────────────
 async function loadStockNews(sym, name, retry){
   var el = document.getElementById('stock-news-list');
   if(!el) return;
-  var words=(name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(/\s+/).slice(0,3).join(' ');
-  var gnUrl='https://news.google.com/search?q='+encodeURIComponent(words+' NSE')+'&hl=en-IN&gl=IN&ceid=IN:en';
-  var safeN=(name||'').replace(/'/g,"\\'");
-  el.innerHTML='<div class="u-pad14c">Loading…</div>';
+  var words = (name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(/\s+/).slice(0,3).join(' ');
+  var gnUrl = 'https://news.google.com/search?q='+encodeURIComponent(words+' NSE')+'&hl=en-IN&gl=IN&ceid=IN:en';
+  var safeN = (name||'').replace(/'/g,"\\'");
+  el.innerHTML = '<div class="u-pad14c">Loading…</div>';
 
   try {
-    if(retry) _newsDb=null;
+    if(retry) _newsDb = null;
     if(!_newsDb && !_newsDbPromise){
-      var base=(location.pathname.match(/^(\/[^/]+\/)/) || [,''])[1];
-      _newsDbPromise=fetch(base+'data/news.json?_='+Date.now())
-        .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
-        .then(function(d){_newsDb=d;_newsDbPromise=null;return d;})
-        .catch(function(e){_newsDbPromise=null;throw e;});
+      var base = (location.pathname.match(/^(\/[^/]+\/)/) || [,''])[1];
+      _newsDbPromise = fetch(base+'data/news.json?_='+Date.now())
+        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(function(d){ _newsDb=d; _newsDbPromise=null; return d; })
+        .catch(function(e){ _newsDbPromise=null; throw e; });
     }
-    var db=await(_newsDb?Promise.resolve(_newsDb):_newsDbPromise);
-    var staleMin=db.updated?Math.round((Date.now()-new Date(db.updated).getTime())/60000):null;
-    var staleStr=!staleMin?'':staleMin<60?staleMin+'m ago':staleMin<1440?Math.round(staleMin/60)+'h ago':Math.floor(staleMin/1440)+'d ago';
+    var db = await (_newsDb ? Promise.resolve(_newsDb) : _newsDbPromise);
 
-    var entry=(db.news||{})[sym]||[];
-    var items=Array.isArray(entry)?entry:(entry.items||[]);
-    var cutoff=Date.now()-30*86400000;
-    items=items.filter(function(it){
-      return !_noiseRe.test(it.title||'')&&new Date(it.pubDate).getTime()>=cutoff;
+    var staleMin = db.updated ? Math.round((Date.now()-new Date(db.updated).getTime())/60000) : null;
+    var staleStr = !staleMin?'': staleMin<60?staleMin+'m ago': staleMin<1440?Math.round(staleMin/60)+'h ago':Math.floor(staleMin/1440)+'d ago';
+
+    // Support old [] format and new {items,brief} format
+    var entry = (db.news||{})[sym] || [];
+    var items = Array.isArray(entry) ? entry : (entry.items || []);
+    var brief = Array.isArray(entry) ? null  : (entry.brief || null);
+
+    // Filter noise + 1 month; sort newest first
+    var cutoff = Date.now() - 30*86400000;
+    items = items.filter(function(it){
+      return !_noiseRe.test(it.title||'') && new Date(it.pubDate).getTime() >= cutoff;
     });
-    items.sort(function(a,b){return new Date(b.pubDate)-new Date(a.pubDate);});
+    items.sort(function(a,b){ return new Date(b.pubDate)-new Date(a.pubDate); });
 
-    // Brief section
-    var sym2=(sym||'').replace(/[^a-zA-Z0-9]/g,'');
-    var briefHtml='';
-    if(!_getKey()){
-      briefHtml=_apiKeyPrompt();
-    } else if(_briefCache[sym]){
-      briefHtml=_renderBrief(_briefCache[sym],sym);
-    } else {
-      briefHtml='<div id="brief-'+sym2+'" style="padding:12px;border-radius:8px;background:var(--card);border:1px solid var(--b1);border-left:3px solid var(--ac);margin-bottom:10px">'+
-        '<div style="font-size:10px;font-weight:800;color:var(--ac);margin-bottom:4px">🔍 PRE-MARKET BRIEF</div>'+
-        '<div style="font-size:11px;color:var(--tx3)">Searching latest news & sentiment…</div></div>';
-      _fetchBrief(sym,name).then(function(b){
-        if(!b)return;
-        _briefCache[sym]=b;
-        var el2=document.getElementById('brief-'+sym2);
-        if(el2) el2.outerHTML=_renderBrief(b,sym);
-      }).catch(function(e){
-        var el2=document.getElementById('brief-'+sym2);
-        if(el2) el2.innerHTML='<div style="padding:10px;font-size:10px;color:var(--tx3)">Brief failed: '+e.message+
-          (e.message.includes('401')?' &nbsp;<span onclick="localStorage.removeItem(\'ak\');location.reload()" style="color:var(--ac);cursor:pointer">Reset key</span>':'')+'</div>';
-      });
-    }
+    // Brief card
+    var briefHtml = _renderBrief(brief, staleStr);
 
-    var cards=items.map(function(item){
-      var cl=_classify(item.title);
-      var bdr=cl.imp==='L'?'#546e7a44':cl.c;
+    // News cards
+    var cards = items.map(function(item){
+      var cl  = _classify(item.title);
+      var bdr = cl.imp==='L' ? '#546e7a44' : cl.c;
       return '<a href="'+(item.link||gnUrl)+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
         '<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+bdr+'">'+
           '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap">'+
@@ -2669,16 +2560,20 @@ async function loadStockNews(sym, name, retry){
         '</div></a>';
     }).join('');
 
-    var bar='<div style="display:flex;justify-content:space-between;align-items:center;padding:0 0 8px">'+
+    var bar = '<div style="display:flex;justify-content:space-between;align-items:center;padding:0 0 8px">'+
       '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories · 1mo'+(staleStr?' · '+staleStr:'')+'</span>'+
-      '<span onclick="_newsDb=null;loadStockNews(\''+sym+'\',\''+safeN+'\',true)" style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span>'+
+      '<span onclick="_newsDb=null;loadStockNews(\''+sym+'\',\''+safeN+'\',true)" '+
+        'style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span>'+
     '</div>';
 
-    el.innerHTML=bar+briefHtml+(items.length?cards:'<div class="u-pad14c">No news in last month. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>');
+    el.innerHTML = bar + briefHtml +
+      (items.length ? cards : '<div class="u-pad14c">No news in last month. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>');
 
   } catch(e){
-    el.innerHTML='<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
-      '📂 <b>data/news.json</b> not found.<br>Run <b>GitHub Actions → Fetch Stock News</b>.<br><br>'+
+    el.innerHTML =
+      '<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
+      '📂 <b>data/news.json</b> not found.<br>'+
+      'Run <b>GitHub Actions → Fetch Stock News</b> to generate it.<br><br>'+
       '<a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">🔍 Google News ↗</a></div>';
   }
 }
