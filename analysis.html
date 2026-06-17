@@ -2476,6 +2476,35 @@ function _trim(t){
   return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim();
 }
 
+// Generate summary client-side from items (fallback when news.json has no summary)
+function _makeSummary(items){
+  var now = Date.now();
+  var recent = items.filter(function(it){
+    return (now - new Date(it.pubDate).getTime()) < 7*86400000;
+  });
+  if(!recent.length) return '';
+
+  function clean(t){ return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim(); }
+
+  var results=[], corp=[], analyst=[], other=[];
+  recent.slice(0,10).forEach(function(it){
+    var tl=(it.title||'').toLowerCase(), t=clean(it.title);
+    if(/result|profit|loss|revenue|ebitda|earning|\bq[1-4]\b/.test(tl)) results.push(t);
+    else if(/dividend|buyback|split|agm|merger|acqui|order|contract|sebi|penalty|fraud|notice|fine/.test(tl)) corp.push(t);
+    else if(/upgrade|downgrade|target|analyst|outperform|overweight|underweight/.test(tl)) analyst.push(t);
+    else other.push(t);
+  });
+
+  var parts=[];
+  [results,corp,analyst,other].forEach(function(bucket){
+    if(bucket.length && parts.length < 3){
+      var t=bucket[0];
+      parts.push(t.endsWith('.')?t:t+'.');
+    }
+  });
+  return parts.join(' ');
+}
+
 async function loadStockNews(sym, name, retry){
   var el = document.getElementById('stock-news-list');
   if(!el) return;
@@ -2498,27 +2527,27 @@ async function loadStockNews(sym, name, retry){
     var staleMin = db.updated ? Math.round((Date.now()-new Date(db.updated).getTime())/60000) : null;
     var staleStr = !staleMin?'': staleMin<60?staleMin+'m ago': staleMin<1440?Math.round(staleMin/60)+'h ago':Math.floor(staleMin/1440)+'d ago';
 
-    // Support both old {sym:[]} and new {sym:{items:[],summary:''}} formats
+    // Support both formats: old=[] new={items:[],summary:''}
     var entry   = (db.news||{})[sym] || [];
     var items   = Array.isArray(entry) ? entry : (entry.items || []);
     var summary = Array.isArray(entry) ? '' : (entry.summary || '');
 
-    var cutoff = Date.now() - 90*86400000;
+    // Filter: noise + 1 month window
+    var cutoff = Date.now() - 30*86400000;
     items = items.filter(function(it){
       return !_noiseRe.test(it.title||'') && new Date(it.pubDate).getTime() >= cutoff;
     });
 
-    var rank = {H:3,M:2,L:1};
-    items.sort(function(a,b){
-      var ca=_classify(a.title), cb=_classify(b.title);
-      var d=(rank[cb.imp]||1)-(rank[ca.imp]||1);
-      return d!==0?d:new Date(b.pubDate)-new Date(a.pubDate);
-    });
+    // Sort: chronological (newest first)
+    items.sort(function(a,b){ return new Date(b.pubDate) - new Date(a.pubDate); });
 
-    // ── 1. News Summary (from fetch_news.py, last 7 days headlines) ──
+    // Generate summary client-side if not in JSON yet
+    if(!summary) summary = _makeSummary(items);
+
+    // ── Summary card ──
     var summaryHtml = summary
       ? '<div style="margin-bottom:10px;padding:12px 14px;border-radius:8px;background:var(--card);border:1px solid var(--b1);border-left:3px solid #00e896">'+
-          '<div style="display:flex;align-items:center;margin-bottom:8px">'+
+          '<div style="display:flex;align-items:center;margin-bottom:7px">'+
             '<span style="font-size:10px;font-weight:800;letter-spacing:0.5px;color:#00e896">📋 NEWS SUMMARY</span>'+
             '<span style="font-size:9px;color:var(--tx3);margin-left:auto">last 7 days</span>'+
           '</div>'+
@@ -2526,10 +2555,10 @@ async function loadStockNews(sym, name, retry){
         '</div>'
       : '';
 
-    // ── 2. News cards ──
+    // ── News cards (newest first) ──
     var cards = items.map(function(item){
       var cl  = _classify(item.title);
-      var bdr = cl.imp==='L' ? 'transparent' : cl.c;
+      var bdr = cl.imp==='L' ? '#546e7a44' : cl.c;
       return '<a href="'+(item.link||gnUrl)+'" target="_blank" rel="noopener" style="display:block;text-decoration:none">'+
         '<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+bdr+'">'+
           '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap">'+
@@ -2543,13 +2572,13 @@ async function loadStockNews(sym, name, retry){
     }).join('');
 
     var bar = '<div style="display:flex;justify-content:space-between;align-items:center;padding:0 0 8px">'+
-      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories · 3mo'+(staleStr?' · '+staleStr:'')+'</span>'+
+      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories · 1mo'+(staleStr?' · '+staleStr:'')+'</span>'+
       '<span onclick="_newsDb=null;loadStockNews(\''+sym+'\',\''+safeN+'\',true)" style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span>'+
     '</div>';
 
     el.innerHTML = items.length
       ? bar + summaryHtml + cards
-      : bar+'<div class="u-pad14c">No news in last 3 months. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
+      : bar+'<div class="u-pad14c">No news in last month. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
 
   } catch(e){
     el.innerHTML='<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
