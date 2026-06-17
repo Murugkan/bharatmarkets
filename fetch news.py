@@ -69,11 +69,52 @@ def clean_name(name, sym):
 def fetch_for_ticker(sym, name):
     GN = 'https://news.google.com/rss/search?hl=en-IN&gl=IN&ceid=IN:en&q='
     co = clean_name(name, sym)
+
+    # Build relevance keywords for filtering
+    # Use words from company name that are specific (length > 3, not generic)
+    GENERIC = {'india','limited','energy','power','capital','finance','tech',
+               'technologies','services','solutions','group','holdings','corp',
+               'quality','national','general','global','enterprise','ventures'}
+    name_words = [w.lower() for w in re.sub(r"[^a-zA-Z0-9 ]", " ", name).split()
+                  if len(w) > 3 and w.lower() not in GENERIC]
+    sym_lower  = sym.lower()
+
+    # Common English words used as tickers — can't match by ticker word alone
+    COMMON_TICKERS = {
+        'quality','power','oil','coal','gold','steel','glass','solar','wind',
+        'rail','road','port','ship','air','fire','water','gas','salt','sugar',
+        'milk','rice','paper','wood','iron','zinc','lead','silver','copper',
+        'diamond','pearl','star','sun','moon','dawn','prime','first','ace',
+        'pioneer','champion','alpha','omega','titan','atlas','arrow','shield',
+        'crown','capital','fortune','liberty','unity','focus','vision','action'
+    }
+
+    def is_relevant(title):
+        """True if title likely refers to this specific company."""
+        tl = title.lower()
+        # NSE code format is definitive
+        if f'nse:{sym_lower}' in tl or f'(nse:{sym})' in title.upper(): return True
+        # Ticker as standalone word — but only if not a common English word
+        if sym_lower not in COMMON_TICKERS:
+            if re.search(r'\b' + re.escape(sym_lower) + r'\b', tl): return True
+        # 2+ specific company name words present
+        hits = sum(1 for w in name_words if w in tl)
+        if hits >= 2: return True
+        # First 2 words of company name as a phrase
+        co_words = re.sub(r'[^a-zA-Z0-9 ]', ' ', name).split()
+        specific_words = [w for w in co_words if w.lower() not in GENERIC and len(w) > 3]
+        if len(specific_words) >= 2:
+            phrase = (specific_words[0] + ' ' + specific_words[1]).lower()
+            if phrase in tl: return True
+        return False
+
+    # Queries: company full name first (most precise), then ticker
     queries = [
-        GN + urllib.parse.quote(f'{sym} NSE'),
-        GN + urllib.parse.quote(f'{sym} India stock'),
-        GN + urllib.parse.quote(f'{co} NSE India'),
+        GN + urllib.parse.quote(f'"{co}"'),          # exact company name
+        GN + urllib.parse.quote(f'{co} NSE'),         # company + NSE
+        GN + urllib.parse.quote(f'{sym} NSE India'),  # ticker fallback
     ]
+
     cutoff_ts = datetime.now(timezone.utc).timestamp() - CUTOFF_DAYS * 86400
     seen, items = set(), []
     for q in queries:
@@ -81,6 +122,7 @@ def fetch_for_ticker(sym, name):
             key = it['link'] or it['title']
             if not key or key in seen: continue
             if NOISE_RE.search(it['title']): continue
+            if not is_relevant(it['title']): continue   # ← relevance filter
             try:
                 if parsedate_to_datetime(it['pubDate']).timestamp() < cutoff_ts:
                     continue
