@@ -63,9 +63,12 @@ def clean_name(name, sym):
 def fetch_for_ticker(sym, name):
     GN = 'https://news.google.com/rss/search?hl=en-IN&gl=IN&ceid=IN:en&q='
     co = clean_name(name, sym)
+    # Ticker first (most precise), then company name variants
+    # Don't run co-only query if co is too generic (>3 common words)
     queries = [
-        GN + urllib.parse.quote(f'{co} NSE'),
-        GN + urllib.parse.quote(f'{sym} NSE India'),
+        GN + urllib.parse.quote(f'{sym} NSE'),           # CDSL NSE
+        GN + urllib.parse.quote(f'{sym} India stock'),   # CDSL India stock
+        GN + urllib.parse.quote(f'{co} NSE India'),      # Central Depository Services NSE India
     ]
     cutoff_ts = datetime.now(timezone.utc).timestamp() - CUTOFF_DAYS * 86400
     seen, items = set(), []
@@ -83,8 +86,6 @@ def fetch_for_ticker(sym, name):
                 pass  # keep if unparseable
             seen.add(key)
             items.append(it)
-        if len(items) >= MAX_ITEMS:
-            break
     return items[:MAX_ITEMS]
 
 def main():
