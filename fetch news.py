@@ -16,7 +16,10 @@ CUTOFF_DAYS    = 30   # 1 month
 
 NOISE_RE = re.compile(
     r'share price today|live.*stock price|nse/bse|ipo listing|ipo date|ipo price|'
-    r'ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live',
+    r'ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live|'
+    r'most active equities|stocks to watch|stocks in news|top stocks|stocks that|'
+    r'multibagger|penny stock|trading activity today|daily brief india|week ahead|'
+    r'trade spotlight|market wrap|opening bell|closing bell',
     re.IGNORECASE
 )
 
@@ -142,11 +145,20 @@ def build_brief(items):
         sentiment = 'Mixed'
 
     # Catalyst: most important single headline (priority: results > regulatory > corp > analyst > other)
+    # Prefer stock-specific headlines (no comma-separated list of multiple stocks)
+    def is_specific(t):
+        # Roundup articles list 3+ stocks separated by commas
+        parts = t.split(',')
+        return len(parts) < 3
+
     catalyst = ''
     for bucket in [results, regulatory, corp, analyst, other]:
-        if bucket:
-            catalyst = bucket[0]
+        specific = [t for t in bucket if is_specific(t)]
+        if specific:
+            catalyst = specific[0]
             break
+        elif bucket and not catalyst:
+            catalyst = bucket[0]  # fallback to roundup if nothing else
 
     # Risk: look for negative signals in all buckets
     risk = ''
