@@ -3076,11 +3076,39 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     const stocks = getAllReq.result;
                     const quoteKeys = Object.keys(quotes);
                     logProcess('mergeLTPIntoDB: quote keys', quoteKeys.length);
-                    
+
+                    // Build lookup maps for ISIN and scheme_name (nav_ltp.json uses ISIN as key,
+                    // scheme_name for fuzzy name matching when ticker/ISIN both miss)
+                    var isinMap = {};   // isin -> quote
+                    var nameMap = {};   // normalised scheme_name -> quote
+                    quoteKeys.forEach(function(k) {
+                        var q = quotes[k];
+                        if (q && q.scheme_name) {
+                            nameMap[q.scheme_name.toLowerCase().replace(/[^a-z0-9]/g,'')] = q;
+                        }
+                        // Also index the key itself as ISIN if it looks like one (starts with IN + digits/letters)
+                        if (/^IN[A-Z0-9]{10}$/.test(k)) isinMap[k] = q;
+                    });
+
                     stocks.forEach(function(stock) {
                         const ticker = stock.ticker;
-                        // Match by ticker first, then fall back to ISIN (nav_ltp.json uses ISIN as key)
-                        const quote = quotes[ticker] || quotes[stock.isin] || null;
+                        // 1. exact ticker key  2. ISIN key  3. scheme_name fuzzy match
+                        var quote = quotes[ticker] || (stock.isin ? isinMap[stock.isin] : null);
+                        if (!quote) {
+                            var normName = (stock.name || '').toLowerCase().replace(/[^a-z0-9]/g,'');
+                            quote = nameMap[normName] || null;
+                            // partial match: find first scheme_name that contains the stock name or vice versa
+                            if (!quote && normName.length > 4) {
+                                var nameKeys = Object.keys(nameMap);
+                                for (var ni = 0; ni < nameKeys.length; ni++) {
+                                    if (nameKeys[ni].indexOf(normName) !== -1 || normName.indexOf(nameKeys[ni]) !== -1) {
+                                        quote = nameMap[nameKeys[ni]];
+                                        logProcess('NAV matched by name', stock.name + ' -> ' + nameKeys[ni]);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                         
                         if (quote) {
                             if (!stock.price) stock.price = {};
