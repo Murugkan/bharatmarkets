@@ -2422,9 +2422,8 @@ document.addEventListener('DOMContentLoaded', setupChartInteraction);
 // NEWS TAB FUNCTIONS
 // ════════════════════════════════════════════════════════
 
-// Module-level cache: loaded once per session
-var _newsDb = null;          // full parsed news.json
-var _newsDbPromise = null;   // in-flight fetch (avoid parallel fetches)
+var _newsDb = null;
+var _newsDbPromise = null;
 
 function renderNewsTab(s) {
   var sym = s.ticker || s.sym;
@@ -2487,13 +2486,12 @@ function renderItems(items, gnUrl){
     return d!==0 ? d : new Date(b.pubDate)-new Date(a.pubDate);
   });
 
-  // Briefing panel — last 48h grouped by tag
+  // Briefing panel — last 48h
   var now=Date.now();
   var recent=items.filter(function(it){ return (now-new Date(it.pubDate).getTime())<172800000; });
   var briefing='';
   if(recent.length){
     var isToday=recent.some(function(it){ return (now-new Date(it.pubDate).getTime())<86400000; });
-    var label=isToday ? "Today's Briefing" : 'Latest Update';
     var order=['Results','Corp Action','Bulk/Block','Regulatory','Insider','F&O','Analyst','Strategy','General'];
     var groups={}, impRank={H:3,M:2,L:1};
     recent.forEach(function(it){
@@ -2507,7 +2505,7 @@ function renderItems(items, gnUrl){
       var bullets=g.items.slice(0,3).map(function(it){
         return '<li style="margin-bottom:4px">'+it.title.replace(/\s*[-|]\s*[^-|]+$/,'')+'</li>';
       }).join('');
-      var more=g.items.length>3 ? '<li style="color:var(--tx3);list-style:none;margin-left:-18px">+'+(g.items.length-3)+' more</li>' : '';
+      var more=g.items.length>3?'<li style="color:var(--tx3);list-style:none;margin-left:-18px">+'+(g.items.length-3)+' more</li>':'';
       return '<div style="margin-bottom:10px">'+
         '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'+
         '<span>'+g.icon+'</span><span class="badge-tag">'+tag+'</span>'+
@@ -2516,7 +2514,7 @@ function renderItems(items, gnUrl){
         '</div><ul style="margin:0;padding-left:18px;font-size:11px;color:var(--tx1);line-height:1.5">'+bullets+more+'</ul></div>';
     }).join('');
     briefing='<div style="padding:10px 12px;margin-bottom:10px;background:var(--card);border:1px solid var(--b1);border-radius:8px">'+
-      '<div class="sec-lbl" style="margin-bottom:8px">📅 '+label+
+      '<div class="sec-lbl" style="margin-bottom:8px">📅 '+(isToday?"Today's Briefing":'Latest Update')+
       ' <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:normal">('+
       recent.length+' stor'+(recent.length===1?'y':'ies')+')</span></div>'+secs+'</div>';
   }
@@ -2539,25 +2537,14 @@ function renderItems(items, gnUrl){
   return briefing+cards;
 }
 
-// Load data/news.json once per session, shared across all ticker views
 function loadNewsDb(forceRefresh){
   if(_newsDb && !forceRefresh) return Promise.resolve(_newsDb);
   if(_newsDbPromise && !forceRefresh) return _newsDbPromise;
   var base=(location.pathname.match(/^(\/[^/]+\/)/) || [,''])[1];
-  _newsDbPromise = fetch(base+'data/news.json')
-    .then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
-    })
-    .then(function(d){
-      _newsDb = d;
-      _newsDbPromise = null;
-      return d;
-    })
-    .catch(function(e){
-      _newsDbPromise = null;
-      throw e;
-    });
+  _newsDbPromise = fetch(base+'data/news.json?_='+Date.now())
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(d){ _newsDb=d; _newsDbPromise=null; return d; })
+    .catch(function(e){ _newsDbPromise=null; throw e; });
   return _newsDbPromise;
 }
 
@@ -2565,39 +2552,33 @@ async function loadStockNews(sym, name, retry){
   var el=document.getElementById('stock-news-list');
   if(!el) return;
 
-  var gnUrl='https://news.google.com/search?q='+encodeURIComponent((name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(' ').slice(0,3).join(' ')+' NSE')+'&hl=en-IN&gl=IN&ceid=IN:en';
+  var words=(name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(/\s+/).slice(0,3).join(' ');
+  var gnUrl='https://news.google.com/search?q='+encodeURIComponent(words+' NSE')+'&hl=en-IN&gl=IN&ceid=IN:en';
   var safeName=(name||'').replace(/'/g,"\\'");
 
   el.innerHTML='<div class="u-pad14c">Loading news…</div>';
 
   try {
-    var db = await loadNewsDb(retry);
-    var items = (db.news || {})[sym] || [];
+    if(retry) _newsDb=null;
+    var db = await loadNewsDb();
+    var items = (db.news||{})[sym] || [];
     var updated = db.updated ? new Date(db.updated) : null;
     var staleMins = updated ? Math.round((Date.now()-updated.getTime())/60000) : null;
-    var staleStr = staleMins !== null
-      ? (staleMins<60 ? staleMins+'m ago' : Math.round(staleMins/60)+'h ago')
-      : '';
-
-    if(!items.length){
-      el.innerHTML='<div class="u-pad14c">No news for '+sym+'. <a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">Google News ↗</a></div>';
-      return;
-    }
+    var staleStr = staleMins===null ? '' : staleMins<60 ? staleMins+'m ago' : Math.round(staleMins/60)+'h ago';
 
     var bar='<div style="display:flex;justify-content:space-between;padding:4px 0 8px;align-items:center">'+
-      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories'+(staleStr?' · '+staleStr:'')+'</span>'+
+      '<span style="font-size:9px;color:var(--tx3)">'+items.length+' stories'+(staleStr?' · fetched '+staleStr:'')+'</span>'+
       '<span onclick="_newsDb=null;loadStockNews(\''+sym+'\',\''+safeName+'\',true)" '+
       'style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span></div>';
 
     el.innerHTML = bar + renderItems(items, gnUrl);
 
   } catch(e) {
-    // news.json doesn't exist yet — first run pending
     el.innerHTML=
       '<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
       '📂 <b>data/news.json</b> not found.<br>'+
-      'Go to <b>GitHub → Actions → Fetch Stock News → Run workflow</b> to generate it.<br><br>'+
-      '<a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">🔍 Google News in the meantime ↗</a>'+
+      'Run <b>GitHub Actions → Fetch Stock News</b> to generate it.<br><br>'+
+      '<a href="'+gnUrl+'" target="_blank" style="color:var(--ac)">🔍 Google News ↗</a>'+
       '</div>';
   }
 }
