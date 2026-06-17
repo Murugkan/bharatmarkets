@@ -2426,41 +2426,11 @@ var _newsDb = null;
 var _newsDbPromise = null;
 var _noiseRe = /share price today|live.*stock price|nse\/bse|ipo listing|ipo date|ipo price|ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live|most active equities|stocks to watch|stocks in news|top stocks|daily brief india|trade spotlight|market wrap|opening bell|closing bell/i;
 
-// ── In-app browser ─────────────────────────────────────
-// Google News RSS links are redirect URLs — navigate to them
-// directly so the browser follows the redirect to the real article.
-// We use window.location for navigation (keeps back button working).
-
+// All links open in same tab — Safari ← Back returns to app
 function _openLink(url) {
-  // Google News RSS article redirect — open in same tab so Safari back works
-  if(url.indexOf('news.google.com/rss/articles') !== -1 ||
-     url.indexOf('news.google.com/rss') !== -1) {
-    window.location.href = url;
-    return;
-  }
-  // For other URLs, show in-app iframe overlay
-  var old = document.getElementById('_iab');
-  if(old) old.remove();
-
-  var overlay = document.createElement('div');
-  overlay.id = '_iab';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#060c18;display:flex;flex-direction:column';
-
-  overlay.innerHTML =
-    '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#0a1628;border-bottom:1px solid #1a2c45;flex-shrink:0">'+
-      '<button onclick="document.getElementById(\'_iab\').remove()" '+
-        'style="background:#1a2c45;border:none;color:#00f2ff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer">'+
-        '← Back</button>'+
-      '<div id="_iab_url" style="font-size:9px;color:#546e7a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+url+'</div>'+
-    '</div>'+
-    '<iframe id="_iab_frame" src="'+url+'" style="flex:1;border:none;width:100%" '+
-      'sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation">'+
-    '</iframe>';
-
-  document.body.appendChild(overlay);
+  window.location.href = url;
 }
 
-// ── Quick links ─────────────────────────────────────────
 function renderNewsTab(s) {
   var sym = s.ticker || s.sym;
   var enc = encodeURIComponent(sym);
@@ -2487,7 +2457,6 @@ function renderNewsTab(s) {
     '<div id="stock-news-list"><div class="u-pad14c">Loading…</div></div></div>';
 }
 
-// ── Pre-market brief ────────────────────────────────────
 function _renderBrief(b, staleStr) {
   if(!b || !b.catalyst) return '';
   var sent = b.sentiment || 'Neutral';
@@ -2511,7 +2480,6 @@ function _renderBrief(b, staleStr) {
     '</div></div>';
 }
 
-// ── Helpers ─────────────────────────────────────────────
 function _classify(t){
   var tl=(t||'').toLowerCase();
   if(/\bq[1-4]\b|result|earning|profit|loss|revenue|quarterly|pat |ebitda/.test(tl))              return {tag:'Results',    imp:'H', c:'#ef5350'};
@@ -2524,6 +2492,7 @@ function _classify(t){
   if(/capex|expansion|plant|capacity|launch|appoint|resign|guidance|forecast|deal|partner/.test(tl)) return {tag:'Strategy',  imp:'M', c:'#ffd54f'};
   return {tag:'General', imp:'L', c:'#546e7a'};
 }
+
 function _ago(d){
   if(!d||isNaN(d)) return '';
   var s=Math.floor((Date.now()-d)/1000);
@@ -2532,9 +2501,9 @@ function _ago(d){
   var days=Math.floor(s/86400);
   return days<30?days+'d ago':Math.floor(days/30)+'mo ago';
 }
+
 function _trim(t){ return (t||'').replace(/\s+[-–|]\s+.{2,25}$/, '').trim(); }
 
-// ── Main loader ──────────────────────────────────────────
 async function loadStockNews(sym, name, retry){
   var el = document.getElementById('stock-news-list');
   if(!el) return;
@@ -2565,14 +2534,12 @@ async function loadStockNews(sym, name, retry){
     });
     items.sort(function(a,b){return new Date(b.pubDate)-new Date(a.pubDate);});
 
-    var briefHtml=_renderBrief(brief,staleStr);
-
     var cards=items.map(function(item){
       var cl=_classify(item.title);
       var bdr=cl.imp==='L'?'#546e7a44':cl.c;
       var url=(item.link||gnUrl).replace(/'/g,'%27');
       return '<div onclick="_openLink(\''+url+'\')" '+
-        'style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+bdr+';cursor:pointer;-webkit-tap-highlight-color:rgba(255,255,255,0.05)">'+
+        'style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);border-left:3px solid '+bdr+';cursor:pointer">'+
         '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap">'+
           '<span style="font-size:10px;font-weight:700;color:var(--ac)">'+(item.source||'News')+'</span>'+
           (cl.imp!=='L'?'<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:'+cl.c+'20;color:'+cl.c+'">'+cl.imp+'</span>':'')+
@@ -2589,9 +2556,9 @@ async function loadStockNews(sym, name, retry){
         'style="font-size:9px;color:var(--ac);cursor:pointer;text-decoration:underline">↺ Reload</span>'+
     '</div>';
 
-    el.innerHTML=bar+briefHtml+(items.length?cards:
-      '<div class="u-pad14c">No news in last month. '+
-      '<span onclick="_openLink(\''+gnUrl+'\')" style="color:var(--ac);cursor:pointer">Google News ↗</span></div>');
+    el.innerHTML=bar+_renderBrief(brief,staleStr)+
+      (items.length?cards:'<div class="u-pad14c">No news in last month. '+
+        '<span onclick="_openLink(\''+gnUrl+'\')" style="color:var(--ac);cursor:pointer">Google News ↗</span></div>');
 
   } catch(e){
     el.innerHTML='<div style="padding:12px;font-size:11px;color:var(--tx2);line-height:1.8">'+
