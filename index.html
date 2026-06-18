@@ -513,8 +513,8 @@ const resolve = (obj, field) => {
         'SIGNAL':        { paths: ['derived_metrics.calculated_metrics.rating'] },
         'PNL':           { paths: ['pnl'] },
         'PNL%':          { paths: ['pnlPct'] },
-        '1D%':           { paths: ['price.ltp.changePct', 'price.ltp.change_pct', 'price.ltp_change_pct', '_1dChangePct'] },
-        '1DG%':          { paths: ['price.ltp.changePct', 'price.ltp.change_pct', 'price.ltp_change_pct', '_1dChangePct'] },
+        '1D%':           { paths: ['price.ltp.change_pct', 'price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
+        '1DG%':          { paths: ['price.ltp.change_pct', 'price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
         '1DCH':          { paths: ['price.ltp.change', 'price.ltp_change', '_1dChange'] },
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
@@ -549,8 +549,8 @@ const resolve = (obj, field) => {
         'DII%':          { fn: s => _latest(s?.company_details?.shareholding?.pattern?.diis) },
         'ATH%':          { fn: s => { const v = s?.price?.week52_high_diff_pct; return v != null ? v * 100 : undefined; }},
         '52W%':          { fn: s => { const v = s?.price?.week52_low_diff_pct; return v != null ? v * 100 : undefined; }},
-        'W52H':          { paths: ['price.52_week.high'] },
-        'W52L':          { paths: ['price.52_week.low'] },
+        'W52H':          { paths: ['price.52_week.high', 'price.week52.high'] },
+        'W52L':          { paths: ['price.52_week.low', 'price.week52.low'] },
         'OPEN':          { paths: ['price.ltp.open'] },
         'HIGH':          { paths: ['price.ltp.high'] },
         'LOW':           { paths: ['price.ltp.low'] },
@@ -817,26 +817,28 @@ function enrichStock(stock) {
     const avg = cleanNum(resolve(stock, 'AVG'));
     const ltp = cleanNum(resolve(stock, 'LTP'));
 
-    // Read change/changePct directly from ltp object with fallback computation
+    // Read change directly from ltp object (handles market_data.json and ltp.json formats)
     const ltpObj = stock?.price?.ltp;
     const ltpIsObj = ltpObj && typeof ltpObj === 'object';
     const prev = ltpIsObj ? cleanNum(ltpObj.prev_close ?? 0) : 0;
 
-    // change: use stored value, or compute from price - prev_close
+    // change: stored value or compute from ltp - prev_close
     let change = ltpIsObj ? (ltpObj.change ?? null) : (stock?.price?.ltp_change ?? null);
     if (change === null || change === undefined) {
         change = (ltp && prev) ? (ltp - prev) : 0;
     }
     change = cleanNum(change);
 
-    // changePct: use stored value, or compute from change / prev_close
-    let changePct = ltpIsObj ? (ltpObj.changePct ?? ltpObj.change_pct ?? null) : (stock?.price?.ltp_change_pct ?? null);
+    // changePct: stored value (already a % e.g. -0.297) or compute
+    let changePct = ltpIsObj
+        ? (ltpObj.change_pct ?? ltpObj.changePct ?? null)
+        : (stock?.price?.ltp_change_pct ?? null);
     if (changePct === null || changePct === undefined) {
         changePct = (change && prev) ? (change / prev) * 100 : 0;
     }
     changePct = cleanNum(changePct);
 
-    // Write computed values back so resolve() can find them as flat keys
+    // Write flat keys so resolve() fallbacks find them
     if (change)    stock._1dChange    = change;
     if (changePct) stock._1dChangePct = changePct;
 
