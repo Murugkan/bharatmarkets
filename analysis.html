@@ -444,7 +444,7 @@ function getSignalCounts(stock) {
 const tbdLink = (label) => {
     const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
     const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
-    return `<a href="javascript:void(0)" onclick="window.location.href='${googleSearch.replace(/'/g,'%27')}'" class="tbd-link" title="Search: ${label}">TBD</a>`;
+    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
 };
 
 // Get URL param
@@ -2431,22 +2431,32 @@ function _openLink(url){ window.location.href = url; }
 function renderNewsTab(s) {
   var sym  = s.ticker || s.sym;
   var enc  = encodeURIComponent(sym);
-  var co   = (s.name||sym).replace(/[^a-zA-Z0-9 ]/g,' ').trim().split(/\s+/).slice(0,3).join(' ');
-  var gUrl = 'https://www.google.com/search?q=' + encodeURIComponent(co + ' NSE stock news today');
 
-  var googleBtn =
+  // Use company name for Google search — cleaner & more specific than ticker
+  var STOP = /\b(ltd|limited|pvt|private|inc|corp|llp|mob|and|the)\b/gi;
+  var co = (s.name || sym)
+    .replace(/[^a-zA-Z0-9 ]/g, ' ')
+    .replace(STOP, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 4)
+    .join(' ');
+  var gUrl = 'https://www.google.com/search?q=' + encodeURIComponent(co + ' NSE stock news');
+
+  // Google pill — first in strip, full Google logo
+  var googlePill =
     '<a href="javascript:void(0)" onclick="_openLink(\''+gUrl.replace(/'/g,'%27')+'\')" '+
-    'style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;'+
-    'margin-bottom:10px;cursor:pointer;text-decoration:none;'+
-    'background:linear-gradient(135deg,#1a237e22,#1565c022);border:1px solid #4285f455">'+
-    '<svg width="16" height="16" viewBox="0 0 24 24">'+
+    'style="flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:5px 11px;'+
+    'border-radius:20px;border:1px solid #4285f455;background:#4285f415;'+
+    'text-decoration:none;white-space:nowrap;cursor:pointer">'+
+    '<svg width="13" height="13" viewBox="0 0 24 24">'+
       '<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>'+
       '<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>'+
       '<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>'+
       '<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>'+
     '</svg>'+
-    '<span style="font-size:12px;font-weight:700;color:#fff">Google — Latest news &amp; AI overview</span>'+
-    '<span style="font-size:10px;color:#4285f4;margin-left:auto">↗</span></a>';
+    '<span style="font-size:11px;font-weight:700;color:#fff">Google</span></a>';
 
   var links = [
     {l:'NSE',         u:'https://www.nseindia.com/get-quotes/equity?symbol='+enc,   c:'#2196f3'},
@@ -2458,16 +2468,19 @@ function renderNewsTab(s) {
     {l:'ET Markets',  u:'https://economictimes.indiatimes.com/topic/'+enc,          c:'#f97316'},
     {l:'Chart',       u:'https://in.tradingview.com/symbols/NSE-'+enc+'/',          c:'#64b5f6'},
   ];
+  var otherPills = links.map(function(lk){
+    var u=lk.u.replace(/'/g,'%27');
+    return '<a href="javascript:void(0)" onclick="_openLink(\''+u+'\')" '+
+      'style="flex:0 0 auto;padding:5px 11px;border-radius:20px;border:1px solid '+lk.c+'55;'+
+      'background:'+lk.c+'15;color:'+lk.c+';font-size:11px;font-weight:700;'+
+      'text-decoration:none;white-space:nowrap;cursor:pointer">'+lk.l+'</a>';
+  }).join('');
+
   var strip = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;-webkit-overflow-scrolling:touch;scrollbar-width:none">'+
-    links.map(function(lk){
-      var u=lk.u.replace(/'/g,'%27');
-      return '<a href="javascript:void(0)" onclick="_openLink(\''+u+'\')" '+
-        'style="flex:0 0 auto;padding:5px 11px;border-radius:20px;border:1px solid '+lk.c+'55;'+
-        'background:'+lk.c+'15;color:'+lk.c+';font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;cursor:pointer">'+lk.l+'</a>';
-    }).join('')+'</div>';
+    googlePill + otherPills + '</div>';
 
   setTimeout(function(){ loadStockNews(sym, s.name); }, 50);
-  return '<div style="padding:10px 12px">'+googleBtn+strip+
+  return '<div style="padding:10px 12px">' + strip +
     '<div id="stock-news-list"><div class="u-pad14c">Loading…</div></div></div>';
 }
 
