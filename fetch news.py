@@ -138,6 +138,10 @@ def fetch_for_ticker(sym, name):
     return items[:MAX_ITEMS]
 
 
+def clean_title(t):
+    """Strip trailing ' - Source Name' suffix."""
+    return re.sub(r'\s*[-–|]\s*.{2,28}$', '', t or '').strip()
+
 def build_brief(items):
     """
     Generates a structured pre-market brief from real fetched headlines.
