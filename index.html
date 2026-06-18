@@ -513,9 +513,9 @@ const resolve = (obj, field) => {
         'SIGNAL':        { paths: ['derived_metrics.calculated_metrics.rating'] },
         'PNL':           { paths: ['pnl'] },
         'PNL%':          { paths: ['pnlPct'] },
-        '1D%':           { paths: ['price.ltp.change_pct', 'price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
-        '1DG%':          { paths: ['price.ltp.change_pct', 'price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
-        '1DCH':          { paths: ['price.ltp.change', 'price.ltp_change', '_1dChange'] },
+        '1D%':           { paths: ['_1dChangePct', 'price.ltp.change_pct', 'price.ltp.changePct', 'price.ltp_change_pct'] },
+        '1DG%':          { paths: ['_1dChangePct', 'price.ltp.change_pct', 'price.ltp.changePct', 'price.ltp_change_pct'] },
+        '1DCH':          { paths: ['_1dChange', 'price.ltp.change', 'price.ltp_change'] },
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
         'LTP':           { paths: ['price.ltp.price', 'price.ltp_nav', 'price.ltp'] },
@@ -817,35 +817,34 @@ function enrichStock(stock) {
     const avg = cleanNum(resolve(stock, 'AVG'));
     const ltp = cleanNum(resolve(stock, 'LTP'));
 
-    // Read change directly from ltp object (handles market_data.json and ltp.json formats)
+    // Read change/changePct from ltp object directly (supports both market_data and ltp.json formats)
     const ltpObj = stock?.price?.ltp;
     const ltpIsObj = ltpObj && typeof ltpObj === 'object';
     const prev = ltpIsObj ? cleanNum(ltpObj.prev_close ?? 0) : 0;
 
-    // change: stored value or compute from ltp - prev_close
-    let change = ltpIsObj ? (ltpObj.change ?? null) : (stock?.price?.ltp_change ?? null);
-    if (change === null || change === undefined) {
-        change = (ltp && prev) ? (ltp - prev) : 0;
-    }
-    change = cleanNum(change);
+    // change: use stored value (may be 0 legitimately), compute only if missing
+    const rawChange = ltpIsObj
+        ? (ltpObj.change !== undefined && ltpObj.change !== null ? ltpObj.change : null)
+        : (stock?.price?.ltp_change !== undefined ? stock.price.ltp_change : null);
+    const change = rawChange !== null ? cleanNum(rawChange)
+        : (ltp && prev ? ltp - prev : 0);
 
-    // changePct: stored value (already a % e.g. -0.297) or compute
-    let changePct = ltpIsObj
-        ? (ltpObj.change_pct ?? ltpObj.changePct ?? null)
-        : (stock?.price?.ltp_change_pct ?? null);
-    if (changePct === null || changePct === undefined) {
-        changePct = (change && prev) ? (change / prev) * 100 : 0;
-    }
-    changePct = cleanNum(changePct);
+    // changePct: change_pct (snake, market_data.json) or changePct (camel, ltp.json merged)
+    const rawPct = ltpIsObj
+        ? (ltpObj.change_pct !== undefined && ltpObj.change_pct !== null ? ltpObj.change_pct
+           : ltpObj.changePct !== undefined && ltpObj.changePct !== null ? ltpObj.changePct : null)
+        : (stock?.price?.ltp_change_pct !== undefined ? stock.price.ltp_change_pct : null);
+    const changePct = rawPct !== null ? cleanNum(rawPct)
+        : (change && prev ? (change / prev) * 100 : 0);
 
-    // Write flat keys so resolve() fallbacks find them
-    if (change)    stock._1dChange    = change;
-    if (changePct) stock._1dChangePct = changePct;
+    // Always write flat keys so resolve() finds them regardless of ltp.json overwrite
+    stock._1dChange    = change;
+    stock._1dChangePct = changePct;
 
     if (qty && avg)              stock.invested  = qty * avg;
     if (qty && avg && ltp)       stock.pnl       = (ltp - avg) * qty;
     if (avg && ltp)              stock.pnlPct    = ((ltp - avg) / avg) * 100;
-    if (change)                  stock['1dGain'] = change * qty;
+    stock['1dGain']              = change * qty;
     
     // Calculate ATH% = ((LTP - 52W High) / 52W High) * 100
     const w52h = cleanNum(resolve(stock, 'W52H'));
