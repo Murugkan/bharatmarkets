@@ -513,8 +513,8 @@ const resolve = (obj, field) => {
         'SIGNAL':        { paths: ['derived_metrics.calculated_metrics.rating'] },
         'PNL':           { paths: ['pnl'] },
         'PNL%':          { paths: ['pnlPct'] },
-        '1D%':           { paths: ['price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
-        '1DG%':          { paths: ['price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
+        '1D%':           { paths: ['price.ltp.changePct', 'price.ltp.change_pct', 'price.ltp_change_pct', '_1dChangePct'] },
+        '1DG%':          { paths: ['price.ltp.changePct', 'price.ltp.change_pct', 'price.ltp_change_pct', '_1dChangePct'] },
         '1DCH':          { paths: ['price.ltp.change', 'price.ltp_change', '_1dChange'] },
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
@@ -817,22 +817,33 @@ function enrichStock(stock) {
     const avg = cleanNum(resolve(stock, 'AVG'));
     const ltp = cleanNum(resolve(stock, 'LTP'));
 
-    // Read change/changePct directly from ltp object (handles both object and flat structures)
+    // Read change/changePct directly from ltp object with fallback computation
     const ltpObj = stock?.price?.ltp;
     const ltpIsObj = ltpObj && typeof ltpObj === 'object';
-    const change    = ltpIsObj ? cleanNum(ltpObj.change    ?? ltpObj.Change    ?? 0)
-                               : cleanNum(stock?.price?.ltp_change ?? 0);
-    const changePct = ltpIsObj ? cleanNum(ltpObj.changePct ?? ltpObj.ChangePct ?? 0)
-                               : cleanNum(stock?.price?.ltp_change_pct ?? 0);
+    const prev = ltpIsObj ? cleanNum(ltpObj.prev_close ?? 0) : 0;
 
-    // Write to flat keys so resolve() path-fallbacks can find them
+    // change: use stored value, or compute from price - prev_close
+    let change = ltpIsObj ? (ltpObj.change ?? null) : (stock?.price?.ltp_change ?? null);
+    if (change === null || change === undefined) {
+        change = (ltp && prev) ? (ltp - prev) : 0;
+    }
+    change = cleanNum(change);
+
+    // changePct: use stored value, or compute from change / prev_close
+    let changePct = ltpIsObj ? (ltpObj.changePct ?? ltpObj.change_pct ?? null) : (stock?.price?.ltp_change_pct ?? null);
+    if (changePct === null || changePct === undefined) {
+        changePct = (change && prev) ? (change / prev) * 100 : 0;
+    }
+    changePct = cleanNum(changePct);
+
+    // Write computed values back so resolve() can find them as flat keys
     if (change)    stock._1dChange    = change;
     if (changePct) stock._1dChangePct = changePct;
 
     if (qty && avg)              stock.invested  = qty * avg;
     if (qty && avg && ltp)       stock.pnl       = (ltp - avg) * qty;
     if (avg && ltp)              stock.pnlPct    = ((ltp - avg) / avg) * 100;
-    if (qty && change)           stock['1dGain'] = change * qty;
+    if (change)                  stock['1dGain'] = change * qty;
     
     // Calculate ATH% = ((LTP - 52W High) / 52W High) * 100
     const w52h = cleanNum(resolve(stock, 'W52H'));
