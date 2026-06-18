@@ -280,7 +280,7 @@ def run_amfi_nav():
         if not scheme_code:
             continue
         history = fetch_historical_nav(scheme_code)
-        entry['_history'] = history  # store for 1D change computation
+        entry['_history'] = history
         returns = compute_returns(history)
         if returns:
             entry['returns'] = returns
@@ -289,21 +289,18 @@ def run_amfi_nav():
     # Normalise to ltp key for consistency
     result = {}
     for isin, entry in matched.items():
-        scheme_code = entry.get('scheme_code')
-        # Compute 1D change from last two NAV entries in history
         change = None
         change_pct = None
-        if scheme_code and entry.get('_history'):
-            hist = entry['_history']
-            if len(hist) >= 2:
-                try:
-                    curr_nav = float(hist[0]['nav'])
-                    prev_nav = float(hist[1]['nav'])
-                    if prev_nav > 0:
-                        change = round(curr_nav - prev_nav, 4)
-                        change_pct = round((curr_nav - prev_nav) / prev_nav * 100, 4)
-                except (ValueError, KeyError, TypeError):
-                    pass
+        hist = entry.get('_history', [])
+        if len(hist) >= 2:
+            try:
+                curr_nav = float(hist[0]['nav'])
+                prev_nav = float(hist[1]['nav'])
+                if prev_nav > 0:
+                    change = round(curr_nav - prev_nav, 4)
+                    change_pct = round((curr_nav - prev_nav) / prev_nav * 100, 4)
+            except (ValueError, KeyError, TypeError):
+                pass
 
         result[isin] = {
             'ltp': entry.get('nav'),
@@ -536,7 +533,7 @@ def main():
             prev = prev_nav_ltp.get(symbol, {})
             prev_ltp = prev.get('ltp')
             curr_ltp = entry.get('ltp')
-            if prev_ltp and curr_ltp and prev_ltp != curr_ltp:
+            if prev_ltp and curr_ltp:
                 entry['change'] = round(curr_ltp - prev_ltp, 2)
                 entry['changePct'] = round((curr_ltp - prev_ltp) / prev_ltp * 100, 3)
             else:
@@ -548,12 +545,11 @@ def main():
 
     try:
         qsif = run_qsif_nav()
-        # Compute 1D change for QSIF by comparing to previous run
         for symbol, entry in qsif.items():
             prev = prev_nav_ltp.get(symbol, {})
             prev_ltp = prev.get('ltp')
             curr_ltp = entry.get('ltp')
-            if prev_ltp and curr_ltp and prev_ltp != curr_ltp:
+            if prev_ltp and curr_ltp:
                 entry['change'] = round(curr_ltp - prev_ltp, 4)
                 entry['changePct'] = round((curr_ltp - prev_ltp) / prev_ltp * 100, 4)
             else:
