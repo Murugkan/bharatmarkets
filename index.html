@@ -513,9 +513,9 @@ const resolve = (obj, field) => {
         'SIGNAL':        { paths: ['derived_metrics.calculated_metrics.rating'] },
         'PNL':           { paths: ['pnl'] },
         'PNL%':          { paths: ['pnlPct'] },
-        '1D%':           { paths: ['price.ltp.changePct', 'price.ltp_change_pct'] },
-        '1DG%':          { paths: ['price.ltp.changePct', 'price.ltp_change_pct'] },
-        '1DCH':          { paths: ['price.ltp.change', 'price.ltp_change'] },
+        '1D%':           { paths: ['price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
+        '1DG%':          { paths: ['price.ltp.changePct', 'price.ltp_change_pct', '_1dChangePct'] },
+        '1DCH':          { paths: ['price.ltp.change', 'price.ltp_change', '_1dChange'] },
         '1DG':           { paths: ['1dGain'] },
         '1D_GAIN':       { paths: ['1dGain'] },
         'LTP':           { paths: ['price.ltp.price', 'price.ltp_nav', 'price.ltp'] },
@@ -816,11 +816,22 @@ function enrichStock(stock) {
     const qty = cleanNum(resolve(stock, 'QTY'));
     const avg = cleanNum(resolve(stock, 'AVG'));
     const ltp = cleanNum(resolve(stock, 'LTP'));
-    const change = cleanNum(resolve(stock, '1DCH'));
 
-    if (qty && avg)              stock.invested = qty * avg;
-    if (qty && avg && ltp)       stock.pnl      = (ltp - avg) * qty;
-    if (avg && ltp)              stock.pnlPct   = ((ltp - avg) / avg) * 100;
+    // Read change/changePct directly from ltp object (handles both object and flat structures)
+    const ltpObj = stock?.price?.ltp;
+    const ltpIsObj = ltpObj && typeof ltpObj === 'object';
+    const change    = ltpIsObj ? cleanNum(ltpObj.change    ?? ltpObj.Change    ?? 0)
+                               : cleanNum(stock?.price?.ltp_change ?? 0);
+    const changePct = ltpIsObj ? cleanNum(ltpObj.changePct ?? ltpObj.ChangePct ?? 0)
+                               : cleanNum(stock?.price?.ltp_change_pct ?? 0);
+
+    // Write to flat keys so resolve() path-fallbacks can find them
+    if (change)    stock._1dChange    = change;
+    if (changePct) stock._1dChangePct = changePct;
+
+    if (qty && avg)              stock.invested  = qty * avg;
+    if (qty && avg && ltp)       stock.pnl       = (ltp - avg) * qty;
+    if (avg && ltp)              stock.pnlPct    = ((ltp - avg) / avg) * 100;
     if (qty && change)           stock['1dGain'] = change * qty;
     
     // Calculate ATH% = ((LTP - 52W High) / 52W High) * 100
