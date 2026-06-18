@@ -444,7 +444,7 @@ function getSignalCounts(stock) {
 const tbdLink = (label) => {
     const searchQuery = `${currentStock?.ticker || 'stock'} ${label}`;
     const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
-    return `<a href="${googleSearch}" target="_blank" class="tbd-link" title="Search: ${label}">TBD</a>`;
+    return `<a href="javascript:void(0)" onclick="window.location.href='${googleSearch.replace(/'/g,'%27')}'" class="tbd-link" title="Search: ${label}">TBD</a>`;
 };
 
 // Get URL param
@@ -2416,9 +2416,7 @@ function setupChartInteraction(){
   const v=document.getElementById('cv-vol');
   if(v){v.ontouchstart=ts;v.addEventListener('touchmove',tm,{passive:false});v.ontouchend=te;}
 }
-document.addEventListener('DOMContentLoaded', setupChartInteraction);
-
-// ════════════════════════════════════════════════════════
+document.addEve// ════════════════════════════════════════════════════════
 // NEWS TAB FUNCTIONS
 // ════════════════════════════════════════════════════════
 
@@ -2432,8 +2430,9 @@ function renderNewsTab(s) {
   var sym  = s.ticker || s.sym;
   var enc  = encodeURIComponent(sym);
 
-  // Use company name for Google search — cleaner & more specific than ticker
-  var STOP = /\b(ltd|limited|pvt|private|inc|corp|llp|mob|and|the)\b/gi;
+  // Build clean company name for Google search
+  // Use full name, strip legal suffixes, keep meaningful words
+  var STOP = /\b(ltd|limited|pvt|private|inc|corp|llp|mob|and|the|of)\b/gi;
   var co = (s.name || sym)
     .replace(/[^a-zA-Z0-9 ]/g, ' ')
     .replace(STOP, ' ')
@@ -2442,9 +2441,12 @@ function renderNewsTab(s) {
     .split(' ')
     .slice(0, 4)
     .join(' ');
-  var gUrl = 'https://www.google.com/search?q=' + encodeURIComponent(co + ' NSE stock news');
 
-  // Google pill — first in strip, full Google logo
+  // Query gives Google enough context for AI Overview to surface:
+  // earnings, results, regulatory news, analyst views, price movement
+  var gQuery = co + ' latest news results earnings today';
+  var gUrl   = 'https://www.google.com/search?q=' + encodeURIComponent(gQuery);
+
   var googlePill =
     '<a href="javascript:void(0)" onclick="_openLink(\''+gUrl.replace(/'/g,'%27')+'\')" '+
     'style="flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:5px 11px;'+
@@ -2477,10 +2479,10 @@ function renderNewsTab(s) {
   }).join('');
 
   var strip = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;-webkit-overflow-scrolling:touch;scrollbar-width:none">'+
-    googlePill + otherPills + '</div>';
+    googlePill+otherPills+'</div>';
 
   setTimeout(function(){ loadStockNews(sym, s.name); }, 50);
-  return '<div style="padding:10px 12px">' + strip +
+  return '<div style="padding:10px 12px">'+strip+
     '<div id="stock-news-list"><div class="u-pad14c">Loading…</div></div></div>';
 }
 
