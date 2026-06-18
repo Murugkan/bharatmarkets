@@ -3139,8 +3139,10 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                                 stock.price.ltp.low = quote.low;
                                 stock.price.ltp.prev_close = quote.prev;
                                 stock.price.ltp.change = quote.change;
-                                stock.price.ltp.changePct = quote.changePct;        // camelCase — used by signals
-                                stock.price.ltp.change_pct = quote.changePct;       // snake_case — consistency
+                                if (quote.changePct !== null && quote.changePct !== undefined) {
+                                    stock.price.ltp.changePct  = quote.changePct;
+                                    stock.price.ltp.change_pct = quote.changePct;
+                                }
                                 stock.price.ltp.day_volume = quote.vol;
                                 if (!stock.price['52_week']) stock.price['52_week'] = {};
                                 stock.price['52_week'].high = quote.w52h;
@@ -3403,8 +3405,10 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                                     stock.price.ltp.low        = quote.low;
                                     stock.price.ltp.prev_close = quote.prev;
                                     stock.price.ltp.change     = quote.change;
-                                    stock.price.ltp.changePct  = quote.changePct;
-                                    stock.price.ltp.change_pct = quote.changePct;
+                                    if (quote.changePct !== null && quote.changePct !== undefined) {
+                                        stock.price.ltp.changePct  = quote.changePct;
+                                        stock.price.ltp.change_pct = quote.changePct;
+                                    }
                                     stock.price.ltp.day_volume = quote.vol;
                                     stock.price.ltp.beta       = quote.beta;
                                     if (!stock.price['52_week']) stock.price['52_week'] = {};
