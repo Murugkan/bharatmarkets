@@ -582,6 +582,11 @@ FIELD_MAP = {
     "yahoofin_raw:history_6mo_1d": "__history__",
     "yahoofin_raw:history_1wk":    "__history__",
     "yahoofin_raw:history_1mo":    "__history__",
+
+    # ── nav_ltp:latest_price (MF/QSIF from nav_ltp.json via flatten) ─────────
+    # Data is re-injected directly from nav_ltp.json in main() — skip here
+    # to avoid double-processing. Marking __skip__ prevents _unmapped noise.
+    "nav_ltp:latest_price": "__skip__",
 }
 
 
@@ -3239,7 +3244,7 @@ def main():
             guidance_data = json.load(f)
         logger.info(f"  ✓ Loaded guidance.json ({len(guidance_data)} tickers)")
 
-    # Load nav_ltp.json (AMFI MF + QSIF), matched to tickers via ISIN or symbol
+    # Load nav_ltp.json (AMFI MF + SGB + QSIF), matched to tickers via ISIN or symbol
     nav_ltp_file = DATA_DIR / 'nav_ltp.json'
     nav_ltp_by_ticker = {}
     if nav_ltp_file.exists():
@@ -3305,7 +3310,7 @@ def main():
             cd['data_source'] = pf['data_source']
             cd['holdings'] = pf['holdings']
 
-        # Inject nav_ltp data (AMFI MF / QSIF) as live price.
+        # Inject nav_ltp data (AMFI MF / SGB / QSIF) as live price.
         # Written to price.ltp_nav (scalar) — separate from price.ltp (object)
         # used by equities, to avoid structure collision on delta loads.
         nav = nav_ltp_by_ticker.get(symbol)
@@ -3315,6 +3320,10 @@ def main():
             price['ltp_date'] = nav.get('date')
             price['ltp_scheme_name'] = nav.get('scheme_name')
             price['ltp_source'] = nav.get('source')
+            if nav.get('change') is not None:
+                price['ltp_change'] = nav.get('change')
+            if nav.get('changePct') is not None:
+                price['ltp_change_pct'] = nav.get('changePct')
             if nav.get('returns'):
                 price['ltp_returns'] = nav.get('returns')
 
