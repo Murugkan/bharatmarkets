@@ -302,7 +302,7 @@ def fetch_sgb_quotes(sgb_syms, sym_to_entry, prev_quotes):
                 "changePct": change_pct,
                 "open": None, "high": None, "low": None, "prev": prev_ltp,
                 "vol": 0, "w52h": None, "w52l": None, "beta": None,
-                "nav_source": "sgbanalyzer.com",
+                "source": "sgbanalyzer.com",
             }
             print(f"  ✓ {sym}: ₹{ltp:,.2f}" + (f" ({change:+.2f}, {change_pct:+.3f}%)" if change is not None else ""))
         except Exception as e:
