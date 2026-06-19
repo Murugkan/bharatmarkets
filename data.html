@@ -3127,7 +3127,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                                 stock.price.ltp_nav = quote.ltp;
                                 stock.price.ltp_date = navDate;
                                 stock.price.ltp_source = navSource;
-                                // MF/QSIF: 1D change computed from previous run in fetch_nav_ltp.py
+                                // SGB only: 1D change computed from previous run in fetch_nav_ltp.py
                                 if (quote.change != null) stock.price.ltp_change = quote.change;
                                 if (quote.changePct != null) stock.price.ltp_change_pct = quote.changePct;
                             } else {
@@ -3162,6 +3162,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     getMetadataReq.onsuccess = function() {
                         const meta = getMetadataReq.result || { ticker: '_METADATA_' };
                         if (!isNav) { meta.ltp_updated_at = ltpTime; meta.ltp_count = mergedCount; }
+                        else { meta.ltp_count = (meta.ltp_count || 0) + mergedCount; }
                         store.put(meta);
                     };
                     getMetadataReq.onerror = function() {
