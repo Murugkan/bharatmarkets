@@ -516,7 +516,15 @@ async function loadStock() {
         }
 
         renderHeader();
-        renderTab('overview');
+        const hashTab = window.location.hash.replace('#', '');
+        const validTabs = ['overview','canvas','news','charts','fundamentals','guidance'];
+        const initTab = validTabs.includes(hashTab) ? hashTab : 'overview';
+        if (initTab !== 'overview') {
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.getAttribute('onclick') === "switchTab('" + initTab + "')");
+            });
+        }
+        renderTab(initTab);
     } catch(e) {
         document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
     }
@@ -541,6 +549,7 @@ function switchTab(tab) {
     currentTab = tab;
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
+    history.replaceState(null, '', '#' + tab);
     renderTab(tab);
 }
 
