@@ -2426,86 +2426,55 @@ document.addEve// ════════════════════�
 // ════════════════════════════════════════════════════════
 
 function renderChartsTab(s) {
-  var sym = s.ticker || s.sym;
-  var enc = encodeURIComponent(sym);
-  var name = s.name || sym;
+  var sym  = s.ticker || s.sym;
+  var nseSymbol = 'NSE:' + sym;
 
-  // Tested June 2026:
-  //   Screener.in → /company/TICKER/consolidated/              ✅ direct
-  //   TradingView → chart/?symbol=NSE:TICKER                   ✅ direct
-  //   Tijori      → /company/{name-slug}/ slugified from name  ✅ direct
-  //   NSE India   → /get-quotes/equity?symbol=TICKER           ✅ direct (SPA)
-  //   Trendlyne   → needs internal numeric ID                  → site search
+  setTimeout(function() {
+    var container = document.getElementById('tv-widget-container');
+    if (!container) return;
+    var old = document.getElementById('tv-widget-script');
+    if (old) old.remove();
+    var script = document.createElement('script');
+    script.id = 'tv-widget-script';
+    script.type = 'text/javascript';
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      autosize: true,
+      symbol: nseSymbol,
+      interval: 'D',
+      timezone: 'Asia/Kolkata',
+      theme: 'dark',
+      style: '1',
+      locale: 'en',
+      backgroundColor: '#0d1222',
+      gridColor: 'rgba(26,35,50,0.8)',
+      hide_top_toolbar: false,
+      hide_legend: false,
+      allow_symbol_change: false,
+      save_image: false,
+      calendar: false,
+      studies: ['STD;RSI', 'STD;MACD'],
+      support_host: 'https://www.tradingview.com'
+    });
+    container.appendChild(script);
+  }, 100);
 
-  // Tijori slug: lowercase name, strip legal suffixes, hyphenate
-  var tijoriSlug = (name || sym)
-    .toLowerCase()
-    .replace(/\b(ltd\.?|limited|pvt\.?|private|inc\.?|corp\.?|llp)\b/g, '')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  var sites = [
-    {
-      label: 'Screener.in',
-      desc: '10yr P&L, cash flow & ratios — best for KPI history charts',
-      color: '#a855f7',
-      icon: '📋',
-      url: 'https://www.screener.in/company/' + enc + '/consolidated/'
-    },
-    {
-      label: 'TradingView',
-      desc: 'Price charts · candlestick, indicators, multi-timeframe',
-      color: '#3b82f6',
-      icon: '🕯️',
-      url: 'https://in.tradingview.com/chart/?symbol=NSE%3A' + enc
-    },
-    {
-      label: 'Tijori Finance',
-      desc: 'Revenue mix, market share, segment KPIs & operational metrics',
-      color: '#f59e0b',
-      icon: '🔬',
-      url: 'https://www.tijorifinance.com/company/' + tijoriSlug + '/'
-    },
-    {
-      label: 'NSE India',
-      desc: 'Official exchange · price, corp actions, filings, shareholding',
-      color: '#22c55e',
-      icon: '🏛️',
-      url: 'https://www.nseindia.com/get-quotes/equity?symbol=' + enc
-    },
-    {
-      label: 'Trendlyne',
-      desc: 'CFO, FCF, CCR, ROCE, margins — search then tap your stock',
-      color: '#00c6ff',
-      icon: '📊',
-      url: 'https://trendlyne.com/search/?query=' + enc
-    }
-  ];
-
-  var cards = sites.map(function(site) {
-    return '<div onclick="_openLink(\'' + site.url.replace(/'/g,'%27') + '\')" ' +
-      'style="background:var(--card);border:1px solid var(--b1);border-left:3px solid ' + site.color + ';' +
-      'border-radius:8px;padding:12px 14px;cursor:pointer;margin-bottom:8px" ' +
-      'onmousedown="this.style.background=\'rgba(255,255,255,.04)\'" ' +
-      'onmouseup="this.style.background=\'var(--card)\'">' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
-          '<span style="font-size:16px">' + site.icon + '</span>' +
-          '<span style="font-size:13px;font-weight:800;color:' + site.color + '">' + site.label + '</span>' +
-          '<span style="font-size:9px;color:var(--tx3);margin-left:auto">↗</span>' +
-        '</div>' +
-        '<div style="font-size:10px;color:var(--tx3);line-height:1.4">' + site.desc + '</div>' +
-      '</div>';
-  }).join('');
-
-  return '<div style="padding:12px;padding-bottom:100px">' +
-    '<div style="font-size:9px;font-weight:800;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">' +
-      sym + ' · ' + name + ' · External Charts</div>' +
-    cards +
-    '<div style="font-size:9px;color:var(--tx3);text-align:center;margin-top:4px;padding:8px">Tap any card to open in browser</div>' +
+  return '<div style="padding:0;padding-bottom:80px;display:flex;flex-direction:column;height:calc(100vh - 160px)">' +
+    '<div style="padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0">' +
+      '<span style="font-size:12px;font-weight:800;color:var(--ac)">' + sym + '</span>' +
+      '<span style="font-size:10px;color:var(--tx3)">NSE · TradingView</span>' +
+      '<a href="https://in.tradingview.com/chart/?symbol=NSE%3A' + encodeURIComponent(sym) + '" ' +
+        'style="margin-left:auto;font-size:9px;color:var(--ac);text-decoration:none;font-weight:700" ' +
+        'onclick="event.preventDefault();_openLink(this.href)">Full Screen ↗</a>' +
+    '</div>' +
+    '<div class="tradingview-widget-container" id="tv-widget-container" ' +
+      'style="flex:1;width:100%;min-height:500px">' +
+      '<div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>' +
+    '</div>' +
   '</div>';
 }
+
 
 
 // NEWS TAB FUNCTIONS
