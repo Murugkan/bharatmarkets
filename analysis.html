@@ -2431,14 +2431,20 @@ function renderChartsTab(s) {
   var name = s.name || sym;
 
   // Tested June 2026:
-  //   Screener.in → /company/TICKER/consolidated/    ✅ direct
-  //   TradingView → chart/?symbol=NSE:TICKER         ✅ direct
-  //   Trendlyne   → needs internal numeric ID        → Google search fallback
-  //   Tijori      → needs full company-name slug     → Google search fallback
-  //   NSE India   → redirects to slug, JS-rendered   → Google search fallback
-  var gs = function(site) {
-    return 'https://www.google.com/search?q=' + encodeURIComponent(sym + ' ' + site);
-  };
+  //   Screener.in → /company/TICKER/consolidated/              ✅ direct
+  //   TradingView → chart/?symbol=NSE:TICKER                   ✅ direct
+  //   Tijori      → /company/{name-slug}/ slugified from name  ✅ direct
+  //   NSE India   → /get-quotes/equity?symbol=TICKER           ✅ direct (SPA)
+  //   Trendlyne   → needs internal numeric ID                  → site search
+
+  // Tijori slug: lowercase name, strip legal suffixes, hyphenate
+  var tijoriSlug = (name || sym)
+    .toLowerCase()
+    .replace(/\b(ltd\.?|limited|pvt\.?|private|inc\.?|corp\.?|llp)\b/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
 
   var sites = [
     {
@@ -2446,56 +2452,39 @@ function renderChartsTab(s) {
       desc: '10yr P&L, cash flow & ratios — best for KPI history charts',
       color: '#a855f7',
       icon: '📋',
-      url: 'https://www.screener.in/company/' + enc + '/consolidated/',
-      kpis: ['Sales', 'Net Profit', 'EPS', 'Cash Flow', 'ROCE', 'OPM'],
-      direct: true
+      url: 'https://www.screener.in/company/' + enc + '/consolidated/'
     },
     {
       label: 'TradingView',
       desc: 'Price charts · candlestick, indicators, multi-timeframe',
       color: '#3b82f6',
       icon: '🕯️',
-      url: 'https://in.tradingview.com/chart/?symbol=NSE%3A' + enc,
-      kpis: ['OHLCV', 'RSI', 'MACD', 'EMA', 'Volume'],
-      direct: true
-    },
-    {
-      label: 'Trendlyne',
-      desc: 'CFO, FCF, CCR, ROCE, margins — KPI history charts (search → click stock)',
-      color: '#00c6ff',
-      icon: '📊',
-      url: gs('trendlyne financials charts'),
-      kpis: ['CFO', 'FCF', 'CCR', 'ROCE', 'OPM', 'Debt', 'EPS'],
-      direct: false
+      url: 'https://in.tradingview.com/chart/?symbol=NSE%3A' + enc
     },
     {
       label: 'Tijori Finance',
-      desc: 'Revenue mix, market share, segment KPIs (search → click stock)',
+      desc: 'Revenue mix, market share, segment KPIs & operational metrics',
       color: '#f59e0b',
       icon: '🔬',
-      url: gs('tijori finance'),
-      kpis: ['Rev Mix', 'Market Share', 'Capacity', 'Order Book'],
-      direct: false
+      url: 'https://www.tijorifinance.com/company/' + tijoriSlug + '/'
     },
     {
       label: 'NSE India',
-      desc: 'Official exchange · price, corp actions, filings (search → click)',
+      desc: 'Official exchange · price, corp actions, filings, shareholding',
       color: '#22c55e',
       icon: '🏛️',
-      url: gs('NSE India share price'),
-      kpis: ['LTP', 'OHLC', 'Circuit', 'Corp Actions', 'Filings'],
-      direct: false
+      url: 'https://www.nseindia.com/get-quotes/equity?symbol=' + enc
+    },
+    {
+      label: 'Trendlyne',
+      desc: 'CFO, FCF, CCR, ROCE, margins — search then tap your stock',
+      color: '#00c6ff',
+      icon: '📊',
+      url: 'https://trendlyne.com/search/?query=' + enc
     }
   ];
 
   var cards = sites.map(function(site) {
-    var pills = site.kpis.map(function(k) {
-      return '<span style="font-size:9px;padding:2px 6px;border-radius:3px;background:' + site.color + '18;color:' + site.color + ';border:1px solid ' + site.color + '30;white-space:nowrap">' + k + '</span>';
-    }).join('');
-    var badge = site.direct
-      ? '<span style="font-size:8px;font-weight:700;color:#00e896;background:rgba(0,232,150,.12);border:1px solid rgba(0,232,150,.3);border-radius:3px;padding:1px 5px">DIRECT</span>'
-      : '<span style="font-size:8px;font-weight:700;color:#ffbf47;background:rgba(255,191,71,.12);border:1px solid rgba(255,191,71,.3);border-radius:3px;padding:1px 5px">SEARCH</span>';
-
     return '<div onclick="_openLink(\'' + site.url.replace(/'/g,'%27') + '\')" ' +
       'style="background:var(--card);border:1px solid var(--b1);border-left:3px solid ' + site.color + ';' +
       'border-radius:8px;padding:12px 14px;cursor:pointer;margin-bottom:8px" ' +
@@ -2504,11 +2493,9 @@ function renderChartsTab(s) {
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
           '<span style="font-size:16px">' + site.icon + '</span>' +
           '<span style="font-size:13px;font-weight:800;color:' + site.color + '">' + site.label + '</span>' +
-          badge +
           '<span style="font-size:9px;color:var(--tx3);margin-left:auto">↗</span>' +
         '</div>' +
-        '<div style="font-size:10px;color:var(--tx3);margin-bottom:8px;line-height:1.4">' + site.desc + '</div>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:4px">' + pills + '</div>' +
+        '<div style="font-size:10px;color:var(--tx3);line-height:1.4">' + site.desc + '</div>' +
       '</div>';
   }).join('');
 
