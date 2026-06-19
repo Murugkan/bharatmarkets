@@ -829,7 +829,7 @@ for TICKER in TICKERS_TO_PROCESS:
             daily_data.insert(0, ltp_obj)
             output[TICKER]['data'][daily_section] = daily_data
         
-        # === ADD LTP FROM NAV_LTP (MF / SGB / QSIF fallback) ===
+        # === ADD LTP FROM NAV_LTP (MF / QSIF fallback) ===
         # For tickers with no prices.json entry, look up nav_ltp.json by ISIN
         # (from unified-symbols.json) or directly by ticker symbol.
         nav_ltp_data = all_data.get('nav_ltp', {})
@@ -887,7 +887,7 @@ try:
                 "yahoofin_financials.json (97 tickers)",
                 "guidance.json (29 tickers)",
                 "ltp.json (equity LTP)",
-                "nav_ltp.json (MF/SGB/QSIF)",
+                "nav_ltp.json (MF/QSIF)",
                 "unified-symbols.json (97 tickers)"
             ],
             "structure": {
