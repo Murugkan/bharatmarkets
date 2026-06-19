@@ -10,13 +10,7 @@ Part 1 — AMFI NAV:
   case a fund-of-fund SGB wrapper is used).
   Output: data/mf_nav.json
 
-Part 2 — SGB LTP:
-  Fetches Last Traded Price (LTP) for Sovereign Gold Bond (SGB) tickers from
-  sgbanalyzer.com, for entries in unified-symbols.json where
-  instrument_type == "SOVEREIGN BOND".
-  Output: data/sgb_ltp.json
-
-Part 3 — QSIF NAV:
+Part 2 — QSIF NAV:
   Scrapes latest NAV from qsif.com/NAV/latestnav for entries in
   unified-symbols.json where instrument_type == "SIF". Matches by scheme_name
   keyword (case-insensitive substring). Handles ASP.NET pagination (2 pages).
@@ -39,8 +33,6 @@ NAV_LTP_OUTPUT_FILE = DATA_DIR / 'nav_ltp.json'
 LOG_FILE = DATA_DIR / 'logs/fetch_nav_ltp.log'
 
 AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
-
-SGBANALYZER_URL = 'https://sgbanalyzer.com/sgb/{symbol}'
 
 QSIF_NAV_URL = 'https://www.qsif.com/All-Strategies/funds'
 
@@ -65,7 +57,6 @@ logging.basicConfig(
     handlers=[logging.FileHandler(LOG_FILE, mode='w'), logging.StreamHandler()]
 )
 logger = logging.getLogger("AMFI-NAV")
-sgb_logger = logging.getLogger("SGB-LTP")
 qsif_logger = logging.getLogger("QSIF-NAV")
 
 
@@ -317,81 +308,6 @@ def run_amfi_nav():
 
 
 # ===========================================================================
-# Part 2 — SGB LTP (NSE)
-# ===========================================================================
-
-def get_portfolio_sgb_symbols():
-    """Collect ticker symbols for instrument_type == 'SOVEREIGN BOND'."""
-    us = load_json(SYMBOLS_FILE)
-    symbols = set()
-    for entry in us.get('symbols', []):
-        itype = (entry.get('instrument_type') or entry.get('instrumentType') or '').upper()
-        if itype == 'SOVEREIGN BOND':
-            symbol = (entry.get('symbol') or entry.get('ticker') or '').strip().upper()
-            if symbol:
-                symbols.add(symbol)
-    return symbols
-
-
-def fetch_sgb_ltp(session, symbol):
-    """Scrape current market price for an SGB symbol from sgbanalyzer.com.
-
-    The page embeds the price in plain text as e.g. "₹15,501.85" near
-    "Current Price" / "Market price". Extract via regex; tolerant of minor
-    markup changes since this is a third-party page, not an API.
-    """
-    url = SGBANALYZER_URL.format(symbol=symbol.lower())
-    resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
-    resp.raise_for_status()
-    html = resp.text
-
-    # Match "₹15,501.85" style price anywhere on the page
-    match = re.search(r'₹\s*([\d,]+\.\d{2})', html)
-    if not match:
-        raise ValueError("price pattern not found on page")
-
-    ltp_str = match.group(1).replace(',', '')
-    ltp = float(ltp_str)
-
-    return {
-        'ltp': ltp,
-        'source': 'sgbanalyzer.com',
-        'date': now(),
-    }
-
-
-def run_sgb_ltp():
-    symbols = get_portfolio_sgb_symbols()
-    sgb_logger.info(f"Portfolio SGB symbols to fetch: {len(symbols)}")
-
-    if not symbols:
-        sgb_logger.warning("No SOVEREIGN BOND symbols found in unified-symbols.json")
-        return {}
-
-    session = requests.Session()
-
-    result = {}
-    for symbol in sorted(symbols):
-        try:
-            entry = fetch_sgb_ltp(session, symbol)
-            if entry.get('ltp') is None:
-                sgb_logger.warning(f"  ⚠ {symbol}: no LTP in response")
-                continue
-            result[symbol] = entry
-            sgb_logger.info(f"  ✓ {symbol}: LTP {entry['ltp']}")
-        except Exception as e:
-            sgb_logger.warning(f"  ⚠ {symbol}: fetch failed: {e}")
-        time.sleep(1)
-
-    missing = symbols - set(result.keys())
-    if missing:
-        sgb_logger.warning(f"  ⚠ {len(missing)} symbol(s) not fetched: {sorted(missing)}")
-
-    sgb_logger.info(f"  ✓ Fetched {len(result)}/{len(symbols)} SGB symbols")
-    return result
-
-
-# ===========================================================================
 # Part 3 — QSIF NAV (qsif.com)
 # ===========================================================================
 
@@ -511,7 +427,7 @@ def run_qsif_nav():
 def main():
     merged = {}
 
-    # Load existing nav_ltp.json to get previous SGB prices for 1D change computation
+    # Load existing nav_ltp.json to get previous QSIF prices for 1D change computation
     prev_nav_ltp = {}
     if NAV_LTP_OUTPUT_FILE.exists():
         try:
@@ -526,22 +442,7 @@ def main():
     except Exception as e:
         logger.warning(f"  ⚠ AMFI NAV run failed: {e}")
 
-    try:
-        sgb = run_sgb_ltp()
-        # Compute 1D change for SGB by comparing to previous run's ltp
-        for symbol, entry in sgb.items():
-            prev = prev_nav_ltp.get(symbol, {})
-            prev_ltp = prev.get('ltp')
-            curr_ltp = entry.get('ltp')
-            if prev_ltp and curr_ltp:
-                entry['change'] = round(curr_ltp - prev_ltp, 2)
-                entry['changePct'] = round((curr_ltp - prev_ltp) / prev_ltp * 100, 3)
-            else:
-                entry['change'] = None
-                entry['changePct'] = None
-        merged.update(sgb)
-    except Exception as e:
-        sgb_logger.warning(f"  ⚠ SGB LTP run failed: {e}")
+
 
     try:
         qsif = run_qsif_nav()
@@ -559,7 +460,7 @@ def main():
     except Exception as e:
         qsif_logger.warning(f"  ⚠ QSIF NAV run failed: {e}")
 
-    output = {"_metadata": {"generated_at": now(), "count": len(merged), "source": "AMFI + sgbanalyzer.com + qsif.com"}}
+    output = {"_metadata": {"generated_at": now(), "count": len(merged), "source": "AMFI + qsif.com"}}
     output.update(merged)
     save_json(NAV_LTP_OUTPUT_FILE, output)
     logger.info(f"✓ Wrote {NAV_LTP_OUTPUT_FILE} ({len(merged)} entries)")

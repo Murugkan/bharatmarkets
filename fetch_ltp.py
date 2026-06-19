@@ -10,7 +10,7 @@ Daily metrics (last 6 days: current market date + previous 5):
 - w52h, w52l, beta
 """
 
-import json, time, datetime, os, requests, logging, sys
+import json, time, datetime, os, requests, re, logging, sys
 from pathlib import Path
 
 try:
@@ -257,6 +257,60 @@ def build_quote(sym, info, hist):
 
 
 
+
+# ── SGB LTP (sgbanalyzer.com) ─────────────────────────────────────────────────
+SGBANALYZER_URL = 'https://sgbanalyzer.com/sgb/{symbol}'
+SCRAPE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+def fetch_sgb_ltp(session, symbol):
+    """Scrape current market price for an SGB from sgbanalyzer.com."""
+    url = SGBANALYZER_URL.format(symbol=symbol.lower())
+    resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
+    resp.raise_for_status()
+    html = resp.text
+    match = re.search(r'₹\s*([\d,]+\.\d{2})', html)
+    if not match:
+        raise ValueError("price pattern not found on page")
+    return float(match.group(1).replace(',', ''))
+
+def fetch_sgb_quotes(sgb_syms, sym_to_entry, prev_quotes):
+    """Fetch SGB LTPs from sgbanalyzer.com and compute 1D change from previous ltp.json."""
+    if not sgb_syms:
+        return {}
+    print(f"\n🥇 Fetching {len(sgb_syms)} SGB(s) from sgbanalyzer.com…")
+    session = requests.Session()
+    quotes = {}
+    for sym in sorted(sgb_syms):
+        entry = sym_to_entry.get(sym, {})
+        try:
+            ltp = fetch_sgb_ltp(session, sym)
+            prev_q = prev_quotes.get(sym, {})
+            prev_ltp = prev_q.get('ltp')
+            change = round(ltp - prev_ltp, 2) if prev_ltp else None
+            change_pct = round((ltp - prev_ltp) / prev_ltp * 100, 3) if prev_ltp else None
+            quotes[sym] = {
+                "ticker": sym,
+                "name": entry.get("name", sym),
+                "sector": entry.get("sector", "Sovereign Gold Bond"),
+                "ltp": ltp,
+                "change": change,
+                "changePct": change_pct,
+                "open": None, "high": None, "low": None, "prev": prev_ltp,
+                "vol": 0, "w52h": None, "w52l": None, "beta": None,
+                "nav_source": "sgbanalyzer.com",
+            }
+            print(f"  ✓ {sym}: ₹{ltp:,.2f}" + (f" ({change:+.2f}, {change_pct:+.3f}%)" if change is not None else ""))
+        except Exception as e:
+            print(f"  ✗ {sym}: {e}")
+            logger.warning(f"SGB fetch failed {sym}: {e}")
+        time.sleep(1)
+    return quotes
+
 # ── Sector Index Symbols (Yahoo Finance) ──────────────────────────────────────
 SECTOR_INDEX_MAP = {
     "Information Technology": ("^CNXIT",     "Nifty IT"),
@@ -329,6 +383,14 @@ def fetch_sector_indices():
 
 
 def main():
+    # Load previous ltp.json for SGB 1D change computation
+    prev_quotes = {}
+    try:
+        prev_data = json.loads(Path(LTP_FILE).read_text())
+        prev_quotes = prev_data.get('quotes', {})
+    except Exception:
+        pass
+
     # Purge old data
     Path(LTP_FILE).write_text("")
     
@@ -454,13 +516,18 @@ def main():
             logger.warning(f"Failed to fetch {sym}")
 
     # ──────────────────────────────────────────────────────────────────────
-    # FETCH: Mutual Funds + SGBs + QSIF — from nav_ltp.json
-    # (NSE/BSE APIs block GitHub Actions IPs; nav_ltp.json is pre-fetched
-    #  by fetch_nav_ltp.py which runs before this step)
+    # FETCH: SGBs — direct from sgbanalyzer.com (intraday LTP)
     # ──────────────────────────────────────────────────────────────────────
-    nav_ltp_syms = mf_syms + sgb_syms
+    sgb_quotes = fetch_sgb_quotes(sgb_syms, sym_to_entry, prev_quotes)
+    quotes.update(sgb_quotes)
+    errors.extend([s for s in sgb_syms if s not in sgb_quotes])
+
+    # ──────────────────────────────────────────────────────────────────────
+    # FETCH: Mutual Funds + QSIF — from nav_ltp.json (daily NAV)
+    # ──────────────────────────────────────────────────────────────────────
+    nav_ltp_syms = mf_syms
     if nav_ltp_syms:
-        print(f"💰 Injecting {len(nav_ltp_syms)} MF/SGB/QSIF from nav_ltp.json…")
+        print(f"\n💰 Injecting {len(nav_ltp_syms)} MF/QSIF from nav_ltp.json…")
         nav_ltp_data = {}
         nav_ltp_path = Path("data/nav_ltp.json")
         if nav_ltp_path.exists():
@@ -469,7 +536,7 @@ def main():
             except Exception as e:
                 logger.warning(f"nav_ltp.json load failed: {e}")
 
-        # Build ISIN → nav_ltp key lookup (nav_ltp is keyed by ISIN or ticker)
+        # Build ISIN → nav_ltp key lookup
         isin_to_nav = {}
         for key, entry in nav_ltp_data.items():
             if key == '_metadata':
@@ -493,7 +560,7 @@ def main():
                     "nav_source": nav_entry.get('source'),
                 }
                 quotes[sym] = q
-                print(f"  ✓ {sym}: LTP {nav_entry['ltp']} ({nav_entry.get('source')})")
+                print(f"  ✓ {sym}: NAV {nav_entry['ltp']} ({nav_entry.get('source')})")
             else:
                 logger.warning(f"nav_ltp.json: no entry for {sym} (ISIN: {isin})")
                 errors.append(sym)
