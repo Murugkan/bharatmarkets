@@ -2481,15 +2481,15 @@ function renderChartsTab(s) {
   ];
 
   var linkCards = links.map(function(lk) {
-    return '<a href="' + lk.url + '" target="_blank" rel="noopener" ' +
+    return '<div onclick="_openExternal(\'' + lk.url.replace(/'/g,'%27') + '\')" ' +
       'style="display:flex;align-items:center;gap:10px;padding:10px 12px;' +
-      'border-bottom:1px solid rgba(26,35,50,.5);cursor:pointer;text-decoration:none" ' +
+      'border-bottom:1px solid rgba(26,35,50,.5);cursor:pointer" ' +
       'onmousedown="this.style.background=\'rgba(255,255,255,.04)\'" ' +
       'onmouseup="this.style.background=\'\'">' +
       '<span style="width:3px;height:28px;border-radius:2px;background:' + lk.color + ';flex-shrink:0"></span>' +
       '<span style="font-size:11px;font-weight:700;color:var(--tx1);flex:1">' + lk.label + '</span>' +
       '<span style="font-size:11px;color:var(--tx3)">↗</span>' +
-    '</a>';
+    '</div>';
   }).join('');
 
   return '<div style="padding:0;padding-bottom:80px;overflow-y:auto;height:calc(100vh - 110px)">' +
@@ -2521,7 +2521,7 @@ var _newsDbPromise = null;
 var _noiseRe = /share price today|live.*stock price|nse\/bse|ipo listing|ipo date|ipo price|ipo allotment|ipo gmp|stock.*chart|live price|price today|share price live|most active equities|stocks to watch|stocks in news|top stocks|daily brief india|trade spotlight|market wrap|opening bell|closing bell|comprehensive analysis|share price 202|investor guide|all you need to know/i;
 
 function _openLink(url){ window.location.href = url; }
-function _openExternal(url){ window.open(url, '_blank'); }
+function _openExternal(url){ window.location.replace(url); }
 
 function renderNewsTab(s) {
   var sym  = s.ticker || s.sym;
