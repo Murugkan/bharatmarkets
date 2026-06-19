@@ -11,6 +11,8 @@ on:
       - '*.html'
       - '*.csv'
       - '.github/workflows/**'
+    paths-ignore:
+      - '.keepalive'
     branches:
       - main
 
@@ -26,7 +28,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           echo "$(date -u)" > .keepalive
           git add .keepalive
-          git commit -m "chore: keepalive [skip pages]" || echo "Nothing to commit"
+          git commit -m "chore: keepalive [skip ci]" || echo "Nothing to commit"
           git push || echo "Nothing to push"
 
   rebuild-pages:
@@ -53,5 +55,3 @@ jobs:
       - name: Deploy to Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
-
