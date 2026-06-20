@@ -412,6 +412,15 @@ def main():
     logger.info(f"  ✓ {len(symbols)} companies to fetch")
     logger.info(f"  ✓ {len(DELISTED)} delisted excluded")
     
+    # TEMP DEBUG FILTER: restrict this run to a small set of tickers, to
+    # isolate whether fetch_financial_payload's own output is corrupted
+    # for these specific tickers, separate from any GitHub/copy-paste
+    # viewing issue. Remove this block once the investigation is done.
+    DEBUG_TICKER_FILTER = {"AADHARHFC", "ABCAPITAL"}
+    if DEBUG_TICKER_FILTER:
+        symbols = [s for s in symbols if str(s.get("ticker", "")).strip() in DEBUG_TICKER_FILTER]
+        logger.info(f"  ✓ DEBUG FILTER ACTIVE — restricted to {len(symbols)} tickers: {sorted(DEBUG_TICKER_FILTER)}")
+    
     logger.info("\nBuilding sector mapping...")
     SECTOR_MAPPING = build_sector_mapping(symbols)
     logger.info(f"  ✓ Sector mapping built: {len(SECTOR_MAPPING)} stocks")
