@@ -542,8 +542,16 @@ def commit_to_git(log_file):
             logger.info(f"  ✓ Committed: {msg}")
             
             # Pull remote changes before pushing (prevents rejection from concurrent runs)
-            subprocess.run(["git", "pull", "--rebase", "origin", "main"],
-                         capture_output=True, check=False)
+            logger.info("\n  Pulling latest remote changes (rebase)...")
+            pull_result = subprocess.run(
+                ["git", "pull", "--rebase", "origin", "main"],
+                capture_output=True, text=True, check=False
+            )
+            logger.info(f"  Pull return code: {pull_result.returncode}")
+            if pull_result.stdout:
+                logger.info(f"  pull stdout: {pull_result.stdout}")
+            if pull_result.stderr:
+                logger.info(f"  pull stderr: {pull_result.stderr}")
             
             # Push to GitHub
             logger.info("\n  Pushing to GitHub...")
@@ -563,7 +571,36 @@ def commit_to_git(log_file):
             if push_result.returncode == 0:
                 logger.info(f"  ✓ Pushed to GitHub")
             else:
-                logger.warning(f"  ⚠️  Push failed (code: {push_result.returncode})")
+                # Non-fast-forward rejection — remote moved between our pull
+                # and our push (race with another workflow run). Retry once:
+                # pull/rebase again to pick up whatever just landed, then push.
+                logger.warning(f"  ⚠️  Push failed (code: {push_result.returncode}) — retrying after fresh pull...")
+                retry_pull = subprocess.run(
+                    ["git", "pull", "--rebase", "origin", "main"],
+                    capture_output=True, text=True, check=False
+                )
+                logger.info(f"  Retry pull return code: {retry_pull.returncode}")
+                if retry_pull.stdout:
+                    logger.info(f"  retry pull stdout: {retry_pull.stdout}")
+                if retry_pull.stderr:
+                    logger.info(f"  retry pull stderr: {retry_pull.stderr}")
+                
+                if retry_pull.returncode == 0:
+                    retry_push = subprocess.run(
+                        ["git", "push", "origin", "main"],
+                        capture_output=True, text=True, check=False
+                    )
+                    logger.info(f"  Retry push return code: {retry_push.returncode}")
+                    if retry_push.stdout:
+                        logger.info(f"  retry push stdout: {retry_push.stdout}")
+                    if retry_push.stderr:
+                        logger.info(f"  retry push stderr: {retry_push.stderr}")
+                    if retry_push.returncode == 0:
+                        logger.info(f"  ✓ Pushed to GitHub (after retry)")
+                    else:
+                        logger.error(f"  ✗ Push failed again after retry (code: {retry_push.returncode})")
+                else:
+                    logger.error(f"  ✗ Retry pull/rebase failed (code: {retry_pull.returncode}) — push not attempted again")
             
             return True
         elif "nothing to commit" in result.stderr.lower():
