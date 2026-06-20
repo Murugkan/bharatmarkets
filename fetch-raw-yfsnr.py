@@ -541,66 +541,52 @@ def commit_to_git(log_file):
         if result.returncode == 0:
             logger.info(f"  ✓ Committed: {msg}")
             
-            # Pull remote changes before pushing (prevents rejection from concurrent runs)
-            logger.info("\n  Pulling latest remote changes (rebase)...")
-            pull_result = subprocess.run(
-                ["git", "pull", "--rebase", "origin", "main"],
-                capture_output=True, text=True, check=False
-            )
-            logger.info(f"  Pull return code: {pull_result.returncode}")
-            if pull_result.stdout:
-                logger.info(f"  pull stdout: {pull_result.stdout}")
-            if pull_result.stderr:
-                logger.info(f"  pull stderr: {pull_result.stderr}")
+            # Push with retry on concurrent updates — mirrors the pattern
+            # used across this pipeline's other jobs: up to 5 attempts,
+            # each preceded by fetch + stash + rebase + stash pop, with a
+            # short random backoff between attempts to reduce collision
+            # likelihood across the multiple jobs that push to main.
+            import random
+            import time as _time
             
-            # Push to GitHub
-            logger.info("\n  Pushing to GitHub...")
-            push_result = subprocess.run(
-                ["git", "push", "origin", "main"],
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            
-            logger.info(f"  Push return code: {push_result.returncode}")
-            if push_result.stdout:
-                logger.info(f"  stdout: {push_result.stdout}")
-            if push_result.stderr:
-                logger.info(f"  stderr: {push_result.stderr}")
-            
-            if push_result.returncode == 0:
-                logger.info(f"  ✓ Pushed to GitHub")
-            else:
-                # Non-fast-forward rejection — remote moved between our pull
-                # and our push (race with another workflow run). Retry once:
-                # pull/rebase again to pick up whatever just landed, then push.
-                logger.warning(f"  ⚠️  Push failed (code: {push_result.returncode}) — retrying after fresh pull...")
-                retry_pull = subprocess.run(
-                    ["git", "pull", "--rebase", "origin", "main"],
+            max_attempts = 5
+            pushed = False
+            for attempt in range(1, max_attempts + 1):
+                logger.info(f"\n  Pushing to GitHub (attempt {attempt}/{max_attempts})...")
+                push_result = subprocess.run(
+                    ["git", "push", "origin", "main"],
                     capture_output=True, text=True, check=False
                 )
-                logger.info(f"  Retry pull return code: {retry_pull.returncode}")
-                if retry_pull.stdout:
-                    logger.info(f"  retry pull stdout: {retry_pull.stdout}")
-                if retry_pull.stderr:
-                    logger.info(f"  retry pull stderr: {retry_pull.stderr}")
+                logger.info(f"  Push return code: {push_result.returncode}")
+                if push_result.stdout:
+                    logger.info(f"  stdout: {push_result.stdout}")
+                if push_result.stderr:
+                    logger.info(f"  stderr: {push_result.stderr}")
                 
-                if retry_pull.returncode == 0:
-                    retry_push = subprocess.run(
-                        ["git", "push", "origin", "main"],
-                        capture_output=True, text=True, check=False
-                    )
-                    logger.info(f"  Retry push return code: {retry_push.returncode}")
-                    if retry_push.stdout:
-                        logger.info(f"  retry push stdout: {retry_push.stdout}")
-                    if retry_push.stderr:
-                        logger.info(f"  retry push stderr: {retry_push.stderr}")
-                    if retry_push.returncode == 0:
-                        logger.info(f"  ✓ Pushed to GitHub (after retry)")
-                    else:
-                        logger.error(f"  ✗ Push failed again after retry (code: {retry_push.returncode})")
-                else:
-                    logger.error(f"  ✗ Retry pull/rebase failed (code: {retry_pull.returncode}) — push not attempted again")
+                if push_result.returncode == 0:
+                    logger.info(f"  ✓ Pushed to GitHub (attempt {attempt})")
+                    pushed = True
+                    break
+                
+                if attempt >= max_attempts:
+                    logger.error(f"  ✗ Push failed after {max_attempts} attempts")
+                    break
+                
+                logger.warning(f"  ⚠️  Push rejected (attempt {attempt}/{max_attempts}) — pulling and retrying...")
+                _time.sleep(random.randint(1, 5))
+                
+                subprocess.run(["git", "fetch", "origin", "main"], capture_output=True, check=False)
+                subprocess.run(["git", "stash", "--include-untracked"], capture_output=True, check=False)
+                rebase_result = subprocess.run(
+                    ["git", "rebase", "origin/main"],
+                    capture_output=True, text=True, check=False
+                )
+                if rebase_result.returncode != 0:
+                    logger.warning(f"  ⚠️  Rebase reported issues: {rebase_result.stderr.strip()}")
+                subprocess.run(["git", "stash", "pop"], capture_output=True, check=False)
+            
+            if not pushed:
+                logger.error("  ✗ Could not push after all retry attempts — data committed locally but not on GitHub")
             
             return True
         elif "nothing to commit" in result.stderr.lower():
