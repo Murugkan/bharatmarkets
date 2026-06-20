@@ -478,6 +478,19 @@ def main():
     
     runtime = round(time.time() - start_time, 2)
     
+    # Add _metadata for consistency with yahoofin_raw_data.json and
+    # screener_raw_data.json, which both carry generated_at/count/
+    # runtime_seconds. yahoofin_financials.json previously had no
+    # metadata block at all, making generated_at/runtime unrecoverable
+    # from the file itself (only from the Actions log). count is taken
+    # before inserting _metadata itself, so it reflects ticker count only.
+    ticker_count = len(yahoof_store)
+    yahoof_store["_metadata"] = {
+        "generated_at": now(),
+        "count": ticker_count,
+        "runtime_seconds": runtime
+    }
+    
     logger.info(f"\nSaving files...")
     save_json(YAHOOF_FILE, yahoof_store)
     logger.info(f"  ✓ Saved: {YAHOOF_FILE.resolve()}")
