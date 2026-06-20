@@ -985,7 +985,7 @@ function renderTab(tab) {
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
             <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-            <div id="vol-wrap" style="position:relative;width:100%;height:75px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="vol-wrap" style="position:relative;width:100%;height:140px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
@@ -1969,7 +1969,7 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=130;  // ✅ Increased from 112 to 130 for more x-axis label space
+  const H2=140;  // increased from 130 — 12px bold labels were clipping against the canvas bottom edge
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;
   cv.height=H2*dpr;
@@ -1987,7 +1987,7 @@ function drawVolume(s){
   ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
 
   const W=W2,H=H2;
-  const PAD={l:8,r:62,t:6,b:28};
+  const PAD={l:8,r:62,t:6,b:34};
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const n=candles.length,gap=cW/n;
   // ✅ Apply zoom to volume bar width too
