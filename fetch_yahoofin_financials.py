@@ -297,10 +297,23 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
             period_str = period_date.strftime('%Y-%m-%d')
             period_data = {"period": period_str}
             
-            # Get data for this period
-            is_col = is_stmt.iloc[:, col_idx] if col_idx < len(is_stmt.columns) else pd.Series()
-            bs_col = bs.iloc[:, col_idx] if col_idx < len(bs.columns) else pd.Series()
-            cf_col = cf.iloc[:, col_idx] if col_idx < len(cf.columns) else pd.Series()
+            # Get data for this period — match by ACTUAL PERIOD DATE, not
+            # raw positional index. income_stmt/balance_sheet/cashflow can
+            # have different column counts or date offsets, so using the
+            # same col_idx across all three silently pulls mismatched
+            # periods and produces blank fields even when the data exists.
+            is_col = (
+                is_stmt[period_date] if not is_stmt.empty and period_date in is_stmt.columns
+                else pd.Series()
+            )
+            bs_col = (
+                bs[period_date] if not bs.empty and period_date in bs.columns
+                else pd.Series()
+            )
+            cf_col = (
+                cf[period_date] if not cf.empty and period_date in cf.columns
+                else pd.Series()
+            )
             
             # Extract each metric
             for field_name, aliases in metrics_dict.items():
