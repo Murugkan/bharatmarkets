@@ -366,6 +366,16 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_
         "gmtOffSetMilliseconds", "market", "esgPopulated", "marketState",
         "shortName", "hasPrePostMarketData", "firstTradeDateMilliseconds",
         "regularMarketChange", "regularMarketDayRange", "fullExchangeName",
+        "compensationAsOfEpochDate", "executiveTeam", "maxAge", "priceHint",
+        "previousClose", "open", "dayLow", "dayHigh",
+        "regularMarketPreviousClose", "regularMarketOpen",
+        "regularMarketDayLow", "regularMarketDayHigh", "payoutRatio",
+        "bid", "ask", "bidSize", "askSize", "currency", "tradeable",
+        "longName", "regularMarketChangePercent", "regularMarketPrice",
+        "earningsTimestamp", "earningsTimestampStart", "earningsTimestampEnd",
+        "earningsCallTimestampStart", "earningsCallTimestampEnd",
+        "isEarningsDateEstimate", "sourceInterval", "exchangeDataDelayedBy",
+        "cryptoTradeable",
     }
     
     try:
