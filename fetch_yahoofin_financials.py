@@ -249,6 +249,25 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         bs = stock.balance_sheet
         cf = stock.cashflow
         
+        # GUARD: yfinance can occasionally return duplicate column dates
+        # within a single statement (e.g. two columns both dated
+        # 2024-03-31). When that happens, stmt[period_date] returns a
+        # DataFrame instead of a Series, which corrupts downstream
+        # extraction — fields from the wrong period/duplicate column get
+        # merged into period_data, periods go missing, and the same
+        # period_data dict effectively absorbs another period's fields.
+        # Keep only the first occurrence of each column date to guarantee
+        # stmt[period_date] always returns a Series.
+        if not is_stmt.empty and is_stmt.columns.duplicated().any():
+            logger.warning(f"{ticker}: income_stmt has duplicate column dates {list(is_stmt.columns[is_stmt.columns.duplicated()])} — keeping first occurrence only")
+            is_stmt = is_stmt.loc[:, ~is_stmt.columns.duplicated()]
+        if not bs.empty and bs.columns.duplicated().any():
+            logger.warning(f"{ticker}: balance_sheet has duplicate column dates {list(bs.columns[bs.columns.duplicated()])} — keeping first occurrence only")
+            bs = bs.loc[:, ~bs.columns.duplicated()]
+        if not cf.empty and cf.columns.duplicated().any():
+            logger.warning(f"{ticker}: cashflow has duplicate column dates {list(cf.columns[cf.columns.duplicated()])} — keeping first occurrence only")
+            cf = cf.loc[:, ~cf.columns.duplicated()]
+        
         metrics_dict = get_sector_metrics(sector.lower())
         
         result = {"latest": {}, "historical_periods": []}
@@ -297,6 +316,20 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
                 cf[period_date] if not cf.empty and period_date in cf.columns
                 else pd.Series()
             )
+            
+            # SAFETY: stmt[period_date] must always be a Series. If it's a
+            # DataFrame (can happen if a duplicate-date guard above was
+            # bypassed or pandas behavior changes), treat it as missing
+            # data rather than letting it silently corrupt find_field().
+            if isinstance(is_col, pd.DataFrame):
+                logger.error(f"{ticker} | {period_str}: income_stmt column lookup returned DataFrame, not Series — skipping IS data for this period")
+                is_col = pd.Series()
+            if isinstance(bs_col, pd.DataFrame):
+                logger.error(f"{ticker} | {period_str}: balance_sheet column lookup returned DataFrame, not Series — skipping BS data for this period")
+                bs_col = pd.Series()
+            if isinstance(cf_col, pd.DataFrame):
+                logger.error(f"{ticker} | {period_str}: cashflow column lookup returned DataFrame, not Series — skipping CF data for this period")
+                cf_col = pd.Series()
             
             # Extract each metric
             for field_name, aliases in metrics_dict.items():
