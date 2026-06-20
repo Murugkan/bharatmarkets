@@ -256,6 +256,23 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         # DEBUG
         logger.debug(f"{ticker}: IS={is_stmt.shape if not is_stmt.empty else 'EMPTY'}, BS={bs.shape if not bs.empty else 'EMPTY'}, CF={cf.shape if not cf.empty else 'EMPTY'}")
         
+        # DIAGNOSTIC: dump raw row labels actually returned by yfinance for
+        # this ticker, so they can be compared against the alias lists in
+        # get_sector_metrics(). Logged once per ticker at WARNING level so
+        # it's visible without --debug and easy to grep from the log file.
+        if not is_stmt.empty:
+            logger.warning(f"{ticker} | income_stmt rows: {list(is_stmt.index)}")
+        else:
+            logger.warning(f"{ticker} | income_stmt: EMPTY")
+        if not bs.empty:
+            logger.warning(f"{ticker} | balance_sheet rows: {list(bs.index)}")
+        else:
+            logger.warning(f"{ticker} | balance_sheet: EMPTY")
+        if not cf.empty:
+            logger.warning(f"{ticker} | cashflow rows: {list(cf.index)}")
+        else:
+            logger.warning(f"{ticker} | cashflow: EMPTY")
+        
         # Process all available annual periods.
         # Use income_stmt as the primary period reference (most complete).
         # min() with CF would collapse to 0 for ETFs/NBFCs where CF is empty.
