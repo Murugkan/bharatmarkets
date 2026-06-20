@@ -12,15 +12,15 @@
         
         .container{display:flex;flex-direction:column;height:100vh;overflow:hidden}
         
-        .header{background:var(--s1);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0}
+        .header{background:var(--s1);padding:5px 12px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0}
         .header-left{flex:1;display:flex;align-items:center;gap:8px}
         .header-title{font-size:14px;font-weight:800;color:var(--ac)}
-        .header-subtitle{font-size:9px;color:var(--tx3);margin-top:2px}
+        .header-subtitle{font-size:9px;color:var(--tx3);margin-top:1px}
         .header-price{text-align:right;display:flex;flex-direction:column}
         .price-val{font-size:14px;font-weight:800}
-        .price-chg{font-size:10px;margin-top:2px}
+        .price-chg{font-size:10px;margin-top:1px}
         
-        .tabs{background:var(--card);padding:8px 12px;border-bottom:1px solid var(--b1);display:flex;gap:8px;overflow-x:auto;flex-shrink:0}
+        .tabs{background:var(--card);padding:5px 12px;border-bottom:1px solid var(--b1);display:flex;gap:8px;overflow-x:auto;flex-shrink:0}
         .tabs::-webkit-scrollbar{height:4px}
         .tabs::-webkit-scrollbar-track{background:var(--s1)}
         .tabs::-webkit-scrollbar-thumb{background:var(--b1);border-radius:2px}
@@ -185,7 +185,8 @@ const S = {
   chartZoom: 1,
   yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
   panStart: null,     // Pan start position
-  financialSource: { accounting: 'consolidated', frequency: 'annual' }  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
+  financialSource: { accounting: 'consolidated', frequency: 'annual' },  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
+  kpiControlsExpanded: false  // chart KPI/filter rows collapsed by default to maximize chart space
 };
 let candlestickBars = [];  // ✅ Track bar positions for click detection
 let kpiPoints = [];  // ✅ Track KPI overlay points for tooltip clicks
@@ -948,8 +949,13 @@ function renderTab(tab) {
     } else if (tab === 'canvas') {
         const _af = Object.values(S.kpiVis).every(v=>v);
         html = `<div style="padding:0;padding-bottom:100px">
-          <div style="padding:6px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
-            <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--ac)">${s.ticker||s.sym}</span>
+          <div style="padding:5px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+            ${[{k:'vol',c:'#22c55e',l:'Vol',fn:"canvasToggleMA('vol')",v:S.maVis.vol}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.v?'checked':''} onchange="${o.fn}" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.3);border-radius:4px;padding:2px 7px">
+              <input type="checkbox" id="kpi-all-chk" ${_af?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:#00f2ff;width:12px;height:12px">
+              <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
+            </label>
             <span style="flex:1"></span>
             <select id="dataAccounting" onchange="updateFinancialSource(this.value,'accounting')" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;outline:none">
               <option value="consolidated" ${S.financialSource?.accounting==='consolidated'?'selected':''}>Cons</option>
@@ -959,14 +965,9 @@ function renderTab(tab) {
               <option value="annual" ${S.financialSource?.frequency==='annual'?'selected':''}>Annual</option>
               <option value="quarterly" ${S.financialSource?.frequency==='quarterly'?'selected':''}>Qtr</option>
             </select>
+            <button onclick="toggleKPIControlsExpanded()" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 7px;font-size:9px;font-family:var(--mono);cursor:pointer">${S.kpiControlsExpanded?'Filters ▴':'Filters ▾'}</button>
           </div>
-          <div style="padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;gap:7px;align-items:center">
-            ${[{k:'vol',c:'#22c55e',l:'Vol',fn:"canvasToggleMA('vol')",v:S.maVis.vol}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.v?'checked':''} onchange="${o.fn}" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
-            <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.3);border-radius:4px;padding:2px 7px">
-              <input type="checkbox" id="kpi-all-chk" ${_af?'checked':''} onchange="toggleAllKPI(this.checked)" style="accent-color:#00f2ff;width:12px;height:12px">
-              <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
-            </label>
+          <div style="display:${S.kpiControlsExpanded?'flex':'none'};padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);flex-wrap:wrap;gap:7px;align-items:center">
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
             ${(()=>{const ks=['rev','op','opm','pbt','net','eps','interest'];const allOn=ks.every(k=>S.kpiVis[k]),allOff=ks.every(k=>!S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-income" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('income',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px" ${(!allOn&&!allOff)?'data-indeterminate':''}>`})()}
             ${[{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'},{k:'interest',c:'#e879f9',l:'Int'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
@@ -2206,6 +2207,10 @@ function canvasToggleMA(key){
   S.maVis[key]=!S.maVis[key];
   if(key==='vol'){setupChartInteraction._initialized=false;renderTab('canvas');}
   else scheduleChartRedraw();
+}
+function toggleKPIControlsExpanded(){
+  S.kpiControlsExpanded = !S.kpiControlsExpanded;
+  renderTab('canvas');
 }
 function toggleAllKPI(on){
   Object.keys(S.kpiVis).forEach(k=>{S.kpiVis[k]=on;const cb=document.getElementById('kpi-'+k);if(cb)cb.checked=on;});
