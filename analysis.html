@@ -2205,7 +2205,7 @@ function updateChartStats(s){
 // Chart control functions
 function canvasToggleMA(key){
   S.maVis[key]=!S.maVis[key];
-  if(key==='vol'){setupChartInteraction._initialized=false;renderTab('canvas');}
+  if(key==='vol'){renderTab('canvas');}
   else scheduleChartRedraw();
 }
 function toggleKPIControlsExpanded(){
@@ -2254,10 +2254,10 @@ function canvasLoadAndDrawChart() {
 // ════════════════════════════════════════════════
 
 function setupChartInteraction(){
-  if(setupChartInteraction._initialized) return;
   const canvas = document.getElementById('cv-candle');
   if(!canvas) return;
-  setupChartInteraction._initialized = true;
+  if(setupChartInteraction._initializedFor === canvas) return;  // already wired for THIS canvas node
+  setupChartInteraction._initializedFor = canvas;
   const t={lastDist:0,isPanning:false,startX:0,startPan:0};
   let lastT=0;
   const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
@@ -2307,7 +2307,7 @@ function setupChartInteraction(){
   const v=document.getElementById('cv-vol');
   if(v){v.ontouchstart=ts;v.addEventListener('touchmove',tm,{passive:false});v.ontouchend=te;}
 }
-document.addEve// ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 // CHARTS TAB FUNCTION
 // ════════════════════════════════════════════════════════
 
