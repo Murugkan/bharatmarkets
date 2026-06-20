@@ -42,6 +42,9 @@ on:
 jobs:
   # ==========================================================================
   # JOB 1: Raw data (Yahoo history + Screener overview) — fetch-raw-yfsnr.py
+  # Commit & push is handled INSIDE fetch-raw-yfsnr.py (commit_to_git()),
+  # including its own 5-attempt retry loop with fetch/stash/rebase/stash-pop.
+  # No separate git step here — avoids double-commit/double-push.
   # ==========================================================================
   fetch-raw:
     runs-on: ubuntu-latest
@@ -105,38 +108,6 @@ jobs:
           [ -f data/yahoofin_raw_data.json ] && echo "✓ yahoofin_raw_data.json" || echo "✗ yahoofin_raw_data.json not found"
           [ -f data/screener_raw_data.json ] && echo "✓ screener_raw_data.json" || echo "✗ screener_raw_data.json not found"
           [ -f data/logs/fetch-raw-yfsnr.log ] && echo "✓ fetch-raw-yfsnr.log" || echo "✗ fetch-raw-yfsnr.log not found"
-
-      - name: Commit & Push (retry on concurrent updates)
-        run: |
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-
-          git add data/yahoofin_raw_data.json data/screener_raw_data.json data/logs/fetch-raw-yfsnr.log 2>/dev/null || true
-
-          if git diff --quiet --cached; then
-            echo "No changes to commit"
-            exit 0
-          fi
-
-          git commit -m "[Step 1] Fetch Raw Data: $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
-
-          max_attempts=5
-          attempt=1
-          until git push origin main; do
-            if [ $attempt -ge $max_attempts ]; then
-              echo "::error::Push failed after $max_attempts attempts"
-              exit 1
-            fi
-            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
-            attempt=$((attempt + 1))
-            sleep $((RANDOM % 5 + 1))
-            git fetch origin main
-            git stash --include-untracked
-            git rebase origin/main
-            git stash pop || true
-          done
-
-          echo "Push succeeded on attempt $attempt"
 
   # ==========================================================================
   # JOB 2: Yahoo Finance financial metrics — fetch_yahoofin_financials.py
