@@ -352,8 +352,20 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_
     yahoo_symbol = resolve_symbol(ticker, symbol_overrides)
     stock = yf.Ticker(yahoo_symbol)
     
+    # Fields to exclude from the info payload: company profile/address
+    # details, business summary, and officer compensation data. None of
+    # this is needed for the trading/portfolio pipeline.
+    EXCLUDED_INFO_FIELDS = {
+        "address1", "address2", "city", "zip", "country", "phone",
+        "website", "industryKey", "industryDisp", "sectorKey", "sectorDisp",
+        "longBusinessSummary", "companyOfficers",
+    }
+    
     try:
-        payload["info"] = stock.info
+        info = stock.info
+        if isinstance(info, dict):
+            info = {k: v for k, v in info.items() if k not in EXCLUDED_INFO_FIELDS}
+        payload["info"] = info
     except Exception as e:
         payload["info_error"] = str(e)
     
