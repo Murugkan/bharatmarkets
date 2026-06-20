@@ -251,16 +251,6 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
         
         metrics_dict = get_sector_metrics(sector.lower())
         
-        # DIAGNOSTIC: confirm metrics_dict contains only the expected
-        # sector-appropriate keys before any period processing happens.
-        # If this already shows manufacturing/default-only keys (revenue,
-        # ebitda, gross_profit, accounts_receivable, capex, free_cash_flow,
-        # working_capital, net_tangible_assets) for a bank/financial ticker,
-        # the bug is inside get_sector_metrics(). If it shows only the
-        # correct ~31 bank keys, the corruption is happening after this
-        # point — i.e. outside this function.
-        logger.warning(f"{ticker} | sector={sector!r} | metrics_dict has {len(metrics_dict)} keys: {sorted(metrics_dict.keys())}")
-        
         result = {"latest": {}, "historical_periods": []}
         
         # DEBUG
@@ -325,13 +315,6 @@ def fetch_financial_payload(ticker, sector, symbol_overrides):
                     val = find_field(cf_col, aliases)
                 
                 period_data[field_name] = val
-            
-            # DIAGNOSTIC: confirm period_data only contains metrics_dict's
-            # keys after extraction — if extra keys appear here that
-            # weren't in metrics_dict, something during the field_name loop
-            # itself is leaking keys in (e.g. shared dict reference).
-            if len(period_data) - 1 != len(metrics_dict):  # -1 for "period" key
-                logger.warning(f"{ticker} | {period_str} | KEY COUNT MISMATCH: period_data has {len(period_data)-1} fields, metrics_dict has {len(metrics_dict)}. period_data keys: {sorted(period_data.keys())}")
             
             result["historical_periods"].append(period_data)
             
