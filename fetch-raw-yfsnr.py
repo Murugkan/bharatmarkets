@@ -359,6 +359,13 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_
         "address1", "address2", "city", "zip", "country", "phone",
         "website", "industryKey", "industryDisp", "sectorKey", "sectorDisp",
         "longBusinessSummary", "companyOfficers",
+        "financialCurrency", "symbol", "language", "region", "typeDisp",
+        "quoteSourceName", "triggerable", "customPriceAlertConfidence",
+        "corporateActions", "regularMarketTime", "exchange", "messageBoardId",
+        "exchangeTimezoneName", "exchangeTimezoneShortName",
+        "gmtOffSetMilliseconds", "market", "esgPopulated", "marketState",
+        "shortName", "hasPrePostMarketData", "firstTradeDateMilliseconds",
+        "regularMarketChange", "regularMarketDayRange", "fullExchangeName",
     }
     
     try:
