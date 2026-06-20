@@ -179,7 +179,7 @@ const S = {
   chartRange: 'MAX',  // period dropdown removed — always show full available history
   chartInterval: 'M',  // only ohlcv_monthly exists now (daily/weekly removed from pipeline)
   maVis: { vol: true },
-  kpiVis: { pe: false, sales: false, rev: false, net: false, cfo: false, ncf: false, opm: false, debt: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false, interest: false, ccr: false, promoter: false, roce: false, divpayout: false },
+  kpiVis: { pe: false, rev: false, net: false, cfo: false, ncf: false, opm: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false, interest: false, ccr: false, promoter: false, roce: false, divpayout: false },
   chartPan: 0,
   panOffset: 0,
   chartZoom: 1,
@@ -968,12 +968,12 @@ function renderTab(tab) {
               <span style="font-size:9px;color:#00f2ff;font-weight:800">ALL Fin</span>
             </label>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
-            ${(()=>{const ks=['sales','rev','op','opm','pbt','net','eps','interest'];const allOn=ks.every(k=>S.kpiVis[k]),allOff=ks.every(k=>!S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-income" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('income',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px" ${(!allOn&&!allOff)?'data-indeterminate':''}>`})()}
-            ${[{k:'sales',c:'#a78bfa',l:'Sales'},{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'},{k:'interest',c:'#e879f9',l:'Int'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            ${(()=>{const ks=['rev','op','opm','pbt','net','eps','interest'];const allOn=ks.every(k=>S.kpiVis[k]),allOff=ks.every(k=>!S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-income" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('income',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px" ${(!allOn&&!allOff)?'data-indeterminate':''}>`})()}
+            ${[{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'},{k:'interest',c:'#e879f9',l:'Int'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Bal:</span>
-            ${(()=>{const ks=['assets','borrowings','debt'];const allOn=ks.every(k=>S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-bal" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('bal',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px">`})()}
-            ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'},{k:'debt',c:'#f87171',l:'Debt'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
+            ${(()=>{const ks=['assets','borrowings'];const allOn=ks.every(k=>S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-bal" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('bal',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px">`})()}
+            ${[{k:'assets',c:'#f0ad4e',l:'Assets'},{k:'borrowings',c:'#ff6b6b',l:'Borr'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Cash/Val:</span>
             ${(()=>{const ks=['cfo','fcf','ncf','ccr','pe'];const allOn=ks.every(k=>S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-cashval" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('cashval',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px">`})()}
@@ -1544,7 +1544,7 @@ function getQuarterlyData(s){
       const q = { d: date };
       
       // Income Statement metrics
-      if(salesData[date]) { q.rev = parseFloat(salesData[date]) || 0; q.sales = q.rev; }
+      if(salesData[date]) q.rev = parseFloat(salesData[date]) || 0;
       if(operatingProfitData[date]) q.op = parseFloat(operatingProfitData[date]) || 0;
       if(opmData[date]) q.opm = parseFloat(opmData[date]) || 0;
       if(pbtData[date]) q.pbt = parseFloat(pbtData[date]) || 0;
@@ -1556,7 +1556,6 @@ function getQuarterlyData(s){
       // Balance Sheet metrics
       if(assetsData[date]) q.assets = parseFloat(assetsData[date]) || 0;
       if(borrowingsData[date]) q.borrowings = parseFloat(borrowingsData[date]) || 0;
-      if(borrowingsData[date]) q.debt = parseFloat(borrowingsData[date]) || 0;
       
       // Cash Flow metrics
       if(cfoData[date]) q.cfo = parseFloat(cfoData[date]) || 0;
@@ -1815,7 +1814,6 @@ function drawCandlestick(s){
 
   const KPI_DEFS = [
     // Income Statement
-    {k:'sales', label:'Sales',    col:'#a78bfa'},
     {k:'rev',  label:'Rev',       col:'#22d3ee'},
     {k:'op',   label:'Op.Profit', col:'#ec4899'},
     {k:'opm',  label:'OPM%',      col:'#fb923c'},
@@ -1826,7 +1824,6 @@ function drawCandlestick(s){
     // Balance Sheet
     {k:'assets',     label:'Assets',  col:'#f0ad4e'},
     {k:'borrowings', label:'Borrow',  col:'#ff6b6b'},
-    {k:'debt',       label:'Debt',    col:'#f87171'},
     // Cash Flow
     {k:'cfo',  label:'CFO',  col:'#34d399'},
     {k:'fcf',  label:'FCF',  col:'#14b8a6'},
