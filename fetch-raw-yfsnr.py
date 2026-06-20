@@ -82,6 +82,13 @@ def verify_paths():
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+# Interval-to-period mapping: defines what period to use for each interval
+# Daily (1d) and weekly (1wk) OHLCV history are NOT fetched here.
+# Only monthly (1mo) history is retained.
+INTERVAL_PERIOD_MAP = {
+    "1mo": None,   # Use configured history_period
+}
+
 # ============================================================================
 # LOGGING
 # ============================================================================
@@ -324,27 +331,45 @@ class Step1Tester:
 # FETCH LOGIC
 # ============================================================================
 
-def fetch_yahoo_payload(ticker, symbol_overrides):
+def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_intervals=None):
     """
-    Fetch Yahoo Finance LTP (last traded price) only.
-    No OHLCV history, no full info dump.
+    Fetch Yahoo Finance info and price history.
+
+    Only monthly (1mo) OHLCV history is fetched. Daily (1d) and weekly
+    (1wk) history fetches have been removed.
 
     Args:
         ticker: Stock ticker
         symbol_overrides: Symbol mapping dict
+        history_period: Main history period (2y, 5y, 10y, etc.)
+        history_intervals: List of intervals to fetch (default: ["1mo"])
     """
+    
+    if history_intervals is None:
+        history_intervals = ["1mo"]
+    
     payload = {}
     yahoo_symbol = resolve_symbol(ticker, symbol_overrides)
     stock = yf.Ticker(yahoo_symbol)
-
+    
     try:
-        info = stock.info
-        ltp = info.get("currentPrice") or info.get("regularMarketPrice")
-        payload["ltp"] = ltp
-        payload["currency"] = info.get("currency")
+        payload["info"] = stock.info
     except Exception as e:
         payload["info_error"] = str(e)
-
+    
+    # Fetch history for each interval
+    for interval in history_intervals:
+        try:
+            # Determine period: use map if defined, otherwise use configured period
+            period = INTERVAL_PERIOD_MAP.get(interval, history_period)
+            if period is None:
+                period = history_period
+            
+            hist = stock.history(period=period, interval=interval)
+            payload[f"history_{period}_{interval}"] = hist.reset_index().astype(str).to_dict("records")
+        except Exception as e:
+            payload[f"history_{interval}_error"] = str(e)
+    
     return payload
 
 def extract_table(table):
@@ -468,7 +493,7 @@ def commit_to_git(log_file):
         
         # Commit
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"[Step 1] Fetch: Yahoo LTP+Screener ({timestamp}) [skip ci]"
+        msg = f"[Step 1] Fetch: Yahoo+Screener ({timestamp})"
         
         result = subprocess.run(
             ["git", "commit", "-m", msg],
@@ -525,6 +550,10 @@ def main():
     fetch_config = load_json(Path('.fetch_config.json'))
     FETCH_YAHOO = fetch_config.get('yahoo', True)
     FETCH_SCREENER = fetch_config.get('screener', True)
+    HISTORY_PERIOD = fetch_config.get('history_period', '10y')
+    HISTORY_INTERVALS = fetch_config.get('history_intervals', ['1mo'])
+    # Daily/weekly OHLCV history fetch removed — filter out even if present in config
+    HISTORY_INTERVALS = [i for i in HISTORY_INTERVALS if i not in ('1d', '1wk')]
     SCREENER_TIMEOUT = fetch_config.get('screener_timeout', 30)
     SCREENER_RETRIES = fetch_config.get('screener_retries', 2)
     SCREENER_DELAY = fetch_config.get('screener_delay', 1.0)
@@ -549,7 +578,7 @@ def main():
     logger.info("STEP 1: FETCH DATA MODULE - SUMMARY (FIXED)")
     logger.info("="*80)
     logger.info("\nProvider Configuration:")
-    logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance (info only, no price history)")
+    logger.info(f"  {'✓' if FETCH_YAHOO else '✗'} Yahoo Finance (period: {HISTORY_PERIOD}, intervals: {', '.join(HISTORY_INTERVALS)})")
     logger.info(f"  {'✓' if FETCH_SCREENER else '✗'} Screener.in (timeout: {SCREENER_TIMEOUT}s, retries: {SCREENER_RETRIES}, delay: {SCREENER_DELAY}s)")
     logger.info(f"  Output: {Path('data').resolve()}/")
     logger.info("="*80)
@@ -620,7 +649,7 @@ def main():
             if ticker not in yahoo_store:
                 yahoo_store[ticker] = {"ticker": ticker, "name": symbol.get("name"), "isin": symbol.get("isin"), "observations": []}
             try:
-                payload = fetch_yahoo_payload(ticker, SYMBOL_OVERRIDES)
+                payload = fetch_yahoo_payload(ticker, SYMBOL_OVERRIDES, HISTORY_PERIOD, HISTORY_INTERVALS)
                 yahoo_store[ticker]["observations"].append({"fetched_at": now(), "raw": payload})
             except Exception as e:
                 yahoo_store[ticker]["observations"].append({"fetched_at": now(), "raw": {"error": str(e)}})
