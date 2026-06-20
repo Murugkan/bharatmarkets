@@ -333,10 +333,11 @@ class Step1Tester:
 
 def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_intervals=None):
     """
-    Fetch Yahoo Finance info and price history.
+    Fetch Yahoo Finance info, LTP, 1-day change, and monthly OHLCV history.
 
     Only monthly (1mo) OHLCV history is fetched. Daily (1d) and weekly
-    (1wk) history fetches have been removed.
+    (1wk) history fetches have been removed. LTP, 1-day change, and
+    1-day change % are extracted as explicit top-level fields.
 
     Args:
         ticker: Stock ticker
@@ -365,13 +366,13 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_
         "exchangeTimezoneName", "exchangeTimezoneShortName",
         "gmtOffSetMilliseconds", "market", "esgPopulated", "marketState",
         "shortName", "hasPrePostMarketData", "firstTradeDateMilliseconds",
-        "regularMarketChange", "regularMarketDayRange", "fullExchangeName",
+        "regularMarketDayRange", "fullExchangeName",
         "compensationAsOfEpochDate", "executiveTeam", "maxAge", "priceHint",
         "previousClose", "open", "dayLow", "dayHigh",
         "regularMarketPreviousClose", "regularMarketOpen",
         "regularMarketDayLow", "regularMarketDayHigh", "payoutRatio",
-        "bid", "ask", "bidSize", "askSize", "currency", "tradeable",
-        "longName", "regularMarketChangePercent", "regularMarketPrice",
+        "bid", "ask", "bidSize", "askSize", "tradeable",
+        "longName",
         "earningsTimestamp", "earningsTimestampStart", "earningsTimestampEnd",
         "earningsCallTimestampStart", "earningsCallTimestampEnd",
         "isEarningsDateEstimate", "sourceInterval", "exchangeDataDelayedBy",
@@ -381,6 +382,12 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_
     try:
         info = stock.info
         if isinstance(info, dict):
+            ltp = info.get("currentPrice")
+            if ltp is None:
+                ltp = info.get("regularMarketPrice")
+            payload["ltp"] = ltp
+            payload["1d_change"] = info.get("regularMarketChange")
+            payload["1d_change_pct"] = info.get("regularMarketChangePercent")
             info = {k: v for k, v in info.items() if k not in EXCLUDED_INFO_FIELDS}
         payload["info"] = info
     except Exception as e:
