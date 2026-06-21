@@ -523,46 +523,50 @@ def main():
     errors.extend([s for s in sgb_syms if s not in sgb_quotes])
 
     # ──────────────────────────────────────────────────────────────────────
-    # FETCH: Mutual Funds + QSIF — from nav_ltp.json (daily NAV)
+    # FETCH: Mutual Funds + QSIF — from nav.json (latest NAV per ticker)
     # ──────────────────────────────────────────────────────────────────────
-    nav_ltp_syms = mf_syms
-    if nav_ltp_syms:
-        print(f"\n💰 Injecting {len(nav_ltp_syms)} MF/QSIF from nav_ltp.json…")
-        nav_ltp_data = {}
-        nav_ltp_path = Path("data/nav_ltp.json")
-        if nav_ltp_path.exists():
+    nav_syms = mf_syms
+    if nav_syms:
+        print(f"\n💰 Injecting {len(nav_syms)} MF/QSIF from nav.json…")
+        nav_data = {}
+        nav_path = Path("data/nav.json")
+        if nav_path.exists():
             try:
-                nav_ltp_data = json.loads(nav_ltp_path.read_text())
+                nav_data = json.loads(nav_path.read_text())
             except Exception as e:
-                logger.warning(f"nav_ltp.json load failed: {e}")
+                logger.warning(f"nav.json load failed: {e}")
 
-        # Build ISIN → nav_ltp key lookup
+        # Build ISIN → nav.json key lookup
         isin_to_nav = {}
-        for key, entry in nav_ltp_data.items():
+        for key, entry in nav_data.items():
             if key == '_metadata':
                 continue
             isin_to_nav[key.upper()] = entry
 
-        for sym in nav_ltp_syms:
+        for sym in nav_syms:
             entry = sym_to_entry.get(sym, {})
             isin = entry.get("isin", "").upper()
             nav_entry = isin_to_nav.get(isin) or isin_to_nav.get(sym.upper())
-            if nav_entry and nav_entry.get('ltp') is not None:
+            # nav.json's latest snapshot is nested under 'latest' (ltp/date/
+            # change/changePct), not flat fields — schema changed when
+            # nav_ltp.json was consolidated into nav.json.
+            latest = (nav_entry or {}).get('latest') or {}
+            if nav_entry and latest.get('ltp') is not None:
                 q = {
                     "ticker": sym,
                     "name": nav_entry.get('scheme_name') or entry.get("name", sym),
                     "sector": entry.get("sector", ""),
-                    "ltp": nav_entry.get('ltp'),
-                    "change": nav_entry.get('change'), "changePct": nav_entry.get('changePct'),
+                    "ltp": latest.get('ltp'),
+                    "change": latest.get('change'), "changePct": latest.get('changePct'),
                     "open": None, "high": None, "low": None, "prev": None,
                     "vol": 0, "w52h": None, "w52l": None, "beta": None,
-                    "nav_date": nav_entry.get('date'),
+                    "nav_date": latest.get('date'),
                     "nav_source": nav_entry.get('source'),
                 }
                 quotes[sym] = q
-                print(f"  ✓ {sym}: NAV {nav_entry['ltp']} ({nav_entry.get('source')})")
+                print(f"  ✓ {sym}: NAV {latest['ltp']} ({nav_entry.get('source')})")
             else:
-                logger.warning(f"nav_ltp.json: no entry for {sym} (ISIN: {isin})")
+                logger.warning(f"nav.json: no entry for {sym} (ISIN: {isin})")
                 errors.append(sym)
 
     # ──────────────────────────────────────────────────────────────────────
