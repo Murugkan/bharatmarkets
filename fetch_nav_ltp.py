@@ -51,6 +51,7 @@ NAV_LTP_OUTPUT_FILE = DATA_DIR / 'nav_ltp.json'
 QSIF_HISTORY_OUTPUT_FILE = DATA_DIR / 'qsif_history.json'
 
 LOG_FILE = DATA_DIR / 'logs/fetch_nav_ltp.log'
+SUMMARY_FILE = DATA_DIR / 'fetch_nav_ltp_summary.json'
 
 AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
 
@@ -105,6 +106,34 @@ def load_json(path):
 def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+
+
+def update_summary(mode, status, **fields):
+    """Update this job's entry in the small, overwritten-per-run summary
+    file (data/fetch_nav_ltp_summary.json) — one line per mode (eod/seed/
+    delta), no accumulated history.
+
+    Re-reads the file fresh right before writing (rather than relying on
+    whatever was loaded at script start) to minimize the window for a
+    lost update if another fetch_nav_ltp.py job is running concurrently
+    and also updating its own entry — final safety against a true race
+    still comes from git_commit_and_push()'s fetch/rebase retry, since
+    each job only ever overwrites its OWN named key, never another job's.
+
+    This file (not the full fetch_nav_ltp.log) is what gets committed —
+    deliberately avoiding the full log, since 3 jobs (eod/seed/delta) can
+    run concurrently and all writing/committing the same growing log file
+    caused real, repeated rebase conflicts in practice.
+    """
+    summary = load_json(SUMMARY_FILE)
+    summary = {k: v for k, v in summary.items() if k != '_comment'}
+    summary['_comment'] = "Latest outcome per fetch_nav_ltp.py mode — overwritten each run, no history"
+    summary[mode] = {
+        'status': status,
+        'last_run_at': now(),
+        **fields,
+    }
+    save_json(SUMMARY_FILE, summary)
 
 
 def git_commit_and_push(paths, message, max_attempts=5):
@@ -1040,8 +1069,10 @@ def main_eod():
     save_json(NAV_LTP_OUTPUT_FILE, output)
     logger.info(f"✓ Wrote {NAV_LTP_OUTPUT_FILE} ({len(merged)} entries)")
 
+    update_summary('eod', 'success' if merged else 'no_data', entries=len(merged))
+
     git_commit_and_push(
-        [NAV_LTP_OUTPUT_FILE, LOG_FILE],
+        [NAV_LTP_OUTPUT_FILE, SUMMARY_FILE],
         f"Update nav_ltp.json ({len(merged)} entries) [skip ci]"
     )
 
@@ -1069,8 +1100,10 @@ def main_history_seed():
     save_json(QSIF_HISTORY_OUTPUT_FILE, output)
     qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries) [SEED]")
 
+    update_summary('history-seed', 'success' if qsif_hist else 'no_data', entries=len(qsif_hist))
+
     git_commit_and_push(
-        [QSIF_HISTORY_OUTPUT_FILE, LOG_FILE],
+        [QSIF_HISTORY_OUTPUT_FILE, SUMMARY_FILE],
         f"Seed qsif_history.json ({len(qsif_hist)} entries) [skip ci]"
     )
 
@@ -1100,8 +1133,10 @@ def main_history_delta():
     save_json(QSIF_HISTORY_OUTPUT_FILE, output)
     qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries) [DELTA]")
 
+    update_summary('history-delta', 'success' if qsif_hist else 'no_data', entries=len(qsif_hist))
+
     git_commit_and_push(
-        [QSIF_HISTORY_OUTPUT_FILE, LOG_FILE],
+        [QSIF_HISTORY_OUTPUT_FILE, SUMMARY_FILE],
         f"Update qsif_history.json via delta ({len(qsif_hist)} entries) [skip ci]"
     )
 
