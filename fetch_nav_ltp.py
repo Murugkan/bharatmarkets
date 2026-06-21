@@ -21,6 +21,7 @@ import json
 import logging
 import re
 import requests
+import subprocess
 import time
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
@@ -76,6 +77,40 @@ def load_json(path):
 def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+
+
+def git_commit_and_push(paths, message):
+    """Commit and push the given file paths directly from this script.
+
+    Runs `git add/commit/push` so the workflow YAML no longer needs to own
+    committing — this script always commits the file it just wrote, in the
+    same process, immediately after writing it. Avoids the checkout/commit
+    ordering issue where a separate workflow step could run against a stale
+    working directory and make 'previous' data look identical to 'current'.
+
+    Safe to call in CI: if there's nothing to commit (no changes), this is
+    a no-op rather than an error. Requires the runner to already have git
+    user.name/user.email configured and push credentials available (e.g.
+    via actions/checkout with persist-credentials, or GITHUB_TOKEN remote).
+    """
+    try:
+        str_paths = [str(p) for p in paths]
+        subprocess.run(["git", "add"] + str_paths, check=True)
+
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"] + str_paths
+        )
+        if diff.returncode == 0:
+            logger.info("✓ No changes to commit (data unchanged)")
+            return
+
+        subprocess.run(["git", "commit", "-m", message], check=True)
+        subprocess.run(["git", "push"], check=True)
+        logger.info(f"✓ Committed and pushed: {message}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"⚠ Git commit/push failed: {e}")
+    except Exception as e:
+        logger.error(f"⚠ Unexpected error during git commit/push: {e}")
 
 
 # ===========================================================================
@@ -464,6 +499,11 @@ def main():
     output.update(merged)
     save_json(NAV_LTP_OUTPUT_FILE, output)
     logger.info(f"✓ Wrote {NAV_LTP_OUTPUT_FILE} ({len(merged)} entries)")
+
+    git_commit_and_push(
+        [NAV_LTP_OUTPUT_FILE],
+        f"Update nav_ltp.json ({len(merged)} entries) [skip ci]"
+    )
 
 
 if __name__ == "__main__":
