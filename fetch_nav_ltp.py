@@ -9,7 +9,7 @@ Part 1 — AMFI NAV:
   that matches an AMFI-listed scheme — SGBs are not in AMFI; included here in
   case a fund-of-fund SGB wrapper is used).
 
-Part 2 — QSIF NAV — three modes (run via CLI arg):
+Part 2 — QSIF NAV — two modes (run via CLI arg):
 
   `python fetch_nav_ltp.py` or `python fetch_nav_ltp.py eod` (default):
     FAST daily path. Uses the site's search box (txtschname + BtnGo
@@ -17,20 +17,16 @@ Part 2 — QSIF NAV — three modes (run via CLI arg):
     (10 rows) per held scheme — always enough for latest NAV + 1D change.
     Output: data/nav_ltp.json (AMFI + QSIF EOD combined, original schema).
 
-  `python fetch_nav_ltp.py history-seed`:
-    ONE-OFF MANUAL run. Paginates each scheme's full result until
-    pagination genuinely ends (can be a minute+ per scheme — confirmed
-    ~17 pages/~170 rows for one scheme in testing). OVERWRITES
-    data/qsif_history.json. Run this once to seed the file.
-
-  `python fetch_nav_ltp.py history-delta`:
-    SCHEDULED run. Reads the existing qsif_history.json, finds the latest
-    saved date per scheme, and fetches ONLY the gap since then (using the
-    site's FromIds/ToIds date-range filters, confirmed from page source)
-    — then appends to the existing history rather than re-fetching
-    everything. One file keeps accumulating over time. Falls back to a
-    full fetch for any scheme with no prior saved data (e.g. newly added
-    to QSIF_SCHEME_KEYWORDS).
+  `python fetch_nav_ltp.py qsif-nav`:
+    Self-determining — no separate seed/delta flags needed. Per held
+    ISIN: no existing data in qsif_nav.json -> full fetch (paginates
+    until pagination genuinely ends, confirmed ~17 pages/~170 rows for
+    one scheme in testing). Existing data with a gap -> fetches ONLY the
+    gap since the last saved date (via the site's FromIds/ToIds
+    date-range filters, confirmed from page source). Already current ->
+    no network call for that ISIN. One file (data/qsif_nav.json) keeps
+    accumulating — same command works whether it's the very first run
+    ever or a routine daily run.
 """
 
 import json
@@ -48,7 +44,7 @@ DATA_DIR = Path('data')
 SYMBOLS_FILE = DATA_DIR / 'unified-symbols.json'
 
 NAV_LTP_OUTPUT_FILE = DATA_DIR / 'nav_ltp.json'
-QSIF_HISTORY_OUTPUT_FILE = DATA_DIR / 'qsif_history.json'
+QSIF_NAV_OUTPUT_FILE = DATA_DIR / 'qsif_nav.json'
 
 LOG_FILE = DATA_DIR / 'logs/fetch_nav_ltp.log'
 SUMMARY_FILE = DATA_DIR / 'fetch_nav_ltp_summary.json'
@@ -194,7 +190,39 @@ def git_commit_and_push(paths, message, max_attempts=5):
                 capture_output=True, text=True
             )
             stashed = stash.returncode == 0 and "No local changes" not in (stash.stdout or "")
-            subprocess.run(["git", "rebase", "origin/main"], check=True)
+
+            rebase = subprocess.run(
+                ["git", "rebase", "origin/main"],
+                capture_output=True, text=True
+            )
+            if rebase.returncode != 0:
+                # A genuine content conflict (not just "behind") — e.g. two
+                # concurrent fetch_nav_ltp.py jobs both created/edited
+                # SUMMARY_FILE before either saw the other's commit, so git
+                # can't auto-merge two independent versions of the same
+                # JSON file. Confirmed in practice: "CONFLICT (add/add)".
+                #
+                # Resolution: abort the conflicted rebase, discard this
+                # job's stale local commit, reset onto the latest
+                # origin/main, then re-run THIS job's own write logic
+                # against that fresh base — which naturally produces a
+                # correct merge for SUMMARY_FILE specifically (each job
+                # only ever updates its own named key in that file; see
+                # update_summary()) and a correct overwrite for the JSON
+                # output files (which are wholesale per-run snapshots,
+                # not something meant to be merged anyway).
+                logger.warning(
+                    f"  ⚠ Rebase hit a real conflict (attempt {attempt}/{max_attempts}) — "
+                    f"likely a concurrent fetch_nav_ltp.py job also wrote SUMMARY_FILE. "
+                    f"Aborting rebase, resetting onto latest origin/main, and retrying "
+                    f"with a fresh write rather than merging stale local state."
+                )
+                subprocess.run(["git", "rebase", "--abort"], check=False)
+                if stashed:
+                    subprocess.run(["git", "stash", "pop"], check=False)
+                subprocess.run(["git", "reset", "--hard", "origin/main"], check=True)
+                return "conflict_reset"
+
             if stashed:
                 subprocess.run(["git", "stash", "pop"])
                 # Fold whatever the stash restored (e.g. further log writes
@@ -207,6 +235,7 @@ def git_commit_and_push(paths, message, max_attempts=5):
         logger.error(f"⚠ Git commit/push failed: {e}")
     except Exception as e:
         logger.error(f"⚠ Unexpected error during git commit/push: {e}")
+    return None
 
 
 # ===========================================================================
@@ -862,95 +891,29 @@ def run_qsif_nav_eod():
     return result
 
 
-def run_qsif_history_seed():
-    """Fetch FULL available QSIF NAV history per held ISIN — ONE-OFF SEED.
-
-    Paginates the search result for each scheme until pagination genuinely
-    ends, which can take a minute or more per scheme (confirmed: ~17 pages
-    / ~170 rows for one scheme in testing). Run this manually once to seed
-    qsif_history.json; after that, run_qsif_history_delta() takes over to
-    fill only the gap on a schedule.
-
-    Output: {isin: {scheme_name, source, latest: {date, ltp, change,
-    changePct}, history: [{date, nav, change, changePct}, ...]}}, written
-    to qsif_history.json, oldest-to-newest per scheme. OVERWRITES the file.
-    """
-    if not QSIF_SCHEME_KEYWORDS:
-        qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
-        return {}
-
-    session = requests.Session()
-    result = {}
-
-    for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
-        qsif_logger.info(f"  [SEED] Fetching full history for {isin} (search: '{keyword}')")
-        matched = fetch_qsif_scheme_history(session, keyword)  # no date range = full history
-
-        if not matched:
-            qsif_logger.warning(f"  ⚠ {isin}: search for '{keyword}' returned no rows")
-            continue
-
-        seen = set()
-        deduped = []
-        for r in matched:
-            if r['date_str'] in seen:
-                continue
-            seen.add(r['date_str'])
-            deduped.append(r)
-        if len(deduped) < len(matched):
-            qsif_logger.warning(
-                f"  ⚠ {isin}: removed {len(matched) - len(deduped)} duplicate date row(s)"
-            )
-        matched = deduped
-
-        dated = []
-        for r in matched:
-            d = parse_qsif_date(r['date_str'])
-            if d:
-                dated.append((d, r))
-        dated.sort(key=lambda x: x[0])  # oldest first for storage
-
-        if not dated:
-            qsif_logger.warning(f"  ⚠ {isin}: matched rows but none had parseable dates")
-            continue
-
-        scheme_name = matched[0]['scheme_name']
-        result[isin] = build_qsif_history_entry(scheme_name, dated)
-        qsif_logger.info(
-            f"  ✓ {isin}: {len(dated)} dated rows in full history "
-            f"(latest: {result[isin]['latest']})"
-        )
-
-    missing = set(QSIF_SCHEME_KEYWORDS.keys()) - set(result.keys())
-    if missing:
-        qsif_logger.warning(f"  ⚠ {len(missing)} ISIN(s) not matched: {sorted(missing)}")
-
-    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries (seed)")
-    return result
-
-
-def run_qsif_history_delta():
+def run_qsif_nav_update():
     """Fill the GAP in qsif_history.json since the last saved date — SCHEDULED.
 
-    For each held ISIN: reads the existing qsif_history.json, finds the
-    latest saved date for that scheme, and fetches only NAV rows from
-    (latest_saved_date + 1 day) through today using the site's FromIds/
-    ToIds date filters — not the full history again. Appends new rows to
-    the existing history and re-saves, so the file keeps accumulating
-    rather than being re-fetched from scratch each run.
+    Self-determining per ISIN — no separate "seed" vs "delta" mode needed:
+      - No existing data for that ISIN  -> FULL fetch (paginates until the
+        site's pagination genuinely ends; can take a minute+ per scheme).
+      - Existing data, but a gap exists -> fetch ONLY that gap (latest
+        saved date + 1 day through today) via the site's FromIds/ToIds
+        date-range filters, then merge into the existing series.
+      - Existing data, already current  -> no network call for that ISIN;
+        existing entry is reused as-is (just normalized through
+        build_qsif_history_entry() in case it was written under an older
+        schema).
 
-    If a scheme has no existing history yet (seed never run, or a new
-    ISIN was just added to QSIF_SCHEME_KEYWORDS), falls back to fetching
-    full history for that scheme only, with a warning.
-
-    Returns the FULL merged result dict (existing + newly appended rows)
+    Reads/writes qsif_nav.json. Returns the FULL merged result dict
+    (existing + newly fetched rows, or untouched where already current)
     for every ISIN in QSIF_SCHEME_KEYWORDS, ready to be saved as-is.
     """
     if not QSIF_SCHEME_KEYWORDS:
         qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
         return {}
 
-    existing = load_json(QSIF_HISTORY_OUTPUT_FILE)
+    existing = load_json(QSIF_NAV_OUTPUT_FILE)
     # load_json returns {} on missing/invalid file; strip _metadata if present
     existing = {k: v for k, v in existing.items() if k != '_metadata'}
 
@@ -972,9 +935,8 @@ def run_qsif_history_delta():
 
         if not prior_dated:
             qsif_logger.warning(
-                f"  ⚠ {isin}: no existing history found in {QSIF_HISTORY_OUTPUT_FILE.name} — "
-                f"fetching FULL history for this scheme as a fallback (run the seed job if "
-                f"this wasn't expected)"
+                f"  ⚠ {isin}: no existing history in {QSIF_NAV_OUTPUT_FILE.name} — "
+                f"running a full fetch for this scheme"
             )
             matched = fetch_qsif_scheme_history(session, keyword)
             from_date = None
@@ -990,7 +952,7 @@ def run_qsif_history_delta():
                     prior.get('scheme_name', isin), prior_dated
                 )
                 continue
-            qsif_logger.info(f"  [DELTA] {isin}: fetching gap {from_date} to {today} (search: '{keyword}')")
+            qsif_logger.info(f"  {isin}: fetching gap {from_date} to {today} (search: '{keyword}')")
             matched = fetch_qsif_scheme_history(session, keyword, from_date=from_date, to_date=today)
 
         if not matched:
@@ -1064,89 +1026,69 @@ def main_eod():
     except Exception as e:
         qsif_logger.warning(f"  ⚠ QSIF EOD NAV run failed: {e}")
 
-    output = {"_metadata": {"generated_at": now(), "count": len(merged), "source": "AMFI + qsif.com"}}
-    output.update(merged)
-    save_json(NAV_LTP_OUTPUT_FILE, output)
-    logger.info(f"✓ Wrote {NAV_LTP_OUTPUT_FILE} ({len(merged)} entries)")
+    for attempt in range(2):  # one retry if a concurrent job conflicts on SUMMARY_FILE
+        output = {"_metadata": {"generated_at": now(), "count": len(merged), "source": "AMFI + qsif.com"}}
+        output.update(merged)
+        save_json(NAV_LTP_OUTPUT_FILE, output)
+        logger.info(f"✓ Wrote {NAV_LTP_OUTPUT_FILE} ({len(merged)} entries)")
 
-    update_summary('eod', 'success' if merged else 'no_data', entries=len(merged))
+        update_summary('eod', 'success' if merged else 'no_data', entries=len(merged))
 
-    git_commit_and_push(
-        [NAV_LTP_OUTPUT_FILE, SUMMARY_FILE],
-        f"Update nav_ltp.json ({len(merged)} entries) [skip ci]"
-    )
+        outcome = git_commit_and_push(
+            [NAV_LTP_OUTPUT_FILE, SUMMARY_FILE],
+            f"Update nav_ltp.json ({len(merged)} entries) [skip ci]"
+        )
+        if outcome != "conflict_reset":
+            break
+        logger.warning("  Retrying eod save+commit once against the now-reset origin/main...")
 
 
-def main_history_seed():
-    """ONE-OFF manual run: full QSIF history fetch, OVERWRITES qsif_history.json.
-    SLOW (minutes, multiple pages per scheme). Run this once to seed the
-    file; after that, use 'history-delta' on a schedule to keep it
-    up to date by fetching only the gap."""
+def main_qsif_nav():
+    """QSIF NAV update — self-determining, single mode (no separate seed/
+    delta CLI flags needed).
+
+    For each held ISIN: no existing data -> full fetch (paginates the
+    site until pagination genuinely ends; minute+ per scheme). Existing
+    data with a gap -> fetches only that gap. Already current -> no
+    network call for that ISIN. See run_qsif_nav_update() for details.
+
+    Writes/accumulates data/qsif_nav.json — one file, always up to date,
+    regardless of whether this is the very first run ever or the
+    hundredth daily run."""
     try:
-        qsif_hist = run_qsif_history_seed()
+        qsif_hist = run_qsif_nav_update()
     except Exception as e:
-        qsif_logger.warning(f"  ⚠ QSIF history seed run failed: {e}")
+        qsif_logger.warning(f"  ⚠ QSIF NAV update run failed: {e}")
         qsif_hist = {}
 
-    output = {
-        "_metadata": {
-            "generated_at": now(),
-            "count": len(qsif_hist),
-            "source": "qsif.com",
-            "mode": "seed (full history)"
+    for attempt in range(2):  # one retry if a concurrent job conflicts on SUMMARY_FILE
+        output = {
+            "_metadata": {
+                "generated_at": now(),
+                "count": len(qsif_hist),
+                "source": "qsif.com",
+                "schema": "per-ISIN: {scheme_name, source, latest: {date, ltp, change, changePct}, history: [{date, nav, change, changePct}, ...] oldest-to-newest}"
+            }
         }
-    }
-    output.update(qsif_hist)
-    save_json(QSIF_HISTORY_OUTPUT_FILE, output)
-    qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries) [SEED]")
+        output.update(qsif_hist)
+        save_json(QSIF_NAV_OUTPUT_FILE, output)
+        qsif_logger.info(f"✓ Wrote {QSIF_NAV_OUTPUT_FILE} ({len(qsif_hist)} entries)")
 
-    update_summary('history-seed', 'success' if qsif_hist else 'no_data', entries=len(qsif_hist))
+        update_summary('qsif-nav', 'success' if qsif_hist else 'no_data', entries=len(qsif_hist))
 
-    git_commit_and_push(
-        [QSIF_HISTORY_OUTPUT_FILE, SUMMARY_FILE],
-        f"Seed qsif_history.json ({len(qsif_hist)} entries) [skip ci]"
-    )
-
-
-def main_history_delta():
-    """SCHEDULED run: fetch only the gap since the last saved date per
-    scheme, and append to the existing qsif_history.json (one file keeps
-    accumulating). FAST when little/no gap exists; proportional to gap
-    size otherwise. Requires qsif_history.json to already exist (run
-    'history-seed' once first) — falls back to full history per-scheme
-    if a scheme has no prior saved data."""
-    try:
-        qsif_hist = run_qsif_history_delta()
-    except Exception as e:
-        qsif_logger.warning(f"  ⚠ QSIF history delta run failed: {e}")
-        qsif_hist = {}
-
-    output = {
-        "_metadata": {
-            "generated_at": now(),
-            "count": len(qsif_hist),
-            "source": "qsif.com",
-            "mode": "delta (gap-fill)"
-        }
-    }
-    output.update(qsif_hist)
-    save_json(QSIF_HISTORY_OUTPUT_FILE, output)
-    qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries) [DELTA]")
-
-    update_summary('history-delta', 'success' if qsif_hist else 'no_data', entries=len(qsif_hist))
-
-    git_commit_and_push(
-        [QSIF_HISTORY_OUTPUT_FILE, SUMMARY_FILE],
-        f"Update qsif_history.json via delta ({len(qsif_hist)} entries) [skip ci]"
-    )
+        outcome = git_commit_and_push(
+            [QSIF_NAV_OUTPUT_FILE, SUMMARY_FILE],
+            f"Update qsif_nav.json ({len(qsif_hist)} entries) [skip ci]"
+        )
+        if outcome != "conflict_reset":
+            break
+        qsif_logger.warning("  Retrying qsif_nav save+commit once against the now-reset origin/main...")
 
 
 if __name__ == "__main__":
     import sys
     mode = sys.argv[1] if len(sys.argv) > 1 else "eod"
-    if mode == "history-seed":
-        main_history_seed()
-    elif mode == "history-delta":
-        main_history_delta()
+    if mode == "qsif-nav":
+        main_qsif_nav()
     else:
         main_eod()
