@@ -1680,12 +1680,11 @@ function drawNavLine(s){
     ctx.fillRect(0,0,W,H);
 
     // Grid lines — denser than the equity chart since NAV oscillations are
-    // often small relative to the full y-range, and 5 lines was too coarse
-    // to read intermediate values against.
-    const GRID_DIV = 8;
+    // often small relative to the full y-range.
+    const GRID_DIV = 12;
     for(let i=0;i<=GRID_DIV;i++){
       const y=PAD.t+(cH/GRID_DIV)*i;
-      ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
+      ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
     }
 
@@ -1744,9 +1743,12 @@ function drawNavLine(s){
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
     ctx.fillText(navVal.toFixed(2), W-2, Math.max(navY+4, PAD.t+10));
 
-    // X-axis date labels — denser than before (was capped at 4) to match the
-    // finer y-axis grid now in use.
-    const maxLabels = Math.min(6, Math.floor(cW/50));
+    // X-axis date labels — the last point sits exactly at PAD.l+cW, so it
+    // must be exempted from the right-edge proximity check below (it was
+    // being silently dropped every time, since toX() for the final point
+    // always lands past the cutoff). Also denser overall: was capped at 4,
+    // now scales with available width for finer time resolution.
+    const maxLabels = Math.max(4, Math.min(9, Math.floor(cW/45)));
     const lblStep = Math.max(1, Math.floor(n/maxLabels));
     ctx.fillStyle='rgba(255,255,255,0.9)';
     ctx.font='bold 12px sans-serif';
@@ -1757,9 +1759,10 @@ function drawNavLine(s){
       if(parts.length !== 3) return;
       const lbl = parts[1]+'/'+parts[0].slice(2);
       const x = toX(p._t);
-      if(x > PAD.l+cW-8) return;
-      ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-      ctx.fillText(lbl, x, PAD.t+cH+10);
+      const isLast = i === n-1;
+      if(!isLast && x > PAD.l+cW-8) return; // skip near-edge intermediate labels (would collide with the last one), but never skip the last point itself
+      ctx.textAlign = i===0 ? 'left' : (isLast ? 'right' : 'center');
+      ctx.fillText(lbl, isLast ? PAD.l+cW : x, PAD.t+cH+10);
     });
   } catch(e) {
     const cv = document.getElementById('cv-candle');
