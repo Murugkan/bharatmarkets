@@ -369,7 +369,7 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
     tables = soup.find_all('table')
     if not tables:
         qsif_logger.warning("  ⚠ No <table> found on historical_nav page")
-        return rows, None
+        return rows, None, None, {}
 
     for table in tables:
         header_cells = table.find('tr')
@@ -416,68 +416,103 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
         qsif_logger.warning("  ⚠ Zero rows parsed from any table on this page")
 
     # Look for a real <a href> pagination link (text '2', 'Next', or rel=next).
-    # ASP.NET pagers commonly render as <a href="javascript:__doPostBack(...)">
-    # with NO real URL — in that case next_url stays None and is logged as such.
+    # ASP.NET pagers commonly render as <a href="javascript:__doPostBack(eventTarget,'')">
+    # with no real URL. In that case, extract the eventTarget string so the
+    # caller can replicate it as a real POST (see fetch_qsif_historical_nav).
     next_url = None
+    next_event_target = None
     candidates = soup.find_all('a', href=True)
     for a in candidates:
         text = a.get_text(strip=True).lower()
         href = a['href'].strip()
         if text in ('2', 'next') or 'next' in (a.get('rel') or []):
             if href.lower().startswith('javascript:'):
-                qsif_logger.info(f"  Pagination link found but is JS-only postback (not followable via requests): {href[:120]}")
+                m = re.search(r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)", href)
+                if m:
+                    next_event_target = m.group(1)
+                    qsif_logger.info(f"  Pagination is __doPostBack with eventTarget='{next_event_target}'")
+                else:
+                    qsif_logger.info(f"  Pagination link found but is JS-only postback (could not parse eventTarget): {href[:120]}")
             else:
                 from urllib.parse import urljoin
                 next_url = urljoin(base_url, href)
                 qsif_logger.info(f"  Real pagination href found: {next_url}")
             break
 
-    if next_url is None:
-        qsif_logger.info("  No real (non-JS) pagination link found on this page")
+    if next_url is None and next_event_target is None:
+        qsif_logger.info("  No pagination link (real or postback) found on this page")
 
-    return rows, next_url
+    # Hidden ASP.NET form fields needed to replicate a postback via POST
+    hidden_fields = {}
+    for inp in soup.find_all('input', type='hidden'):
+        name = inp.get('name')
+        if name:
+            hidden_fields[name] = inp.get('value', '')
 
-    return rows
+    return rows, next_url, next_event_target, hidden_fields
 
 
 def fetch_qsif_historical_nav(session, max_pages=5):
-    """Fetch and parse the historical_nav page, following REAL pagination
-    links extracted from the page's own HTML (not a guessed query param).
+    """Fetch and parse the historical_nav page, following pagination.
 
-    A live run confirmed page 2 does not change the browser URL when
-    navigated normally, meaning pagination is very likely a JS-only
-    ASP.NET __doPostBack pager with no real <a href> URL to follow — in
-    that case this function will fetch page 1 only and log that fact
-    clearly, rather than guessing further query params blind.
+    Page 1 is a plain GET. Confirmed via live log: pagination beyond page 1
+    is an ASP.NET WebForms __doPostBack pager (e.g.
+    __doPostBack('ctl00$ContentPlaceHolder1$nav_sch$ctl01$ctl01','')),
+    NOT a real URL. This is replicated with plain requests as a POST:
+    take the hidden __VIEWSTATE/__EVENTVALIDATION/__VIEWSTATEGENERATOR
+    fields from the previous page's HTML, add __EVENTTARGET (the control
+    ID) and __EVENTARGUMENT (usually empty), and POST back to the same
+    URL — no real browser/Selenium needed, since this is just form
+    submission, not client-side JS execution.
     """
     all_rows = []
     url = QSIF_NAV_URL
 
-    for page_num in range(1, max_pages + 1):
-        try:
-            resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
-            resp.raise_for_status()
-            page_rows, next_url = parse_nav_table(resp.text, base_url=url)
-            if not page_rows:
-                qsif_logger.info(f"  Page {page_num}: no rows parsed, stopping pagination")
+    try:
+        resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        qsif_logger.warning(f"  ⚠ Page 1 fetch failed: {e}")
+        return all_rows
+
+    page_rows, next_url, event_target, hidden_fields = parse_nav_table(resp.text, base_url=url)
+    if page_rows:
+        all_rows.extend(page_rows)
+    qsif_logger.info(f"  Page 1: {len(page_rows)} rows")
+
+    for page_num in range(2, max_pages + 1):
+        if next_url:
+            # Real <a href> link — simple GET
+            try:
+                resp = session.get(next_url, headers=SCRAPE_HEADERS, timeout=15)
+                resp.raise_for_status()
+            except Exception as e:
+                qsif_logger.warning(f"  ⚠ Page {page_num} GET failed: {e}")
                 break
-            all_rows.extend(page_rows)
-            qsif_logger.info(f"  Page {page_num}: {len(page_rows)} rows")
-        except Exception as e:
-            qsif_logger.warning(f"  ⚠ Page {page_num} fetch failed: {e}")
+            request_url = next_url
+        elif event_target:
+            # ASP.NET __doPostBack — replicate as POST with hidden fields
+            post_data = dict(hidden_fields)
+            post_data['__EVENTTARGET'] = event_target
+            post_data['__EVENTARGUMENT'] = ''
+            try:
+                resp = session.post(url, data=post_data, headers=SCRAPE_HEADERS, timeout=15)
+                resp.raise_for_status()
+            except Exception as e:
+                qsif_logger.warning(f"  ⚠ Page {page_num} POST (__doPostBack eventTarget='{event_target}') failed: {e}")
+                break
+            qsif_logger.info(f"  Page {page_num}: POSTed __EVENTTARGET='{event_target}'")
+            request_url = url
+        else:
+            qsif_logger.info(f"  Stopping after page {page_num - 1}: no further pagination link (real or postback) found")
             break
 
-        if not next_url or next_url == url:
-            qsif_logger.info(
-                f"  Stopping after page {page_num}: no further (non-JS) pagination link found. "
-                f"If more history is needed, this site's pager is likely JS-only "
-                f"(__doPostBack) and would require a headless browser (e.g. Selenium, "
-                f"already used elsewhere in this pipeline for fetch_screener_financials.py) "
-                f"to paginate further."
-            )
+        page_rows, next_url, event_target, hidden_fields = parse_nav_table(resp.text, base_url=request_url)
+        if not page_rows:
+            qsif_logger.info(f"  Page {page_num}: no rows parsed, stopping pagination")
             break
-
-        url = next_url
+        all_rows.extend(page_rows)
+        qsif_logger.info(f"  Page {page_num}: {len(page_rows)} rows")
         time.sleep(1)
 
     qsif_logger.info(f"  ✓ Total rows fetched across pagination: {len(all_rows)}")
