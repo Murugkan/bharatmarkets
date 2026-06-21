@@ -1,0 +1,82 @@
+name: 'E2E Pipeline (Fetch & Process All Financials)'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# This workflow is now a thin orchestrator only — each actual step lives
+# in its own standalone workflow file so it can be run manually on its
+# own (via that file's workflow_dispatch) without triggering the whole
+# pipeline. This file just wires them together in the right order for
+# the full daily run:
+#
+#   fetch-raw-yfsnr.yml ────────────┐
+#   fetch-yahoofin-financials.yml ──┼──> flatten-bucket.yml
+#   fetch-screener-financials.yml ──┘         ^
+#   fetch-nav.yml ─────────────────────────────┘
+#
+# (fetch-nav.yml also has its own dedicated daily 5pm IST schedule as
+# its primary trigger — this call here is a catch-up safety net only.)
+
+on:
+  schedule:
+    # 5:00 PM IST = 11:30 AM UTC, Mon-Fri
+    - cron: '30 11 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: 'Raw data providers (for fetch-raw-yfsnr.py)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'yahoofin'
+          - 'screener'
+      history_period:
+        description: 'Yahoo history period (for fetch-raw-yfsnr.py)'
+        required: false
+        default: '10y'
+        type: choice
+        options:
+          - '10y'
+          - '5y'
+          - '2y'
+          - '1y'
+      log_level:
+        description: 'Log level (applies to all jobs)'
+        required: false
+        default: 'WARNING'
+        type: choice
+        options:
+          - 'DEBUG'
+          - 'INFO'
+          - 'WARNING'
+          - 'ERROR'
+
+jobs:
+  fetch-raw:
+    uses: ./.github/workflows/fetch-raw-yfsnr.yml
+    secrets: inherit
+    with:
+      providers: ${{ github.event.inputs.providers || 'all' }}
+      history_period: ${{ github.event.inputs.history_period || '10y' }}
+      log_level: ${{ github.event.inputs.log_level || 'WARNING' }}
+
+  fetch-yahoofin-financials:
+    uses: ./.github/workflows/fetch-yahoofin-financials.yml
+    secrets: inherit
+    with:
+      log_level: ${{ github.event.inputs.log_level || 'WARNING' }}
+
+  fetch-screener-financials:
+    uses: ./.github/workflows/fetch-screener-financials.yml
+    secrets: inherit
+
+  fetch-nav:
+    uses: ./.github/workflows/fetch-nav.yml
+    secrets: inherit
+
+  flatten-and-merge:
+    needs: [fetch-raw, fetch-yahoofin-financials, fetch-screener-financials, fetch-nav]
+    uses: ./.github/workflows/flatten-bucket.yml
+    secrets: inherit

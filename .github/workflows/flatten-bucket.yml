@@ -1,0 +1,118 @@
+name: 'Flatten & Bucket Market Data'
+
+# Combined two-stage step: market_data_flatten.py (raw sources ->
+# market_data_raw.json) followed by market_data.py (market_data_raw.json
+# -> final market_data.json). Run as one workflow since they're
+# sequential halves of the same "produce final output" operation and
+# market_data.py depends on market_data_flatten.py's output existing.
+#
+# Standalone so it can be run manually for just this step (e.g. to
+# rebuild market_data.json after manually re-running an upstream fetch
+# step) without triggering the rest of the pipeline, or called from
+# e2e-parallel.yml as part of the full daily run.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  flatten-and-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (latest main)
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run market_data_flatten.py
+        run: python market_data_flatten.py
+
+      - name: Verify flatten output
+        run: |
+          if [ -f data/market_data_raw.json ]; then
+            echo "✓ market_data_raw.json exists"
+            ls -lh data/market_data_raw.json
+          else
+            echo "✗ market_data_raw.json NOT FOUND"
+          fi
+
+      - name: Commit flatten output (retry on concurrent updates)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add data/market_data_raw.json data/logs/market_data_flatten.log 2>/dev/null || true
+
+          if git diff --quiet --cached; then
+            echo "No changes to commit"
+          else
+            git commit -m "[Step 2] Flatten Market Data: $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
+
+            max_attempts=5
+            attempt=1
+            until git push origin main; do
+              if [ $attempt -ge $max_attempts ]; then
+                echo "::error::Push failed after $max_attempts attempts"
+                exit 1
+              fi
+              echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+              attempt=$((attempt + 1))
+              sleep $((RANDOM % 5 + 1))
+              git fetch origin main
+              git stash --include-untracked
+              git rebase origin/main
+              git stash pop || true
+            done
+
+            echo "Push succeeded on attempt $attempt"
+          fi
+
+      - name: Run market_data.py
+        run: python market_data.py
+
+      - name: Verify merge output
+        run: |
+          if [ -f data/market_data.json ]; then
+            echo "✓ market_data.json exists"
+            ls -lh data/market_data.json
+          else
+            echo "✗ market_data.json NOT FOUND"
+          fi
+
+      - name: Commit merge output (retry on concurrent updates)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add data/market_data.json data/logs/market_data.log 2>/dev/null || true
+
+          if git diff --quiet --cached; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "[Step 3] Bucket Market Data: $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
+
+          max_attempts=5
+          attempt=1
+          until git push origin main; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Push failed after $max_attempts attempts"
+              exit 1
+            fi
+            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 1))
+            git fetch origin main
+            git stash --include-untracked
+            git rebase origin/main
+            git stash pop || true
+          done
+
+          echo "Push succeeded on attempt $attempt"
