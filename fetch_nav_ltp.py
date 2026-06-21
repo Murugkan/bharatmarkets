@@ -117,11 +117,16 @@ def git_commit_and_push(paths, message, max_attempts=5):
     working directory and make 'previous' data look identical to 'current'.
 
     Retries on push rejection (e.g. another concurrent job in the same
-    workflow run pushed first) via fetch + rebase, matching the pattern
-    already used by every other commit step in e2e-parallel.yml. Without
-    this, a rejected push would silently drop this run's data entirely —
-    confirmed in practice when a same-run QSIF history fetch (a slow,
-    ~17-page job) was lost to exactly this race.
+    workflow run pushed first) via fetch + stash + rebase + stash-pop,
+    matching the pattern already used by every other commit step in
+    e2e-parallel.yml. The stash step is necessary here specifically
+    because the log file handler stays open and keeps writing to LOG_FILE
+    for the remainder of this script's execution — meaning by the time a
+    retry's rebase runs, git sees the log as unstaged-modified again
+    relative to the commit just made, and a plain rebase refuses to run
+    with a dirty tree. Confirmed in practice: a real push rejection
+    correctly triggered the retry, but the bare rebase then failed with
+    "You have unstaged changes" because of this.
 
     Safe to call in CI: if there's nothing to commit (no changes), this is
     a no-op rather than an error. Requires the runner to already have git
@@ -149,10 +154,25 @@ def git_commit_and_push(paths, message, max_attempts=5):
             if attempt >= max_attempts:
                 logger.error(f"⚠ Push failed after {max_attempts} attempts: {message}")
                 return
-            logger.warning(f"  Push rejected (attempt {attempt}/{max_attempts}) — fetching and rebasing, then retrying...")
+            logger.warning(f"  Push rejected (attempt {attempt}/{max_attempts}) — fetching, stashing, and rebasing, then retrying...")
             time.sleep(random.uniform(1, 5))
             subprocess.run(["git", "fetch", "origin", "main"], check=True)
+            # Stash first: LOG_FILE is still being actively written by this
+            # process's own logging handler, so it's almost always dirty
+            # again here even though it was just committed.
+            stash = subprocess.run(
+                ["git", "stash", "--include-untracked"],
+                capture_output=True, text=True
+            )
+            stashed = stash.returncode == 0 and "No local changes" not in (stash.stdout or "")
             subprocess.run(["git", "rebase", "origin/main"], check=True)
+            if stashed:
+                subprocess.run(["git", "stash", "pop"])
+                # Fold whatever the stash restored (e.g. further log writes
+                # since the last commit) into the existing commit via
+                # amend, rather than creating a new commit each retry.
+                subprocess.run(["git", "add"] + str_paths)
+                subprocess.run(["git", "commit", "--amend", "--no-edit"], check=False)
 
     except subprocess.CalledProcessError as e:
         logger.error(f"⚠ Git commit/push failed: {e}")
