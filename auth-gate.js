@@ -21,7 +21,7 @@ var CONFIG = {
 
 (function () {
   var STORAGE_KEY = "bm_auth_until";
-  var UNLOCK_DAYS = 7; // how many days to stay unlocked after entering password
+  var UNLOCK_DAYS = 1; // how many days to stay unlocked after entering password
 
   var unlockedUntil = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
 
