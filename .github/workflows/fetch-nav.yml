@@ -1,0 +1,71 @@
+name: 'Fetch NAV (AMFI mutual funds + QSIF)'
+
+# Triggerable three ways, running the exact same job either way:
+#   1. schedule (PRIMARY) — 5:00 PM IST = 11:30 AM UTC, Mon-Fri. This is
+#      the main trigger; nav.json updates daily on its own regardless of
+#      whether e2e-parallel.yml also calls it.
+#   2. workflow_call — also invoked by e2e-parallel.yml on every daily
+#      run, as a catch-up safety net in case the scheduled run above was
+#      missed (workflow disabled, GitHub Actions outage, etc.) — not the
+#      primary path, just insurance so nav.json doesn't silently go
+#      stale if the dedicated schedule above doesn't fire for some
+#      reason. Since the underlying script is self-determining (only
+#      fetches new dates / gaps, and may do zero network calls if
+#      already current), calling it twice in one day costs little.
+#   3. workflow_dispatch — standalone manual trigger.
+#
+# Output: data/nav.json — single shared file for BOTH AMFI mutual funds
+# AND QSIF schemes (SGBs are NOT included; they're tracked as regular
+# equity-like tickers via the LTP pipeline instead). Self-determining:
+# AMFI always fetches its full series each run (mfapi.in returns
+# everything regardless of request — no partial-fetch mode exists for
+# that API) and merges into existing periods; QSIF fetches only the gap
+# since the last saved date per scheme, or nothing at all if already
+# current — see run_nav_update() in fetch_nav_ltp.py for full details.
+
+on:
+  schedule:
+    # 5:00 PM IST = 11:30 AM UTC, Mon-Fri
+    - cron: '30 11 * * 1-5'
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  fetch-nav:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 -q
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run fetch_nav_ltp.py (commits internally)
+        run: python fetch_nav_ltp.py
+
+      - name: Verify output files
+        run: |
+          if [ -f data/nav.json ]; then
+            echo "✓ nav.json exists"
+            ls -lh data/nav.json
+          else
+            echo "✗ nav.json NOT FOUND"
+          fi
+          if [ -f data/fetch_nav_ltp_summary.json ]; then
+            echo "✓ fetch_nav_ltp_summary.json exists"
+            cat data/fetch_nav_ltp_summary.json
+          else
+            echo "✗ fetch_nav_ltp_summary.json NOT FOUND"
+          fi
