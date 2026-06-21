@@ -9,7 +9,7 @@ Part 1 — AMFI NAV:
   that matches an AMFI-listed scheme — SGBs are not in AMFI; included here in
   case a fund-of-fund SGB wrapper is used).
 
-Part 2 — QSIF NAV — split into two modes (run as two separate jobs):
+Part 2 — QSIF NAV — three modes (run via CLI arg):
 
   `python fetch_nav_ltp.py` or `python fetch_nav_ltp.py eod` (default):
     FAST daily path. Uses the site's search box (txtschname + BtnGo
@@ -17,13 +17,20 @@ Part 2 — QSIF NAV — split into two modes (run as two separate jobs):
     (10 rows) per held scheme — always enough for latest NAV + 1D change.
     Output: data/nav_ltp.json (AMFI + QSIF EOD combined, original schema).
 
-  `python fetch_nav_ltp.py history`:
-    SLOW full-history path. Same search mechanism, but paginates each
-    scheme's result until pagination genuinely ends (can be a minute+ per
-    scheme — confirmed ~17 pages/~170 rows for one scheme in testing).
-    Intended to run separately and far less often than the daily EOD job.
-    Output: data/qsif_history.json (separate file: {isin: {scheme_name,
-    history: [{date, nav}, ...]}}, oldest-to-newest).
+  `python fetch_nav_ltp.py history-seed`:
+    ONE-OFF MANUAL run. Paginates each scheme's full result until
+    pagination genuinely ends (can be a minute+ per scheme — confirmed
+    ~17 pages/~170 rows for one scheme in testing). OVERWRITES
+    data/qsif_history.json. Run this once to seed the file.
+
+  `python fetch_nav_ltp.py history-delta`:
+    SCHEDULED run. Reads the existing qsif_history.json, finds the latest
+    saved date per scheme, and fetches ONLY the gap since then (using the
+    site's FromIds/ToIds date-range filters, confirmed from page source)
+    — then appends to the existing history rather than re-fetching
+    everything. One file keeps accumulating over time. Falls back to a
+    full fetch for any scheme with no prior saved data (e.g. newly added
+    to QSIF_SCHEME_KEYWORDS).
 """
 
 import json
@@ -84,6 +91,9 @@ def now():
 
 
 def load_json(path):
+    if not path.exists():
+        logger.info(f"{path.name} does not exist yet (this may be expected, e.g. before a seed run)")
+        return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -493,16 +503,23 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
     return rows, next_url, next_event_target, hidden_fields
 
 
-def search_qsif_scheme(session, scheme_name_query):
+def search_qsif_scheme(session, scheme_name_query, from_date=None, to_date=None):
     """Search the historical_nav page for a specific scheme name, using
     the site's own search box — confirmed from actual page source:
 
     - Search input field name: ctl00$ContentPlaceHolder1$txtschname
+    - Date range fields (type="date", standard HTML date input, so POST
+      value format is YYYY-MM-DD regardless of display format):
+        ctl00$ContentPlaceHolder1$FromIds
+        ctl00$ContentPlaceHolder1$ToIds
     - 'Go' button is itself a __doPostBack (not a real submit):
       __doPostBack('ctl00$ContentPlaceHolder1$BtnGo','')
 
-    This returns only rows matching the query, avoiding the need to
-    paginate through all ~20 unrelated QSIF schemes' interleaved rows.
+    from_date/to_date are optional datetime.date objects. If omitted, the
+    search runs with scheme name only (returns full available history,
+    newest first, as already confirmed working). If given, only NAV rows
+    within that date range are returned — used for incremental/delta
+    fetches (e.g. "everything since the last saved date").
 
     Returns (rows, next_url, event_target, hidden_fields) — same shape as
     parse_nav_table — so the result can be fed into the same pagination
@@ -525,6 +542,10 @@ def search_qsif_scheme(session, scheme_name_query):
 
     post_data = dict(hidden_fields)
     post_data['ctl00$ContentPlaceHolder1$txtschname'] = scheme_name_query
+    if from_date:
+        post_data['ctl00$ContentPlaceHolder1$FromIds'] = from_date.strftime('%Y-%m-%d')
+    if to_date:
+        post_data['ctl00$ContentPlaceHolder1$ToIds'] = to_date.strftime('%Y-%m-%d')
     post_data['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$BtnGo'
     post_data['__EVENTARGUMENT'] = ''
 
@@ -535,24 +556,32 @@ def search_qsif_scheme(session, scheme_name_query):
         qsif_logger.warning(f"  ⚠ Search POST for '{scheme_name_query}' failed: {e}")
         return [], None, None, {}
 
-    qsif_logger.info(f"  Searched for scheme name: '{scheme_name_query}'")
+    date_range_str = f" [{from_date} to {to_date}]" if (from_date or to_date) else ""
+    qsif_logger.info(f"  Searched for scheme name: '{scheme_name_query}'{date_range_str}")
     return parse_nav_table(resp.text, base_url=QSIF_NAV_URL)
 
 
-def fetch_qsif_scheme_full_history(session, scheme_name_query, max_pages=200):
-    """Get the FULL available NAV history for one specific scheme, using
-    the site's real search box (txtschname + BtnGo) so the server itself
-    filters to just that scheme — no need to wade through ~20 unrelated
-    schemes' interleaved rows or guess when we've seen 'enough'.
+def fetch_qsif_scheme_history(session, scheme_name_query, from_date=None, to_date=None, max_pages=200):
+    """Get NAV history for one specific scheme, using the site's real
+    search box (txtschname + FromIds/ToIds + BtnGo) so the server itself
+    filters to just that scheme (and date range, if given) — no need to
+    wade through ~20 unrelated schemes' interleaved rows.
+
+    If from_date/to_date are omitted: returns the scheme's FULL available
+    history (used for the one-off manual seed run).
+    If given: returns only rows in that date range (used for the
+    scheduled delta run — fetch only the gap since the last saved date).
 
     Since every page of a search result is, by definition, only rows for
-    the searched scheme, this simply paginates (via the same confirmed
-    'Next' __doPostBack mechanism) until pagination genuinely ends —
-    giving the complete history available on the site for that scheme.
+    the searched scheme (and date range), this simply paginates (via the
+    confirmed 'Next' __doPostBack mechanism) until pagination genuinely
+    ends.
     """
     all_rows = []
 
-    page_rows, next_url, event_target, hidden_fields = search_qsif_scheme(session, scheme_name_query)
+    page_rows, next_url, event_target, hidden_fields = search_qsif_scheme(
+        session, scheme_name_query, from_date=from_date, to_date=to_date
+    )
     if not page_rows:
         qsif_logger.warning(f"  ⚠ Search for '{scheme_name_query}' returned zero rows")
         return all_rows
@@ -571,12 +600,17 @@ def fetch_qsif_scheme_full_history(session, scheme_name_query, max_pages=200):
             request_url = next_url
         elif event_target:
             post_data = dict(hidden_fields)
-            # txtschname is a regular text input, NOT a hidden field, so it
-            # is never captured by parse_nav_table()'s hidden-input scan.
-            # Without re-sending it explicitly here, the server resets to
-            # showing ALL schemes from page 2 onward — confirmed via live
-            # log: page 1 correctly filtered, pages 2+ returned everything.
+            # txtschname/FromIds/ToIds are regular (non-hidden) inputs, so
+            # they're never captured by parse_nav_table()'s hidden-input
+            # scan. Without re-sending them explicitly here, the server
+            # resets the filter from page 2 onward — confirmed via live
+            # log for txtschname: page 1 correctly filtered, pages 2+
+            # returned everything. Same risk applies to the date fields.
             post_data['ctl00$ContentPlaceHolder1$txtschname'] = scheme_name_query
+            if from_date:
+                post_data['ctl00$ContentPlaceHolder1$FromIds'] = from_date.strftime('%Y-%m-%d')
+            if to_date:
+                post_data['ctl00$ContentPlaceHolder1$ToIds'] = to_date.strftime('%Y-%m-%d')
             post_data['__EVENTTARGET'] = event_target
             post_data['__EVENTARGUMENT'] = ''
             try:
@@ -588,7 +622,7 @@ def fetch_qsif_scheme_full_history(session, scheme_name_query, max_pages=200):
             request_url = url
         else:
             qsif_logger.info(f"  Search pagination ended after page {page_num - 1} "
-                              f"(no further 'Next' link) — full history fetched")
+                              f"(no further 'Next' link)")
             break
 
         page_rows, next_url, event_target, hidden_fields = parse_nav_table(resp.text, base_url=request_url)
@@ -714,17 +748,17 @@ def run_qsif_nav_eod():
     return result
 
 
-def run_qsif_nav_history():
-    """Fetch FULL available QSIF NAV history per held ISIN — SLOW path.
+def run_qsif_history_seed():
+    """Fetch FULL available QSIF NAV history per held ISIN — ONE-OFF SEED.
 
     Paginates the search result for each scheme until pagination genuinely
     ends, which can take a minute or more per scheme (confirmed: ~17 pages
-    / ~170 rows for one scheme in testing). Intended to run separately
-    and much less frequently than the daily EOD fetch — see
-    run_qsif_nav_eod() / nav_ltp.json for the fast daily path.
+    / ~170 rows for one scheme in testing). Run this manually once to seed
+    qsif_history.json; after that, run_qsif_history_delta() takes over to
+    fill only the gap on a schedule.
 
-    Output: {isin: {scheme_name, history: [{date, nav}, ...]}} written to
-    qsif_history.json, oldest-to-newest per scheme.
+    Output: {isin: {scheme_name, history: [{date, nav}, ...]}}, written to
+    qsif_history.json, oldest-to-newest per scheme. OVERWRITES the file.
     """
     if not QSIF_SCHEME_KEYWORDS:
         qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
@@ -734,8 +768,8 @@ def run_qsif_nav_history():
     result = {}
 
     for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
-        qsif_logger.info(f"  Fetching full history for {isin} (search: '{keyword}')")
-        matched = fetch_qsif_scheme_full_history(session, keyword)
+        qsif_logger.info(f"  [SEED] Fetching full history for {isin} (search: '{keyword}')")
+        matched = fetch_qsif_scheme_history(session, keyword)  # no date range = full history
 
         if not matched:
             qsif_logger.warning(f"  ⚠ {isin}: search for '{keyword}' returned no rows")
@@ -780,7 +814,119 @@ def run_qsif_nav_history():
     if missing:
         qsif_logger.warning(f"  ⚠ {len(missing)} ISIN(s) not matched: {sorted(missing)}")
 
-    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries (history)")
+    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries (seed)")
+    return result
+
+
+def run_qsif_history_delta():
+    """Fill the GAP in qsif_history.json since the last saved date — SCHEDULED.
+
+    For each held ISIN: reads the existing qsif_history.json, finds the
+    latest saved date for that scheme, and fetches only NAV rows from
+    (latest_saved_date + 1 day) through today using the site's FromIds/
+    ToIds date filters — not the full history again. Appends new rows to
+    the existing history and re-saves, so the file keeps accumulating
+    rather than being re-fetched from scratch each run.
+
+    If a scheme has no existing history yet (seed never run, or a new
+    ISIN was just added to QSIF_SCHEME_KEYWORDS), falls back to fetching
+    full history for that scheme only, with a warning.
+
+    Returns the FULL merged result dict (existing + newly appended rows)
+    for every ISIN in QSIF_SCHEME_KEYWORDS, ready to be saved as-is.
+    """
+    if not QSIF_SCHEME_KEYWORDS:
+        qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
+        return {}
+
+    existing = load_json(QSIF_HISTORY_OUTPUT_FILE)
+    # load_json returns {} on missing/invalid file; strip _metadata if present
+    existing = {k: v for k, v in existing.items() if k != '_metadata'}
+
+    session = requests.Session()
+    result = {}
+    today = datetime.now(UTC).date()
+
+    for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
+        prior = existing.get(isin, {})
+        prior_history = prior.get('history', [])
+
+        # Find the latest saved date for this scheme
+        prior_dated = []
+        for h in prior_history:
+            d = parse_qsif_date(h.get('date', ''))
+            if d:
+                prior_dated.append((d, h))
+        prior_dated.sort(key=lambda x: x[0])
+
+        if not prior_dated:
+            qsif_logger.warning(
+                f"  ⚠ {isin}: no existing history found in {QSIF_HISTORY_OUTPUT_FILE.name} — "
+                f"fetching FULL history for this scheme as a fallback (run the seed job if "
+                f"this wasn't expected)"
+            )
+            matched = fetch_qsif_scheme_history(session, keyword)
+            from_date = None
+        else:
+            last_saved_date = prior_dated[-1][0].date()
+            from_date = last_saved_date + timedelta(days=1)
+            if from_date > today:
+                qsif_logger.info(f"  {isin}: already up to date (latest saved {last_saved_date}), nothing to fetch")
+                result[isin] = prior
+                continue
+            qsif_logger.info(f"  [DELTA] {isin}: fetching gap {from_date} to {today} (search: '{keyword}')")
+            matched = fetch_qsif_scheme_history(session, keyword, from_date=from_date, to_date=today)
+
+        if not matched:
+            qsif_logger.info(f"  {isin}: no new rows in gap range — keeping existing history as-is")
+            if prior_dated:
+                result[isin] = prior
+            continue
+
+        seen_dates = {h.get('date') for h in prior_history}
+        new_dated = []
+        for r in matched:
+            d = parse_qsif_date(r['date_str'])
+            if d and d.strftime('%d-%b-%Y') not in seen_dates:
+                new_dated.append((d, r))
+
+        if not new_dated:
+            qsif_logger.info(f"  {isin}: fetched rows were all already in saved history (no actual gap)")
+            result[isin] = prior if prior_dated else {
+                'scheme_name': matched[0]['scheme_name'],
+                'source': 'qsif.com',
+                'history': [],
+            }
+            continue
+
+        new_dated.sort(key=lambda x: x[0])
+        new_entries = [{'date': d.strftime('%d-%b-%Y'), 'nav': r['nav']} for d, r in new_dated]
+
+        merged_history = list(prior_history) + new_entries
+        # Final sort + dedup safety net, oldest first
+        merged_sorted = sorted(
+            {h['date']: h for h in merged_history}.values(),
+            key=lambda h: parse_qsif_date(h['date']) or datetime.min
+        )
+
+        scheme_name = matched[0]['scheme_name'] if matched else prior.get('scheme_name', isin)
+        result[isin] = {
+            'scheme_name': scheme_name,
+            'source': 'qsif.com',
+            'history': merged_sorted,
+        }
+        qsif_logger.info(
+            f"  ✓ {isin}: appended {len(new_entries)} new row(s), "
+            f"total now {len(merged_sorted)} dated rows"
+        )
+
+    # Carry forward any ISIN that's in the existing file but somehow wasn't
+    # processed above (shouldn't normally happen, but avoids silent data loss)
+    for isin, prior in existing.items():
+        if isin not in result and isin in QSIF_SCHEME_KEYWORDS:
+            result[isin] = prior
+
+    qsif_logger.info(f"  ✓ Processed {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries (delta)")
     return result
 
 
@@ -811,42 +957,77 @@ def main_eod():
     logger.info(f"✓ Wrote {NAV_LTP_OUTPUT_FILE} ({len(merged)} entries)")
 
     git_commit_and_push(
-        [NAV_LTP_OUTPUT_FILE],
+        [NAV_LTP_OUTPUT_FILE, LOG_FILE],
         f"Update nav_ltp.json ({len(merged)} entries) [skip ci]"
     )
 
 
-def main_history():
-    """Full QSIF history fetch. SLOW (minutes, multiple pages per scheme).
-    Writes data/qsif_history.json — separate file, run infrequently
-    (e.g. weekly/monthly), independent of the daily EOD job."""
+def main_history_seed():
+    """ONE-OFF manual run: full QSIF history fetch, OVERWRITES qsif_history.json.
+    SLOW (minutes, multiple pages per scheme). Run this once to seed the
+    file; after that, use 'history-delta' on a schedule to keep it
+    up to date by fetching only the gap."""
     try:
-        qsif_hist = run_qsif_nav_history()
+        qsif_hist = run_qsif_history_seed()
     except Exception as e:
-        qsif_logger.warning(f"  ⚠ QSIF history run failed: {e}")
+        qsif_logger.warning(f"  ⚠ QSIF history seed run failed: {e}")
         qsif_hist = {}
 
     output = {
         "_metadata": {
             "generated_at": now(),
             "count": len(qsif_hist),
-            "source": "qsif.com"
+            "source": "qsif.com",
+            "mode": "seed (full history)"
         }
     }
     output.update(qsif_hist)
     save_json(QSIF_HISTORY_OUTPUT_FILE, output)
-    qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries)")
+    qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries) [SEED]")
 
     git_commit_and_push(
-        [QSIF_HISTORY_OUTPUT_FILE],
-        f"Update qsif_history.json ({len(qsif_hist)} entries) [skip ci]"
+        [QSIF_HISTORY_OUTPUT_FILE, LOG_FILE],
+        f"Seed qsif_history.json ({len(qsif_hist)} entries) [skip ci]"
+    )
+
+
+def main_history_delta():
+    """SCHEDULED run: fetch only the gap since the last saved date per
+    scheme, and append to the existing qsif_history.json (one file keeps
+    accumulating). FAST when little/no gap exists; proportional to gap
+    size otherwise. Requires qsif_history.json to already exist (run
+    'history-seed' once first) — falls back to full history per-scheme
+    if a scheme has no prior saved data."""
+    try:
+        qsif_hist = run_qsif_history_delta()
+    except Exception as e:
+        qsif_logger.warning(f"  ⚠ QSIF history delta run failed: {e}")
+        qsif_hist = {}
+
+    output = {
+        "_metadata": {
+            "generated_at": now(),
+            "count": len(qsif_hist),
+            "source": "qsif.com",
+            "mode": "delta (gap-fill)"
+        }
+    }
+    output.update(qsif_hist)
+    save_json(QSIF_HISTORY_OUTPUT_FILE, output)
+    qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries) [DELTA]")
+
+    git_commit_and_push(
+        [QSIF_HISTORY_OUTPUT_FILE, LOG_FILE],
+        f"Update qsif_history.json via delta ({len(qsif_hist)} entries) [skip ci]"
     )
 
 
 if __name__ == "__main__":
     import sys
     mode = sys.argv[1] if len(sys.argv) > 1 else "eod"
-    if mode == "history":
-        main_history()
+    if mode == "history-seed":
+        main_history_seed()
+    elif mode == "history-delta":
+        main_history_delta()
     else:
         main_eod()
