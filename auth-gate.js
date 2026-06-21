@@ -15,7 +15,7 @@
    ============================================================ */
 
 var CONFIG = {
-  PASSWORD_HASH: "REPLACE_WITH_YOUR_SHA256_HASH"   // <-- SET PASSWORD HASH HERE
+  PASSWORD_HASH: "Xample"   // <-- SET PASSWORD HASH HERE
 };
 
 (function () {
