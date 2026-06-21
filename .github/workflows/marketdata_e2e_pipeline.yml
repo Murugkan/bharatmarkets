@@ -279,7 +279,7 @@ jobs:
   # ==========================================================================
   flatten-market-data:
     runs-on: ubuntu-latest
-    needs: [fetch-raw, fetch-yahoofin-financials, fetch-screener-financials, fetch-qsif-history-delta]
+    needs: [fetch-raw, fetch-yahoofin-financials, fetch-screener-financials, fetch-qsif-nav]
     steps:
       - name: Checkout repo (latest main)
         uses: actions/checkout@v5
@@ -441,97 +441,18 @@ jobs:
           echo "Push succeeded on attempt $attempt"
 
   # ==========================================================================
-  # JOB 7: QSIF full NAV history SEED — fetch_nav_ltp.py history-seed
-  # MANUAL ONLY (workflow_dispatch). Run once to seed qsif_history.json
-  # with full available history; after that, the delta job (8) keeps it
-  # up to date automatically. Re-run manually only if you need to force
-  # a full re-fetch (e.g. file got corrupted or deleted).
-  # SLOW — paginates each scheme's full history (minute+ per scheme).
-  # Commit & push is handled INSIDE fetch_nav_ltp.py (git_commit_and_push()).
+  # JOB 7: QSIF NAV — calls fetch_qsif_nav.yml (self-determining: full
+  # load on the very first run, automatic gap-fill delta on every run
+  # after that — no separate seed step needed). Runs as part of every
+  # daily e2e run; on most days the file is already current and this
+  # does little/no network work (see run_qsif_nav_update()'s per-ISIN
+  # "already up to date" skip path in fetch_nav_ltp.py).
+  #
+  # Kept in its own workflow file (not an inline job here) so it can also
+  # be triggered standalone via workflow_dispatch on
+  # fetch_qsif_nav.yml directly — e.g. to force an out-of-band update —
+  # without needing to run the rest of the e2e pipeline.
   # ==========================================================================
-  fetch-qsif-history-seed:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install requests beautifulsoup4 -q
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Run fetch_nav_ltp.py history-seed (commits internally)
-        run: python fetch_nav_ltp.py history-seed
-
-      - name: Verify output file
-        run: |
-          if [ -f data/qsif_history.json ]; then
-            echo "✓ qsif_history.json exists"
-            ls -lh data/qsif_history.json
-          else
-            echo "✗ qsif_history.json NOT FOUND"
-          fi
-          if [ -f data/logs/fetch_nav_ltp.log ]; then
-            echo "✓ fetch_nav_ltp.log exists"
-            tail -5 data/logs/fetch_nav_ltp.log
-          else
-            echo "✗ fetch_nav_ltp.log NOT FOUND"
-          fi
-
-  # ==========================================================================
-  # JOB 8: QSIF history DELTA fill — fetch_nav_ltp.py history-delta
-  # Runs daily alongside the rest of the pipeline. Reads the existing
-  # qsif_history.json, fetches only the gap since the last saved date per
-  # scheme, and appends — so the file keeps accumulating rather than
-  # being re-fetched from scratch. Cheap/fast in normal operation (small
-  # or no gap each day). Falls back to a full fetch for any scheme with
-  # no prior saved data (e.g. seed never run, or a new ISIN just added).
-  # Commit & push is handled INSIDE fetch_nav_ltp.py (git_commit_and_push()).
-  # ==========================================================================
-  fetch-qsif-history-delta:
-    runs-on: ubuntu-latest
-    needs: [fetch-qsif-history-seed]
-    if: always() && (needs.fetch-qsif-history-seed.result == 'success' || needs.fetch-qsif-history-seed.result == 'skipped')
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install requests beautifulsoup4 -q
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Run fetch_nav_ltp.py history-delta (commits internally)
-        run: python fetch_nav_ltp.py history-delta
-
-      - name: Verify output file
-        run: |
-          if [ -f data/qsif_history.json ]; then
-            echo "✓ qsif_history.json exists"
-            ls -lh data/qsif_history.json
-          else
-            echo "✗ qsif_history.json NOT FOUND"
-          fi
-          if [ -f data/logs/fetch_nav_ltp.log ]; then
-            echo "✓ fetch_nav_ltp.log exists"
-            tail -5 data/logs/fetch_nav_ltp.log
-          else
-            echo "✗ fetch_nav_ltp.log NOT FOUND"
-          fi
+  fetch-qsif-nav:
+    uses: ./.github/workflows/fetch_qsif_nav.yml
+    secrets: inherit
