@@ -583,18 +583,15 @@ FIELD_MAP = {
     "yahoofin_raw:history_1wk":    "__history__",
     "yahoofin_raw:history_1mo":    "__history__",
 
-    # ── nav_ltp:latest_price (MF/QSIF from nav_ltp.json via flatten) ─────────
-    # Data is re-injected directly from nav_ltp.json in main() — skip here
-    # to avoid double-processing. Marking __skip__ prevents _unmapped noise.
-    "nav_ltp:latest_price": "__skip__",
-
-    # ── qsif_nav:latest_price / qsif_nav:nav_history:daily (from qsif_nav.json) ──
-    # Same pattern as nav_ltp above: re-injected directly from
-    # qsif_nav.json in main() — skip here to avoid double-processing.
-    # NOT routed through __history__ since that's OHLCV-column-specific
-    # (open/high/low/close/volume); QSIF is a single 'nav' value per date.
-    "qsif_nav:latest_price": "__skip__",
-    "qsif_nav:nav_history:daily": "__skip__",
+    # ── nav:latest_price / nav:nav_history:daily (from nav.json) ──────────
+    # Covers BOTH AMFI mutual funds and QSIF schemes — nav.json's own
+    # per-entry 'source' field distinguishes them, single shared shape.
+    # Data is re-injected directly from nav.json in main() — skip here to
+    # avoid double-processing. NOT routed through __history__ since
+    # that's OHLCV-column-specific (open/high/low/close/volume); NAV
+    # entries are a single 'nav' value per date.
+    "nav:latest_price": "__skip__",
+    "nav:nav_history:daily": "__skip__",
 }
 
 
@@ -3260,36 +3257,24 @@ def main():
             guidance_data = json.load(f)
         logger.info(f"  ✓ Loaded guidance.json ({len(guidance_data)} tickers)")
 
-    # Load nav_ltp.json (AMFI MF + SGB + QSIF), matched to tickers via ISIN or symbol
-    nav_ltp_file = DATA_DIR / 'nav_ltp.json'
-    nav_ltp_by_ticker = {}
-    if nav_ltp_file.exists():
-        with open(nav_ltp_file) as f:
-            nav_ltp_data = json.load(f)
-        for key, entry in nav_ltp_data.items():
+    # Load nav.json (AMFI mutual funds + QSIF, self-determining full-load/
+    # gap-fill via fetch_nav_ltp.py — single shared file for both
+    # sources), matched to tickers via ISIN or symbol. SGBs are NOT in
+    # this file — they're tracked as regular equity-like tickers via the
+    # LTP pipeline (ltp.json) instead.
+    nav_file = DATA_DIR / 'nav.json'
+    nav_by_ticker = {}
+    if nav_file.exists():
+        with open(nav_file) as f:
+            nav_file_data = json.load(f)
+        for key, entry in nav_file_data.items():
             if key == '_metadata':
                 continue
-            # Key is either ISIN or ticker symbol (e.g. SGBFEB32IV)
+            # Key is either ISIN or ticker symbol
             ticker = isin_to_ticker.get(key.strip().upper()) or key
             if ticker in [k for k in raw.keys() if k != '_metadata']:
-                nav_ltp_by_ticker[ticker] = entry
-        logger.info(f"  ✓ Loaded nav_ltp.json ({len(nav_ltp_by_ticker)} tickers matched)")
-
-    # Load qsif_nav.json (QSIF NAV history, self-determining full-load/
-    # gap-fill via fetch_nav_ltp.py's qsif-nav mode), matched to tickers
-    # via ISIN or symbol — same matching pattern as nav_ltp.json above.
-    qsif_nav_file = DATA_DIR / 'qsif_nav.json'
-    qsif_nav_by_ticker = {}
-    if qsif_nav_file.exists():
-        with open(qsif_nav_file) as f:
-            qsif_nav_data = json.load(f)
-        for key, entry in qsif_nav_data.items():
-            if key == '_metadata':
-                continue
-            ticker = isin_to_ticker.get(key.strip().upper()) or key
-            if ticker in [k for k in raw.keys() if k != '_metadata']:
-                qsif_nav_by_ticker[ticker] = entry
-        logger.info(f"  ✓ Loaded qsif_nav.json ({len(qsif_nav_by_ticker)} tickers matched)")
+                nav_by_ticker[ticker] = entry
+        logger.info(f"  ✓ Loaded nav.json ({len(nav_by_ticker)} tickers matched)")
 
     output  = {}
     symbols = [k for k in raw.keys() if k != '_metadata']  # Skip _metadata
@@ -3342,54 +3327,47 @@ def main():
             cd['data_source'] = pf['data_source']
             cd['holdings'] = pf['holdings']
 
-        # Inject nav_ltp data (AMFI MF / SGB / QSIF) as live price.
-        # Written to price.ltp_nav (scalar) — separate from price.ltp (object)
-        # used by equities, to avoid structure collision on delta loads.
-        nav = nav_ltp_by_ticker.get(symbol)
+        # Inject nav.json data (AMFI mutual funds + QSIF) as live price +
+        # full history. Latest snapshot folds into price.ltp_nav (scalar)
+        # — separate from price.ltp (object) used by equities, to avoid
+        # structure collision on delta loads. Full date series goes into
+        # its own nav_history section as a flat periods: {date: nav}
+        # dict — matching how every other financial KPI time series is
+        # stored in this pipeline (e.g. yahoofin's OHLCV history), no
+        # per-row change/changePct computed for history cells. Single
+        # code path for both sources since nav.json gives them identical
+        # shape; the entry's own 'source' field (AMFI or qsif.com)
+        # distinguishes them downstream if needed.
+        nav = nav_by_ticker.get(symbol)
         if nav:
-            price = bucketed.setdefault('price', {})
-            price['ltp_nav'] = nav.get('ltp')
-            price['ltp_date'] = nav.get('date')
-            price['ltp_scheme_name'] = nav.get('scheme_name')
-            price['ltp_source'] = nav.get('source')
-            if nav.get('change') is not None:
-                price['ltp_change'] = nav.get('change')
-            if nav.get('changePct') is not None:
-                price['ltp_change_pct'] = nav.get('changePct')
-            if nav.get('returns'):
-                price['ltp_returns'] = nav.get('returns')
-
-        # Inject qsif_nav data (QSIF NAV history) — latest snapshot folds
-        # into price (consistent with nav_ltp.json's ltp_nav/ltp_change
-        # fields above), full date series goes into its own nav_history
-        # section as a flat periods: {date: nav} dict — matching how
-        # every other financial KPI time series is stored in this
-        # pipeline (e.g. yahoofin's OHLCV history), no per-row change/
-        # changePct computed for history cells.
-        qsif_nav = qsif_nav_by_ticker.get(symbol)
-        if qsif_nav:
-            latest = qsif_nav.get('latest')
+            latest = nav.get('latest')
             if latest:
                 price = bucketed.setdefault('price', {})
-                # Only overwrite ltp_nav fields if nav_ltp.json didn't
-                # already provide a fresher same-day value above — qsif
-                # nav's 'latest' and nav_ltp's EOD entry should normally
-                # agree, but nav_ltp.json is the faster/more current
-                # source of the two if they ever briefly diverge.
-                if 'ltp_nav' not in price or price.get('ltp_nav') is None:
-                    price['ltp_nav'] = latest.get('ltp')
-                    price['ltp_date'] = latest.get('date')
-                    price['ltp_change'] = latest.get('change')
-                    price['ltp_change_pct'] = latest.get('changePct')
-                    price['ltp_scheme_name'] = qsif_nav.get('scheme_name')
-                    price['ltp_source'] = qsif_nav.get('source', 'qsif.com')
+                price['ltp_nav'] = latest.get('ltp')
+                price['ltp_date'] = latest.get('date')
+                price['ltp_change'] = latest.get('change')
+                price['ltp_change_pct'] = latest.get('changePct')
+                price['ltp_scheme_name'] = nav.get('scheme_name')
+                price['ltp_source'] = nav.get('source')
+                if nav.get('returns'):
+                    price['ltp_returns'] = nav.get('returns')
 
-            periods = qsif_nav.get('periods')
+            periods = nav.get('periods')
             if periods:
+                # Sort newest-first, matching every other periods dict in
+                # this pipeline's output (see yahoofin/screener periods
+                # sorting above) — nav.json itself already stores periods
+                # newest-first at the source too (see
+                # build_nav_history_entry() in fetch_nav_ltp.py), but
+                # re-sorting here is cheap and removes any dependency on
+                # that internal storage convention staying that way.
+                sorted_periods = {
+                    k: periods[k] for k in sorted(periods.keys(), reverse=True)
+                }
                 bucketed['nav_history'] = {
-                    'scheme_name': qsif_nav.get('scheme_name'),
-                    'source': qsif_nav.get('source', 'qsif.com'),
-                    'periods': periods,
+                    'scheme_name': nav.get('scheme_name'),
+                    'source': nav.get('source'),
+                    'periods': sorted_periods,
                 }
 
         # Report any unmapped fields for visibility
@@ -3443,8 +3421,8 @@ def main():
                     ),
                     "total_tickers": guidance_meta.get("total_tickers", len([k for k in guidance_data if k != "_metadata"])),
                 },
-                "nav_ltp": {
-                    "tickers_with_ltp": len(nav_ltp_by_ticker),
+                "nav": {
+                    "tickers_with_nav": len(nav_by_ticker),
                 },
             },
         }

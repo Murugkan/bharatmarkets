@@ -1,32 +1,31 @@
 #!/usr/bin/env python3
 """
-AMFI Mutual Fund NAV + SGB LTP + QSIF NAV Fetcher
-===================================================
-Part 1 — AMFI NAV:
-  Downloads AMFI's daily NAVAll.txt (all mutual fund schemes in India) and
-  extracts NAV + date for ISINs present in the portfolio's unified-symbols.json
-  holdings (instrumentType == "MUTUAL FUND" or "SOVEREIGN BOND" with an ISIN
-  that matches an AMFI-listed scheme — SGBs are not in AMFI; included here in
-  case a fund-of-fund SGB wrapper is used).
+AMFI Mutual Fund NAV + QSIF NAV Fetcher
+==========================================
+Single mode: `python fetch_nav_ltp.py` (or `python fetch_nav_ltp.py nav`,
+equivalent — kept for explicitness in workflow YAML).
 
-Part 2 — QSIF NAV — two modes (run via CLI arg):
+Self-determining, single shared output file (data/nav.json) for BOTH
+AMFI mutual funds AND QSIF schemes — no separate seed/delta/eod modes:
 
-  `python fetch_nav_ltp.py` or `python fetch_nav_ltp.py eod` (default):
-    FAST daily path. Uses the site's search box (txtschname + BtnGo
-    postback, confirmed from page source) to fetch just the latest page
-    (10 rows) per held scheme — always enough for latest NAV + 1D change.
-    Output: data/nav_ltp.json (AMFI + QSIF EOD combined, original schema).
+  - AMFI: fetch_historical_nav() (mfapi.in) always returns the full
+    available series in one call (confirmed via mfapi.in's docs:
+    "delivers the complete history... refreshed daily") — so every run
+    simply fetches the full series and merges it into nav.json's
+    existing periods for that ISIN. No partial-fetch mode exists for
+    this API; this is the only way to use it. 1M/3M/6M/1Y/3Y point-to-
+    point returns are also computed per fund (see compute_returns()).
+  - QSIF: per-ISIN self-determining — no existing data -> full fetch
+    (paginates the site until pagination genuinely ends, confirmed ~17
+    pages/~170 rows for one scheme in testing). Existing data with a gap
+    -> fetches ONLY the gap since the last saved date (via the site's
+    FromIds/ToIds date-range filters, confirmed from page source).
+    Already current -> no network call for that ISIN.
 
-  `python fetch_nav_ltp.py qsif-nav`:
-    Self-determining — no separate seed/delta flags needed. Per held
-    ISIN: no existing data in qsif_nav.json -> full fetch (paginates
-    until pagination genuinely ends, confirmed ~17 pages/~170 rows for
-    one scheme in testing). Existing data with a gap -> fetches ONLY the
-    gap since the last saved date (via the site's FromIds/ToIds
-    date-range filters, confirmed from page source). Already current ->
-    no network call for that ISIN. One file (data/qsif_nav.json) keeps
-    accumulating — same command works whether it's the very first run
-    ever or a routine daily run.
+Output: data/nav.json — {isin: {scheme_name, source, latest: {date,
+ltp, change, changePct}, periods: {YYYY-MM-DD: nav}}}, one entry per
+    ISIN regardless of source. SGBs are explicitly excluded (tracked as
+    regular equity-like tickers via the LTP pipeline instead, not here).
 """
 
 import json
@@ -43,8 +42,7 @@ from datetime import datetime, UTC, timedelta
 DATA_DIR = Path('data')
 SYMBOLS_FILE = DATA_DIR / 'unified-symbols.json'
 
-NAV_LTP_OUTPUT_FILE = DATA_DIR / 'nav_ltp.json'
-QSIF_NAV_OUTPUT_FILE = DATA_DIR / 'qsif_nav.json'
+NAV_OUTPUT_FILE = DATA_DIR / 'nav.json'
 
 LOG_FILE = DATA_DIR / 'logs/fetch_nav_ltp.log'
 SUMMARY_FILE = DATA_DIR / 'fetch_nav_ltp_summary.json'
@@ -106,20 +104,23 @@ def save_json(path, data):
 
 def update_summary(mode, status, **fields):
     """Update this job's entry in the small, overwritten-per-run summary
-    file (data/fetch_nav_ltp_summary.json) — one line per mode (eod/seed/
-    delta), no accumulated history.
+    file (data/fetch_nav_ltp_summary.json) — currently just one entry
+    ('nav', since that's the only mode now), no accumulated history.
 
     Re-reads the file fresh right before writing (rather than relying on
     whatever was loaded at script start) to minimize the window for a
-    lost update if another fetch_nav_ltp.py job is running concurrently
-    and also updating its own entry — final safety against a true race
-    still comes from git_commit_and_push()'s fetch/rebase retry, since
-    each job only ever overwrites its OWN named key, never another job's.
+    lost update if another fetch_nav_ltp.py invocation is running
+    concurrently and also updating its own entry — final safety against
+    a true race still comes from git_commit_and_push()'s fetch/rebase
+    retry, since each run only ever overwrites its OWN named key.
 
     This file (not the full fetch_nav_ltp.log) is what gets committed —
-    deliberately avoiding the full log, since 3 jobs (eod/seed/delta) can
-    run concurrently and all writing/committing the same growing log file
-    caused real, repeated rebase conflicts in practice.
+    deliberately avoiding the full log, since concurrent runs writing/
+    committing the same growing log file caused real, repeated rebase
+    conflicts in practice (back when there were multiple separate modes
+    that could run alongside each other; kept as a defensive design even
+    now that there's only one mode, in case of overlapping manual +
+    scheduled triggers).
     """
     summary = load_json(SUMMARY_FILE)
     summary = {k: v for k, v in summary.items() if k != '_comment'}
@@ -243,13 +244,21 @@ def git_commit_and_push(paths, message, max_attempts=5):
 # ===========================================================================
 
 def get_portfolio_isins():
-    """Collect ISINs from unified-symbols.json holdings for MF/SGB instruments.
+    """Collect ISINs from unified-symbols.json holdings for AMFI mutual
+    fund instruments only.
 
-    Uses `instrument_type` (now populated for all entries via the wizard's
-    AI-enrichment step), falling back to sector == "Mutual Fund"/"Government
-    Securities" for any older entries that predate that field. Does NOT use
-    an ISIN "INF" prefix check — ETFs (e.g. JUNIORBEES, INF200KA1FS3) are
-    also INF-prefixed but are not mutual funds and have no AMFI NAV.
+    Uses `instrument_type` (now populated for all entries via the
+    wizard's AI-enrichment step), falling back to sector == "Mutual Fund"
+    for any older entries that predate that field. Does NOT use an ISIN
+    "INF" prefix check — ETFs (e.g. JUNIORBEES, INF200KA1FS3) are also
+    INF-prefixed but are not mutual funds and have no AMFI NAV.
+
+    SOVEREIGN BOND (SGB) is explicitly excluded — SGBs are tracked as
+    regular equity-like tickers via the LTP pipeline (ltp.json), not
+    through this NAV-based flow. They were never actually present in
+    AMFI's NAVAll.txt anyway (SGBs aren't AMFI-listed), so this exclusion
+    is mostly about being explicit/self-documenting rather than changing
+    real matched results.
     """
     us = load_json(SYMBOLS_FILE)
     isins = set()
@@ -262,9 +271,12 @@ def get_portfolio_isins():
         itype = (entry.get('instrument_type') or entry.get('instrumentType') or '').upper()
         sector = (entry.get('sector') or '').upper()
 
+        if itype == 'SOVEREIGN BOND' or sector == 'GOVERNMENT SECURITIES':
+            continue
+
         is_mf_like = (
-            itype in ('MUTUAL FUND', 'SOVEREIGN BOND')
-            or sector in ('MUTUAL FUND', 'GOVERNMENT SECURITIES')
+            itype == 'MUTUAL FUND'
+            or sector == 'MUTUAL FUND'
         )
 
         if is_mf_like:
@@ -409,67 +421,6 @@ def fetch_historical_nav(scheme_code):
         return []
 
 
-def run_amfi_nav():
-    wanted_isins = get_portfolio_isins()
-    logger.info(f"Portfolio ISINs to match (MUTUAL FUND / SOVEREIGN BOND): {len(wanted_isins)}")
-
-    if not wanted_isins:
-        logger.warning("No MUTUAL FUND / SOVEREIGN BOND ISINs found in unified-symbols.json")
-        return {}
-
-    text = fetch_navall()
-    matched = parse_navall(text, wanted_isins)
-
-    missing = wanted_isins - set(matched.keys())
-    if missing:
-        logger.warning(f"  ⚠ {len(missing)} ISIN(s) not found in AMFI NAVAll.txt: {sorted(missing)}")
-
-    logger.info(f"  ✓ Matched {len(matched)}/{len(wanted_isins)} ISINs")
-
-    for isin, entry in matched.items():
-        scheme_code = entry.get('scheme_code')
-        if not scheme_code:
-            continue
-        history = fetch_historical_nav(scheme_code)
-        entry['_history'] = history
-        returns = compute_returns(history)
-        if returns:
-            entry['returns'] = returns
-            logger.info(f"  ✓ {entry.get('scheme_name', isin)}: returns computed")
-
-    # Normalise to ltp key for consistency
-    result = {}
-    for isin, entry in matched.items():
-        change = None
-        change_pct = None
-        hist = entry.get('_history', [])
-        if len(hist) >= 2:
-            try:
-                curr_nav = float(hist[0]['nav'])
-                prev_nav = float(hist[1]['nav'])
-                if prev_nav > 0:
-                    change = round(curr_nav - prev_nav, 4)
-                    change_pct = round((curr_nav - prev_nav) / prev_nav * 100, 4)
-            except (ValueError, KeyError, TypeError):
-                pass
-
-        result[isin] = {
-            'ltp': entry.get('nav'),
-            'date': entry.get('date'),
-            'scheme_name': entry.get('scheme_name'),
-            'source': 'AMFI',
-            'change': change,
-            'changePct': change_pct,
-        }
-        if 'returns' in entry:
-            result[isin]['returns'] = entry['returns']
-
-    return result
-
-
-# ===========================================================================
-# Part 3 — QSIF NAV (qsif.com)
-# ===========================================================================
 
 def parse_nav_table(html, base_url=QSIF_NAV_URL):
     """Parse a historical_nav page's table into rows, and look for a real
@@ -739,8 +690,10 @@ def parse_qsif_date(date_str):
         return None
 
 
-def build_qsif_history_entry(scheme_name, dated_rows_oldest_first):
-    """Build the standardized per-ISIN history entry.
+def build_nav_history_entry(scheme_name, dated_rows_oldest_first, source):
+    """Build the standardized per-ISIN NAV history entry — used for BOTH
+    AMFI mutual funds and QSIF schemes (source-agnostic; source name is
+    passed in rather than hardcoded, since this now serves both).
 
     dated_rows_oldest_first: list of (datetime, {'nav': float, ...}) tuples,
     sorted oldest to newest (one entry per distinct date — caller must
@@ -758,7 +711,7 @@ def build_qsif_history_entry(scheme_name, dated_rows_oldest_first):
 
         {
           "scheme_name": "...",
-          "source": "qsif.com",
+          "source": "qsif.com" or "AMFI",
           "latest": {
             "date": "18-Jun-2026", "ltp": 10.4574,
             "change": 0.0006, "changePct": 0.0057
@@ -775,8 +728,20 @@ def build_qsif_history_entry(scheme_name, dated_rows_oldest_first):
     once here is correct and unrelated to the periods/series convention
     above.
     """
+    # Defensive sort: don't rely on the caller already having sorted
+    # oldest-first (every current caller does, but this makes the
+    # function correct on its own regardless of future callers) — both
+    # periods and latest are derived from this single sorted sequence.
+    dated_rows_oldest_first = sorted(dated_rows_oldest_first, key=lambda x: x[0])
+
+    # periods is stored newest-first in nav.json itself, matching the
+    # convention used for every other periods dict once it reaches
+    # market_data.json (see market_data_flatten.py / market_data.py,
+    # both of which explicitly sort periods.items() reverse=True before
+    # output) — rather than storing oldest-first here and relying on a
+    # downstream re-sort.
     periods = {}
-    for d, r in dated_rows_oldest_first:
+    for d, r in reversed(dated_rows_oldest_first):
         periods[d.strftime('%Y-%m-%d')] = r['nav']
 
     latest = None
@@ -800,208 +765,194 @@ def build_qsif_history_entry(scheme_name, dated_rows_oldest_first):
 
     return {
         'scheme_name': scheme_name,
-        'source': 'qsif.com',
+        'source': source,
         'latest': latest,
         'periods': periods,
     }
 
 
-def run_qsif_nav_eod():
-    """Fetch QSIF EOD NAV (latest + 1D change) per held ISIN — FAST path.
+def run_nav_update():
+    """Update nav.json for BOTH AMFI mutual funds and QSIF schemes —
+    self-determining, single shared file, single pass.
 
-    Uses the site's search box to fetch just the first page (10 rows) per
-    scheme, which is always enough for the latest date + previous date
-    needed to compute a 1D change. Does NOT paginate further — for full
-    multi-year history, see run_qsif_nav_history() / qsif_history.json,
-    which is a separate, much slower job.
+    AMFI: fetch_historical_nav() (mfapi.in) already returns the FULL
+    available series in one call every time — there's no partial/gap-only
+    fetch possible against that API, confirmed via mfapi.in's own docs
+    ("delivers the complete history... refreshed daily"). So for AMFI,
+    every run simply fetches the full series and merges it into
+    nav.json's existing periods for that ISIN (new/changed dates win on
+    overlap) — there's no optimization being skipped, this is the only
+    mode the API supports.
 
-    Output schema matches the original nav_ltp.json structure (no
-    'history' field) so this stays a drop-in daily EOD source alongside
-    AMFI MF/SGB data.
-    """
-    if not QSIF_SCHEME_KEYWORDS:
-        qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
-        return {}
-
-    session = requests.Session()
-    result = {}
-
-    for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
-        qsif_logger.info(f"  Fetching EOD NAV for {isin} (search: '{keyword}')")
-        matched, _next_url, _event_target, _hidden = search_qsif_scheme(session, keyword)
-
-        if not matched:
-            qsif_logger.warning(f"  ⚠ {isin}: search for '{keyword}' returned no rows")
-            continue
-
-        seen = set()
-        deduped = []
-        for r in matched:
-            if r['date_str'] in seen:
-                continue
-            seen.add(r['date_str'])
-            deduped.append(r)
-        matched = deduped
-
-        dated = []
-        for r in matched:
-            d = parse_qsif_date(r['date_str'])
-            if d:
-                dated.append((d, r))
-        dated.sort(key=lambda x: x[0], reverse=True)
-
-        if not dated:
-            qsif_logger.warning(f"  ⚠ {isin}: matched rows but none had parseable dates")
-            continue
-
-        curr_date, curr_row = dated[0]
-        change = None
-        change_pct = None
-        if len(dated) >= 2:
-            prev_date, prev_row = dated[1]
-            if prev_date == curr_date:
-                qsif_logger.warning(
-                    f"  ⚠ {isin}: two most recent rows share the same date ({curr_date.date()}). "
-                    f"Leaving change as None rather than reporting a false 0.0."
-                )
-            else:
-                curr_nav = curr_row['nav']
-                prev_nav = prev_row['nav']
-                if prev_nav:
-                    change = round(curr_nav - prev_nav, 4)
-                    change_pct = round((curr_nav - prev_nav) / prev_nav * 100, 4)
-                qsif_logger.info(
-                    f"  {isin}: {curr_date.date()} NAV {curr_nav} vs {prev_date.date()} NAV {prev_nav} "
-                    f"-> change {change}"
-                )
-        else:
-            qsif_logger.warning(f"  ⚠ {isin}: only one dated row found, can't compute change")
-
-        result[isin] = {
-            'ltp': curr_row['nav'],
-            'date': curr_row['date_str'],
-            'scheme_name': curr_row['scheme_name'],
-            'source': 'qsif.com',
-            'change': change,
-            'changePct': change_pct,
-        }
-        qsif_logger.info(f"  ✓ {isin}: LTP {curr_row['nav']} ({curr_row['date_str']})")
-
-    missing = set(QSIF_SCHEME_KEYWORDS.keys()) - set(result.keys())
-    if missing:
-        qsif_logger.warning(f"  ⚠ {len(missing)} ISIN(s) not matched: {sorted(missing)}")
-
-    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries (EOD)")
-    return result
-
-
-def run_qsif_nav_update():
-    """Fill the GAP in qsif_history.json since the last saved date — SCHEDULED.
-
-    Self-determining per ISIN — no separate "seed" vs "delta" mode needed:
+    QSIF: self-determining per ISIN, unchanged from before —
       - No existing data for that ISIN  -> FULL fetch (paginates until the
         site's pagination genuinely ends; can take a minute+ per scheme).
       - Existing data, but a gap exists -> fetch ONLY that gap (latest
         saved date + 1 day through today) via the site's FromIds/ToIds
         date-range filters, then merge into the existing series.
-      - Existing data, already current  -> no network call for that ISIN;
-        existing entry is reused as-is (just normalized through
-        build_qsif_history_entry() in case it was written under an older
-        schema).
+      - Existing data, already current  -> no network call for that ISIN.
 
-    Reads/writes qsif_nav.json. Returns the FULL merged result dict
-    (existing + newly fetched rows, or untouched where already current)
-    for every ISIN in QSIF_SCHEME_KEYWORDS, ready to be saved as-is.
+    Reads/writes the SAME nav.json for both sources — AMFI and QSIF
+    entries are just different ISINs in the same top-level dict. Returns
+    the FULL merged result (existing + newly fetched, for every relevant
+    ISIN), ready to be saved as-is.
     """
-    if not QSIF_SCHEME_KEYWORDS:
-        qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
-        return {}
-
-    existing = load_json(QSIF_NAV_OUTPUT_FILE)
+    existing = load_json(NAV_OUTPUT_FILE)
     # load_json returns {} on missing/invalid file; strip _metadata if present
     existing = {k: v for k, v in existing.items() if k != '_metadata'}
 
-    session = requests.Session()
     result = {}
-    today = datetime.now(UTC).date()
 
-    for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
-        prior = existing.get(isin, {})
-        prior_periods = prior.get('periods', {})
+    # ── AMFI mutual funds ────────────────────────────────────────────
+    amfi_isins = get_portfolio_isins()
+    logger.info(f"Portfolio ISINs to match (AMFI MUTUAL FUND): {len(amfi_isins)}")
+    if amfi_isins:
+        text = fetch_navall()
+        matched = parse_navall(text, amfi_isins)
+        missing = amfi_isins - set(matched.keys())
+        if missing:
+            logger.warning(f"  ⚠ {len(missing)} AMFI ISIN(s) not found in NAVAll.txt: {sorted(missing)}")
+        logger.info(f"  ✓ Matched {len(matched)}/{len(amfi_isins)} AMFI ISINs")
 
-        # Find the latest saved date for this scheme (periods keys are
-        # ISO 'YYYY-MM-DD' strings, so this also covers any file written
-        # under the older list-of-rows schema gracefully — prior_periods
-        # would just be empty for those, falling through to a full fetch).
-        prior_dated = []
-        for date_str, nav in prior_periods.items():
-            try:
-                d = datetime.strptime(date_str, '%Y-%m-%d')
-            except ValueError:
+        for isin, entry in matched.items():
+            scheme_code = entry.get('scheme_code')
+            scheme_name = entry.get('scheme_name', isin)
+            prior = existing.get(isin, {})
+            prior_periods = prior.get('periods', {})
+
+            if not scheme_code:
+                # No scheme_code to fetch history with — fall back to
+                # just today's single NAVAll.txt value if we have one,
+                # merged into whatever periods already existed.
+                merged_by_date = dict(prior_periods)
+                nav_date = entry.get('date')
+                nav_val = entry.get('nav')
+                if nav_date and nav_val is not None:
+                    try:
+                        d = datetime.strptime(nav_date, '%d-%m-%Y')
+                        merged_by_date[d.strftime('%Y-%m-%d')] = float(nav_val)
+                    except (ValueError, TypeError):
+                        pass
+            else:
+                hist = fetch_historical_nav(scheme_code)  # full series, every call
+                merged_by_date = dict(prior_periods)
+                for h in hist:
+                    try:
+                        d = datetime.strptime(h['date'], '%d-%m-%Y')
+                        merged_by_date[d.strftime('%Y-%m-%d')] = float(h['nav'])
+                    except (ValueError, KeyError, TypeError):
+                        continue
+
+            merged_dated = []
+            for date_str, nav in merged_by_date.items():
+                try:
+                    d = datetime.strptime(date_str, '%Y-%m-%d')
+                except ValueError:
+                    continue
+                merged_dated.append((d, {'nav': nav}))
+
+            if not merged_dated:
+                logger.warning(f"  ⚠ {isin}: no usable NAV data (AMFI), skipping")
                 continue
-            prior_dated.append((d, {'nav': nav}))
-        prior_dated.sort(key=lambda x: x[0])
 
-        if not prior_dated:
-            qsif_logger.warning(
-                f"  ⚠ {isin}: no existing history in {QSIF_NAV_OUTPUT_FILE.name} — "
-                f"running a full fetch for this scheme"
+            new_count = len(merged_by_date) - len(prior_periods)
+            result[isin] = build_nav_history_entry(scheme_name, merged_dated, source='AMFI')
+
+            # 1M/3M/6M/1Y/3Y point-to-point returns, computed from the
+            # raw mfapi.in history when we fetched it this run (native
+            # {date, nav} shape compute_returns() expects). Not
+            # recomputed from periods to avoid a redundant date-format
+            # round-trip — only available when scheme_code was present.
+            if scheme_code and hist:
+                returns = compute_returns(hist)
+                if returns:
+                    result[isin]['returns'] = returns
+
+            logger.info(
+                f"  ✓ {isin} ({scheme_name}): {new_count} new/updated row(s), "
+                f"total now {len(merged_dated)} dated rows "
+                f"(latest: {result[isin]['latest']})"
             )
-            matched = fetch_qsif_scheme_history(session, keyword)
-            from_date = None
-        else:
-            last_saved_date = prior_dated[-1][0].date()
-            from_date = last_saved_date + timedelta(days=1)
-            if from_date > today:
-                qsif_logger.info(f"  {isin}: already up to date (latest saved {last_saved_date}), nothing to fetch")
-                # Rebuild through the helper even with no new data, so a
-                # file written under an older schema self-heals to the
-                # current format (e.g. no 'latest', list-shaped history).
-                result[isin] = build_qsif_history_entry(
-                    prior.get('scheme_name', isin), prior_dated
+
+    # ── QSIF schemes ─────────────────────────────────────────────────
+    if not QSIF_SCHEME_KEYWORDS:
+        qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
+    else:
+        session = requests.Session()
+        today = datetime.now(UTC).date()
+
+        for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
+            prior = existing.get(isin, {})
+            prior_periods = prior.get('periods', {})
+
+            prior_dated = []
+            for date_str, nav in prior_periods.items():
+                try:
+                    d = datetime.strptime(date_str, '%Y-%m-%d')
+                except ValueError:
+                    continue
+                prior_dated.append((d, {'nav': nav}))
+            prior_dated.sort(key=lambda x: x[0])
+
+            if not prior_dated:
+                qsif_logger.warning(
+                    f"  ⚠ {isin}: no existing history in {NAV_OUTPUT_FILE.name} — "
+                    f"running a full fetch for this scheme"
                 )
+                matched = fetch_qsif_scheme_history(session, keyword)
+                from_date = None
+            else:
+                last_saved_date = prior_dated[-1][0].date()
+                from_date = last_saved_date + timedelta(days=1)
+                if from_date > today:
+                    qsif_logger.info(f"  {isin}: already up to date (latest saved {last_saved_date}), nothing to fetch")
+                    result[isin] = build_nav_history_entry(
+                        prior.get('scheme_name', isin), prior_dated, source='qsif.com'
+                    )
+                    continue
+                qsif_logger.info(f"  {isin}: fetching gap {from_date} to {today} (search: '{keyword}')")
+                matched = fetch_qsif_scheme_history(session, keyword, from_date=from_date, to_date=today)
+
+            if not matched:
+                qsif_logger.info(f"  {isin}: no new rows in gap range — keeping existing history as-is")
+                if prior_dated:
+                    result[isin] = build_nav_history_entry(
+                        prior.get('scheme_name', isin), prior_dated, source='qsif.com'
+                    )
                 continue
-            qsif_logger.info(f"  {isin}: fetching gap {from_date} to {today} (search: '{keyword}')")
-            matched = fetch_qsif_scheme_history(session, keyword, from_date=from_date, to_date=today)
 
-        if not matched:
-            qsif_logger.info(f"  {isin}: no new rows in gap range — keeping existing history as-is")
-            if prior_dated:
-                result[isin] = build_qsif_history_entry(
-                    prior.get('scheme_name', isin), prior_dated
-                )
-            continue
+            merged_by_date = dict(prior_periods)
+            for r in matched:
+                d = parse_qsif_date(r['date_str'])
+                if d:
+                    merged_by_date[d.strftime('%Y-%m-%d')] = r['nav']
 
-        # Merge prior + newly fetched rows by ISO date (newly fetched nav
-        # wins on overlap, in case a date was re-published with a
-        # corrected value — unlikely but safer than silently keeping a
-        # stale nav).
-        merged_by_date = dict(prior_periods)
-        for r in matched:
-            d = parse_qsif_date(r['date_str'])
-            if d:
-                merged_by_date[d.strftime('%Y-%m-%d')] = r['nav']
+            merged_dated = []
+            for date_str, nav in merged_by_date.items():
+                try:
+                    d = datetime.strptime(date_str, '%Y-%m-%d')
+                except ValueError:
+                    continue
+                merged_dated.append((d, {'nav': nav}))
 
-        merged_dated = []
-        for date_str, nav in merged_by_date.items():
-            try:
-                d = datetime.strptime(date_str, '%Y-%m-%d')
-            except ValueError:
-                continue
-            merged_dated.append((d, {'nav': nav}))
-        merged_dated.sort(key=lambda x: x[0])  # oldest first
+            new_count = len(merged_by_date) - len(prior_periods)
+            scheme_name = matched[0]['scheme_name'] if matched else prior.get('scheme_name', isin)
+            result[isin] = build_nav_history_entry(scheme_name, merged_dated, source='qsif.com')
+            qsif_logger.info(
+                f"  ✓ {isin}: {new_count} new row(s) merged in, "
+                f"total now {len(merged_dated)} dated rows "
+                f"(latest: {result[isin]['latest']})"
+            )
 
-        new_count = len(merged_by_date) - len(prior_periods)
+    # Carry forward any ISIN present in the existing file but not
+    # processed above (shouldn't normally happen, but avoids silent
+    # data loss for e.g. a scheme temporarily missing from both sources)
+    for isin, prior in existing.items():
+        if isin not in result:
+            result[isin] = prior
 
-        scheme_name = matched[0]['scheme_name'] if matched else prior.get('scheme_name', isin)
-        # Rebuild through the standard helper so 'latest' reflects the
-        # true most recent date after merging.
-        result[isin] = build_qsif_history_entry(scheme_name, merged_dated)
-        qsif_logger.info(
-            f"  ✓ {isin}: {new_count} new row(s) merged in, "
-            f"total now {len(merged_dated)} dated rows "
-            f"(latest: {result[isin]['latest']})"
-        )
+    logger.info(f"✓ nav.json update complete: {len(result)} total entries")
+    return result
 
     # Carry forward any ISIN that's in the existing file but somehow wasn't
     # processed above (shouldn't normally happen, but avoids silent data loss)
@@ -1017,86 +968,53 @@ def run_qsif_nav_update():
 # Main
 # ===========================================================================
 
-def main_eod():
-    """Daily EOD fetch: AMFI (MF/SGB) + QSIF latest NAV/change. FAST.
-    Writes data/nav_ltp.json (existing structure, unchanged)."""
-    merged = {}
+def main_nav():
+    """NAV update for BOTH AMFI mutual funds and QSIF schemes —
+    self-determining, single mode, single shared output file.
 
+    AMFI: fetch_historical_nav() (mfapi.in) always returns the full
+    series; each run merges it into nav.json's existing periods.
+    QSIF: per-ISIN self-determining — no existing data -> full fetch
+    (paginates the site until pagination genuinely ends; minute+ per
+    scheme). Existing data with a gap -> fetches only that gap. Already
+    current -> no network call for that ISIN. See run_nav_update() for
+    full details on both.
+
+    Writes/accumulates data/nav.json — one file, both sources, always up
+    to date, regardless of whether this is the very first run ever or
+    the hundredth daily run. SGBs are NOT included here — they're tracked
+    as regular equity-like tickers via the LTP pipeline instead."""
     try:
-        amfi = run_amfi_nav()
-        merged.update(amfi)
+        nav_data = run_nav_update()
     except Exception as e:
-        logger.warning(f"  ⚠ AMFI NAV run failed: {e}")
-
-    try:
-        qsif = run_qsif_nav_eod()
-        merged.update(qsif)
-    except Exception as e:
-        qsif_logger.warning(f"  ⚠ QSIF EOD NAV run failed: {e}")
-
-    for attempt in range(2):  # one retry if a concurrent job conflicts on SUMMARY_FILE
-        output = {"_metadata": {"generated_at": now(), "count": len(merged), "source": "AMFI + qsif.com"}}
-        output.update(merged)
-        save_json(NAV_LTP_OUTPUT_FILE, output)
-        logger.info(f"✓ Wrote {NAV_LTP_OUTPUT_FILE} ({len(merged)} entries)")
-
-        update_summary('eod', 'success' if merged else 'no_data', entries=len(merged))
-
-        outcome = git_commit_and_push(
-            [NAV_LTP_OUTPUT_FILE, SUMMARY_FILE],
-            f"Update nav_ltp.json ({len(merged)} entries) [skip ci]"
-        )
-        if outcome != "conflict_reset":
-            break
-        logger.warning("  Retrying eod save+commit once against the now-reset origin/main...")
-
-
-def main_qsif_nav():
-    """QSIF NAV update — self-determining, single mode (no separate seed/
-    delta CLI flags needed).
-
-    For each held ISIN: no existing data -> full fetch (paginates the
-    site until pagination genuinely ends; minute+ per scheme). Existing
-    data with a gap -> fetches only that gap. Already current -> no
-    network call for that ISIN. See run_qsif_nav_update() for details.
-
-    Writes/accumulates data/qsif_nav.json — one file, always up to date,
-    regardless of whether this is the very first run ever or the
-    hundredth daily run."""
-    try:
-        qsif_hist = run_qsif_nav_update()
-    except Exception as e:
-        qsif_logger.warning(f"  ⚠ QSIF NAV update run failed: {e}")
-        qsif_hist = {}
+        logger.warning(f"  ⚠ NAV update run failed: {e}")
+        nav_data = {}
 
     for attempt in range(2):  # one retry if a concurrent job conflicts on SUMMARY_FILE
         output = {
             "_metadata": {
                 "generated_at": now(),
-                "count": len(qsif_hist),
-                "source": "qsif.com",
+                "count": len(nav_data),
+                "source": "AMFI + qsif.com",
                 "schema": "per-ISIN: {scheme_name, source, latest: {date, ltp, change, changePct}, periods: {YYYY-MM-DD: nav}}"
             }
         }
-        output.update(qsif_hist)
-        save_json(QSIF_NAV_OUTPUT_FILE, output)
-        qsif_logger.info(f"✓ Wrote {QSIF_NAV_OUTPUT_FILE} ({len(qsif_hist)} entries)")
+        output.update(nav_data)
+        save_json(NAV_OUTPUT_FILE, output)
+        logger.info(f"✓ Wrote {NAV_OUTPUT_FILE} ({len(nav_data)} entries)")
 
-        update_summary('qsif-nav', 'success' if qsif_hist else 'no_data', entries=len(qsif_hist))
+        update_summary('nav', 'success' if nav_data else 'no_data', entries=len(nav_data))
 
         outcome = git_commit_and_push(
-            [QSIF_NAV_OUTPUT_FILE, SUMMARY_FILE],
-            f"Update qsif_nav.json ({len(qsif_hist)} entries) [skip ci]"
+            [NAV_OUTPUT_FILE, SUMMARY_FILE],
+            f"Update nav.json ({len(nav_data)} entries) [skip ci]"
         )
         if outcome != "conflict_reset":
             break
-        qsif_logger.warning("  Retrying qsif_nav save+commit once against the now-reset origin/main...")
+        logger.warning("  Retrying nav save+commit once against the now-reset origin/main...")
 
 
 if __name__ == "__main__":
-    import sys
-    mode = sys.argv[1] if len(sys.argv) > 1 else "eod"
-    if mode == "qsif-nav":
-        main_qsif_nav()
-    else:
-        main_eod()
+    # 'nav' is now the only mode (covers both latest snapshot and full
+    # history, for AMFI + QSIF) — no CLI arg needed anymore.
+    main_nav()
