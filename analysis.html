@@ -1679,6 +1679,13 @@ function drawNavLine(s){
     ctx.fillStyle='#070c18';
     ctx.fillRect(0,0,W,H);
 
+    // X-axis tick step, computed once and shared by the vertical gridlines
+    // and the date labels below, so they line up with each other. Spacing
+    // assumption (70px/label) accounts for actual "MM/YY" label width at
+    // 12px bold — narrower spacing caused centered labels to overlap.
+    const xMaxLabels = Math.max(3, Math.min(8, Math.floor(cW/70)));
+    const xLblStep = Math.max(1, Math.floor(n/xMaxLabels));
+
     // Grid lines — denser than the equity chart since NAV oscillations are
     // often small relative to the full y-range.
     const GRID_DIV = 12;
@@ -1687,6 +1694,13 @@ function drawNavLine(s){
       ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
     }
+    // Vertical gridlines at the same X positions the date labels use below.
+    pts.forEach((p,i) => {
+      if(i % xLblStep !== 0 && i !== n-1) return;
+      const x = toX(p._t);
+      ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
+    });
 
     // Right axis separator
     ctx.fillStyle='rgba(7,12,24,.8)';
@@ -1744,17 +1758,16 @@ function drawNavLine(s){
     ctx.fillText(navVal.toFixed(2), W-2, Math.max(navY+4, PAD.t+10));
 
     // X-axis date labels — the last point sits exactly at PAD.l+cW, so it
+    // X-axis date labels — the last point sits exactly at PAD.l+cW, so it
     // must be exempted from the right-edge proximity check below (it was
     // being silently dropped every time, since toX() for the final point
-    // always lands past the cutoff). Also denser overall: was capped at 4,
-    // now scales with available width for finer time resolution.
-    const maxLabels = Math.max(4, Math.min(9, Math.floor(cW/45)));
-    const lblStep = Math.max(1, Math.floor(n/maxLabels));
+    // always lands past the cutoff). Uses xLblStep computed above, shared
+    // with the vertical gridlines so ticks and labels always align.
     ctx.fillStyle='rgba(255,255,255,0.9)';
     ctx.font='bold 12px sans-serif';
     ctx.textBaseline='top';
     pts.forEach((p,i) => {
-      if(i % lblStep !== 0 && i !== n-1) return;
+      if(i % xLblStep !== 0 && i !== n-1) return;
       const parts = p.d.split('-');
       if(parts.length !== 3) return;
       const lbl = parts[1]+'/'+parts[0].slice(2);
