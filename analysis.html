@@ -231,6 +231,23 @@ function updateFinancialSource(value, type) {
 // Detects mutual fund / SGB / QSIF records — these carry price.ltp_nav and
 // nav_history.periods instead of equity OHLCV (price.ohlcv_monthly) and
 // financials/ratios/valuation (all empty {} for these instrument types).
+// Builds (and memoizes on the stock object) the sorted daily NAV point array
+// from nav_history.periods. Single source of truth — both the toolbar (which
+// needs point count early, for D/W/M button highlighting) and the chart
+// drawer call this, so there's no risk of one building an incomplete cache
+// (e.g. missing _t timestamps) that the other then trusts as already-built.
+function ensureNavCache(s){
+  if(!s._navCache) {
+    const periods = (s.nav_history && s.nav_history.periods) || {};
+    s._navCache = Object.keys(periods)
+      .map(d => ({ d, v: parseFloat(periods[d]) || 0 }))
+      .filter(p => p.d && p.v > 0)
+      .sort((a, b) => a.d.localeCompare(b.d));
+    s._navCache.forEach(p => { if(!p._t) p._t = new Date(p.d).getTime(); });
+  }
+  return s._navCache;
+}
+
 function isMutualFund(s) {
     if (!s) return false;
     const it = (s.company_details && s.company_details.instrument_type) || s.instrument_type || '';
@@ -970,13 +987,7 @@ function renderTab(tab) {
         const navChgPct = (s.price||{}).ltp_change_pct;
         // Ensure _navCache exists so resolveNavInterval can read the real
         // point count for highlighting the correct D/W/M button on first render.
-        if(!s._navCache) {
-            const periods = (s.nav_history && s.nav_history.periods) || {};
-            s._navCache = Object.keys(periods)
-                .map(d => ({ d, v: parseFloat(periods[d]) || 0 }))
-                .filter(p => p.d && p.v > 0)
-                .sort((a, b) => a.d.localeCompare(b.d));
-        }
+        ensureNavCache(s);
         const activeInterval = S.navInterval || resolveNavInterval(s);
         html = `<div style="padding:0;padding-bottom:100px">
           <div style="padding:8px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
@@ -1580,15 +1591,7 @@ function resolveNavInterval(s){
 }
 
 function getSlicedNavPoints(s, canvasWidth){
-  if(!s._navCache) {
-    const periods = (s.nav_history && s.nav_history.periods) || {};
-    s._navCache = Object.keys(periods)
-      .map(d => ({ d, v: parseFloat(periods[d]) || 0 }))
-      .filter(p => p.d && p.v > 0)
-      .sort((a, b) => a.d.localeCompare(b.d));
-    s._navCache.forEach(p => { if(!p._t) p._t = new Date(p.d).getTime(); });
-  }
-  const daily = s._navCache;
+  const daily = ensureNavCache(s);
   if (!daily.length) return [];
 
   // S.navInterval is null until the user manually picks D/W/M for this stock
