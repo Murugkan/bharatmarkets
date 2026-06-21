@@ -546,6 +546,12 @@ def fetch_qsif_scheme_full_history(session, scheme_name_query, max_pages=200):
             request_url = next_url
         elif event_target:
             post_data = dict(hidden_fields)
+            # txtschname is a regular text input, NOT a hidden field, so it
+            # is never captured by parse_nav_table()'s hidden-input scan.
+            # Without re-sending it explicitly here, the server resets to
+            # showing ALL schemes from page 2 onward — confirmed via live
+            # log: page 1 correctly filtered, pages 2+ returned everything.
+            post_data['ctl00$ContentPlaceHolder1$txtschname'] = scheme_name_query
             post_data['__EVENTTARGET'] = event_target
             post_data['__EVENTARGUMENT'] = ''
             try:
@@ -564,6 +570,19 @@ def fetch_qsif_scheme_full_history(session, scheme_name_query, max_pages=200):
         if not page_rows:
             qsif_logger.info(f"  Search page {page_num}: no rows parsed, stopping")
             break
+
+        # Defensive check: if the filter was somehow lost again (e.g. site
+        # behavior changes), rows won't match the query — catch it loudly
+        # here rather than silently mixing in wrong-scheme data.
+        off_topic = [r for r in page_rows if scheme_name_query.lower() not in r['scheme_name'].lower()]
+        if off_topic:
+            qsif_logger.warning(
+                f"  ⚠ Search page {page_num}: {len(off_topic)}/{len(page_rows)} rows do NOT match "
+                f"'{scheme_name_query}' — filter may have been lost on this page. "
+                f"Sample off-topic name: '{off_topic[0]['scheme_name']}'. Stopping pagination here."
+            )
+            break
+
         all_rows.extend(page_rows)
         qsif_logger.info(f"  Search page {page_num}: {len(page_rows)} rows")
         time.sleep(1)
