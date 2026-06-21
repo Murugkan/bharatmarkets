@@ -1679,9 +1679,12 @@ function drawNavLine(s){
     ctx.fillStyle='#070c18';
     ctx.fillRect(0,0,W,H);
 
-    // Grid lines
-    for(let i=0;i<=4;i++){
-      const y=PAD.t+(cH/4)*i;
+    // Grid lines — denser than the equity chart since NAV oscillations are
+    // often small relative to the full y-range, and 5 lines was too coarse
+    // to read intermediate values against.
+    const GRID_DIV = 8;
+    for(let i=0;i<=GRID_DIV;i++){
+      const y=PAD.t+(cH/GRID_DIV)*i;
       ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
     }
@@ -1693,10 +1696,10 @@ function drawNavLine(s){
     ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
-    // NAV value labels (right axis)
-    for(let i=0;i<=4;i++){
-      const y=PAD.t+(cH/4)*i;
-      const v=mx-(mx-mn)*(i/4);
+    // NAV value labels (right axis) — matches GRID_DIV above
+    for(let i=0;i<=GRID_DIV;i++){
+      const y=PAD.t+(cH/GRID_DIV)*i;
+      const v=mx-(mx-mn)*(i/GRID_DIV);
       ctx.fillStyle='rgba(255,255,255,1)';
       ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
       ctx.fillText(v.toFixed(2), W-6, y);
@@ -1741,8 +1744,9 @@ function drawNavLine(s){
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
     ctx.fillText(navVal.toFixed(2), W-2, Math.max(navY+4, PAD.t+10));
 
-    // X-axis date labels
-    const maxLabels = Math.min(4, Math.floor(cW/50));
+    // X-axis date labels — denser than before (was capped at 4) to match the
+    // finer y-axis grid now in use.
+    const maxLabels = Math.min(6, Math.floor(cW/50));
     const lblStep = Math.max(1, Math.floor(n/maxLabels));
     ctx.fillStyle='rgba(255,255,255,0.9)';
     ctx.font='bold 12px sans-serif';
