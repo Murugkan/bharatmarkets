@@ -679,6 +679,69 @@ def parse_qsif_date(date_str):
         return None
 
 
+def build_qsif_history_entry(scheme_name, dated_rows_oldest_first):
+    """Build the standardized per-ISIN history entry.
+
+    dated_rows_oldest_first: list of (datetime, {'nav': float, ...}) tuples,
+    sorted oldest to newest (one entry per distinct date — caller must
+    already have deduped).
+
+    Output shape (one row per date, each carrying its own day-over-day
+    change, consistent with how AMFI/SGB entries already work elsewhere
+    in nav_ltp.json):
+
+        {
+          "scheme_name": "...",
+          "source": "qsif.com",
+          "latest": {
+            "date": "18-Jun-2026", "ltp": 10.4574,
+            "change": 0.0006, "changePct": 0.0057
+          },
+          "history": [
+            {"date": "16-Jun-2026", "nav": 10.3906, "change": null, "changePct": null},
+            {"date": "17-Jun-2026", "nav": 10.4568, "change": 0.0662, "changePct": 0.6369},
+            {"date": "18-Jun-2026", "nav": 10.4574, "change": 0.0006, "changePct": 0.0057}
+          ]
+        }
+
+    The first (oldest) row in history has change=None since there's no
+    prior day in the stored series to diff against.
+    """
+    history = []
+    prev_nav = None
+    for d, r in dated_rows_oldest_first:
+        nav = r['nav']
+        change = None
+        change_pct = None
+        if prev_nav is not None and prev_nav:
+            change = round(nav - prev_nav, 4)
+            change_pct = round((nav - prev_nav) / prev_nav * 100, 4)
+        history.append({
+            'date': d.strftime('%d-%b-%Y'),
+            'nav': nav,
+            'change': change,
+            'changePct': change_pct,
+        })
+        prev_nav = nav
+
+    latest = None
+    if history:
+        last = history[-1]
+        latest = {
+            'date': last['date'],
+            'ltp': last['nav'],
+            'change': last['change'],
+            'changePct': last['changePct'],
+        }
+
+    return {
+        'scheme_name': scheme_name,
+        'source': 'qsif.com',
+        'latest': latest,
+        'history': history,
+    }
+
+
 def run_qsif_nav_eod():
     """Fetch QSIF EOD NAV (latest + 1D change) per held ISIN — FAST path.
 
@@ -777,8 +840,9 @@ def run_qsif_history_seed():
     qsif_history.json; after that, run_qsif_history_delta() takes over to
     fill only the gap on a schedule.
 
-    Output: {isin: {scheme_name, history: [{date, nav}, ...]}}, written to
-    qsif_history.json, oldest-to-newest per scheme. OVERWRITES the file.
+    Output: {isin: {scheme_name, source, latest: {date, ltp, change,
+    changePct}, history: [{date, nav, change, changePct}, ...]}}, written
+    to qsif_history.json, oldest-to-newest per scheme. OVERWRITES the file.
     """
     if not QSIF_SCHEME_KEYWORDS:
         qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
@@ -820,15 +884,11 @@ def run_qsif_history_seed():
             continue
 
         scheme_name = matched[0]['scheme_name']
-        result[isin] = {
-            'scheme_name': scheme_name,
-            'source': 'qsif.com',
-            'history': [
-                {'date': d.strftime('%d-%b-%Y'), 'nav': r['nav']}
-                for d, r in dated
-            ],
-        }
-        qsif_logger.info(f"  ✓ {isin}: {len(dated)} dated rows in full history")
+        result[isin] = build_qsif_history_entry(scheme_name, dated)
+        qsif_logger.info(
+            f"  ✓ {isin}: {len(dated)} dated rows in full history "
+            f"(latest: {result[isin]['latest']})"
+        )
 
     missing = set(QSIF_SCHEME_KEYWORDS.keys()) - set(result.keys())
     if missing:
@@ -892,7 +952,12 @@ def run_qsif_history_delta():
             from_date = last_saved_date + timedelta(days=1)
             if from_date > today:
                 qsif_logger.info(f"  {isin}: already up to date (latest saved {last_saved_date}), nothing to fetch")
-                result[isin] = prior
+                # Rebuild through the helper even with no new data, so a
+                # file written under an older schema (no 'latest', no
+                # per-row change) self-heals to the current format.
+                result[isin] = build_qsif_history_entry(
+                    prior.get('scheme_name', isin), prior_dated
+                )
                 continue
             qsif_logger.info(f"  [DELTA] {isin}: fetching gap {from_date} to {today} (search: '{keyword}')")
             matched = fetch_qsif_scheme_history(session, keyword, from_date=from_date, to_date=today)
@@ -900,44 +965,41 @@ def run_qsif_history_delta():
         if not matched:
             qsif_logger.info(f"  {isin}: no new rows in gap range — keeping existing history as-is")
             if prior_dated:
-                result[isin] = prior
+                result[isin] = build_qsif_history_entry(
+                    prior.get('scheme_name', isin), prior_dated
+                )
             continue
 
-        seen_dates = {h.get('date') for h in prior_history}
-        new_dated = []
+        # Merge prior + newly fetched rows by date (newly fetched nav wins
+        # on overlap, in case a date was re-published with a corrected
+        # value — unlikely but safer than silently keeping a stale nav).
+        merged_by_date = {h['date']: h['nav'] for h in prior_history if 'nav' in h}
         for r in matched:
             d = parse_qsif_date(r['date_str'])
-            if d and d.strftime('%d-%b-%Y') not in seen_dates:
-                new_dated.append((d, r))
+            if d:
+                merged_by_date[d.strftime('%d-%b-%Y')] = r['nav']
 
-        if not new_dated:
-            qsif_logger.info(f"  {isin}: fetched rows were all already in saved history (no actual gap)")
-            result[isin] = prior if prior_dated else {
-                'scheme_name': matched[0]['scheme_name'],
-                'source': 'qsif.com',
-                'history': [],
-            }
-            continue
+        merged_dated = []
+        for date_str, nav in merged_by_date.items():
+            d = parse_qsif_date(date_str)
+            if d:
+                merged_dated.append((d, {'nav': nav}))
+        merged_dated.sort(key=lambda x: x[0])  # oldest first
 
-        new_dated.sort(key=lambda x: x[0])
-        new_entries = [{'date': d.strftime('%d-%b-%Y'), 'nav': r['nav']} for d, r in new_dated]
-
-        merged_history = list(prior_history) + new_entries
-        # Final sort + dedup safety net, oldest first
-        merged_sorted = sorted(
-            {h['date']: h for h in merged_history}.values(),
-            key=lambda h: parse_qsif_date(h['date']) or datetime.min
+        new_count = len(merged_by_date) - len(
+            {h['date'] for h in prior_history if 'nav' in h}
         )
 
         scheme_name = matched[0]['scheme_name'] if matched else prior.get('scheme_name', isin)
-        result[isin] = {
-            'scheme_name': scheme_name,
-            'source': 'qsif.com',
-            'history': merged_sorted,
-        }
+        # Rebuild the FULL series through the standard helper so change/
+        # changePct stay correct across the whole accumulated history
+        # (not just the newly appended tail), and 'latest' reflects the
+        # true most recent date after merging.
+        result[isin] = build_qsif_history_entry(scheme_name, merged_dated)
         qsif_logger.info(
-            f"  ✓ {isin}: appended {len(new_entries)} new row(s), "
-            f"total now {len(merged_sorted)} dated rows"
+            f"  ✓ {isin}: {new_count} new row(s) merged in, "
+            f"total now {len(merged_dated)} dated rows "
+            f"(latest: {result[isin]['latest']})"
         )
 
     # Carry forward any ISIN that's in the existing file but somehow wasn't
