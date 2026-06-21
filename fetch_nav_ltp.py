@@ -387,6 +387,11 @@ def parse_nav_table(html):
             qsif_logger.warning(f"  ⚠ Could not identify columns from headers: {headers}")
             continue
 
+        qsif_logger.info(
+            f"  Table structure: headers={headers} | "
+            f"date_idx={date_idx} name_idx={name_idx} nav_idx={nav_idx}"
+        )
+
         for tr in table.find_all('tr')[1:]:  # skip header row
             cells = tr.find_all(['td', 'th'])
             if len(cells) <= max(date_idx, name_idx, nav_idx):
@@ -402,18 +407,30 @@ def parse_nav_table(html):
                 continue
             rows.append({'date_str': date_str, 'scheme_name': scheme_name, 'nav': nav})
 
+    if rows:
+        sample = rows[:5]
+        qsif_logger.info(f"  Sample parsed rows ({len(rows)} total): " +
+                          " | ".join(f"[{r['date_str']} / '{r['scheme_name']}' / {r['nav']}]" for r in sample))
+    else:
+        qsif_logger.warning("  ⚠ Zero rows parsed from any table on this page")
+
     return rows
 
 
-def fetch_qsif_historical_nav(session, max_pages=3):
+def fetch_qsif_historical_nav(session, max_pages=1):
     """Fetch and parse the historical_nav page across pagination.
 
     The page returns the full table for ALL QSIF schemes on a plain GET
-    (confirmed: no search/postback required). Pagination links are followed
-    via '?page=N' query param — adjust PAGE_PARAM below if the live site
-    uses a different parameter name.
+    (confirmed: no search/postback required).
+
+    Pagination is currently DISABLED (max_pages=1): a live run confirmed
+    '?page=2' returns HTTP 500, so that query param guess is wrong for
+    this site. Page 1 alone returns 10 rows (confirmed in logs), which is
+    enough for a 1D change calc. If more history is ever needed, the real
+    pagination mechanism needs to be identified from the page's actual
+    pager links/markup before re-enabling max_pages > 1.
     """
-    PAGE_PARAM = 'page'
+    PAGE_PARAM = 'page'  # NOT CONFIRMED WORKING — see docstring above
     all_rows = []
 
     for page_num in range(1, max_pages + 1):
@@ -463,11 +480,14 @@ def run_qsif_nav():
         qsif_logger.warning("  ⚠ No rows parsed from historical_nav page — check page structure")
         return {}
 
+    distinct_names = sorted(set(r['scheme_name'] for r in all_rows))
+    qsif_logger.info(f"  Distinct scheme names found on page ({len(distinct_names)}): {distinct_names}")
+
     result = {}
     for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
         matched = [r for r in all_rows if keyword.lower() in r['scheme_name'].lower()]
         if not matched:
-            qsif_logger.warning(f"  ⚠ {isin}: no rows matched keyword '{keyword}'")
+            qsif_logger.warning(f"  ⚠ {isin}: no rows matched keyword '{keyword}' against {distinct_names}")
             continue
 
         # Sort by parsed date, most recent first; drop unparseable dates
