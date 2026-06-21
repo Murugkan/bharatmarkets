@@ -354,13 +354,14 @@ def run_amfi_nav():
 # Part 3 — QSIF NAV (qsif.com)
 # ===========================================================================
 
-def parse_nav_table(html):
-    """Parse a historical_nav page's table into rows.
+def parse_nav_table(html, base_url=QSIF_NAV_URL):
+    """Parse a historical_nav page's table into rows, and look for a real
+    'next page' <a href=...> link.
 
     Expected columns (per the live site): NAV Date | Scheme Name | NAV(₹)
-    Returns list of dicts: {date_str, scheme_name, nav}
-    Tries to be resilient to extra whitespace/columns by matching on
-    header text rather than assuming a fixed column index.
+    Returns (rows, next_url) where next_url is None if no real anchor link
+    was found (e.g. if pagination is JS-only via __doPostBack, in which
+    case it cannot be followed with plain requests).
     """
     soup = BeautifulSoup(html, 'html.parser')
     rows = []
@@ -368,7 +369,7 @@ def parse_nav_table(html):
     tables = soup.find_all('table')
     if not tables:
         qsif_logger.warning("  ⚠ No <table> found on historical_nav page")
-        return rows
+        return rows, None
 
     for table in tables:
         header_cells = table.find('tr')
@@ -414,31 +415,49 @@ def parse_nav_table(html):
     else:
         qsif_logger.warning("  ⚠ Zero rows parsed from any table on this page")
 
+    # Look for a real <a href> pagination link (text '2', 'Next', or rel=next).
+    # ASP.NET pagers commonly render as <a href="javascript:__doPostBack(...)">
+    # with NO real URL — in that case next_url stays None and is logged as such.
+    next_url = None
+    candidates = soup.find_all('a', href=True)
+    for a in candidates:
+        text = a.get_text(strip=True).lower()
+        href = a['href'].strip()
+        if text in ('2', 'next') or 'next' in (a.get('rel') or []):
+            if href.lower().startswith('javascript:'):
+                qsif_logger.info(f"  Pagination link found but is JS-only postback (not followable via requests): {href[:120]}")
+            else:
+                from urllib.parse import urljoin
+                next_url = urljoin(base_url, href)
+                qsif_logger.info(f"  Real pagination href found: {next_url}")
+            break
+
+    if next_url is None:
+        qsif_logger.info("  No real (non-JS) pagination link found on this page")
+
+    return rows, next_url
+
     return rows
 
 
-def fetch_qsif_historical_nav(session, max_pages=1):
-    """Fetch and parse the historical_nav page across pagination.
+def fetch_qsif_historical_nav(session, max_pages=5):
+    """Fetch and parse the historical_nav page, following REAL pagination
+    links extracted from the page's own HTML (not a guessed query param).
 
-    The page returns the full table for ALL QSIF schemes on a plain GET
-    (confirmed: no search/postback required).
-
-    Pagination is currently DISABLED (max_pages=1): a live run confirmed
-    '?page=2' returns HTTP 500, so that query param guess is wrong for
-    this site. Page 1 alone returns 10 rows (confirmed in logs), which is
-    enough for a 1D change calc. If more history is ever needed, the real
-    pagination mechanism needs to be identified from the page's actual
-    pager links/markup before re-enabling max_pages > 1.
+    A live run confirmed page 2 does not change the browser URL when
+    navigated normally, meaning pagination is very likely a JS-only
+    ASP.NET __doPostBack pager with no real <a href> URL to follow — in
+    that case this function will fetch page 1 only and log that fact
+    clearly, rather than guessing further query params blind.
     """
-    PAGE_PARAM = 'page'  # NOT CONFIRMED WORKING — see docstring above
     all_rows = []
+    url = QSIF_NAV_URL
 
     for page_num in range(1, max_pages + 1):
-        url = QSIF_NAV_URL if page_num == 1 else f"{QSIF_NAV_URL}?{PAGE_PARAM}={page_num}"
         try:
             resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
             resp.raise_for_status()
-            page_rows = parse_nav_table(resp.text)
+            page_rows, next_url = parse_nav_table(resp.text, base_url=url)
             if not page_rows:
                 qsif_logger.info(f"  Page {page_num}: no rows parsed, stopping pagination")
                 break
@@ -447,6 +466,18 @@ def fetch_qsif_historical_nav(session, max_pages=1):
         except Exception as e:
             qsif_logger.warning(f"  ⚠ Page {page_num} fetch failed: {e}")
             break
+
+        if not next_url or next_url == url:
+            qsif_logger.info(
+                f"  Stopping after page {page_num}: no further (non-JS) pagination link found. "
+                f"If more history is needed, this site's pager is likely JS-only "
+                f"(__doPostBack) and would require a headless browser (e.g. Selenium, "
+                f"already used elsewhere in this pipeline for fetch_screener_financials.py) "
+                f"to paginate further."
+            )
+            break
+
+        url = next_url
         time.sleep(1)
 
     qsif_logger.info(f"  ✓ Total rows fetched across pagination: {len(all_rows)}")
