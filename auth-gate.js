@@ -13,6 +13,12 @@
    Just edit CONFIG.PASSWORD below directly from GitHub's mobile
    web editor (no terminal/shasum needed). The script hashes it
    automatically at runtime before comparing.
+
+   Changing the password automatically forces everyone to log in
+   again on their next page load — no extra step needed. Session
+   validity is tied to a hash of the current password, so an old
+   unlock token only works while the password it was created
+   under is still the current one.
    ============================================================ */
 
 var CONFIG = {
@@ -21,16 +27,11 @@ var CONFIG = {
 
 (function () {
   var STORAGE_KEY = "bm_auth_until";
+  var TOKEN_KEY = "bm_auth_token"; // hash of the password the unlock was created under
   var UNLOCK_DAYS = 7; // how many days to stay unlocked after entering password
 
   var unlockedUntil = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
-
-  if (Date.now() < unlockedUntil) {
-    return; // still within unlock window
-  }
-
-  // Hide page content immediately while we check
-  document.documentElement.style.visibility = "hidden";
+  var storedToken = localStorage.getItem(TOKEN_KEY) || "";
 
   async function sha256(text) {
     var enc = new TextEncoder().encode(text);
@@ -40,7 +41,7 @@ var CONFIG = {
       .join("");
   }
 
-  function showPrompt() {
+  function showPrompt(currentToken) {
     var overlay = document.createElement("div");
     overlay.id = "bm-auth-overlay";
     overlay.style.cssText =
@@ -74,10 +75,10 @@ var CONFIG = {
     document.getElementById("bm-auth-form").addEventListener("submit", async function (e) {
       e.preventDefault();
       var entered = await sha256(input.value);
-      var expected = await sha256(CONFIG.PASSWORD);
-      if (entered === expected) {
+      if (entered === currentToken) {
         var until = Date.now() + UNLOCK_DAYS * 24 * 60 * 60 * 1000;
         localStorage.setItem(STORAGE_KEY, String(until));
+        localStorage.setItem(TOKEN_KEY, currentToken);
         overlay.remove();
         document.body.style.overflow = "";
       } else {
@@ -88,9 +89,27 @@ var CONFIG = {
     });
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", showPrompt);
-  } else {
-    showPrompt();
+  async function main() {
+    var currentToken = await sha256(CONFIG.PASSWORD);
+
+    // Skip the prompt only if unlocked AND the password hasn't changed since.
+    if (storedToken === currentToken && Date.now() < unlockedUntil) {
+      return;
+    }
+
+    // Hide page content immediately while we check/prompt
+    document.documentElement.style.visibility = "hidden";
+
+    function start() {
+      showPrompt(currentToken);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start);
+    } else {
+      start();
+    }
   }
+
+  main();
 })();
