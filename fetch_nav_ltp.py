@@ -46,8 +46,12 @@ QSIF_NAV_URL = 'https://www.qsif.com/nav/historical_nav'
 # Scheme name keywords to match against the historical NAV table's
 # "Scheme Name" column, keyed by ISIN — add new entries as more QSIF
 # funds are held. Matching is case-insensitive substring match.
+# IMPORTANT: must be specific enough to match only ONE share class —
+# 'qsif Equity Long-Short Fund' has 4 variants on this page (Regular/
+# Direct x Growth/IDCW); a keyword too generic will mix NAV rows from
+# different plans into one ISIN's history.
 QSIF_SCHEME_KEYWORDS = {
-    'INF966L30027': 'Equity Long-Short Fund',
+    'INF966L30027': 'Equity Long-Short Fund - Regular - Growth',
 }
 
 SCRAPE_HEADERS = {
@@ -457,7 +461,7 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
     return rows, next_url, next_event_target, hidden_fields
 
 
-def fetch_qsif_historical_nav(session, max_pages=5):
+def fetch_qsif_historical_nav(session, max_pages=500, target_keywords=None):
     """Fetch and parse the historical_nav page, following pagination.
 
     Page 1 is a plain GET. Confirmed via live log: pagination beyond page 1
@@ -469,9 +473,31 @@ def fetch_qsif_historical_nav(session, max_pages=5):
     ID) and __EVENTARGUMENT (usually empty), and POST back to the same
     URL — no real browser/Selenium needed, since this is just form
     submission, not client-side JS execution.
+
+    The table contains ALL ~20 QSIF schemes interleaved by date, so
+    fetching truly everything would mean walking the entire site's
+    history for every scheme — not needed since only specific schemes
+    are held. Instead, if target_keywords is given (dict of isin ->
+    scheme keyword), pagination continues only while NEW rows matching
+    those specific keywords are still being found. Once N consecutive
+    pages in a row contribute zero new matching rows, we've clearly run
+    past the target scheme's history (other schemes may still have more
+    pages, but we don't care) and stop. This gets genuinely full history
+    for the held scheme(s) without walking irrelevant schemes' full
+    history too.
     """
     all_rows = []
     url = QSIF_NAV_URL
+    STALL_LIMIT = 3  # stop after this many consecutive pages with no new target rows
+
+    def target_match_count(rows):
+        if not target_keywords:
+            return len(rows)
+        count = 0
+        for r in rows:
+            if any(kw.lower() in r['scheme_name'].lower() for kw in target_keywords.values()):
+                count += 1
+        return count
 
     try:
         resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
@@ -483,7 +509,9 @@ def fetch_qsif_historical_nav(session, max_pages=5):
     page_rows, next_url, event_target, hidden_fields = parse_nav_table(resp.text, base_url=url)
     if page_rows:
         all_rows.extend(page_rows)
-    qsif_logger.info(f"  Page 1: {len(page_rows)} rows")
+    qsif_logger.info(f"  Page 1: {len(page_rows)} rows ({target_match_count(page_rows)} matching target scheme(s))")
+
+    stall_count = 0
 
     for page_num in range(2, max_pages + 1):
         if next_url:
@@ -506,7 +534,6 @@ def fetch_qsif_historical_nav(session, max_pages=5):
             except Exception as e:
                 qsif_logger.warning(f"  ⚠ Page {page_num} POST (__doPostBack eventTarget='{event_target}') failed: {e}")
                 break
-            qsif_logger.info(f"  Page {page_num}: POSTed __EVENTTARGET='{event_target}'")
             request_url = url
         else:
             qsif_logger.info(f"  Stopping after page {page_num - 1}: no further pagination link (real or postback) found")
@@ -516,8 +543,22 @@ def fetch_qsif_historical_nav(session, max_pages=5):
         if not page_rows:
             qsif_logger.info(f"  Page {page_num}: no rows parsed, stopping pagination")
             break
+
+        match_count = target_match_count(page_rows)
         all_rows.extend(page_rows)
-        qsif_logger.info(f"  Page {page_num}: {len(page_rows)} rows")
+        qsif_logger.info(f"  Page {page_num}: {len(page_rows)} rows ({match_count} matching target scheme(s))")
+
+        if target_keywords:
+            if match_count == 0:
+                stall_count += 1
+                if stall_count >= STALL_LIMIT:
+                    qsif_logger.info(
+                        f"  Stopping after page {page_num}: {STALL_LIMIT} consecutive pages with no rows "
+                        f"matching target scheme(s) — assumed past their history"
+                    )
+                    break
+            else:
+                stall_count = 0
         time.sleep(1)
 
     qsif_logger.info(f"  ✓ Total rows fetched across pagination: {len(all_rows)}")
@@ -546,7 +587,7 @@ def run_qsif_nav():
         return {}
 
     session = requests.Session()
-    all_rows = fetch_qsif_historical_nav(session)
+    all_rows = fetch_qsif_historical_nav(session, target_keywords=QSIF_SCHEME_KEYWORDS)
     if not all_rows:
         qsif_logger.warning("  ⚠ No rows parsed from historical_nav page — check page structure")
         return {}
@@ -623,8 +664,15 @@ def run_qsif_nav():
             'source': 'qsif.com',
             'change': change,
             'changePct': change_pct,
+            'history': [
+                {'date': d.strftime('%d-%b-%Y'), 'nav': r['nav']}
+                for d, r in sorted(dated, key=lambda x: x[0])  # oldest first
+            ],
         }
-        qsif_logger.info(f"  ✓ {isin}: LTP {curr_row['nav']} ({curr_row['date_str']})")
+        qsif_logger.info(
+            f"  ✓ {isin}: LTP {curr_row['nav']} ({curr_row['date_str']}) | "
+            f"{len(dated)} dated rows in full history"
+        )
 
     missing = set(QSIF_SCHEME_KEYWORDS.keys()) - set(result.keys())
     if missing:
